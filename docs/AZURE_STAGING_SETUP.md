@@ -1,5 +1,7 @@
 # Azure staging — recommended layout
 
+**CLI prerequisite:** run `az login` and `az account set --subscription <id>` before any `az` commands; without an authenticated session, create resources from the Portal using the same settings below.
+
 Practical target for **first hosted staging** of this Next.js + PostgreSQL app. Infra is created in Azure Portal / CLI — not by this repo.
 
 ## Recommended architecture
