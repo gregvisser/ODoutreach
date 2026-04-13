@@ -1,7 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// OpensDoors — cold outreach platform (multi-tenant)
+// All tenant-owned data references Client (tenant) for strict isolation.
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +8,499 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ——— Enums ———
+
+enum StaffRole {
+  ADMIN
+  MANAGER
+  OPERATOR
+  VIEWER
+}
+
+enum ClientLifecycleStatus {
+  ONBOARDING
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum ClientMemberRole {
+  LEAD
+  CONTRIBUTOR
+  VIEWER
+}
+
+enum ContactSource {
+  CSV_IMPORT
+  ROCKETREACH
+  MANUAL
+}
+
+enum ImportBatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum RocketReachJobStatus {
+  PENDING
+  FETCHED
+  FAILED
+  STALE
+}
+
+enum SuppressionListKind {
+  EMAIL
+  DOMAIN
+}
+
+enum SuppressionSyncStatus {
+  NOT_CONFIGURED
+  IDLE
+  SYNCING
+  SUCCESS
+  ERROR
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum OutboundEmailStatus {
+  /// Legacy — prefer REQUESTED for new rows
+  PREPARING
+  /// Validated send request; not yet in worker pool
+  REQUESTED
+  /// Eligible for outbound worker (provider send not yet completed)
+  QUEUED
+  /// Worker claimed — provider API call in flight
+  PROCESSING
+  /// Suppression check failed — never sent
+  BLOCKED_SUPPRESSION
+  /// Provider accepted the message (API success)
+  SENT
+  /// Terminal provider/transport failure (may be retried → back to QUEUED)
+  FAILED
+  /// Bounce reported by provider webhook
+  BOUNCED
+  DELIVERED
+  /// Inbound reply linked to this send (operational milestone)
+  REPLIED
+}
+
+enum InboundMatchMethod {
+  UNLINKED
+  BY_OUTBOUND_PROVIDER_ID
+  BY_THREAD_REF
+  BY_CONTACT_EMAIL
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  SYNC
+  IMPORT
+}
+
+/// Workspace sender readiness (not full DNS UI — operational gating)
+enum SenderIdentityStatus {
+  NOT_SET
+  CONFIGURED_UNVERIFIED
+  VERIFIED_READY
+}
+
+// ——— Staff (Clerk-linked internal users) ———
+
+model StaffUser {
+  id          String    @id @default(cuid())
+  clerkUserId String    @unique
+  email       String
+  displayName String?
+  role        StaffRole @default(OPERATOR)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  memberships    ClientMembership[]
+  auditLogs      AuditLog[]
+  outboundSends  OutboundEmail[] @relation("OutboundInitiator")
+}
+
+// ——— Tenant / workspace ———
+
+model Client {
+  id        String                @id @default(cuid())
+  name      String
+  slug      String                @unique
+  status    ClientLifecycleStatus @default(ONBOARDING)
+  industry  String?
+  website   String?
+  notes     String?
+  /// Opaque token for inbound webhook URL — maps to this tenant only
+  inboundIngestToken String         @unique @default(cuid())
+  /// Default From: for outbound (operational placeholder until per-mailbox config)
+  defaultSenderEmail String?
+  /// Provider/domain verification is tracked outside this app until integrated — gates real sends when enforced
+  senderIdentityStatus SenderIdentityStatus @default(NOT_SET)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  memberships          ClientMembership[]
+  onboarding           ClientOnboarding?
+  contacts             Contact[]
+  importBatches        ContactImportBatch[]
+  rocketReachJobs      RocketReachEnrichment[]
+  suppressionSources   SuppressionSource[]
+  suppressedEmails     SuppressedEmail[]
+  suppressedDomains    SuppressedDomain[]
+  campaigns            Campaign[]
+  outboundEmails       OutboundEmail[]
+  inboundReplies       InboundReply[]
+  reportingSnapshots   ReportingDailySnapshot[]
+  auditLogs            AuditLog[]
+  outboundProviderEvents OutboundProviderEvent[]
+
+  @@index([status])
+}
+
+model ClientMembership {
+  id           String           @id @default(cuid())
+  staffUserId  String
+  clientId     String
+  role         ClientMemberRole @default(CONTRIBUTOR)
+  createdAt    DateTime         @default(now())
+  staffUser    StaffUser        @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([staffUserId, clientId])
+  @@index([clientId])
+}
+
+model ClientOnboarding {
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  currentStep     Int      @default(1)
+  completedSteps  Json     @default("[]")
+  /// JSON blob: basics, suppression sheet refs, outreach prefs — flexible for the wizard
+  formData        Json     @default("{}")
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// ——— Contacts & imports ———
+
+model ContactImportBatch {
+  id         String            @id @default(cuid())
+  clientId   String
+  fileName   String?
+  rowCount   Int               @default(0)
+  status     ImportBatchStatus @default(PENDING)
+  errorMessage String?
+  /// Import outcome: created, skipped, duplicates, sample errors — JSON
+  summary    Json?
+  completedAt DateTime?
+  createdAt  DateTime          @default(now())
+  client     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contacts   Contact[]
+
+  @@index([clientId, createdAt])
+}
+
+model Contact {
+  id                 String          @id @default(cuid())
+  clientId           String
+  email              String
+  /// Optional full name from CSV / enrichment
+  fullName           String?
+  /// Normalized domain part of email (lowercase), for display and guards
+  emailDomain        String?
+  firstName          String?
+  lastName           String?
+  company            String?
+  title              String?
+  source             ContactSource   @default(MANUAL)
+  importBatchId      String?
+  /// Cached flag after suppression check (refresh on sync)
+  isSuppressed       Boolean         @default(false)
+  lastSuppressionCheckAt DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  client             Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  importBatch        ContactImportBatch?    @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  rocketReach        RocketReachEnrichment?
+  outboundEmails     OutboundEmail[]
+  inboundReplies     InboundReply[]
+
+  @@unique([clientId, email])
+  @@index([clientId])
+  @@index([importBatchId])
+}
+
+model RocketReachEnrichment {
+  id          String               @id @default(cuid())
+  clientId    String
+  contactId   String?              @unique
+  externalId  String?
+  status      RocketReachJobStatus @default(PENDING)
+  rawPayload  Json?
+  lastError   String?
+  fetchedAt   DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contact  Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([externalId])
+}
+
+// ——— Suppression (Google Sheets source of truth per tenant) ———
+
+model SuppressionSource {
+  id                String                @id @default(cuid())
+  clientId          String
+  kind              SuppressionListKind
+  /// Google Spreadsheet ID
+  spreadsheetId     String?
+  /// Sheet name or gid reference
+  sheetRange        String?
+  label             String?
+  syncStatus        SuppressionSyncStatus @default(NOT_CONFIGURED)
+  lastSyncedAt      DateTime?
+  lastError         String?
+  /// Opaque ref to stored OAuth / service account (never raw tokens in DB)
+  googleConnectionRef String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  client            Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  suppressedEmails  SuppressedEmail[]
+  suppressedDomains SuppressedDomain[]
+
+  @@index([clientId, kind])
+}
+
+model SuppressedEmail {
+  id         String   @id @default(cuid())
+  clientId   String
+  email      String
+  sourceId   String?
+  syncedAt   DateTime @default(now())
+  client     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source     SuppressionSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, email])
+  @@index([clientId])
+}
+
+model SuppressedDomain {
+  id         String   @id @default(cuid())
+  clientId   String
+  domain     String
+  sourceId   String?
+  syncedAt   DateTime @default(now())
+  client     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source     SuppressionSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, domain])
+  @@index([clientId])
+}
+
+// ——— Outreach (not CRM) ———
+
+model Campaign {
+  id          String         @id @default(cuid())
+  clientId    String
+  name        String
+  status      CampaignStatus @default(DRAFT)
+  description String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  client          Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  outboundEmails  OutboundEmail[]
+
+  @@index([clientId, status])
+}
+
+model OutboundEmail {
+  id           String              @id @default(cuid())
+  /// Stable id for provider/webhook correlation (duplicate of id purpose; explicit for APIs)
+  correlationId String             @unique @default(cuid())
+  clientId     String
+  campaignId   String?
+  contactId    String?
+  staffUserId  String?
+  /// ESP message id (SendGrid/Postmark/etc.)
+  providerMessageId String?
+  /// e.g. mock, resend, postmark
+  providerName String?
+  fromAddress  String?
+  toEmail      String
+  /// Normalized recipient domain for indexing
+  toDomain     String?
+  subject      String?
+  /// Rendered/plain snapshot for ops (not for CRM)
+  bodySnapshot String?             @db.Text
+  status       OutboundEmailStatus @default(QUEUED)
+  failureReason String?
+  lastErrorCode    String?
+  lastErrorMessage String?        @db.Text
+  /// Last normalized provider lifecycle label (delivered, bounced, etc.)
+  lastProviderEventType String?
+  /// Raw provider-reported status string when available
+  providerStatus String?
+  bounceCategory String?
+  retryCount     Int               @default(0)
+  lastAttemptAt  DateTime?
+  nextRetryAt    DateTime?
+  /// Worker claim — stale claims can be stolen after claimExpiresAt
+  claimedAt      DateTime?
+  claimExpiresAt DateTime?
+  /// Increments each time a worker claims this row from QUEUED → PROCESSING (idempotency scope)
+  sendAttempt    Int                 @default(0)
+  /// Deterministic per claim — passed to ESP Idempotency-Key when supported
+  providerIdempotencyKey String?      @unique
+  /// Last provider webhook / lifecycle event time applied (ordering guard)
+  lastProviderEventAt DateTime?
+  /// When blocked by suppression — audit trail
+  suppressionSnapshot Json?
+  queuedAt     DateTime?
+  attemptedAt  DateTime?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  bouncedAt    DateTime?
+  openedAt     DateTime?
+  metadata     Json?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contact   Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  staffUser StaffUser? @relation("OutboundInitiator", fields: [staffUserId], references: [id], onDelete: SetNull)
+  inboundReplies InboundReply[] @relation("ReplyToOutbound")
+  providerEvents OutboundProviderEvent[]
+
+  @@index([clientId, createdAt])
+  @@index([clientId, sentAt])
+  @@index([clientId, status])
+  @@index([contactId])
+  @@index([providerMessageId])
+  @@index([correlationId])
+  @@index([status, nextRetryAt, queuedAt])
+}
+
+/// Append-only provider webhook / event audit (delivery, bounce, etc.)
+model OutboundProviderEvent {
+  id                String   @id @default(cuid())
+  clientId          String?
+  outboundEmailId   String?
+  providerName      String
+  eventType         String
+  providerMessageId String?
+  /// Svix / provider message id — same replay shares id
+  webhookMessageId  String?
+  /// sha256 fingerprint for idempotent insert (replay detection)
+  dedupeHash        String   @unique
+  payload           Json?
+  createdAt         DateTime @default(now())
+  receivedAt        DateTime @default(now())
+  /// Whether outbound row state was mutated (vs metadata-only / skipped)
+  stateMutated      Boolean  @default(false)
+  replayDuplicate   Boolean  @default(false)
+  processingNote    String?
+
+  client    Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  outbound  OutboundEmail?  @relation(fields: [outboundEmailId], references: [id], onDelete: SetNull)
+
+  @@index([providerMessageId])
+  @@index([webhookMessageId])
+  @@index([outboundEmailId])
+  @@index([clientId, receivedAt])
+}
+
+model InboundReply {
+  id          String   @id @default(cuid())
+  clientId    String
+  contactId   String?
+  /// Linked outbound when match is confident and same-tenant
+  linkedOutboundEmailId String?
+  threadId    String?
+  /// Provider's message id for this inbound message
+  providerMessageId String?
+  /// In-Reply-To / References provider id we stored on outbound
+  inReplyToProviderId String?
+  fromEmail   String
+  toEmail     String?
+  subject     String?
+  snippet     String?
+  bodyPreview String?
+  receivedAt  DateTime
+  /// webhook | dev_simulate | polling_stub
+  ingestionSource String @default("webhook")
+  matchMethod InboundMatchMethod @default(UNLINKED)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contact         Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  linkedOutbound  OutboundEmail? @relation("ReplyToOutbound", fields: [linkedOutboundEmailId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, receivedAt])
+  @@index([providerMessageId])
+  @@index([linkedOutboundEmailId])
+}
+
+// ——— Reporting aggregates (placeholder / nightly rollups) ———
+
+model ReportingDailySnapshot {
+  id              String   @id @default(cuid())
+  clientId        String
+  date            DateTime @db.Date
+  emailsSent      Int      @default(0)
+  repliesReceived Int      @default(0)
+  uniqueContacts  Int      @default(0)
+  campaignsActive Int      @default(0)
+  replyRate       Float?
+  createdAt       DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, date])
+  @@index([clientId, date])
+}
+
+// ——— Audit ———
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  staffUserId String?
+  clientId    String?
+  action      AuditAction
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+
+  staffUser StaffUser? @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
+  client    Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([staffUserId, createdAt])
 }

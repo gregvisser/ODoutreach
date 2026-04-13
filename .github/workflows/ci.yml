@@ -1,0 +1,39 @@
+# Install, lint, validate schema, and build. Requires Clerk-related GitHub Variables/Secrets for build — see docs/GITHUB_SETUP.md
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # Repository Variables (Settings → Secrets and variables → Actions → Variables)
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          # Repository secret (Settings → Actions → Secrets)
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
