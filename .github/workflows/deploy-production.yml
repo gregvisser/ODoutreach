@@ -1,0 +1,53 @@
+# Production deploy to Azure App Service (Linux, Node 20). Uses publish-profile auth — no Azure SP in GitHub.
+# Prerequisites: GitHub secret AZURE_WEBAPP_PUBLISH_PROFILE (full .PublishSettings XML from the Web App).
+name: Deploy production (Azure Web App)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production-azure
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    # Only deploy from main (including manual runs — pick branch "main" in the Actions UI).
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      # Compile-only — same placeholders as CI (real secrets live in Azure App Service configuration).
+      AUTH_SECRET: "ci-build-secret-placeholder-min-32-chars-ok"
+      AUTH_MICROSOFT_ENTRA_ID_ID: "11111111-1111-1111-1111-111111111111"
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: "ci-placeholder-client-secret-not-for-production-use"
+      AUTH_MICROSOFT_ENTRA_ID_ISSUER: "https://login.microsoftonline.com/22222222-2222-2222-2222-222222222222/v2.0/"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Build (webpack — avoids Turbopack workspace-root issue on CI)
+        run: npm run build
+
+      - name: Prune devDependencies for deployment
+        run: npm prune --omit=dev
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-opensdoors-outreach-prod
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: .

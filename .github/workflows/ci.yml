@@ -1,4 +1,5 @@
-# Install, lint, validate schema, and build. Requires Clerk-related GitHub Variables/Secrets for build — see docs/GITHUB_SETUP.md
+# Install, lint, validate schema, and build. Uses placeholder Entra env for compile-only CI — not real auth.
+# Build runs `next build --webpack` (see package.json) for a consistent production bundle on all platforms.
 name: CI
 
 on:
@@ -13,6 +14,11 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      AUTH_SECRET: "ci-build-secret-placeholder-min-32-chars-ok"
+      AUTH_MICROSOFT_ENTRA_ID_ID: "11111111-1111-1111-1111-111111111111"
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: "ci-placeholder-client-secret-not-for-production-use"
+      AUTH_MICROSOFT_ENTRA_ID_ISSUER: "https://login.microsoftonline.com/22222222-2222-2222-2222-222222222222/v2.0/"
     steps:
       - uses: actions/checkout@v4
 
@@ -32,8 +38,3 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          # Repository Variables (Settings → Secrets and variables → Actions → Variables)
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          # Repository secret (Settings → Actions → Secrets)
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
