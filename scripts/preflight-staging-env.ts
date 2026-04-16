@@ -18,14 +18,38 @@ function main() {
 
   const core = [
     "DATABASE_URL",
-    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
-    "CLERK_SECRET_KEY",
+    "AUTH_SECRET",
+    "AUTH_MICROSOFT_ENTRA_ID_ID",
+    "AUTH_MICROSOFT_ENTRA_ID_SECRET",
   ] as const;
   for (const k of core) {
     if (empty(k)) errors.push(`Missing required: ${k}`);
   }
 
+  if (empty("AUTH_MICROSOFT_ENTRA_ID_ISSUER")) {
+    warnings.push(
+      "AUTH_MICROSOFT_ENTRA_ID_ISSUER unset — Entra will use common endpoint (any Microsoft account). For single-tenant staff-only, set issuer to https://login.microsoftonline.com/<tenant-id>/v2.0/",
+    );
+  }
+
+  if (empty("AUTH_URL")) {
+    warnings.push(
+      "AUTH_URL unset — set to your app origin (e.g. http://localhost:3000) so OAuth redirects match your Entra redirect URIs.",
+    );
+  }
+
+  if (empty("STAFF_EMAIL_DOMAINS")) {
+    warnings.push(
+      "STAFF_EMAIL_DOMAINS unset — no email-domain filter (OK for quick UI dev). For realistic Entra verification, set e.g. bidlow.co.uk,opensdoors.co.uk",
+    );
+  }
+
   if (staging) {
+    if (empty("AUTH_URL")) {
+      errors.push(
+        "AUTH_URL required for staging — set to public https origin (e.g. https://your-app.azurewebsites.net); must match Entra redirect URI host",
+      );
+    }
     if (empty("PROCESS_QUEUE_SECRET")) {
       errors.push("Missing required for staging: PROCESS_QUEUE_SECRET (queue drain + queue-status)");
     }
@@ -68,7 +92,7 @@ function main() {
 
   console.log("\nOK — required keys present for selected profile (values not shown).");
   console.log(
-    "This script cannot verify: DB connectivity, Clerk dashboard policies, Resend domain verification, or webhook reachability from the public internet.",
+    "This script cannot verify: DB connectivity, Entra app registration, Resend domain verification, or webhook reachability from the public internet.",
   );
 }
 

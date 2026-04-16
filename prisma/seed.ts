@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { extractDomainFromEmail } from "../src/lib/normalize";
+import { extractDomainFromEmail, normalizeEmail } from "../src/lib/normalize";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -15,17 +15,28 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const seedClerkId = process.env.SEED_CLERK_USER_ID ?? "user_seed_opensdoors";
+  const seedEntraOid =
+    process.env.SEED_ENTRA_OBJECT_ID ?? "00000000-0000-0000-0000-000000000001";
+
+  const rawStaffEmail = process.env.SEED_STAFF_EMAIL?.trim();
+  const seedStaffEmail = normalizeEmail(
+    rawStaffEmail && rawStaffEmail.length > 0
+      ? rawStaffEmail
+      : "staff@opensdoors.example",
+  );
 
   const staff = await prisma.staffUser.upsert({
-    where: { clerkUserId: seedClerkId },
+    where: { entraObjectId: seedEntraOid },
     create: {
-      clerkUserId: seedClerkId,
-      email: "staff@opensdoors.example",
+      entraObjectId: seedEntraOid,
+      email: seedStaffEmail,
       displayName: "Demo Staff",
       role: "ADMIN",
     },
-    update: {},
+    update: {
+      email: seedStaffEmail,
+      displayName: "Demo Staff",
+    },
   });
 
   const clientsData = [
@@ -365,7 +376,7 @@ async function main() {
     },
   });
 
-  console.log("Seed complete. Demo staff Clerk ID:", seedClerkId);
+  console.log("Seed complete. Demo staff Entra object id:", seedEntraOid);
 }
 
 main()

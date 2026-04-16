@@ -1,6 +1,6 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
+import { signOut, useSession } from "next-auth/react";
 import { Menu } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
@@ -16,6 +16,8 @@ import {
 import { AppSidebar } from "./app-sidebar";
 
 export function AppHeader() {
+  const { data: session } = useSession();
+
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md md:px-8">
       <div className="flex items-center gap-3">
@@ -40,13 +42,21 @@ export function AppHeader() {
           Internal outreach console
         </p>
       </div>
-      <UserButton
-        appearance={{
-          elements: {
-            avatarBox: "h-9 w-9 ring-2 ring-border",
-          },
-        }}
-      />
+      <div className="flex items-center gap-3">
+        <span className="hidden max-w-[200px] truncate text-sm text-muted-foreground sm:inline">
+          {session?.user?.email ?? session?.user?.name ?? ""}
+        </span>
+        <button
+          type="button"
+          onClick={() => signOut({ callbackUrl: "/sign-in" })}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "shrink-0",
+          )}
+        >
+          Sign out
+        </button>
+      </div>
     </header>
   );
 }

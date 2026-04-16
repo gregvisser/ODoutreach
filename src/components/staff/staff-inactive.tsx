@@ -11,16 +11,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function StaffEmailBlocked({ email }: { email: string }) {
+export function StaffInactive({ email }: { email: string }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
       <Card className="max-w-md border-border/80 shadow-lg">
         <CardHeader>
-          <CardTitle>Access restricted</CardTitle>
+          <CardTitle>Staff access disabled</CardTitle>
           <CardDescription>
-            Your account is signed in and you are registered as staff, but this email domain is not
-            allowed by <code className="rounded bg-muted px-1 text-xs">STAFF_EMAIL_DOMAINS</code>.
-            Ask an administrator to add your domain or update your staff email in the directory.
+            Your account exists in the staff directory, but access is currently inactive. Contact an
+            administrator if you believe this is a mistake.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

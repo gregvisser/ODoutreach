@@ -5,7 +5,7 @@ Internal cold outreach operations platform for **OpensDoors** staff. Multi-tenan
 ## What the codebase includes
 
 - **Next.js 16** (App Router) + **TypeScript** + **Tailwind CSS v4** + **shadcn/ui**
-- **Clerk** authentication (MFA policies live in Clerk Dashboard)
+- **Microsoft Entra ID** authentication via **Auth.js / NextAuth** (MFA enforced in Entra, not in-app). **Microsoft sign-in alone does not grant app access** — the user must have a **`StaffUser`** row (pre-provisioned); first login can **link** `entraObjectId` by matching normalized email. Use **Entra enterprise app assignments** (users/groups), optional **`STAFF_EMAIL_DOMAINS`**, and tenant data access still flows through **`ClientMembership`** and roles.
 - **PostgreSQL** via **Prisma 7** + `@prisma/adapter-pg` + `pg`
 - **Tenant isolation**: `getAccessibleClientIds` → all list/report queries scoped; `requireClientAccess` on mutations; URL `?client=` filters validated against accessible IDs
 - **CSV contact import**: server action, **papaparse**, `ContactImportBatch` + summary JSON, duplicate/invalid skipping, `requireClientAccess` per import
@@ -21,11 +21,11 @@ Internal cold outreach operations platform for **OpensDoors** staff. Multi-tenan
 
 ## GitHub & Azure deployment
 
-- **[Deployment checklist](docs/DEPLOYMENT_CHECKLIST.md)** — first commit, GitHub remote, Azure staging, Clerk, Resend, verification.
+- **[Deployment checklist](docs/DEPLOYMENT_CHECKLIST.md)** — first commit, GitHub remote, Azure staging, Entra app registration, Resend, verification.
 - **[GitHub setup](docs/GITHUB_SETUP.md)** — create repo, `git remote`, first push, CI variables.
 - **[Azure staging setup](docs/AZURE_STAGING_SETUP.md)** — App Service + PostgreSQL, env vars, migrations, webhooks, queue drain.
 
-**CI:** `.github/workflows/ci.yml` runs on pushes/PRs to `main` or `master`. Configure **GitHub Actions Variables** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and **Secrets** `CLERK_SECRET_KEY` or the build step will fail (Clerk is required at build time).
+**CI:** `.github/workflows/ci.yml` runs on pushes/PRs to `main` or `master`. The workflow sets **placeholder** `AUTH_*` / Entra-related env vars so `npm run build` succeeds without real Microsoft credentials; production/staging still require a real Entra app registration.
 
 **Scripts (no secrets printed):**
 
@@ -37,14 +37,16 @@ Internal cold outreach operations platform for **OpensDoors** staff. Multi-tenan
 
 ## Run locally
 
-**Prerequisites:** Node.js 20+, PostgreSQL 14+.
+**Prerequisites:** Node.js 20+, PostgreSQL 14+ (or **Docker** for the bundled local database).
+
+**Optional — Postgres in Docker:** from the repo root, `docker compose up -d` starts PostgreSQL on **host port 5433** (avoids clashing with an existing server on 5432). Point `DATABASE_URL` at `opensdoors` / `opensdoors_outreach` as defined in `docker-compose.yml`.
 
 ```bash
 cd C:\Bidlowprojects\BidlowClients\Opensdoors\ODoutreach
 copy .env.example .env
 ```
 
-Fill `DATABASE_URL`, Clerk keys, and optionally `STAFF_EMAIL_DOMAINS`, Google JSON, `SEED_CLERK_USER_ID`.
+Fill `DATABASE_URL`, `AUTH_SECRET`, Microsoft Entra app registration values (`AUTH_MICROSOFT_ENTRA_ID_*`), and optionally `STAFF_EMAIL_DOMAINS`, Google JSON, `SEED_ENTRA_OBJECT_ID` (see seed docs).
 
 ```bash
 npm install
@@ -57,7 +59,7 @@ Open [http://localhost:3000](http://localhost:3000). Sign in via `/sign-in`.
 
 ### MFA
 
-Configure MFA in [Clerk Dashboard](https://dashboard.clerk.com) → User & Authentication → Multi-factor authentication. This app does not render a custom MFA step; Clerk enforces your policies on sign-in.
+Configure Conditional Access and authentication methods in the **Microsoft Entra admin center** for your tenant. This app does not render a custom MFA step; Entra enforces your policies on sign-in.
 
 ## Migrations and seed
 
@@ -67,9 +69,9 @@ After pulling changes:
 npm run db:migrate:dev
 ```
 
-Recent migrations include `20260414120000_contact_import_summary`, **`20260415130000_email_operations_backbone`**, **`20260416120000_outbound_queue_lifecycle`**, and **`20260417120000_outbound_reliability_hardening`** (sender identity status, send idempotency keys, webhook dedupe hashes, lifecycle timestamps).
+Recent migrations include `20260414120000_contact_import_summary`, **`20260415130000_email_operations_backbone`**, **`20260416120000_outbound_queue_lifecycle`**, **`20260417120000_outbound_reliability_hardening`**, **`20260413163000_staff_entra_object_id`** (`StaffUser.entraObjectId`), and **`20260418100000_staff_user_email_unique`** (unique staff email for first-login linking).
 
-Seed creates demo tenants and memberships. Set `SEED_CLERK_USER_ID` to your Clerk user id so the seeded `StaffUser` row matches you.
+Seed creates demo tenants and memberships. For local Entra sign-in, either set **`SEED_ENTRA_OBJECT_ID`** to your Entra user **object ID (oid)**, or set the seeded row’s **`email`** in `prisma/seed.ts` to your work address (same as Entra `preferred_username`) so the first successful sign-in **links** `entraObjectId` automatically.
 
 ## CSV import
 
@@ -145,25 +147,30 @@ Before enqueueing mail to a recipient address (any other code path you add):
 
 ## Environment variables
 
-**Required (core):** `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
+**Required (core):** `DATABASE_URL`, `AUTH_SECRET`, `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET` (and usually `AUTH_MICROSOFT_ENTRA_ID_ISSUER` for single-tenant staff apps).
 
-**Recommended for staging/production email:** `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `PROCESS_QUEUE_SECRET`, `RESEND_WEBHOOK_SECRET`, `STAFF_EMAIL_DOMAINS` (if you lock staff by domain).
+**Recommended:** `AUTH_URL` (public app URL in staging/prod), `PROCESS_QUEUE_SECRET`, `INTERNAL_APP_URL`, `STAFF_EMAIL_DOMAINS` (if you lock staff by domain).
 
-**Optional product:** Google service account vars (suppression sync), `ROCKETREACH_API_KEY`, `SEED_CLERK_USER_ID`.
+**Recommended for real email:** `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`.
 
-**Outbound tuning:** `DEFAULT_OUTBOUND_FROM`, `ALLOWED_SENDER_EMAIL_DOMAINS`, `AUTOPROCESS_OUTBOUND_QUEUE`, `INTERNAL_APP_URL`, `OUTBOUND_QUEUE_BATCH_SIZE`, `MAX_OUTBOUND_SEND_RETRIES`, `INBOUND_WEBHOOK_SECRET`.
+**Optional product:** Google service account vars (suppression sync), `ROCKETREACH_API_KEY`, `SEED_ENTRA_OBJECT_ID`.
 
-**Dev-only (never enable in production without a deliberate reason):** `OUTBOUND_DEV_*`, `ALLOW_DEV_*`, `INBOUND_DEV_*` — see `.env.example` group headers.
+**Outbound tuning:** `DEFAULT_OUTBOUND_FROM`, `ALLOWED_SENDER_EMAIL_DOMAINS`, `AUTOPROCESS_OUTBOUND_QUEUE`, `OUTBOUND_QUEUE_BATCH_SIZE`, `MAX_OUTBOUND_SEND_RETRIES`, `INBOUND_WEBHOOK_SECRET`.
+
+**Dev-only (never enable in production without a deliberate reason):** `OUTBOUND_DEV_*`, `ALLOW_DEV_*`, `INBOUND_DEV_*` — see `.env.example`.
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk |
-| `CLERK_SECRET_KEY` | Yes | Clerk |
+| `AUTH_SECRET` | Yes | NextAuth session encryption |
+| `AUTH_URL` | Staging/prod | Public origin (e.g. `https://app.example.com`) |
+| `AUTH_MICROSOFT_ENTRA_ID_ID` | Yes | Entra app registration client ID |
+| `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Yes | Entra client secret |
+| `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | Recommended | e.g. `https://login.microsoftonline.com/<tenant-id>/v2.0/` |
 | `STAFF_EMAIL_DOMAINS` | No | Comma-separated allowed email domains for staff UI |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | No† | Sheets API for suppression sync |
 | `ROCKETREACH_API_KEY` | No | Enrichment stub |
-| `SEED_CLERK_USER_ID` | No | Seed script staff linkage |
+| `SEED_ENTRA_OBJECT_ID` | No | Seed script — Entra `oid` for demo `StaffUser` |
 | `EMAIL_PROVIDER` | No | `mock` (default) or `resend` |
 | `RESEND_API_KEY` | No‡ | Resend API key when `EMAIL_PROVIDER=resend` |
 | `ALLOWED_SENDER_EMAIL_DOMAINS` | No | Comma-separated allowed From domains — empty = not enforced |

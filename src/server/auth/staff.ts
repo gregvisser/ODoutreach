@@ -1,44 +1,96 @@
 import "server-only";
 
-import { auth, currentUser } from "@clerk/nextjs/server";
-
+import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { normalizeEmail } from "@/lib/normalize";
 import type { StaffRole } from "@/generated/prisma/enums";
 import type { StaffUser } from "@/generated/prisma/client";
 
 /**
- * Ensures a StaffUser row exists for the signed-in Clerk user (internal staff only).
+ * Loads the StaffUser for the current Entra session: match by `entraObjectId` (oid), or by
+ * normalized email then persist `entraObjectId` on first login (pre-provisioned row only).
+ * Does not create rows — unknown Microsoft identities stay unauthorized.
  */
-export async function requireStaffUser(): Promise<StaffUser> {
-  const { userId } = await auth();
-  if (!userId) {
-    throw new Error("Unauthorized");
+async function loadStaffRecord(): Promise<StaffUser | null> {
+  const session = await auth();
+  const entraObjectId = session?.user?.id;
+  if (!entraObjectId) return null;
+
+  const rawEmail = session?.user?.email;
+  const email = rawEmail ? normalizeEmail(rawEmail) : "";
+  const displayName = session?.user?.name ?? null;
+
+  return prisma.$transaction(async (tx) => {
+    const byOid = await tx.staffUser.findUnique({
+      where: { entraObjectId },
+    });
+    if (byOid) {
+      if (email && byOid.email !== email) {
+        return tx.staffUser.update({
+          where: { id: byOid.id },
+          data: { email, displayName: displayName ?? byOid.displayName },
+        });
+      }
+      if (displayName !== undefined && displayName !== byOid.displayName) {
+        return tx.staffUser.update({
+          where: { id: byOid.id },
+          data: { displayName },
+        });
+      }
+      return byOid;
+    }
+
+    if (!email) return null;
+
+    const byEmail = await tx.staffUser.findUnique({ where: { email } });
+    if (!byEmail) return null;
+
+    return tx.staffUser.update({
+      where: { id: byEmail.id },
+      data: {
+        entraObjectId,
+        displayName: displayName ?? byEmail.displayName,
+        email,
+      },
+    });
+  });
+}
+
+export type StaffGateResult =
+  | { status: "ok"; staff: StaffUser }
+  | { status: "not_registered"; sessionEmail?: string | null }
+  | { status: "inactive"; email: string }
+  | { status: "domain_blocked"; staff: StaffUser };
+
+/**
+ * Full staff gate for the app shell: registered, active, and domain allowlist (when configured).
+ */
+export async function gateStaffAccess(): Promise<StaffGateResult> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { status: "not_registered" };
   }
 
-  const user = await currentUser();
-  const email =
-    user?.emailAddresses?.[0]?.emailAddress ?? "unknown@opensdoors.local";
-
-  const staff = await prisma.staffUser.upsert({
-    where: { clerkUserId: userId },
-    create: {
-      clerkUserId: userId,
-      email,
-      displayName: user?.fullName ?? user?.firstName ?? null,
-      role: "OPERATOR",
-    },
-    update: {
-      email,
-      displayName: user?.fullName ?? user?.firstName ?? null,
-    },
-  });
-
-  return staff;
+  const staff = await loadStaffRecord();
+  if (!staff) {
+    return {
+      status: "not_registered",
+      sessionEmail: session.user?.email,
+    };
+  }
+  if (!staff.isActive) {
+    return { status: "inactive", email: staff.email };
+  }
+  if (!isStaffEmailAllowed(staff)) {
+    return { status: "domain_blocked", staff };
+  }
+  return { status: "ok", staff };
 }
 
 /**
- * Optional env `STAFF_EMAIL_DOMAINS` — comma-separated domains (e.g. `opensdoors.com` or `@opensdoors.com`).
- * When set, only matching staff emails may use the app UI. Empty = allow all (useful for local dev).
+ * Optional env `STAFF_EMAIL_DOMAINS` — comma-separated domains (e.g. `opensdoors.co.uk` or
+ * `@opensdoors.co.uk`). When set, only matching staff emails may use the app UI.
+ * Empty = no domain filter (convenient for quick local UI work; set real domains for Entra tests).
  */
 export function isStaffEmailAllowed(staff: Pick<StaffUser, "email">): boolean {
   const raw = process.env.STAFF_EMAIL_DOMAINS?.trim();
@@ -58,8 +110,23 @@ export function isStaffEmailAllowed(staff: Pick<StaffUser, "email">): boolean {
 }
 
 /**
- * Use in server actions and data loaders that must enforce OpensDoors staff policy + MFA via Clerk session.
- * MFA enrollment is configured in Clerk Dashboard, not here.
+ * Staff row must exist (or link by pre-provisioned email) and be active.
+ * Domain policy is enforced in `requireOpensDoorsStaff` / `gateStaffAccess`, not here.
+ */
+export async function requireStaffUser(): Promise<StaffUser> {
+  const staff = await loadStaffRecord();
+  if (!staff) {
+    throw new Error("Unauthorized");
+  }
+  if (!staff.isActive) {
+    throw new Error("STAFF_INACTIVE");
+  }
+  return staff;
+}
+
+/**
+ * Enforce OpensDoors staff policy: registered active staff + domain allowlist when configured.
+ * MFA is enforced by Microsoft Entra policies for the tenant, not in this app.
  */
 export async function requireOpensDoorsStaff(): Promise<StaffUser> {
   const staff = await requireStaffUser();
@@ -70,11 +137,6 @@ export async function requireOpensDoorsStaff(): Promise<StaffUser> {
 }
 
 export async function getStaffRole(): Promise<StaffRole | null> {
-  const { userId } = await auth();
-  if (!userId) return null;
-  const row = await prisma.staffUser.findUnique({
-    where: { clerkUserId: userId },
-    select: { role: true },
-  });
-  return row?.role ?? null;
+  const staff = await loadStaffRecord();
+  return staff?.role ?? null;
 }

@@ -1,6 +1,6 @@
-# Deployment checklist — GitHub + Azure staging
+# Deployment checklist — GitHub + Azure
 
-End-to-end order for **first hosted staging**. Keep secrets out of git; use GitHub/Azure consoles.
+End-to-end order for **first hosted staging**. For **lean first production** (UK South resource names, Entra, env vars), see [AZURE_PRODUCTION_FIRST_DEPLOY.md](./AZURE_PRODUCTION_FIRST_DEPLOY.md). Keep secrets out of git; use GitHub/Azure consoles.
 
 ## A. Repo hygiene (local)
 
@@ -13,7 +13,6 @@ End-to-end order for **first hosted staging**. Keep secrets out of git; use GitH
 
 - [ ] Create empty private repo — [GITHUB_SETUP.md](./GITHUB_SETUP.md).
 - [ ] `git remote add origin …` and `git push -u origin main` (or `master`).
-- [ ] (Optional) Add GitHub Actions secrets if CI build requires real Clerk keys.
 
 ## C. Azure (manual)
 
@@ -23,11 +22,11 @@ End-to-end order for **first hosted staging**. Keep secrets out of git; use GitH
 - [ ] Run `npm run db:migrate` against Azure DB (pipeline or one-off with `DATABASE_URL`).
 - [ ] Deploy application; verify `GET https://<host>/api/health`.
 
-## D. Clerk (staging app)
+## D. Microsoft Entra (staging app registration)
 
-- [ ] Create staging application in Clerk dashboard.
-- [ ] Allowed origins / redirect URLs include `https://<staging-host>`.
-- [ ] Keys copied into App Service settings.
+- [ ] Register app in Entra ID; add **Web** redirect `https://<staging-host>/api/auth/callback/microsoft-entra-id` (see [AZURE_STAGING_SETUP.md](./AZURE_STAGING_SETUP.md)).
+- [ ] Copy client ID, tenant issuer URL, create client secret → `AUTH_MICROSOFT_ENTRA_ID_*` + `AUTH_SECRET` + `AUTH_URL` in App Service (`AUTH_URL` must match `https://<staging-host>`).
+- [ ] Staff access: ensure **`StaffUser`** rows (and domains if using `STAFF_EMAIL_DOMAINS`) for staging testers — not automatic from Entra alone.
 
 ## E. Email (optional for full proof)
 

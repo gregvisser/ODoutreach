@@ -1,16 +1,24 @@
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { StaffEmailBlocked } from "@/components/staff/staff-email-blocked";
-import { isStaffEmailAllowed, requireStaffUser } from "@/server/auth/staff";
+import { StaffInactive } from "@/components/staff/staff-inactive";
+import { StaffNotRegistered } from "@/components/staff/staff-not-registered";
+import { gateStaffAccess } from "@/server/auth/staff";
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const staff = await requireStaffUser();
-  if (!isStaffEmailAllowed(staff)) {
-    return <StaffEmailBlocked email={staff.email} />;
+  const gate = await gateStaffAccess();
+  if (gate.status === "not_registered") {
+    return <StaffNotRegistered email={gate.sessionEmail} />;
+  }
+  if (gate.status === "inactive") {
+    return <StaffInactive email={gate.email} />;
+  }
+  if (gate.status === "domain_blocked") {
+    return <StaffEmailBlocked email={gate.staff.email} />;
   }
 
   return (

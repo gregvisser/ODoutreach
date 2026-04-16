@@ -118,12 +118,13 @@ enum SenderIdentityStatus {
   VERIFIED_READY
 }
 
-// ——— Staff (Clerk-linked internal users) ———
+// ——— Staff (Microsoft Entra object id — oid claim) ———
 
 model StaffUser {
-  id          String    @id @default(cuid())
-  clerkUserId String    @unique
-  email       String
+  id             String @id @default(cuid())
+  entraObjectId  String @unique
+  /// Normalized (lowercase/trim) — unique so first-login can match by email then attach entraObjectId
+  email       String @unique
   displayName String?
   role        StaffRole @default(OPERATOR)
   isActive    Boolean   @default(true)

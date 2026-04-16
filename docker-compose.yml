@@ -1,0 +1,26 @@
+# Local PostgreSQL for development — not used in Azure staging/production.
+# Start: docker compose up -d
+# Stop:  docker compose down
+# Data persists in named volume `odoutreach_pgdata`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: odoutreach-postgres
+    environment:
+      POSTGRES_USER: opensdoors
+      POSTGRES_PASSWORD: opensdoors_dev_local
+      POSTGRES_DB: opensdoors_outreach
+    ports:
+      # Host 5433 if another Postgres already uses 5432 on your machine
+      - "5433:5432"
+    volumes:
+      - odoutreach_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opensdoors -d opensdoors_outreach"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  odoutreach_pgdata:

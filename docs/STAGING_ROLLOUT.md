@@ -7,10 +7,10 @@ Use this for **first staging deploy** and after **meaningful config changes**. T
 | Item | Notes |
 |------|--------|
 | PostgreSQL | Staging database URL in `DATABASE_URL` |
-| Clerk | Staging application keys (`NEXT_PUBLIC_*` + `CLERK_SECRET_KEY`) |
+| Microsoft Entra | App registration: `AUTH_MICROSOFT_ENTRA_ID_*`, `AUTH_SECRET`, `AUTH_URL` |
 | Hostname | HTTPS URL for the app (needed for Resend webhooks) |
 | Resend (real smoke) | API key + verified domain/sender in Resend for staging |
-| Staff users | Clerk users allowed by `STAFF_EMAIL_DOMAINS` if set |
+| Staff users | Entra users; optional `STAFF_EMAIL_DOMAINS` allowlist in app |
 
 ---
 

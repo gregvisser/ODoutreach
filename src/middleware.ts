@@ -1,29 +1,41 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher([
-  "/sign-in(.*)",
-  "/api/health",
-  // ESP / tooling webhooks — auth via token in path + optional INBOUND_WEBHOOK_SECRET
-  "/api/inbound(.*)",
-  "/api/dev/simulate-inbound(.*)",
-  "/api/dev/process-outbound-queue(.*)",
-  "/api/dev/simulate-provider-event(.*)",
-  "/api/dev/simulate-webhook-replay(.*)",
-  "/api/webhooks/resend(.*)",
-  // Worker/cron — Bearer PROCESS_QUEUE_SECRET
-  "/api/internal/outbound(.*)",
-]);
+import { auth } from "@/auth";
 
-export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+function isPublicPath(pathname: string): boolean {
+  if (pathname.startsWith("/sign-in")) return true;
+  if (pathname.startsWith("/api/auth")) return true;
+  if (pathname === "/api/health") return true;
+  if (pathname.startsWith("/api/inbound")) return true;
+  if (pathname.startsWith("/api/dev/simulate-inbound")) return true;
+  if (pathname.startsWith("/api/dev/process-outbound-queue")) return true;
+  if (pathname.startsWith("/api/dev/simulate-provider-event")) return true;
+  if (pathname.startsWith("/api/dev/simulate-webhook-replay")) return true;
+  if (pathname.startsWith("/api/webhooks/resend")) return true;
+  if (pathname.startsWith("/api/internal/outbound")) return true;
+  return false;
+}
+
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
   }
+  if (!req.auth) {
+    const signIn = new URL("/sign-in", req.nextUrl.origin);
+    signIn.searchParams.set(
+      "callbackUrl",
+      `${pathname}${req.nextUrl.search}`,
+    );
+    return NextResponse.redirect(signIn);
+  }
+  return NextResponse.next();
 });
 
 export const config = {
+  // Exclude Auth.js routes: middleware runs on Edge and must not run Auth() there — env/provider
+  // resolution is incomplete vs Node, which surfaces as error=Configuration on sign-in/callback.
   matcher: [
-    "/((?!.+\\.[\\w]+$|_next).*)",
-    "/",
-    "/(api|trpc)(.*)",
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
