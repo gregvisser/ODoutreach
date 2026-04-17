@@ -11,9 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
-import { requireStaffUser } from "@/server/auth/staff";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -22,11 +24,31 @@ export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ clientId: string }> };
 
 export default async function ClientDetailPage({ params }: Props) {
-  const staff = await requireStaffUser();
+  const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
   const client = await getClientByIdForStaff(clientId, accessible);
   if (!client) notFound();
+
+  const canMutateMailboxes = await getClientMailboxMutationAllowed(staff, client.id);
+  const mailboxRows = client.mailboxIdentities.map((m) => ({
+    id: m.id,
+    email: m.email,
+    displayName: m.displayName,
+    provider: m.provider,
+    connectionStatus: m.connectionStatus,
+    isActive: m.isActive,
+    isPrimary: m.isPrimary,
+    canSend: m.canSend,
+    canReceive: m.canReceive,
+    dailySendCap: m.dailySendCap,
+    isSendingEnabled: m.isSendingEnabled,
+    emailsSentToday: m.emailsSentToday,
+    dailyWindowResetAt: m.dailyWindowResetAt?.toISOString() ?? null,
+    lastSyncAt: m.lastSyncAt?.toISOString() ?? null,
+    lastError: m.lastError,
+    updatedAt: m.updatedAt.toISOString(),
+  }));
 
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
@@ -104,6 +126,24 @@ export default async function ClientDetailPage({ params }: Props) {
         </CardHeader>
         <CardContent>
           <SenderReadinessPanel report={senderReport} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Mailbox identities</CardTitle>
+          <CardDescription>
+            Outreach mailboxes for this client (Microsoft 365 or Google Workspace). Up to five
+            active identities; each has a per-mailbox daily send cap (default 30/day). OAuth
+            connection ships in a later slice — use status fields for readiness now.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClientMailboxIdentitiesPanel
+            clientId={client.id}
+            rows={mailboxRows}
+            canMutate={canMutateMailboxes}
+          />
         </CardContent>
       </Card>
 
