@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 import { StaffAccessPanel, type StaffRow } from "./staff-access-panel";
+import { StaffAccessRecentActivity } from "./staff-access-recent-activity";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,8 @@ export default async function StaffAccessPage() {
       </div>
 
       <StaffAccessPanel initialRows={initialRows} />
+
+      <StaffAccessRecentActivity />
     </div>
   );
 }

@@ -44,7 +44,7 @@ The app requests an **app-only** token (`client_credentials`) with scope `https:
 
 ## Audit trail
 
-Successful staff management actions write to **`AuditLog`** with `entityType: "StaffUser"` and JSON `metadata` describing the operation (`invite_sent`, `invite_resent`, `role_change`, `active_change`, `invitation_status_sync`). Query in the database or extend reporting as needed.
+Successful staff management actions write to **`AuditLog`** with `entityType: "StaffUser"` and JSON `metadata` describing the operation (`invite_sent`, `invite_resent`, `role_change`, `active_change`, `invitation_status_sync`). **Settings → Staff Access** includes a read-only **Recent activity** table (newest first, last 40 entries) so admins can verify actions without opening the database. Full history remains queryable in PostgreSQL as needed.
 
 ## Manual steps that may remain
 
