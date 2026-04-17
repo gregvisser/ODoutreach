@@ -23,6 +23,7 @@ Internal cold outreach operations platform for **OpensDoors** staff. Multi-tenan
 
 - **[Deployment checklist](docs/DEPLOYMENT_CHECKLIST.md)** — first commit, GitHub remote, Azure staging, Entra app registration, Resend, verification.
 - **[GitHub setup](docs/GITHUB_SETUP.md)** — create repo, `git remote`, first push, CI variables.
+- **[GitHub → Azure OIDC production deploy](docs/GITHUB_AZURE_OIDC_DEPLOY.md)** — federated credentials and secrets for **`deploy-production.yml`** (no publish profile).
 - **[Azure staging setup](docs/AZURE_STAGING_SETUP.md)** — App Service + PostgreSQL, env vars, migrations, webhooks, queue drain.
 
 **CI:** `.github/workflows/ci.yml` runs on pushes/PRs to `main` or `master`. The workflow sets **placeholder** `AUTH_*` / Entra-related env vars so `npm run build` succeeds without real Microsoft credentials; production/staging still require a real Entra app registration.
