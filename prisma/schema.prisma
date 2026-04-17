@@ -234,16 +234,36 @@ model ClientMailboxIdentity {
   dailyWindowResetAt  DateTime?
   lastSyncAt DateTime?
   lastError  String?  @db.Text
+  /// Opaque CSRF value for in-flight OAuth (Microsoft / Google mailbox connection)
+  oauthState           String?   @unique
+  oauthStateExpiresAt  DateTime?
+  /// Provider account id after connect (e.g. Google `sub`, Microsoft Graph `id`) — not a secret
+  providerLinkedUserId String?
+  connectedAt          DateTime?
   createdByStaffUserId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy StaffUser? @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  secret    MailboxIdentitySecret?
 
   @@unique([clientId, emailNormalized])
   @@index([clientId, isActive])
   @@index([createdByStaffUserId])
+}
+
+/// Server-side OAuth token material for a mailbox identity (never exposed to the client UI).
+model MailboxIdentitySecret {
+  id                 String @id @default(cuid())
+  mailboxIdentityId  String @unique
+  provider           MailboxProvider
+  /// AES-GCM payload (base64) — JSON with refresh_token, access_token, expires_at, scope, etc.
+  encryptedCredential String @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  mailbox ClientMailboxIdentity @relation(fields: [mailboxIdentityId], references: [id], onDelete: Cascade)
 }
 
 model ClientMembership {

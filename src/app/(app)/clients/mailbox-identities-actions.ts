@@ -15,17 +15,9 @@ import {
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 
 const providerSchema = z.enum(["MICROSOFT", "GOOGLE"]);
-const statusSchema = z.enum([
-  "DRAFT",
-  "PENDING_CONNECTION",
-  "CONNECTED",
-  "CONNECTION_ERROR",
-  "DISCONNECTED",
-]);
 
 const baseFields = {
   displayName: z.string().max(200).optional().nullable(),
-  connectionStatus: statusSchema,
   canSend: z.boolean(),
   canReceive: z.boolean(),
   isSendingEnabled: z.boolean(),
@@ -120,7 +112,7 @@ export async function createClientMailboxIdentity(
           email: emailNormalized,
           emailNormalized,
           displayName: data.data.displayName?.trim() || null,
-          connectionStatus: data.data.connectionStatus,
+          connectionStatus: "DRAFT",
           canSend: data.data.canSend,
           canReceive: data.data.canReceive,
           dailySendCap: data.data.dailySendCap,
@@ -137,7 +129,7 @@ export async function createClientMailboxIdentity(
       await auditMailbox(staff.id, data.data.clientId, row.id, "CREATE", {
         email: emailNormalized,
         provider: data.data.provider,
-        connectionStatus: data.data.connectionStatus,
+        connectionStatus: "DRAFT",
         isActive: data.data.isActive,
         isPrimary: data.data.isPrimary,
       });
@@ -212,7 +204,6 @@ export async function updateClientMailboxIdentity(
         where: { id: existing.id },
         data: {
           displayName: data.data.displayName?.trim() || null,
-          connectionStatus: data.data.connectionStatus,
           canSend: data.data.canSend,
           canReceive: data.data.canReceive,
           dailySendCap: data.data.dailySendCap,
@@ -228,14 +219,12 @@ export async function updateClientMailboxIdentity(
 
       await auditMailbox(staff.id, data.data.clientId, next.id, "UPDATE", {
         before: {
-          connectionStatus: existing.connectionStatus,
           isActive: existing.isActive,
           isPrimary: existing.isPrimary,
           isSendingEnabled: existing.isSendingEnabled,
           dailySendCap: existing.dailySendCap,
         },
         after: {
-          connectionStatus: next.connectionStatus,
           isActive: next.isActive,
           isPrimary: next.isPrimary,
           isSendingEnabled: next.isSendingEnabled,

@@ -5,10 +5,14 @@ import { useMemo, useState, useTransition } from "react";
 import { format } from "date-fns";
 
 import {
+  disconnectMailboxIdentity,
+  prepareMailboxOAuthConnection,
+} from "@/app/(app)/clients/mailbox-connection-actions";
+import {
   createClientMailboxIdentity,
   setClientMailboxPrimary,
   updateClientMailboxIdentity,
-  type MailboxActionResult,
+  type MailboxActionResult as IdentityActionResult,
 } from "@/app/(app)/clients/mailbox-identities-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -47,6 +51,8 @@ export type MailboxIdentityRow = {
     | "CONNECTED"
     | "CONNECTION_ERROR"
     | "DISCONNECTED";
+  providerLinkedUserId: string | null;
+  connectedAt: string | null;
   isActive: boolean;
   isPrimary: boolean;
   canSend: boolean;
@@ -61,7 +67,7 @@ export type MailboxIdentityRow = {
 };
 
 function notify(
-  result: MailboxActionResult,
+  result: IdentityActionResult,
   ok: (m: string) => void,
   err: (m: string) => void,
 ) {
@@ -81,6 +87,41 @@ const STATUSES = [
   { value: "CONNECTION_ERROR", label: "Connection error" },
   { value: "DISCONNECTED", label: "Disconnected" },
 ] as const;
+
+function oauthReadyForRow(
+  row: MailboxIdentityRow,
+  oauthMicrosoftConfigured: boolean,
+  oauthGoogleConfigured: boolean,
+): boolean {
+  return row.provider === "MICROSOFT"
+    ? oauthMicrosoftConfigured
+    : oauthGoogleConfigured;
+}
+
+function providerConnectionHint(
+  row: MailboxIdentityRow,
+  oauthOk: boolean,
+): string {
+  if (!oauthOk) {
+    return "Server OAuth for this provider is not configured — set mailbox OAuth env vars.";
+  }
+  switch (row.connectionStatus) {
+    case "DRAFT":
+      return "Not yet authorized — use Connect to start OAuth.";
+    case "PENDING_CONNECTION":
+      return "Complete sign-in in the Microsoft or Google window, or run Connect again.";
+    case "CONNECTED":
+      return row.connectedAt
+        ? `Authorized — linked ${format(new Date(row.connectedAt), "MMM d, yyyy HH:mm")} UTC`
+        : "Authorized with provider.";
+    case "CONNECTION_ERROR":
+      return "Authorization failed — see Last error, fix, then Reconnect.";
+    case "DISCONNECTED":
+      return "Tokens cleared — use Connect to authorize again.";
+    default:
+      return "";
+  }
+}
 
 function eligibilityLabel(row: MailboxIdentityRow, now: Date) {
   const eligible = isMailboxSendingEligible(
@@ -104,10 +145,16 @@ export function ClientMailboxIdentitiesPanel({
   clientId,
   rows,
   canMutate,
+  oauthMicrosoftConfigured,
+  oauthGoogleConfigured,
+  mailboxOAuthBanner,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
   canMutate: boolean;
+  oauthMicrosoftConfigured: boolean;
+  oauthGoogleConfigured: boolean;
+  mailboxOAuthBanner: { type: "ok" | "err"; text: string } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -120,7 +167,7 @@ export function ClientMailboxIdentitiesPanel({
   const now = useMemo(() => new Date(), []);
   const activeCount = rows.filter((r) => r.isActive).length;
 
-  const run = (action: () => Promise<MailboxActionResult>) => {
+  const run = (action: () => Promise<IdentityActionResult>) => {
     startTransition(async () => {
       const r = await action();
       notify(
@@ -134,8 +181,45 @@ export function ClientMailboxIdentitiesPanel({
     });
   };
 
+  const startOAuth = (mailboxId: string) => {
+    startTransition(async () => {
+      const r = await prepareMailboxOAuthConnection(clientId, mailboxId);
+      if (!r.ok) {
+        setBanner({ type: "err", text: r.error });
+        router.refresh();
+        return;
+      }
+      window.location.href = r.startUrl;
+    });
+  };
+
+  const runDisconnect = (mailboxId: string) => {
+    startTransition(async () => {
+      const r = await disconnectMailboxIdentity(clientId, mailboxId);
+      if (!r.ok) {
+        setBanner({ type: "err", text: r.error });
+        return;
+      }
+      setBanner({ type: "ok", text: "Mailbox disconnected." });
+      router.refresh();
+    });
+  };
+
   return (
     <div className="space-y-4">
+      {mailboxOAuthBanner ? (
+        <div
+          role="status"
+          className={cn(
+            "rounded-md border px-3 py-2 text-sm",
+            mailboxOAuthBanner.type === "ok"
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
+              : "border-destructive/40 bg-destructive/10 text-destructive",
+          )}
+        >
+          {mailboxOAuthBanner.text}
+        </div>
+      ) : null}
       {banner && (
         <div
           role="status"
@@ -169,7 +253,7 @@ export function ClientMailboxIdentitiesPanel({
               <MailboxForm
                 variant="create"
                 title="Add mailbox identity"
-                description="Record-only in this slice — connect Microsoft or Google in a later release."
+                description="Creates a draft identity — then use Connect to authorize with the selected provider."
                 submitLabel="Create"
                 clientId={clientId}
                 disabled={pending}
@@ -192,10 +276,10 @@ export function ClientMailboxIdentitiesPanel({
             <TableRow>
               <TableHead>Mailbox</TableHead>
               <TableHead>Provider</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Connection</TableHead>
               <TableHead>Send readiness</TableHead>
               <TableHead className="text-right">Daily cap / sent</TableHead>
-              <TableHead className="min-w-[180px]">Actions</TableHead>
+              <TableHead className="min-w-[220px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -206,89 +290,127 @@ export function ClientMailboxIdentitiesPanel({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="align-top">
-                    <div className="font-medium">{row.email}</div>
-                    {row.displayName ? (
-                      <div className="text-xs text-muted-foreground">{row.displayName}</div>
-                    ) : null}
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {row.isPrimary ? (
-                        <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
-                          Primary
+              rows.map((row) => {
+                const oauthOk = oauthReadyForRow(
+                  row,
+                  oauthMicrosoftConfigured,
+                  oauthGoogleConfigured,
+                );
+                return (
+                  <TableRow key={row.id}>
+                    <TableCell className="align-top">
+                      <div className="font-medium">{row.email}</div>
+                      {row.displayName ? (
+                        <div className="text-xs text-muted-foreground">{row.displayName}</div>
+                      ) : null}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {row.isPrimary ? (
+                          <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
+                            Primary
+                          </span>
+                        ) : null}
+                        <span
+                          className={cn(
+                            "rounded-md px-1.5 py-0.5 text-xs font-medium",
+                            row.isActive
+                              ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
+                              : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {row.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top text-sm">
+                      {PROVIDERS.find((p) => p.value === row.provider)?.label ?? row.provider}
+                    </TableCell>
+                    <TableCell className="align-top text-sm">
+                      <div className="font-medium">
+                        {STATUSES.find((s) => s.value === row.connectionStatus)?.label ??
+                          row.connectionStatus}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {providerConnectionHint(row, oauthOk)}
+                      </div>
+                      {row.providerLinkedUserId ? (
+                        <div className="mt-1 font-mono text-[10px] text-muted-foreground break-all">
+                          Provider id: {row.providerLinkedUserId}
+                        </div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="align-top text-xs text-muted-foreground max-w-[240px]">
+                      {eligibilityLabel(row, now)}
+                      {!row.isSendingEnabled ? (
+                        <span className="mt-1 block text-amber-700 dark:text-amber-300">
+                          Sending paused by operator.
                         </span>
                       ) : null}
-                      <span
-                        className={cn(
-                          "rounded-md px-1.5 py-0.5 text-xs font-medium",
-                          row.isActive
-                            ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
-                            : "bg-muted text-muted-foreground",
+                      {row.lastError ? (
+                        <span className="mt-1 block text-destructive line-clamp-3" title={row.lastError}>
+                          {row.lastError}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="align-top text-right text-sm tabular-nums">
+                      {row.dailySendCap} / {row.emailsSentToday}
+                      {row.dailyWindowResetAt ? (
+                        <div className="text-xs text-muted-foreground">
+                          Resets UTC {format(new Date(row.dailyWindowResetAt), "MMM d HH:mm")}
+                        </div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="flex flex-wrap gap-1">
+                        {canMutate ? (
+                          <>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={pending || !row.isActive || row.isPrimary}
+                              onClick={() =>
+                                run(async () => setClientMailboxPrimary(clientId, row.id))
+                              }
+                            >
+                              Set primary
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => setEditRow(row)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="secondary"
+                              disabled={pending || !oauthOk || !row.isActive}
+                              title={
+                                !oauthOk
+                                  ? "Configure mailbox OAuth env vars for this provider"
+                                  : undefined
+                              }
+                              onClick={() => startOAuth(row.id)}
+                            >
+                              {row.connectionStatus === "CONNECTED" ? "Reconnect" : "Connect"}
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={pending || row.connectionStatus !== "CONNECTED"}
+                              onClick={() => runDisconnect(row.id)}
+                            >
+                              Disconnect
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">View only</span>
                         )}
-                      >
-                        {row.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="align-top text-sm">
-                    {PROVIDERS.find((p) => p.value === row.provider)?.label ?? row.provider}
-                  </TableCell>
-                  <TableCell className="align-top text-sm">
-                    {STATUSES.find((s) => s.value === row.connectionStatus)?.label ??
-                      row.connectionStatus}
-                  </TableCell>
-                  <TableCell className="align-top text-xs text-muted-foreground max-w-[220px]">
-                    {eligibilityLabel(row, now)}
-                    {!row.isSendingEnabled ? (
-                      <span className="mt-1 block text-amber-700 dark:text-amber-300">
-                        Sending paused by operator.
-                      </span>
-                    ) : null}
-                    {row.lastError ? (
-                      <span className="mt-1 block text-destructive line-clamp-2" title={row.lastError}>
-                        {row.lastError}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="align-top text-right text-sm tabular-nums">
-                    {row.dailySendCap} / {row.emailsSentToday}
-                    {row.dailyWindowResetAt ? (
-                      <div className="text-xs text-muted-foreground">
-                        Resets UTC {format(new Date(row.dailyWindowResetAt), "MMM d HH:mm")}
                       </div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <div className="flex flex-wrap gap-1">
-                      {canMutate ? (
-                        <>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            disabled={pending || !row.isActive || row.isPrimary}
-                            onClick={() =>
-                              run(async () => setClientMailboxPrimary(clientId, row.id))
-                            }
-                          >
-                            Set primary
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            disabled={pending}
-                            onClick={() => setEditRow(row)}
-                          >
-                            Edit
-                          </Button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">View only</span>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -307,7 +429,7 @@ export function ClientMailboxIdentitiesPanel({
                 key={editRow.id}
                 variant="edit"
                 title="Edit mailbox identity"
-                description="Email is fixed; update status, caps, and toggles."
+                description="Email is fixed. Connection status is managed with Connect / Disconnect only."
                 submitLabel="Save changes"
                 clientId={clientId}
                 disabled={pending}
@@ -364,9 +486,6 @@ function MailboxForm(props: MailboxFormProps) {
     initial?.provider ?? "MICROSOFT",
   );
   const [displayName, setDisplayName] = useState(initial?.displayName ?? "");
-  const [connectionStatus, setConnectionStatus] = useState<
-    (typeof STATUSES)[number]["value"]
-  >(initial?.connectionStatus ?? "DRAFT");
   const [canSend, setCanSend] = useState(initial?.canSend ?? true);
   const [canReceive, setCanReceive] = useState(initial?.canReceive ?? true);
   const [dailySendCap, setDailySendCap] = useState(
@@ -398,7 +517,6 @@ function MailboxForm(props: MailboxFormProps) {
               clientId,
               mailboxId: props.editRow.id,
               displayName: displayName.trim() || null,
-              connectionStatus,
               canSend,
               canReceive,
               dailySendCap: cap,
@@ -413,7 +531,6 @@ function MailboxForm(props: MailboxFormProps) {
               email: email.trim(),
               provider,
               displayName: displayName.trim() || null,
-              connectionStatus,
               canSend,
               canReceive,
               dailySendCap: cap,
@@ -476,23 +593,6 @@ function MailboxForm(props: MailboxFormProps) {
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Optional"
           />
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="text-sm font-medium">Connection status</span>
-          <select
-            className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            value={connectionStatus}
-            onChange={(e) =>
-              setConnectionStatus(e.target.value as (typeof STATUSES)[number]["value"])
-            }
-          >
-            {STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -563,7 +663,7 @@ function MailboxForm(props: MailboxFormProps) {
             className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             value={lastError}
             onChange={(e) => setLastError(e.target.value)}
-            placeholder="Optional — connection or sync notes"
+            placeholder="Optional — surfaced when connection fails"
           />
         </div>
 
