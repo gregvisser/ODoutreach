@@ -69,7 +69,7 @@ After pulling changes:
 npm run db:migrate:dev
 ```
 
-Recent migrations include `20260414120000_contact_import_summary`, **`20260415130000_email_operations_backbone`**, **`20260416120000_outbound_queue_lifecycle`**, **`20260417120000_outbound_reliability_hardening`**, **`20260417140000_client_mailbox_identities`** (`ClientMailboxIdentity` — per-client outreach mailboxes and caps), **`20260413163000_staff_entra_object_id`** (`StaffUser.entraObjectId`), and **`20260418100000_staff_user_email_unique`** (unique staff email for first-login linking).
+Recent migrations include `20260414120000_contact_import_summary`, **`20260415130000_email_operations_backbone`**, **`20260416120000_outbound_queue_lifecycle`**, **`20260417120000_outbound_reliability_hardening`**, **`20260417140000_client_mailbox_identities`** (`ClientMailboxIdentity` — per-client outreach mailboxes and caps), **`20260420120000_mailbox_oauth_connection`** (OAuth state + encrypted provider tokens), **`20260413163000_staff_entra_object_id`** (`StaffUser.entraObjectId`), and **`20260418100000_staff_user_email_unique`** (unique staff email for first-login linking).
 
 Seed creates demo tenants and memberships. For local Entra sign-in, either set **`SEED_ENTRA_OBJECT_ID`** to your Entra user **object ID (oid)**, or set the seeded row’s **`email`** in `prisma/seed.ts` to your work address (same as Entra `preferred_username`) so the first successful sign-in **links** `entraObjectId` automatically.
 
@@ -87,7 +87,11 @@ Rows with invalid email are skipped; duplicates (already in DB or repeated in fi
 
 ## Mailbox identities (per client workspace)
 
-On **Clients → [client]**, the **Mailbox identities** card lists outreach mailboxes (Microsoft 365 or Google Workspace) for that tenant. Operators with **ADMIN**, **MANAGER**, or **OPERATOR** staff plus **LEAD**/**CONTRIBUTOR** client membership may add or edit rows; **VIEWER** membership is read-only. There is a hard limit of **five active** identities per client; each mailbox defaults to a **daily send cap of 30** (OpensDoors product rule, enforced when the outbound scheduler consumes this data). This slice stores **connection status** and readiness fields only — OAuth connect flows are not wired yet.
+On **Clients → [client]**, the **Mailbox identities** card lists outreach mailboxes (Microsoft 365 or Google Workspace) for that tenant. Operators with **ADMIN**, **MANAGER**, or **OPERATOR** staff plus **LEAD**/**CONTRIBUTOR** client membership may add or edit rows; **VIEWER** membership is read-only. There is a hard limit of **five active** identities per client; each mailbox defaults to a **daily send cap of 30** (OpensDoors product rule, enforced when the outbound scheduler consumes this data).
+
+**Connection:** Use **Connect** to run provider OAuth in a separate window. Refresh tokens are stored **encrypted** in `MailboxIdentitySecret` (key material via `MAILBOX_OAUTH_SECRET` or `AUTH_SECRET`). The signed-in Microsoft/Google account **must match** the mailbox row email. **Disconnect** removes stored tokens. Outbound send and reply sync are still separate slices — connection establishes lifecycle and readiness only.
+
+See **[docs/MAILBOX_CONNECTION.md](docs/MAILBOX_CONNECTION.md)** for Azure/Google app registration and redirect URIs.
 
 ## Suppression sync (Google Sheets)
 

@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "src"),
+      "server-only": path.resolve(process.cwd(), "src/test/shims/server-only.ts"),
     },
   },
 });
