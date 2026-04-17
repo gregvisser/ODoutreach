@@ -51,7 +51,7 @@ After push, **CI** runs (`.github/workflows/ci.yml`). The **Build** step uses **
 
 For **deploying** the app to Azure App Service, configure real `AUTH_*` values in **Azure Application settings** (or your deployment pipeline), not necessarily in GitHub.
 
-**Production deploy (GitHub Actions):** `.github/workflows/deploy-production.yml` builds on `ubuntu-latest` and deploys to **`app-opensdoors-outreach-prod`** using **`azure/webapps-deploy@v3`**. Add repository secret **`AZURE_WEBAPP_PUBLISH_PROFILE`** whose value is the full contents of the Web App **Download publish profile** file (`.PublishSettings` XML) from Azure Portal. Entra and DB secrets stay in Azure App Service configuration only.
+**Production deploy (GitHub Actions):** `.github/workflows/deploy-production.yml` builds on `ubuntu-latest`, signs in with **`azure/login@v2`** using **OIDC** (federated credentials), then deploys to **`app-opensdoors-outreach-prod`** with **`azure/webapps-deploy@v3`** (no publish profile). Required repository secrets: **`AZURE_CLIENT_ID`**, **`AZURE_TENANT_ID`**, **`AZURE_SUBSCRIPTION_ID`**. One-time Azure setup (federated credential + RBAC) is documented in **[GITHUB_AZURE_OIDC_DEPLOY.md](./GITHUB_AZURE_OIDC_DEPLOY.md)**. Remove legacy **`AZURE_WEBAPP_PUBLISH_PROFILE`** after OIDC cutover. Entra and DB secrets for the *app* stay in Azure App Service configuration only.
 
 ## What this doc does not do
 

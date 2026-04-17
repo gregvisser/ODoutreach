@@ -13,6 +13,7 @@ End-to-end order for **first hosted staging**. For **lean first production** (UK
 
 - [ ] Create empty private repo — [GITHUB_SETUP.md](./GITHUB_SETUP.md).
 - [ ] `git remote add origin …` and `git push -u origin main` (or `master`).
+- [ ] Production deploy OIDC: [GITHUB_AZURE_OIDC_DEPLOY.md](./GITHUB_AZURE_OIDC_DEPLOY.md) — federated credential + `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID`; remove `AZURE_WEBAPP_PUBLISH_PROFILE` after cutover.
 
 ## C. Azure (manual)
 
