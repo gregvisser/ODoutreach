@@ -46,6 +46,10 @@ The app requests an **app-only** token (`client_credentials`) with scope `https:
 
 Successful staff management actions write to **`AuditLog`** with `entityType: "StaffUser"` and JSON `metadata` describing the operation (`invite_sent`, `invite_resent`, `role_change`, `active_change`, `invitation_status_sync`). **Settings → Staff Access** includes a read-only **Recent activity** table (newest first, last 40 entries) so admins can verify actions without opening the database. Full history remains queryable in PostgreSQL as needed.
 
+## Production manual proof (operators)
+
+Step-by-step live verification checklist: **[STAFF_ACCESS_MANUAL_PROOF.md](./STAFF_ACCESS_MANUAL_PROOF.md)**.
+
 ## Manual steps that may remain
 
 - Invitee must **accept** the Microsoft invitation email (or redeem via admin-provided link).
