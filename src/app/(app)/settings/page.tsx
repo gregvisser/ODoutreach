@@ -6,12 +6,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
-import { requireStaffUser } from "@/server/auth/staff";
+import Link from "next/link";
+
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const staff = await requireStaffUser();
+  const staff = await requireOpensDoorsStaff();
   const google = hasGoogleServiceAccountConfig();
   const domainPolicy = process.env.STAFF_EMAIL_DOMAINS?.trim();
 
@@ -23,6 +25,26 @@ export default async function SettingsPage() {
           Internal staff profile and security — tenant data is configured per client.
         </p>
       </div>
+
+      {staff.role === "ADMIN" ? (
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader>
+            <CardTitle>Staff Access</CardTitle>
+            <CardDescription>
+              Invite guests to the Bidlow tenant and manage staff roles (Microsoft sends the
+              invitation email).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/settings/staff-access"
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open Staff Access →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
@@ -50,7 +72,8 @@ export default async function SettingsPage() {
           <p>
             When <code className="rounded bg-muted px-1 text-xs">STAFF_EMAIL_DOMAINS</code>{" "}
             is set (comma-separated, e.g.{" "}
-            <code className="rounded bg-muted px-1 text-xs">opensdoors.com</code>), only
+            <code className="rounded bg-muted px-1 text-xs">bidlow.co.uk</code>,{" "}
+            <code className="rounded bg-muted px-1 text-xs">opensdoors.co.uk</code>), only
             matching staff can use the app shell. Leave unset in development to allow any
             signed-in user.
           </p>

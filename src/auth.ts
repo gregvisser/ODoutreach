@@ -3,14 +3,9 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
 import type { NextAuthConfig } from "next-auth";
 
-/** When AUTH_MICROSOFT_ENTRA_ID_ISSUER is a tenant-specific v2 URL, extract the directory tenant id for `tid` checks. */
-export function getTenantIdFromEntraIssuer(issuer: string | undefined): string | null {
-  if (!issuer) return null;
-  const m = issuer
-    .trim()
-    .match(/login\.microsoftonline\.com\/([0-9a-fA-F-]{36})\//);
-  return m ? m[1].toLowerCase() : null;
-}
+import { getTenantIdFromEntraIssuer } from "@/lib/entra-tenant";
+
+export { getTenantIdFromEntraIssuer };
 
 /** OIDC issuer must not end with `/` — avoids `.../v2.0//.well-known` and discovery issues. */
 function normalizeEntraIssuer(issuer: string | undefined): string | undefined {

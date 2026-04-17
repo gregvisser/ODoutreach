@@ -51,6 +51,9 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
         entraObjectId,
         displayName: displayName ?? byEmail.displayName,
         email,
+        ...(byEmail.guestInvitationState === "PENDING"
+          ? { guestInvitationState: "ACCEPTED" as const }
+          : {}),
       },
     });
   });
@@ -134,6 +137,26 @@ export async function requireOpensDoorsStaff(): Promise<StaffUser> {
     throw new Error("STAFF_EMAIL_NOT_ALLOWED");
   }
   return staff;
+}
+
+/** Admin-only operations (staff management). Does not bypass Entra or StaffUser checks. */
+export async function requireStaffAdmin(): Promise<StaffUser> {
+  const staff = await requireOpensDoorsStaff();
+  if (staff.role !== "ADMIN") {
+    throw new Error("ADMIN_ONLY");
+  }
+  return staff;
+}
+
+/**
+ * Same as {@link requireStaffAdmin} but maps any failure to a single message (server actions / APIs).
+ */
+export async function requireStaffAdminForAction(): Promise<StaffUser> {
+  try {
+    return await requireStaffAdmin();
+  } catch {
+    throw new Error("You do not have permission to manage staff.");
+  }
 }
 
 export async function getStaffRole(): Promise<StaffRole | null> {

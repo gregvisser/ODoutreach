@@ -19,6 +19,13 @@ enum StaffRole {
   VIEWER
 }
 
+/// Tracks Microsoft Graph B2B guest invitation lifecycle for staff provisioned from the app.
+enum StaffGuestInvitationState {
+  NONE
+  PENDING
+  ACCEPTED
+}
+
 enum ClientLifecycleStatus {
   ONBOARDING
   ACTIVE
@@ -128,12 +135,25 @@ model StaffUser {
   displayName String?
   role        StaffRole @default(OPERATOR)
   isActive    Boolean   @default(true)
+  guestInvitationState StaffGuestInvitationState @default(NONE)
+  invitedAt            DateTime?
+  invitationLastSentAt DateTime?
+  invitedById          String?
+  invitedBy            StaffUser? @relation("StaffInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitedStaff         StaffUser[] @relation("StaffInvitedBy")
+  /// Microsoft Graph invitation resource id (from POST /invitations)
+  graphInvitationId String? @unique
+  /// Object id of the invited guest user in the tenant (from invitation response)
+  graphInvitedUserObjectId String?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   memberships    ClientMembership[]
   auditLogs      AuditLog[]
   outboundSends  OutboundEmail[] @relation("OutboundInitiator")
+
+  @@index([invitedById])
 }
 
 // ——— Tenant / workspace ———
