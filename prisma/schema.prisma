@@ -125,6 +125,21 @@ enum SenderIdentityStatus {
   VERIFIED_READY
 }
 
+/// Outreach mailbox provider (Microsoft 365 vs Google Workspace)
+enum MailboxProvider {
+  MICROSOFT
+  GOOGLE
+}
+
+/// OAuth / connection lifecycle for a client mailbox identity (records-only in early slices)
+enum MailboxConnectionStatus {
+  DRAFT
+  PENDING_CONNECTION
+  CONNECTED
+  CONNECTION_ERROR
+  DISCONNECTED
+}
+
 // ——— Staff (Microsoft Entra object id — oid claim) ———
 
 model StaffUser {
@@ -152,6 +167,7 @@ model StaffUser {
   memberships    ClientMembership[]
   auditLogs      AuditLog[]
   outboundSends  OutboundEmail[] @relation("OutboundInitiator")
+  mailboxIdentitiesCreated ClientMailboxIdentity[] @relation("MailboxIdentityCreatedBy")
 
   @@index([invitedById])
 }
@@ -189,8 +205,45 @@ model Client {
   reportingSnapshots   ReportingDailySnapshot[]
   auditLogs            AuditLog[]
   outboundProviderEvents OutboundProviderEvent[]
+  mailboxIdentities      ClientMailboxIdentity[]
 
   @@index([status])
+}
+
+/// Connected outreach sending/receiving identity for a client workspace (max 5 active per client).
+model ClientMailboxIdentity {
+  id       String @id @default(cuid())
+  clientId String
+  provider MailboxProvider
+  /// Normalized lowercase email — single source of truth for display and uniqueness
+  email    String
+  emailNormalized String
+  displayName String?
+  connectionStatus MailboxConnectionStatus @default(DRAFT)
+  isActive    Boolean @default(true)
+  isPrimary   Boolean @default(false)
+  /// Provider capability — future send/reply integration
+  canSend     Boolean @default(true)
+  canReceive  Boolean @default(true)
+  /// OpensDoors hard rule: default 30 sends per mailbox per rolling/window day (enforced in later slices)
+  dailySendCap Int @default(30)
+  /// Operator toggle to pause sending without deleting the row
+  isSendingEnabled Boolean @default(true)
+  /// Counters reset when `now` passes `dailyWindowResetAt` (worker/sync responsibility in later slices)
+  emailsSentToday     Int       @default(0)
+  dailyWindowResetAt  DateTime?
+  lastSyncAt DateTime?
+  lastError  String?  @db.Text
+  createdByStaffUserId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy StaffUser? @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, emailNormalized])
+  @@index([clientId, isActive])
+  @@index([createdByStaffUserId])
 }
 
 model ClientMembership {

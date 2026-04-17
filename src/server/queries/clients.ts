@@ -33,6 +33,9 @@ export async function getClientByIdForStaff(
     include: {
       onboarding: true,
       suppressionSources: true,
+      mailboxIdentities: {
+        orderBy: [{ isPrimary: "desc" }, { emailNormalized: "asc" }],
+      },
       _count: {
         select: {
           contacts: true,
