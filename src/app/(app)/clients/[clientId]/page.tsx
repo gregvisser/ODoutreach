@@ -14,6 +14,7 @@ import {
 import { ClientMicrosoftInboxPanel } from "@/components/clients/client-microsoft-inbox-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -25,7 +26,9 @@ import {
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
+import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-ledger";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+import { utcDateKeyForInstant } from "@/lib/sending-window";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +58,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     clientId,
     client.mailboxIdentities,
   );
+  const recentGovernedSends = await getRecentGovernedSendsForClient(clientId, 25);
+  const currentUtcWindowKey = utcDateKeyForInstant(new Date());
   const sendingReadinessByMailboxId = Object.fromEntries(
     sendingReadiness.map((s) => [s.mailboxId, s]),
   );
@@ -224,6 +229,23 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
                     }
                   : null
             }
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Recent governed sends</CardTitle>
+          <CardDescription>
+            Read-only ledger for governed test emails (same UTC-day reservation as the mailbox
+            table). Use this to reconcile “booked” counts with actual rows — no database access
+            required.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RecentGovernedSendsPanel
+            rows={recentGovernedSends}
+            currentUtcWindowKey={currentUtcWindowKey}
           />
         </CardContent>
       </Card>
