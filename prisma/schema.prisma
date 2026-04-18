@@ -140,6 +140,13 @@ enum MailboxConnectionStatus {
   DISCONNECTED
 }
 
+/// Per-mailbox send reservation / cap ledger (UTC day window) — for duplicate-safe bookings before worker send.
+enum MailboxSendReservationStatus {
+  RESERVED
+  CONSUMED
+  RELEASED
+}
+
 // ——— Staff (Microsoft Entra object id — oid claim) ———
 
 model StaffUser {
@@ -191,23 +198,24 @@ model Client {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
-  memberships            ClientMembership[]
-  onboarding             ClientOnboarding?
-  contacts               Contact[]
-  importBatches          ContactImportBatch[]
-  rocketReachJobs        RocketReachEnrichment[]
-  suppressionSources     SuppressionSource[]
-  suppressedEmails       SuppressedEmail[]
-  suppressedDomains      SuppressedDomain[]
-  campaigns              Campaign[]
-  outboundEmails         OutboundEmail[]
-  inboundReplies         InboundReply[]
-  reportingSnapshots     ReportingDailySnapshot[]
-  auditLogs              AuditLog[]
-  outboundProviderEvents OutboundProviderEvent[]
-  mailboxIdentities      ClientMailboxIdentity[]
+  memberships             ClientMembership[]
+  onboarding              ClientOnboarding?
+  contacts                Contact[]
+  importBatches           ContactImportBatch[]
+  rocketReachJobs         RocketReachEnrichment[]
+  suppressionSources      SuppressionSource[]
+  suppressedEmails        SuppressedEmail[]
+  suppressedDomains       SuppressedDomain[]
+  campaigns               Campaign[]
+  outboundEmails          OutboundEmail[]
+  inboundReplies          InboundReply[]
+  reportingSnapshots      ReportingDailySnapshot[]
+  auditLogs               AuditLog[]
+  outboundProviderEvents  OutboundProviderEvent[]
+  mailboxIdentities       ClientMailboxIdentity[]
   /// Microsoft Graph–ingested inbox rows (idempotent by mailbox + Graph message id)
-  inboundMailboxMessages InboundMailboxMessage[]
+  inboundMailboxMessages  InboundMailboxMessage[]
+  mailboxSendReservations MailboxSendReservation[]
 
   @@index([status])
 }
@@ -246,10 +254,12 @@ model ClientMailboxIdentity {
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
 
-  client                Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy             StaffUser?              @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy             StaffUser?               @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   secret                MailboxIdentitySecret?
   graphIngestedMessages InboundMailboxMessage[]
+  sendReservations      MailboxSendReservation[]
+  outboundSends         OutboundEmail[]
 
   @@unique([clientId, emailNormalized])
   @@index([clientId, isActive])
@@ -497,6 +507,8 @@ model OutboundEmail {
   retryCount             Int                 @default(0)
   lastAttemptAt          DateTime?
   nextRetryAt            DateTime?
+  /// Optional: sending mailbox identity (cap enforcement) — set when a governed mailbox is chosen for the send
+  mailboxIdentityId      String?
   /// Worker claim — stale claims can be stolen after claimExpiresAt
   claimedAt              DateTime?
   claimExpiresAt         DateTime?
@@ -518,12 +530,14 @@ model OutboundEmail {
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
-  client         Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  campaign       Campaign?               @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contact        Contact?                @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  staffUser      StaffUser?              @relation("OutboundInitiator", fields: [staffUserId], references: [id], onDelete: SetNull)
-  inboundReplies InboundReply[]          @relation("ReplyToOutbound")
-  providerEvents OutboundProviderEvent[]
+  client          Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaign        Campaign?               @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contact         Contact?                @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  staffUser       StaffUser?              @relation("OutboundInitiator", fields: [staffUserId], references: [id], onDelete: SetNull)
+  mailbox         ClientMailboxIdentity?  @relation(fields: [mailboxIdentityId], references: [id], onDelete: SetNull)
+  sendReservation MailboxSendReservation?
+  inboundReplies  InboundReply[]          @relation("ReplyToOutbound")
+  providerEvents  OutboundProviderEvent[]
 
   @@index([clientId, createdAt])
   @@index([clientId, sentAt])
@@ -532,6 +546,30 @@ model OutboundEmail {
   @@index([providerMessageId])
   @@index([correlationId])
   @@index([status, nextRetryAt, queuedAt])
+  @@index([mailboxIdentityId, sentAt])
+}
+
+model MailboxSendReservation {
+  id                String                       @id @default(cuid())
+  clientId          String
+  mailboxIdentityId String
+  /// Deduplication scope for a booking attempt (per mailbox + UTC day in windowKey)
+  idempotencyKey    String
+  /// UTC date key YYYY-MM-DD (same for all users — cap resets at 00:00 UTC)
+  windowKey         String
+  status            MailboxSendReservationStatus @default(RESERVED)
+  /// Populated when an OutboundEmail row is created for this slot
+  outboundEmailId   String?                      @unique
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  client   Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  mailbox  ClientMailboxIdentity @relation(fields: [mailboxIdentityId], references: [id], onDelete: Cascade)
+  outbound OutboundEmail?        @relation(fields: [outboundEmailId], references: [id], onDelete: SetNull)
+
+  @@unique([mailboxIdentityId, windowKey, idempotencyKey])
+  @@index([mailboxIdentityId, windowKey, status])
+  @@index([clientId, createdAt])
 }
 
 /// Append-only provider webhook / event audit (delivery, bounce, etc.)

@@ -23,6 +23,7 @@ import {
 } from "@/server/mailbox/oauth-env";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
+import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,13 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   const client = await getClientByIdForStaff(clientId, accessible);
   if (!client) notFound();
   const graphInbox = await getRecentInboundMailboxMessagesForClient(clientId, 50);
+  const sendingReadiness = await getMailboxSendingReadinessForClient(
+    clientId,
+    client.mailboxIdentities,
+  );
+  const sendingReadinessByMailboxId = Object.fromEntries(
+    sendingReadiness.map((s) => [s.mailboxId, s]),
+  );
 
   const canMutateMailboxes = await getClientMailboxMutationAllowed(staff, client.id);
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
@@ -179,9 +187,10 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           <CardTitle>Mailbox identities</CardTitle>
           <CardDescription>
             Connect each mailbox to Microsoft 365 or Google Workspace with OAuth (tokens stay on the
-            server). Up to five active identities; default send cap 30/day per mailbox. Outbound
-            sending is not in this app slice; Microsoft <strong>inbox read</strong> (preview below)
-            uses the same connection with Mail.Read.
+            server). Up to five active identities; governed outbound uses a per-mailbox UTC-day
+            reservation ledger (30/day default). Real provider send is not required for this check.
+            Microsoft <strong>inbox read</strong> (preview below) uses the same connection with
+            Mail.Read.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -191,6 +200,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
             canMutate={canMutateMailboxes}
             oauthMicrosoftConfigured={oauthMicrosoftReady}
             oauthGoogleConfigured={oauthGoogleReady}
+            sendingReadinessByMailboxId={sendingReadinessByMailboxId}
             mailboxOAuthBanner={
               mailboxOAuthResult === "connected"
                 ? { type: "ok" as const, text: "Mailbox OAuth completed — connection status updated." }
