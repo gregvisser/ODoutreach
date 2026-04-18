@@ -43,12 +43,23 @@ export function microsoftMailboxOAuthScopes(): string {
   ].join(" ");
 }
 
+/** Use in tests and docs — must match `googleMailboxOAuthScopes()`. */
+export const GOOGLE_SCOPE_GMAIL_READONLY =
+  "https://www.googleapis.com/auth/gmail.readonly";
+export const GOOGLE_SCOPE_GMAIL_SEND =
+  "https://www.googleapis.com/auth/gmail.send";
+
+/**
+ * Delegated scopes — identity + refresh + Gmail read + send.
+ * Adding scopes requires a mailbox reconnect so Google issues a refresh token with consent.
+ */
 export function googleMailboxOAuthScopes(): string {
   return [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/gmail.send",
+    GOOGLE_SCOPE_GMAIL_READONLY,
+    GOOGLE_SCOPE_GMAIL_SEND,
   ].join(" ");
 }
 

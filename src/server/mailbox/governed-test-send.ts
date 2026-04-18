@@ -24,7 +24,7 @@ export const GOVERNED_TEST_BODY =
 
 /**
  * One-off governed test: same ledger as contact sends, allowlisted internal recipient only,
- * Microsoft managed mailbox only.
+ * Connected Microsoft 365 or Google Workspace mailbox (primary / first eligible sender).
  */
 export async function queueMicrosoftGovernedTestSend(input: {
   staff: StaffUser;
@@ -83,15 +83,7 @@ export async function queueMicrosoftGovernedTestSend(input: {
               governance.reason,
               governance.mailbox ?? null,
             )
-          : "Add a connected Microsoft sending mailbox to run this test.",
-    };
-  }
-
-  if (governance.mailbox.provider !== "MICROSOFT") {
-    return {
-      ok: false,
-      outcome: "failed",
-      error: "This proof send requires a Microsoft 365 governed mailbox (not Google).",
+          : "Add a connected Microsoft 365 or Google Workspace sending mailbox to run this test.",
     };
   }
 

@@ -11,8 +11,8 @@ export type GovernedTestSendActionResult =
   | { ok: false; error: string };
 
 /**
- * Queues a single governed test message (ledger + Microsoft Graph). Recipient must be on an
- * allowlisted internal domain; no prospect/campaign use.
+ * Queues a single governed test message (ledger + Microsoft Graph or Gmail API). Recipient must
+ * be on an allowlisted internal domain; no prospect/campaign use.
  */
 export async function sendMicrosoftGovernedTestAction(
   clientId: string,
@@ -40,7 +40,8 @@ export async function sendMicrosoftGovernedTestAction(
   }
   return {
     ok: true,
-    message: "Test email is queued. It will send through the connected Microsoft mailbox when the worker runs.",
+    message:
+      "Test email is queued. It will send through the connected workspace mailbox when the worker runs.",
     correlationId: r.correlationId,
     outboundEmailId: r.outboundEmailId,
   };

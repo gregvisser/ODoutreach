@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format } from "date-fns";
 
-import { syncMicrosoftInboxForMailboxAction } from "@/app/(app)/clients/mailbox-inbox-actions";
+import { syncMailboxInboxForMailboxAction } from "@/app/(app)/clients/mailbox-inbox-actions";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -26,22 +26,24 @@ type Row = {
   mailbox: { id: string; email: string; displayName: string | null };
 };
 
-type Mbox = { id: string; email: string; label: string };
+type Mbox = { id: string; email: string; label: string; provider: "MICROSOFT" | "GOOGLE" };
 
 type Props = {
   clientId: string;
   messages: Row[];
-  microsoftMailboxes: Mbox[];
+  connectedMailboxes: Mbox[];
   canSync: boolean;
   oauthMicrosoftReady: boolean;
+  oauthGoogleReady: boolean;
 };
 
-export function ClientMicrosoftInboxPanel({
+export function ClientMailboxInboxPanel({
   clientId,
   messages,
-  microsoftMailboxes,
+  connectedMailboxes,
   canSync,
   oauthMicrosoftReady,
+  oauthGoogleReady,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -51,16 +53,18 @@ export function ClientMicrosoftInboxPanel({
     text: string;
   } | null>(null);
 
-  const onSync = (mailboxId: string) => {
+  const onSync = (mailboxId: string, provider: Mbox["provider"]) => {
     if (!canSync) return;
+    const oauthOk = provider === "GOOGLE" ? oauthGoogleReady : oauthMicrosoftReady;
+    if (!oauthOk) return;
     setMessage(null);
     setKey((k) => k + 1);
     startTransition(async () => {
-      const r = await syncMicrosoftInboxForMailboxAction(clientId, mailboxId);
+      const r = await syncMailboxInboxForMailboxAction(clientId, mailboxId);
       if (r.ok) {
         setMessage({
           type: "ok",
-          text: `Fetched and stored ${r.ingested} of ${r.totalSeen} message(s) from Microsoft.`,
+          text: `Fetched and stored ${r.ingested} of ${r.totalSeen} message(s).`,
         });
         router.refresh();
       } else {
@@ -69,44 +73,57 @@ export function ClientMicrosoftInboxPanel({
     });
   };
 
-  if (!oauthMicrosoftReady) {
+  const oauthHint = () => {
+    if (!oauthMicrosoftReady && !oauthGoogleReady) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          Set mailbox OAuth env vars (<span className="font-mono">MAILBOX_MICROSOFT_*</span> and/or{" "}
+          <span className="font-mono">MAILBOX_GOOGLE_*</span>) to enable inbox read.
+        </p>
+      );
+    }
     return (
       <p className="text-sm text-muted-foreground">
-        Set mailbox Microsoft OAuth (MAILBOX_MICROSOFT_*) in the app environment to enable inbox
-        read.
+        Inbox is read with delegated OAuth on the connected mailbox (
+        <span className="text-foreground">Microsoft Mail.Read</span> or{" "}
+        <span className="text-foreground">Gmail readonly</span>). Run <strong>Fetch recent</strong>{" "}
+        to pull the latest (tokens stay on the server). New scopes require reconnecting the mailbox
+        once to consent.
       </p>
     );
-  }
+  };
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Inbox is read with Microsoft <span className="text-foreground">Mail.Read</span> on the
-        connected mailbox. Run <strong>Fetch recent</strong> to pull the latest from Graph (tokens
-        stay on the server). New scopes require reconnecting the mailbox once to consent.
-      </p>
+      {oauthHint()}
 
-      {microsoftMailboxes.length === 0 && (
-        <p className="text-sm text-muted-foreground">No Microsoft mailbox is connected for this client.</p>
+      {connectedMailboxes.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No connected mailbox is available for this client. Connect Microsoft 365 or Google
+          Workspace above.
+        </p>
       )}
 
-      {microsoftMailboxes.length > 0 && (
+      {connectedMailboxes.length > 0 && (
         <div className="flex flex-wrap gap-2" key={key}>
-          {microsoftMailboxes.map((m) => (
-            <div key={m.id} className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground sm:hidden">Fetch</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!canSync || pending}
-                onClick={() => onSync(m.id)}
-                title={m.label}
-              >
-                Fetch recent — {m.label}
-              </Button>
-            </div>
-          ))}
+          {connectedMailboxes.map((m) => {
+            const oauthOk = m.provider === "GOOGLE" ? oauthGoogleReady : oauthMicrosoftReady;
+            return (
+              <div key={m.id} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground sm:hidden">Fetch</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!canSync || pending || !oauthOk}
+                  onClick={() => onSync(m.id, m.provider)}
+                  title={m.label}
+                >
+                  Fetch recent — {m.provider === "GOOGLE" ? "Google" : "Microsoft"} · {m.label}
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -124,8 +141,7 @@ export function ClientMicrosoftInboxPanel({
 
       {messages.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No ingested messages yet. Fetch recent from a connected Microsoft mailbox to populate this
-          list.
+          No ingested messages yet. Fetch recent from a connected mailbox to populate this list.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
