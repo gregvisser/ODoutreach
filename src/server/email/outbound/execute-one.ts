@@ -1,12 +1,16 @@
 import "server-only";
 
+import type { OutboundEmail } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { resolveValidatedSenderForClient } from "@/server/email/sender-identity";
-
+import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
+import { sendMicrosoftGraphSendMail } from "@/server/mailbox/microsoft-graph-sendmail";
 import { getOutboundEmailProvider } from "../providers";
 import {
+  humanizeGovernanceRejection,
+  mailboxIneligibleForGovernedSendExecution,
   markReservationConsumedForOutbound,
   markReservationReleasedForOutbound,
 } from "@/server/mailbox/sending-policy";
@@ -62,6 +66,15 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     return { ok: true };
   }
 
+  if (!row.subject || !row.bodySnapshot) {
+    await markFailed(row.id, "INVALID_PAYLOAD", "Missing subject or body snapshot");
+    return { ok: false, error: "Invalid payload" };
+  }
+
+  if (row.mailboxIdentityId) {
+    return await sendViaConnectedMailboxOrFail(row, to);
+  }
+
   const client = await prisma.client.findUnique({
     where: { id: row.clientId },
     select: {
@@ -87,11 +100,6 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     const msg = e instanceof Error ? e.message : String(e);
     await markFailed(row.id, "SENDER_REJECTED", msg);
     return { ok: false, error: msg };
-  }
-
-  if (!row.subject || !row.bodySnapshot) {
-    await markFailed(row.id, "INVALID_PAYLOAD", "Missing subject or body snapshot");
-    return { ok: false, error: "Invalid payload" };
   }
 
   const idempotencyKey =
@@ -145,10 +153,6 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
 
     if (updated.count === 0) {
       return { ok: true };
-    }
-
-    if (row.mailboxIdentityId) {
-      await markReservationConsumedForOutbound(row.id);
     }
 
     return { ok: true };
@@ -232,4 +236,103 @@ async function handleSendFailure(
     await markReservationReleasedForOutbound(id);
   }
   return { ok: false, error };
+}
+
+async function sendViaConnectedMailboxOrFail(
+  row: OutboundEmail,
+  to: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!row.mailboxIdentityId) {
+    return { ok: false, error: "Missing governed mailbox" };
+  }
+  const mailbox = await prisma.clientMailboxIdentity.findFirst({
+    where: { id: row.mailboxIdentityId, clientId: row.clientId },
+  });
+  if (!mailbox) {
+    await markFailed(row.id, "MAILBOX_MISSING", "Linked mailbox not found for this client");
+    return { ok: false, error: "Linked mailbox not found" };
+  }
+
+  const ineligible = mailboxIneligibleForGovernedSendExecution(mailbox);
+  if (ineligible) {
+    const msg = humanizeGovernanceRejection(ineligible, mailbox);
+    await markFailed(row.id, ineligible, msg);
+    return { ok: false, error: msg };
+  }
+  if (mailbox.provider === "GOOGLE") {
+    await markFailed(
+      row.id,
+      "PROVIDER",
+      "Google governed mailbox send is not implemented; use a Microsoft identity for this path.",
+    );
+    return { ok: false, error: "Google governed send not implemented" };
+  }
+  if (mailbox.provider !== "MICROSOFT") {
+    await markFailed(row.id, "PROVIDER", "Unknown mailbox provider for governed send");
+    return { ok: false, error: "Unknown provider" };
+  }
+
+  const fromForLog = row.fromAddress?.trim() || normalizeEmail(mailbox.email);
+  if (!fromForLog.includes("@")) {
+    await markFailed(row.id, "INVALID_FROM", "Mailbox from address is invalid for send");
+    return { ok: false, error: "Invalid mailbox from address" };
+  }
+
+  const subject = row.subject;
+  const body = row.bodySnapshot;
+  if (!subject?.trim() || !body) {
+    await markFailed(row.id, "INVALID_PAYLOAD", "Missing subject or body snapshot");
+    return { ok: false, error: "Invalid payload" };
+  }
+
+  try {
+    const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
+    const result = await sendMicrosoftGraphSendMail({
+      accessToken,
+      to,
+      subject,
+      bodyText: body,
+      correlationId: row.correlationId,
+    });
+    if (result.ok === false) {
+      return await handleSendFailure(
+        row.id,
+        row.retryCount,
+        result.error,
+        result.code,
+        row.mailboxIdentityId,
+      );
+    }
+    const updated = await prisma.outboundEmail.updateMany({
+      where: { id: row.id, status: "PROCESSING", providerMessageId: null },
+      data: {
+        status: "SENT",
+        providerMessageId: result.providerMessageId,
+        providerName: result.providerName,
+        sentAt: new Date(),
+        claimedAt: null,
+        claimExpiresAt: null,
+        nextRetryAt: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        failureReason: null,
+        fromAddress: fromForLog,
+        toDomain: extractDomainFromEmail(to) || row.toDomain,
+      },
+    });
+    if (updated.count === 0) {
+      return { ok: true };
+    }
+    await markReservationConsumedForOutbound(row.id);
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return await handleSendFailure(
+      row.id,
+      row.retryCount,
+      msg,
+      "EXCEPTION",
+      row.mailboxIdentityId,
+    );
+  }
 }

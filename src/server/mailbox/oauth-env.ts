@@ -22,9 +22,14 @@ export function microsoftMailboxOAuthTenant(): string {
   );
 }
 
+/** Use in tests and app docs — must match `microsoftMailboxOAuthScopes()`. */
+export const MICROSOFT_GRAPH_SCOPE_MAIL_READ = "https://graph.microsoft.com/Mail.Read";
+export const MICROSOFT_GRAPH_SCOPE_MAIL_SEND = "https://graph.microsoft.com/Mail.Send";
+
 /**
- * Delegated scopes — identity + refresh + inbox read for Graph ingestion.
- * Adding `Mail.Read` requires users to reconnect the mailbox once to consent.
+ * Delegated scopes — identity + refresh + inbox read + send for Microsoft Graph.
+ * Adding or changing Graph scopes (e.g. `Mail.Read`, `Mail.Send`) requires a mailbox reconnect
+ * to obtain fresh admin/user consent and refresh token.
  */
 export function microsoftMailboxOAuthScopes(): string {
   return [
@@ -33,7 +38,8 @@ export function microsoftMailboxOAuthScopes(): string {
     "profile",
     "email",
     "User.Read",
-    "https://graph.microsoft.com/Mail.Read",
+    MICROSOFT_GRAPH_SCOPE_MAIL_READ,
+    MICROSOFT_GRAPH_SCOPE_MAIL_SEND,
   ].join(" ");
 }
 
