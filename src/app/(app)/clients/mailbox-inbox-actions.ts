@@ -4,16 +4,17 @@ import { revalidatePath } from "next/cache";
 
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
-import { syncMicrosoftInboxForMailbox } from "@/server/mailbox/mailbox-inbox-sync";
+import { syncMailboxInboxForMailbox } from "@/server/mailbox/mailbox-inbox-sync";
 
 export type InboxSyncActionResult =
   | { ok: true; ingested: number; totalSeen: number }
   | { ok: false; error: string };
 
 /**
- * Fetches recent inbox messages from Microsoft Graph and upserts them for the workspace.
+ * Fetches recent inbox messages from the connected provider (Microsoft Graph or Gmail API)
+ * and upserts them for the workspace.
  */
-export async function syncMicrosoftInboxForMailboxAction(
+export async function syncMailboxInboxForMailboxAction(
   clientId: string,
   mailboxId: string,
 ): Promise<InboxSyncActionResult> {
@@ -24,7 +25,7 @@ export async function syncMicrosoftInboxForMailboxAction(
     return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
   }
 
-  const r = await syncMicrosoftInboxForMailbox({
+  const r = await syncMailboxInboxForMailbox({
     clientId,
     mailboxIdentityId: mailboxId,
     staffUserId: staff.id,

@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ClientMicrosoftInboxPanel } from "@/components/clients/client-microsoft-inbox-panel";
+import { ClientMailboxInboxPanel } from "@/components/clients/client-mailbox-inbox-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
@@ -23,6 +23,7 @@ import {
   isGoogleMailboxOAuthConfigured,
   isMicrosoftMailboxOAuthConfigured,
 } from "@/server/mailbox/oauth-env";
+import { loadGovernedSendingMailbox } from "@/server/mailbox/sending-policy";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
@@ -59,14 +60,22 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     client.mailboxIdentities,
   );
   const recentGovernedSends = await getRecentGovernedSendsForClient(clientId, 25);
+  const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
+  const oauthGoogleReady = isGoogleMailboxOAuthConfigured();
+  const governedMailbox = await loadGovernedSendingMailbox(clientId);
+  const hasGovernedMailbox = governedMailbox.mode === "governed";
+  const oauthReadyForGovernedTest =
+    governedMailbox.mode === "governed"
+      ? governedMailbox.mailbox.provider === "GOOGLE"
+        ? oauthGoogleReady
+        : oauthMicrosoftReady
+      : false;
   const currentUtcWindowKey = utcDateKeyForInstant(new Date());
   const sendingReadinessByMailboxId = Object.fromEntries(
     sendingReadiness.map((s) => [s.mailboxId, s]),
   );
 
   const canMutateMailboxes = await getClientMailboxMutationAllowed(staff, client.id);
-  const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
-  const oauthGoogleReady = isGoogleMailboxOAuthConfigured();
   const mailboxRows = client.mailboxIdentities.map((m) => ({
     id: m.id,
     email: m.email,
@@ -99,24 +108,18 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     mailbox: m.mailbox,
   }));
 
-  const connectedMicrosoft = client.mailboxIdentities
+  const connectedMailboxInbox = client.mailboxIdentities
     .filter(
-      (m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED",
+      (m) =>
+        (m.provider === "MICROSOFT" || m.provider === "GOOGLE") &&
+        m.connectionStatus === "CONNECTED",
     )
     .map((m) => ({
       id: m.id,
       email: m.email,
       label: m.displayName?.trim() ? m.displayName : m.email,
+      provider: m.provider,
     }));
-
-  const hasMicrosoftGovernedMailbox = client.mailboxIdentities.some(
-    (m) =>
-      m.provider === "MICROSOFT" &&
-      m.isActive &&
-      m.connectionStatus === "CONNECTED" &&
-      m.canSend &&
-      m.isSendingEnabled,
-  );
 
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
@@ -203,9 +206,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           <CardDescription>
             Connect each mailbox to Microsoft 365 or Google Workspace with OAuth (tokens stay on the
             server). Up to five active identities; governed outbound uses a per-mailbox UTC-day
-            reservation ledger (30/day default). Microsoft Graph <strong>Mail.Read</strong> and{" "}
-            <strong>Mail.Send</strong> are requested; adding scopes requires a mailbox reconnect for
-            consent. Inbox preview (below) uses the same connection.
+            reservation ledger (30/day default).             Microsoft Graph <strong>Mail.Read</strong> / <strong>Mail.Send</strong> and Gmail{" "}
+            <strong>readonly</strong> / <strong>send</strong> scopes are requested; adding scopes
+            requires a mailbox reconnect for consent. Inbox preview (below) uses the same connection.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -254,35 +257,37 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Governed test send (operator)</CardTitle>
           <CardDescription>
-            Queue exactly one internal proof email through the reservation ledger and Microsoft
-            Graph — no campaign engine, no bulk, no AI. Use only for controlled verification.
+            Queue exactly one internal proof email through the reservation ledger and the connected
+            mailbox provider (Microsoft Graph or Gmail API) — no campaign engine, no bulk, no AI. Use
+            only for controlled verification.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <GovernedTestSendPanel
             clientId={client.id}
             canMutate={canMutateMailboxes}
-            hasMicrosoftGovernedMailbox={hasMicrosoftGovernedMailbox}
-            oauthMicrosoftReady={oauthMicrosoftReady}
+            hasGovernedMailbox={hasGovernedMailbox}
+            oauthReadyForGovernedTest={oauthReadyForGovernedTest}
           />
         </CardContent>
       </Card>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Microsoft inbox (preview)</CardTitle>
+          <CardTitle>Mailbox inbox (preview)</CardTitle>
           <CardDescription>
-            Recent messages from connected Microsoft 365 mailboxes, fetched via Microsoft Graph. Same
-            tenant and client scope as other workspace data.
+            Recent messages from connected Microsoft 365 or Google Workspace mailboxes (Graph or Gmail
+            API). Same client scope as other workspace data.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ClientMicrosoftInboxPanel
+          <ClientMailboxInboxPanel
             clientId={client.id}
             messages={graphInboxRows}
-            microsoftMailboxes={connectedMicrosoft}
+            connectedMailboxes={connectedMailboxInbox}
             canSync={canMutateMailboxes}
             oauthMicrosoftReady={oauthMicrosoftReady}
+            oauthGoogleReady={oauthGoogleReady}
           />
         </CardContent>
       </Card>

@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 type Props = {
   clientId: string;
   canMutate: boolean;
-  hasMicrosoftGovernedMailbox: boolean;
-  oauthMicrosoftReady: boolean;
+  hasGovernedMailbox: boolean;
+  /** True when env OAuth is configured for the active governed mailbox's provider */
+  oauthReadyForGovernedTest: boolean;
 };
 
 const EXAMPLE_INTERNAL = "you@bidlow.co.uk";
@@ -20,8 +21,8 @@ const EXAMPLE_INTERNAL = "you@bidlow.co.uk";
 export function GovernedTestSendPanel({
   clientId,
   canMutate,
-  hasMicrosoftGovernedMailbox,
-  oauthMicrosoftReady,
+  hasGovernedMailbox,
+  oauthReadyForGovernedTest,
 }: Props) {
   const router = useRouter();
   const [to, setTo] = useState("");
@@ -33,7 +34,7 @@ export function GovernedTestSendPanel({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canMutate || !oauthMicrosoftReady || !hasMicrosoftGovernedMailbox) return;
+    if (!canMutate || !oauthReadyForGovernedTest || !hasGovernedMailbox) return;
     setMessage(null);
     const addr = to.trim();
     if (!addr) {
@@ -54,19 +55,20 @@ export function GovernedTestSendPanel({
     });
   };
 
-  if (!oauthMicrosoftReady) {
+  if (!oauthReadyForGovernedTest) {
     return (
       <p className="text-sm text-muted-foreground">
-        Microsoft mailbox OAuth is not configured in this environment.
+        Mailbox OAuth for the active governed sender provider is not configured in this
+        environment (Microsoft and Google use separate app registrations).
       </p>
     );
   }
 
-  if (!hasMicrosoftGovernedMailbox) {
+  if (!hasGovernedMailbox) {
     return (
       <p className="text-sm text-muted-foreground">
-        Connect a Microsoft 365 sending mailbox and ensure it is eligible (connected, sending
-        allowed) to run the governed test send.
+        Connect a Microsoft 365 or Google Workspace sending mailbox and ensure it is eligible
+        (connected, sending allowed) to run the governed test send.
       </p>
     );
   }
