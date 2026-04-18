@@ -22,9 +22,19 @@ export function microsoftMailboxOAuthTenant(): string {
   );
 }
 
-/** Delegated scopes — identity + refresh; send/reply pipelines will extend scopes later. */
+/**
+ * Delegated scopes — identity + refresh + inbox read for Graph ingestion.
+ * Adding `Mail.Read` requires users to reconnect the mailbox once to consent.
+ */
 export function microsoftMailboxOAuthScopes(): string {
-  return ["offline_access", "openid", "profile", "email", "User.Read"].join(" ");
+  return [
+    "offline_access",
+    "openid",
+    "profile",
+    "email",
+    "User.Read",
+    "https://graph.microsoft.com/Mail.Read",
+  ].join(" ");
 }
 
 export function googleMailboxOAuthScopes(): string {
