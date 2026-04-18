@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ClientMicrosoftInboxPanel } from "@/components/clients/client-microsoft-inbox-panel";
+import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
@@ -103,6 +104,15 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       label: m.displayName?.trim() ? m.displayName : m.email,
     }));
 
+  const hasMicrosoftGovernedMailbox = client.mailboxIdentities.some(
+    (m) =>
+      m.provider === "MICROSOFT" &&
+      m.isActive &&
+      m.connectionStatus === "CONNECTED" &&
+      m.canSend &&
+      m.isSendingEnabled,
+  );
+
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
     senderIdentityStatus: client.senderIdentityStatus,
@@ -188,9 +198,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           <CardDescription>
             Connect each mailbox to Microsoft 365 or Google Workspace with OAuth (tokens stay on the
             server). Up to five active identities; governed outbound uses a per-mailbox UTC-day
-            reservation ledger (30/day default). Real provider send is not required for this check.
-            Microsoft <strong>inbox read</strong> (preview below) uses the same connection with
-            Mail.Read.
+            reservation ledger (30/day default). Microsoft Graph <strong>Mail.Read</strong> and{" "}
+            <strong>Mail.Send</strong> are requested; adding scopes requires a mailbox reconnect for
+            consent. Inbox preview (below) uses the same connection.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -214,6 +224,24 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
                     }
                   : null
             }
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Governed test send (operator)</CardTitle>
+          <CardDescription>
+            Queue exactly one internal proof email through the reservation ledger and Microsoft
+            Graph — no campaign engine, no bulk, no AI. Use only for controlled verification.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GovernedTestSendPanel
+            clientId={client.id}
+            canMutate={canMutateMailboxes}
+            hasMicrosoftGovernedMailbox={hasMicrosoftGovernedMailbox}
+            oauthMicrosoftReady={oauthMicrosoftReady}
           />
         </CardContent>
       </Card>

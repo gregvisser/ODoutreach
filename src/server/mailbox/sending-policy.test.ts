@@ -7,6 +7,7 @@ vi.mock("@/lib/db", () => ({ prisma: {} }));
 
 import {
   countBookedSendSlotsInUtcWindow,
+  mailboxIneligibleForGovernedSendExecution,
   mailboxIneligibleReasonFromStaticState,
   resolveSendingGovernance,
   tryReserveSendSlotInTransaction,
@@ -73,6 +74,21 @@ describe("mailboxIneligibleReasonFromStaticState", () => {
     expect(
       mailboxIneligibleReasonFromStaticState(m, t0, null, 30, 5),
     ).toBeNull();
+  });
+});
+
+describe("mailboxIneligibleForGovernedSendExecution", () => {
+  it("returns null for a fully eligible mailbox", () => {
+    const m = baseMailbox();
+    expect(mailboxIneligibleForGovernedSendExecution(m)).toBeNull();
+  });
+  it("returns mailbox_not_connected when disconnected", () => {
+    const m = baseMailbox({ connectionStatus: "DISCONNECTED" });
+    expect(mailboxIneligibleForGovernedSendExecution(m)).toBe("mailbox_not_connected");
+  });
+  it("ignores daily cap — worker holds a reservation", () => {
+    const m = baseMailbox({ emailsSentToday: 30 });
+    expect(mailboxIneligibleForGovernedSendExecution(m)).toBeNull();
   });
 });
 

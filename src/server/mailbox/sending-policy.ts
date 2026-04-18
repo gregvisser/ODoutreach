@@ -15,6 +15,23 @@ export type SendingMailboxResolve =
 
 const ACTIVE_LEDGER_STATUS = ["RESERVED", "CONSUMED"] as const;
 
+/**
+ * For worker execution: caller already holds a ledger reservation — do not block on
+ * the mailbox's possibly stale per-day counter; only on connectivity / send gates.
+ */
+export function mailboxIneligibleForGovernedSendExecution(m: {
+  isActive: boolean;
+  connectionStatus: MailboxConnectionStatus;
+  canSend: boolean;
+  isSendingEnabled: boolean;
+}): string | null {
+  if (!m.isActive) return "inactive_mailbox";
+  if (m.connectionStatus !== "CONNECTED") return "mailbox_not_connected";
+  if (!m.canSend) return "sending_not_allowed_for_mailbox";
+  if (!m.isSendingEnabled) return "sending_disabled";
+  return null;
+}
+
 export function mailboxIneligibleReasonFromStaticState(
   m: {
     isActive: boolean;
