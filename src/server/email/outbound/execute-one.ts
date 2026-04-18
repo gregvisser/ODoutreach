@@ -7,6 +7,10 @@ import { resolveValidatedSenderForClient } from "@/server/email/sender-identity"
 
 import { getOutboundEmailProvider } from "../providers";
 import {
+  markReservationConsumedForOutbound,
+  markReservationReleasedForOutbound,
+} from "@/server/mailbox/sending-policy";
+import {
   computeNextRetryAt,
   isRetryableSendFailure,
   maxOutboundSendRetries,
@@ -52,6 +56,9 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
         lastErrorCode: "SUPPRESSED",
       },
     });
+    if (row.mailboxIdentityId) {
+      await markReservationReleasedForOutbound(row.id);
+    }
     return { ok: true };
   }
 
@@ -104,7 +111,13 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     });
 
     if (result.ok === false) {
-      return await handleSendFailure(row.id, row.retryCount, result.error, result.code);
+      return await handleSendFailure(
+        row.id,
+        row.retryCount,
+        result.error,
+        result.code,
+        row.mailboxIdentityId,
+      );
     }
 
     const updated = await prisma.outboundEmail.updateMany({
@@ -134,14 +147,28 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
       return { ok: true };
     }
 
+    if (row.mailboxIdentityId) {
+      await markReservationConsumedForOutbound(row.id);
+    }
+
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return await handleSendFailure(row.id, row.retryCount, msg, "EXCEPTION");
+    return await handleSendFailure(
+      row.id,
+      row.retryCount,
+      msg,
+      "EXCEPTION",
+      row.mailboxIdentityId,
+    );
   }
 }
 
 async function markFailed(id: string, code: string, message: string) {
+  const row = await prisma.outboundEmail.findUnique({
+    where: { id },
+    select: { mailboxIdentityId: true },
+  });
   await prisma.outboundEmail.updateMany({
     where: { id, status: "PROCESSING", providerMessageId: null },
     data: {
@@ -153,13 +180,17 @@ async function markFailed(id: string, code: string, message: string) {
       failureReason: message.slice(0, 2000),
     },
   });
+  if (row?.mailboxIdentityId) {
+    await markReservationReleasedForOutbound(id);
+  }
 }
 
 async function handleSendFailure(
   id: string,
   retryCount: number,
   error: string,
-  code?: string,
+  code: string | undefined,
+  mailboxIdentityId: string | null,
 ): Promise<{ ok: false; error: string }> {
   const max = maxOutboundSendRetries();
   const retryable = isRetryableSendFailure(code, error);
@@ -197,5 +228,8 @@ async function handleSendFailure(
       failureReason: error.slice(0, 2000),
     },
   });
+  if (mailboxIdentityId) {
+    await markReservationReleasedForOutbound(id);
+  }
   return { ok: false, error };
 }

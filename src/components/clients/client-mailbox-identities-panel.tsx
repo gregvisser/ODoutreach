@@ -123,7 +123,46 @@ function providerConnectionHint(
   }
 }
 
-function eligibilityLabel(row: MailboxIdentityRow, now: Date) {
+export type MailboxLedgerReadiness = {
+  bookedInUtcDay: number;
+  cap: number;
+  remaining: number;
+  eligible: boolean;
+  ineligibleCode: string | null;
+  atLedgerCap: boolean;
+};
+
+function ineligibleCodeToMessage(code: string | null): string {
+  if (!code) return "Not eligible to send";
+  switch (code) {
+    case "inactive_mailbox":
+      return "Inactive mailbox";
+    case "mailbox_not_connected":
+      return "Not connected";
+    case "sending_not_allowed_for_mailbox":
+      return "Sending not allowed (capability off)";
+    case "sending_disabled":
+      return "Operator disabled sending";
+    case "daily_send_cap_reached_stale_counter":
+      return "Stored counter may be at cap";
+    case "daily_ledger_cap_reached":
+      return "Daily cap reached (ledger, UTC day)";
+    default:
+      return "Not eligible to send";
+  }
+}
+
+function eligibilityLabel(
+  row: MailboxIdentityRow,
+  now: Date,
+  ledger: MailboxLedgerReadiness | undefined,
+) {
+  if (ledger) {
+    if (ledger.eligible) {
+      return "Eligible for governed sends (UTC day ledger)";
+    }
+    return ineligibleCodeToMessage(ledger.ineligibleCode);
+  }
   const eligible = isMailboxSendingEligible(
     {
       isActive: row.isActive,
@@ -138,7 +177,9 @@ function eligibilityLabel(row: MailboxIdentityRow, now: Date) {
     },
     now,
   );
-  return eligible ? "Ready to send (when pipeline is enabled)" : "Not eligible to send";
+  return eligible
+    ? "Ready to send (when pipeline is enabled — no mailboxes: legacy path)"
+    : "Not eligible to send";
 }
 
 export function ClientMailboxIdentitiesPanel({
@@ -148,6 +189,7 @@ export function ClientMailboxIdentitiesPanel({
   oauthMicrosoftConfigured,
   oauthGoogleConfigured,
   mailboxOAuthBanner,
+  sendingReadinessByMailboxId,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
@@ -155,6 +197,8 @@ export function ClientMailboxIdentitiesPanel({
   oauthMicrosoftConfigured: boolean;
   oauthGoogleConfigured: boolean;
   mailboxOAuthBanner: { type: "ok" | "err"; text: string } | null;
+  /** When the workspace has mailbox rows, the server provides UTC-day ledger counts. */
+  sendingReadinessByMailboxId?: Record<string, MailboxLedgerReadiness>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -240,7 +284,8 @@ export function ClientMailboxIdentitiesPanel({
           <span className="font-medium text-foreground">
             {activeCount}/{MAX_ACTIVE_MAILBOXES_PER_CLIENT}
           </span>
-          . Default send cap per mailbox: {DEFAULT_MAILBOX_DAILY_SEND_CAP}/day (product rule).
+          . Default send cap {DEFAULT_MAILBOX_DAILY_SEND_CAP}/day per mailbox (product rule). Governed
+          sends use a UTC-day reservation ledger; counter column is reconciled on send outcomes.
         </p>
         {canMutate ? (
           <Sheet open={addOpen} onOpenChange={setAddOpen}>
@@ -278,7 +323,7 @@ export function ClientMailboxIdentitiesPanel({
               <TableHead>Provider</TableHead>
               <TableHead>Connection</TableHead>
               <TableHead>Send readiness</TableHead>
-              <TableHead className="text-right">Daily cap / sent</TableHead>
+              <TableHead className="text-right">Cap / booked (UTC day)</TableHead>
               <TableHead className="min-w-[220px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -291,6 +336,7 @@ export function ClientMailboxIdentitiesPanel({
               </TableRow>
             ) : (
               rows.map((row) => {
+                const ledger = sendingReadinessByMailboxId?.[row.id];
                 const oauthOk = oauthReadyForRow(
                   row,
                   oauthMicrosoftConfigured,
@@ -339,7 +385,7 @@ export function ClientMailboxIdentitiesPanel({
                       ) : null}
                     </TableCell>
                     <TableCell className="align-top text-xs text-muted-foreground max-w-[240px]">
-                      {eligibilityLabel(row, now)}
+                      {eligibilityLabel(row, now, ledger)}
                       {!row.isSendingEnabled ? (
                         <span className="mt-1 block text-amber-700 dark:text-amber-300">
                           Sending paused by operator.
@@ -352,12 +398,26 @@ export function ClientMailboxIdentitiesPanel({
                       ) : null}
                     </TableCell>
                     <TableCell className="align-top text-right text-sm tabular-nums">
-                      {row.dailySendCap} / {row.emailsSentToday}
-                      {row.dailyWindowResetAt ? (
-                        <div className="text-xs text-muted-foreground">
-                          Resets UTC {format(new Date(row.dailyWindowResetAt), "MMM d HH:mm")}
-                        </div>
-                      ) : null}
+                      {ledger ? (
+                        <>
+                          <div>
+                            {ledger.bookedInUtcDay} / {ledger.cap}{" "}
+                            <span className="text-muted-foreground">booked (UTC day)</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {ledger.remaining} remaining today (UTC)
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {row.dailySendCap} / {row.emailsSentToday}
+                          {row.dailyWindowResetAt ? (
+                            <div className="text-xs text-muted-foreground">
+                              Resets UTC {format(new Date(row.dailyWindowResetAt), "MMM d HH:mm")}
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="flex flex-wrap gap-1">
