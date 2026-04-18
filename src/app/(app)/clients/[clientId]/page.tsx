@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ClientMicrosoftInboxPanel } from "@/components/clients/client-microsoft-inbox-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
@@ -21,6 +22,7 @@ import {
   isMicrosoftMailboxOAuthConfigured,
 } from "@/server/mailbox/oauth-env";
 import { getClientByIdForStaff } from "@/server/queries/clients";
+import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +48,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
 
   const client = await getClientByIdForStaff(clientId, accessible);
   if (!client) notFound();
+  const graphInbox = await getRecentInboundMailboxMessagesForClient(clientId, 50);
 
   const canMutateMailboxes = await getClientMailboxMutationAllowed(staff, client.id);
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
@@ -70,6 +73,27 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     lastError: m.lastError,
     updatedAt: m.updatedAt.toISOString(),
   }));
+
+  const graphInboxRows = graphInbox.map((m) => ({
+    id: m.id,
+    fromEmail: m.fromEmail,
+    toEmail: m.toEmail,
+    subject: m.subject,
+    bodyPreview: m.bodyPreview,
+    receivedAt: m.receivedAt.toISOString(),
+    conversationId: m.conversationId,
+    mailbox: m.mailbox,
+  }));
+
+  const connectedMicrosoft = client.mailboxIdentities
+    .filter(
+      (m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED",
+    )
+    .map((m) => ({
+      id: m.id,
+      email: m.email,
+      label: m.displayName?.trim() ? m.displayName : m.email,
+    }));
 
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
@@ -156,8 +180,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           <CardDescription>
             Connect each mailbox to Microsoft 365 or Google Workspace with OAuth (tokens stay on the
             server). Up to five active identities; default send cap 30/day per mailbox. Outbound
-            sending and reply sync are not enabled yet — connection is for lifecycle and readiness
-            only.
+            sending is not in this app slice; Microsoft <strong>inbox read</strong> (preview below)
+            uses the same connection with Mail.Read.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -180,6 +204,25 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
                     }
                   : null
             }
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Microsoft inbox (preview)</CardTitle>
+          <CardDescription>
+            Recent messages from connected Microsoft 365 mailboxes, fetched via Microsoft Graph. Same
+            tenant and client scope as other workspace data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClientMicrosoftInboxPanel
+            clientId={client.id}
+            messages={graphInboxRows}
+            microsoftMailboxes={connectedMicrosoft}
+            canSync={canMutateMailboxes}
+            oauthMicrosoftReady={oauthMicrosoftReady}
           />
         </CardContent>
       </Card>
