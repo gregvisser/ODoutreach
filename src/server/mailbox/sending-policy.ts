@@ -32,6 +32,16 @@ export function mailboxIneligibleForGovernedSendExecution(m: {
   return null;
 }
 
+/** True when this identity may participate in governed / pilot sends (connection + send toggles only). */
+export function isMailboxExecutionEligible(m: {
+  isActive: boolean;
+  connectionStatus: MailboxConnectionStatus;
+  canSend: boolean;
+  isSendingEnabled: boolean;
+}): boolean {
+  return mailboxIneligibleForGovernedSendExecution(m) === null;
+}
+
 export function mailboxIneligibleReasonFromStaticState(
   m: {
     isActive: boolean;

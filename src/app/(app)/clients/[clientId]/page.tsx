@@ -12,27 +12,42 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ClientMailboxInboxPanel } from "@/components/clients/client-mailbox-inbox-panel";
+import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { OpensDoorsBriefPanel } from "@/components/clients/opensdoors-brief-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
+import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import { briefLooksFilled, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
+import {
+  REQUIRED_OUTREACH_MAILBOX_COUNT,
+  sumAggregateRemainingAcrossEligible,
+  THEORETICAL_MAX_CLIENT_DAILY_SENDS,
+  OUTREACH_MAILBOX_DAILY_CAP,
+} from "@/lib/outreach-mailbox-model";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
+import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import {
   isGoogleMailboxOAuthConfigured,
   isMicrosoftMailboxOAuthConfigured,
 } from "@/server/mailbox/oauth-env";
-import { loadGovernedSendingMailbox } from "@/server/mailbox/sending-policy";
+import {
+  isMailboxExecutionEligible,
+  loadGovernedSendingMailbox,
+} from "@/server/mailbox/sending-policy";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
 import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-ledger";
+import { getPilotContactSummaryForClient } from "@/server/queries/pilot-contact-summary";
 import { getAccessibleClientIds } from "@/server/tenant/access";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
 
 export const dynamic = "force-dynamic";
 
@@ -63,8 +78,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     client.mailboxIdentities,
   );
   const recentGovernedSends = await getRecentGovernedSendsForClient(clientId, 25);
+  const pilotContactSummary = await getPilotContactSummaryForClient(clientId);
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
   const oauthGoogleReady = isGoogleMailboxOAuthConfigured();
+  const googleSheetsEnvReady = hasGoogleServiceAccountConfig();
+  const rocketReachEnvReady = !!process.env.ROCKETREACH_API_KEY?.trim();
   const governedMailbox = await loadGovernedSendingMailbox(clientId);
   const hasGovernedMailbox = governedMailbox.mode === "governed";
   const oauthReadyForGovernedTest =
@@ -129,10 +147,22 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     senderIdentityStatus: client.senderIdentityStatus,
   });
 
+  const brief = parseOpensDoorsBrief(client.onboarding?.formData);
+  const hasBrief = briefLooksFilled(brief);
+  const suppressionSheetRows = client.suppressionSources.filter((s) => !!s.spreadsheetId?.trim());
+
   const governedReadiness =
     governedMailbox.mode === "governed"
       ? sendingReadiness.find((s) => s.mailboxId === governedMailbox.mailbox.id)
       : undefined;
+
+  const connectedSendingMailboxes = client.mailboxIdentities.filter((m) =>
+    isMailboxExecutionEligible(m),
+  );
+  const connectedSendingCount = connectedSendingMailboxes.length;
+  const aggregateRemaining = sumAggregateRemainingAcrossEligible(sendingReadiness);
+  const productionMailboxReady = connectedSendingCount >= REQUIRED_OUTREACH_MAILBOX_COUNT;
+  const poolCanSendPilot = aggregateRemaining >= 1;
 
   const pilotPrerequisites = {
     clientActive: client.status === "ACTIVE",
@@ -141,18 +171,54 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     oauthReady: oauthReadyForGovernedTest,
     governedMailboxEmail:
       governedMailbox.mode === "governed" ? governedMailbox.mailbox.email : null,
-    cap: governedReadiness?.cap ?? 30,
+    cap: governedReadiness?.cap ?? OUTREACH_MAILBOX_DAILY_CAP,
     bookedInUtcDay: governedReadiness?.bookedInUtcDay ?? 0,
     remaining: governedReadiness?.remaining ?? 0,
     eligible: governedReadiness?.eligible ?? false,
     ineligibleReason: governedReadiness?.ineligibleCode
       ? governedReadiness.ineligibleCode.replace(/_/g, " ")
       : null,
+    requiredOutreachMailboxes: REQUIRED_OUTREACH_MAILBOX_COUNT,
+    connectedSendingCount,
+    aggregateRemaining,
+    theoreticalMaxDaily: THEORETICAL_MAX_CLIENT_DAILY_SENDS,
+    perMailboxCap: OUTREACH_MAILBOX_DAILY_CAP,
+    productionMailboxReady,
+    poolCanSendPilot,
+    pilotAllocationMode: "mailbox_pool" as const,
   };
 
   const checklistItems = [
     { label: "Staff access / app login", ok: true, detail: "OpensDoors staff session" },
     { label: "Client workspace", ok: client.status === "ACTIVE", detail: client.status },
+    {
+      label: "OpensDoors operating brief",
+      ok: hasBrief,
+      detail: hasBrief ? "Brief fields present" : "Fill the brief card below",
+    },
+    {
+      label: "Suppression sheet ids",
+      ok: suppressionSheetRows.length > 0,
+      detail:
+        suppressionSheetRows.length > 0
+          ? `${String(suppressionSheetRows.length)} source(s) with spreadsheet id`
+          : "Paste Sheet URLs on the suppression card",
+    },
+    {
+      label: "Google Sheets API (service account)",
+      ok: googleSheetsEnvReady,
+      detail: googleSheetsEnvReady ? "Env present" : "Set GOOGLE_SERVICE_ACCOUNT_JSON*",
+    },
+    {
+      label: "RocketReach API key (import)",
+      ok: rocketReachEnvReady,
+      detail: rocketReachEnvReady ? "ROCKETREACH_API_KEY present" : "Optional until import",
+    },
+    {
+      label: "Contacts / lead rows",
+      ok: client._count.contacts > 0,
+      detail: `${String(client._count.contacts)} contact(s)`,
+    },
     {
       label: "Microsoft mailbox path",
       ok: client.mailboxIdentities.some((m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED"),
@@ -169,19 +235,27 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       detail: hasGovernedMailbox ? "Mailbox + provider OAuth" : "Connect a mailbox",
     },
     {
+      label: "Five outreach mailboxes (production)",
+      ok: productionMailboxReady,
+      detail: `${String(connectedSendingCount)}/${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} connected sending identities`,
+    },
+    {
       label: "Inbound fetch",
       ok: client.mailboxIdentities.some((m) => m.connectionStatus === "CONNECTED" && (m.provider === "MICROSOFT" || m.provider === "GOOGLE")),
       detail: "Use mailbox inbox preview below",
     },
     {
-      label: "Ledger / readiness",
-      ok: !!(governedReadiness && !governedReadiness.atLedgerCap && governedReadiness.eligible),
-      detail: governedReadiness ? `${governedReadiness.remaining} sends left (UTC day)` : "—",
+      label: "Ledger / pool capacity (UTC day)",
+      ok: aggregateRemaining >= 1,
+      detail: `${String(aggregateRemaining)} remaining / ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} max (${String(OUTREACH_MAILBOX_DAILY_CAP)}×${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} theoretical)`,
     },
     {
       label: "Controlled pilot send",
-      ok: hasGovernedMailbox && oauthReadyForGovernedTest && (governedReadiness?.eligible ?? false),
-      detail: "Small batch card below",
+      ok:
+        hasGovernedMailbox &&
+        oauthReadyForGovernedTest &&
+        poolCanSendPilot,
+      detail: "Uses mailbox pool (not primary-only)",
     },
   ];
 
@@ -224,7 +298,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Tonight launch checklist</CardTitle>
           <CardDescription>
-            Pilot-safe MVP — confirm each line before a live send. Not a full campaign automation suite.
+            Production outreach requires five connected sending mailboxes per client (30 sends/mailbox/day, up
+            to 150/day pooled). Pilots can run with fewer, but full launch is not ready until 5/5 are
+            connected.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -236,9 +312,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <Card className="border-border/80 shadow-sm">
           <CardHeader className="pb-2">
             <CardDescription>Contacts</CardDescription>
-            <CardTitle className="text-3xl tabular-nums">
-              {client._count.contacts}
-            </CardTitle>
+            <CardTitle className="text-3xl tabular-nums">{client._count.contacts}</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Eligible {pilotContactSummary.eligibleCount} · suppressed{" "}
+              {pilotContactSummary.suppressedCount}
+            </p>
           </CardHeader>
         </Card>
         <Card className="border-border/80 shadow-sm">
@@ -275,9 +353,10 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Mailbox identities</CardTitle>
           <CardDescription>
-            Connect each mailbox to Microsoft 365 or Google Workspace with OAuth (tokens stay on the
-            server). Up to five active identities; governed outbound uses a per-mailbox UTC-day
-            reservation ledger (30/day default).             Microsoft Graph <strong>Mail.Read</strong> / <strong>Mail.Send</strong> and Gmail{" "}
+            Production: connect <strong>five</strong> outreach senders per client (cap 30/day each,{" "}
+            {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day pooled across all five). OAuth tokens stay on the
+            server. Governed sends use a per-mailbox UTC-day reservation ledger. Microsoft Graph{" "}
+            <strong>Mail.Read</strong> / <strong>Mail.Send</strong> and Gmail{" "}
             <strong>readonly</strong> / <strong>send</strong> scopes are requested; adding scopes
             requires a mailbox reconnect for consent. Inbox preview (below) uses the same connection.
           </CardDescription>
@@ -345,19 +424,56 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
+          <CardTitle>OpensDoors operating brief</CardTitle>
+          <CardDescription>
+            Client-specific onboarding and messaging context — stored in{" "}
+            <code className="text-xs">ClientOnboarding.formData</code> (no migration). Include the five
+            outreach mailboxes in setup notes; use sender identity notes for naming/ownership. Pilot
+            templates default the controlled pilot card when set.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OpensDoorsBriefPanel clientId={client.id} initial={brief} />
+        </CardContent>
+      </Card>
+
+      <ClientSuppressionInlineCard
+        clientId={client.id}
+        clientName={client.name}
+        googleServiceAccountConfigured={googleSheetsEnvReady}
+        sources={client.suppressionSources.map((s) => ({
+          id: s.id,
+          kind: s.kind,
+          spreadsheetId: s.spreadsheetId,
+          sheetRange: s.sheetRange,
+          syncStatus: s.syncStatus,
+          lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
+          lastError: s.lastError,
+        }))}
+      />
+
+      <RocketReachImportPanel clientId={client.id} apiKeyConfigured={rocketReachEnvReady} />
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
           <CardTitle>Controlled pilot send</CardTitle>
           <CardDescription>
-            Queue a tiny batch (max {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run) through the same governed mailbox and{" "}
-            <code className="text-xs">MailboxSendReservation</code> ledger as contact sends. Type{" "}
-            <span className="font-mono text-xs">SEND PILOT</span> to confirm. Internal /
-            allowlisted domains only unless you extend recipient policy.
+            Queue up to {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run across the{" "}
+            <strong>mailbox pool</strong> (one <code className="text-xs">MailboxSendReservation</code> per
+            message; picks the mailbox with the most remaining slots, primary as tie-break). Governed test send
+            below still uses a single mailbox. Type <span className="font-mono text-xs">SEND PILOT</span> to
+            confirm. Internal / allowlisted domains only unless you extend recipient policy.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ControlledPilotSendPanel
+            key={`pilot-${client.id}-${brief.pilotSubjectTemplate ?? ""}-${brief.pilotBodyTemplate ?? ""}`}
             clientId={client.id}
             canMutate={canMutateMailboxes}
             prerequisites={pilotPrerequisites}
+            initialSubject={brief.pilotSubjectTemplate}
+            initialBody={brief.pilotBodyTemplate}
+            contactSummary={pilotContactSummary}
           />
         </CardContent>
       </Card>
@@ -382,21 +498,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Onboarding snapshot</CardTitle>
-          <CardDescription>Captured during workspace creation</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {client.onboarding ? (
-            <pre className="overflow-x-auto rounded-lg bg-muted/50 p-4 text-xs text-foreground">
-              {JSON.stringify(client.onboarding.formData, null, 2)}
-            </pre>
-          ) : (
-            <p>No onboarding record.</p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

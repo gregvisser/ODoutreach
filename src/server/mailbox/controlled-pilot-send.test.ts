@@ -4,7 +4,8 @@ import type { StaffUser } from "@/generated/prisma/client";
 
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
-    outboundEmail: { findFirst: vi.fn() },
+    clientMailboxIdentity: { findMany: vi.fn() },
+    outboundEmail: { findFirst: vi.fn(), findMany: vi.fn() },
     mailboxSendReservation: { count: vi.fn() },
     $transaction: vi.fn(),
   };
@@ -14,16 +15,6 @@ const { prismaMock } = vi.hoisted(() => {
 vi.mock("@/server/tenant/access", () => ({
   requireClientAccess: vi.fn().mockResolvedValue(undefined),
 }));
-
-vi.mock("@/server/mailbox/sending-policy", async () => {
-  const actual = await vi.importActual<typeof import("@/server/mailbox/sending-policy")>(
-    "@/server/mailbox/sending-policy",
-  );
-  return {
-    ...actual,
-    loadGovernedSendingMailbox: vi.fn(),
-  };
-});
 
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: vi.fn(),
@@ -37,20 +28,48 @@ vi.mock("@/lib/db", () => ({
   prisma: prismaMock,
 }));
 
-import { loadGovernedSendingMailbox } from "@/server/mailbox/sending-policy";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 
 import { queueControlledPilotBatch } from "./controlled-pilot-send";
 
 const staff = { id: "staff1" } as StaffUser;
 
+const baseMailbox = {
+  id: "m1",
+  clientId: "c1",
+  email: "sender@bidlow.co.uk",
+  emailNormalized: "sender@bidlow.co.uk",
+  displayName: null,
+  provider: "MICROSOFT" as const,
+  connectionStatus: "CONNECTED" as const,
+  isActive: true,
+  isPrimary: true,
+  canSend: true,
+  canReceive: true,
+  dailySendCap: 2,
+  isSendingEnabled: true,
+  emailsSentToday: 0,
+  dailyWindowResetAt: null,
+  lastSyncAt: null,
+  lastError: null,
+  oauthState: null,
+  oauthStateExpiresAt: null,
+  providerLinkedUserId: null,
+  connectedAt: new Date(),
+  createdByStaffUserId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 describe("queueControlledPilotBatch", () => {
   beforeEach(() => {
-    vi.mocked(loadGovernedSendingMailbox).mockReset();
     vi.mocked(evaluateSuppression).mockReset();
     prismaMock.outboundEmail.findFirst.mockReset();
+    prismaMock.outboundEmail.findMany.mockReset();
     prismaMock.mailboxSendReservation.count.mockReset();
+    prismaMock.clientMailboxIdentity.findMany.mockReset();
     prismaMock.$transaction.mockReset();
+    prismaMock.clientMailboxIdentity.findMany.mockResolvedValue([]);
   });
 
   it("blocks without confirmation phrase", async () => {
@@ -67,13 +86,7 @@ describe("queueControlledPilotBatch", () => {
     expect(r.error).toMatch(/SEND PILOT/);
   });
 
-  it("blocks without connected mailbox", async () => {
-    vi.mocked(loadGovernedSendingMailbox).mockResolvedValue({
-      mode: "ineligible",
-      reason: "no_connected_sending_mailbox",
-      mailbox: null,
-    });
-
+  it("blocks when no execution-eligible mailboxes", async () => {
     const r = await queueControlledPilotBatch({
       staff,
       clientId: "c1",
@@ -83,21 +96,19 @@ describe("queueControlledPilotBatch", () => {
       bodyText: "B",
     });
     expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/No active connected sending mailboxes/i);
   });
 
-  it("blocks when batch exceeds remaining cap", async () => {
-    vi.mocked(loadGovernedSendingMailbox).mockResolvedValue({
-      mode: "governed",
-      mailbox: {
-        id: "m1",
-        email: "sender@bidlow.co.uk",
-        dailySendCap: 2,
-      },
-    } as never);
-
+  it("blocks when pool has no ledger capacity left", async () => {
+    prismaMock.clientMailboxIdentity.findMany.mockResolvedValue([baseMailbox] as never);
     vi.mocked(evaluateSuppression).mockResolvedValue({ suppressed: false } as never);
     prismaMock.outboundEmail.findFirst.mockResolvedValue(null);
-    prismaMock.mailboxSendReservation.count.mockResolvedValue(2);
+
+    prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof prismaMock) => Promise<unknown>) => {
+      prismaMock.mailboxSendReservation.count.mockResolvedValue(2);
+      return fn(prismaMock as never);
+    });
 
     const r = await queueControlledPilotBatch({
       staff,
@@ -109,19 +120,10 @@ describe("queueControlledPilotBatch", () => {
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.error).toMatch(/capacity|slot/i);
+    expect(r.error).toMatch(/No messages queued/i);
   });
 
   it("respects max batch size constant via parser (enforced before transaction)", async () => {
-    vi.mocked(loadGovernedSendingMailbox).mockResolvedValue({
-      mode: "governed",
-      mailbox: {
-        id: "m1",
-        email: "sender@bidlow.co.uk",
-        dailySendCap: 30,
-      },
-    } as never);
-
     const lines = Array.from({ length: 12 }, (_, i) => `u${String(i)}@bidlow.co.uk`).join("\n");
     const r = await queueControlledPilotBatch({
       staff,
