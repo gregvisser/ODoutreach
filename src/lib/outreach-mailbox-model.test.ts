@@ -2,8 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import {
   assignPilotTargetsToMailboxesGreedy,
+  formatOutreachMailboxCapacityChecklistDetail,
+  getOutreachMailboxCapacityTier,
   sumAggregateRemainingAcrossEligible,
 } from "./outreach-mailbox-model";
+
+describe("getOutreachMailboxCapacityTier", () => {
+  it("returns none when no eligible mailboxes", () => {
+    expect(getOutreachMailboxCapacityTier(0)).toBe("none");
+  });
+  it("returns reduced for 1–4 connected eligible mailboxes", () => {
+    expect(getOutreachMailboxCapacityTier(1)).toBe("reduced");
+    expect(getOutreachMailboxCapacityTier(4)).toBe("reduced");
+  });
+  it("returns max_recommended at five", () => {
+    expect(getOutreachMailboxCapacityTier(5)).toBe("max_recommended");
+  });
+});
+
+describe("formatOutreachMailboxCapacityChecklistDetail", () => {
+  it("describes blocked state at zero", () => {
+    expect(formatOutreachMailboxCapacityChecklistDetail(0)).toContain("connect at least one");
+  });
+  it("describes reduced capacity for 1–4", () => {
+    expect(formatOutreachMailboxCapacityChecklistDetail(2)).toContain("Ready with reduced daily capacity");
+  });
+  it("describes full tier at five", () => {
+    expect(formatOutreachMailboxCapacityChecklistDetail(5)).toContain("Fully provisioned");
+  });
+});
 
 describe("sumAggregateRemainingAcrossEligible", () => {
   it("sums remaining only for eligible, non-ledger-capped mailboxes", () => {

@@ -28,7 +28,7 @@ const FIELDS: { key: keyof OpensDoorsBriefFields; label: string; rows?: number }
   { key: "senderIdentityNotes", label: "Approved sender identity notes", rows: 2 },
   {
     key: "mailboxSetupNotes",
-    label: "Five outreach mailboxes — setup / naming / ownership notes",
+    label: "Outreach mailboxes — setup / naming / ownership (recommended: up to 5)",
     rows: 3,
   },
   { key: "campaignObjective", label: "Campaign objective", rows: 2 },

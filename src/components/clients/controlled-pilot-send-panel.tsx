@@ -28,12 +28,12 @@ export type PilotPrerequisites = {
   remaining: number;
   eligible: boolean;
   ineligibleReason: string | null;
-  requiredOutreachMailboxes: number;
+  recommendedMaxConnectedMailboxes: number;
   connectedSendingCount: number;
   aggregateRemaining: number;
   theoreticalMaxDaily: number;
   perMailboxCap: number;
-  productionMailboxReady: boolean;
+  maxRecommendedCapacityMet: boolean;
   poolCanSendPilot: boolean;
   pilotAllocationMode: "mailbox_pool";
 };
@@ -102,10 +102,12 @@ export function ControlledPilotSendPanel({
       <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">Launch prerequisites</p>
         <p className="mt-2 text-xs text-foreground">
-          Production outreach requires {prerequisites.requiredOutreachMailboxes} connected sending mailboxes
-          per client ({prerequisites.perMailboxCap}/day each, up to {prerequisites.theoreticalMaxDaily}/day
-          pooled). Pilot can run with fewer, but full launch is not ready until{" "}
-          {prerequisites.requiredOutreachMailboxes}/{prerequisites.requiredOutreachMailboxes} are connected.
+          Outreach mailbox capacity: each connected eligible mailbox has up to {prerequisites.perMailboxCap}
+          /day. Total pooled capacity is connected eligible mailboxes × {prerequisites.perMailboxCap}/day.
+          Recommended: up to {prerequisites.recommendedMaxConnectedMailboxes} connected mailboxes (theoretical
+          max {prerequisites.theoreticalMaxDaily}/day when all {prerequisites.recommendedMaxConnectedMailboxes}{" "}
+          have remaining capacity). Fewer mailboxes do not block onboarding or pilot — you run with reduced
+          daily capacity until you add more (up to the recommended maximum).
         </p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>
@@ -136,14 +138,20 @@ export function ControlledPilotSendPanel({
           <li>
             Connected sending mailboxes:{" "}
             <span className="font-mono text-foreground">
-              {prerequisites.connectedSendingCount}/{prerequisites.requiredOutreachMailboxes}
+              {prerequisites.connectedSendingCount}/{prerequisites.recommendedMaxConnectedMailboxes}
             </span>
-            {prerequisites.productionMailboxReady ? (
-              <span className="text-foreground"> — production count met</span>
-            ) : (
-              <span className="text-amber-800 dark:text-amber-200">
+            {prerequisites.connectedSendingCount === 0 ? (
+              <span className="text-destructive"> — connect at least one eligible mailbox</span>
+            ) : prerequisites.maxRecommendedCapacityMet ? (
+              <span className="text-foreground">
                 {" "}
-                — connect more mailboxes for full production capacity
+                — fully provisioned (maximum recommended capacity)
+              </span>
+            ) : (
+              <span className="text-foreground">
+                {" "}
+                — ready with reduced daily capacity (add mailboxes up to{" "}
+                {prerequisites.recommendedMaxConnectedMailboxes} for the highest pooled limit)
               </span>
             )}
           </li>

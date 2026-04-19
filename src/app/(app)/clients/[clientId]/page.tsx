@@ -24,6 +24,7 @@ import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { briefLooksFilled, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import {
+  formatOutreachMailboxCapacityChecklistDetail,
   REQUIRED_OUTREACH_MAILBOX_COUNT,
   sumAggregateRemainingAcrossEligible,
   THEORETICAL_MAX_CLIENT_DAILY_SENDS,
@@ -161,7 +162,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   );
   const connectedSendingCount = connectedSendingMailboxes.length;
   const aggregateRemaining = sumAggregateRemainingAcrossEligible(sendingReadiness);
-  const productionMailboxReady = connectedSendingCount >= REQUIRED_OUTREACH_MAILBOX_COUNT;
+  const maxRecommendedCapacityMet = connectedSendingCount >= REQUIRED_OUTREACH_MAILBOX_COUNT;
   const poolCanSendPilot = aggregateRemaining >= 1;
 
   const pilotPrerequisites = {
@@ -178,12 +179,12 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     ineligibleReason: governedReadiness?.ineligibleCode
       ? governedReadiness.ineligibleCode.replace(/_/g, " ")
       : null,
-    requiredOutreachMailboxes: REQUIRED_OUTREACH_MAILBOX_COUNT,
+    recommendedMaxConnectedMailboxes: REQUIRED_OUTREACH_MAILBOX_COUNT,
     connectedSendingCount,
     aggregateRemaining,
     theoreticalMaxDaily: THEORETICAL_MAX_CLIENT_DAILY_SENDS,
     perMailboxCap: OUTREACH_MAILBOX_DAILY_CAP,
-    productionMailboxReady,
+    maxRecommendedCapacityMet,
     poolCanSendPilot,
     pilotAllocationMode: "mailbox_pool" as const,
   };
@@ -235,9 +236,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       detail: hasGovernedMailbox ? "Mailbox + provider OAuth" : "Connect a mailbox",
     },
     {
-      label: "Five outreach mailboxes (production)",
-      ok: productionMailboxReady,
-      detail: `${String(connectedSendingCount)}/${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} connected sending identities`,
+      label: "Outreach mailbox capacity",
+      ok: connectedSendingCount >= 1,
+      detail: formatOutreachMailboxCapacityChecklistDetail(connectedSendingCount),
     },
     {
       label: "Inbound fetch",
@@ -247,7 +248,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     {
       label: "Ledger / pool capacity (UTC day)",
       ok: aggregateRemaining >= 1,
-      detail: `${String(aggregateRemaining)} remaining / ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} max (${String(OUTREACH_MAILBOX_DAILY_CAP)}×${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} theoretical)`,
+      detail: `${String(aggregateRemaining)} remaining today · theoretical max ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} when ${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} eligible mailboxes have capacity (${String(OUTREACH_MAILBOX_DAILY_CAP)} each)`,
     },
     {
       label: "Controlled pilot send",
