@@ -12,6 +12,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
+import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
+import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
 import {
   Table,
   TableBody,
@@ -55,6 +57,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
   ]);
 
   const googleReady = hasGoogleServiceAccountConfig();
+  const googleSaDisplay = getGoogleServiceAccountDisplayInfo();
   const syncBanner =
     sp.sync === "ok"
       ? { kind: "ok" as const, rows: sp.rows }
@@ -121,8 +124,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
             One-time admin setup: set{" "}
             <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in
             Azure App Service. Operators paste Sheet URLs per workspace on the client page — no per-Sheet
-            Azure settings. Share each Sheet with the service account email (shown on the client
-            suppression card) as Viewer. Env:{" "}
+            Azure settings. Use the exact service account email below to share each Sheet (Viewer). Env:{" "}
             <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> or{" "}
             <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code>.
             {googleReady ? (
@@ -135,6 +137,14 @@ export default async function SuppressionPage({ searchParams }: Props) {
             )}
           </CardDescription>
         </CardHeader>
+        {googleReady && googleSaDisplay.clientEmail ? (
+          <CardContent className="pt-0">
+            <GoogleSheetsSharingCallout
+              serviceAccountEmail={googleSaDisplay.clientEmail}
+              idPrefix="suppression-integration"
+            />
+          </CardContent>
+        ) : null}
       </Card>
 
       <Card className="border-border/80 shadow-sm">

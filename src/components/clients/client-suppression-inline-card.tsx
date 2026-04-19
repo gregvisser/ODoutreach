@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
 
 type SourceRow = {
   id: string;
@@ -65,7 +66,7 @@ export function ClientSuppressionInlineCard({
       });
       if (r.ok) {
         setMsg(
-          `${kind === "EMAIL" ? "Email" : "Domain"} suppression Sheet saved. Share the Sheet with the service account (below) as Viewer, then click Sync.`,
+          `${kind === "EMAIL" ? "Email" : "Domain"} suppression Sheet saved. Share as Viewer with the email below, then click Sync again.`,
         );
         setEmailUrl("");
         setDomainUrl("");
@@ -132,29 +133,11 @@ export function ClientSuppressionInlineCard({
       </CardHeader>
       <CardContent className="space-y-6">
         {googleServiceAccountConfigured && googleServiceAccountClientEmail ? (
-          <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-3 text-sm">
-            <p className="font-medium text-foreground">Share suppression Sheets with</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <code className="break-all rounded bg-background px-2 py-1 text-xs">
-                {googleServiceAccountClientEmail}
-              </code>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={pending}
-                onClick={() => {
-                  void navigator.clipboard.writeText(googleServiceAccountClientEmail);
-                }}
-              >
-                Copy email
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              In Google Sheets: Share → add this address as <strong>Viewer</strong>. Then save the
-              Sheet URL here and click Sync.
-            </p>
-          </div>
+          <GoogleSheetsSharingCallout
+            serviceAccountEmail={googleServiceAccountClientEmail}
+            idPrefix={`client-${clientId}-suppression`}
+            copyDisabled={pending}
+          />
         ) : (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
             <p className="font-medium text-foreground">Google Sheets sync is not configured yet</p>
