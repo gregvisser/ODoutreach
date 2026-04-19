@@ -23,6 +23,12 @@ import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-chec
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { briefLooksFilled, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
+import {
+  REQUIRED_OUTREACH_MAILBOX_COUNT,
+  sumAggregateRemainingAcrossEligible,
+  THEORETICAL_MAX_CLIENT_DAILY_SENDS,
+  OUTREACH_MAILBOX_DAILY_CAP,
+} from "@/lib/outreach-mailbox-model";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -32,7 +38,10 @@ import {
   isGoogleMailboxOAuthConfigured,
   isMicrosoftMailboxOAuthConfigured,
 } from "@/server/mailbox/oauth-env";
-import { loadGovernedSendingMailbox } from "@/server/mailbox/sending-policy";
+import {
+  isMailboxExecutionEligible,
+  loadGovernedSendingMailbox,
+} from "@/server/mailbox/sending-policy";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
@@ -147,6 +156,14 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       ? sendingReadiness.find((s) => s.mailboxId === governedMailbox.mailbox.id)
       : undefined;
 
+  const connectedSendingMailboxes = client.mailboxIdentities.filter((m) =>
+    isMailboxExecutionEligible(m),
+  );
+  const connectedSendingCount = connectedSendingMailboxes.length;
+  const aggregateRemaining = sumAggregateRemainingAcrossEligible(sendingReadiness);
+  const productionMailboxReady = connectedSendingCount >= REQUIRED_OUTREACH_MAILBOX_COUNT;
+  const poolCanSendPilot = aggregateRemaining >= 1;
+
   const pilotPrerequisites = {
     clientActive: client.status === "ACTIVE",
     contactCount: client._count.contacts,
@@ -154,13 +171,21 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     oauthReady: oauthReadyForGovernedTest,
     governedMailboxEmail:
       governedMailbox.mode === "governed" ? governedMailbox.mailbox.email : null,
-    cap: governedReadiness?.cap ?? 30,
+    cap: governedReadiness?.cap ?? OUTREACH_MAILBOX_DAILY_CAP,
     bookedInUtcDay: governedReadiness?.bookedInUtcDay ?? 0,
     remaining: governedReadiness?.remaining ?? 0,
     eligible: governedReadiness?.eligible ?? false,
     ineligibleReason: governedReadiness?.ineligibleCode
       ? governedReadiness.ineligibleCode.replace(/_/g, " ")
       : null,
+    requiredOutreachMailboxes: REQUIRED_OUTREACH_MAILBOX_COUNT,
+    connectedSendingCount,
+    aggregateRemaining,
+    theoreticalMaxDaily: THEORETICAL_MAX_CLIENT_DAILY_SENDS,
+    perMailboxCap: OUTREACH_MAILBOX_DAILY_CAP,
+    productionMailboxReady,
+    poolCanSendPilot,
+    pilotAllocationMode: "mailbox_pool" as const,
   };
 
   const checklistItems = [
@@ -210,19 +235,27 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       detail: hasGovernedMailbox ? "Mailbox + provider OAuth" : "Connect a mailbox",
     },
     {
+      label: "Five outreach mailboxes (production)",
+      ok: productionMailboxReady,
+      detail: `${String(connectedSendingCount)}/${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} connected sending identities`,
+    },
+    {
       label: "Inbound fetch",
       ok: client.mailboxIdentities.some((m) => m.connectionStatus === "CONNECTED" && (m.provider === "MICROSOFT" || m.provider === "GOOGLE")),
       detail: "Use mailbox inbox preview below",
     },
     {
-      label: "Ledger / readiness",
-      ok: !!(governedReadiness && !governedReadiness.atLedgerCap && governedReadiness.eligible),
-      detail: governedReadiness ? `${governedReadiness.remaining} sends left (UTC day)` : "—",
+      label: "Ledger / pool capacity (UTC day)",
+      ok: aggregateRemaining >= 1,
+      detail: `${String(aggregateRemaining)} remaining / ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} max (${String(OUTREACH_MAILBOX_DAILY_CAP)}×${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} theoretical)`,
     },
     {
       label: "Controlled pilot send",
-      ok: hasGovernedMailbox && oauthReadyForGovernedTest && (governedReadiness?.eligible ?? false),
-      detail: "Small batch card below",
+      ok:
+        hasGovernedMailbox &&
+        oauthReadyForGovernedTest &&
+        poolCanSendPilot,
+      detail: "Uses mailbox pool (not primary-only)",
     },
   ];
 
@@ -265,7 +298,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Tonight launch checklist</CardTitle>
           <CardDescription>
-            Pilot-safe MVP — confirm each line before a live send. Not a full campaign automation suite.
+            Production outreach requires five connected sending mailboxes per client (30 sends/mailbox/day, up
+            to 150/day pooled). Pilots can run with fewer, but full launch is not ready until 5/5 are
+            connected.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -318,9 +353,10 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Mailbox identities</CardTitle>
           <CardDescription>
-            Connect each mailbox to Microsoft 365 or Google Workspace with OAuth (tokens stay on the
-            server). Up to five active identities; governed outbound uses a per-mailbox UTC-day
-            reservation ledger (30/day default).             Microsoft Graph <strong>Mail.Read</strong> / <strong>Mail.Send</strong> and Gmail{" "}
+            Production: connect <strong>five</strong> outreach senders per client (cap 30/day each,{" "}
+            {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day pooled across all five). OAuth tokens stay on the
+            server. Governed sends use a per-mailbox UTC-day reservation ledger. Microsoft Graph{" "}
+            <strong>Mail.Read</strong> / <strong>Mail.Send</strong> and Gmail{" "}
             <strong>readonly</strong> / <strong>send</strong> scopes are requested; adding scopes
             requires a mailbox reconnect for consent. Inbox preview (below) uses the same connection.
           </CardDescription>
@@ -391,8 +427,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           <CardTitle>OpensDoors operating brief</CardTitle>
           <CardDescription>
             Client-specific onboarding and messaging context — stored in{" "}
-            <code className="text-xs">ClientOnboarding.formData</code> (no migration). Used as defaults
-            for the controlled pilot card when templates are set.
+            <code className="text-xs">ClientOnboarding.formData</code> (no migration). Include the five
+            outreach mailboxes in setup notes; use sender identity notes for naming/ownership. Pilot
+            templates default the controlled pilot card when set.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -421,10 +458,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Controlled pilot send</CardTitle>
           <CardDescription>
-            Queue a tiny batch (max {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run) through the same governed mailbox and{" "}
-            <code className="text-xs">MailboxSendReservation</code> ledger as contact sends. Type{" "}
-            <span className="font-mono text-xs">SEND PILOT</span> to confirm. Internal /
-            allowlisted domains only unless you extend recipient policy.
+            Queue up to {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run across the{" "}
+            <strong>mailbox pool</strong> (one <code className="text-xs">MailboxSendReservation</code> per
+            message; picks the mailbox with the most remaining slots, primary as tie-break). Governed test send
+            below still uses a single mailbox. Type <span className="font-mono text-xs">SEND PILOT</span> to
+            confirm. Internal / allowlisted domains only unless you extend recipient policy.
           </CardDescription>
         </CardHeader>
         <CardContent>

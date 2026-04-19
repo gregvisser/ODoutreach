@@ -26,6 +26,11 @@ const FIELDS: { key: keyof OpensDoorsBriefFields; label: string; rows?: number }
   { key: "assetNotes", label: "Attachments / assets / notes", rows: 2 },
   { key: "complianceNotes", label: "Compliance notes", rows: 2 },
   { key: "senderIdentityNotes", label: "Approved sender identity notes", rows: 2 },
+  {
+    key: "mailboxSetupNotes",
+    label: "Five outreach mailboxes — setup / naming / ownership notes",
+    rows: 3,
+  },
   { key: "campaignObjective", label: "Campaign objective", rows: 2 },
   { key: "sequenceNotes", label: "Sequence / message notes", rows: 3 },
   { key: "suppressionSheetUrl", label: "Suppression Google Sheet URL (reference)", rows: 1 },

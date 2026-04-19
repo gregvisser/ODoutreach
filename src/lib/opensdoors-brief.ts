@@ -12,6 +12,8 @@ export const opensDoorsBriefFieldsSchema = z.object({
   assetNotes: z.string().optional(),
   complianceNotes: z.string().optional(),
   senderIdentityNotes: z.string().optional(),
+  /** How the five outreach mailboxes are named, owned, or handed off */
+  mailboxSetupNotes: z.string().optional(),
   campaignObjective: z.string().optional(),
   sequenceNotes: z.string().optional(),
   suppressionSheetUrl: z.string().optional(),

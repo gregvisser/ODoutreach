@@ -13,9 +13,10 @@ export type ControlledPilotSendActionResult =
       queued: number;
       blocked: Array<{ email: string; reason: string }>;
       outboundIds: string[];
-      mailboxEmail: string;
-      remainingCapacity: number;
-      cap: number;
+      allocationMode: "mailbox_pool";
+      aggregateRemainingAfter: number;
+      perMailboxCap: number;
+      mailboxesUsed: Array<{ mailboxIdentityId: string; email: string; count: number }>;
     }
   | { ok: false; error: string };
 
@@ -56,14 +57,20 @@ export async function submitControlledPilotBatchAction(
       ? ` ${String(r.blocked.length)} skipped (${r.blocked.map((b) => `${b.email}: ${b.reason}`).join("; ")}).`
       : "";
 
+  const mbSummary =
+    r.mailboxesUsed.length > 0
+      ? ` Mailboxes: ${r.mailboxesUsed.map((m) => `${m.email} (${String(m.count)})`).join(", ")}.`
+      : "";
+
   return {
     ok: true,
-    message: `Queued ${String(r.queued)} message(s) through ${r.mailboxEmail}.${blockSummary} Remaining capacity today (UTC): ${String(r.remainingCapacity)} / ${String(r.cap)}.`,
+    message: `Queued ${String(r.queued)} message(s) via mailbox pool (ledger per mailbox).${mbSummary}${blockSummary} Aggregate remaining capacity today (UTC) across pool: ${String(r.aggregateRemainingAfter)} (≈${String(r.perMailboxCap)}/mailbox when caps match).`,
     queued: r.queued,
     blocked: r.blocked,
     outboundIds: r.outboundIds,
-    mailboxEmail: r.mailboxEmail,
-    remainingCapacity: r.remainingCapacity,
-    cap: r.cap,
+    allocationMode: r.allocationMode,
+    aggregateRemainingAfter: r.aggregateRemainingAfter,
+    perMailboxCap: r.perMailboxCap,
+    mailboxesUsed: r.mailboxesUsed,
   };
 }
