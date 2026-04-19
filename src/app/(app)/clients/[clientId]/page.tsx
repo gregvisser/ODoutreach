@@ -12,15 +12,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ClientMailboxInboxPanel } from "@/components/clients/client-mailbox-inbox-panel";
+import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { OpensDoorsBriefPanel } from "@/components/clients/opensdoors-brief-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
+import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import { briefLooksFilled, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
+import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import {
   isGoogleMailboxOAuthConfigured,
@@ -31,8 +37,8 @@ import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
 import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-ledger";
+import { getPilotContactSummaryForClient } from "@/server/queries/pilot-contact-summary";
 import { getAccessibleClientIds } from "@/server/tenant/access";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
 
 export const dynamic = "force-dynamic";
 
@@ -63,8 +69,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     client.mailboxIdentities,
   );
   const recentGovernedSends = await getRecentGovernedSendsForClient(clientId, 25);
+  const pilotContactSummary = await getPilotContactSummaryForClient(clientId);
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
   const oauthGoogleReady = isGoogleMailboxOAuthConfigured();
+  const googleSheetsEnvReady = hasGoogleServiceAccountConfig();
+  const rocketReachEnvReady = !!process.env.ROCKETREACH_API_KEY?.trim();
   const governedMailbox = await loadGovernedSendingMailbox(clientId);
   const hasGovernedMailbox = governedMailbox.mode === "governed";
   const oauthReadyForGovernedTest =
@@ -129,6 +138,10 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     senderIdentityStatus: client.senderIdentityStatus,
   });
 
+  const brief = parseOpensDoorsBrief(client.onboarding?.formData);
+  const hasBrief = briefLooksFilled(brief);
+  const suppressionSheetRows = client.suppressionSources.filter((s) => !!s.spreadsheetId?.trim());
+
   const governedReadiness =
     governedMailbox.mode === "governed"
       ? sendingReadiness.find((s) => s.mailboxId === governedMailbox.mailbox.id)
@@ -153,6 +166,34 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   const checklistItems = [
     { label: "Staff access / app login", ok: true, detail: "OpensDoors staff session" },
     { label: "Client workspace", ok: client.status === "ACTIVE", detail: client.status },
+    {
+      label: "OpensDoors operating brief",
+      ok: hasBrief,
+      detail: hasBrief ? "Brief fields present" : "Fill the brief card below",
+    },
+    {
+      label: "Suppression sheet ids",
+      ok: suppressionSheetRows.length > 0,
+      detail:
+        suppressionSheetRows.length > 0
+          ? `${String(suppressionSheetRows.length)} source(s) with spreadsheet id`
+          : "Paste Sheet URLs on the suppression card",
+    },
+    {
+      label: "Google Sheets API (service account)",
+      ok: googleSheetsEnvReady,
+      detail: googleSheetsEnvReady ? "Env present" : "Set GOOGLE_SERVICE_ACCOUNT_JSON*",
+    },
+    {
+      label: "RocketReach API key (import)",
+      ok: rocketReachEnvReady,
+      detail: rocketReachEnvReady ? "ROCKETREACH_API_KEY present" : "Optional until import",
+    },
+    {
+      label: "Contacts / lead rows",
+      ok: client._count.contacts > 0,
+      detail: `${String(client._count.contacts)} contact(s)`,
+    },
     {
       label: "Microsoft mailbox path",
       ok: client.mailboxIdentities.some((m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED"),
@@ -236,9 +277,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <Card className="border-border/80 shadow-sm">
           <CardHeader className="pb-2">
             <CardDescription>Contacts</CardDescription>
-            <CardTitle className="text-3xl tabular-nums">
-              {client._count.contacts}
-            </CardTitle>
+            <CardTitle className="text-3xl tabular-nums">{client._count.contacts}</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Eligible {pilotContactSummary.eligibleCount} · suppressed{" "}
+              {pilotContactSummary.suppressedCount}
+            </p>
           </CardHeader>
         </Card>
         <Card className="border-border/80 shadow-sm">
@@ -345,6 +388,37 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
+          <CardTitle>OpensDoors operating brief</CardTitle>
+          <CardDescription>
+            Client-specific onboarding and messaging context — stored in{" "}
+            <code className="text-xs">ClientOnboarding.formData</code> (no migration). Used as defaults
+            for the controlled pilot card when templates are set.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OpensDoorsBriefPanel clientId={client.id} initial={brief} />
+        </CardContent>
+      </Card>
+
+      <ClientSuppressionInlineCard
+        clientId={client.id}
+        clientName={client.name}
+        googleServiceAccountConfigured={googleSheetsEnvReady}
+        sources={client.suppressionSources.map((s) => ({
+          id: s.id,
+          kind: s.kind,
+          spreadsheetId: s.spreadsheetId,
+          sheetRange: s.sheetRange,
+          syncStatus: s.syncStatus,
+          lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
+          lastError: s.lastError,
+        }))}
+      />
+
+      <RocketReachImportPanel clientId={client.id} apiKeyConfigured={rocketReachEnvReady} />
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
           <CardTitle>Controlled pilot send</CardTitle>
           <CardDescription>
             Queue a tiny batch (max {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run) through the same governed mailbox and{" "}
@@ -355,9 +429,13 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </CardHeader>
         <CardContent>
           <ControlledPilotSendPanel
+            key={`pilot-${client.id}-${brief.pilotSubjectTemplate ?? ""}-${brief.pilotBodyTemplate ?? ""}`}
             clientId={client.id}
             canMutate={canMutateMailboxes}
             prerequisites={pilotPrerequisites}
+            initialSubject={brief.pilotSubjectTemplate}
+            initialBody={brief.pilotBodyTemplate}
+            contactSummary={pilotContactSummary}
           />
         </CardContent>
       </Card>
@@ -382,21 +460,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Onboarding snapshot</CardTitle>
-          <CardDescription>Captured during workspace creation</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {client.onboarding ? (
-            <pre className="overflow-x-auto rounded-lg bg-muted/50 p-4 text-xs text-foreground">
-              {JSON.stringify(client.onboarding.formData, null, 2)}
-            </pre>
-          ) : (
-            <p>No onboarding record.</p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

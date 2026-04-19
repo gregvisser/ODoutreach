@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+import type { PilotContactSummary } from "@/lib/pilot-contact-types";
+
 export type PilotPrerequisites = {
   clientActive: boolean;
   contactCount: number;
@@ -32,15 +34,29 @@ type Props = {
   clientId: string;
   canMutate: boolean;
   prerequisites: PilotPrerequisites;
+  /** Defaults from OpensDoors brief templates when present */
+  initialSubject?: string;
+  initialBody?: string;
+  contactSummary?: PilotContactSummary;
 };
 
-export function ControlledPilotSendPanel({ clientId, canMutate, prerequisites }: Props) {
+export function ControlledPilotSendPanel({
+  clientId,
+  canMutate,
+  prerequisites,
+  initialSubject,
+  initialBody,
+  contactSummary,
+}: Props) {
   const router = useRouter();
   const [confirmation, setConfirmation] = useState("");
   const [recipients, setRecipients] = useState("");
-  const [subject, setSubject] = useState("Pilot — ODoutreach");
+  const [subject, setSubject] = useState(
+    initialSubject?.trim() || "Pilot — ODoutreach",
+  );
   const [body, setBody] = useState(
-    "Hello — this is a controlled pilot message from our workspace. Reply if you have questions.",
+    initialBody?.trim() ||
+      "Hello — this is a controlled pilot message from our workspace. Reply if you have questions.",
   );
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -89,6 +105,19 @@ export function ControlledPilotSendPanel({ clientId, canMutate, prerequisites }:
           <li>
             Contacts in workspace:{" "}
             <span className="font-mono text-foreground">{prerequisites.contactCount}</span>
+            {contactSummary ? (
+              <>
+                {" "}
+                · eligible (not suppressed){" "}
+                <span className="font-mono text-foreground">
+                  {contactSummary.eligibleCount}
+                </span>{" "}
+                · suppressed{" "}
+                <span className="font-mono text-foreground">
+                  {contactSummary.suppressedCount}
+                </span>
+              </>
+            ) : null}
           </li>
           <li>
             Governed sending mailbox:{" "}
@@ -128,6 +157,24 @@ export function ControlledPilotSendPanel({ clientId, canMutate, prerequisites }:
         </p>
       ) : (
         <form onSubmit={onSubmit} className="space-y-4">
+          {contactSummary &&
+          contactSummary.eligibleEmailsSample.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setRecipients(contactSummary.eligibleEmailsSample.join("\n"))
+                }
+              >
+                Fill recipients from contacts (up to 10 eligible)
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Uses non-suppressed emails only; allowlist policy still applies at send time.
+              </span>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label htmlFor="pilot-recipients">Recipients (one per line, commas ok; max {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS})</Label>
             <Textarea
