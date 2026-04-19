@@ -12,10 +12,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ClientMailboxInboxPanel } from "@/components/clients/client-mailbox-inbox-panel";
+import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
+import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
+import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
@@ -126,6 +129,62 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     senderIdentityStatus: client.senderIdentityStatus,
   });
 
+  const governedReadiness =
+    governedMailbox.mode === "governed"
+      ? sendingReadiness.find((s) => s.mailboxId === governedMailbox.mailbox.id)
+      : undefined;
+
+  const pilotPrerequisites = {
+    clientActive: client.status === "ACTIVE",
+    contactCount: client._count.contacts,
+    hasGovernedMailbox,
+    oauthReady: oauthReadyForGovernedTest,
+    governedMailboxEmail:
+      governedMailbox.mode === "governed" ? governedMailbox.mailbox.email : null,
+    cap: governedReadiness?.cap ?? 30,
+    bookedInUtcDay: governedReadiness?.bookedInUtcDay ?? 0,
+    remaining: governedReadiness?.remaining ?? 0,
+    eligible: governedReadiness?.eligible ?? false,
+    ineligibleReason: governedReadiness?.ineligibleCode
+      ? governedReadiness.ineligibleCode.replace(/_/g, " ")
+      : null,
+  };
+
+  const checklistItems = [
+    { label: "Staff access / app login", ok: true, detail: "OpensDoors staff session" },
+    { label: "Client workspace", ok: client.status === "ACTIVE", detail: client.status },
+    {
+      label: "Microsoft mailbox path",
+      ok: client.mailboxIdentities.some((m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED"),
+      detail: "At least one connected Microsoft identity",
+    },
+    {
+      label: "Google Workspace mailbox path",
+      ok: client.mailboxIdentities.some((m) => m.provider === "GOOGLE" && m.connectionStatus === "CONNECTED"),
+      detail: "At least one connected Google identity",
+    },
+    {
+      label: "Governed sender + OAuth env",
+      ok: hasGovernedMailbox && oauthReadyForGovernedTest,
+      detail: hasGovernedMailbox ? "Mailbox + provider OAuth" : "Connect a mailbox",
+    },
+    {
+      label: "Inbound fetch",
+      ok: client.mailboxIdentities.some((m) => m.connectionStatus === "CONNECTED" && (m.provider === "MICROSOFT" || m.provider === "GOOGLE")),
+      detail: "Use mailbox inbox preview below",
+    },
+    {
+      label: "Ledger / readiness",
+      ok: !!(governedReadiness && !governedReadiness.atLedgerCap && governedReadiness.eligible),
+      detail: governedReadiness ? `${governedReadiness.remaining} sends left (UTC day)` : "—",
+    },
+    {
+      label: "Controlled pilot send",
+      ok: hasGovernedMailbox && oauthReadyForGovernedTest && (governedReadiness?.eligible ?? false),
+      detail: "Small batch card below",
+    },
+  ];
+
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -160,6 +219,18 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           </Link>
         </div>
       </div>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Tonight launch checklist</CardTitle>
+          <CardDescription>
+            Pilot-safe MVP — confirm each line before a live send. Not a full campaign automation suite.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TonightLaunchChecklist items={checklistItems} />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card className="border-border/80 shadow-sm">
@@ -240,9 +311,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Recent governed sends</CardTitle>
           <CardDescription>
-            Read-only ledger for governed test emails (same UTC-day reservation as the mailbox
-            table). Use this to reconcile “booked” counts with actual rows — no database access
-            required.
+            Read-only ledger for governed test and controlled pilot sends (same UTC-day reservation
+            as the mailbox table). Use this to reconcile “booked” counts with actual rows — no
+            database access required.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -268,6 +339,25 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
             canMutate={canMutateMailboxes}
             hasGovernedMailbox={hasGovernedMailbox}
             oauthReadyForGovernedTest={oauthReadyForGovernedTest}
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Controlled pilot send</CardTitle>
+          <CardDescription>
+            Queue a tiny batch (max {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run) through the same governed mailbox and{" "}
+            <code className="text-xs">MailboxSendReservation</code> ledger as contact sends. Type{" "}
+            <span className="font-mono text-xs">SEND PILOT</span> to confirm. Internal /
+            allowlisted domains only unless you extend recipient policy.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ControlledPilotSendPanel
+            clientId={client.id}
+            canMutate={canMutateMailboxes}
+            prerequisites={pilotPrerequisites}
           />
         </CardContent>
       </Card>

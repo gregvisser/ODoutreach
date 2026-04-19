@@ -17,7 +17,8 @@ describe("encryptMailboxCredentialJson / decryptMailboxCredentialJson", () => {
     };
 
     const enc = encryptMailboxCredentialJson(original);
-    expect(enc).not.toContain("rt");
+    expect(enc).not.toContain('"refreshToken"');
+    expect(enc).not.toContain("offline_access");
     const back = decryptMailboxCredentialJson(enc);
     expect(back).toEqual(original);
   });
