@@ -7,14 +7,44 @@ export type MailboxReadinessSlice = {
   remaining: number;
 };
 
-/** OpensDoors: each fully onboarded client targets five connected outreach senders. */
+/**
+ * Recommended maximum: up to this many connected eligible sending mailboxes for the highest pooled
+ * daily capacity (5 × per-mailbox cap). Fewer mailboxes still allow onboarding, pilot, and production
+ * sends at reduced total capacity.
+ */
 export const REQUIRED_OUTREACH_MAILBOX_COUNT = MAX_ACTIVE_MAILBOXES_PER_CLIENT;
 
 export const OUTREACH_MAILBOX_DAILY_CAP = DEFAULT_MAILBOX_DAILY_SEND_CAP;
 
-/** 5 × 30 theoretical maximum when all mailboxes are connected and empty for the UTC day. */
+/** 5 × 30 theoretical maximum when five eligible mailboxes are connected and empty for the UTC day. */
 export const THEORETICAL_MAX_CLIENT_DAILY_SENDS =
   REQUIRED_OUTREACH_MAILBOX_COUNT * OUTREACH_MAILBOX_DAILY_CAP;
+
+export type OutreachMailboxCapacityTier = "none" | "reduced" | "max_recommended";
+
+/** Eligible = connected sending mailboxes (same notion as checklist / pilot counts). */
+export function getOutreachMailboxCapacityTier(
+  connectedEligibleCount: number,
+): OutreachMailboxCapacityTier {
+  if (connectedEligibleCount <= 0) return "none";
+  if (connectedEligibleCount >= REQUIRED_OUTREACH_MAILBOX_COUNT) return "max_recommended";
+  return "reduced";
+}
+
+/** Copy for the A–Z launch checklist “Outreach mailbox capacity” row. */
+export function formatOutreachMailboxCapacityChecklistDetail(
+  connectedEligibleCount: number,
+): string {
+  const max = REQUIRED_OUTREACH_MAILBOX_COUNT;
+  const tier = getOutreachMailboxCapacityTier(connectedEligibleCount);
+  if (tier === "none") {
+    return `0/${String(max)} — connect at least one eligible sending mailbox`;
+  }
+  if (tier === "max_recommended") {
+    return `Fully provisioned — ${String(max)}/${String(max)} (maximum recommended capacity)`;
+  }
+  return `Ready with reduced daily capacity — ${String(connectedEligibleCount)}/${String(max)} connected (recommended: up to ${String(max)})`;
+}
 
 /**
  * Sum of remaining ledger slots across mailboxes that are eligible to send (connection + not at ledger cap).

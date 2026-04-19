@@ -331,7 +331,8 @@ export function ClientMailboxIdentitiesPanel({
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
-                  No mailbox identities yet. Add up to five active mailboxes per client.
+                  No mailbox identities yet. Add active mailboxes as needed (up to five per client for
+                  maximum recommended daily capacity).
                 </TableCell>
               </TableRow>
             ) : (
