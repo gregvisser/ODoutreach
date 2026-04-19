@@ -1,5 +1,6 @@
 import "server-only";
 
+import { CONTROLLED_PILOT_METADATA_KIND } from "@/lib/controlled-pilot-constants";
 import { shortenIdempotencyKey } from "@/lib/governed-send-display";
 import { prisma } from "@/lib/db";
 
@@ -18,9 +19,8 @@ export type GovernedSendLedgerRow = {
 };
 
 const GOVERNED_TEST_KIND = "governedTestSend" as const;
-
 /**
- * Recent governed test sends for a client (metadata.kind = governedTestSend), newest first.
+ * Recent governed / pilot sends for a client (metadata.kind = governed test or controlled pilot), newest first.
  * Read-only; joins mailbox and reservation when present.
  */
 export async function getRecentGovernedSendsForClient(
@@ -30,7 +30,10 @@ export async function getRecentGovernedSendsForClient(
   const rows = await prisma.outboundEmail.findMany({
     where: {
       clientId,
-      metadata: { path: ["kind"], equals: GOVERNED_TEST_KIND },
+      OR: [
+        { metadata: { path: ["kind"], equals: GOVERNED_TEST_KIND } },
+        { metadata: { path: ["kind"], equals: CONTROLLED_PILOT_METADATA_KIND } },
+      ],
     },
     include: {
       sendReservation: true,
