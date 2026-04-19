@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
+
 /**
  * Loads Google service account JSON from env.
  * Prefer `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` in production to avoid escaping issues.
@@ -19,9 +21,7 @@ export function loadServiceAccountCredentials(): Record<string, unknown> {
   );
 }
 
+/** True only when env is set and JSON parses with a usable `client_email` (same bar as UI). */
 export function hasGoogleServiceAccountConfig(): boolean {
-  return !!(
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?.trim() ||
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
-  );
+  return getGoogleServiceAccountDisplayInfo().configured;
 }

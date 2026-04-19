@@ -11,10 +11,12 @@ import {
 } from "@/lib/normalize";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
+import { loadServiceAccountCredentials } from "./auth";
+import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
 import {
-  hasGoogleServiceAccountConfig,
-  loadServiceAccountCredentials,
-} from "./auth";
+  formatSuppressionSyncUserError,
+  SUPPRESSION_SYNC_MESSAGES,
+} from "./suppression-sync-errors";
 
 export type SuppressionSyncInput = {
   /** Must match the row in DB — caller verifies tenant access. */
@@ -25,6 +27,8 @@ export type SuppressionSyncResult = {
   ok: boolean;
   rowsWritten?: number;
   error?: string;
+  /** Non-fatal hint when sync succeeded but nothing usable was found in cells. */
+  warning?: string;
 };
 
 function flattenSheetValues(values: string[][] | null | undefined): string[] {
@@ -56,30 +60,28 @@ export async function syncSuppressionSourceFromGoogle(
 
   const { clientId, spreadsheetId, kind, sheetRange } = source;
   if (!spreadsheetId) {
+    const err = SUPPRESSION_SYNC_MESSAGES.spreadsheetMissing;
     await prisma.suppressionSource.update({
       where: { id: source.id },
       data: {
         syncStatus: "ERROR",
-        lastError: "Spreadsheet ID is not configured",
+        lastError: err,
       },
     });
-    return { ok: false, error: "Spreadsheet ID is not configured" };
+    return { ok: false, error: err };
   }
 
-  if (!hasGoogleServiceAccountConfig()) {
+  const saDisplay = getGoogleServiceAccountDisplayInfo();
+  if (!saDisplay.configured) {
+    const err = SUPPRESSION_SYNC_MESSAGES.adminCredentialsRequired;
     await prisma.suppressionSource.update({
       where: { id: source.id },
       data: {
         syncStatus: "ERROR",
-        lastError:
-          "Google credentials not configured (set GOOGLE_SERVICE_ACCOUNT_JSON or _BASE64)",
+        lastError: err,
       },
     });
-    return {
-      ok: false,
-      error:
-        "Google service account not configured — set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64",
-    };
+    return { ok: false, error: err };
   }
 
   await prisma.suppressionSource.update({
@@ -112,6 +114,18 @@ export async function syncSuppressionSourceFromGoogle(
       cells: flat,
     });
 
+    let warning: string | undefined;
+    if (written === 0) {
+      if (flat.length === 0) {
+        warning = SUPPRESSION_SYNC_MESSAGES.noDataInRange;
+      } else {
+        warning =
+          kind === "EMAIL"
+            ? SUPPRESSION_SYNC_MESSAGES.noValidEmails
+            : SUPPRESSION_SYNC_MESSAGES.noValidDomains;
+      }
+    }
+
     await prisma.suppressionSource.update({
       where: { id: source.id },
       data: {
@@ -123,17 +137,18 @@ export async function syncSuppressionSourceFromGoogle(
 
     await refreshContactSuppressionFlagsForClient(clientId);
 
-    return { ok: true, rowsWritten: written };
+    return { ok: true, rowsWritten: written, warning };
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const raw = e instanceof Error ? e.message : String(e);
+    const friendly = formatSuppressionSyncUserError(raw, saDisplay.clientEmail);
     await prisma.suppressionSource.update({
       where: { id: source.id },
       data: {
         syncStatus: "ERROR",
-        lastError: message.slice(0, 2000),
+        lastError: friendly.slice(0, 2000),
       },
     });
-    return { ok: false, error: message };
+    return { ok: false, error: friendly };
   }
 }
 

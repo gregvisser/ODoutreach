@@ -118,16 +118,14 @@ export default async function SuppressionPage({ searchParams }: Props) {
         <CardHeader>
           <CardTitle>Integration status</CardTitle>
           <CardDescription>
-            Share each spreadsheet with the Google service account email from your JSON key.
-            Env:{" "}
-            <code className="rounded bg-muted px-1 text-xs">
-              GOOGLE_SERVICE_ACCOUNT_JSON
-            </code>{" "}
-            or{" "}
-            <code className="rounded bg-muted px-1 text-xs">
-              GOOGLE_SERVICE_ACCOUNT_JSON_BASE64
-            </code>
-            .{googleReady ? (
+            One-time admin setup: set{" "}
+            <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in
+            Azure App Service. Operators paste Sheet URLs per workspace on the client page — no per-Sheet
+            Azure settings. Share each Sheet with the service account email (shown on the client
+            suppression card) as Viewer. Env:{" "}
+            <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> or{" "}
+            <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code>.
+            {googleReady ? (
               <span className="text-foreground"> Credentials detected.</span>
             ) : (
               <span className="text-amber-700 dark:text-amber-400">
