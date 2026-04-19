@@ -33,7 +33,7 @@ import {
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
+import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import {
   isGoogleMailboxOAuthConfigured,
@@ -82,7 +82,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   const pilotContactSummary = await getPilotContactSummaryForClient(clientId);
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
   const oauthGoogleReady = isGoogleMailboxOAuthConfigured();
-  const googleSheetsEnvReady = hasGoogleServiceAccountConfig();
+  const googleSaDisplay = getGoogleServiceAccountDisplayInfo();
+  const googleSheetsEnvReady = googleSaDisplay.configured;
   const rocketReachEnvReady = !!process.env.ROCKETREACH_API_KEY?.trim();
   const governedMailbox = await loadGovernedSendingMailbox(clientId);
   const hasGovernedMailbox = governedMailbox.mode === "governed";
@@ -442,6 +443,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         clientId={client.id}
         clientName={client.name}
         googleServiceAccountConfigured={googleSheetsEnvReady}
+        googleServiceAccountClientEmail={googleSaDisplay.clientEmail}
         sources={client.suppressionSources.map((s) => ({
           id: s.id,
           kind: s.kind,

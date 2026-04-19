@@ -7,6 +7,8 @@ import type { SuppressionListKind } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { extractGoogleSpreadsheetId } from "@/lib/spreadsheet-url";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { syncSuppressionSourceFromGoogle } from "@/server/integrations/google-sheets/suppression-sync";
+import { SUPPRESSION_SYNC_MESSAGES } from "@/server/integrations/google-sheets/suppression-sync-errors";
 import { requireClientAccess } from "@/server/tenant/access";
 
 const schema = z.object({
@@ -78,4 +80,59 @@ export async function upsertSuppressionSpreadsheetAction(
   revalidatePath(`/clients/${parsed.data.clientId}`);
   revalidatePath("/suppression");
   return { ok: true };
+}
+
+export type SyncClientSuppressionSourceResult =
+  | { ok: true; rowsWritten: number; warning?: string }
+  | { ok: false; error: string };
+
+async function syncClientSuppressionSourceByKind(
+  clientId: string,
+  kind: SuppressionListKind,
+): Promise<SyncClientSuppressionSourceResult> {
+  const staff = await requireOpensDoorsStaff();
+  try {
+    await requireClientAccess(staff, clientId);
+  } catch {
+    return { ok: false, error: "Access denied." };
+  }
+
+  const source = await prisma.suppressionSource.findFirst({
+    where: { clientId, kind },
+  });
+  if (!source) {
+    return {
+      ok: false,
+      error: "Save a Google Sheet URL for this list first, then sync.",
+    };
+  }
+  if (!source.spreadsheetId?.trim()) {
+    return { ok: false, error: SUPPRESSION_SYNC_MESSAGES.spreadsheetMissing };
+  }
+
+  const result = await syncSuppressionSourceFromGoogle({ sourceId: source.id });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/contacts");
+  revalidatePath("/suppression");
+
+  if (!result.ok) {
+    return { ok: false, error: result.error ?? "Sync failed." };
+  }
+  return {
+    ok: true,
+    rowsWritten: result.rowsWritten ?? 0,
+    warning: result.warning,
+  };
+}
+
+export async function syncClientEmailSuppressionSourceAction(
+  clientId: string,
+): Promise<SyncClientSuppressionSourceResult> {
+  return syncClientSuppressionSourceByKind(clientId, "EMAIL");
+}
+
+export async function syncClientDomainSuppressionSourceAction(
+  clientId: string,
+): Promise<SyncClientSuppressionSourceResult> {
+  return syncClientSuppressionSourceByKind(clientId, "DOMAIN");
 }
