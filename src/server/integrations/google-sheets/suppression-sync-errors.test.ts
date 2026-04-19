@@ -9,6 +9,7 @@ describe("formatSuppressionSyncUserError", () => {
     const r = formatSuppressionSyncUserError("PERMISSION_DENIED: The caller does not have permission", sa);
     expect(r).toContain(sa);
     expect(r.toLowerCase()).toContain("viewer");
+    expect(r.toLowerCase()).toContain("sync again");
   });
 
   it("uses generic share text when service account email is null", () => {

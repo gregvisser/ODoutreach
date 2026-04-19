@@ -9,9 +9,9 @@ export const SUPPRESSION_SYNC_MESSAGES = {
   rangeInvalid:
     "Check the Sheet tab name and range (e.g. Sheet1!A:Z). Update the range if your data is on another tab.",
   shareSheet: (serviceAccountEmail: string) =>
-    `Share this Sheet with ${serviceAccountEmail} as Viewer, then try Sync again.`,
+    `Share as Viewer: ${serviceAccountEmail}. Open the Sheet → Share → paste this email → Viewer → Send/Share. Then click Sync again.`,
   shareSheetGeneric:
-    "Share this Sheet with the Google service account email (shown on the client page) as Viewer, then try Sync again.",
+    "Share as Viewer with the Google service account email on the Suppression page or client card (Copy email). Open the Sheet → Share → paste that email → Viewer → Send/Share. Then click Sync again.",
   noDataInRange: "No data found in the selected range — check the tab or expand the range.",
   noValidEmails: "No valid emails found in the selected range.",
   noValidDomains: "No valid domains found in the selected range.",
