@@ -20,6 +20,73 @@ remaining sections below have been updated to reflect these decisions, but this
 is the authoritative summary. Any question in §7 that is answered here is
 marked **Answered**.
 
+### 0.0 Universal contacts and email lists decision (post-PR #23)
+
+Greg clarified that imported contacts are **not** owned by a single client.
+This supersedes the implicit ownership assumption in §0.1, §5 and §5b and
+reshapes the post-PR #23 roadmap.
+
+- **Contacts imported via CSV and RocketReach are universal** — one canonical
+  row per real-world prospect. An imported contact may be used for any client.
+- **Email lists / audiences are the reusable unit.** Operators create a named
+  list (e.g. "Manchester Finance Directors — April 2026"), add contacts to it,
+  and a list can be reused across clients.
+- **Client association happens through lists, campaigns, and sequences**, not
+  by owning the `Contact` row directly.
+- **Sequences send to a selected named list.** At send time the app filters
+  the list down to email-sendable contacts and applies the client's
+  suppression.
+- **A contact can appear in many lists**, and a list can be linked to one or
+  more clients (final multi-client-per-list semantics TBD; see §0.0 open
+  decisions below).
+- **Suppression stays per-client** at send/readiness time. A contact that is
+  suppressed for client A is not deleted from the universal pool; it simply
+  cannot be sent to on behalf of client A. Global suppression is a possible
+  later concept but is **not** required in this phase.
+- **The current PR #22 client-scoped Contacts page remains useful short-term**
+  as a readiness/eligibility view, but its naming and ownership story must be
+  corrected in a later PR — it should become a "lists attached to this client"
+  view, not a "contacts owned by this client" view.
+
+Consequences for the PR plan:
+
+- The **import-preview** slice that was informally called "PR C2" (surface
+  per-row validity / email-sendable counts during preview) is **paused**. It
+  is still useful, but it is no longer the next highest-value slice, because
+  importing to a per-client `Contact.clientId` pool reinforces the wrong
+  ownership model.
+- The next value-add is the **universal contact pool + named list** concept
+  (detailed in §6 and in `docs/ops/UNIVERSAL_CONTACTS_AND_LISTS_PLAN.md`).
+- Any new behavior must continue to respect the safety rules at the top of
+  `AGENTS.md` / `CLAUDE.md` — no sends, no imports, no suppression syncs, no
+  destructive migrations in an audit/planning pass.
+
+**Greg decisions for PR #24** (all Answered — authoritative):
+
+1. **List ↔ client cardinality.** Start with Option A: `ContactList.clientId`
+   is nullable, so a list is either global or belongs to exactly one client.
+   Do not build many-to-many list↔client yet. Revisit only if cross-client
+   reuse becomes common.
+2. **Import-to-list flow.** Attaching an import to a named list is
+   **required** at import time. The operator must either create a new
+   named email list or select an existing one. Loose imports with no list
+   are not allowed.
+3. **Global suppression.** Not near-term. Per-client suppression stays;
+   it's applied at send/readiness time based on the sending client.
+4. **Email-optional persistence.** Deferred until **after** `PR D5`.
+   `Contact.email` stays required until the list bridge is proven and
+   universalization is rehearsed.
+5. **LinkedIn / phone dedupe.** Deferred. Normalized email is the only
+   dedupe key for now. Future LinkedIn/phone matches surface as
+   possible-duplicate / merge-review items — no automatic destructive
+   merging.
+6. **Governance for cross-client reuse.** Deferred because lists are
+   one-client-or-global today. If many-to-many list↔client arrives, that
+   PR must add explicit OpensDoors confirmation before a list built for
+   client A becomes attached to client B.
+7. **Legacy default list name.** Use `Legacy contacts — <client name>`
+   for the per-client bridge lists created during `PR D5` backfill.
+
 ### 0.1 Contacts — intake shape and validity
 
 - **CSV and RocketReach imports must accept these headings (any may be empty):**
@@ -378,6 +445,15 @@ Cross-lane rules:
 Based on §0 answers. Every PR continues to stay UI/product-focused and avoids
 business-logic / migration changes unless Greg explicitly approves one.
 
+> **Note (post-PR #23):** §0.0 supersedes parts of this sequence. PRs A, B, C
+> are already merged. The next planned slice — surfacing per-row
+> validity/email-sendable counts during import preview (informally "PR C2") —
+> is **paused**. Before returning to import preview, the workspace must adopt
+> the universal contact + named list model described in §0.0 and in
+> `docs/ops/UNIVERSAL_CONTACTS_AND_LISTS_PLAN.md` (`PR D0`–`PR D5`).
+> Templates & sequences (was "PR E") and outreach gating (was "PR F") now
+> depend on `PR D1`/`PR D2`/`PR D4`.
+
 **PR A — Merge this docs-only audit PR.**
 Merge PR #21 once it reflects Greg's decisions (this doc). No code changes.
 Unblocks everything below.
@@ -395,15 +471,32 @@ Unblocks everything below.
   contact model already supports an approval flag cleanly.
 - No schema changes.
 
-**PR C — Import contract / readiness copy.**
-- Document and surface the required CSV / RocketReach headings (§0.1) on the
-  Sources and Contacts pages.
-- Validate imports against those headings and display whether each incoming
-  contact meets the **valid** / **email-sendable** rules.
-- No changes to the import pipeline's business logic beyond header parsing
-  and eligibility display.
+**PR C — Import contract / readiness copy.** (merged as PR #23)
+- Documented and surfaced the required CSV / RocketReach headings (§0.1) on
+  the Sources and Contacts pages.
+- First-class optional identifiers added to `Contact` (`linkedIn`,
+  `mobilePhone`, `officePhone`, `location`, `city`, `country`). `Contact.email`
+  remains required; email-optional persistence is deferred until after the
+  universal contact + list model lands.
 
-**PR D — Brief / onboarding grouped form cleanup.**
+**PR C2 — Import preview view-model.** (**paused** — see §0.0)
+- Intended to render per-row validity / email-sendable counts during CSV
+  and RocketReach preview.
+- Deferred because importing under the current `Contact.clientId` model
+  reinforces the wrong ownership story. Revisit after `PR D2` lands.
+
+**PR D0..D5 — Universal contacts + named lists.**
+See `docs/ops/UNIVERSAL_CONTACTS_AND_LISTS_PLAN.md`. Summary:
+- `PR D0` — docs-only: capture §0.0 + plan doc (this PR).
+- `PR D1` — additive `ContactList` + `ContactListMember` models; keep
+  `Contact.clientId`; no destructive migration.
+- `PR D2` — imports attach created/updated contacts to a named list.
+- `PR D3` — client Contacts tab becomes a "client lists" view.
+- `PR D4` — sequence foundation (targets a named list).
+- `PR D5` — universalize `Contact` (drop `clientId`, redesign uniqueness,
+  backfill list membership).
+
+**PR E — Brief / onboarding grouped form cleanup.**
 - Group brief fields into the eight sections from §0.4: Client profile,
   Commercial / account, Client contacts, Campaign strategy, Documents,
   Compliance / suppression, Outreach setup, Operations sign-off.
@@ -413,16 +506,17 @@ Unblocks everything below.
   (read mode with an "edit" affordance).
 - Show the ops sign-off user + timestamp once sign-off is ticked.
 
-**PR E — Templates / sequences foundation.**
+**PR F — Templates / sequences foundation.**
+- Depends on `PR D1`/`PR D2` so sequences can target a named list.
 - Introduce client-specific templates and a sequence builder (§0.5).
 - Template fields: name, category, subject, content, status.
 - Sequence fields: name, client, ordered template steps, follow-up delay,
-  active flag, `approvedByOpensDoors`, `approvedAt`.
+  active flag, `approvedByOpensDoors`, `approvedAt`, targeted list id.
 - Placeholder helper listing the supported tokens (§0.5) with the
   `{{sender_company_name}}` vs `{{company_name}}` distinction called out.
 - OpensDoors approval status visible on both templates and sequences.
 
-**PR F — Outreach gating.**
+**PR G — Outreach gating.**
 - Make pilot send depend on the full 12-item checklist from §0.6:
   brief complete → ops sign-off → ≥ 1 mailbox → ≥ 1 email-sendable contact
   → suppression configured → suppression synced → ≥ 1 approved introduction
@@ -431,7 +525,7 @@ Unblocks everything below.
 - Keep `SEND PILOT` confirmation. Show which gates are unmet with links to
   the responsible lane.
 
-**PR G — Activity timeline.**
+**PR H — Activity timeline.**
 - Promote Activity to a unified timeline covering: sends, replies, bounces,
   errors, syncs, imports, OAuth connect/disconnect, audit events (§0.7).
 - Timeline-first layout; filters later.
