@@ -18,9 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CsvImportForm } from "@/app/(app)/contacts/csv-import-form";
+import {
+  CsvImportForm,
+  type ClientListOption,
+} from "@/app/(app)/contacts/csv-import-form";
 import { SendToContactForm } from "@/app/(app)/contacts/send-to-contact-form";
 import { requireStaffUser } from "@/server/auth/staff";
+import { listContactListsForClient } from "@/server/contacts/contact-lists";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { listContactsForStaff } from "@/server/queries/contacts";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -38,6 +42,7 @@ type Props = {
     send?: string;
     id?: string;
     reason?: string;
+    list?: string;
   }>;
 };
 
@@ -55,6 +60,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           imported: sp.imported,
           skipped: sp.skipped,
           batch: sp.batch,
+          list: sp.list,
         }
       : sp.import === "error"
         ? { kind: "error" as const, message: sp.message }
@@ -76,6 +82,21 @@ export default async function ContactsPage({ searchParams }: Props) {
     listContactsForStaff(accessible, clientFilter),
     listClientsForStaff(accessible),
   ]);
+
+  // Preload per-client lists so the CSV form can surface an "existing list"
+  // picker the moment an operator picks a client workspace in the dropdown.
+  const listsByClientIdEntries = await Promise.all(
+    clients.map(async (c) => {
+      const rows = await listContactListsForClient(c.id);
+      const options: ClientListOption[] = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        memberCount: r.memberCount,
+      }));
+      return [c.id, options] as const;
+    }),
+  );
+  const listsByClientId = Object.fromEntries(listsByClientIdEntries);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -116,13 +137,23 @@ export default async function ContactsPage({ searchParams }: Props) {
         </div>
       </div>
 
-      <CsvImportForm clients={clients.map((c) => ({ id: c.id, name: c.name }))} />
+      <CsvImportForm
+        clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+        listsByClientId={listsByClientId}
+      />
 
       {importBanner?.kind === "ok" ? (
         <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
           Import finished — created{" "}
           <span className="font-medium">{importBanner.imported ?? "0"}</span>, skipped{" "}
           <span className="font-medium">{importBanner.skipped ?? "0"}</span>
+          {importBanner.list ? (
+            <>
+              {" "}
+              into list{" "}
+              <span className="font-medium">{importBanner.list}</span>
+            </>
+          ) : null}
           {importBanner.batch ? (
             <>
               {" "}

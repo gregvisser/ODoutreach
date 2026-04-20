@@ -7,6 +7,7 @@ import {
   isValidEmailFormat,
   normalizeEmail,
 } from "@/lib/normalize";
+import { attachContactsToClientList } from "@/server/contacts/contact-lists";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
 /** Documented RocketReach API v2 bases (see https://docs.rocketreach.co/reference/people-search-api). */
@@ -21,6 +22,9 @@ export type RocketReachImportInput = {
   clientId: string;
   /** Raw JSON body for POST /person/search — must include at least a `query` object. */
   searchBody: Record<string, unknown>;
+  /** PR D2: every import must attach imported contacts to a named list. */
+  contactListId: string;
+  addedByStaffUserId?: string | null;
 };
 
 export type RocketReachImportResult =
@@ -31,6 +35,9 @@ export type RocketReachImportResult =
       skippedInvalid: number;
       skippedDuplicate: number;
       errors: string[];
+      contactListId: string;
+      listAttachedAdded: number;
+      listAttachedSkipped: number;
     }
   | { ok: false; error: string };
 
@@ -138,7 +145,7 @@ export async function importRocketReachPeopleForClient(
     };
   }
 
-  const { clientId, searchBody } = input;
+  const { clientId, searchBody, contactListId, addedByStaffUserId } = input;
   const headers = {
     "Content-Type": "application/json",
     "Api-Key": apiKey,
@@ -194,6 +201,7 @@ export async function importRocketReachPeopleForClient(
   let skippedInvalid = 0;
   let skippedDuplicate = 0;
   const errors: string[] = [];
+  const touchedContactIds: string[] = [];
 
   for (const id of ids) {
     let lookupRes: Response;
@@ -239,6 +247,9 @@ export async function importRocketReachPeopleForClient(
     });
     if (existing) {
       skippedDuplicate++;
+      // PR D2: operator routed this import to a named list, so ensure the
+      // already-existing contact is (still) a member of that list.
+      touchedContactIds.push(existing.id);
       continue;
     }
 
@@ -323,7 +334,21 @@ export async function importRocketReachPeopleForClient(
       },
     });
 
+    touchedContactIds.push(contact.id);
     imported++;
+  }
+
+  let listAttachedAdded = 0;
+  let listAttachedSkipped = 0;
+  if (touchedContactIds.length > 0) {
+    const attachResult = await attachContactsToClientList({
+      clientId,
+      contactListId,
+      contactIds: touchedContactIds,
+      addedByStaffUserId: addedByStaffUserId ?? null,
+    });
+    listAttachedAdded = attachResult.added;
+    listAttachedSkipped = attachResult.skipped;
   }
 
   await refreshContactSuppressionFlagsForClient(clientId);
@@ -335,5 +360,8 @@ export async function importRocketReachPeopleForClient(
     skippedInvalid,
     skippedDuplicate,
     errors: errors.slice(0, 12),
+    contactListId,
+    listAttachedAdded,
+    listAttachedSkipped,
   };
 }
