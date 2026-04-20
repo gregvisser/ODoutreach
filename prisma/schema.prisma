@@ -204,6 +204,7 @@ model Client {
   onboarding              ClientOnboarding?
   contacts                Contact[]
   contactLists            ContactList[]
+  contactListMembers      ContactListMember[]
   importBatches           ContactImportBatch[]
   rocketReachJobs         RocketReachEnrichment[]
   suppressionSources      SuppressionSource[]
@@ -429,19 +430,34 @@ model ContactList {
 /// Join table for ContactList ↔ Contact (PR D1). Idempotent per pair via
 /// `@@unique([contactListId, contactId])`. Contact ownership still lives
 /// on `Contact.clientId` until PR D5 backfill.
+///
+/// Tenant-isolation (critical): `clientId` is denormalized from the row's
+/// `Contact.clientId` and enforced by a DB trigger
+/// (`ContactListMember_client_scope_guard`) so that:
+///   * `clientId` must equal `Contact.clientId` for `contactId`.
+///   * If the target `ContactList.clientId` is non-null, it must match
+///     `clientId` — a client-scoped list can only contain same-client
+///     contacts.
+///   * A global list (`ContactList.clientId IS NULL`) can hold contacts
+///     from any client, but each row still pins the contact's client
+///     scope via `clientId`.
+/// See migration 20260420200000_contact_lists_additive for the trigger.
 model ContactListMember {
   id                 String   @id @default(cuid())
   contactListId      String
   contactId          String
+  clientId           String
   addedByStaffUserId String?
   addedAt            DateTime @default(now())
 
   contactList ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
   contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   addedBy     StaffUser?  @relation("ContactListMemberAddedBy", fields: [addedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@unique([contactListId, contactId])
   @@index([contactId])
+  @@index([clientId])
   @@index([addedByStaffUserId])
 }
 
