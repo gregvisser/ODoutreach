@@ -13,6 +13,170 @@ Baseline:
 
 ---
 
+## 0. Greg decisions captured
+
+This section records Greg's product decisions from the post-audit review. The
+remaining sections below have been updated to reflect these decisions, but this
+is the authoritative summary. Any question in §7 that is answered here is
+marked **Answered**.
+
+### 0.1 Contacts — intake shape and validity
+
+- **CSV and RocketReach imports must accept these headings (any may be empty):**
+  `Name`, `Employer`, `Title`, `First Name`, `Last Name`, `Location`, `City`,
+  `Country`, `LinkedIn`, `Job1 Title`, `A Emails`, `Mobile Phone Number`,
+  `Office Number`.
+- **Valid contact rule:** a contact is valid only if at least one of
+  `Email`, `LinkedIn`, `Mobile Phone Number`, `Office Number` is present **and**
+  the contact is not suppressed.
+- **Email-sendable contact rule (refinement):** a valid contact that also has
+  an email address. Pilot email sends require email-sendable contacts.
+- **Manual approval:** do **not** add a manual per-contact approval step yet
+  unless the existing contact model already supports an approval flag cleanly.
+  OpensDoors approval is applied at the **template / sequence** level, not per
+  contact.
+- **Client-scoped Contacts route:** yes — stop the redirect. Render a real
+  client-scoped workspace page.
+
+### 0.2 Suppression — ownership
+
+- Suppression is **owned by OpensDoors**. Bidlow and OpensDoors manage
+  suppression together.
+- Suppression sync remains **manual for now** (no scheduled sync in this
+  phase).
+
+### 0.3 Mailboxes — capacity
+
+- 5 connected mailboxes is **recommended, not mandatory**.
+- Capacity formula stays simple for now:
+  `connected sending mailboxes × 30 / day`.
+
+### 0.4 Brief / onboarding — form shape
+
+The brief is **both an editable form and a readable operating brief**. The
+required sections and fields are:
+
+**Client profile**
+- Client Name
+- Client Website
+- Client History
+- Client Profile
+- Client Sector (reusable dropdown option)
+- Client Head Office Address (searchable by address / postcode)
+- Social Media Presence (selectable platforms with linked pages)
+
+**Commercial / account**
+- Monthly Revenue from Client (£)
+- Customer Agreement attachment
+- Assigned Account Manager (linked to a user)
+
+**Client contacts** (the client's own contact roster, not outreach targets)
+- Contact Name
+- Contact Surname
+- Contact Email Address
+- Contact Mobile Number
+- Contact Landline Number
+- Contact Status (active / inactive)
+- Role at Company / Client
+- "Add more contacts" button
+
+**Campaign strategy**
+- Key Business Objectives
+- Qualifying Questions
+- Client USPs
+- Target Geographical Area (multiple searchable locations)
+- Target Job Sector (reusable dropdown option)
+- Target Job Roles (reusable dropdown option)
+
+**Documents**
+- Accreditations attachment (PDF / Word / PPT)
+- Customer Agreement attachment (PDF / Word / PPT)
+
+**Compliance / suppression**
+- Suppression email list linked to client account
+- Suppression domain list linked to client account
+
+**Outreach setup**
+- Connect email addresses for outreach
+- Recommended mailbox target is 5 but not blocking
+
+**Operations sign-off**
+- Operations Sign Off checkbox
+- When operations signs off, username and timestamp must be displayed
+
+### 0.5 Templates & sequences
+
+- Each client has **different templates**.
+- **Templates must be created before sequences.**
+- **Sequences must exist (with templates) before sending from imported
+  contacts.**
+- **OpensDoors approves messages / templates loaded per client.**
+
+**Template fields:**
+- Template Name
+- Category (one of): `Introduction email`, `Follow-up 1`, `Follow-up 2`,
+  `Follow-up 3`, `Follow-up 4`, `Follow-up 5`
+- Email Subject
+- Email Content
+- Status (one of): `Draft`, `Ready for review`, `Approved`, `Archived`
+
+**Sequence fields (recommended):**
+- Sequence Name
+- Client
+- Ordered template steps
+- Delay between follow-ups
+- Active / inactive
+- Approved by OpensDoors
+- Approved-at timestamp
+
+**Supported placeholders:**
+
+Target recipient / company:
+- `{{first_name}}`, `{{last_name}}`, `{{full_name}}`
+- `{{company_name}}` — the **target company**, not the OpensDoors client
+- `{{role}}`, `{{website}}`, `{{email}}`, `{{phone}}`
+
+Sender / client:
+- `{{sender_name}}`, `{{sender_email}}`
+- `{{sender_company_name}}` — the **sending client organization**
+- `{{email_signature}}`, `{{unsubscribe_link}}`
+
+Important distinction: `{{sender_company_name}}` is the sending client org;
+`{{company_name}}` is the target company. CamelCase aliases (e.g.
+`firstName`) can continue to work, but the UI should prefer snake_case.
+
+### 0.6 Outreach — pilot gating
+
+Pilot sending must be gated by **all** of the following, in order:
+
+1. Brief required fields complete.
+2. Operations sign-off complete (user + timestamp).
+3. At least 1 connected sending mailbox.
+4. At least 1 email-sendable contact (valid + has email + not suppressed).
+5. Suppression configured (email and/or domain list linked).
+6. Suppression manually synced (operator-triggered, not automatic).
+7. At least 1 **approved** introduction template for the client.
+8. A sequence exists that uses approved templates.
+9. Sequence is **approved by OpensDoors**.
+10. Preview renders successfully with placeholders resolved.
+11. Send capacity available (mailbox pool × 30/day not exhausted).
+12. Explicit confirmation typed before send (current `SEND PILOT` pattern).
+
+### 0.7 Activity — shape
+
+- Activity is **timeline-first**; filters come later.
+- Priority event types, in order:
+  1. Sends
+  2. Replies
+  3. Bounces
+  4. Errors
+  5. Syncs (suppression, inbox)
+  6. Imports (CSV, RocketReach)
+  7. OAuth connect / disconnect
+  8. Audit (brief edits, sign-off, approval changes)
+
+---
+
 ## 1. Route and component inventory
 
 Client workspace layout wraps every child route:
@@ -181,154 +345,215 @@ Per-section disposition:
 
 ---
 
-## 6. Recommended implementation sequence (after Greg decides)
+## 5b. Refined ownership model (post-Greg)
 
-1. **PR A — Overview strip demotion.** Reduce the workflow strip to in-page
-   navigation only; make readiness rows the single “status” voice. Possibly
-   collapse strip on mobile.
-2. **PR B — Contacts module as real route.** Stop the redirect. Render a
-   client-scoped contacts view inline so the workspace stops widening from
-   `max-w-6xl` to `max-w-7xl`. Add approval/“ready for outreach” flag if Greg
-   confirms the model.
-3. **PR C — Outreach safety rail.** Visually separate Governed test from
-   Controlled pilot (two steps, clear labels), and bake approval state into
-   the pilot prereqs.
-4. **PR D — Suppression ownership + schedule.** Copy + small view-model changes
-   for owner attribution and staleness; optionally scheduled sync if approved.
-5. **PR E — Activity as unified timeline.** Promote the ledger to a timeline
-   that includes syncs, imports, webhooks, and send outcomes; drop the
-   inbox-preview card down or move it to Mailboxes.
-6. **PR F — Mailboxes capacity polish.** “Recommended capacity” framing +
-   two-column identities grid on wide screens.
-7. **PR G — Brief field model.** Explicit required-for-launch subset; readiness
-   aligns with Overview readiness exactly.
+After Greg's decisions (§0), the workspace splits into seven ownership lanes.
+Each lane names exactly one responsible surface and one source of truth.
 
-Every PR stays UI/UX-only until Greg approves a behavior change (e.g. approval
-flag, scheduled sync).
+| Lane                     | Responsible surface                                  | Source of truth                                                              | Owns                                                                                                  | Does NOT own                                                                                   |
+| ------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Brief / onboarding       | `/clients/[id]/brief`                                 | `onboardingBrief` (form + readable view), including ops sign-off record      | Client profile, commercial, client-side contacts, campaign strategy, documents, outreach setup, sign-off | Outreach target contacts, suppression list contents, template content                        |
+| Sources / imports        | `/clients/[id]/sources`                               | RocketReach and CSV intake records                                           | Accepted header schema (§0.1), import trigger, last-import status, per-client import history          | Contact eligibility rules (those live in Contacts), suppression sync                         |
+| Contacts / eligibility   | `/clients/[id]/contacts` (real route, not redirect)   | Per-client contact rows + derived eligibility                                | Valid / email-sendable / suppressed / missing-email / missing-outreach-identifier counts, send-to-contact | Import pipeline (Sources), suppression list editing (Suppression), template approval          |
+| Suppression              | `/clients/[id]/suppression`                           | OpensDoors-owned suppression lists (email + domain), manually synced         | Source list, sync trigger, sync state, "who owns this" label = OpensDoors / Bidlow                    | Contact table, send actions                                                                    |
+| Templates / sequences    | `/clients/[id]/outreach` (or dedicated Templates tab) | Per-client templates + sequences, each with OpensDoors approval state        | Template fields (§0.5), category taxonomy, status lifecycle, sequence steps + approval                | Sending itself, contact selection                                                              |
+| Outreach launch control  | `/clients/[id]/outreach` pilot panel                  | `pilotRunnable` gate evaluated against the 12-item checklist (§0.6)          | Pilot prereq evaluation, explicit confirmation rail, preview render, capacity check                   | Template editing, contact editing, suppression editing                                         |
+| Activity timeline        | `/clients/[id]/activity`                              | Unified event ledger, timeline-first                                         | Sends, replies, bounces, errors, syncs, imports, OAuth, audit (§0.7)                                  | Being the place to *run* actions (acks may come later)                                         |
+
+Cross-lane rules:
+- **OpensDoors approval lives on templates and sequences**, not on individual
+  contacts.
+- **A valid contact** only needs one outreach identifier (email, LinkedIn,
+  mobile, office number) and must not be suppressed.
+- **Email-sendable** is a strict subset of valid — required only for email
+  pilot sends.
+- **Suppression ownership** is OpensDoors + Bidlow; the UI must say so.
+- **Mailbox capacity** is recommended (5) not mandatory; the gate only
+  requires ≥ 1 connected sending mailbox.
+
+---
+
+## 6. Recommended implementation sequence (post-Greg)
+
+Based on §0 answers. Every PR continues to stay UI/product-focused and avoids
+business-logic / migration changes unless Greg explicitly approves one.
+
+**PR A — Merge this docs-only audit PR.**
+Merge PR #21 once it reflects Greg's decisions (this doc). No code changes.
+Unblocks everything below.
+
+**PR B — Client-scoped Contacts route.**
+- Replace the `/clients/[id]/contacts → /contacts?client=[id]` redirect with a
+  real workspace page.
+- Render the contacts that belong to this client inside the workspace shell
+  (same `max-w-6xl` layout).
+- Show counts: **total**, **valid**, **email-sendable**, **suppressed**,
+  **missing-email**, **missing-outreach-identifier**.
+- Surface the validity rules (§0.1) in copy so operators understand the
+  difference between "valid" and "email-sendable".
+- Do **not** add a manual per-contact approval step yet unless the existing
+  contact model already supports an approval flag cleanly.
+- No schema changes.
+
+**PR C — Import contract / readiness copy.**
+- Document and surface the required CSV / RocketReach headings (§0.1) on the
+  Sources and Contacts pages.
+- Validate imports against those headings and display whether each incoming
+  contact meets the **valid** / **email-sendable** rules.
+- No changes to the import pipeline's business logic beyond header parsing
+  and eligibility display.
+
+**PR D — Brief / onboarding grouped form cleanup.**
+- Group brief fields into the eight sections from §0.4: Client profile,
+  Commercial / account, Client contacts, Campaign strategy, Documents,
+  Compliance / suppression, Outreach setup, Operations sign-off.
+- Prefer extending the existing JSON `formData` shape before any schema
+  migration — new sections can live inside `formData` as sub-objects.
+- Render the brief as both an editable form and a readable operating brief
+  (read mode with an "edit" affordance).
+- Show the ops sign-off user + timestamp once sign-off is ticked.
+
+**PR E — Templates / sequences foundation.**
+- Introduce client-specific templates and a sequence builder (§0.5).
+- Template fields: name, category, subject, content, status.
+- Sequence fields: name, client, ordered template steps, follow-up delay,
+  active flag, `approvedByOpensDoors`, `approvedAt`.
+- Placeholder helper listing the supported tokens (§0.5) with the
+  `{{sender_company_name}}` vs `{{company_name}}` distinction called out.
+- OpensDoors approval status visible on both templates and sequences.
+
+**PR F — Outreach gating.**
+- Make pilot send depend on the full 12-item checklist from §0.6:
+  brief complete → ops sign-off → ≥ 1 mailbox → ≥ 1 email-sendable contact
+  → suppression configured → suppression synced → ≥ 1 approved introduction
+  template → sequence exists → sequence approved by OpensDoors → preview
+  renders → capacity available → explicit typed confirmation.
+- Keep `SEND PILOT` confirmation. Show which gates are unmet with links to
+  the responsible lane.
+
+**PR G — Activity timeline.**
+- Promote Activity to a unified timeline covering: sends, replies, bounces,
+  errors, syncs, imports, OAuth connect/disconnect, audit events (§0.7).
+- Timeline-first layout; filters later.
+
+Every PR stays UI/product-focused until Greg approves a behavior change
+(e.g. a new approval flag, schema migration, or scheduled sync).
 
 ---
 
 ## 7. Questions for Greg
 
-This is the core of this pass. Please answer each; we’ll turn the answers into
-the PR sequence above.
+Answers captured in §0 are marked **Answered** below. Unanswered questions
+remain open for a future pass; they are not blockers for the PR sequence in
+§6.
 
 ### Overview
 - Q1. What are the 3 things you want to know within 10 seconds of opening a
-  client? (We can tune the readiness rows/snapshot to those exactly.)
+  client? **Open** — deferred; current readiness panel is acceptable for now.
 - Q2. Should Overview remain status/navigation only, or should a small number
   of operational actions live there (e.g. “Sync suppression”, “Queue pilot”)?
+  **Open** — deferred.
 - Q3. Should the workflow strip stay, become a breadcrumb-style progress
-  indicator, or go away entirely now that readiness rows exist?
+  indicator, or go away entirely now that readiness rows exist? **Open** —
+  deferred; strip stays as in-page nav.
 
 ### Brief
-- Q4. What fields are **mandatory before a client can launch**? Current
-  `computeOnboardingBriefCompletion` treats a set of fields as required —
-  please confirm or correct that set.
-- Q5. Should Brief be a form (today), a checklist, or a readable operating
-  brief with an “edit” affordance? If brief is long, do we need sections with
-  “save & continue”?
-- Q6. Who edits the brief: only OpensDoors staff, or can the client fill it in
-  a limited view later?
+- Q4. What fields are **mandatory before a client can launch**?
+  **Answered** — see §0.4. Required sections: Client profile, Commercial /
+  account, Client contacts, Campaign strategy, Documents, Compliance /
+  suppression, Outreach setup, Operations sign-off. The ops sign-off
+  checkbox (with user + timestamp) is itself a required launch gate.
+- Q5. Should Brief be a form, a checklist, or a readable operating brief with
+  an “edit” affordance? **Answered** — both editable form and readable
+  operating brief (§0.4).
+- Q6. Who edits the brief: only OpensDoors staff, or can the client fill it
+  in a limited view later? **Open** — deferred; assume OpensDoors staff for
+  now.
 
 ### Mailboxes
-- Q7. Is 5 connected mailboxes **always** the target, or should the UI show
-  “recommended capacity” based on client size / volume goals (and allow fewer)?
-- Q8. What is the correct blast-radius story for adding/removing a mailbox
-  mid-campaign — instant, requires confirmation, or only allowed if no pilot
-  is in flight?
-- Q9. Should mailbox health eventually include DNS/SPF/DKIM/DMARC/reputation,
-  or only OAuth + send capacity for now?
-- Q10. Should the primary/governed mailbox be visually distinct from the pool
-  (today they co-exist in one list)?
+- Q7. Is 5 connected mailboxes always the target, or recommended?
+  **Answered** — recommended, not mandatory (§0.3). Capacity =
+  `connected sending mailboxes × 30/day`.
+- Q8. Blast-radius story for add/remove mid-campaign? **Open** — deferred.
+- Q9. Mailbox health scope (SPF/DKIM/DMARC)? **Open** — OAuth + capacity only
+  for now.
+- Q10. Primary/governed mailbox visually distinct from the pool? **Open** —
+  deferred.
 
 ### Sources
-- Q11. Should Sources focus only on RocketReach, or also support CSV, manual
-  entry, and named “source batches” equally on this tab?
-- Q12. Which RocketReach filters matter most: industry, location, company
-  size, titles, keywords? (We’ll build the import builder around those, not
-  around RR’s raw schema.)
-- Q13. Should an import auto-enter Contacts as eligible, or should it land in
-  a “Review” state until a human approves?
-- Q14. Is there a per-client **daily import cap** you want enforced in UI?
+- Q11. Sources: RocketReach only or also CSV / manual / named batches?
+  **Answered (partial)** — CSV and RocketReach must both be supported using
+  the header schema in §0.1. Named batches deferred.
+- Q12. Which RocketReach filters matter most? **Open** — deferred.
+- Q13. Should imports auto-enter Contacts as eligible, or land in "Review"?
+  **Answered** — no manual per-contact approval yet (§0.1). Imports are
+  evaluated against the valid / email-sendable rules; OpensDoors approval
+  happens on templates / sequences, not contacts.
+- Q14. Per-client daily import cap? **Open** — deferred.
 
 ### Contacts
-- Q15. What makes a contact “approved for outreach” in your process today?
-  (Field on the row, manual ticked flag, all imported = eligible unless
-  suppressed?)
-- Q16. Do you want manual approval before pilot sends, or is eligible +
-  unsuppressed enough?
-- Q17. Should duplicate detection be surfaced in UI (email, domain, linkedIn),
-  and if so which fields are the de-dup keys?
-- Q18. Should we drop the `/clients/[id]/contacts → /contacts?client=[id]`
-  redirect and render a real client-scoped contacts view inside the
-  workspace? (Strong recommend yes — this is the biggest “bolted-on” issue.)
+- Q15. What makes a contact "approved for outreach" today?
+  **Answered** — a contact is **valid** if it has at least one of (email,
+  LinkedIn, mobile, office number) and is not suppressed. An **email-sendable**
+  contact is a valid contact that also has an email address. No separate
+  manual approval flag for now (§0.1).
+- Q16. Manual approval before pilot sends, or eligible + unsuppressed enough?
+  **Answered** — email-sendable + unsuppressed is enough at the contact
+  level. Approval lives on templates / sequences (§0.1, §0.5).
+- Q17. Duplicate detection surfaced in UI? **Open** — deferred.
+- Q18. Stop the Contacts redirect and render a real client-scoped view?
+  **Answered — yes** (§0.1). This becomes PR B.
 
 ### Suppression
-- Q19. Who **owns** suppression lists for each client: Greg/Bidlow, OpensDoors
-  shared, or the individual client?
-- Q20. Should suppression sync be manual-only, or eventually scheduled (e.g.
-  hourly/daily)? If scheduled, does stale > N hours block sending?
-- Q21. If a client row is on a suppression sheet, what’s the UI contract —
-  hidden from contacts, struck-through, or visibly tagged “suppressed”?
-- Q22. Should the domain vs email distinction be visible and filterable in
-  the UI?
+- Q19. Who owns suppression lists? **Answered** — OpensDoors owns it; Bidlow
+  and OpensDoors manage it together (§0.2).
+- Q20. Manual-only or scheduled sync? **Answered** — manual for now (§0.2).
+  Scheduled sync deferred.
+- Q21. UI contract for a suppressed row? **Open** — deferred; current default
+  (exclude from sendable) is acceptable.
+- Q22. Domain vs email distinction filterable? **Open** — deferred, but both
+  email list and domain list are first-class brief fields (§0.4).
 
 ### Outreach
-- Q23. What must be checked before allowing a pilot send, beyond today’s
-  `outreachPilotRunnable`? (e.g. brief complete, approval flag, preview
-  opened, subject sanity-check.)
-- Q24. Who approves the actual messaging: Greg, OpensDoors, or the client
-  (“client signs off on copy before we pilot”)?
-- Q25. Should Governed test and Controlled pilot live on the same route, or
-  split into Outreach → Test and Outreach → Pilot (clearer blast-radius)?
-- Q26. Should every pilot have a written reason / linked brief version for
-  audit?
+- Q23. What must be checked before allowing a pilot send?
+  **Answered** — the 12-item gate in §0.6.
+- Q24. Who approves messaging? **Answered** — OpensDoors approves
+  templates / sequences per client (§0.5, §0.6).
+- Q25. Split Governed test and Controlled pilot into separate routes?
+  **Open** — deferred; same route is acceptable as long as PR F makes the
+  pilot gate explicit.
+- Q26. Written reason / linked brief version for audit? **Open** — deferred;
+  audit events will be in the Activity timeline (§0.7) regardless.
 
 ### Activity
-- Q27. What activity matters most to operators, in priority order: sends,
-  replies, syncs, imports, errors, audit trail, webhook events?
-- Q28. Should Activity be a **timeline**, a **task list** (things that need
-  operator action), or a **report view** (what happened today)?
-- Q29. Should the client-scoped Activity include cross-module events (sync,
-  import, OAuth reconnect, webhook) — not just sends + inbox preview?
-- Q30. Should Activity be the place where operators “acknowledge” errors, or
-  does that live elsewhere (Operations, alerts)?
+- Q27. What activity matters most, in priority order?
+  **Answered** — sends, replies, bounces, errors, syncs, imports, OAuth,
+  audit (§0.7).
+- Q28. Timeline, task list, or report view? **Answered** — timeline-first;
+  filters later (§0.7).
+- Q29. Include cross-module events (sync, import, OAuth, webhook)?
+  **Answered — yes** (§0.7).
+- Q30. Is Activity the place to acknowledge errors? **Open** — deferred.
 
 ### Cross-cutting
-- Q31. Global sidebar (Contacts / Suppression / Activity / Operations) vs
-  per-client workspace (same names) — should global views be strictly
-  cross-client summaries, with client-scoped views only inside a workspace?
-- Q32. Should the workspace enforce a visible **launch gate** (e.g.
-  `Launch-ready` badge that flips to `Launched` after first successful pilot),
-  and is that state stored on the client row?
-- Q33. Mobile: do operators actually use this on mobile, or is
-  tablet+desktop the real target? (This changes how aggressively we compress
-  mobile layouts.)
+- Q31. Global vs per-client views. **Open** — deferred; per-client Contacts
+  route (PR B) partially resolves this.
+- Q32. Visible launch-gate badge stored on the client row? **Open** —
+  deferred; the 12-item gate in §0.6 is the mechanism even without a stored
+  flag.
+- Q33. Mobile priority level? **Open** — deferred.
 
-### Decisions I can make without Greg
-- Wording cleanup on headers/descriptions.
-- Tightening responsive stack on mailboxes/outreach/activity.
-- Making Contacts a real client-scoped route instead of a redirect (no data
-  model change needed — same `listContactsForStaff` with `clientId`).
-- Separating Governed test from Controlled pilot visually on Outreach, keeping
-  behavior identical.
-- Making the Overview workflow strip act as in-page nav only (no metric copy).
+### Decisions I can make without Greg (reaffirmed)
+- Wording cleanup on headers / descriptions.
+- Responsive tightening on mailboxes / outreach / activity.
+- Making the Overview workflow strip act as in-page nav only.
 - Adding Activity event types in the existing panels without changing server
-  contracts (e.g. show last suppression sync result in the ledger).
+  contracts until PR G.
 
-### Decisions Greg must make before implementation
-- Required-vs-nice-to-have brief fields (Q4).
-- Contact approval model (Q15, Q16, Q23, Q24).
-- Suppression ownership + sync schedule policy (Q19, Q20).
-- Whether Outreach should split into Test + Pilot (Q25).
-- Whether to stop the Contacts redirect and render inline (Q18 — strongly
-  recommend yes; still wants your OK).
-- Whether 5-mailbox target is recommended or mandatory (Q7).
-- Mobile priority level (Q33).
-
-### Recommended next PR after Greg answers
-`PR B — client-scoped Contacts route` is the highest-impact fix for the
-“bolted-on tools” feeling because it removes the most visible cross-app jump
-and lets us stop duplicating contact state between client vs global views. It
-only needs Q15, Q16, Q18 answered.
+### Recommended next implementation PR
+**PR B — client-scoped Contacts route.** Greg answered Q15, Q16, Q18 (§0.1).
+This is the highest-impact fix for the “bolted-on tools” feeling because it
+removes the most visible cross-app jump and lets the workspace render
+`total / valid / email-sendable / suppressed / missing-email /
+missing-outreach-identifier` using the rules in §0.1 — with no schema change
+and no manual approval step introduced.
