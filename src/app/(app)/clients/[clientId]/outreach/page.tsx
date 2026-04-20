@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import {
@@ -12,6 +13,8 @@ import {
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
+import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -19,16 +22,40 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ clientId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function ClientOutreachPage({ params }: Props) {
+function firstParam(
+  value: string | string[] | undefined,
+): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  if (typeof value === "string" && value.length > 0) return value;
+  return null;
+}
+
+export default async function ClientOutreachPage({
+  params,
+  searchParams,
+}: Props) {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
+  const sp = searchParams ? await searchParams : {};
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+
+  const [templatesOverview, canMutateTemplates] = await Promise.all([
+    loadClientEmailTemplatesOverview(client.id),
+    getClientEmailTemplateMutationAllowed(staff, client.id),
+  ]);
+
+  const templatesFlash = {
+    ok: firstParam(sp.template),
+    error: firstParam(sp.templateError),
+    focusTemplateId: firstParam(sp.templateId),
+  };
 
   return (
     <div className="space-y-8">
@@ -38,9 +65,18 @@ export default async function ClientOutreachPage({ params }: Props) {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Governed proof send and controlled pilot — uses the mailbox pool and reservation ledger.
+          Approved email templates, governed proof send, and controlled pilot. Sequences
+          and sequence-driven sending are not enabled yet.
         </p>
       </div>
+
+      <ClientEmailTemplatesPanel
+        clientId={client.id}
+        clientName={client.name}
+        canMutate={canMutateTemplates}
+        overview={templatesOverview}
+        flash={templatesFlash}
+      />
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
