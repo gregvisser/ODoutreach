@@ -80,6 +80,29 @@ enum CampaignStatus {
   COMPLETED
 }
 
+/// Per-client email template category (PR D4a). Each template fills one
+/// slot in the introduction → follow-up ladder. Sequences (PR D4b+) pick
+/// one template per step.
+enum ClientEmailTemplateCategory {
+  INTRODUCTION
+  FOLLOW_UP_1
+  FOLLOW_UP_2
+  FOLLOW_UP_3
+  FOLLOW_UP_4
+  FOLLOW_UP_5
+}
+
+/// Approval lifecycle for a client email template (PR D4a). Only
+/// APPROVED templates are eligible for future sequence selection; DRAFT
+/// and READY_FOR_REVIEW are editable; ARCHIVED is a soft-delete that
+/// keeps history.
+enum ClientEmailTemplateStatus {
+  DRAFT
+  READY_FOR_REVIEW
+  APPROVED
+  ARCHIVED
+}
+
 enum OutboundEmailStatus {
   /// Legacy — prefer REQUESTED for new rows
   PREPARING
@@ -177,6 +200,8 @@ model StaffUser {
   mailboxIdentitiesCreated ClientMailboxIdentity[] @relation("MailboxIdentityCreatedBy")
   contactListsCreated      ContactList[]           @relation("ContactListCreatedBy")
   contactListMembersAdded  ContactListMember[]     @relation("ContactListMemberAddedBy")
+  emailTemplatesCreated    ClientEmailTemplate[]   @relation("ClientEmailTemplateCreatedBy")
+  emailTemplatesApproved   ClientEmailTemplate[]   @relation("ClientEmailTemplateApprovedBy")
 
   @@index([invitedById])
 }
@@ -220,6 +245,7 @@ model Client {
   /// Microsoft Graph–ingested inbox rows (idempotent by mailbox + Graph message id)
   inboundMailboxMessages  InboundMailboxMessage[]
   mailboxSendReservations MailboxSendReservation[]
+  emailTemplates          ClientEmailTemplate[]
 
   @@index([status])
 }
@@ -549,6 +575,44 @@ model Campaign {
   outboundEmails OutboundEmail[]
 
   @@index([clientId, status])
+}
+
+/// Per-client email template library (PR D4a — foundation only).
+///
+/// OpensDoors staff author messages per client, mark them ready for
+/// review, then approve them. Only APPROVED templates will be eligible
+/// for future sequences (PR D4b+). Sending is NOT implemented here:
+/// this model has no send-time fields and is not referenced by any
+/// outbound worker.
+///
+/// Placeholders are validated in application code
+/// (`src/lib/email-templates/placeholders.ts`); unknown placeholders
+/// block approval but are allowed in DRAFT / READY_FOR_REVIEW so
+/// operators can iterate.
+model ClientEmailTemplate {
+  id                    String                      @id @default(cuid())
+  clientId              String
+  name                  String
+  category              ClientEmailTemplateCategory
+  subject               String                      @db.Text
+  content               String                      @db.Text
+  status                ClientEmailTemplateStatus   @default(DRAFT)
+  createdByStaffUserId  String?
+  approvedByStaffUserId String?
+  approvedAt            DateTime?
+  archivedAt            DateTime?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+
+  client       Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy    StaffUser? @relation("ClientEmailTemplateCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy   StaffUser? @relation("ClientEmailTemplateApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([clientId, status])
+  @@index([clientId, category])
+  @@index([createdByStaffUserId])
+  @@index([approvedByStaffUserId])
 }
 
 model OutboundEmail {
