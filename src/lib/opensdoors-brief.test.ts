@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   briefLooksFilled,
+  computeOnboardingBriefCompletion,
   mergeBriefIntoFormData,
+  ONBOARDING_READINESS_KEYS,
+  ONBOARDING_READINESS_LABELS,
   parseOpensDoorsBrief,
 } from "./opensdoors-brief";
 
@@ -30,5 +33,52 @@ describe("parseOpensDoorsBrief / mergeBriefIntoFormData", () => {
     });
     expect(brief.offer).toBe("Hello");
     expect((brief as Record<string, string>).unknown).toBeUndefined();
+  });
+});
+
+describe("computeOnboardingBriefCompletion", () => {
+  it("returns empty when no readiness fields are set", () => {
+    const r = computeOnboardingBriefCompletion({});
+    expect(r.status).toBe("empty");
+    expect(r.completedCount).toBe(0);
+    expect(r.totalCount).toBe(ONBOARDING_READINESS_KEYS.length);
+    expect(r.missingKeys.length).toBe(r.totalCount);
+    expect(r.percent).toBe(0);
+    expect(r.nextRecommendedLabel).toBe(ONBOARDING_READINESS_LABELS.businessAddress);
+  });
+
+  it("marks ready when all required fields are non-empty", () => {
+    const formData = Object.fromEntries(
+      ONBOARDING_READINESS_KEYS.map((k) => [k, "ok"]),
+    );
+    const r = computeOnboardingBriefCompletion(formData);
+    expect(r.status).toBe("ready");
+    expect(r.percent).toBe(100);
+    expect(r.missingKeys).toEqual([]);
+    expect(r.nextRecommendedLabel).toBeNull();
+  });
+
+  it("is partial when some fields are missing", () => {
+    const r = computeOnboardingBriefCompletion({
+      businessAddress: "1 High St",
+      offer: "Audit",
+    });
+    expect(r.status).toBe("partial");
+    expect(r.missingLabels.length).toBeGreaterThan(0);
+    expect(r.completedCount).toBe(2);
+  });
+
+  it("does not treat whitespace-only strings as complete", () => {
+    const r = computeOnboardingBriefCompletion({
+      businessAddress: "   ",
+    });
+    expect(r.missingKeys).toContain("businessAddress");
+  });
+
+  it("readiness labels contain no secret-like placeholders", () => {
+    const labels = Object.values(ONBOARDING_READINESS_LABELS).join(" ");
+    expect(labels.toLowerCase()).not.toContain("api");
+    expect(labels.toLowerCase()).not.toContain("password");
+    expect(labels.toLowerCase()).not.toContain("secret");
   });
 });

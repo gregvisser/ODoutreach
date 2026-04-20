@@ -1,9 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -16,13 +13,16 @@ import { ClientSuppressionInlineCard } from "@/components/clients/client-suppres
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
-import { OpensDoorsBriefPanel } from "@/components/clients/opensdoors-brief-panel";
+import { OnboardingBriefSummaryCard } from "@/components/clients/onboarding-brief-summary-card";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
 import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
-import { briefLooksFilled, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
+import {
+  computeOnboardingBriefCompletion,
+  parseOpensDoorsBrief,
+} from "@/lib/opensdoors-brief";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
   REQUIRED_OUTREACH_MAILBOX_COUNT,
@@ -150,7 +150,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   });
 
   const brief = parseOpensDoorsBrief(client.onboarding?.formData);
-  const hasBrief = briefLooksFilled(brief);
+  const onboardingCompletion = computeOnboardingBriefCompletion(client.onboarding?.formData);
+  const briefChecklistReady = onboardingCompletion.status === "ready";
   const suppressionSheetRows = client.suppressionSources.filter((s) => !!s.spreadsheetId?.trim());
 
   const governedReadiness =
@@ -195,8 +196,10 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     { label: "Client workspace", ok: client.status === "ACTIVE", detail: client.status },
     {
       label: "OpensDoors operating brief",
-      ok: hasBrief,
-      detail: hasBrief ? "Brief fields present" : "Fill the brief card below",
+      ok: briefChecklistReady,
+      detail: briefChecklistReady
+        ? "Required brief fields complete"
+        : "Open Onboarding and complete the brief",
     },
     {
       label: "Suppression sheet ids",
@@ -262,38 +265,16 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Client workspace
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-          <p className="mt-1 text-muted-foreground">
-            Slug <span className="font-mono text-foreground">{client.slug}</span> ·{" "}
-            <Badge variant="outline">{client.status}</Badge>
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/contacts?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }))}
-          >
-            Contacts
-          </Link>
-          <Link
-            href={`/suppression?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }))}
-          >
-            Suppression
-          </Link>
-          <Link
-            href={`/activity?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "outline" }))}
-          >
-            Activity
-          </Link>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Client workspace
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
+        <p className="mt-1 text-muted-foreground">
+          Slug <span className="font-mono text-foreground">{client.slug}</span> ·{" "}
+          <Badge variant="outline">{client.status}</Badge>
+        </p>
       </div>
 
       <Card className="border-border/80 shadow-sm">
@@ -339,6 +320,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </Card>
       </div>
 
+      <OnboardingBriefSummaryCard clientId={client.id} completion={onboardingCompletion} />
+
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle>Outbound sender identity</CardTitle>
@@ -351,7 +334,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card id="mailboxes" className="border-border/80 shadow-sm scroll-mt-24">
         <CardHeader>
           <CardTitle>Mailbox identities</CardTitle>
           <CardDescription>
@@ -424,40 +407,29 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>OpensDoors operating brief</CardTitle>
-          <CardDescription>
-            Client-specific onboarding and messaging context — stored in{" "}
-            <code className="text-xs">ClientOnboarding.formData</code> (no migration). Include the five
-            outreach mailboxes in setup notes; use sender identity notes for naming/ownership. Pilot
-            templates default the controlled pilot card when set.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <OpensDoorsBriefPanel clientId={client.id} initial={brief} />
-        </CardContent>
-      </Card>
+      <div id="suppression" className="scroll-mt-24">
+        <ClientSuppressionInlineCard
+          clientId={client.id}
+          clientName={client.name}
+          googleServiceAccountConfigured={googleSheetsEnvReady}
+          googleServiceAccountClientEmail={googleSaDisplay.clientEmail}
+          sources={client.suppressionSources.map((s) => ({
+            id: s.id,
+            kind: s.kind,
+            spreadsheetId: s.spreadsheetId,
+            sheetRange: s.sheetRange,
+            syncStatus: s.syncStatus,
+            lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
+            lastError: s.lastError,
+          }))}
+        />
+      </div>
 
-      <ClientSuppressionInlineCard
-        clientId={client.id}
-        clientName={client.name}
-        googleServiceAccountConfigured={googleSheetsEnvReady}
-        googleServiceAccountClientEmail={googleSaDisplay.clientEmail}
-        sources={client.suppressionSources.map((s) => ({
-          id: s.id,
-          kind: s.kind,
-          spreadsheetId: s.spreadsheetId,
-          sheetRange: s.sheetRange,
-          syncStatus: s.syncStatus,
-          lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
-          lastError: s.lastError,
-        }))}
-      />
+      <div id="rocketreach" className="scroll-mt-24">
+        <RocketReachImportPanel clientId={client.id} apiKeyConfigured={rocketReachEnvReady} />
+      </div>
 
-      <RocketReachImportPanel clientId={client.id} apiKeyConfigured={rocketReachEnvReady} />
-
-      <Card className="border-border/80 shadow-sm">
+      <Card id="outreach" className="border-border/80 shadow-sm scroll-mt-24">
         <CardHeader>
           <CardTitle>Controlled pilot send</CardTitle>
           <CardDescription>

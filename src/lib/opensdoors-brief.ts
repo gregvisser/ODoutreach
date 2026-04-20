@@ -43,6 +43,80 @@ export function briefLooksFilled(brief: OpensDoorsBriefFields): boolean {
   return Object.values(brief).some((v) => typeof v === "string" && v.trim().length > 0);
 }
 
+/** Fields used for onboarding readiness (same storage as the rest of the brief). */
+export const ONBOARDING_READINESS_KEYS = [
+  "businessAddress",
+  "targetGeography",
+  "targetCustomerProfile",
+  "usps",
+  "offer",
+  "exclusions",
+  "campaignObjective",
+  "senderIdentityNotes",
+  "mailboxSetupNotes",
+  "sequenceNotes",
+] as const satisfies readonly (keyof OpensDoorsBriefFields)[];
+
+export type OnboardingReadinessKey = (typeof ONBOARDING_READINESS_KEYS)[number];
+
+export const ONBOARDING_READINESS_LABELS: Record<OnboardingReadinessKey, string> = {
+  businessAddress: "Business address",
+  targetGeography: "Target geography / service areas",
+  targetCustomerProfile: "Target customer profile",
+  usps: "USPs",
+  offer: "Offer / proposition",
+  exclusions: "Exclusions / do-not-target",
+  campaignObjective: "Campaign objective",
+  senderIdentityNotes: "Sender identity notes",
+  mailboxSetupNotes: "Mailbox setup notes",
+  sequenceNotes: "Sequence / message notes",
+};
+
+export type OnboardingBriefCompletion = {
+  completedCount: number;
+  totalCount: number;
+  missingKeys: OnboardingReadinessKey[];
+  missingLabels: string[];
+  percent: number;
+  status: "empty" | "partial" | "ready";
+  /** First missing field in checklist order — for “next step” copy */
+  nextRecommendedLabel: string | null;
+};
+
+/**
+ * Readiness for the operating brief (stored in ClientOnboarding.formData).
+ * Does not inspect secrets or unrelated legacy keys.
+ */
+export function computeOnboardingBriefCompletion(
+  formData: unknown,
+): OnboardingBriefCompletion {
+  const brief = parseOpensDoorsBrief(formData);
+  const missingKeys: OnboardingReadinessKey[] = [];
+  for (const key of ONBOARDING_READINESS_KEYS) {
+    const v = brief[key];
+    if (typeof v !== "string" || !v.trim()) missingKeys.push(key);
+  }
+  const totalCount = ONBOARDING_READINESS_KEYS.length;
+  const completedCount = totalCount - missingKeys.length;
+  const percent = Math.min(100, Math.round((completedCount / totalCount) * 100));
+  let status: OnboardingBriefCompletion["status"];
+  if (completedCount === 0) status = "empty";
+  else if (missingKeys.length === 0) status = "ready";
+  else status = "partial";
+  const missingLabels = missingKeys.map((k) => ONBOARDING_READINESS_LABELS[k]);
+  const nextRecommendedLabel =
+    missingLabels.length > 0 ? (missingLabels[0] ?? null) : null;
+  return {
+    completedCount,
+    totalCount,
+    missingKeys,
+    missingLabels,
+    percent,
+    status,
+    nextRecommendedLabel,
+  };
+}
+
 /** Merge brief fields into existing onboarding JSON without dropping legacy keys. */
 export function mergeBriefIntoFormData(
   existing: unknown,
