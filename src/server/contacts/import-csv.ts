@@ -3,6 +3,10 @@ import "server-only";
 import Papa from "papaparse";
 
 import type { ContactSource } from "@/generated/prisma/enums";
+import {
+  mapContactRow,
+  type MappedContactRow,
+} from "@/lib/contact-import-contract";
 import { prisma } from "@/lib/db";
 import {
   extractDomainFromEmail,
@@ -34,6 +38,14 @@ function getCell(row: Record<string, string>, ...aliases: string[]): string {
     }
   }
   return "";
+}
+
+function pickMapped(
+  mapped: MappedContactRow,
+  field: keyof MappedContactRow,
+): string {
+  const value = mapped[field];
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function parseContactSource(raw: string): ContactSource {
@@ -94,18 +106,22 @@ export async function runContactCsvImport(args: {
       const row = rows[i]!;
       const rowNum = i + 2;
 
-      let email = getCell(row, "email", "e-mail", "work_email", "email_address");
-      const fullName = getCell(
-        row,
-        "full_name",
-        "fullname",
-        "name",
-        "full name",
-      );
-      let first = getCell(row, "first_name", "firstname", "first", "fname");
-      let last = getCell(row, "last_name", "lastname", "last", "lname");
-      const company = getCell(row, "company", "organization", "org", "account");
-      const title = getCell(row, "title", "job_title", "role");
+      const mapped = mapContactRow(row);
+      let email = pickMapped(mapped, "email");
+      const fullName = pickMapped(mapped, "fullName");
+      let first = pickMapped(mapped, "firstName");
+      let last = pickMapped(mapped, "lastName");
+      const company = pickMapped(mapped, "company");
+      const title = pickMapped(mapped, "title");
+      const linkedIn = pickMapped(mapped, "linkedIn");
+      const mobilePhone = pickMapped(mapped, "mobilePhone");
+      const officePhone = pickMapped(mapped, "officePhone");
+      const location = pickMapped(mapped, "location");
+      const city = pickMapped(mapped, "city");
+      const country = pickMapped(mapped, "country");
+      // `domain` and `source` columns are operator-only hints; they are not
+      // part of the canonical import contract but remain supported for
+      // backwards compatibility with existing operator CSVs.
       const domainCol = getCell(row, "domain");
       const sourceRaw = getCell(row, "source", "origin");
 
@@ -160,6 +176,12 @@ export async function runContactCsvImport(args: {
           lastName: last || null,
           company: company || null,
           title: title || null,
+          linkedIn: linkedIn || null,
+          mobilePhone: mobilePhone || null,
+          officePhone: officePhone || null,
+          location: location || null,
+          city: city || null,
+          country: country || null,
           source: parseContactSource(sourceRaw),
           importBatchId: batch.id,
         },

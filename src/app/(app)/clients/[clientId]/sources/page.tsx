@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ContactImportContractPanel } from "@/components/clients/contact-import-contract-panel";
 import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -31,6 +32,8 @@ export default async function ClientSourcesPage({ params }: Props) {
           Import contacts from RocketReach into this workspace (API key from environment).
         </p>
       </div>
+
+      <ContactImportContractPanel />
 
       <RocketReachImportPanel clientId={client.id} apiKeyConfigured={bundle.rocketReachEnvReady} />
     </div>

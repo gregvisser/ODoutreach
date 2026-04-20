@@ -75,6 +75,50 @@ function pickEmailFromLookup(p: LookupProfile): string | null {
   return null;
 }
 
+/**
+ * Extract a best-effort phone number from a RocketReach lookup payload.
+ * RocketReach returns `phones` as either an array of strings or an array of
+ * `{ number, type }` objects; we match by the provided type hints and fall
+ * back to the first valid number when no typed match is found.
+ */
+function pickPhoneFromLookup(
+  p: LookupProfile,
+  typeHints: readonly string[],
+): string | null {
+  const phones = p.phones;
+  if (!Array.isArray(phones)) return null;
+
+  const hints = typeHints.map((h) => h.toLowerCase());
+  const typed: string[] = [];
+  const untyped: string[] = [];
+
+  for (const entry of phones) {
+    if (typeof entry === "string") {
+      const v = entry.trim();
+      if (v) untyped.push(v);
+      continue;
+    }
+    if (entry && typeof entry === "object") {
+      const row = entry as { number?: unknown; type?: unknown };
+      const raw = typeof row.number === "string" ? row.number.trim() : "";
+      if (!raw) continue;
+      const t = typeof row.type === "string" ? row.type.toLowerCase() : "";
+      if (hints.some((h) => t.includes(h))) {
+        typed.push(raw);
+      } else {
+        untyped.push(raw);
+      }
+    }
+  }
+
+  if (typed.length > 0) return typed[0] ?? null;
+  // Only fall back to untyped numbers when callers explicitly asked for the
+  // broadest hint set so we don't double-count a single phone as both mobile
+  // and office when type is unknown.
+  if (hints.includes("office") && untyped.length > 0) return untyped[0] ?? null;
+  return null;
+}
+
 function splitName(name: unknown): { first?: string; last?: string } {
   if (typeof name !== "string" || !name.trim()) return {};
   const parts = name.trim().split(/\s+/);
@@ -205,12 +249,31 @@ export async function importRocketReachPeopleForClient(
       typeof profile.current_title === "string" ? profile.current_title : null;
     const linkedin =
       typeof profile.linkedin_url === "string" ? profile.linkedin_url : null;
+    const city =
+      typeof profile.city === "string" && profile.city.trim()
+        ? profile.city.trim()
+        : null;
+    const country =
+      typeof profile.country === "string" && profile.country.trim()
+        ? profile.country.trim()
+        : null;
     const loc =
-      typeof profile.location === "string"
-        ? profile.location
+      typeof profile.location === "string" && profile.location.trim()
+        ? profile.location.trim()
         : [profile.city, profile.region, profile.country]
-            .filter((x) => typeof x === "string")
+            .filter((x) => typeof x === "string" && x.trim())
             .join(", ") || null;
+    const mobilePhone = pickPhoneFromLookup(profile, [
+      "mobile",
+      "cell",
+      "personal",
+    ]);
+    const officePhone = pickPhoneFromLookup(profile, [
+      "office",
+      "work",
+      "direct",
+      "landline",
+    ]);
 
     const emailDomain = extractDomainFromEmail(norm) || null;
     const fullName =
@@ -230,6 +293,12 @@ export async function importRocketReachPeopleForClient(
         lastName: last ?? null,
         company,
         title,
+        linkedIn: linkedin,
+        mobilePhone,
+        officePhone,
+        location: loc,
+        city,
+        country,
         source,
       },
     });

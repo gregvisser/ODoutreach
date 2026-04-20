@@ -25,6 +25,7 @@ import {
   type ContactIdentifierFields,
   type ContactReadinessStatusLabel,
 } from "@/lib/client-contacts-readiness";
+import { EMAIL_REQUIRED_FOR_PERSISTENCE } from "@/lib/contact-import-contract";
 import { cn } from "@/lib/utils";
 import { requireStaffUser } from "@/server/auth/staff";
 import { getClientByIdForStaff } from "@/server/queries/clients";
@@ -91,6 +92,30 @@ function statusBadgeLabel(status: ContactReadinessStatusLabel): string {
   }
 }
 
+function nonEmpty(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function telHref(phone: string): string {
+  // Keep only digits, +, and leading whitespace-free — browsers accept most
+  // formatted numbers but we sanitize to avoid broken tel: URIs.
+  const cleaned = phone.replace(/[^0-9+]/g, "");
+  return `tel:${cleaned || phone}`;
+}
+
+function formatLocation(
+  row: { location: string | null; city: string | null; country: string | null },
+): string | null {
+  const loc = nonEmpty(row.location);
+  if (loc) return loc;
+  const parts = [nonEmpty(row.city), nonEmpty(row.country)].filter(
+    (x): x is string => Boolean(x),
+  );
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 type KpiTile = {
   id: string;
   label: string;
@@ -118,9 +143,9 @@ export default async function ClientContactsPage({ params }: Props) {
 
   const readinessInputs: ContactIdentifierFields[] = rows.map((row) => ({
     email: row.email,
-    // LinkedIn / mobile / office phone are not yet first-class on `Contact`;
-    // PR C (import contract) adds them. The helper safely treats undefined
-    // as "not provided".
+    linkedIn: row.linkedIn,
+    mobilePhone: row.mobilePhone,
+    officePhone: row.officePhone,
     isSuppressed: row.isSuppressed,
   }));
   const summary = summarizeContactReadiness(readinessInputs);
@@ -274,11 +299,11 @@ export default async function ClientContactsPage({ params }: Props) {
             </div>
           </dl>
           <p className="mt-4 text-xs text-muted-foreground">
-            Today only <code className="rounded bg-muted px-1">email</code> and
-            suppression state are stored per contact; LinkedIn, mobile, and
-            office phone become first-class fields in the PR C import contract
-            (CSV + RocketReach headings). Counts above reflect identifiers
-            available in the current model — they are never inferred.
+            LinkedIn, mobile, office phone, and location are now first-class
+            fields on imported contacts (via the PR C import contract).{" "}
+            {EMAIL_REQUIRED_FOR_PERSISTENCE
+              ? "Email is still required for intake persistence today; LinkedIn-only and phone-only contacts will be storable once the email-optional follow-up lands. Counts above reflect the identifiers actually stored and are never inferred."
+              : "LinkedIn-only and phone-only contacts can be stored but are not email-sendable. Counts above reflect the identifiers actually stored and are never inferred."}
           </p>
         </CardContent>
       </Card>
@@ -294,9 +319,7 @@ export default async function ClientContactsPage({ params }: Props) {
         <CardContent>
           {rows.length === 0 ? (
             <div className="space-y-3 rounded-md border border-dashed border-border/80 bg-muted/40 p-6 text-center">
-              <p className="text-sm">
-                No contacts for this client yet.
-              </p>
+              <p className="text-sm">No contacts for this client yet.</p>
               <p className="text-sm text-muted-foreground">
                 Import contacts from Sources, then return here to review
                 validity and email-sendable counts.
@@ -304,7 +327,9 @@ export default async function ClientContactsPage({ params }: Props) {
               <div className="flex justify-center">
                 <Link
                   href={`${base}/sources`}
-                  className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                  )}
                 >
                   Open sources
                 </Link>
@@ -316,50 +341,115 @@ export default async function ClientContactsPage({ params }: Props) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Email</TableHead>
+                    <TableHead className="hidden md:table-cell">Company</TableHead>
+                    <TableHead className="hidden md:table-cell">Title</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead className="hidden xl:table-cell">Location</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Imported</TableHead>
-                    <TableHead className="hidden md:table-cell">Updated</TableHead>
+                    <TableHead className="hidden md:table-cell">Source</TableHead>
+                    <TableHead className="hidden lg:table-cell">Imported</TableHead>
+                    <TableHead className="hidden lg:table-cell">Updated</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((row) => {
                     const readiness = classifyContactReadiness({
                       email: row.email,
+                      linkedIn: row.linkedIn,
+                      mobilePhone: row.mobilePhone,
+                      officePhone: row.officePhone,
                       isSuppressed: row.isSuppressed,
                     });
                     const status = readinessStatusLabel(readiness);
                     const displayName =
-                      row.fullName?.trim() ||
-                      [row.firstName, row.lastName].filter(Boolean).join(" ") ||
+                      nonEmpty(row.fullName) ||
+                      [nonEmpty(row.firstName), nonEmpty(row.lastName)]
+                        .filter((x): x is string => Boolean(x))
+                        .join(" ") ||
                       "—";
+                    const email = nonEmpty(row.email);
+                    const linkedIn = nonEmpty(row.linkedIn);
+                    const mobile = nonEmpty(row.mobilePhone);
+                    const office = nonEmpty(row.officePhone);
+                    const location = formatLocation(row);
+                    const hasIdentifier = Boolean(
+                      email || linkedIn || mobile || office,
+                    );
                     return (
                       <TableRow key={row.id}>
-                        <TableCell className="font-medium">{displayName}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.company?.trim() || "—"}
+                        <TableCell className="font-medium">
+                          <div className="flex flex-col">
+                            <span>{displayName}</span>
+                            <span className="text-xs text-muted-foreground md:hidden">
+                              {[nonEmpty(row.company), nonEmpty(row.title)]
+                                .filter((x): x is string => Boolean(x))
+                                .join(" · ") || "—"}
+                            </span>
+                          </div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.title?.trim() || "—"}
+                        <TableCell className="hidden text-muted-foreground md:table-cell">
+                          {nonEmpty(row.company) || "—"}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.email || "—"}
+                        <TableCell className="hidden text-muted-foreground md:table-cell">
+                          {nonEmpty(row.title) || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {hasIdentifier ? (
+                            <div className="flex flex-col gap-0.5">
+                              {email ? (
+                                <a
+                                  href={`mailto:${email}`}
+                                  className="break-all text-foreground hover:underline"
+                                >
+                                  {email}
+                                </a>
+                              ) : null}
+                              {linkedIn ? (
+                                <a
+                                  href={linkedIn}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-muted-foreground hover:underline"
+                                >
+                                  LinkedIn
+                                </a>
+                              ) : null}
+                              {mobile ? (
+                                <a
+                                  href={telHref(mobile)}
+                                  className="text-xs text-muted-foreground hover:underline"
+                                >
+                                  Mobile: {mobile}
+                                </a>
+                              ) : null}
+                              {office ? (
+                                <a
+                                  href={telHref(office)}
+                                  className="text-xs text-muted-foreground hover:underline"
+                                >
+                                  Office: {office}
+                                </a>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden text-muted-foreground xl:table-cell">
+                          {location || "—"}
                         </TableCell>
                         <TableCell>
                           <Badge variant={statusBadgeVariant(status)}>
                             {statusBadgeLabel(status)}
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell">
                           <Badge variant="outline">{formatSource(row.source)}</Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.importBatch?.fileName?.trim() || "—"}
+                        <TableCell className="hidden text-muted-foreground lg:table-cell">
+                          {nonEmpty(row.importBatch?.fileName) || "—"}
                         </TableCell>
-                        <TableCell className="hidden text-muted-foreground md:table-cell">
+                        <TableCell className="hidden text-muted-foreground lg:table-cell">
                           {formatDate(row.updatedAt)}
                         </TableCell>
                       </TableRow>
@@ -368,9 +458,9 @@ export default async function ClientContactsPage({ params }: Props) {
                 </TableBody>
               </Table>
               <p className="mt-4 text-xs text-muted-foreground">
-                LinkedIn, mobile, and office phone columns will appear here once
-                the PR C import contract lands. This page does not trigger
-                imports, sends, or suppression sync.
+                Contact identifiers (email, LinkedIn, mobile, office) drive the
+                validity counts above. This page never triggers imports, sends,
+                or suppression sync.
               </p>
             </div>
           )}
