@@ -8,7 +8,7 @@ export function mailboxOAuthRedirectToClient(
   query: Record<string, string>,
 ): Response {
   const base = getAppBaseUrl();
-  const path = clientId ? `/clients/${clientId}` : "/clients";
+  const path = clientId ? `/clients/${clientId}/mailboxes` : "/clients";
   const u = new URL(path, base);
   for (const [k, v] of Object.entries(query)) {
     u.searchParams.set(k, v);

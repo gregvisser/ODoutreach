@@ -169,7 +169,7 @@ export function OpensDoorsBriefGuidedForm({ clientId, initial }: Props) {
       ))}
       <div className="flex flex-wrap items-center gap-3 pt-2">
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save onboarding brief"}
+          {pending ? "Saving…" : "Save brief"}
         </Button>
         {message ? (
           <p

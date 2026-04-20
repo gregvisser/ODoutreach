@@ -83,7 +83,7 @@ export function SenderReadinessPanel({
           Resend checks. <strong className="text-foreground">Verified (ESP)</strong> = domain/DKIM in the
           Resend dashboard — still required independently. See{" "}
           <Link className="underline" href="/operations/outbound">
-            Outbound ops
+            Operations
           </Link>{" "}
           to mark readiness.
         </p>

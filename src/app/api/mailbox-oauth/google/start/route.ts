@@ -15,7 +15,9 @@ export async function GET(req: Request) {
   const fail = (reason: string) =>
     NextResponse.redirect(
       new URL(
-        `/clients/${clientId ?? ""}?mailbox_oauth=error&reason=${encodeURIComponent(reason)}`,
+        clientId
+          ? `/clients/${clientId}/mailboxes?mailbox_oauth=error&reason=${encodeURIComponent(reason)}`
+          : `/clients?mailbox_oauth=error&reason=${encodeURIComponent(reason)}`,
         base,
       ),
     );

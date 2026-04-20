@@ -83,7 +83,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Contacts</h1>
           <p className="mt-1 text-muted-foreground">
-            Operational contact list — only workspaces you can access appear here.
+            Cross-client contact directory — filter to a single workspace when needed.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

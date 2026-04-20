@@ -45,9 +45,9 @@ export default async function ActivityPage({ searchParams }: Props) {
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Outreach activity</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Activity</h1>
           <p className="mt-1 text-muted-foreground">
-            Sent mail and inbound replies — scoped to workspaces you can access.
+            Cross-client sends and inbound replies — filter by workspace when needed.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
