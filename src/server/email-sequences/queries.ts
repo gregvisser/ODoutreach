@@ -1,11 +1,13 @@
 import "server-only";
 
 import type {
+  ClientEmailSequenceEnrollmentStatus,
   ClientEmailSequenceStatus,
   ClientEmailTemplateCategory,
   ClientEmailTemplateStatus,
 } from "@/generated/prisma/enums";
 import { summarizeContactReadiness } from "@/lib/client-contacts-readiness";
+import type { EnrollmentPreview } from "@/lib/email-sequences/enrollment-policy";
 import {
   SEQUENCE_STATUS_ORDER,
   summarizeSequenceReadiness,
@@ -14,6 +16,7 @@ import {
 } from "@/lib/email-sequences/sequence-policy";
 import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
 import { prisma } from "@/lib/db";
+import { loadSequenceEnrollmentPreviews } from "./enrollments";
 
 /**
  * Server-side, client-scoped queries for `ClientEmailSequence` (PR D4b).
@@ -58,6 +61,13 @@ export type SequenceSummary = {
   createdBy: { id: string; name: string | null; email: string } | null;
   approvedBy: { id: string; name: string | null; email: string } | null;
   readiness: SequenceReadinessSummary;
+  enrollment: SequenceEnrollmentSummary;
+};
+
+export type SequenceEnrollmentSummary = {
+  preview: EnrollmentPreview;
+  counts: Record<ClientEmailSequenceEnrollmentStatus, number>;
+  total: number;
 };
 
 export type SequenceCounts = {
@@ -241,10 +251,16 @@ export async function loadClientEmailSequencesOverview(
   ]);
 
   const listIdsInSequences = sequenceRows.map((s) => s.contactListId);
-  const sequenceListReadiness = await loadContactListReadinessMap(
-    clientId,
-    listIdsInSequences,
-  );
+  const [sequenceListReadiness, enrollmentPreviewsById] = await Promise.all([
+    loadContactListReadinessMap(clientId, listIdsInSequences),
+    loadSequenceEnrollmentPreviews({
+      clientId,
+      sequences: sequenceRows.map((s) => ({
+        id: s.id,
+        contactListId: s.contactListId,
+      })),
+    }),
+  ]);
 
   const contactLists: SequenceListOption[] = allListRows.map((l) => {
     const summary = summarizeContactReadiness(
@@ -314,6 +330,28 @@ export async function loadClientEmailSequencesOverview(
     };
     const readiness = summarizeSequenceReadiness(readinessInput);
 
+    const enrollmentRaw =
+      enrollmentPreviewsById[s.id] ??
+      ({
+        preview: {
+          total: 0,
+          enrollable: 0,
+          alreadyEnrolled: 0,
+          suppressed: 0,
+          missingEmail: 0,
+          missingIdentifier: 0,
+          enrollableContactIds: [],
+          skipped: [],
+        },
+        counts: {
+          PENDING: 0,
+          PAUSED: 0,
+          COMPLETED: 0,
+          EXCLUDED: 0,
+        },
+        total: 0,
+      } as const);
+
     return {
       id: s.id,
       clientId: s.clientId,
@@ -346,6 +384,11 @@ export async function loadClientEmailSequencesOverview(
           }
         : null,
       readiness,
+      enrollment: {
+        preview: enrollmentRaw.preview,
+        counts: enrollmentRaw.counts,
+        total: enrollmentRaw.total,
+      },
     };
   });
 

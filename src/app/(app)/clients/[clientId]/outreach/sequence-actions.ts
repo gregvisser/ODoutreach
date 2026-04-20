@@ -7,6 +7,10 @@ import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
+  enrollSequenceContacts,
+  EnrollmentFailure,
+} from "@/server/email-sequences/enrollments";
+import {
   approveSequence,
   archiveSequence,
   createSequence,
@@ -60,6 +64,7 @@ function getClientIdFromForm(formData: FormData): string {
 
 function flashForError(e: unknown): string {
   if (e instanceof SequenceMutationFailure) return e.message;
+  if (e instanceof EnrollmentFailure) return e.message;
   if (e instanceof Error) return e.message;
   return "Could not complete sequence action.";
 }
@@ -272,4 +277,71 @@ export async function returnClientEmailSequenceToDraftAction(
   formData: FormData,
 ): Promise<void> {
   await runStatusAction(formData, "return_to_draft");
+}
+
+/**
+ * PR D4c — idempotent "Create enrollment records" action.
+ *
+ * Records-only: no send, no schedule. Writes PENDING enrollments for
+ * every email-sendable contact in the sequence's target list that is
+ * not already enrolled. Suppressed / missing-email contacts are
+ * skipped with counts surfaced in the flash message.
+ */
+export async function createClientEmailSequenceEnrollmentsAction(
+  formData: FormData,
+): Promise<void> {
+  const staff = await requireOpensDoorsStaff();
+  const clientId = getClientIdFromForm(formData);
+  const sequenceId = String(formData.get("sequenceId") ?? "").trim();
+  if (!sequenceId) {
+    redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
+  }
+  await requireClientAccess(staff, clientId);
+  await requireClientEmailSequenceMutator(staff, clientId);
+
+  try {
+    const summary = await enrollSequenceContacts({
+      sequenceId,
+      clientId,
+      staffUserId: staff.id,
+    });
+    revalidatePath(`/clients/${clientId}/outreach`);
+    const parts: string[] = [];
+    parts.push(
+      summary.inserted === 1
+        ? "1 contact enrolled"
+        : `${String(summary.inserted)} contacts enrolled`,
+    );
+    if (summary.skipped.alreadyEnrolled > 0) {
+      parts.push(
+        `${String(summary.skipped.alreadyEnrolled)} already enrolled`,
+      );
+    }
+    if (summary.skipped.suppressed > 0) {
+      parts.push(`${String(summary.skipped.suppressed)} suppressed`);
+    }
+    if (summary.skipped.missingEmail > 0) {
+      parts.push(`${String(summary.skipped.missingEmail)} without email`);
+    }
+    if (summary.skipped.missingIdentifier > 0) {
+      parts.push(
+        `${String(summary.skipped.missingIdentifier)} without identifier`,
+      );
+    }
+    redirectBack(
+      clientId,
+      {
+        kind: "ok",
+        message: `${parts.join(" · ")} — no email sent`,
+      },
+      sequenceId,
+    );
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
+    redirectBack(
+      clientId,
+      { kind: "error", message: flashForError(e) },
+      sequenceId,
+    );
+  }
 }
