@@ -17,12 +17,23 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+type ExistingList = {
+  id: string;
+  name: string;
+  memberCount: number;
+};
+
 type Props = {
   clientId: string;
   apiKeyConfigured: boolean;
+  existingLists: ExistingList[];
 };
 
-export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
+export function RocketReachImportPanel({
+  clientId,
+  apiKeyConfigured,
+  existingLists,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -30,9 +41,14 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
   const [companyName, setCompanyName] = useState("");
   const [currentTitle, setCurrentTitle] = useState("");
   const [location, setLocation] = useState("");
+  const [existingListId, setExistingListId] = useState("");
+  const [newListName, setNewListName] = useState("");
   const [rawJson, setRawJson] = useState(
     '{\n  "query": { "keyword": ["Example Co"] },\n  "page_size": 5,\n  "start": 1,\n  "order_by": "relevance"\n}',
   );
+
+  const hasListTarget =
+    existingListId.trim().length > 0 || newListName.trim().length > 0;
 
   function showResult(text: string) {
     setMessage(text);
@@ -47,6 +63,11 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
           <code className="text-xs">api.rocketreach.co/api/v2</code>
           ). Uses <code className="text-xs">ROCKETREACH_API_KEY</code> — lookup consumes export
           credits per their billing. Imports at most 10 contacts per run; does not send mail.
+          <br />
+          <strong>
+            Imports must be saved to a named email list. Lists are used later
+            by sequences.
+          </strong>
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -54,6 +75,51 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
             <strong>Not configured:</strong> set <code className="text-xs">ROCKETREACH_API_KEY</code>{" "}
             on the server to enable imports. No secrets are shown here.
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="rr-existing-list">Use existing list</Label>
+            <select
+              id="rr-existing-list"
+              value={existingListId}
+              onChange={(e) => {
+                setExistingListId(e.target.value);
+                if (e.target.value) setNewListName("");
+              }}
+              disabled={existingLists.length === 0}
+              className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">
+                {existingLists.length === 0
+                  ? "No existing lists yet — type a new name →"
+                  : "None (create a new list)"}
+              </option>
+              {existingLists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name} ({l.memberCount})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="rr-new-list">Or create a new list</Label>
+            <Input
+              id="rr-new-list"
+              value={newListName}
+              onChange={(e) => {
+                setNewListName(e.target.value);
+                if (e.target.value) setExistingListId("");
+              }}
+              placeholder="e.g. Manchester FDs — April 2026"
+              maxLength={120}
+            />
+          </div>
+        </div>
+        {!hasListTarget ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Pick an existing list or type a new list name to enable import.
           </p>
         ) : null}
 
@@ -96,7 +162,7 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
             </div>
             <Button
               type="button"
-              disabled={pending || !apiKeyConfigured}
+              disabled={pending || !apiKeyConfigured || !hasListTarget}
               onClick={() => {
                 setMessage(null);
                 startTransition(async () => {
@@ -108,10 +174,12 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
                     currentTitle: currentTitle || undefined,
                     location: location || undefined,
                     pageSize: 10,
+                    existingListId: existingListId || undefined,
+                    newListName: newListName || undefined,
                   });
                   if (r.ok) {
                     showResult(
-                      `Imported ${String(r.imported)}, skipped (no email) ${String(r.skippedNoEmail)}, invalid ${String(r.skippedInvalid)}, duplicate ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
                     );
                     router.refresh();
                   } else {
@@ -134,7 +202,7 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
             />
             <Button
               type="button"
-              disabled={pending || !apiKeyConfigured}
+              disabled={pending || !apiKeyConfigured || !hasListTarget}
               onClick={() => {
                 setMessage(null);
                 startTransition(async () => {
@@ -142,10 +210,12 @@ export function RocketReachImportPanel({ clientId, apiKeyConfigured }: Props) {
                     clientId,
                     mode: "raw",
                     rawJson,
+                    existingListId: existingListId || undefined,
+                    newListName: newListName || undefined,
                   });
                   if (r.ok) {
                     showResult(
-                      `Imported ${String(r.imported)}, skipped (no email) ${String(r.skippedNoEmail)}, invalid ${String(r.skippedInvalid)}, duplicate ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
                     );
                     router.refresh();
                   } else {

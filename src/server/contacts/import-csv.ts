@@ -13,6 +13,7 @@ import {
   isValidEmailFormat,
   normalizeEmail,
 } from "@/lib/normalize";
+import { attachContactsToClientList } from "@/server/contacts/contact-lists";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
 export type CsvImportSummary = {
@@ -21,6 +22,8 @@ export type CsvImportSummary = {
   skippedInvalid: number;
   skippedDuplicate: number;
   errors: string[];
+  listAttachedAdded?: number;
+  listAttachedSkipped?: number;
 };
 
 function normHeader(h: string): string {
@@ -60,8 +63,16 @@ export async function runContactCsvImport(args: {
   clientId: string;
   fileName: string;
   csvText: string;
-}): Promise<{ batchId: string; summary: CsvImportSummary }> {
-  const { clientId, fileName, csvText } = args;
+  /** PR D2: every import must attach to an existing client-scoped list. */
+  contactListId: string;
+  addedByStaffUserId?: string | null;
+}): Promise<{
+  batchId: string;
+  summary: CsvImportSummary;
+  contactListId: string;
+}> {
+  const { clientId, fileName, csvText, contactListId, addedByStaffUserId } =
+    args;
 
   const parsed = Papa.parse<Record<string, string>>(csvText, {
     header: true,
@@ -90,16 +101,19 @@ export async function runContactCsvImport(args: {
     },
   });
 
+  const existingRows = await prisma.contact.findMany({
+    where: { clientId },
+    select: { id: true, email: true },
+  });
   const existing = new Set(
-    (
-      await prisma.contact.findMany({
-        where: { clientId },
-        select: { email: true },
-      })
-    ).map((c) => normalizeEmail(c.email)),
+    existingRows.map((c) => normalizeEmail(c.email)),
+  );
+  const existingIdByEmail = new Map(
+    existingRows.map((c) => [normalizeEmail(c.email), c.id]),
   );
 
   const seenInFile = new Set<string>();
+  const touchedContactIds: string[] = [];
 
   try {
     for (let i = 0; i < rows.length; i++) {
@@ -150,6 +164,11 @@ export async function runContactCsvImport(args: {
 
       if (existing.has(email)) {
         summary.skippedDuplicate++;
+        // PR D2: the contact already exists for this client but the operator
+        // explicitly routed this import to a named list, so make sure the
+        // existing row is a member of that list (idempotent).
+        const existingId = existingIdByEmail.get(email);
+        if (existingId) touchedContactIds.push(existingId);
         continue;
       }
 
@@ -166,7 +185,7 @@ export async function runContactCsvImport(args: {
       const emailDomain =
         domainCol.trim() || extractDomainFromEmail(email) || null;
 
-      await prisma.contact.create({
+      const created = await prisma.contact.create({
         data: {
           clientId,
           email,
@@ -185,14 +204,30 @@ export async function runContactCsvImport(args: {
           source: parseContactSource(sourceRaw),
           importBatchId: batch.id,
         },
+        select: { id: true },
       });
 
       existing.add(email);
+      existingIdByEmail.set(email, created.id);
+      touchedContactIds.push(created.id);
       summary.imported++;
     }
 
+    let attachResult = { added: 0, skipped: 0 };
+    if (touchedContactIds.length > 0) {
+      attachResult = await attachContactsToClientList({
+        clientId,
+        contactListId,
+        contactIds: touchedContactIds,
+        addedByStaffUserId: addedByStaffUserId ?? null,
+      });
+    }
+    summary.listAttachedAdded = attachResult.added;
+    summary.listAttachedSkipped = attachResult.skipped;
+
     const doneSummary = {
       ...summary,
+      contactListId,
       completedAt: new Date().toISOString(),
     };
 
@@ -208,7 +243,7 @@ export async function runContactCsvImport(args: {
 
     await refreshContactSuppressionFlagsForClient(clientId);
 
-    return { batchId: batch.id, summary };
+    return { batchId: batch.id, summary, contactListId };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await prisma.contactImportBatch.update({
