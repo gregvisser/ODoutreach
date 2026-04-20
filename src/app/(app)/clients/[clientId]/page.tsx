@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { ClientOverviewSummaryGrid } from "@/components/clients/client-overview-summary-grid";
+import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
 import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
@@ -18,9 +18,9 @@ import {
 } from "@/lib/client-launch-state";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
+  OUTREACH_MAILBOX_DAILY_CAP,
   REQUIRED_OUTREACH_MAILBOX_COUNT,
   THEORETICAL_MAX_CLIENT_DAILY_SENDS,
-  OUTREACH_MAILBOX_DAILY_CAP,
 } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -56,11 +56,6 @@ export default async function ClientDetailPage({ params }: Props) {
     return dates.reduce((a, b) => (a > b ? a : b));
   })();
 
-  const lastSyncLabel = (() => {
-    if (!suppressionLatestSyncAt) return "Not synced yet";
-    return `Last sync ${suppressionLatestSyncAt.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-  })();
-
   const snapshot = {
     clientId: client.id,
     brief: bundle.onboardingCompletion,
@@ -85,6 +80,30 @@ export default async function ClientDetailPage({ params }: Props) {
     ...snapshot,
     suppressionLatestSyncAt,
   });
+
+  const dailyCapacity = bundle.connectedSendingCount * OUTREACH_MAILBOX_DAILY_CAP;
+  const snapshotItems = [
+    {
+      label: "Client status",
+      value: client.status,
+      hint: "Workspace state",
+    },
+    {
+      label: "Sending mailboxes",
+      value: `${String(bundle.connectedSendingCount)}/${String(REQUIRED_OUTREACH_MAILBOX_COUNT)}`,
+      hint: `${String(dailyCapacity)}/day capacity`,
+    },
+    {
+      label: "Eligible contacts",
+      value: `${String(bundle.pilotContactSummary.eligibleCount)} / ${String(client._count.contacts)}`,
+      hint: `${String(bundle.pilotContactSummary.suppressedCount)} suppressed`,
+    },
+    {
+      label: "Latest activity",
+      value: snapshot.latestActivityLabel ?? "—",
+      hint: snapshot.latestActivityLabel ? "UTC, governed ledger" : "No sends yet",
+    },
+  ];
 
   const checklistItems = [
     { label: "Staff access / app login", ok: true, detail: "OpensDoors staff session" },
@@ -164,65 +183,8 @@ export default async function ClientDetailPage({ params }: Props) {
     },
   ];
 
-  const base = `/clients/${client.id}`;
-
-  const summaryTiles = [
-    {
-      title: "Operating brief",
-      description: "Client context before sourcing and sending",
-      metric: `${String(bundle.onboardingCompletion.percent)}% complete`,
-      href: `${base}/brief`,
-      actionLabel: "Open brief",
-    },
-    {
-      title: "Mailbox capacity",
-      description: "Connected senders vs recommended pool",
-      metric: `${String(bundle.connectedSendingCount)}/${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} sending`,
-      href: `${base}/mailboxes`,
-      actionLabel: "Open mailboxes",
-    },
-    {
-      title: "Contacts",
-      description: "Eligible vs suppressed (pilot filter)",
-      metric: `${String(bundle.pilotContactSummary.eligibleCount)} eligible · ${String(bundle.pilotContactSummary.suppressedCount)} suppressed`,
-      href: `${base}/contacts`,
-      actionLabel: "Open contacts",
-    },
-    {
-      title: "Suppression",
-      description: lastSyncLabel,
-      metric:
-        bundle.suppressionSheetRows.length > 0
-          ? `${String(bundle.suppressionSheetRows.length)} Sheet source(s)`
-          : "No spreadsheet ids",
-      href: `${base}/suppression`,
-      actionLabel: "Open suppression",
-    },
-    {
-      title: "Outreach readiness",
-      description: "Controlled pilot prerequisites",
-      metric: outreachPilotRunnable ? "Pilot can run" : "Check Outreach module",
-      href: `${base}/outreach`,
-      actionLabel: "Open outreach",
-    },
-    {
-      title: "Latest activity",
-      description: "Governed / pilot ledger (UTC)",
-      metric: snapshot.latestActivityLabel ?? "No recent sends",
-      href: `${base}/activity`,
-      actionLabel: "Open activity",
-    },
-  ];
-
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Client workspace
-        </p>
-        <h1 className="sr-only">{client.name}</h1>
-      </div>
-
       <ClientWorkspaceCommandCenter
         clientName={client.name}
         clientSlug={client.slug}
@@ -231,13 +193,11 @@ export default async function ClientDetailPage({ params }: Props) {
         steps={steps}
       />
 
-      <ClientOverviewSummaryGrid tiles={summaryTiles} />
-
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle>Launch readiness</CardTitle>
           <CardDescription>
-            High-level status for this client. Open each module for details.
+            The single module-level status view for this client.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -247,6 +207,8 @@ export default async function ClientDetailPage({ params }: Props) {
           />
         </CardContent>
       </Card>
+
+      <ClientOperationalSnapshot items={snapshotItems} />
     </div>
   );
 }

@@ -1,11 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { ClientWorkflowStrip } from "@/components/clients/client-workflow-strip";
 import type { ClientWorkflowStep } from "@/lib/client-launch-state";
 
@@ -25,31 +18,36 @@ export function ClientWorkspaceCommandCenter({
   steps,
 }: Props) {
   return (
-    <Card className="border-border/80 shadow-sm">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Command center</CardTitle>
-            <CardDescription>
-              Operating pathway: Brief → Mailboxes → Sources → Suppression → Contacts → Outreach →
-              Activity. Open any step to run that module for this workspace.
-            </CardDescription>
-          </div>
-          <Badge variant="secondary" className="shrink-0">
-            {launchStageLabel}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="text-lg font-semibold tracking-tight">{clientName}</p>
-          <p className="text-sm text-muted-foreground">
-            Slug <span className="font-mono text-foreground">{clientSlug}</span> ·{" "}
+    <section aria-label="Client workspace header" className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Client workspace
+          </p>
+          <h1 className="truncate font-heading text-2xl font-semibold tracking-tight text-foreground">
+            {clientName}
+          </h1>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span>
+              Slug <span className="font-mono text-foreground">{clientSlug}</span>
+            </span>
             <Badge variant="outline">{clientStatus}</Badge>
           </p>
         </div>
+        <Badge variant="secondary" className="self-start">
+          {launchStageLabel}
+        </Badge>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className="text-sm font-semibold text-foreground">Workflow</h2>
+          <p className="text-xs text-muted-foreground">
+            Follow the client setup path. Open a module to fix details.
+          </p>
+        </div>
         <ClientWorkflowStrip steps={steps} />
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
