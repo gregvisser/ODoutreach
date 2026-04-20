@@ -175,6 +175,8 @@ model StaffUser {
   auditLogs                AuditLog[]
   outboundSends            OutboundEmail[]         @relation("OutboundInitiator")
   mailboxIdentitiesCreated ClientMailboxIdentity[] @relation("MailboxIdentityCreatedBy")
+  contactListsCreated      ContactList[]           @relation("ContactListCreatedBy")
+  contactListMembersAdded  ContactListMember[]     @relation("ContactListMemberAddedBy")
 
   @@index([invitedById])
 }
@@ -201,6 +203,7 @@ model Client {
   memberships             ClientMembership[]
   onboarding              ClientOnboarding?
   contacts                Contact[]
+  contactLists            ContactList[]
   importBatches           ContactImportBatch[]
   rocketReachJobs         RocketReachEnrichment[]
   suppressionSources      SuppressionSource[]
@@ -386,15 +389,60 @@ model Contact {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
-  client         Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  importBatch    ContactImportBatch?    @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  rocketReach    RocketReachEnrichment?
-  outboundEmails OutboundEmail[]
-  inboundReplies InboundReply[]
+  client          Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  importBatch     ContactImportBatch?    @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  rocketReach     RocketReachEnrichment?
+  outboundEmails  OutboundEmail[]
+  inboundReplies  InboundReply[]
+  listMemberships ContactListMember[]
 
   @@unique([clientId, email])
   @@index([clientId])
   @@index([importBatchId])
+}
+
+/// Named reusable list of contacts (universal-contact bridge, PR D1).
+/// Per docs/ops/UNIVERSAL_CONTACTS_AND_LISTS_PLAN.md §0.1 (Option A):
+/// a list is either global (`clientId = null`) or belongs to exactly one
+/// client. Many-to-many list↔client is deferred until a later PR.
+/// Dedupe is by `Contact.email` today; LinkedIn/phone dedupe is deferred
+/// per §0.5. Nothing in this PR (D1) reads or writes these rows yet —
+/// the UI and import paths start using them in PR D2.
+model ContactList {
+  id                   String   @id @default(cuid())
+  name                 String
+  description          String?
+  clientId             String?
+  createdByStaffUserId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  client    Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy StaffUser?          @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  members   ContactListMember[]
+
+  @@index([clientId])
+  @@index([name])
+  @@index([createdByStaffUserId])
+}
+
+/// Join table for ContactList ↔ Contact (PR D1). Idempotent per pair via
+/// `@@unique([contactListId, contactId])`. Contact ownership still lives
+/// on `Contact.clientId` until PR D5 backfill.
+model ContactListMember {
+  id                 String   @id @default(cuid())
+  contactListId      String
+  contactId          String
+  addedByStaffUserId String?
+  addedAt            DateTime @default(now())
+
+  contactList ContactList @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  addedBy     StaffUser?  @relation("ContactListMemberAddedBy", fields: [addedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@unique([contactListId, contactId])
+  @@index([contactId])
+  @@index([addedByStaffUserId])
 }
 
 model RocketReachEnrichment {
