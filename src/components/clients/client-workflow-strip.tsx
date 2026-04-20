@@ -1,62 +1,59 @@
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import type { ClientWorkflowStep, WorkflowStepStatus } from "@/lib/client-launch-state";
 import { cn } from "@/lib/utils";
 
-function statusLabel(s: WorkflowStepStatus): string {
+function statusDotClass(s: WorkflowStepStatus): string {
   switch (s) {
     case "complete":
-      return "Complete";
+      return "bg-primary";
     case "ready":
-      return "Ready";
+      return "bg-sky-500";
     case "needs_attention":
-      return "Needs attention";
+      return "bg-amber-500";
     default:
-      return "Not started";
+      return "bg-muted-foreground/40";
   }
 }
 
-function statusBadgeClass(s: WorkflowStepStatus): string {
+function statusSrText(s: WorkflowStepStatus): string {
   switch (s) {
     case "complete":
-      return "bg-primary text-primary-foreground hover:bg-primary/90";
+      return "complete";
     case "ready":
-      return "bg-secondary text-secondary-foreground";
+      return "ready";
     case "needs_attention":
-      return "border-amber-500/60 bg-amber-500/10 text-amber-950 dark:text-amber-100";
+      return "needs attention";
     default:
-      return "";
+      return "not started";
   }
 }
 
 export function ClientWorkflowStrip({ steps }: { steps: ClientWorkflowStep[] }) {
   return (
-    <div className="overflow-x-auto pb-1">
-      <ol className="flex min-w-[720px] gap-2 md:min-w-0 md:flex-wrap">
+    <nav aria-label="Client setup workflow" className="-mx-1 overflow-x-auto pb-1">
+      <ol className="flex min-w-max gap-1.5 px-1 sm:min-w-0 sm:flex-wrap">
         {steps.map((step, i) => (
-          <li key={step.id} className="flex min-w-[140px] flex-1 flex-col gap-1.5 rounded-lg border border-border/80 bg-card p-3 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {i + 1}. {step.label}
-              </span>
-              <Badge
-                variant="outline"
-                className={cn("shrink-0 text-[10px] font-normal", statusBadgeClass(step.status))}
-              >
-                {statusLabel(step.status)}
-              </Badge>
-            </div>
-            <p className="line-clamp-2 text-xs text-muted-foreground">{step.metric}</p>
+          <li key={step.id}>
             <Link
               href={step.href}
-              className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/80",
+                "px-3 py-1.5 text-xs font-medium text-foreground transition-colors",
+                "hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              )}
             >
-              Open →
+              <span
+                aria-hidden
+                className={cn("size-2 shrink-0 rounded-full", statusDotClass(step.status))}
+              />
+              <span className="text-muted-foreground">{i + 1}</span>
+              <span>{step.label}</span>
+              <span className="sr-only">— {statusSrText(step.status)}</span>
             </Link>
           </li>
         ))}
       </ol>
-    </div>
+    </nav>
   );
 }
