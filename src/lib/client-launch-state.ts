@@ -28,6 +28,19 @@ export type ClientLaunchSnapshotInput = {
   outreachPilotRunnable: boolean;
   /** ISO or human-readable */
   latestActivityLabel: string | null;
+  /**
+   * Optional PR D4b signal: count of APPROVED `ClientEmailSequence` rows for
+   * this client. Kept optional so older callers still type-check; defaults to
+   * 0 when absent. Consumers only surface this in metric text — it does not
+   * currently flip the outreach pill from "ready" to "needs attention" on its
+   * own because sending is not yet wired to sequences.
+   */
+  approvedSequencesCount?: number;
+  /**
+   * Optional PR D4b signal: count of APPROVED `ClientEmailTemplate` rows with
+   * category `INTRODUCTION`. Optional for the same reason as above.
+   */
+  approvedIntroductionTemplatesCount?: number;
 };
 
 /** Status pill for the compact Launch readiness panel (UI copy). */
@@ -179,13 +192,22 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     };
   })();
 
+  const approvedSequences = input.approvedSequencesCount ?? 0;
+  const approvedIntroTemplates = input.approvedIntroductionTemplatesCount ?? 0;
+
   const outreachRow = ((): LaunchReadinessRow => {
+    const sequenceHint =
+      approvedSequences > 0
+        ? ` · ${String(approvedSequences)} approved sequence${approvedSequences === 1 ? "" : "s"}`
+        : approvedIntroTemplates > 0
+          ? " · sequence pending approval"
+          : "";
     if (input.outreachPilotRunnable) {
       return {
         id: "outreach",
         label: "Outreach",
         pillStatus: "ready",
-        metric: "Pilot ready",
+        metric: `Pilot ready${sequenceHint}`,
         href: `${base}/outreach`,
         actionLabel: "Open outreach",
       };

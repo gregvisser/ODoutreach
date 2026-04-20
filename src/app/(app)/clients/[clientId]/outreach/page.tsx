@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
 import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
@@ -13,6 +14,8 @@ import {
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { loadClientEmailSequencesOverview } from "@/server/email-sequences/queries";
+import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -46,15 +49,24 @@ export default async function ClientOutreachPage({
   if (!bundle.client) notFound();
   const client = bundle.client;
 
-  const [templatesOverview, canMutateTemplates] = await Promise.all([
-    loadClientEmailTemplatesOverview(client.id),
-    getClientEmailTemplateMutationAllowed(staff, client.id),
-  ]);
+  const [templatesOverview, canMutateTemplates, sequencesOverview, canMutateSequences] =
+    await Promise.all([
+      loadClientEmailTemplatesOverview(client.id),
+      getClientEmailTemplateMutationAllowed(staff, client.id),
+      loadClientEmailSequencesOverview(client.id),
+      getClientEmailSequenceMutationAllowed(staff, client.id),
+    ]);
 
   const templatesFlash = {
     ok: firstParam(sp.template),
     error: firstParam(sp.templateError),
     focusTemplateId: firstParam(sp.templateId),
+  };
+
+  const sequencesFlash = {
+    ok: firstParam(sp.sequence),
+    error: firstParam(sp.sequenceError),
+    focusSequenceId: firstParam(sp.sequenceId),
   };
 
   return (
@@ -76,6 +88,14 @@ export default async function ClientOutreachPage({
         canMutate={canMutateTemplates}
         overview={templatesOverview}
         flash={templatesFlash}
+      />
+
+      <ClientEmailSequencesPanel
+        clientId={client.id}
+        clientName={client.name}
+        canMutate={canMutateSequences}
+        overview={sequencesOverview}
+        flash={sequencesFlash}
       />
 
       <Card className="border-border/80 shadow-sm">
