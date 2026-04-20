@@ -20,6 +20,41 @@ Baseline:
 
 ---
 
+## 0. Greg decisions (authoritative)
+
+These decisions were captured during PR #24 review and supersede the open
+questions previously listed in §7. The body of this doc (§1–§5) was
+already written against these shapes; this section is the short, canonical
+summary to cite from other PRs.
+
+1. **List ↔ client cardinality — Option A.** `ContactList` has a nullable
+   `clientId`. A list is either global (`clientId = null`) or belongs to
+   exactly one client. No many-to-many list↔client in this phase.
+2. **Import must attach to a named list.** CSV and RocketReach imports
+   require the operator to either create a new named list or select an
+   existing one at import time. Loose imports without a list are not
+   allowed.
+3. **Suppression stays per-client.** Global suppression is **not** a
+   near-term concept. Suppression is evaluated at send/readiness time
+   against the sending client's suppression sources.
+4. **`Contact.email` stays required until after `PR D5`.** Email-optional
+   persistence is deferred — it lands only after the list bridge is
+   proven and the `Contact` universalization migration has been
+   rehearsed.
+5. **Dedupe by normalized email only for now.** LinkedIn and phone
+   matches are deferred; when introduced they must surface as
+   possible-duplicate / merge-review items, never as automatic
+   destructive merges.
+6. **Cross-client list governance is deferred.** Because lists are
+   one-client-or-global today, we don't need governance yet. If a later
+   PR introduces many-to-many list↔client, that PR must add an explicit
+   OpensDoors confirmation step before a list originally built for one
+   client can be attached to another.
+7. **Legacy default list name.** During the `PR D5` backfill, the
+   per-client bridge list is named `Legacy contacts — <client name>`.
+
+---
+
 ## 1. Current model (audit)
 
 ### 1.1 Contact ownership is per-client
@@ -154,17 +189,15 @@ Named reusable group of contacts, created by an operator.
 
 ### 2.4 Client ↔ list linkage
 
-Two candidate shapes (decide before `PR D1`):
+**Decision (§0.1): Option A.** `ContactList.clientId` is nullable; a list
+is either global (`clientId = null`) or belongs to exactly one client.
 
-- **A.** `ContactList.clientId` nullable; a list belongs to zero or one
-  client. Simpler and matches current tenant-isolation habits.
-- **B.** Separate `ContactListClient` join (many-to-many). Lets one list
-  serve several clients, e.g. a shared "Manchester Finance Directors"
-  list used across sister campaigns.
-
-Recommendation: **start with A** (nullable `ContactList.clientId`) to keep
-the migration shallow. Upgrade to B in a later PR if and when Greg wants a
-single list to drive multiple clients.
+For context, the rejected alternative was Option B — a separate
+`ContactListClient` join so one list could serve several clients. We
+postponed Option B because cross-client reuse isn't a current need and
+Option A keeps the bridge migration shallow. If Option B ever lands, it
+must also add explicit OpensDoors governance before a list built for
+client A can attach to client B (§0.6).
 
 ### 2.5 Sequence targeting
 
@@ -299,17 +332,20 @@ Greg explicitly approves each step before it runs.
 - Exit criteria: Prisma Studio can see the empty tables; CI + prod
   migration playbook rehearsed.
 
-### PR D2 — Named list at import time
-- CSV and RocketReach import forms accept an optional "Save to list" name
-  (create-or-reuse).
+### PR D2 — Named list is required at import time
+- CSV and RocketReach import forms **require** the operator to either
+  select an existing `ContactList` or name a new one before the import
+  runs. Per §0.2, loose imports without a list are not allowed.
 - On import, after the existing Contact upsert, add the contact to the
   chosen `ContactList` via `ContactListMember` (idempotent).
-- Still writes `Contact.clientId` exactly as today. No change to
-  send/suppression.
-- UI: small input + list picker on Sources and global Contacts.
-- Exit criteria: an operator can import a CSV, tag it "Manchester Finance
-  Directors — April 2026", and see the list + member count in a read-only
-  panel.
+- Still writes `Contact.clientId` exactly as today. Dedupe uses
+  normalized email only (per §0.5).
+- No change to send/suppression.
+- UI: list picker + "new list" input on Sources and global Contacts;
+  submit is disabled until a list is chosen.
+- Exit criteria: an operator can import a CSV, tag it
+  `Manchester Finance Directors — April 2026`, and see the list + member
+  count in a read-only panel.
 
 ### PR D3 — Client Contacts tab becomes "Client lists"
 - `/clients/[id]/contacts` re-skins to show **lists linked to this client**
@@ -330,8 +366,9 @@ Greg explicitly approves each step before it runs.
 
 ### PR D5 — Universalize `Contact`
 - Only after `PR D1`..`PR D3` have been live and stable.
-- Backfill: create one default system `ContactList` per client with all
-  existing `Contact` rows as members; verify counts match.
+- Backfill: create one default system `ContactList` per client named
+  `Legacy contacts — <client name>` (per §0.7), with all existing
+  `Contact` rows as members; verify counts match.
 - Drop `Client.contacts` relation and `Contact.clientId` column in a
   carefully sequenced migration:
   1. Add new global uniqueness (partial unique on non-null email).
@@ -359,31 +396,38 @@ Greg explicitly approves each step before it runs.
 
 ---
 
-## 7. Open decisions still needed from Greg
+## 7. Open decisions — all answered
 
-1. **List ↔ client cardinality.** Start with "a list belongs to zero or
-   one client" (Option A) — or do we need many clients per list from day
-   one (Option B)?
-2. **Import workflow ergonomics.** When an operator imports a CSV, should
-   "save to list" be required, optional with a default, or allowed as a
-   second step after import?
-3. **Global suppression.** Is a universal suppression list (applied across
-   every client) a near-term need, or do we continue with per-client
-   suppression through sequences + send-time evaluation?
-4. **Email-optional persistence.** When do we land it? Before `PR D5`
-   (so the universalized `Contact` lands with optional email in one shot)
-   or after (so the universalization migration is smaller)?
-5. **LinkedIn / phone dedupe.** When email becomes optional, what is the
-   tie-breaker for rows that only have LinkedIn or phone? Options:
-   partial unique index per identifier, canonical identity chosen at
-   import time, or an explicit merge UI.
-6. **Governance of cross-client reuse.** Does OpensDoors want a review
-   step before an operator can attach a list that was originally built
-   for client A to a sequence for client B?
-7. **Legacy naming.** During the bridge phase, what do we call a
-   default-per-client list? Proposed: "Legacy contacts — <client name>".
-   Any preference for wording / prefix so operators don't treat it as an
-   active list?
+All seven open questions have been answered during PR #24 review. The
+canonical summary is in §0 at the top of this doc. Reproduced here with
+Answered tags for traceability:
+
+1. **List ↔ client cardinality.** **Answered** — Option A: nullable
+   `ContactList.clientId`; a list is global or single-client. No
+   many-to-many yet.
+2. **Import workflow ergonomics.** **Answered** — attaching to a named
+   list is **required** at import time. Either create a new list or
+   select an existing one. No loose imports.
+3. **Global suppression.** **Answered** — not near-term. Stay per-client.
+4. **Email-optional persistence.** **Answered** — deferred until after
+   `PR D5`.
+5. **LinkedIn / phone dedupe.** **Answered** — deferred. Normalized
+   email is the only dedupe key for now. Later, identifier matches must
+   surface as possible-duplicate / merge-review items; no automatic
+   destructive merges.
+6. **Governance of cross-client reuse.** **Answered** — deferred because
+   lists are one-client-or-global today. A future many-to-many PR must
+   add explicit OpensDoors confirmation.
+7. **Legacy naming.** **Answered** — `Legacy contacts — <client name>`.
+
+Consequences captured in the staged plan (§5):
+- `PR D1` adds `ContactList` + `ContactListMember` with nullable
+  `ContactList.clientId` (Option A).
+- `PR D2` makes list selection required in CSV and RocketReach import
+  flows.
+- `PR D5` backfill names its per-client bridge list
+  `Legacy contacts — <client name>` and uses normalized email as the
+  sole dedupe key.
 
 ---
 
@@ -391,9 +435,12 @@ Greg explicitly approves each step before it runs.
 
 The current `Contact` model is tightly coupled to `clientId` through a
 unique constraint, relations, indexes, and every import / send / readiness
-/ suppression path; a one-shot universalization is unsafe. The safe path
-is to land `ContactList` + `ContactListMember` additively (`PR D1`),
-teach imports to attach to named lists (`PR D2`), re-skin the client
+/ suppression path; a one-shot universalization is unsafe. With Greg's §0
+decisions locked in (Option A linkage, list required at import, per-
+client suppression, email stays required until after `PR D5`, email-only
+dedupe, deferred cross-client governance, legacy list naming), the safe
+path is to land `ContactList` + `ContactListMember` additively (`PR D1`),
+require a named list on every import (`PR D2`), re-skin the client
 Contacts tab to show lists instead of ownership (`PR D3`), build the
 sequence/template layer on top of lists (`PR D4`), and only then drop
 `Contact.clientId` with a rehearsed backfill (`PR D5`). `PR C2` (import

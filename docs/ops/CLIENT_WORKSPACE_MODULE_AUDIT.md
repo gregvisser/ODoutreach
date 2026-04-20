@@ -61,15 +61,31 @@ Consequences for the PR plan:
   `AGENTS.md` / `CLAUDE.md` — no sends, no imports, no suppression syncs, no
   destructive migrations in an audit/planning pass.
 
-**Open decisions still needed from Greg** (carry-over for the plan doc):
-- Can a single list be linked to multiple clients, or exactly one?
-- When an operator imports a CSV, should attaching contacts to a named list
-  be required at import time or allowed as a second step?
-- Is global suppression a near-term need, or is per-client suppression
-  sufficient through the sequence/send layer?
-- When `Contact.email` eventually becomes optional, how do we dedupe rows
-  that only have LinkedIn or phone? (Partial unique index per identifier,
-  canonical identity choice, or explicit merge UI?)
+**Greg decisions for PR #24** (all Answered — authoritative):
+
+1. **List ↔ client cardinality.** Start with Option A: `ContactList.clientId`
+   is nullable, so a list is either global or belongs to exactly one client.
+   Do not build many-to-many list↔client yet. Revisit only if cross-client
+   reuse becomes common.
+2. **Import-to-list flow.** Attaching an import to a named list is
+   **required** at import time. The operator must either create a new
+   named email list or select an existing one. Loose imports with no list
+   are not allowed.
+3. **Global suppression.** Not near-term. Per-client suppression stays;
+   it's applied at send/readiness time based on the sending client.
+4. **Email-optional persistence.** Deferred until **after** `PR D5`.
+   `Contact.email` stays required until the list bridge is proven and
+   universalization is rehearsed.
+5. **LinkedIn / phone dedupe.** Deferred. Normalized email is the only
+   dedupe key for now. Future LinkedIn/phone matches surface as
+   possible-duplicate / merge-review items — no automatic destructive
+   merging.
+6. **Governance for cross-client reuse.** Deferred because lists are
+   one-client-or-global today. If many-to-many list↔client arrives, that
+   PR must add explicit OpensDoors confirmation before a list built for
+   client A becomes attached to client B.
+7. **Legacy default list name.** Use `Legacy contacts — <client name>`
+   for the per-client bridge lists created during `PR D5` backfill.
 
 ### 0.1 Contacts — intake shape and validity
 
