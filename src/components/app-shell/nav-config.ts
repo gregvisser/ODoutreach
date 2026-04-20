@@ -17,14 +17,15 @@ export type NavItem = {
   icon: LucideIcon;
 };
 
+/** Cross-client console — distinct from per-client workspace modules in the client subnav. */
 export const mainNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Clients", href: "/clients", icon: Users },
-  { title: "Onboarding", href: "/clients/new", icon: Sparkles },
-  { title: "Suppression", href: "/suppression", icon: ListFilter },
+  { title: "New client", href: "/clients/new", icon: Sparkles },
+  { title: "Operations", href: "/operations/outbound", icon: Wrench },
   { title: "Contacts", href: "/contacts", icon: Mail },
-  { title: "Outreach activity", href: "/activity", icon: Activity },
-  { title: "Outbound ops", href: "/operations/outbound", icon: Wrench },
-  { title: "Reporting", href: "/reporting", icon: PieChart },
+  { title: "Suppression", href: "/suppression", icon: ListFilter },
+  { title: "Activity", href: "/activity", icon: Activity },
+  { title: "Reports", href: "/reporting", icon: PieChart },
   { title: "Settings", href: "/settings", icon: Settings },
 ];

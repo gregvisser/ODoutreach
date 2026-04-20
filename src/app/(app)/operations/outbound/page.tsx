@@ -60,7 +60,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Outbound operations</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Operations</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
           Reliability view: stuck queue, stale processing, safe operator retry (only when no provider
           message id exists — avoids duplicate ESP sends), and recent provider events.
@@ -98,7 +98,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
           <CardHeader>
             <CardTitle>Sender readiness by workspace</CardTitle>
             <CardDescription>
-              Quick view across clients you can access — open a row in Outbound ops or client detail for
+              Quick view across clients you can access — open a row in Operations or the client workspace for
               full checks.
             </CardDescription>
           </CardHeader>

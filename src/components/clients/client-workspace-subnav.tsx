@@ -2,26 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
-
-function useHash(): string {
-  const [hash, setHash] = useState("");
-  useEffect(() => {
-    const sync = () => setHash(typeof window !== "undefined" ? window.location.hash : "");
-    sync();
-    window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
-  }, []);
-  return hash;
-}
 
 export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
   const clientFromQuery = searchParams?.get("client") ?? null;
-  const hash = useHash();
   const base = `/clients/${clientId}`;
 
   const items: {
@@ -32,43 +19,50 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
     {
       label: "Overview",
       href: base,
-      isActive: () => pathname === base && (hash === "" || hash === "#"),
+      isActive: () => pathname === base,
     },
     {
-      label: "Onboarding",
-      href: `${base}/onboarding`,
-      isActive: () => pathname === `${base}/onboarding`,
+      label: "Brief",
+      href: `${base}/brief`,
+      isActive: () => pathname === `${base}/brief` || pathname === `${base}/onboarding`,
     },
     {
       label: "Mailboxes",
-      href: `${base}#mailboxes`,
-      isActive: () => pathname === base && hash === "#mailboxes",
+      href: `${base}/mailboxes`,
+      isActive: () => pathname === `${base}/mailboxes`,
+    },
+    {
+      label: "Sources",
+      href: `${base}/sources`,
+      isActive: () => pathname === `${base}/sources`,
     },
     {
       label: "Contacts",
-      href: `/contacts?client=${clientId}`,
+      href: `${base}/contacts`,
       isActive: () =>
-        (pathname === "/contacts" || pathname.startsWith("/contacts/")) &&
-        clientFromQuery === clientId,
+        pathname === `${base}/contacts` ||
+        (pathname === "/contacts" && clientFromQuery === clientId),
     },
     {
       label: "Suppression",
-      href: `/suppression?client=${clientId}`,
+      href: `${base}/suppression`,
       isActive: () =>
-        (pathname === "/suppression" || pathname.startsWith("/suppression/")) &&
-        clientFromQuery === clientId,
+        pathname === `${base}/suppression` ||
+        ((pathname === "/suppression" || pathname.startsWith("/suppression/")) &&
+          clientFromQuery === clientId),
     },
     {
       label: "Outreach",
-      href: `${base}#outreach`,
-      isActive: () => pathname === base && hash === "#outreach",
+      href: `${base}/outreach`,
+      isActive: () => pathname === `${base}/outreach`,
     },
     {
       label: "Activity",
-      href: `/activity?client=${clientId}`,
+      href: `${base}/activity`,
       isActive: () =>
-        (pathname === "/activity" || pathname.startsWith("/activity/")) &&
-        clientFromQuery === clientId,
+        pathname === `${base}/activity` ||
+        ((pathname === "/activity" || pathname.startsWith("/activity/")) &&
+          clientFromQuery === clientId),
     },
   ];
 

@@ -27,14 +27,14 @@ function statusBadgeVariant(
 
 export function OnboardingBriefSummaryCard({ clientId, completion }: Props) {
   const topMissing = completion.missingLabels.slice(0, 3);
-  const href = `/clients/${clientId}/onboarding`;
+  const href = `/clients/${clientId}/brief`;
 
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>Onboarding brief</CardTitle>
+            <CardTitle>Operating brief</CardTitle>
             <CardDescription>
               Operating context for sourcing and sending — stored in{" "}
               <code className="text-xs">ClientOnboarding.formData</code>.
@@ -78,7 +78,7 @@ export function OnboardingBriefSummaryCard({ clientId, completion }: Props) {
             </ul>
             {completion.missingLabels.length > 3 ? (
               <p className="mt-1 text-xs text-muted-foreground">
-                +{completion.missingLabels.length - 3} more on the onboarding page
+                +{completion.missingLabels.length - 3} more on the Brief page
               </p>
             ) : null}
           </div>
@@ -89,7 +89,7 @@ export function OnboardingBriefSummaryCard({ clientId, completion }: Props) {
         )}
 
         <Link href={href} className={buttonVariants()}>
-          Open onboarding
+          Open brief
         </Link>
       </CardContent>
     </Card>

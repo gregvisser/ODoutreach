@@ -127,7 +127,7 @@ export function describeSenderReadiness(input: {
         ? "Fix domain allowlist before any live send."
         : input.senderIdentityStatus === "VERIFIED_READY"
           ? "Identity marked ready — still verify domain/DKIM in Resend dashboard independently."
-          : "Resend may reject or throttle until domain/sender is verified in Resend; mark VERIFIED_READY in Outbound ops after verification.",
+          : "Resend may reject or throttle until domain/sender is verified in Resend; mark VERIFIED_READY in Operations after verification.",
     });
   } else {
     checks.push({
@@ -164,7 +164,7 @@ export function describeSenderReadiness(input: {
   } else if (input.senderIdentityStatus !== "VERIFIED_READY") {
     headline = "needs_verification";
     summary =
-      "Default sender is set but identity is not VERIFIED_READY — confirm domain/sender in Resend, then mark ready in Outbound ops.";
+      "Default sender is set but identity is not VERIFIED_READY — confirm domain/sender in Resend, then mark ready in Operations.";
   } else {
     headline = "ready";
     summary =

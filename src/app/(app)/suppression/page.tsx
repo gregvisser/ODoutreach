@@ -69,7 +69,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Suppression lists</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Suppression monitor</h1>
           <p className="mt-1 text-muted-foreground">
             Google Sheets are the source of truth. Each source syncs only into its own
             client workspace — never cross-tenant.
