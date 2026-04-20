@@ -367,6 +367,17 @@ model Contact {
   lastName               String?
   company                String?
   title                  String?
+  /// First-class outreach identifiers from the CSV/RocketReach import contract
+  /// (docs/ops/CLIENT_WORKSPACE_MODULE_AUDIT.md §0.1). A contact is valid when
+  /// it is not suppressed AND has at least one of email / linkedIn /
+  /// mobilePhone / officePhone. Email remains required today; email-optional
+  /// persistence is a deferred follow-up.
+  linkedIn               String?
+  mobilePhone            String?
+  officePhone            String?
+  location               String?
+  city                   String?
+  country                String?
   source                 ContactSource @default(MANUAL)
   importBatchId          String?
   /// Cached flag after suppression check (refresh on sync)

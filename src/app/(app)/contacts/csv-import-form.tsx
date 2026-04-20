@@ -33,11 +33,19 @@ export function CsvImportForm({
       <CardHeader>
         <CardTitle>CSV import</CardTitle>
         <CardDescription>
-          Imports are scoped to one client workspace. Required column:{" "}
-          <span className="font-mono text-foreground">email</span>. Optional headers
-          recognized: first_name, last_name, full_name / name, company, title, domain,
-          source (CSV_IMPORT | MANUAL | ROCKETREACH). Invalid rows are skipped; duplicates
-          (existing email or duplicate in file) are skipped.
+          Imports are scoped to one client workspace. Accepted headings (fields
+          may be empty):{" "}
+          <span className="font-mono text-foreground">
+            Name, Employer, Title, First Name, Last Name, Location, City,
+            Country, LinkedIn, Job1 Title, A Emails, Mobile Phone Number,
+            Office Number
+          </span>
+          . A contact is <em>valid</em> if it is not suppressed and has at
+          least one of: email, LinkedIn, mobile phone, or office phone. It is{" "}
+          <em>email-sendable</em> only when it also has an email address.
+          Email is still required for intake persistence today; rows without a
+          valid email are skipped. Legacy aliases (email, full_name, first_name,
+          last_name, company, title, domain, source) remain supported.
         </CardDescription>
       </CardHeader>
       <CardContent>
