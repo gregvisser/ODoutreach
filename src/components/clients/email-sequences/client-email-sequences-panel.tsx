@@ -1,6 +1,7 @@
 import {
   approveClientEmailSequenceAction,
   archiveClientEmailSequenceAction,
+  createClientEmailSequenceEnrollmentsAction,
   markClientEmailSequenceReadyAction,
   returnClientEmailSequenceToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { ClientEmailSequenceStatus } from "@/generated/prisma/enums";
+import { ENROLLMENT_STATUS_LABELS } from "@/lib/email-sequences/enrollment-policy";
 import {
   SEQUENCE_STATUS_LABELS,
   SEQUENCE_STEP_LABELS,
@@ -287,6 +289,8 @@ function SequenceCard({
         </p>
       )}
 
+      <EnrollmentBlock clientId={clientId} sequence={sequence} canMutate={canMutate} />
+
       {!canApprove && sequence.status !== "ARCHIVED" && (
         <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
           {!readiness.approvedIntroduction
@@ -303,6 +307,7 @@ function SequenceCard({
 
       {canMutate && (
         <div className="mt-3 flex flex-wrap gap-2">
+
           {sequence.status === "DRAFT" && (
             <form action={markClientEmailSequenceReadyAction}>
               <input type="hidden" name="clientId" value={clientId} />
@@ -364,6 +369,140 @@ function SequenceCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function EnrollmentBlock({
+  clientId,
+  sequence,
+  canMutate,
+}: {
+  clientId: string;
+  sequence: SequenceSummary;
+  canMutate: boolean;
+}) {
+  const { enrollment, status } = sequence;
+  const { preview, counts, total } = enrollment;
+
+  const canEnroll =
+    canMutate &&
+    (status === "READY_FOR_REVIEW" || status === "APPROVED") &&
+    preview.enrollable > 0;
+
+  const gateHint = (() => {
+    if (status === "DRAFT") return "Mark the sequence ready before enrolling.";
+    if (status === "ARCHIVED") return "Archived sequences cannot be enrolled.";
+    if (preview.total === 0) return "Target list has no members yet.";
+    if (preview.enrollable === 0 && preview.alreadyEnrolled === preview.total) {
+      return "Every list member is already enrolled.";
+    }
+    if (preview.enrollable === 0) {
+      return "No email-sendable contacts left to enroll.";
+    }
+    return null;
+  })();
+
+  return (
+    <div className="mt-3 rounded-md border border-border/60 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold">Recipient preview</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Enrollment records do not send email. Records-only scope.
+          </p>
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          {String(total)} enrollment row{total === 1 ? "" : "s"} on file
+        </div>
+      </div>
+
+      <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-6">
+        <PreviewStat label="List members" value={preview.total} />
+        <PreviewStat label="Email-sendable" value={preview.enrollable} />
+        <PreviewStat label="Already enrolled" value={preview.alreadyEnrolled} />
+        <PreviewStat label="Suppressed" value={preview.suppressed} />
+        <PreviewStat label="Missing email" value={preview.missingEmail} />
+        <PreviewStat
+          label="Missing identifier"
+          value={preview.missingIdentifier}
+        />
+      </dl>
+
+      <dl className="mt-2 flex flex-wrap gap-3 text-[11px]">
+        <EnrollmentCountTile
+          label={ENROLLMENT_STATUS_LABELS.PENDING}
+          value={counts.PENDING}
+        />
+        <EnrollmentCountTile
+          label={ENROLLMENT_STATUS_LABELS.PAUSED}
+          value={counts.PAUSED}
+        />
+        <EnrollmentCountTile
+          label={ENROLLMENT_STATUS_LABELS.COMPLETED}
+          value={counts.COMPLETED}
+        />
+        <EnrollmentCountTile
+          label={ENROLLMENT_STATUS_LABELS.EXCLUDED}
+          value={counts.EXCLUDED}
+        />
+      </dl>
+
+      {canMutate && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <form action={createClientEmailSequenceEnrollmentsAction}>
+            <input type="hidden" name="clientId" value={clientId} />
+            <input type="hidden" name="sequenceId" value={sequence.id} />
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={!canEnroll}
+            >
+              {preview.alreadyEnrolled > 0
+                ? "Add new email-sendable contacts"
+                : "Create enrollment records"}
+            </Button>
+          </form>
+          <span className="text-[11px] text-muted-foreground">
+            Sending remains disabled.
+          </span>
+        </div>
+      )}
+
+      {gateHint && (
+        <p className="mt-2 text-[11px] text-muted-foreground">{gateHint}</p>
+      )}
+    </div>
+  );
+}
+
+function PreviewStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-border/50 bg-background/60 px-2 py-1">
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="text-sm font-semibold tabular-nums">{String(value)}</dd>
+    </div>
+  );
+}
+
+function EnrollmentCountTile({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded border border-border/40 bg-background/70 px-2 py-1">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className="ml-1 text-sm font-semibold tabular-nums">
+        {String(value)}
+      </span>
     </div>
   );
 }

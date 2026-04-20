@@ -116,6 +116,19 @@ enum ClientEmailSequenceStatus {
   ARCHIVED
 }
 
+/// PR D4c — per-contact enrollment lifecycle. Records-only in this
+/// PR: there is no scheduler or step-send worker attached. PAUSED is
+/// intended as an operator-initiated hold. EXCLUDED is reserved for
+/// a future "preserve excluded row for visibility" path — today the
+/// enrollment writer skips ineligible contacts with counts rather
+/// than persisting EXCLUDED rows.
+enum ClientEmailSequenceEnrollmentStatus {
+  PENDING
+  PAUSED
+  COMPLETED
+  EXCLUDED
+}
+
 enum OutboundEmailStatus {
   /// Legacy — prefer REQUESTED for new rows
   PREPARING
@@ -217,6 +230,7 @@ model StaffUser {
   emailTemplatesApproved   ClientEmailTemplate[]   @relation("ClientEmailTemplateApprovedBy")
   emailSequencesCreated    ClientEmailSequence[]   @relation("ClientEmailSequenceCreatedBy")
   emailSequencesApproved   ClientEmailSequence[]   @relation("ClientEmailSequenceApprovedBy")
+  sequenceEnrollmentsCreated ClientEmailSequenceEnrollment[] @relation("ClientEmailSequenceEnrollmentCreatedBy")
 
   @@index([invitedById])
 }
@@ -262,6 +276,7 @@ model Client {
   mailboxSendReservations MailboxSendReservation[]
   emailTemplates          ClientEmailTemplate[]
   emailSequences          ClientEmailSequence[]
+  sequenceEnrollments     ClientEmailSequenceEnrollment[]
 
   @@index([status])
 }
@@ -438,6 +453,7 @@ model Contact {
   outboundEmails  OutboundEmail[]
   inboundReplies  InboundReply[]
   listMemberships ContactListMember[]
+  sequenceEnrollments ClientEmailSequenceEnrollment[]
 
   @@unique([clientId, email])
   @@index([clientId])
@@ -464,6 +480,7 @@ model ContactList {
   createdBy StaffUser?            @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   members   ContactListMember[]
   sequences ClientEmailSequence[]
+  sequenceEnrollments ClientEmailSequenceEnrollment[]
 
   @@index([clientId])
   @@index([name])
@@ -662,6 +679,7 @@ model ClientEmailSequence {
   createdBy    StaffUser?                @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   approvedBy   StaffUser?                @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
   steps        ClientEmailSequenceStep[]
+  enrollments  ClientEmailSequenceEnrollment[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -691,6 +709,56 @@ model ClientEmailSequenceStep {
   @@unique([sequenceId, position])
   @@unique([sequenceId, category])
   @@index([templateId])
+}
+
+/// Per-contact enrollment in a `ClientEmailSequence` (PR D4c — records only).
+///
+/// An enrollment is the operator-visible record that a specific
+/// contact from the sequence's target `ContactList` will walk the
+/// sequence. This PR introduces records only — there is no scheduler,
+/// no send worker, and no step-send trigger attached to this model.
+/// Per-step sends land in PR D4e.
+///
+/// Invariants (enforced in application layer —
+/// `src/server/email-sequences/enrollments.ts`):
+///   * `enrollment.clientId === sequence.clientId` (tenant isolation)
+///   * `enrollment.contactListId === sequence.contactListId`
+///   * `enrollment.contactId` is a member of the sequence's list
+///   * contact must be email-sendable at enrollment time unless the
+///     row is explicitly marked `EXCLUDED` (not written today — the
+///     enrollment writer skips ineligible contacts with counts)
+///   * `(sequenceId, contactId)` is unique so re-running enrollment
+///     is idempotent and cannot duplicate a recipient
+model ClientEmailSequenceEnrollment {
+  id                   String                                @id @default(cuid())
+  clientId             String
+  sequenceId           String
+  contactId            String
+  contactListId        String
+  status               ClientEmailSequenceEnrollmentStatus  @default(PENDING)
+  /// Free-form operator note when status === EXCLUDED (e.g. "suppressed at enroll time").
+  exclusionReason      String?
+  /// 0 means not started; step-send wiring in PR D4e advances this.
+  currentStepPosition  Int                                   @default(0)
+  enrolledAt           DateTime                              @default(now())
+  pausedAt             DateTime?
+  completedAt          DateTime?
+  createdByStaffUserId String?
+  createdAt            DateTime                              @default(now())
+  updatedAt            DateTime                              @updatedAt
+
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sequence    ClientEmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contact     Contact             @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  contactList ContactList         @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy   StaffUser?          @relation("ClientEmailSequenceEnrollmentCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@unique([sequenceId, contactId])
+  @@index([clientId])
+  @@index([sequenceId, status])
+  @@index([contactId])
+  @@index([contactListId])
+  @@index([createdByStaffUserId])
 }
 
 model OutboundEmail {
