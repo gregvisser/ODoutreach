@@ -103,6 +103,19 @@ enum ClientEmailTemplateStatus {
   ARCHIVED
 }
 
+/// Approval lifecycle for a client email sequence (PR D4b). Mirrors the
+/// template lifecycle so the same mental model applies: DRAFT while the
+/// operator composes it, READY_FOR_REVIEW once it is complete, APPROVED
+/// once OpensDoors staff sign off, ARCHIVED as a soft-delete. APPROVED
+/// is a record-only marker in D4b — no send/schedule logic is wired to
+/// it yet.
+enum ClientEmailSequenceStatus {
+  DRAFT
+  READY_FOR_REVIEW
+  APPROVED
+  ARCHIVED
+}
+
 enum OutboundEmailStatus {
   /// Legacy — prefer REQUESTED for new rows
   PREPARING
@@ -202,6 +215,8 @@ model StaffUser {
   contactListMembersAdded  ContactListMember[]     @relation("ContactListMemberAddedBy")
   emailTemplatesCreated    ClientEmailTemplate[]   @relation("ClientEmailTemplateCreatedBy")
   emailTemplatesApproved   ClientEmailTemplate[]   @relation("ClientEmailTemplateApprovedBy")
+  emailSequencesCreated    ClientEmailSequence[]   @relation("ClientEmailSequenceCreatedBy")
+  emailSequencesApproved   ClientEmailSequence[]   @relation("ClientEmailSequenceApprovedBy")
 
   @@index([invitedById])
 }
@@ -246,6 +261,7 @@ model Client {
   inboundMailboxMessages  InboundMailboxMessage[]
   mailboxSendReservations MailboxSendReservation[]
   emailTemplates          ClientEmailTemplate[]
+  emailSequences          ClientEmailSequence[]
 
   @@index([status])
 }
@@ -444,9 +460,10 @@ model ContactList {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  client    Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  createdBy StaffUser?          @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  client    Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy StaffUser?            @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   members   ContactListMember[]
+  sequences ClientEmailSequence[]
 
   @@index([clientId])
   @@index([name])
@@ -607,12 +624,73 @@ model ClientEmailTemplate {
   client       Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy    StaffUser? @relation("ClientEmailTemplateCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   approvedBy   StaffUser? @relation("ClientEmailTemplateApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  sequenceSteps ClientEmailSequenceStep[]
 
   @@index([clientId])
   @@index([clientId, status])
   @@index([clientId, category])
   @@index([createdByStaffUserId])
   @@index([approvedByStaffUserId])
+}
+
+/// Per-client email sequence (PR D4b — records-only foundation).
+///
+/// A sequence pairs one client-scoped `ContactList` with an ordered set
+/// of steps (`ClientEmailSequenceStep`), each referencing one APPROVED
+/// `ClientEmailTemplate`. Approval is OpensDoors-gated and does NOT
+/// schedule or send email — sending / scheduling is intentionally
+/// deferred to a later PR. The D4b UI + server helpers enforce
+/// cross-table invariants (sequence↔list client match, step↔template
+/// client match, step category === template category, only APPROVED
+/// templates in APPROVED sequences) in the application layer.
+model ClientEmailSequence {
+  id                    String                    @id @default(cuid())
+  clientId              String
+  contactListId         String
+  name                  String
+  description           String?
+  status                ClientEmailSequenceStatus @default(DRAFT)
+  createdByStaffUserId  String?
+  approvedByStaffUserId String?
+  approvedAt            DateTime?
+  archivedAt            DateTime?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  client       Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contactList  ContactList               @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy    StaffUser?                @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy   StaffUser?                @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  steps        ClientEmailSequenceStep[]
+
+  @@index([clientId])
+  @@index([clientId, status])
+  @@index([contactListId])
+  @@index([createdByStaffUserId])
+  @@index([approvedByStaffUserId])
+}
+
+/// Ordered step inside a `ClientEmailSequence` (PR D4b). Each row pins
+/// a single template at a single category slot — unique per
+/// `(sequenceId, position)` and per `(sequenceId, category)` so a
+/// sequence can hold at most one INTRODUCTION, one FOLLOW_UP_1, etc.
+/// `delayDays` is records-only metadata for a future scheduler.
+model ClientEmailSequenceStep {
+  id         String                      @id @default(cuid())
+  sequenceId String
+  templateId String
+  category   ClientEmailTemplateCategory
+  position   Int
+  delayDays  Int                         @default(0)
+  createdAt  DateTime                    @default(now())
+  updatedAt  DateTime                    @updatedAt
+
+  sequence ClientEmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  template ClientEmailTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  @@unique([sequenceId, position])
+  @@unique([sequenceId, category])
+  @@index([templateId])
 }
 
 model OutboundEmail {

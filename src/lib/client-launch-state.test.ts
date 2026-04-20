@@ -139,4 +139,34 @@ describe("buildLaunchReadinessRows", () => {
     const blob = JSON.stringify(rows);
     expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
   });
+
+  it("surfaces approved sequence hint on the outreach row when pilot-ready", () => {
+    const row = buildLaunchReadinessRows(
+      basePanel({
+        outreachPilotRunnable: true,
+        approvedSequencesCount: 2,
+        approvedIntroductionTemplatesCount: 1,
+      }),
+    ).find((r) => r.id === "outreach");
+    expect(row?.pillStatus).toBe("ready");
+    expect(row?.metric).toContain("2 approved sequences");
+  });
+
+  it("hints that a sequence is pending approval when introduction templates exist but no approved sequence", () => {
+    const row = buildLaunchReadinessRows(
+      basePanel({
+        outreachPilotRunnable: true,
+        approvedSequencesCount: 0,
+        approvedIntroductionTemplatesCount: 1,
+      }),
+    ).find((r) => r.id === "outreach");
+    expect(row?.metric).toContain("sequence pending approval");
+  });
+
+  it("omits sequence hint entirely when both signals are absent", () => {
+    const row = buildLaunchReadinessRows(
+      basePanel({ outreachPilotRunnable: true }),
+    ).find((r) => r.id === "outreach");
+    expect(row?.metric).toBe("Pilot ready");
+  });
 });

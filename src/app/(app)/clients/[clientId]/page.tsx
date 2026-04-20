@@ -23,6 +23,7 @@ import {
   THEORETICAL_MAX_CLIENT_DAILY_SENDS,
 } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { getClientEmailSequenceCounts } from "@/server/email-sequences/queries";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -42,6 +43,8 @@ export default async function ClientDetailPage({ params }: Props) {
 
   const client = bundle.client;
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
+
+  const sequenceCounts = await getClientEmailSequenceCounts(client.id);
 
   const outreachPilotRunnable =
     bundle.hasGovernedMailbox &&
@@ -71,6 +74,9 @@ export default async function ClientDetailPage({ params }: Props) {
     latestActivityLabel: bundle.latestGovernedAt
       ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
       : null,
+    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
+    approvedIntroductionTemplatesCount:
+      sequenceCounts.approvedIntroductionTemplatesCount,
   };
 
   const steps = buildClientWorkflowSteps(snapshot);
