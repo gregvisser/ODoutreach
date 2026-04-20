@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ClientOverviewSummaryGrid } from "@/components/clients/client-overview-summary-grid";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
+import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
 import {
   Card,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import {
   buildClientWorkflowSteps,
+  buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
 import {
@@ -46,13 +48,17 @@ export default async function ClientDetailPage({ params }: Props) {
     bundle.oauthReadyForGovernedTest &&
     bundle.poolCanSendPilot;
 
-  const lastSyncLabel = (() => {
+  const suppressionLatestSyncAt = (() => {
     const dates = client.suppressionSources
       .map((s) => s.lastSyncedAt)
       .filter((d): d is NonNullable<typeof d> => d != null);
-    if (dates.length === 0) return "Not synced yet";
-    const latest = dates.reduce((a, b) => (a > b ? a : b));
-    return `Last sync ${latest.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    if (dates.length === 0) return null;
+    return dates.reduce((a, b) => (a > b ? a : b));
+  })();
+
+  const lastSyncLabel = (() => {
+    if (!suppressionLatestSyncAt) return "Not synced yet";
+    return `Last sync ${suppressionLatestSyncAt.toISOString().slice(0, 16).replace("T", " ")} UTC`;
   })();
 
   const snapshot = {
@@ -74,6 +80,11 @@ export default async function ClientDetailPage({ params }: Props) {
 
   const steps = buildClientWorkflowSteps(snapshot);
   const launchStage = deriveLaunchStageLabel(snapshot);
+
+  const readinessRows = buildLaunchReadinessRows({
+    ...snapshot,
+    suppressionLatestSyncAt,
+  });
 
   const checklistItems = [
     { label: "Staff access / app login", ok: true, detail: "OpensDoors staff session" },
@@ -226,12 +237,14 @@ export default async function ClientDetailPage({ params }: Props) {
         <CardHeader>
           <CardTitle>Launch readiness</CardTitle>
           <CardDescription>
-            Cross-check for production outreach (five mailboxes recommended, 30 sends/mailbox/day, up
-            to 150/day pooled). Pilots can run with fewer mailboxes.
+            High-level status for this client. Open each module for details.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <TonightLaunchChecklist items={checklistItems} />
+          <LaunchReadinessPanel
+            rows={readinessRows}
+            technicalChecks={<TonightLaunchChecklist items={checklistItems} />}
+          />
         </CardContent>
       </Card>
     </div>
