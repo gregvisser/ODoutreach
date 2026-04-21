@@ -1,7 +1,12 @@
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { ContactReadinessBadge } from "@/components/contacts/contact-readiness-badge";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  classifyContactReadiness,
+  readinessStatusLabel,
+} from "@/lib/client-contacts-readiness";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -245,7 +250,7 @@ export default async function ContactsPage({ searchParams }: Props) {
                 <TableHead>Client</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Import</TableHead>
-                <TableHead>Suppressed</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Send</TableHead>
               </TableRow>
             </TableHeader>
@@ -259,11 +264,28 @@ export default async function ContactsPage({ searchParams }: Props) {
                 // operator still sees a human identifier.
                 const contactLabel =
                   nameLabel || row.email || "Unnamed contact";
+                // PR F3: classify every row using the canonical readiness
+                // helper so the Status column tells the operator whether
+                // this contact is email-sendable, valid-no-email, suppressed,
+                // or missing every identifier — instead of a generic Yes/No
+                // suppression chip that hid the null-email case.
+                const status = readinessStatusLabel(
+                  classifyContactReadiness({
+                    email: row.email,
+                    linkedIn: row.linkedIn,
+                    mobilePhone: row.mobilePhone,
+                    officePhone: row.officePhone,
+                    isSuppressed: row.isSuppressed,
+                  }),
+                );
                 return (
                   <TableRow key={row.id}>
                     <TableCell className="font-medium">
                       {row.email ?? (
-                        <span className="text-xs text-muted-foreground">
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title="No email address on file — this contact cannot be reached by email."
+                        >
                           No email
                         </span>
                       )}
@@ -279,16 +301,7 @@ export default async function ContactsPage({ searchParams }: Props) {
                       {row.importBatch?.fileName ?? "—"}
                     </TableCell>
                     <TableCell>
-                      {row.isSuppressed ? (
-                        <span className="space-y-0.5">
-                          <Badge variant="destructive">Yes</Badge>
-                          <p className="text-[10px] text-muted-foreground">
-                            email/domain list
-                          </p>
-                        </span>
-                      ) : (
-                        <Badge variant="secondary">No</Badge>
-                      )}
+                      <ContactReadinessBadge status={status} />
                     </TableCell>
                     <TableCell className="text-right">
                       <SendToContactForm
