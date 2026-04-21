@@ -10,6 +10,7 @@ import {
   type BuildTimelineResult,
   type TimelineEvent,
 } from "@/lib/activity/client-activity-timeline";
+import { SEQUENCE_INTRO_SEND_METADATA_KIND } from "@/lib/email-sequences/sequence-send-execution-constants";
 
 /**
  * PR H — unified activity timeline loader.
@@ -79,6 +80,7 @@ export async function loadClientActivityTimeline(
         queuedAt: true,
         createdAt: true,
         failureReason: true,
+        metadata: true,
       },
     }),
     prisma.inboundReply.findMany({
@@ -207,7 +209,12 @@ export async function loadClientActivityTimeline(
     const occurredAt =
       row.sentAt ?? row.bouncedAt ?? row.queuedAt ?? row.createdAt;
     const toEmail = row.toEmail;
-    const title = severityToOutboundTitle(row.status, toEmail);
+    const metaKind = readOutboundMetadataKind(row.metadata);
+    const isSequenceIntro =
+      metaKind === SEQUENCE_INTRO_SEND_METADATA_KIND;
+    const title = isSequenceIntro
+      ? severityToSequenceIntroTitle(row.status, toEmail)
+      : severityToOutboundTitle(row.status, toEmail);
     const descriptionParts: string[] = [];
     if (row.subject) descriptionParts.push(`“${row.subject}”`);
     if (row.status === "FAILED" && row.failureReason) {
@@ -379,10 +386,16 @@ export async function loadClientActivityTimeline(
       "contact without email";
     const sequenceName = row.sequence?.name ?? "sequence";
     const statusLower = row.status.toLowerCase();
+    // "records only" is only true before D4e.2 dispatch. Once a row flips
+    // to SENT it represents a real queued/sent OutboundEmail, so we drop
+    // that qualifier to avoid misleading operators.
+    const dispatched = row.status === "SENT";
     const description =
       row.blockedReason && row.blockedReason.length > 0
         ? `${sequenceName}: ${statusLower} — ${row.blockedReason}`
-        : `${sequenceName}: ${statusLower} (records only)`;
+        : dispatched
+          ? `${sequenceName}: ${statusLower} (queued to outbound)`
+          : `${sequenceName}: ${statusLower} (records only)`;
     events.push({
       id: `step-send:${row.id}`,
       occurredAt: row.updatedAt,
@@ -456,4 +469,55 @@ function severityToOutboundTitle(status: string, toEmail: string): string {
     default:
       return `Email queued — ${toEmail}`;
   }
+}
+
+/**
+ * PR D4e.2 — friendlier titles for OutboundEmail rows that are part of a
+ * sequence introduction batch. The metadata.kind sentinel is set by
+ * `sendSequenceIntroductionBatch`. Any row without that sentinel falls
+ * back to the generic outbound title above.
+ */
+function severityToSequenceIntroTitle(
+  status: string,
+  toEmail: string,
+): string {
+  switch (status) {
+    case "SENT":
+      return `Sequence introduction sent to ${toEmail}`;
+    case "DELIVERED":
+      return `Sequence introduction delivered to ${toEmail}`;
+    case "REPLIED":
+      return `Sequence introduction replied — ${toEmail}`;
+    case "BOUNCED":
+      return `Sequence introduction bounced — ${toEmail}`;
+    case "FAILED":
+      return `Sequence introduction failed — ${toEmail}`;
+    case "BLOCKED_SUPPRESSION":
+      return `Sequence introduction blocked by suppression — ${toEmail}`;
+    case "PROCESSING":
+      return `Sequence introduction sending — ${toEmail}`;
+    case "PREPARING":
+    case "REQUESTED":
+    case "QUEUED":
+    default:
+      return `Sequence introduction queued — ${toEmail}`;
+  }
+}
+
+/**
+ * Reads `metadata.kind` off an OutboundEmail JSON column without
+ * throwing on null/unknown shapes. Prisma types `metadata` as
+ * `Prisma.JsonValue` so we narrow defensively here.
+ */
+function readOutboundMetadataKind(meta: unknown): string | null {
+  if (
+    meta !== null &&
+    typeof meta === "object" &&
+    !Array.isArray(meta) &&
+    "kind" in (meta as Record<string, unknown>)
+  ) {
+    const kind = (meta as Record<string, unknown>).kind;
+    return typeof kind === "string" ? kind : null;
+  }
+  return null;
 }

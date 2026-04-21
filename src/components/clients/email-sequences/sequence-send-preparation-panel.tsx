@@ -1,4 +1,7 @@
-import { prepareClientEmailSequenceStepSendsAction } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
+import {
+  prepareClientEmailSequenceStepSendsAction,
+  sendClientEmailSequenceIntroductionAction,
+} from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,6 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE } from "@/lib/email-sequences/sequence-send-execution-constants";
+import type {
+  SequenceIntroSendUiAllowlist,
+  SequenceIntroSendUiSnapshot,
+} from "@/server/email-sequences/send-introduction";
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 
 /**
@@ -24,6 +32,10 @@ type Props = {
   clientId: string;
   canMutate: boolean;
   snapshots: SequencePrepSnapshot[];
+  /** PR D4e.2 — per-sequence introduction-send readiness. */
+  introSendSnapshots?: SequenceIntroSendUiSnapshot[];
+  /** PR D4e.2 — allowlist snapshot for the dispatch section. */
+  introSendAllowlist?: SequenceIntroSendUiAllowlist;
 };
 
 function formatRelative(iso: string | null): string {
@@ -40,9 +52,14 @@ export function SequenceSendPreparationPanel({
   clientId,
   canMutate,
   snapshots,
+  introSendSnapshots = [],
+  introSendAllowlist,
 }: Props) {
   const hasSnapshots = snapshots.length > 0;
   const hasAnyEnrollment = snapshots.some((s) => s.enrollmentCount > 0);
+  const introSendBySequenceId = new Map<string, SequenceIntroSendUiSnapshot>(
+    introSendSnapshots.map((s) => [s.sequenceId, s]),
+  );
 
   return (
     <Card
@@ -177,10 +194,18 @@ export function SequenceSendPreparationPanel({
                   </Button>
                 </form>
                 <span className="text-xs text-muted-foreground">
-                  This does not send email. D4e.2 adds dispatch behind the
-                  GOVERNED_TEST_EMAIL_DOMAINS allowlist.
+                  This does not send email. Use the dispatch section below to
+                  send the introduction to allowlisted recipients.
                 </span>
               </div>
+
+              <IntroSendDispatchBlock
+                clientId={clientId}
+                canMutate={canMutate}
+                sequenceId={s.sequenceId}
+                introSend={introSendBySequenceId.get(s.sequenceId)}
+                allowlist={introSendAllowlist}
+              />
             </div>
           );
         })}
@@ -193,6 +218,182 @@ export function SequenceSendPreparationPanel({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * PR D4e.2 — per-sequence INTRODUCTION dispatch block.
+ *
+ * Sends real email via the outbound worker. Gated by the governed
+ * test allowlist (`GOVERNED_TEST_EMAIL_DOMAINS`) and the typed
+ * confirmation phrase (`SEND INTRODUCTION`). The button is disabled
+ * unless every safety precondition is met server-side and at least
+ * one READY record has an allowlisted recipient domain.
+ */
+function IntroSendDispatchBlock({
+  clientId,
+  canMutate,
+  sequenceId,
+  introSend,
+  allowlist,
+}: {
+  clientId: string;
+  canMutate: boolean;
+  sequenceId: string;
+  introSend: SequenceIntroSendUiSnapshot | undefined;
+  allowlist: SequenceIntroSendUiAllowlist | undefined;
+}) {
+  if (!introSend) {
+    return null;
+  }
+
+  const canSend = canMutate && introSend.sendable;
+  const disabledReasons: string[] = [];
+  if (!canMutate) {
+    disabledReasons.push(
+      "You do not have sequence mutator permission for this client.",
+    );
+  }
+  if (introSend.disabledReason) {
+    disabledReasons.push(introSend.disabledReason);
+  }
+
+  const allowlistConfigured = allowlist?.configured === true;
+  const allowlistDomains = allowlist?.domains ?? [];
+
+  return (
+    <div className="rounded-md border border-amber-300/60 bg-amber-50/40 p-3 text-xs dark:border-amber-500/40 dark:bg-amber-950/20">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-medium text-amber-900 dark:text-amber-200">
+          Send introduction to allowlisted recipients
+        </div>
+        <Badge
+          variant="outline"
+          className="text-[10px] uppercase tracking-wider"
+        >
+          D4e.2 · intro only
+        </Badge>
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        This <strong>sends real email</strong> through the outbound worker to
+        allowlisted recipients only. Follow-ups are not sent by this action. A
+        typed confirmation (
+        <code className="font-mono">{SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}</code>
+        ) is required. Hard cap: {String(introSend.hardCap)} recipients per run.
+      </p>
+
+      <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-4">
+        <MiniStat label="Ready" value={introSend.readyCount} tone="info" />
+        <MiniStat
+          label="Allowlisted"
+          value={introSend.allowlistedReadyCount}
+          tone={introSend.allowlistedReadyCount > 0 ? "success" : "muted"}
+        />
+        <MiniStat
+          label="Allowlist-blocked"
+          value={introSend.allowlistBlockedReadyCount}
+          tone={
+            introSend.allowlistBlockedReadyCount > 0 ? "warning" : "muted"
+          }
+        />
+        <MiniStat label="Sent" value={introSend.sentCount} tone="muted" />
+      </div>
+
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        {allowlistConfigured ? (
+          <>
+            Allowlist:{" "}
+            <span className="font-mono">
+              {allowlistDomains.length > 0
+                ? allowlistDomains.join(", ")
+                : "(empty)"}
+            </span>
+          </>
+        ) : (
+          <span className="text-amber-700 dark:text-amber-300">
+            GOVERNED_TEST_EMAIL_DOMAINS is not configured — dispatch is
+            disabled.
+          </span>
+        )}
+      </div>
+
+      {disabledReasons.length > 0 ? (
+        <ul className="mt-2 list-disc pl-5 text-[11px] text-amber-800 dark:text-amber-200">
+          {disabledReasons.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <form
+        action={sendClientEmailSequenceIntroductionAction}
+        className="mt-3 flex flex-wrap items-center gap-2"
+      >
+        <input type="hidden" name="clientId" value={clientId} />
+        <input type="hidden" name="sequenceId" value={sequenceId} />
+        <label className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            Type <code className="font-mono">{SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}</code>
+          </span>
+          <input
+            type="text"
+            name="confirmationPhrase"
+            autoComplete="off"
+            spellCheck={false}
+            required
+            disabled={!canSend}
+            placeholder={SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}
+            className="h-8 w-52 rounded-md border border-border/80 bg-background px-2 font-mono text-[11px] disabled:opacity-50"
+          />
+        </label>
+        <Button
+          type="submit"
+          size="sm"
+          variant="destructive"
+          disabled={!canSend}
+          title={
+            canSend
+              ? `Sends up to ${String(introSend.allowlistedReadyCount)} real email(s).`
+              : "Dispatch is not available yet."
+          }
+        >
+          Send introduction
+        </Button>
+        <span className="text-[11px] text-muted-foreground">
+          Only allowlisted recipients will receive email. Suppressed rows are
+          re-checked at dispatch.
+        </span>
+      </form>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone = "muted",
+}: {
+  label: string;
+  value: number;
+  tone?: "success" | "warning" | "error" | "info" | "muted";
+}) {
+  const toneClass =
+    tone === "success"
+      ? "text-emerald-700 dark:text-emerald-300"
+      : tone === "warning"
+        ? "text-amber-700 dark:text-amber-300"
+        : tone === "error"
+          ? "text-red-700 dark:text-red-300"
+          : tone === "info"
+            ? "text-sky-700 dark:text-sky-300"
+            : "text-muted-foreground";
+  return (
+    <div className="rounded-md border border-border/60 bg-background px-2 py-1">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className={`text-sm font-medium ${toneClass}`}>{String(value)}</div>
+    </div>
   );
 }
 
