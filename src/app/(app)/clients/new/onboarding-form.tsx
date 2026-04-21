@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClientFromOnboarding } from "@/app/(app)/clients/actions";
@@ -15,18 +15,19 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  CLIENT_NOTES_MAX,
+  generateSlugFromName,
+  validateNewClientShellInput,
+} from "@/lib/clients/new-client-shell";
 
-const steps = [
-  { id: "basics", title: "Client profile" },
-  { id: "suppression", title: "Suppression sources" },
-  { id: "outreach", title: "Outreach setup" },
-  { id: "review", title: "Review" },
-];
-
+/**
+ * PR I — Minimal new-client shell form. Collects only identity-level
+ * fields. Mailboxes, suppression, templates, sequences, and daily caps
+ * live in per-client workspace modules.
+ */
 export function OnboardingForm() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -35,28 +36,45 @@ export function OnboardingForm() {
     industry: "",
     website: "",
     notes: "",
-    emailSheetId: "",
-    domainSheetId: "",
-    senderName: "",
-    dailyCap: "150",
   });
+  const [slugTouched, setSlugTouched] = useState(false);
+
+  const derivedSlug = useMemo(() => generateSlugFromName(form.name), [form.name]);
+  const effectiveSlug = slugTouched ? form.slug : derivedSlug;
+
+  const clientValidation = useMemo(
+    () =>
+      validateNewClientShellInput({
+        name: form.name,
+        slug: effectiveSlug,
+        industry: form.industry,
+        website: form.website,
+        notes: form.notes,
+      }),
+    [form.industry, form.name, form.notes, form.website, effectiveSlug],
+  );
+  const canSubmit = clientValidation.ok && !pending;
 
   async function onSubmit() {
-    setPending(true);
     setError(null);
+    if (!clientValidation.ok) {
+      setError(clientValidation.message);
+      return;
+    }
+    setPending(true);
     try {
       const res = await createClientFromOnboarding({
         name: form.name,
-        slug: form.slug,
+        slug: effectiveSlug,
         industry: form.industry || undefined,
         website: form.website || undefined,
         notes: form.notes || undefined,
-        emailSheetId: form.emailSheetId || undefined,
-        domainSheetId: form.domainSheetId || undefined,
-        senderName: form.senderName || undefined,
-        dailyCap: form.dailyCap ? Number(form.dailyCap) : undefined,
       });
-      if (res.ok) router.push(`/clients/${res.clientId}`);
+      if (res.ok) {
+        router.push(`/clients/${res.clientId}?created=1`);
+      } else {
+        setError(res.error);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -67,189 +85,120 @@ export function OnboardingForm() {
   return (
     <Card className="mx-auto max-w-2xl border-border/80 shadow-lg">
       <CardHeader>
-        <CardTitle>Onboard a client workspace</CardTitle>
+        <CardTitle>Create client workspace</CardTitle>
         <CardDescription>
-          Creates an isolated tenant with suppression sources and outreach defaults.
-          Google Sheets remain the system of record for suppression — connect sync in a
-          later phase.
+          Creates an isolated tenant shell with <strong>ONBOARDING</strong> status.
+          Mailboxes, suppression, contact lists, templates, and sequences are
+          configured inside the client workspace modules — not here.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <Tabs
-          value={steps[step]?.id}
-          onValueChange={(v) => setStep(steps.findIndex((s) => s.id === v))}
-        >
-          <TabsList className="grid w-full grid-cols-4">
-            {steps.map((s) => (
-              <TabsTrigger key={s.id} value={s.id} className="text-xs sm:text-sm">
-                {s.title}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          <TabsContent value="basics" className="space-y-4 pt-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Client name</Label>
-              <Input
-                id="name"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Acme Corp"
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="slug">Workspace slug</Label>
-              <Input
-                id="slug"
-                value={form.slug}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    slug: e.target.value.toLowerCase().replace(/\s+/g, "-"),
-                  }))
-                }
-                placeholder="acme-corp"
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Used in URLs and internal references — unique across OpensDoors.
-              </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="industry">Industry</Label>
-                <Input
-                  id="industry"
-                  value={form.industry}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, industry: e.target.value }))
-                  }
-                  placeholder="B2B SaaS"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  type="url"
-                  value={form.website}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, website: e.target.value }))
-                  }
-                  placeholder="https://"
-                />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="notes">Internal notes</Label>
-              <Input
-                id="notes"
-                value={form.notes}
-                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Billing contact, tone preferences…"
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="suppression" className="space-y-4 pt-4">
-            <p className="text-sm text-muted-foreground">
-              Each client connects their own Google Sheet for email and domain
-              suppression. Paste spreadsheet IDs — OAuth/service account wiring is{" "}
-              <span className="font-medium text-foreground">TODO</span>.
-            </p>
-            <div className="grid gap-2">
-              <Label htmlFor="emailSheet">Email suppression spreadsheet ID</Label>
-              <Input
-                id="emailSheet"
-                value={form.emailSheetId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, emailSheetId: e.target.value }))
-                }
-                placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="domainSheet">Domain suppression spreadsheet ID</Label>
-              <Input
-                id="domainSheet"
-                value={form.domainSheetId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, domainSheetId: e.target.value }))
-                }
-                placeholder="Separate tab or file per client policy"
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="outreach" className="space-y-4 pt-4">
-            <p className="text-sm text-muted-foreground">
-              Placeholder operational defaults — sending provider integration comes later.
-            </p>
-            <div className="grid gap-2">
-              <Label htmlFor="sender">Preferred sender display name</Label>
-              <Input
-                id="sender"
-                value={form.senderName}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, senderName: e.target.value }))
-                }
-                placeholder="OpensDoors · Alex"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cap">Daily send cap (soft target)</Label>
-              <Input
-                id="cap"
-                type="number"
-                min={1}
-                value={form.dailyCap}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, dailyCap: e.target.value }))
-                }
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="review" className="space-y-3 pt-4 text-sm">
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
-              <p>
-                <span className="text-muted-foreground">Name:</span>{" "}
-                <span className="font-medium">{form.name || "—"}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">Slug:</span>{" "}
-                <span className="font-medium">{form.slug || "—"}</span>
-              </p>
-              <p>
-                <span className="text-muted-foreground">Suppression sheets:</span>{" "}
-                {form.emailSheetId || form.domainSheetId
-                  ? "Configured (IDs captured)"
-                  : "Optional — add later"}
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+      <CardContent className="space-y-5">
+        <div className="grid gap-2">
+          <Label htmlFor="name">Client name *</Label>
+          <Input
+            id="name"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Acme Corp"
+            required
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="slug">Workspace slug *</Label>
+          <Input
+            id="slug"
+            value={effectiveSlug}
+            onChange={(e) => {
+              setSlugTouched(true);
+              setForm((f) => ({
+                ...f,
+                slug: e.target.value.toLowerCase().replace(/\s+/g, "-"),
+              }));
+            }}
+            onBlur={() => {
+              if (!form.slug && !slugTouched) {
+                setForm((f) => ({ ...f, slug: derivedSlug }));
+              }
+            }}
+            placeholder="acme-corp"
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            Auto-derived from the client name. Used in URLs; lowercase letters,
+            numbers, and single hyphens only. Unique across OpensDoors.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="industry">Industry (optional)</Label>
+            <Input
+              id="industry"
+              value={form.industry}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, industry: e.target.value }))
+              }
+              placeholder="B2B SaaS"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="website">Website (optional)</Label>
+            <Input
+              id="website"
+              type="url"
+              value={form.website}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, website: e.target.value }))
+              }
+              placeholder="https://"
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="notes">Internal notes (optional)</Label>
+          <Input
+            id="notes"
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            placeholder="Billing contact, tone preferences, handoff owner…"
+            maxLength={CLIENT_NOTES_MAX}
+          />
+        </div>
+
+        <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">After create</p>
+          <p className="mt-1">
+            You&apos;ll land on the workspace overview. Complete the setup
+            modules in order: Brief → Mailboxes → Sources → Suppression →
+            Contacts → Templates → Sequences → Activity. The client stays in{" "}
+            <strong>ONBOARDING</strong> until launch is explicitly approved.
+          </p>
+        </div>
+
         {error ? (
           <p className="text-sm text-destructive" role="alert">
             {error}
           </p>
+        ) : !clientValidation.ok && (form.name || form.slug) ? (
+          <p className="text-xs text-muted-foreground">
+            {clientValidation.message}
+          </p>
         ) : null}
       </CardContent>
-      <CardFooter className="flex justify-between gap-2 border-t border-border/60">
+      <CardFooter className="flex justify-end gap-2 border-t border-border/60">
         <Button
           type="button"
           variant="outline"
-          disabled={step === 0}
-          onClick={() => setStep((s) => Math.max(0, s - 1))}
+          onClick={() => router.push("/clients")}
+          disabled={pending}
         >
-          Back
+          Cancel
         </Button>
-        {step < steps.length - 1 ? (
-          <Button type="button" onClick={() => setStep((s) => s + 1)}>
-            Continue
-          </Button>
-        ) : (
-          <Button type="button" disabled={pending} onClick={onSubmit}>
-            {pending ? "Creating…" : "Create workspace"}
-          </Button>
-        )}
+        <Button type="button" disabled={!canSubmit} onClick={onSubmit}>
+          {pending ? "Creating…" : "Create workspace"}
+        </Button>
       </CardFooter>
     </Card>
   );

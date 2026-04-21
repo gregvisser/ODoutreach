@@ -8,8 +8,9 @@ export default function NewClientPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">New client</h1>
         <p className="mt-1 text-muted-foreground">
-          Provision a workspace — data stays partitioned per client. The operating brief is captured
-          later under each client&apos;s Brief module.
+          Provision a workspace shell — data stays partitioned per client. The
+          operating brief, mailboxes, suppression, and sequences are configured
+          inside the client workspace modules after creation.
         </p>
       </div>
       <OnboardingForm />
