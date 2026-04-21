@@ -8,6 +8,7 @@ import {
   CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
 } from "@/lib/controlled-pilot-constants";
 import {
+  isSequenceIntroConfirmationAccepted,
   SEQUENCE_INTRO_RESERVATION_KEY_PREFIX,
   SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
   SEQUENCE_INTRO_SEND_METADATA_KIND,
@@ -182,7 +183,11 @@ export async function sendSequenceIntroductionBatch(input: {
   const { staff, clientId, sequenceId } = input;
   await requireClientAccess(staff, clientId);
 
-  if (input.confirmationPhrase !== SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE) {
+  // Hotfix after D4e.2: trim defensively here as well, so any future
+  // caller that forgets to normalise at the action boundary still
+  // behaves correctly. The exact phrase comparison remains
+  // case-sensitive; only surrounding whitespace is relaxed.
+  if (!isSequenceIntroConfirmationAccepted(input.confirmationPhrase)) {
     throw new SequenceIntroSendError(
       "CONFIRMATION_REQUIRED",
       `Type the exact confirmation phrase: ${SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}`,

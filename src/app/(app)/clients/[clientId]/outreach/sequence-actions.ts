@@ -18,6 +18,7 @@ import {
   sendSequenceIntroductionBatch,
   SequenceIntroSendError,
 } from "@/server/email-sequences/send-introduction";
+import { normaliseSequenceIntroConfirmation } from "@/lib/email-sequences/sequence-send-execution-constants";
 import {
   approveSequence,
   archiveSequence,
@@ -439,8 +440,12 @@ export async function sendClientEmailSequenceIntroductionAction(
   const staff = await requireOpensDoorsStaff();
   const clientId = getClientIdFromForm(formData);
   const sequenceId = String(formData.get("sequenceId") ?? "").trim();
-  const confirmationPhrase = String(
-    formData.get("confirmationPhrase") ?? "",
+  // Hotfix after D4e.2: trim whitespace at the server-action boundary so
+  // an operator typing " SEND INTRODUCTION" or "SEND INTRODUCTION\n"
+  // isn't rejected. Case sensitivity and the exact phrase are preserved
+  // inside `sendSequenceIntroductionBatch`.
+  const confirmationPhrase = normaliseSequenceIntroConfirmation(
+    formData.get("confirmationPhrase"),
   );
   if (!sequenceId) {
     redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
