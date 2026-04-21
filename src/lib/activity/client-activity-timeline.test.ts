@@ -4,6 +4,7 @@ import {
   buildClientTimeline,
   classifyImportBatchStatus,
   classifyOutboundStatus,
+  classifyStepSendStatus,
   DEFAULT_TIMELINE_LIMIT,
   eventTypeLabel,
   severityLabel,
@@ -142,6 +143,7 @@ describe("eventTypeLabel and severityLabel", () => {
       "template",
       "sequence",
       "enrollment",
+      "step_send",
       "audit",
     ];
     for (const t of types) {
@@ -213,6 +215,25 @@ describe("classifyImportBatchStatus", () => {
     expect(classifyImportBatchStatus("PENDING")).toBe("info");
     expect(classifyImportBatchStatus("PROCESSING")).toBe("info");
     expect(classifyImportBatchStatus("SOMETHING_ELSE")).toBe("info");
+  });
+});
+
+describe("classifyStepSendStatus (PR D4e.1)", () => {
+  it("maps READY/PLANNED/SKIPPED to info", () => {
+    expect(classifyStepSendStatus("READY")).toBe("info");
+    expect(classifyStepSendStatus("PLANNED")).toBe("info");
+    expect(classifyStepSendStatus("SKIPPED")).toBe("info");
+  });
+  it("maps SUPPRESSED/BLOCKED to warning", () => {
+    expect(classifyStepSendStatus("SUPPRESSED")).toBe("warning");
+    expect(classifyStepSendStatus("BLOCKED")).toBe("warning");
+  });
+  it("maps SENT to success and FAILED to error (D4e.2+)", () => {
+    expect(classifyStepSendStatus("SENT")).toBe("success");
+    expect(classifyStepSendStatus("FAILED")).toBe("error");
+  });
+  it("defaults unknown statuses to info", () => {
+    expect(classifyStepSendStatus("WAT")).toBe("info");
   });
 });
 

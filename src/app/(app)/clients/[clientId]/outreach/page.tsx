@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
+import { SequenceSendPreparationPanel } from "@/components/clients/email-sequences/sequence-send-preparation-panel";
 import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
@@ -19,6 +20,7 @@ import {
   loadClientEmailSequencesOverview,
 } from "@/server/email-sequences/queries";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
+import { loadClientSequencePrepSnapshots } from "@/server/email-sequences/step-sends";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -52,13 +54,19 @@ export default async function ClientOutreachPage({
   if (!bundle.client) notFound();
   const client = bundle.client;
 
-  const [templatesOverview, canMutateTemplates, sequencesOverview, canMutateSequences] =
-    await Promise.all([
-      loadClientEmailTemplatesOverview(client.id),
-      getClientEmailTemplateMutationAllowed(staff, client.id),
-      loadClientEmailSequencesOverview(client.id),
-      getClientEmailSequenceMutationAllowed(staff, client.id),
-    ]);
+  const [
+    templatesOverview,
+    canMutateTemplates,
+    sequencesOverview,
+    canMutateSequences,
+    sequencePrepSnapshots,
+  ] = await Promise.all([
+    loadClientEmailTemplatesOverview(client.id),
+    getClientEmailTemplateMutationAllowed(staff, client.id),
+    loadClientEmailSequencesOverview(client.id),
+    getClientEmailSequenceMutationAllowed(staff, client.id),
+    loadClientSequencePrepSnapshots(client.id),
+  ]);
 
   const templatesFlash = {
     ok: firstParam(sp.template),
@@ -112,6 +120,12 @@ export default async function ClientOutreachPage({
           connectedSendingCount: bundle.connectedSendingCount,
           aggregateRemainingToday: bundle.aggregateRemaining,
         }}
+      />
+
+      <SequenceSendPreparationPanel
+        clientId={client.id}
+        canMutate={canMutateSequences}
+        snapshots={sequencePrepSnapshots}
       />
 
       <Card className="border-border/80 shadow-sm">

@@ -5,6 +5,7 @@ import {
   buildClientTimeline,
   classifyImportBatchStatus,
   classifyOutboundStatus,
+  classifyStepSendStatus,
   DEFAULT_TIMELINE_LIMIT,
   type BuildTimelineResult,
   type TimelineEvent,
@@ -59,6 +60,7 @@ export async function loadClientActivityTimeline(
     templates,
     sequences,
     enrollments,
+    stepSends,
     audits,
   ] = await Promise.all([
     prisma.outboundEmail.findMany({
@@ -165,6 +167,20 @@ export async function loadClientActivityTimeline(
         status: true,
         enrolledAt: true,
         exclusionReason: true,
+        sequence: { select: { name: true } },
+        contact: { select: { email: true, fullName: true } },
+      },
+    }),
+    prisma.clientEmailSequenceStepSend.findMany({
+      where: { clientId },
+      orderBy: { updatedAt: "desc" },
+      take: PER_SOURCE_LIMIT,
+      select: {
+        id: true,
+        status: true,
+        blockedReason: true,
+        updatedAt: true,
+        createdAt: true,
         sequence: { select: { name: true } },
         contact: { select: { email: true, fullName: true } },
       },
@@ -353,6 +369,28 @@ export async function loadClientActivityTimeline(
           ? `${sequenceName}: excluded (${row.exclusionReason})`
           : `${sequenceName}: ${row.status.toLowerCase()}`,
       sourceModel: "ClientEmailSequenceEnrollment",
+    });
+  }
+
+  for (const row of stepSends) {
+    const contactLabel =
+      row.contact?.fullName ??
+      row.contact?.email ??
+      "contact without email";
+    const sequenceName = row.sequence?.name ?? "sequence";
+    const statusLower = row.status.toLowerCase();
+    const description =
+      row.blockedReason && row.blockedReason.length > 0
+        ? `${sequenceName}: ${statusLower} — ${row.blockedReason}`
+        : `${sequenceName}: ${statusLower} (records only)`;
+    events.push({
+      id: `step-send:${row.id}`,
+      occurredAt: row.updatedAt,
+      type: "step_send",
+      severity: classifyStepSendStatus(row.status),
+      title: `Sequence step send — ${contactLabel}`,
+      description,
+      sourceModel: "ClientEmailSequenceStepSend",
     });
   }
 

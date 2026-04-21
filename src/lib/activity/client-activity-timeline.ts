@@ -30,6 +30,7 @@ export type TimelineEventType =
   | "template"
   | "sequence"
   | "enrollment"
+  | "step_send"
   | "audit";
 
 export type TimelineEventSeverity = "info" | "success" | "warning" | "error";
@@ -153,6 +154,7 @@ const EVENT_TYPE_LABELS: Record<TimelineEventType, string> = {
   template: "Template",
   sequence: "Sequence",
   enrollment: "Enrollment",
+  step_send: "Sequence step send",
   audit: "Audit",
 };
 
@@ -223,6 +225,31 @@ export function classifyImportBatchStatus(status: string): TimelineEventSeverity
     case "PROCESSING":
       return "info";
     case "PENDING":
+    default:
+      return "info";
+  }
+}
+
+/**
+ * PR D4e.1 — classify a `ClientEmailSequenceStepSend.status` for the
+ * Activity timeline. Records-only statuses (PLANNED/READY/SKIPPED)
+ * render as info; SUPPRESSED/BLOCKED as warning; FAILED as error;
+ * SENT as success (D4e.2+).
+ */
+export function classifyStepSendStatus(
+  status: string,
+): TimelineEventSeverity {
+  switch (status) {
+    case "SENT":
+      return "success";
+    case "SUPPRESSED":
+    case "BLOCKED":
+      return "warning";
+    case "FAILED":
+      return "error";
+    case "PLANNED":
+    case "READY":
+    case "SKIPPED":
     default:
       return "info";
   }

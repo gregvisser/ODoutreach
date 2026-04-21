@@ -11,6 +11,10 @@ import {
   EnrollmentFailure,
 } from "@/server/email-sequences/enrollments";
 import {
+  planSequenceStepSends,
+  SequenceStepSendPlanFailure,
+} from "@/server/email-sequences/step-sends";
+import {
   approveSequence,
   archiveSequence,
   createSequence,
@@ -65,6 +69,7 @@ function getClientIdFromForm(formData: FormData): string {
 function flashForError(e: unknown): string {
   if (e instanceof SequenceMutationFailure) return e.message;
   if (e instanceof EnrollmentFailure) return e.message;
+  if (e instanceof SequenceStepSendPlanFailure) return e.message;
   if (e instanceof Error) return e.message;
   return "Could not complete sequence action.";
 }
@@ -333,6 +338,69 @@ export async function createClientEmailSequenceEnrollmentsAction(
       {
         kind: "ok",
         message: `${parts.join(" · ")} — no email sent`,
+      },
+      sequenceId,
+    );
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
+    redirectBack(
+      clientId,
+      { kind: "error", message: flashForError(e) },
+      sequenceId,
+    );
+  }
+}
+
+/**
+ * PR D4e.1 — operator-triggered sequence step-send planner.
+ *
+ * Writes/refreshes `ClientEmailSequenceStepSend` rows for the given
+ * step. RECORDS ONLY — never sends email, never reserves a mailbox
+ * slot, never creates an `OutboundEmail`. The dispatcher lands in
+ * D4e.2 behind the `GOVERNED_TEST_EMAIL_DOMAINS` allowlist.
+ */
+export async function prepareClientEmailSequenceStepSendsAction(
+  formData: FormData,
+): Promise<void> {
+  const staff = await requireOpensDoorsStaff();
+  const clientId = getClientIdFromForm(formData);
+  const sequenceId = String(formData.get("sequenceId") ?? "").trim();
+  const stepId = String(formData.get("stepId") ?? "").trim();
+  if (!sequenceId) {
+    redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
+  }
+  if (!stepId) {
+    redirectBack(
+      clientId,
+      { kind: "error", message: "Missing step id." },
+      sequenceId,
+    );
+  }
+  await requireClientAccess(staff, clientId);
+  await requireClientEmailSequenceMutator(staff, clientId);
+
+  try {
+    const plan = await planSequenceStepSends({
+      clientId,
+      sequenceId,
+      stepId,
+      staffUserId: staff.id,
+    });
+    revalidatePath(`/clients/${clientId}/outreach`);
+    const parts: string[] = [];
+    parts.push(`${String(plan.counts.total)} record(s) prepared`);
+    parts.push(`${String(plan.counts.ready)} ready`);
+    if (plan.counts.blocked > 0)
+      parts.push(`${String(plan.counts.blocked)} blocked`);
+    if (plan.counts.suppressed > 0)
+      parts.push(`${String(plan.counts.suppressed)} suppressed`);
+    if (plan.counts.skipped > 0)
+      parts.push(`${String(plan.counts.skipped)} skipped`);
+    redirectBack(
+      clientId,
+      {
+        kind: "ok",
+        message: `${parts.join(" · ")} — no email sent (records only)`,
       },
       sequenceId,
     );
