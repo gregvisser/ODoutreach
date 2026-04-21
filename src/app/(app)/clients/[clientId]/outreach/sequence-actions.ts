@@ -15,6 +15,10 @@ import {
   SequenceStepSendPlanFailure,
 } from "@/server/email-sequences/step-sends";
 import {
+  sendSequenceIntroductionBatch,
+  SequenceIntroSendError,
+} from "@/server/email-sequences/send-introduction";
+import {
   approveSequence,
   archiveSequence,
   createSequence,
@@ -70,6 +74,7 @@ function flashForError(e: unknown): string {
   if (e instanceof SequenceMutationFailure) return e.message;
   if (e instanceof EnrollmentFailure) return e.message;
   if (e instanceof SequenceStepSendPlanFailure) return e.message;
+  if (e instanceof SequenceIntroSendError) return e.message;
   if (e instanceof Error) return e.message;
   return "Could not complete sequence action.";
 }
@@ -402,6 +407,90 @@ export async function prepareClientEmailSequenceStepSendsAction(
         kind: "ok",
         message: `${parts.join(" · ")} — no email sent (records only)`,
       },
+      sequenceId,
+    );
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
+    redirectBack(
+      clientId,
+      { kind: "error", message: flashForError(e) },
+      sequenceId,
+    );
+  }
+}
+
+/**
+ * PR D4e.2 — operator-triggered INTRODUCTION dispatch, allowlist-gated.
+ *
+ * Runs `sendSequenceIntroductionBatch` which:
+ *   * requires the `SEND INTRODUCTION` confirmation phrase,
+ *   * re-validates every READY step-send row at dispatch time,
+ *   * enforces `GOVERNED_TEST_EMAIL_DOMAINS` per recipient,
+ *   * reuses the existing `MailboxSendReservation` ledger,
+ *   * queues OutboundEmail rows that the outbound worker will send.
+ *
+ * There is no follow-up advancement, no cron/worker created here, and
+ * no new send executor — the existing Graph / Gmail send path handles
+ * the actual dispatch.
+ */
+export async function sendClientEmailSequenceIntroductionAction(
+  formData: FormData,
+): Promise<void> {
+  const staff = await requireOpensDoorsStaff();
+  const clientId = getClientIdFromForm(formData);
+  const sequenceId = String(formData.get("sequenceId") ?? "").trim();
+  const confirmationPhrase = String(
+    formData.get("confirmationPhrase") ?? "",
+  );
+  if (!sequenceId) {
+    redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
+  }
+  await requireClientAccess(staff, clientId);
+  await requireClientEmailSequenceMutator(staff, clientId);
+
+  try {
+    const result = await sendSequenceIntroductionBatch({
+      staff,
+      clientId,
+      sequenceId,
+      confirmationPhrase,
+    });
+    revalidatePath(`/clients/${clientId}/outreach`);
+    const parts: string[] = [];
+    parts.push(
+      result.counts.queued === 1
+        ? "1 introduction queued"
+        : `${String(result.counts.queued)} introductions queued`,
+    );
+    if (result.counts.blockedAllowlist > 0) {
+      parts.push(
+        `${String(result.counts.blockedAllowlist)} blocked by allowlist`,
+      );
+    }
+    if (result.counts.suppressedAtExecutionTime > 0) {
+      parts.push(
+        `${String(result.counts.suppressedAtExecutionTime)} suppressed at dispatch`,
+      );
+    }
+    if (result.counts.blockedPlanClassifier > 0) {
+      parts.push(
+        `${String(result.counts.blockedPlanClassifier)} blocked by policy`,
+      );
+    }
+    if (result.counts.blockedAlreadySent > 0) {
+      parts.push(
+        `${String(result.counts.blockedAlreadySent)} already sent`,
+      );
+    }
+    const flashKind: ActionFlash["kind"] =
+      result.counts.queued > 0 ? "ok" : "error";
+    const flashMsg =
+      flashKind === "ok"
+        ? `${parts.join(" · ")} (allowlist: ${result.allowlistDomains.join(", ")})`
+        : `No introductions queued. ${parts.join(" · ")}`;
+    redirectBack(
+      clientId,
+      { kind: flashKind, message: flashMsg },
       sequenceId,
     );
   } catch (e) {

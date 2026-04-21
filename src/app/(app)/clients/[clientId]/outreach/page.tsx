@@ -20,6 +20,7 @@ import {
   loadClientEmailSequencesOverview,
 } from "@/server/email-sequences/queries";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
+import { loadSequenceIntroSendUiSnapshots } from "@/server/email-sequences/send-introduction";
 import { loadClientSequencePrepSnapshots } from "@/server/email-sequences/step-sends";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
@@ -60,12 +61,14 @@ export default async function ClientOutreachPage({
     sequencesOverview,
     canMutateSequences,
     sequencePrepSnapshots,
+    introSendBundle,
   ] = await Promise.all([
     loadClientEmailTemplatesOverview(client.id),
     getClientEmailTemplateMutationAllowed(staff, client.id),
     loadClientEmailSequencesOverview(client.id),
     getClientEmailSequenceMutationAllowed(staff, client.id),
     loadClientSequencePrepSnapshots(client.id),
+    loadSequenceIntroSendUiSnapshots(client.id),
   ]);
 
   const templatesFlash = {
@@ -126,6 +129,8 @@ export default async function ClientOutreachPage({
         clientId={client.id}
         canMutate={canMutateSequences}
         snapshots={sequencePrepSnapshots}
+        introSendSnapshots={introSendBundle.snapshots}
+        introSendAllowlist={introSendBundle.allowlist}
       />
 
       <Card className="border-border/80 shadow-sm">
