@@ -14,7 +14,10 @@ import {
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { loadClientEmailSequencesOverview } from "@/server/email-sequences/queries";
+import {
+  buildSequenceLaunchReadinessMap,
+  loadClientEmailSequencesOverview,
+} from "@/server/email-sequences/queries";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
@@ -69,6 +72,14 @@ export default async function ClientOutreachPage({
     focusSequenceId: firstParam(sp.sequenceId),
   };
 
+  const launchReadinessBySequenceId = buildSequenceLaunchReadinessMap({
+    sequences: sequencesOverview.sequences,
+    mailbox: {
+      connectedSendingCount: bundle.connectedSendingCount,
+      aggregateRemainingToday: bundle.aggregateRemaining,
+    },
+  });
+
   return (
     <div className="space-y-8">
       <div>
@@ -96,6 +107,11 @@ export default async function ClientOutreachPage({
         canMutate={canMutateSequences}
         overview={sequencesOverview}
         flash={sequencesFlash}
+        launchReadinessBySequenceId={launchReadinessBySequenceId}
+        mailboxSnapshot={{
+          connectedSendingCount: bundle.connectedSendingCount,
+          aggregateRemainingToday: bundle.aggregateRemaining,
+        }}
       />
 
       <Card className="border-border/80 shadow-sm">

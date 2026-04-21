@@ -9,6 +9,10 @@ import type {
 import { summarizeContactReadiness } from "@/lib/client-contacts-readiness";
 import type { EnrollmentPreview } from "@/lib/email-sequences/enrollment-policy";
 import {
+  evaluateSequenceLaunchReadiness,
+  type SequenceLaunchReadiness,
+} from "@/lib/email-sequences/launch-readiness";
+import {
   SEQUENCE_STATUS_ORDER,
   summarizeSequenceReadiness,
   type SequenceReadinessSummary,
@@ -38,6 +42,8 @@ export type SequenceStepSummary = {
     name: string;
     category: ClientEmailTemplateCategory;
     status: ClientEmailTemplateStatus;
+    subject: string;
+    content: string;
   };
 };
 
@@ -215,6 +221,8 @@ export async function loadClientEmailSequencesOverview(
                 name: true,
                 category: true,
                 status: true,
+                subject: true,
+                content: true,
               },
             },
           },
@@ -307,6 +315,8 @@ export async function loadClientEmailSequencesOverview(
         name: step.template.name,
         category: step.template.category,
         status: step.template.status,
+        subject: step.template.subject,
+        content: step.template.content,
       },
     }));
 
@@ -400,6 +410,54 @@ export async function loadClientEmailSequencesOverview(
     approvedIntroductionCount,
     approvedTemplatesTotal,
   };
+}
+
+/**
+ * PR D4d — Compute launch-readiness for every sequence in the overview
+ * given a workspace mailbox snapshot. Pure: delegates per-sequence to
+ * `evaluateSequenceLaunchReadiness`. Returns a map keyed by sequence
+ * id so the UI can lookup readiness per card in O(1).
+ *
+ * `hasAlreadyLaunched` is always false in D4d (records-only — no send
+ * model yet). PR D4e flips this once a `ClientEmailSequenceRun`-like
+ * row exists.
+ */
+export function buildSequenceLaunchReadinessMap(params: {
+  sequences: ReadonlyArray<SequenceSummary>;
+  mailbox: {
+    connectedSendingCount: number;
+    aggregateRemainingToday: number;
+  };
+}): Record<string, SequenceLaunchReadiness> {
+  const out: Record<string, SequenceLaunchReadiness> = {};
+  for (const seq of params.sequences) {
+    const readiness = evaluateSequenceLaunchReadiness({
+      sequence: {
+        id: seq.id,
+        clientId: seq.clientId,
+        status: seq.status,
+        hasAlreadyLaunched: false,
+      },
+      contactList: seq.contactList,
+      steps: seq.steps.map((s) => ({
+        category: s.category,
+        template: {
+          id: s.template.id,
+          status: s.template.status,
+          subject: s.template.subject,
+          content: s.template.content,
+        },
+      })),
+      enrollment: {
+        total: seq.enrollment.total,
+        counts: seq.enrollment.counts,
+        newlyEnrollableEmailSendable: seq.enrollment.preview.enrollable,
+      },
+      mailbox: params.mailbox,
+    });
+    out[seq.id] = readiness;
+  }
+  return out;
 }
 
 /**

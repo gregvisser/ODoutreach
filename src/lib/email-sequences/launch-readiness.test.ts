@@ -1,0 +1,204 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  evaluateSequenceLaunchReadiness,
+  type SequenceLaunchReadinessSnapshotInput,
+} from "./launch-readiness";
+
+function snapshot(
+  overrides: Partial<SequenceLaunchReadinessSnapshotInput> = {},
+): SequenceLaunchReadinessSnapshotInput {
+  return {
+    sequence: {
+      id: "seq1",
+      clientId: "c1",
+      status: "APPROVED",
+      hasAlreadyLaunched: false,
+    },
+    contactList: {
+      id: "list1",
+      memberCount: 10,
+      emailSendableCount: 7,
+    },
+    steps: [
+      {
+        category: "INTRODUCTION",
+        template: {
+          id: "t-intro",
+          status: "APPROVED",
+          subject: "Hi {{first_name}}",
+          content:
+            "Hi {{first_name}} at {{company_name}}\n{{sender_name}}\n{{unsubscribe_link}}",
+        },
+      },
+      {
+        category: "FOLLOW_UP_1",
+        template: {
+          id: "t-fu1",
+          status: "APPROVED",
+          subject: "Following up",
+          content:
+            "Just following up {{first_name}}\n{{sender_name}}\n{{unsubscribe_link}}",
+        },
+      },
+    ],
+    enrollment: {
+      total: 5,
+      counts: { PENDING: 5, PAUSED: 0, COMPLETED: 0, EXCLUDED: 0 },
+      newlyEnrollableEmailSendable: 2,
+    },
+    mailbox: {
+      connectedSendingCount: 3,
+      aggregateRemainingToday: 90,
+    },
+    ...overrides,
+  };
+}
+
+describe("evaluateSequenceLaunchReadiness — happy path", () => {
+  it("passes every check when everything is wired", () => {
+    const r = evaluateSequenceLaunchReadiness(snapshot());
+    expect(r.canLaunch).toBe(true);
+    expect(r.totalBlockers).toBe(0);
+    for (const check of r.checks) {
+      expect(check.status).toBe("pass");
+    }
+  });
+});
+
+describe("evaluateSequenceLaunchReadiness — blockers", () => {
+  it("blocks when sequence is missing", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ sequence: null }),
+    );
+    expect(r.canLaunch).toBe(false);
+    expect(r.totalBlockers).toBeGreaterThan(0);
+    expect(r.checks[0]?.id).toBe("sequence_exists");
+    expect(r.checks[0]?.status).toBe("fail");
+  });
+
+  it("blocks when sequence is DRAFT", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        sequence: {
+          id: "seq1",
+          clientId: "c1",
+          status: "DRAFT",
+          hasAlreadyLaunched: false,
+        },
+      }),
+    );
+    const approvedCheck = r.checks.find((c) => c.id === "sequence_approved");
+    expect(approvedCheck?.status).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when intro template is not APPROVED", () => {
+    const s = snapshot();
+    s.steps[0]!.template.status = "DRAFT";
+    const r = evaluateSequenceLaunchReadiness(s);
+    const check = r.checks.find(
+      (c) => c.id === "introduction_template_approved",
+    );
+    expect(check?.status).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when an approved step is missing {{unsubscribe_link}}", () => {
+    const s = snapshot();
+    s.steps[1]!.template.content = "Follow up with no unsub";
+    const r = evaluateSequenceLaunchReadiness(s);
+    const check = r.checks.find(
+      (c) => c.id === "unsubscribe_placeholder_present",
+    );
+    expect(check?.status).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when there is no contact list", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ contactList: null }),
+    );
+    expect(r.checks.find((c) => c.id === "contact_list_attached")?.status).toBe(
+      "fail",
+    );
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when no enrollments AND nothing enrollable", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        enrollment: {
+          total: 0,
+          counts: { PENDING: 0, PAUSED: 0, COMPLETED: 0, EXCLUDED: 0 },
+          newlyEnrollableEmailSendable: 0,
+        },
+      }),
+    );
+    expect(
+      r.checks.find((c) => c.id === "enrollment_records_exist")?.status,
+    ).toBe("fail");
+    expect(
+      r.checks.find((c) => c.id === "pending_email_sendable_recipients")
+        ?.status,
+    ).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when no connected sending mailbox", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        mailbox: { connectedSendingCount: 0, aggregateRemainingToday: 0 },
+      }),
+    );
+    const mboxCheck = r.checks.find((c) => c.id === "connected_sending_mailbox");
+    expect(mboxCheck?.status).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when pool capacity is zero", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        mailbox: { connectedSendingCount: 3, aggregateRemainingToday: 0 },
+      }),
+    );
+    expect(
+      r.checks.find((c) => c.id === "daily_capacity_available")?.status,
+    ).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("blocks when sequence has already launched", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        sequence: {
+          id: "seq1",
+          clientId: "c1",
+          status: "APPROVED",
+          hasAlreadyLaunched: true,
+        },
+      }),
+    );
+    expect(r.checks.find((c) => c.id === "sequence_not_launched")?.status).toBe(
+      "fail",
+    );
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("treats enrollments-only with 0 PENDING and no new enrollable as blocker", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        enrollment: {
+          total: 2,
+          counts: { PENDING: 0, PAUSED: 2, COMPLETED: 0, EXCLUDED: 0 },
+          newlyEnrollableEmailSendable: 0,
+        },
+      }),
+    );
+    expect(
+      r.checks.find((c) => c.id === "pending_email_sendable_recipients")
+        ?.status,
+    ).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+});
