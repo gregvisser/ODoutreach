@@ -68,6 +68,13 @@ export function RocketReachImportPanel({
             Imports must be saved to a named email list. Lists are used later
             by sequences.
           </strong>
+          <br />
+          <span className="text-xs text-muted-foreground">
+            Preview for RocketReach is deferred — a dry-run would still
+            consume search/lookup credits against the live API, so this panel
+            writes immediately up to the cap. CSV imports run through the
+            Preview → Confirm flow on the global Contacts page.
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent>
