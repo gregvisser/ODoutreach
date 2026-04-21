@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -196,7 +197,24 @@ function TimelineRow({ event }: { event: TimelineEvent }) {
           >
             {severityLabel(event.severity)}
           </Badge>
-          <p className="text-sm font-medium text-foreground">{event.title}</p>
+          {event.href ? (
+            <Link
+              href={event.href}
+              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              {event.title}
+            </Link>
+          ) : (
+            <p className="text-sm font-medium text-foreground">{event.title}</p>
+          )}
+          {event.href && event.type === "inbound_message" ? (
+            <Link
+              href={event.href}
+              className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Open →
+            </Link>
+          ) : null}
         </div>
         {event.description ? (
           <p className="text-xs text-muted-foreground">{event.description}</p>

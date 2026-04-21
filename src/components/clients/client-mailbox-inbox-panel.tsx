@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format } from "date-fns";
@@ -153,6 +154,7 @@ export function ClientMailboxInboxPanel({
                 <TableHead>From</TableHead>
                 <TableHead>Subject</TableHead>
                 <TableHead className="max-w-[min(20rem,40vw)]">Preview</TableHead>
+                <TableHead className="w-16 text-right">Open</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -179,6 +181,14 @@ export function ClientMailboxInboxPanel({
                         ? `${m.bodyPreview.slice(0, 220)}…`
                         : m.bodyPreview
                       : "—"}
+                  </TableCell>
+                  <TableCell className="w-16 text-right">
+                    <Link
+                      href={`/clients/${clientId}/activity/messages/${m.id}`}
+                      className="text-xs underline-offset-4 hover:underline"
+                    >
+                      Read →
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}
