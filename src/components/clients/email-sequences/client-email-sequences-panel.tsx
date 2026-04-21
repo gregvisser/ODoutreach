@@ -16,6 +16,11 @@ import {
 } from "@/components/ui/card";
 import type { ClientEmailSequenceStatus } from "@/generated/prisma/enums";
 import { ENROLLMENT_STATUS_LABELS } from "@/lib/email-sequences/enrollment-policy";
+import type {
+  SequenceLaunchCheckResult,
+  SequenceLaunchReadiness,
+} from "@/lib/email-sequences/launch-readiness";
+import { LAUNCH_CHECK_DISPLAY_ORDER } from "@/lib/email-sequences/launch-readiness";
 import {
   SEQUENCE_STATUS_LABELS,
   SEQUENCE_STEP_LABELS,
@@ -42,6 +47,15 @@ type Props = {
     ok: string | null;
     error: string | null;
     focusSequenceId: string | null;
+  };
+  /**
+   * PR D4d — per-sequence launch-readiness snapshot keyed by sequence id.
+   * Sending is still disabled in this PR; the rail is purely informational.
+   */
+  launchReadinessBySequenceId: Record<string, SequenceLaunchReadiness>;
+  mailboxSnapshot: {
+    connectedSendingCount: number;
+    aggregateRemainingToday: number;
   };
 };
 
@@ -74,9 +88,21 @@ function statusBadgeVariant(
 }
 
 export function ClientEmailSequencesPanel(props: Props) {
-  const { clientId, clientName, canMutate, overview, flash } = props;
+  const {
+    clientId,
+    clientName,
+    canMutate,
+    overview,
+    flash,
+    launchReadinessBySequenceId,
+    mailboxSnapshot,
+  } = props;
   const { sequences, counts, contactLists, approvedTemplatesByCategory } =
     overview;
+
+  const launchReadyCount = sequences.filter(
+    (s) => launchReadinessBySequenceId[s.id]?.canLaunch === true,
+  ).length;
 
   const statusTiles: Array<{ label: string; value: number; hint: string }> = [
     {
@@ -103,6 +129,11 @@ export function ClientEmailSequencesPanel(props: Props) {
       label: SEQUENCE_STATUS_LABELS.ARCHIVED,
       value: counts.byStatus.ARCHIVED,
       hint: "Kept for history — not usable",
+    },
+    {
+      label: "Launch-ready",
+      value: launchReadyCount,
+      hint: "All blockers cleared (no-send yet)",
     },
   ];
 
@@ -174,6 +205,10 @@ export function ClientEmailSequencesPanel(props: Props) {
                     sequence={seq}
                     canMutate={canMutate}
                     isFocused={flash.focusSequenceId === seq.id}
+                    launchReadiness={
+                      launchReadinessBySequenceId[seq.id] ?? null
+                    }
+                    mailboxSnapshot={mailboxSnapshot}
                   />
                 </li>
               ))}
@@ -195,11 +230,18 @@ function SequenceCard({
   sequence,
   canMutate,
   isFocused,
+  launchReadiness,
+  mailboxSnapshot,
 }: {
   clientId: string;
   sequence: SequenceSummary;
   canMutate: boolean;
   isFocused: boolean;
+  launchReadiness: SequenceLaunchReadiness | null;
+  mailboxSnapshot: {
+    connectedSendingCount: number;
+    aggregateRemainingToday: number;
+  };
 }) {
   const { readiness } = sequence;
   const canReady =
@@ -290,6 +332,11 @@ function SequenceCard({
       )}
 
       <EnrollmentBlock clientId={clientId} sequence={sequence} canMutate={canMutate} />
+
+      <LaunchReadinessBlock
+        readiness={launchReadiness}
+        mailboxSnapshot={mailboxSnapshot}
+      />
 
       {!canApprove && sequence.status !== "ARCHIVED" && (
         <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
@@ -485,6 +532,104 @@ function PreviewStat({ label, value }: { label: string; value: number }) {
       </dt>
       <dd className="text-sm font-semibold tabular-nums">{String(value)}</dd>
     </div>
+  );
+}
+
+function LaunchReadinessBlock({
+  readiness,
+  mailboxSnapshot,
+}: {
+  readiness: SequenceLaunchReadiness | null;
+  mailboxSnapshot: {
+    connectedSendingCount: number;
+    aggregateRemainingToday: number;
+  };
+}) {
+  if (!readiness) {
+    return (
+      <div className="mt-3 rounded-md border border-dashed border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground">
+        Launch readiness unavailable — refresh the page.
+      </div>
+    );
+  }
+
+  const orderedChecks = orderReadinessChecks(readiness.checks);
+  const headerTone = readiness.canLaunch
+    ? "border-emerald-400/40 bg-emerald-50/60 dark:bg-emerald-500/10"
+    : "border-amber-400/40 bg-amber-50/60 dark:bg-amber-500/10";
+  const headerLabel = readiness.canLaunch
+    ? `Launch readiness: all checks green — ${String(readiness.totalWarnings)} warning${readiness.totalWarnings === 1 ? "" : "s"}`
+    : `Launch readiness: ${String(readiness.totalBlockers)} blocker${readiness.totalBlockers === 1 ? "" : "s"}`;
+
+  return (
+    <div className={`mt-3 rounded-md border ${headerTone} p-3`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold">{headerLabel}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Pool snapshot: {String(mailboxSnapshot.connectedSendingCount)}{" "}
+            mailbox(es) · {String(mailboxSnapshot.aggregateRemainingToday)}{" "}
+            slot(s) remaining today. Sending remains disabled in this PR.
+          </p>
+        </div>
+      </div>
+
+      <ul className="mt-2 grid gap-1 text-[11px]">
+        {orderedChecks.map((check) => (
+          <li
+            key={check.id}
+            className="flex flex-wrap items-start justify-between gap-2 rounded border border-border/50 bg-background/60 px-2 py-1"
+          >
+            <span className="flex items-start gap-2">
+              <CheckDot status={check.status} severity={check.severity} />
+              <span>
+                <span className="font-medium text-foreground">{check.label}</span>
+                <span className="ml-1 text-muted-foreground">{check.detail}</span>
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function orderReadinessChecks(
+  checks: readonly SequenceLaunchCheckResult[],
+): SequenceLaunchCheckResult[] {
+  const byId = new Map(checks.map((c) => [c.id, c]));
+  const ordered: SequenceLaunchCheckResult[] = [];
+  for (const id of LAUNCH_CHECK_DISPLAY_ORDER) {
+    const match = byId.get(id);
+    if (match) {
+      ordered.push(match);
+      byId.delete(id);
+    }
+  }
+  for (const rest of byId.values()) ordered.push(rest);
+  return ordered;
+}
+
+function CheckDot({
+  status,
+  severity,
+}: {
+  status: "pass" | "fail";
+  severity: "blocker" | "warning" | "ok";
+}) {
+  const cls =
+    status === "pass"
+      ? "bg-emerald-500"
+      : severity === "warning"
+        ? "bg-amber-500"
+        : "bg-destructive";
+  const label = status === "pass" ? "pass" : severity;
+  return (
+    <span
+      aria-label={label}
+      title={label}
+      className={`mt-[3px] inline-block h-2 w-2 shrink-0 rounded-full ${cls}`}
+    />
   );
 }
 
