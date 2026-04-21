@@ -1,6 +1,8 @@
+import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import {
   prepareClientEmailSequenceStepSendsAction,
   sendClientEmailSequenceIntroductionAction,
+  sendClientEmailSequenceStepAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,32 +13,50 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE } from "@/lib/email-sequences/sequence-send-execution-constants";
+import {
+  getSequenceStepSendConfirmationPhrase,
+  SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
+} from "@/lib/email-sequences/sequence-send-execution-constants";
 import type {
-  SequenceIntroSendUiAllowlist,
-  SequenceIntroSendUiSnapshot,
+  SequenceStepSendUiAllowlist,
+  SequenceStepSendUiSnapshot,
 } from "@/server/email-sequences/send-introduction";
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 
 /**
  * PR D4e.1 — read-only "Send preparation" card for the Outreach page.
+ * PR D4e.2 — adds INTRODUCTION dispatch block per sequence.
+ * PR D4e.3 — adds FOLLOW_UP_1..5 dispatch blocks per sequence, each
+ *            gated by the previous step having been SENT and the
+ *            step's `delayDays` having elapsed. Operator-triggered
+ *            only; no cron / worker / background scheduler.
  *
- * RECORDS ONLY. The only action this card exposes is "Prepare
- * introduction send records", which writes / refreshes
- * `ClientEmailSequenceStepSend` rows through
- * `prepareClientEmailSequenceStepSendsAction`. No email is ever sent
- * by this UI. The dispatcher lands in D4e.2.
+ * Records-only preparation remains the safe entry point. Dispatch
+ * blocks only ever send to allowlisted recipients and require a
+ * typed confirmation phrase specific to that category.
  */
 
 type Props = {
   clientId: string;
   canMutate: boolean;
   snapshots: SequencePrepSnapshot[];
-  /** PR D4e.2 — per-sequence introduction-send readiness. */
-  introSendSnapshots?: SequenceIntroSendUiSnapshot[];
-  /** PR D4e.2 — allowlist snapshot for the dispatch section. */
-  introSendAllowlist?: SequenceIntroSendUiAllowlist;
+  /**
+   * All per-category send readiness snapshots (INTRODUCTION +
+   * FOLLOW_UP_1..5) for the sequences on this client. The panel
+   * groups them by sequence and category.
+   */
+  stepSendSnapshots?: SequenceStepSendUiSnapshot[];
+  /** Allowlist snapshot for every dispatch block on the panel. */
+  stepSendAllowlist?: SequenceStepSendUiAllowlist;
 };
+
+const FOLLOW_UP_CATEGORIES: readonly ClientEmailTemplateCategory[] = [
+  "FOLLOW_UP_1",
+  "FOLLOW_UP_2",
+  "FOLLOW_UP_3",
+  "FOLLOW_UP_4",
+  "FOLLOW_UP_5",
+];
 
 function formatRelative(iso: string | null): string {
   if (!iso) return "never";
@@ -48,18 +68,31 @@ function formatRelative(iso: string | null): string {
   }
 }
 
+function categoryLabel(category: ClientEmailTemplateCategory): string {
+  if (category === "INTRODUCTION") return "introduction";
+  const n = category.split("_").pop();
+  return `follow-up ${n ?? ""}`.trim();
+}
+
 export function SequenceSendPreparationPanel({
   clientId,
   canMutate,
   snapshots,
-  introSendSnapshots = [],
-  introSendAllowlist,
+  stepSendSnapshots = [],
+  stepSendAllowlist,
 }: Props) {
   const hasSnapshots = snapshots.length > 0;
   const hasAnyEnrollment = snapshots.some((s) => s.enrollmentCount > 0);
-  const introSendBySequenceId = new Map<string, SequenceIntroSendUiSnapshot>(
-    introSendSnapshots.map((s) => [s.sequenceId, s]),
-  );
+
+  // Index snapshots by (sequenceId, category) so every dispatch
+  // block can look up its own readiness quickly without re-scanning.
+  const snapshotsBySequenceAndCategory = new Map<
+    string,
+    SequenceStepSendUiSnapshot
+  >();
+  for (const s of stepSendSnapshots) {
+    snapshotsBySequenceAndCategory.set(`${s.sequenceId}:${s.category}`, s);
+  }
 
   return (
     <Card
@@ -67,14 +100,15 @@ export function SequenceSendPreparationPanel({
       className="border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Send preparation (records only)</CardTitle>
+        <CardTitle>Send preparation (records + dispatch)</CardTitle>
         <CardDescription>
           Preparing send records <strong>does not send email</strong>. It only renders the
           introduction step&rsquo;s subject and body against each enrolled contact and
-          records which recipients would be ready for send once D4e.2 enables
-          dispatch. Suppressed, missing-email, unknown-placeholder, and
-          missing-unsubscribe-link rows are surfaced here as blocked so they can be
-          fixed before any real send is wired.
+          records which recipients would be ready for send. Dispatch blocks
+          below send real email, but only to recipients whose domain matches
+          the governed-test allowlist and only for one step category at a
+          time (INTRODUCTION or FOLLOW_UP_N). Each dispatch requires its own
+          typed confirmation phrase.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -101,6 +135,10 @@ export function SequenceSendPreparationPanel({
           if (s.enrollmentCount === 0) {
             blockReasons.push("No enrollments yet — enroll contacts first.");
           }
+
+          const introSnapshot = snapshotsBySequenceAndCategory.get(
+            `${s.sequenceId}:INTRODUCTION`,
+          );
 
           return (
             <div
@@ -138,12 +176,12 @@ export function SequenceSendPreparationPanel({
                   tone="muted"
                 />
                 <Stat
-                  label="Sent (D4e.2+)"
+                  label="Sent"
                   value={s.counts.sent}
                   tone="muted"
                 />
                 <Stat
-                  label="Failed (D4e.2+)"
+                  label="Failed"
                   value={s.counts.failed}
                   tone={s.counts.failed > 0 ? "error" : "muted"}
                 />
@@ -194,8 +232,8 @@ export function SequenceSendPreparationPanel({
                   </Button>
                 </form>
                 <span className="text-xs text-muted-foreground">
-                  This does not send email. Use the dispatch section below to
-                  send the introduction to allowlisted recipients.
+                  This does not send email. Use the dispatch sections below
+                  to send per category to allowlisted recipients.
                 </span>
               </div>
 
@@ -203,8 +241,16 @@ export function SequenceSendPreparationPanel({
                 clientId={clientId}
                 canMutate={canMutate}
                 sequenceId={s.sequenceId}
-                introSend={introSendBySequenceId.get(s.sequenceId)}
-                allowlist={introSendAllowlist}
+                introSend={introSnapshot}
+                allowlist={stepSendAllowlist}
+              />
+
+              <FollowUpDispatchBlocks
+                clientId={clientId}
+                canMutate={canMutate}
+                sequenceId={s.sequenceId}
+                snapshotsByCategory={snapshotsBySequenceAndCategory}
+                allowlist={stepSendAllowlist}
               />
             </div>
           );
@@ -240,8 +286,8 @@ function IntroSendDispatchBlock({
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
-  introSend: SequenceIntroSendUiSnapshot | undefined;
-  allowlist: SequenceIntroSendUiAllowlist | undefined;
+  introSend: SequenceStepSendUiSnapshot | undefined;
+  allowlist: SequenceStepSendUiAllowlist | undefined;
 }) {
   if (!introSend) {
     return null;
@@ -368,14 +414,240 @@ function IntroSendDispatchBlock({
   );
 }
 
+/**
+ * PR D4e.3 — renders one dispatch block for each FOLLOW_UP_N step that
+ * exists on the sequence. Categories without a configured step are
+ * hidden entirely so operators aren't offered non-existent follow-ups.
+ */
+function FollowUpDispatchBlocks({
+  clientId,
+  canMutate,
+  sequenceId,
+  snapshotsByCategory,
+  allowlist,
+}: {
+  clientId: string;
+  canMutate: boolean;
+  sequenceId: string;
+  snapshotsByCategory: Map<string, SequenceStepSendUiSnapshot>;
+  allowlist: SequenceStepSendUiAllowlist | undefined;
+}) {
+  const blocks = FOLLOW_UP_CATEGORIES.map((category) => {
+    const snap = snapshotsByCategory.get(`${sequenceId}:${category}`);
+    return { category, snap };
+  }).filter((x): x is {
+    category: ClientEmailTemplateCategory;
+    snap: SequenceStepSendUiSnapshot;
+  } => x.snap !== undefined && x.snap.stepId !== null);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2">
+      {blocks.map(({ category, snap }) => (
+        <StepSendDispatchBlock
+          key={category}
+          clientId={clientId}
+          canMutate={canMutate}
+          sequenceId={sequenceId}
+          category={category}
+          stepSnapshot={snap}
+          allowlist={allowlist}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Generic per-category dispatch block (FOLLOW_UP_1..5).
+ *
+ * Shows readiness, previous-step blockers, and an operator-typed
+ * confirmation phrase unique to the category. Uses the generic
+ * `sendClientEmailSequenceStepAction`, passing `category` as a hidden
+ * form field.
+ */
+function StepSendDispatchBlock({
+  clientId,
+  canMutate,
+  sequenceId,
+  category,
+  stepSnapshot,
+  allowlist,
+}: {
+  clientId: string;
+  canMutate: boolean;
+  sequenceId: string;
+  category: ClientEmailTemplateCategory;
+  stepSnapshot: SequenceStepSendUiSnapshot;
+  allowlist: SequenceStepSendUiAllowlist | undefined;
+}) {
+  const phrase = getSequenceStepSendConfirmationPhrase(category);
+  const label = categoryLabel(category);
+  const canSend = canMutate && stepSnapshot.sendable;
+
+  const disabledReasons: string[] = [];
+  if (!canMutate) {
+    disabledReasons.push(
+      "You do not have sequence mutator permission for this client.",
+    );
+  }
+  if (stepSnapshot.disabledReason) {
+    disabledReasons.push(stepSnapshot.disabledReason);
+  }
+
+  const allowlistConfigured = allowlist?.configured === true;
+  const allowlistDomains = allowlist?.domains ?? [];
+
+  const delayDescription =
+    stepSnapshot.delayDays > 0
+      ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was SENT`
+      : "no delay configured (must still follow the previous step)";
+
+  return (
+    <div className="rounded-md border border-sky-300/60 bg-sky-50/40 p-3 text-xs dark:border-sky-500/40 dark:bg-sky-950/20">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-medium capitalize text-sky-900 dark:text-sky-200">
+          Send {label} to allowlisted recipients
+        </div>
+        <Badge
+          variant="outline"
+          className="text-[10px] uppercase tracking-wider"
+        >
+          D4e.3 · {category.toLowerCase().replace(/_/g, " ")}
+        </Badge>
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        This <strong>sends real email</strong> through the outbound worker,
+        one category at a time. Each recipient must have already received
+        the previous step and {delayDescription}. A typed confirmation (
+        <code className="font-mono">{phrase}</code>) is required. Hard cap:{" "}
+        {String(stepSnapshot.hardCap)} recipients per run. No cron or
+        background worker will dispatch this — only this button.
+      </p>
+
+      <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-4">
+        <MiniStat label="Ready" value={stepSnapshot.readyCount} tone="info" />
+        <MiniStat
+          label="Allowlisted"
+          value={stepSnapshot.allowlistedReadyCount}
+          tone={stepSnapshot.allowlistedReadyCount > 0 ? "success" : "muted"}
+        />
+        <MiniStat
+          label="Allowlist-blocked"
+          value={stepSnapshot.allowlistBlockedReadyCount}
+          tone={
+            stepSnapshot.allowlistBlockedReadyCount > 0 ? "warning" : "muted"
+          }
+        />
+        <MiniStat label="Sent" value={stepSnapshot.sentCount} tone="muted" />
+        <MiniStat
+          label="Prev-step missing"
+          value={stepSnapshot.previousStepMissingCount}
+          tone={
+            stepSnapshot.previousStepMissingCount > 0 ? "warning" : "muted"
+          }
+        />
+        <MiniStat
+          label="Delay pending"
+          value={stepSnapshot.delayPendingCount}
+          tone={stepSnapshot.delayPendingCount > 0 ? "warning" : "muted"}
+        />
+        <MiniStat
+          label="Failed"
+          value={stepSnapshot.failedCount}
+          tone={stepSnapshot.failedCount > 0 ? "error" : "muted"}
+        />
+        <MiniStat
+          label="Earliest eligible"
+          value={formatRelative(stepSnapshot.earliestEligibleAtIso)}
+          tone="muted"
+          isString
+        />
+      </div>
+
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        {allowlistConfigured ? (
+          <>
+            Allowlist:{" "}
+            <span className="font-mono">
+              {allowlistDomains.length > 0
+                ? allowlistDomains.join(", ")
+                : "(empty)"}
+            </span>
+          </>
+        ) : (
+          <span className="text-amber-700 dark:text-amber-300">
+            GOVERNED_TEST_EMAIL_DOMAINS is not configured — dispatch is
+            disabled.
+          </span>
+        )}
+      </div>
+
+      {disabledReasons.length > 0 ? (
+        <ul className="mt-2 list-disc pl-5 text-[11px] text-amber-800 dark:text-amber-200">
+          {disabledReasons.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <form
+        action={sendClientEmailSequenceStepAction}
+        className="mt-3 flex flex-wrap items-center gap-2"
+      >
+        <input type="hidden" name="clientId" value={clientId} />
+        <input type="hidden" name="sequenceId" value={sequenceId} />
+        <input type="hidden" name="category" value={category} />
+        <label className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            Type <code className="font-mono">{phrase}</code>
+          </span>
+          <input
+            type="text"
+            name="confirmationPhrase"
+            autoComplete="off"
+            spellCheck={false}
+            required
+            disabled={!canSend}
+            placeholder={phrase}
+            className="h-8 w-56 rounded-md border border-border/80 bg-background px-2 font-mono text-[11px] disabled:opacity-50"
+          />
+        </label>
+        <Button
+          type="submit"
+          size="sm"
+          variant="destructive"
+          disabled={!canSend}
+          title={
+            canSend
+              ? `Sends up to ${String(stepSnapshot.allowlistedReadyCount)} real email(s) for ${label}.`
+              : "Dispatch is not available yet."
+          }
+        >
+          Send {label}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">
+          Only allowlisted recipients will receive email. Suppression,
+          previous-step status, and delay are all re-checked at dispatch.
+        </span>
+      </form>
+    </div>
+  );
+}
+
 function MiniStat({
   label,
   value,
   tone = "muted",
+  isString = false,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   tone?: "success" | "warning" | "error" | "info" | "muted";
+  isString?: boolean;
 }) {
   const toneClass =
     tone === "success"
@@ -392,7 +664,9 @@ function MiniStat({
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
-      <div className={`text-sm font-medium ${toneClass}`}>{String(value)}</div>
+      <div className={`text-sm font-medium ${toneClass}`}>
+        {isString ? String(value) : String(value)}
+      </div>
     </div>
   );
 }

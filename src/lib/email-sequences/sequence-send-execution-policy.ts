@@ -1,24 +1,27 @@
 /**
- * Pure dispatch-time policy for the sequence introduction send
- * (PR D4e.2).
+ * Pure dispatch-time policy for sequence step sends (PR D4e.2 + D4e.3).
  *
  * The planner (D4e.1) produces `ClientEmailSequenceStepSend` rows
  * with status `READY`, and the Outreach UI triggers the dispatcher.
  * This helper is the single source of truth for "may this row be
  * sent RIGHT NOW?". It runs AFTER the plan-time classifier
  * (`classifySequenceStepSendCandidate`) so we still get every
- * tenant/structural guard, and layers on the D4e.2-only checks:
+ * tenant/structural guard, and layers on the dispatch-time checks:
  *
- *   * Introduction step only.
- *   * Recipient domain passes `isRecipientAllowedForGovernedTest`.
+ *   * Only the requested `category` may be sent.
+ *   * For FOLLOW_UP_N categories: the previous category must have a
+ *     SENT `ClientEmailSequenceStepSend` on the same enrollment AND
+ *     `delayDays` must have elapsed since that SENT timestamp.
+ *   * Recipient domain passes `GOVERNED_TEST_EMAIL_DOMAINS`.
  *   * Stored plan row is still READY, not SENT/FAILED/BLOCKED.
  *   * No OutboundEmail is already linked (no double-send).
  *
  * No I/O, no Prisma, no clock. The server helper feeds this
  * everything it loaded (step-send row + classified candidate +
- * environment knobs). Mailbox capacity / reservation conflicts
- * stay inside the existing transactional ledger helpers — adding
- * them here would duplicate the truth in two places.
+ * previous-step projection + environment knobs + `nowIso`). Mailbox
+ * capacity / reservation conflicts stay inside the existing
+ * transactional ledger helpers — adding them here would duplicate
+ * the truth in two places.
  */
 
 import type {
@@ -31,6 +34,14 @@ import {
   type SequenceStepSendCandidate,
   type SequenceStepSendClassification,
 } from "./sequence-send-policy";
+
+// ---------------------------------------------------------------------------
+// Legacy INTRODUCTION-only decision surface (D4e.2).
+//
+// Kept as-is for back-compat with the D4e.2 call sites and tests.
+// Internally this is now a thin wrapper over `classifySequenceStepSend
+// Execution({ category: "INTRODUCTION", ... })`.
+// ---------------------------------------------------------------------------
 
 export type SequenceIntroSendExecutionReason =
   /** Plan-time classifier passed AND D4e.2-only guards passed. */
@@ -123,16 +134,211 @@ export function isRecipientDomainAllowedForSequenceIntroSend(
   return { allowed: true, domain: dom, reason: "configured_ok" };
 }
 
-/** Dispatch-time decision for exactly one step-send row. */
+/**
+ * @deprecated Use `isRecipientDomainAllowedForSequenceStepSend`.
+ * Retained as an alias for D4e.2 call sites and tests.
+ */
+export const isRecipientDomainAllowedForSequenceStepSend =
+  isRecipientDomainAllowedForSequenceIntroSend;
+
+/**
+ * Dispatch-time decision for exactly one INTRODUCTION step-send row.
+ * Thin wrapper over the generic `classifySequenceStepSendExecution`
+ * that preserves the D4e.2 decision shape.
+ */
 export function classifySequenceIntroSendExecution(
   input: SequenceIntroSendExecutionInput,
 ): SequenceIntroSendExecutionDecision {
-  // 0. Structural guard — only INTRODUCTION.
-  if (input.stepCategory !== "INTRODUCTION") {
+  const generic = classifySequenceStepSendExecution({
+    category: "INTRODUCTION",
+    stepSend: input.stepSend,
+    stepCategory: input.stepCategory,
+    candidate: input.candidate,
+    allowlist: input.allowlist,
+    // INTRODUCTION has no previous-step / delay guard.
+    previousStepSend: null,
+    delayDays: 0,
+    nowIso: new Date(0).toISOString(),
+  });
+
+  if (generic.sendable) {
+    return {
+      sendable: true,
+      reason: "sendable",
+      classification: generic.classification,
+      allowlistedDomain: generic.allowlistedDomain,
+    };
+  }
+
+  // Map the generic reasons that this INTRODUCTION wrapper can see
+  // back onto the legacy D4e.2 reason union. Follow-up-only reasons
+  // cannot be returned because INTRODUCTION skips those branches.
+  switch (generic.reason) {
+    case "blocked_wrong_category":
+      return {
+        sendable: false,
+        reason: "blocked_not_introduction_step",
+        detail: generic.detail,
+        classification: generic.classification,
+      };
+    case "blocked_not_ready":
+    case "blocked_already_sent":
+    case "blocked_already_linked_outbound":
+    case "blocked_allowlist_not_configured":
+    case "blocked_allowlist_domain":
+    case "blocked_plan_classifier":
+      return {
+        sendable: false,
+        reason: generic.reason,
+        detail: generic.detail,
+        classification: generic.classification,
+      };
+    // These branches can never trigger for INTRODUCTION (no delay /
+    // previous-step guard is applied). Fall through to a safe plan-
+    // classifier-style block so the caller still gets a useful label.
+    case "blocked_previous_step_not_sent":
+    case "blocked_delay_not_elapsed":
+    case "blocked_wrong_position":
+      return {
+        sendable: false,
+        reason: "blocked_plan_classifier",
+        detail: generic.detail,
+        classification: generic.classification,
+      };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generic category-aware execution policy (D4e.3).
+// ---------------------------------------------------------------------------
+
+export type SequenceStepSendExecutionReason =
+  | "sendable"
+  | "blocked_wrong_category"
+  | "blocked_not_ready"
+  | "blocked_already_sent"
+  | "blocked_already_linked_outbound"
+  | "blocked_allowlist_not_configured"
+  | "blocked_allowlist_domain"
+  | "blocked_plan_classifier"
+  | "blocked_previous_step_not_sent"
+  | "blocked_delay_not_elapsed"
+  | "blocked_wrong_position";
+
+export type SequenceStepSendExecutionDecision =
+  | {
+      sendable: true;
+      reason: "sendable";
+      classification: SequenceStepSendClassification;
+      allowlistedDomain: string;
+    }
+  | {
+      sendable: false;
+      reason: Exclude<SequenceStepSendExecutionReason, "sendable">;
+      detail: string;
+      classification: SequenceStepSendClassification | null;
+    };
+
+/**
+ * Projection of the previous step's persisted send row. The server
+ * layer picks the latest SENT row for the same enrollment + the
+ * previous category's step and passes it here. `null` means no row
+ * exists yet (or it exists but is not SENT).
+ */
+export type SequenceStepSendPreviousStep = {
+  status: ClientEmailSequenceStepSendStatus;
+  /** Time the row flipped to SENT. `updatedAt` of the step-send row. */
+  sentAtIso: string;
+} | null;
+
+export type SequenceStepSendExecutionInput = {
+  /** Category the operator is trying to send RIGHT NOW. */
+  category: ClientEmailTemplateCategory;
+  /** Projection of the persisted `ClientEmailSequenceStepSend` row. */
+  stepSend: {
+    id: string;
+    status: ClientEmailSequenceStepSendStatus;
+    outboundEmailId: string | null;
+  };
+  /** Category of the step this stepSend row belongs to (sanity check). */
+  stepCategory: ClientEmailTemplateCategory;
+  /** Rebuilt candidate for the plan-time classifier. */
+  candidate: SequenceStepSendCandidate;
+  /** Live allowlist snapshot (see `SequenceIntroSendExecutionInput`). */
+  allowlist: {
+    configured: boolean;
+    domains: readonly string[];
+  };
+  /**
+   * Previous category's step-send row, if any. Ignored for
+   * INTRODUCTION. For FOLLOW_UP_N this must be the SENT row for the
+   * previous category (INTRODUCTION for FOLLOW_UP_1, FOLLOW_UP_N-1
+   * for FOLLOW_UP_N).
+   */
+  previousStepSend: SequenceStepSendPreviousStep;
+  /** `delayDays` on the current step (>= 0). */
+  delayDays: number;
+  /** Current wall-clock time as an ISO string. Injected for purity. */
+  nowIso: string;
+  /**
+   * Enrollment's `currentStepPosition`. For FOLLOW_UP_N we refuse to
+   * dispatch if this is ahead of `(thisStep.position - 1)` (e.g. the
+   * enrollment already advanced past this step).
+   */
+  enrollmentCurrentStepPosition?: number;
+  /** `position` of the current step in the sequence (1-indexed). */
+  stepPosition?: number;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function safeParseIso(iso: string): number | null {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Predicate form used by the UI snapshot loader. */
+export function isFollowUpCategory(
+  category: ClientEmailTemplateCategory,
+): boolean {
+  return category !== "INTRODUCTION";
+}
+
+/**
+ * Returns the category immediately preceding the given category in
+ * `TEMPLATE_CATEGORY_ORDER`. `INTRODUCTION` returns `null`. This
+ * helper is pure so the server layer can use it to find the correct
+ * `previousStepSend` row to pass into the classifier.
+ */
+export function previousCategoryFor(
+  category: ClientEmailTemplateCategory,
+): ClientEmailTemplateCategory | null {
+  switch (category) {
+    case "INTRODUCTION":
+      return null;
+    case "FOLLOW_UP_1":
+      return "INTRODUCTION";
+    case "FOLLOW_UP_2":
+      return "FOLLOW_UP_1";
+    case "FOLLOW_UP_3":
+      return "FOLLOW_UP_2";
+    case "FOLLOW_UP_4":
+      return "FOLLOW_UP_3";
+    case "FOLLOW_UP_5":
+      return "FOLLOW_UP_4";
+  }
+}
+
+/** Dispatch-time decision for exactly one step-send row (any category). */
+export function classifySequenceStepSendExecution(
+  input: SequenceStepSendExecutionInput,
+): SequenceStepSendExecutionDecision {
+  // 0. Structural guards.
+  if (input.stepCategory !== input.category) {
     return {
       sendable: false,
-      reason: "blocked_not_introduction_step",
-      detail: `Only INTRODUCTION steps may be sent by D4e.2 (this step is ${input.stepCategory}).`,
+      reason: "blocked_wrong_category",
+      detail: `Step is ${input.stepCategory} but dispatcher was invoked with ${input.category}.`,
       classification: null,
     };
   }
@@ -187,7 +393,7 @@ export function classifySequenceIntroSendExecution(
       sendable: false,
       reason: "blocked_allowlist_not_configured",
       detail:
-        "GOVERNED_TEST_EMAIL_DOMAINS is not configured — refusing to send sequence introductions.",
+        "GOVERNED_TEST_EMAIL_DOMAINS is not configured — refusing to send sequence steps.",
       classification,
     };
   }
@@ -211,6 +417,62 @@ export function classifySequenceIntroSendExecution(
     };
   }
 
+  // 5. Follow-up-only guards: previous step SENT + delay elapsed +
+  //    optional enrollment position sanity. INTRODUCTION skips all
+  //    three — D4e.2 behaviour is preserved.
+  if (isFollowUpCategory(input.category)) {
+    if (!input.previousStepSend || input.previousStepSend.status !== "SENT") {
+      return {
+        sendable: false,
+        reason: "blocked_previous_step_not_sent",
+        detail: `Previous step (${
+          previousCategoryFor(input.category) ?? "n/a"
+        }) has not been SENT for this enrollment yet.`,
+        classification,
+      };
+    }
+
+    const prevSentAtMs = safeParseIso(input.previousStepSend.sentAtIso);
+    const nowMs = safeParseIso(input.nowIso);
+    if (prevSentAtMs === null || nowMs === null) {
+      return {
+        sendable: false,
+        reason: "blocked_delay_not_elapsed",
+        detail:
+          "Could not parse previous step's SENT timestamp or current time — refusing to send.",
+        classification,
+      };
+    }
+    const delayMs = Math.max(0, input.delayDays) * DAY_MS;
+    if (nowMs < prevSentAtMs + delayMs) {
+      const remainingMs = prevSentAtMs + delayMs - nowMs;
+      const remainingHrs = Math.ceil(remainingMs / (60 * 60 * 1000));
+      return {
+        sendable: false,
+        reason: "blocked_delay_not_elapsed",
+        detail: `Delay of ${String(input.delayDays)} day(s) has not elapsed since previous step SENT (~${String(remainingHrs)}h remaining).`,
+        classification,
+      };
+    }
+
+    // Optional position sanity — refuse if the enrollment is
+    // somehow ahead of where this step would live. This protects
+    // against accidental double-advance when a previous dispatcher
+    // already ran and operator hasn't refreshed the UI.
+    if (
+      typeof input.enrollmentCurrentStepPosition === "number" &&
+      typeof input.stepPosition === "number" &&
+      input.enrollmentCurrentStepPosition >= input.stepPosition
+    ) {
+      return {
+        sendable: false,
+        reason: "blocked_wrong_position",
+        detail: `Enrollment is already at step position ${String(input.enrollmentCurrentStepPosition)}, which is at or past this step's position ${String(input.stepPosition)}.`,
+        classification,
+      };
+    }
+  }
+
   return {
     sendable: true,
     reason: "sendable",
@@ -218,6 +480,12 @@ export function classifySequenceIntroSendExecution(
     allowlistedDomain: allow.domain ?? "",
   };
 }
+
+// ---------------------------------------------------------------------------
+// Aggregate counters. The D4e.2 shape is preserved verbatim so the
+// introduction dispatcher continues to return identical counts. D4e.3
+// adds a parallel set of counters for the generic classifier.
+// ---------------------------------------------------------------------------
 
 export type SequenceIntroSendPlanCounts = {
   total: number;
@@ -270,6 +538,72 @@ export function incrementSequenceIntroSendPlanCounts(
       return next;
     case "blocked_plan_classifier":
       next.blockedPlanClassifier += 1;
+      return next;
+    default: {
+      return next;
+    }
+  }
+}
+
+export type SequenceStepSendPlanCounts = {
+  total: number;
+  sendable: number;
+  blockedAllowlist: number;
+  blockedNotReady: number;
+  blockedAlreadySent: number;
+  blockedWrongCategory: number;
+  blockedPlanClassifier: number;
+  /** Previous step not SENT OR delay not yet elapsed. Follow-ups only. */
+  blockedPrevious: number;
+};
+
+export function zeroSequenceStepSendPlanCounts(): SequenceStepSendPlanCounts {
+  return {
+    total: 0,
+    sendable: 0,
+    blockedAllowlist: 0,
+    blockedNotReady: 0,
+    blockedAlreadySent: 0,
+    blockedWrongCategory: 0,
+    blockedPlanClassifier: 0,
+    blockedPrevious: 0,
+  };
+}
+
+export function incrementSequenceStepSendPlanCounts(
+  counts: SequenceStepSendPlanCounts,
+  decision: SequenceStepSendExecutionDecision,
+): SequenceStepSendPlanCounts {
+  const next: SequenceStepSendPlanCounts = {
+    ...counts,
+    total: counts.total + 1,
+  };
+  if (decision.sendable) {
+    next.sendable += 1;
+    return next;
+  }
+  switch (decision.reason) {
+    case "blocked_allowlist_not_configured":
+    case "blocked_allowlist_domain":
+      next.blockedAllowlist += 1;
+      return next;
+    case "blocked_not_ready":
+      next.blockedNotReady += 1;
+      return next;
+    case "blocked_already_sent":
+    case "blocked_already_linked_outbound":
+      next.blockedAlreadySent += 1;
+      return next;
+    case "blocked_wrong_category":
+      next.blockedWrongCategory += 1;
+      return next;
+    case "blocked_plan_classifier":
+      next.blockedPlanClassifier += 1;
+      return next;
+    case "blocked_previous_step_not_sent":
+    case "blocked_delay_not_elapsed":
+    case "blocked_wrong_position":
+      next.blockedPrevious += 1;
       return next;
     default: {
       return next;

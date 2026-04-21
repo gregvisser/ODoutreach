@@ -10,7 +10,10 @@ import {
   type BuildTimelineResult,
   type TimelineEvent,
 } from "@/lib/activity/client-activity-timeline";
-import { SEQUENCE_INTRO_SEND_METADATA_KIND } from "@/lib/email-sequences/sequence-send-execution-constants";
+import {
+  SEQUENCE_FOLLOWUP_SEND_METADATA_KIND,
+  SEQUENCE_INTRO_SEND_METADATA_KIND,
+} from "@/lib/email-sequences/sequence-send-execution-constants";
 
 /**
  * PR H — unified activity timeline loader.
@@ -210,11 +213,20 @@ export async function loadClientActivityTimeline(
       row.sentAt ?? row.bouncedAt ?? row.queuedAt ?? row.createdAt;
     const toEmail = row.toEmail;
     const metaKind = readOutboundMetadataKind(row.metadata);
+    const metaStepCategory = readOutboundMetadataStepCategory(row.metadata);
     const isSequenceIntro =
       metaKind === SEQUENCE_INTRO_SEND_METADATA_KIND;
+    const isSequenceFollowUp =
+      metaKind === SEQUENCE_FOLLOWUP_SEND_METADATA_KIND;
     const title = isSequenceIntro
-      ? severityToSequenceIntroTitle(row.status, toEmail)
-      : severityToOutboundTitle(row.status, toEmail);
+      ? severityToSequenceStepTitle(row.status, toEmail, "INTRODUCTION")
+      : isSequenceFollowUp
+        ? severityToSequenceStepTitle(
+            row.status,
+            toEmail,
+            metaStepCategory ?? "FOLLOW_UP",
+          )
+        : severityToOutboundTitle(row.status, toEmail);
     const descriptionParts: string[] = [];
     if (row.subject) descriptionParts.push(`“${row.subject}”`);
     if (row.status === "FAILED" && row.failureReason) {
@@ -472,36 +484,53 @@ function severityToOutboundTitle(status: string, toEmail: string): string {
 }
 
 /**
- * PR D4e.2 — friendlier titles for OutboundEmail rows that are part of a
- * sequence introduction batch. The metadata.kind sentinel is set by
- * `sendSequenceIntroductionBatch`. Any row without that sentinel falls
- * back to the generic outbound title above.
+ * PR D4e.2/D4e.3 — friendlier titles for OutboundEmail rows that are
+ * part of a sequence send (introduction or follow-up N). The metadata
+ * sentinel is set by `sendSequenceStepBatch`. Any row without that
+ * sentinel falls back to the generic outbound title above.
  */
-function severityToSequenceIntroTitle(
+function severityToSequenceStepTitle(
   status: string,
   toEmail: string,
+  stepCategory: string,
 ): string {
+  const stepLabel = formatStepCategoryLabel(stepCategory);
   switch (status) {
     case "SENT":
-      return `Sequence introduction sent to ${toEmail}`;
+      return `Sequence ${stepLabel} sent to ${toEmail}`;
     case "DELIVERED":
-      return `Sequence introduction delivered to ${toEmail}`;
+      return `Sequence ${stepLabel} delivered to ${toEmail}`;
     case "REPLIED":
-      return `Sequence introduction replied — ${toEmail}`;
+      return `Sequence ${stepLabel} replied — ${toEmail}`;
     case "BOUNCED":
-      return `Sequence introduction bounced — ${toEmail}`;
+      return `Sequence ${stepLabel} bounced — ${toEmail}`;
     case "FAILED":
-      return `Sequence introduction failed — ${toEmail}`;
+      return `Sequence ${stepLabel} failed — ${toEmail}`;
     case "BLOCKED_SUPPRESSION":
-      return `Sequence introduction blocked by suppression — ${toEmail}`;
+      return `Sequence ${stepLabel} blocked by suppression — ${toEmail}`;
     case "PROCESSING":
-      return `Sequence introduction sending — ${toEmail}`;
+      return `Sequence ${stepLabel} sending — ${toEmail}`;
     case "PREPARING":
     case "REQUESTED":
     case "QUEUED":
     default:
-      return `Sequence introduction queued — ${toEmail}`;
+      return `Sequence ${stepLabel} queued — ${toEmail}`;
   }
+}
+
+/**
+ * Turns a `ClientEmailTemplateCategory` into a human-readable label
+ * used inside timeline titles. Defensive against unknown values — we
+ * strip FOLLOW_UP_ underscores and fall back to "follow-up" if the
+ * value is missing entirely.
+ */
+function formatStepCategoryLabel(stepCategory: string): string {
+  if (stepCategory === "INTRODUCTION") return "introduction";
+  if (stepCategory.startsWith("FOLLOW_UP_")) {
+    const n = stepCategory.slice("FOLLOW_UP_".length);
+    return `follow-up ${n}`;
+  }
+  return "follow-up";
 }
 
 /**
@@ -518,6 +547,24 @@ function readOutboundMetadataKind(meta: unknown): string | null {
   ) {
     const kind = (meta as Record<string, unknown>).kind;
     return typeof kind === "string" ? kind : null;
+  }
+  return null;
+}
+
+/**
+ * PR D4e.3 — reads `metadata.stepCategory` off an OutboundEmail row so
+ * the timeline can render "Sequence follow-up 2 sent" instead of a
+ * generic "follow-up" label. Defensive against null/unknown shapes.
+ */
+function readOutboundMetadataStepCategory(meta: unknown): string | null {
+  if (
+    meta !== null &&
+    typeof meta === "object" &&
+    !Array.isArray(meta) &&
+    "stepCategory" in (meta as Record<string, unknown>)
+  ) {
+    const cat = (meta as Record<string, unknown>).stepCategory;
+    return typeof cat === "string" ? cat : null;
   }
   return null;
 }
