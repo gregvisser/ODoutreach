@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ContactImportContractPanel } from "@/components/clients/contact-import-contract-panel";
 import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listContactListsForClient } from "@/server/contacts/contact-lists";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -52,6 +55,34 @@ export default async function ClientSourcesPage({ params }: Props) {
       </div>
 
       <ContactImportContractPanel />
+
+      <Card className="border-dashed border-primary/30 bg-primary/5 shadow-sm">
+        <CardHeader>
+          <CardTitle>CSV import (with preview)</CardTitle>
+          <CardDescription>
+            CSV imports run from the global{" "}
+            <span className="font-medium">Contacts</span> page. The new Preview
+            step shows exactly which rows will create contacts, attach to a
+            list, or be skipped —{" "}
+            <span className="font-medium">
+              Preview does not create contacts.
+            </span>{" "}
+            You then press Confirm import to write.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Link
+            href={`/contacts?client=${client.id}`}
+            className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+          >
+            Open CSV import for {client.name}
+          </Link>
+          <p className="text-xs text-muted-foreground">
+            The Contacts page filters automatically to this client. Pick a list
+            target on the CSV form, upload the file, and press Preview.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>

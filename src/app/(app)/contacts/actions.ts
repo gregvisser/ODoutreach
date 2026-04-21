@@ -18,11 +18,26 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
   const existingListId =
     String(formData.get("existingListId") ?? "").trim() || null;
   const newListName = String(formData.get("newListName") ?? "").trim() || null;
+  // PR G: the UI now funnels every operator through a Preview step before
+  // surfacing the "Confirm import" button. The button submits the same form
+  // with `confirm=yes`; any submission without that flag is treated as a
+  // mistake (e.g. a browser that re-submitted the Preview form directly)
+  // and is rejected with a friendly message instead of silently writing.
+  const confirmed = String(formData.get("confirm") ?? "").trim() === "yes";
 
   if (!clientId || !(file instanceof File) || file.size === 0) {
     redirect(
       "/contacts?import=error&message=" +
         encodeURIComponent("Choose a client and CSV file."),
+    );
+  }
+
+  if (!confirmed) {
+    redirect(
+      "/contacts?import=error&message=" +
+        encodeURIComponent(
+          "Preview the import first, then press Confirm import to write contacts.",
+        ),
     );
   }
 
