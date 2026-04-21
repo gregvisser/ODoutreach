@@ -201,4 +201,53 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
     ).toBe("fail");
     expect(r.canLaunch).toBe(false);
   });
+
+  it("PR F2: blocks launch when the list has ONLY valid-no-email members", () => {
+    // List has 4 members, 0 email-sendable, 4 missing email.
+    // No PENDING enrollments, no new enrollable.
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        contactList: {
+          id: "list-noemail",
+          memberCount: 4,
+          emailSendableCount: 0,
+          missingEmailCount: 4,
+        },
+        enrollment: {
+          total: 0,
+          counts: { PENDING: 0, PAUSED: 0, COMPLETED: 0, EXCLUDED: 0 },
+          newlyEnrollableEmailSendable: 0,
+        },
+      }),
+    );
+    expect(r.canLaunch).toBe(false);
+    const pendingCheck = r.checks.find(
+      (c) => c.id === "pending_email_sendable_recipients",
+    );
+    expect(pendingCheck?.status).toBe("fail");
+    expect(pendingCheck?.detail).toContain("4 with no email on file");
+    const enrollCheck = r.checks.find(
+      (c) => c.id === "enrollment_records_exist",
+    );
+    expect(enrollCheck?.status).toBe("fail");
+    const listCheck = r.checks.find((c) => c.id === "contact_list_attached");
+    expect(listCheck?.status).toBe("pass");
+    expect(listCheck?.detail).toContain("4 with no email on file");
+  });
+
+  it("PR F2: missingEmailCount is informational — a healthy list with both email-sendable AND no-email members still passes", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        contactList: {
+          id: "list-mixed",
+          memberCount: 10,
+          emailSendableCount: 7,
+          missingEmailCount: 3,
+        },
+      }),
+    );
+    expect(r.canLaunch).toBe(true);
+    const listCheck = r.checks.find((c) => c.id === "contact_list_attached");
+    expect(listCheck?.detail).toContain("3 with no email on file");
+  });
 });

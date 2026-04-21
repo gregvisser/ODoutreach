@@ -38,7 +38,15 @@ export type ContactReadinessSummary = {
   valid: number;
   emailSendable: number;
   suppressed: number;
-  /** Not suppressed but no email address present. */
+  /**
+   * Not suppressed, has at least one non-email outreach identifier, and has
+   * NO email address. Mirrors the `valid_no_email` canonical status label.
+   *
+   * PR F2: this is now mutually exclusive with `missingOutreachIdentifier`
+   * — a contact with no identifiers at all is counted ONLY in
+   * `missingOutreachIdentifier`. Previously `missingEmail` double-counted
+   * those rows, which the UI KPIs displayed side by side.
+   */
   missingEmail: number;
   /** Not suppressed and no email / LinkedIn / mobile / office identifier. */
   missingOutreachIdentifier: number;
@@ -100,12 +108,24 @@ export function summarizeContactReadiness(
     const readiness = classifyContactReadiness(contact);
     if (readiness.isValid) valid += 1;
     if (readiness.isEmailSendable) emailSendable += 1;
-    if (readiness.isSuppressed) {
-      suppressed += 1;
-      continue;
+    // PR F2: bucket the contact by its canonical status label so the four
+    // non-sendable buckets are mutually exclusive. Previously a contact
+    // with no identifiers at all was counted in BOTH `missingEmail` and
+    // `missingOutreachIdentifier`, which caused the UI KPI tiles to sum
+    // to more than `total`.
+    switch (readinessStatusLabel(readiness)) {
+      case "suppressed":
+        suppressed += 1;
+        break;
+      case "valid_no_email":
+        missingEmail += 1;
+        break;
+      case "missing_identifier":
+        missingOutreachIdentifier += 1;
+        break;
+      case "email_sendable":
+        break;
     }
-    if (!readiness.hasEmail) missingEmail += 1;
-    if (!readiness.hasAnyOutreachIdentifier) missingOutreachIdentifier += 1;
   }
 
   return {

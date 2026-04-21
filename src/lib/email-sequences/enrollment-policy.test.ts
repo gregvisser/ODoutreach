@@ -68,6 +68,31 @@ describe("classifyEnrollmentCandidate", () => {
       classifyEnrollmentCandidate(cand).classification,
     ).toBe("suppressed");
   });
+
+  it("PR F2: a valid-no-email contact (email null, phone only) is `missing_email`, not `missing_identifier`", () => {
+    const cand = c("a", {
+      email: null,
+      linkedIn: null,
+      mobilePhone: "+44 7000 000000",
+    });
+    expect(classifyEnrollmentCandidate(cand).classification).toBe(
+      "missing_email",
+    );
+  });
+
+  it("PR F2: suppression wins over missing_email even when contact has LinkedIn only", () => {
+    const cand = c("a", {
+      isSuppressed: true,
+      email: null,
+      linkedIn: "https://li/x",
+    });
+    expect(classifyEnrollmentCandidate(cand).classification).toBe("suppressed");
+  });
+
+  it("PR F2: an email-sendable contact remains `enrollable`", () => {
+    const cand = c("a", { email: "ok@example.com" });
+    expect(classifyEnrollmentCandidate(cand).classification).toBe("enrollable");
+  });
 });
 
 describe("buildEnrollmentPreview", () => {
@@ -169,6 +194,39 @@ describe("checkEnrollmentReadiness", () => {
       checkEnrollmentReadiness({
         sequenceStatus: "APPROVED",
         preview: { ...zero, total: 3, suppressed: 3 },
+      }).reason,
+    ).toBe("no_email_sendable");
+  });
+  it("PR F2: blocks with `no_email_sendable` when list has only valid_no_email contacts", () => {
+    // All candidates are not suppressed, have LinkedIn/phone, but no email.
+    expect(
+      checkEnrollmentReadiness({
+        sequenceStatus: "APPROVED",
+        preview: { ...zero, total: 4, missingEmail: 4 },
+      }).reason,
+    ).toBe("no_email_sendable");
+  });
+  it("PR F2: blocks with `no_email_sendable` when list has only missing-identifier contacts", () => {
+    expect(
+      checkEnrollmentReadiness({
+        sequenceStatus: "APPROVED",
+        preview: { ...zero, total: 2, missingIdentifier: 2 },
+      }).reason,
+    ).toBe("no_email_sendable");
+  });
+  it("PR F2: distinguishes `all_already_enrolled` from `no_email_sendable`", () => {
+    expect(
+      checkEnrollmentReadiness({
+        sequenceStatus: "APPROVED",
+        preview: { ...zero, total: 3, alreadyEnrolled: 3 },
+      }).reason,
+    ).toBe("all_already_enrolled");
+  });
+  it("PR F2: mixed already-enrolled + missing-email prefers `no_email_sendable` so the operator sees the actionable blocker", () => {
+    expect(
+      checkEnrollmentReadiness({
+        sequenceStatus: "APPROVED",
+        preview: { ...zero, total: 3, alreadyEnrolled: 2, missingEmail: 1 },
       }).reason,
     ).toBe("no_email_sendable");
   });
