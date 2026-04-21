@@ -16,9 +16,15 @@ import {
 } from "@/server/email-sequences/step-sends";
 import {
   sendSequenceIntroductionBatch,
+  sendSequenceStepBatch,
   SequenceIntroSendError,
+  SequenceStepSendError,
 } from "@/server/email-sequences/send-introduction";
-import { normaliseSequenceIntroConfirmation } from "@/lib/email-sequences/sequence-send-execution-constants";
+import {
+  getSequenceStepSendConfirmationPhrase,
+  normaliseSequenceIntroConfirmation,
+  normaliseSequenceStepSendConfirmation,
+} from "@/lib/email-sequences/sequence-send-execution-constants";
 import {
   approveSequence,
   archiveSequence,
@@ -75,9 +81,26 @@ function flashForError(e: unknown): string {
   if (e instanceof SequenceMutationFailure) return e.message;
   if (e instanceof EnrollmentFailure) return e.message;
   if (e instanceof SequenceStepSendPlanFailure) return e.message;
+  // `SequenceStepSendError` and `SequenceIntroSendError` alias the
+  // same class, but we list both so the intent is explicit and future
+  // refactors don't accidentally drop one branch.
+  if (e instanceof SequenceStepSendError) return e.message;
   if (e instanceof SequenceIntroSendError) return e.message;
   if (e instanceof Error) return e.message;
   return "Could not complete sequence action.";
+}
+
+/**
+ * Pure guard so action/UI code can convert raw form input into a
+ * `ClientEmailTemplateCategory` safely. Rejects unknown categories.
+ */
+function parseCategoryFromForm(
+  formData: FormData,
+): ClientEmailTemplateCategory | null {
+  const raw = String(formData.get("category") ?? "").trim();
+  return (TEMPLATE_CATEGORY_ORDER as readonly string[]).includes(raw)
+    ? (raw as ClientEmailTemplateCategory)
+    : null;
 }
 
 function parseSteps(formData: FormData): Array<{
@@ -503,6 +526,114 @@ export async function sendClientEmailSequenceIntroductionAction(
     redirectBack(
       clientId,
       { kind: "error", message: flashForError(e) },
+      sequenceId,
+    );
+  }
+}
+
+/**
+ * PR D4e.3 — operator-triggered per-category dispatch, allowlist-gated.
+ *
+ * Accepts a `category` form field (`INTRODUCTION` or `FOLLOW_UP_1..5`)
+ * and routes to `sendSequenceStepBatch`. For FOLLOW_UP_N categories:
+ *   * the previous category must have a SENT step-send for the same
+ *     enrollment,
+ *   * `delayDays` on the step must have elapsed since that SENT
+ *     timestamp,
+ *   * same allowlist + hard cap + typed confirmation as INTRODUCTION.
+ *
+ * No cron/worker is created here — the existing outbound queue
+ * handles the actual dispatch.
+ */
+export async function sendClientEmailSequenceStepAction(
+  formData: FormData,
+): Promise<void> {
+  const staff = await requireOpensDoorsStaff();
+  const clientId = getClientIdFromForm(formData);
+  const sequenceId = String(formData.get("sequenceId") ?? "").trim();
+  const category = parseCategoryFromForm(formData);
+  // Trim whitespace at the action boundary so an operator typing
+  // " SEND FOLLOW UP 1" isn't rejected. Case sensitivity and the
+  // exact phrase are preserved inside `sendSequenceStepBatch`.
+  const confirmationPhrase = normaliseSequenceStepSendConfirmation(
+    formData.get("confirmationPhrase"),
+  );
+  if (!sequenceId) {
+    redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
+  }
+  if (!category) {
+    redirectBack(
+      clientId,
+      { kind: "error", message: "Unknown or missing step category." },
+      sequenceId,
+    );
+  }
+  await requireClientAccess(staff, clientId);
+  await requireClientEmailSequenceMutator(staff, clientId);
+
+  const categoryLabel = category === "INTRODUCTION"
+    ? "introduction"
+    : category.toLowerCase().replace(/_/g, " ");
+
+  try {
+    const result = await sendSequenceStepBatch({
+      staff,
+      clientId,
+      sequenceId,
+      category,
+      confirmationPhrase,
+    });
+    revalidatePath(`/clients/${clientId}/outreach`);
+    const parts: string[] = [];
+    parts.push(
+      result.counts.queued === 1
+        ? `1 ${categoryLabel} queued`
+        : `${String(result.counts.queued)} ${categoryLabel}s queued`,
+    );
+    if (result.counts.blockedAllowlist > 0) {
+      parts.push(
+        `${String(result.counts.blockedAllowlist)} blocked by allowlist`,
+      );
+    }
+    if (result.counts.suppressedAtExecutionTime > 0) {
+      parts.push(
+        `${String(result.counts.suppressedAtExecutionTime)} suppressed at dispatch`,
+      );
+    }
+    if (result.counts.blockedPrevious > 0) {
+      parts.push(
+        `${String(result.counts.blockedPrevious)} blocked by prior-step / delay guard`,
+      );
+    }
+    if (result.counts.blockedPlanClassifier > 0) {
+      parts.push(
+        `${String(result.counts.blockedPlanClassifier)} blocked by policy`,
+      );
+    }
+    if (result.counts.blockedAlreadySent > 0) {
+      parts.push(
+        `${String(result.counts.blockedAlreadySent)} already sent`,
+      );
+    }
+    const flashKind: ActionFlash["kind"] =
+      result.counts.queued > 0 ? "ok" : "error";
+    const flashMsg =
+      flashKind === "ok"
+        ? `${parts.join(" · ")} (allowlist: ${result.allowlistDomains.join(", ")})`
+        : `No ${categoryLabel}s queued. ${parts.join(" · ")}`;
+    redirectBack(
+      clientId,
+      { kind: flashKind, message: flashMsg },
+      sequenceId,
+    );
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
+    redirectBack(
+      clientId,
+      {
+        kind: "error",
+        message: `${flashForError(e)} (expected phrase: ${getSequenceStepSendConfirmationPhrase(category)})`,
+      },
       sequenceId,
     );
   }

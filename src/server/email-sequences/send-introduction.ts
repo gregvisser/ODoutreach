@@ -8,17 +8,19 @@ import {
   CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
 } from "@/lib/controlled-pilot-constants";
 import {
-  isSequenceIntroConfirmationAccepted,
-  SEQUENCE_INTRO_RESERVATION_KEY_PREFIX,
-  SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
-  SEQUENCE_INTRO_SEND_METADATA_KIND,
+  getSequenceStepSendConfirmationPhrase,
+  getSequenceStepSendMetadataKind,
+  getSequenceStepSendReservationPrefix,
+  isSequenceStepSendConfirmationAccepted,
 } from "@/lib/email-sequences/sequence-send-execution-constants";
 import {
-  classifySequenceIntroSendExecution,
-  incrementSequenceIntroSendPlanCounts,
-  zeroSequenceIntroSendPlanCounts,
-  type SequenceIntroSendExecutionDecision,
-  type SequenceIntroSendPlanCounts,
+  classifySequenceStepSendExecution,
+  incrementSequenceStepSendPlanCounts,
+  previousCategoryFor,
+  zeroSequenceStepSendPlanCounts,
+  type SequenceStepSendExecutionDecision,
+  type SequenceStepSendPlanCounts,
+  type SequenceStepSendPreviousStep,
 } from "@/lib/email-sequences/sequence-send-execution-policy";
 import type { SequenceStepSendCandidate } from "@/lib/email-sequences/sequence-send-policy";
 import {
@@ -48,17 +50,22 @@ import {
 } from "@/server/mailbox/sending-policy";
 
 /**
- * PR D4e.2 — operator-triggered INTRODUCTION step dispatcher.
+ * PR D4e.2 / D4e.3 — operator-triggered sequence step dispatcher.
  *
  * This helper is intentionally narrow:
  *
- *   * Sends the INTRODUCTION step only (no follow-ups).
+ *   * Sends exactly one step category per action (INTRODUCTION or
+ *     FOLLOW_UP_1..5). No cross-category batching.
  *   * Consumes `ClientEmailSequenceStepSend` rows in status `READY`
- *     produced by the D4e.1 planner.
- *   * Re-validates every candidate at dispatch time (`classifySequence
- *     IntroSendExecution`) and re-evaluates suppression live so a
- *     stale READY can never send.
- *   * Requires a typed confirmation phrase (`SEND INTRODUCTION`).
+ *     produced by the D4e.1 planner for the target step.
+ *   * Re-validates every candidate at dispatch time
+ *     (`classifySequenceStepSendExecution`) and re-evaluates suppression
+ *     live so a stale READY can never send.
+ *   * For FOLLOW_UP_N categories, requires the prior category's step
+ *     send to already be SENT for the same enrollment, and that
+ *     `delayDays` have elapsed since that SENT timestamp.
+ *   * Requires a typed confirmation phrase matching the category
+ *     (`SEND INTRODUCTION` / `SEND FOLLOW UP 1..5`).
  *   * Requires `GOVERNED_TEST_EMAIL_DOMAINS` to contain the
  *     recipient's domain — same allowlist the governed test / pilot
  *     paths use.
@@ -69,14 +76,22 @@ import {
  *     QUEUED → PROCESSING → SENT / FAILED via
  *     `src/server/email/outbound/execute-one.ts`.
  *
- * No cron, no worker, no scheduler, no follow-up advancement.
+ * No cron, no worker, no scheduler, no automatic follow-up
+ * advancement — operator presses a different button for each step.
  */
 
-export type SequenceIntroSendFailure =
+// ---------------------------------------------------------------------------
+// Error class. The class is `SequenceStepSendError`; `SequenceIntroSendError`
+// is retained as an alias for D4e.2 call sites that pattern-match with
+// `instanceof`.
+// ---------------------------------------------------------------------------
+
+export type SequenceStepSendFailureCode =
   | "CONFIRMATION_REQUIRED"
   | "SEQUENCE_NOT_FOUND"
   | "WRONG_CLIENT"
   | "SEQUENCE_NOT_APPROVED"
+  | "NO_STEP_FOR_CATEGORY"
   | "NO_INTRODUCTION_STEP"
   | "TEMPLATE_NOT_APPROVED"
   | "NO_READY_ROWS"
@@ -84,45 +99,73 @@ export type SequenceIntroSendFailure =
   | "NO_MAILBOX_CAPACITY"
   | "HARD_CAP_EXCEEDED";
 
-export class SequenceIntroSendError extends Error {
-  readonly code: SequenceIntroSendFailure;
-  constructor(code: SequenceIntroSendFailure, message: string) {
+/** Legacy alias — retained for D4e.2 typed-failure code unions. */
+export type SequenceIntroSendFailure = SequenceStepSendFailureCode;
+
+export class SequenceStepSendError extends Error {
+  readonly code: SequenceStepSendFailureCode;
+  readonly category: ClientEmailTemplateCategory | null;
+  constructor(
+    code: SequenceStepSendFailureCode,
+    message: string,
+    category: ClientEmailTemplateCategory | null = null,
+  ) {
     super(message);
-    this.name = "SequenceIntroSendError";
+    this.name = "SequenceStepSendError";
     this.code = code;
+    this.category = category;
   }
 }
 
-export type SequenceIntroSendBlockedRow = {
+/** @deprecated use `SequenceStepSendError`. Retained for D4e.2 call sites. */
+export { SequenceStepSendError as SequenceIntroSendError };
+
+// ---------------------------------------------------------------------------
+// Result / row shapes.
+// ---------------------------------------------------------------------------
+
+export type SequenceStepSendBlockedRow = {
   stepSendId: string;
   contactEmail: string | null;
   reason: string;
-  decisionReason: SequenceIntroSendExecutionDecision["reason"];
+  decisionReason: SequenceStepSendExecutionDecision["reason"];
 };
 
-export type SequenceIntroSendQueuedRow = {
+export type SequenceStepSendQueuedRow = {
   stepSendId: string;
   outboundEmailId: string;
   contactEmail: string;
   allowlistedDomain: string;
 };
 
-export type SequenceIntroSendResult = {
+export type SequenceStepSendBatchResult = {
   sequenceId: string;
   stepId: string;
-  counts: SequenceIntroSendPlanCounts & {
+  category: ClientEmailTemplateCategory;
+  counts: SequenceStepSendPlanCounts & {
     /** Number of OutboundEmail rows actually queued in the ledger. */
     queued: number;
     /** Rows suppressed at live re-check (may differ from plan-time). */
     suppressedAtExecutionTime: number;
   };
-  queued: SequenceIntroSendQueuedRow[];
-  blocked: SequenceIntroSendBlockedRow[];
+  queued: SequenceStepSendQueuedRow[];
+  blocked: SequenceStepSendBlockedRow[];
   allowlistDomains: string[];
   hardCap: number;
   mailboxPoolSize: number;
   aggregateRemainingAfter: number;
 };
+
+/** @deprecated use `SequenceStepSendBlockedRow`. */
+export type SequenceIntroSendBlockedRow = SequenceStepSendBlockedRow;
+/** @deprecated use `SequenceStepSendQueuedRow`. */
+export type SequenceIntroSendQueuedRow = SequenceStepSendQueuedRow;
+/** @deprecated use `SequenceStepSendBatchResult`. */
+export type SequenceIntroSendResult = SequenceStepSendBatchResult;
+
+// ---------------------------------------------------------------------------
+// Mailbox-pool helpers (shared by INTRODUCTION and follow-up flows).
+// ---------------------------------------------------------------------------
 
 function executionEligibleMailboxes(
   rows: ClientMailboxIdentity[],
@@ -174,27 +217,34 @@ function truncate(value: string, max: number): string {
   return value.slice(0, Math.max(0, max - 1)) + "…";
 }
 
-export async function sendSequenceIntroductionBatch(input: {
+// ---------------------------------------------------------------------------
+// Generic per-category dispatcher (PR D4e.3).
+// ---------------------------------------------------------------------------
+
+export async function sendSequenceStepBatch(input: {
   staff: StaffUser;
   clientId: string;
   sequenceId: string;
+  /** INTRODUCTION or FOLLOW_UP_1..5. */
+  category: ClientEmailTemplateCategory;
+  /** Raw operator input — trimmed/validated inside this helper. */
   confirmationPhrase: string;
-}): Promise<SequenceIntroSendResult> {
-  const { staff, clientId, sequenceId } = input;
+}): Promise<SequenceStepSendBatchResult> {
+  const { staff, clientId, sequenceId, category } = input;
   await requireClientAccess(staff, clientId);
 
-  // Hotfix after D4e.2: trim defensively here as well, so any future
-  // caller that forgets to normalise at the action boundary still
-  // behaves correctly. The exact phrase comparison remains
-  // case-sensitive; only surrounding whitespace is relaxed.
-  if (!isSequenceIntroConfirmationAccepted(input.confirmationPhrase)) {
-    throw new SequenceIntroSendError(
+  // Confirmation phrase: trim defensively and match the per-category
+  // phrase case-sensitively. Action-layer already trims — this is
+  // belt-and-braces for any future caller.
+  if (!isSequenceStepSendConfirmationAccepted(category, input.confirmationPhrase)) {
+    throw new SequenceStepSendError(
       "CONFIRMATION_REQUIRED",
-      `Type the exact confirmation phrase: ${SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}`,
+      `Type the exact confirmation phrase: ${getSequenceStepSendConfirmationPhrase(category)}`,
+      category,
     );
   }
 
-  // 1. Load the sequence + INTRODUCTION step + template, scoped by
+  // 1. Load the sequence + target-category step + template, scoped by
   //    clientId at every hop so a spoofed id cannot cross tenants.
   const sequence = await prisma.clientEmailSequence.findUnique({
     where: { id: sequenceId },
@@ -205,11 +255,13 @@ export async function sendSequenceIntroductionBatch(input: {
       status: true,
       contactListId: true,
       steps: {
-        where: { category: "INTRODUCTION" },
+        where: { category },
         select: {
           id: true,
           sequenceId: true,
           category: true,
+          position: true,
+          delayDays: true,
           templateId: true,
           template: {
             select: {
@@ -225,43 +277,50 @@ export async function sendSequenceIntroductionBatch(input: {
     },
   });
   if (!sequence) {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "SEQUENCE_NOT_FOUND",
       "Sequence not found.",
+      category,
     );
   }
   if (sequence.clientId !== clientId) {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "WRONG_CLIENT",
       "Sequence belongs to a different client.",
+      category,
     );
   }
   if (sequence.status !== "APPROVED") {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "SEQUENCE_NOT_APPROVED",
       `Sequence is ${sequence.status}, not APPROVED.`,
+      category,
     );
   }
-  const introStep = sequence.steps[0];
-  if (!introStep) {
-    throw new SequenceIntroSendError(
-      "NO_INTRODUCTION_STEP",
-      "Sequence has no INTRODUCTION step.",
+  const step = sequence.steps[0];
+  if (!step) {
+    throw new SequenceStepSendError(
+      category === "INTRODUCTION" ? "NO_INTRODUCTION_STEP" : "NO_STEP_FOR_CATEGORY",
+      `Sequence has no ${category} step.`,
+      category,
     );
   }
   if (
-    !introStep.template ||
-    introStep.template.clientId !== clientId ||
-    introStep.template.status !== "APPROVED"
+    !step.template ||
+    step.template.clientId !== clientId ||
+    step.template.status !== "APPROVED"
   ) {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "TEMPLATE_NOT_APPROVED",
-      "INTRODUCTION template is missing or not APPROVED.",
+      `${category} template is missing or not APPROVED.`,
+      category,
     );
   }
-  const stepId = introStep.id;
-  const stepCategory: ClientEmailTemplateCategory = introStep.category;
-  const template = introStep.template;
+  const stepId = step.id;
+  const stepCategory: ClientEmailTemplateCategory = step.category;
+  const stepPosition = step.position;
+  const stepDelayDays = Math.max(0, step.delayDays ?? 0);
+  const template = step.template;
 
   // 2. Load READY step-send rows + enrollment + contact projections.
   const stepSendRows = await prisma.clientEmailSequenceStepSend.findMany({
@@ -311,15 +370,17 @@ export async function sendSequenceIntroductionBatch(input: {
     },
   });
   if (stepSendRows.length === 0) {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "NO_READY_ROWS",
-      "No READY introduction step-send records for this sequence. Re-run 'Prepare introduction send records' first.",
+      `No READY ${category} step-send records for this sequence. Re-run 'Prepare send records' for this step first.`,
+      category,
     );
   }
   if (stepSendRows.length > CONTROLLED_PILOT_HARD_MAX_RECIPIENTS) {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "HARD_CAP_EXCEEDED",
       `More than ${String(CONTROLLED_PILOT_HARD_MAX_RECIPIENTS)} READY records exist — re-plan a smaller batch or raise the cap deliberately.`,
+      category,
     );
   }
 
@@ -338,9 +399,10 @@ export async function sendSequenceIntroductionBatch(input: {
   ]);
   const pool = executionEligibleMailboxes(identities);
   if (pool.length === 0) {
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "NO_MAILBOX_POOL",
       "No active connected sending mailboxes in this workspace.",
+      category,
     );
   }
 
@@ -357,16 +419,48 @@ export async function sendSequenceIntroductionBatch(input: {
     domains: allowedGovernedTestEmailDomains(),
   };
 
-  // 5. Classify each candidate at dispatch time.
-  let counts: SequenceIntroSendPlanCounts = zeroSequenceIntroSendPlanCounts();
-  const blocked: SequenceIntroSendBlockedRow[] = [];
-  const queued: SequenceIntroSendQueuedRow[] = [];
+  // 5. For follow-up categories, load the previous-category's SENT
+  //    step-send rows so we can compute per-enrollment sentAt and
+  //    enforce the delay guard at dispatch time.
+  const prevCategory = previousCategoryFor(category);
+  const previousSentByEnrollmentId = new Map<string, { sentAtIso: string }>();
+  if (prevCategory !== null) {
+    const enrollmentIds = stepSendRows.map((r) => r.enrollmentId);
+    const prevRows = await prisma.clientEmailSequenceStepSend.findMany({
+      where: {
+        clientId,
+        sequenceId,
+        status: "SENT",
+        enrollmentId: { in: enrollmentIds },
+        step: { category: prevCategory },
+      },
+      select: {
+        enrollmentId: true,
+        updatedAt: true,
+      },
+    });
+    for (const p of prevRows) {
+      // If multiple rows exist (shouldn't happen — unique per
+      // enrollment+step), keep the latest.
+      const existing = previousSentByEnrollmentId.get(p.enrollmentId);
+      const sentAtIso = p.updatedAt.toISOString();
+      if (!existing || sentAtIso > existing.sentAtIso) {
+        previousSentByEnrollmentId.set(p.enrollmentId, { sentAtIso });
+      }
+    }
+  }
+
+  // 6. Classify each candidate at dispatch time.
+  let counts: SequenceStepSendPlanCounts = zeroSequenceStepSendPlanCounts();
+  const blocked: SequenceStepSendBlockedRow[] = [];
+  const queued: SequenceStepSendQueuedRow[] = [];
   let suppressedAtExecutionTime = 0;
+  const nowIsoForClassifier = new Date().toISOString();
 
   type PreparedRow = {
     stepSend: (typeof stepSendRows)[number];
     candidate: SequenceStepSendCandidate;
-    decision: Extract<SequenceIntroSendExecutionDecision, { sendable: true }>;
+    decision: Extract<SequenceStepSendExecutionDecision, { sendable: true }>;
   };
   const prepared: PreparedRow[] = [];
 
@@ -410,7 +504,16 @@ export async function sendSequenceIntroductionBatch(input: {
       sender: senderRow,
     };
 
-    const decision = classifySequenceIntroSendExecution({
+    const prevProjection: SequenceStepSendPreviousStep =
+      prevCategory === null
+        ? null
+        : (() => {
+            const hit = previousSentByEnrollmentId.get(row.enrollmentId);
+            return hit ? { status: "SENT", sentAtIso: hit.sentAtIso } : null;
+          })();
+
+    const decision = classifySequenceStepSendExecution({
+      category,
       stepSend: {
         id: row.id,
         status: row.status,
@@ -419,8 +522,13 @@ export async function sendSequenceIntroductionBatch(input: {
       stepCategory,
       candidate,
       allowlist,
+      previousStepSend: prevProjection,
+      delayDays: stepDelayDays,
+      nowIso: nowIsoForClassifier,
+      enrollmentCurrentStepPosition: row.enrollment.currentStepPosition,
+      stepPosition,
     });
-    counts = incrementSequenceIntroSendPlanCounts(counts, decision);
+    counts = incrementSequenceStepSendPlanCounts(counts, decision);
 
     if (!decision.sendable) {
       blocked.push({
@@ -454,7 +562,7 @@ export async function sendSequenceIntroductionBatch(input: {
     prepared.push({ stepSend: row, candidate, decision });
   }
 
-  // 6. Live suppression re-check per sendable row (belt-and-braces —
+  // 7. Live suppression re-check per sendable row (belt-and-braces —
   //    the plan-time classifier used `contact.isSuppressed`, but the
   //    suppression list could have changed since then).
   const dispatchable: PreparedRow[] = [];
@@ -485,11 +593,10 @@ export async function sendSequenceIntroductionBatch(input: {
   }
 
   if (dispatchable.length === 0) {
-    // Short-circuit: nothing to dispatch, nothing to queue. Return
-    // with counts so the UI can surface the blocked reasons.
     return {
       sequenceId,
       stepId,
+      category,
       counts: {
         ...counts,
         queued: 0,
@@ -504,11 +611,13 @@ export async function sendSequenceIntroductionBatch(input: {
     };
   }
 
-  // 7. Ledger reservation + OutboundEmail creation in a short
+  // 8. Ledger reservation + OutboundEmail creation in a short
   //    transaction per mailbox pick, mirroring the controlled-pilot
   //    shape so we get the same daily-cap guarantees.
   const at = new Date();
   const windowKey = utcDateKeyForInstant(at);
+  const reservationPrefix = getSequenceStepSendReservationPrefix(category);
+  const metadataKind = getSequenceStepSendMetadataKind(category);
 
   type TxResult = {
     stepSendId: string;
@@ -561,7 +670,7 @@ export async function sendSequenceIntroductionBatch(input: {
             const rem = localRemaining.get(m.id) ?? 0;
             if (rem <= 0) continue;
 
-            const idempotencyKey = `${SEQUENCE_INTRO_RESERVATION_KEY_PREFIX}:${pr.stepSend.idempotencyKey}`;
+            const idempotencyKey = `${reservationPrefix}:${pr.stepSend.idempotencyKey}`;
             const reserve = await tryReserveSendSlotInTransaction(tx, {
               clientId,
               mailbox: m,
@@ -582,9 +691,6 @@ export async function sendSequenceIntroductionBatch(input: {
               sender: senderRow,
             });
             if (!composition.ok || !composition.sendReady) {
-              // Extremely unlikely — the execution policy already
-              // required READY. Release the slot by letting the tx
-              // rollback path (continue without linking).
               blocked.push({
                 stepSendId: pr.stepSend.id,
                 contactEmail: toEmail,
@@ -600,12 +706,11 @@ export async function sendSequenceIntroductionBatch(input: {
                     "Composition lost send-readiness between planning and dispatch; re-plan.",
                 },
               });
-              // Release the just-reserved slot.
               await tx.mailboxSendReservation.update({
                 where: { id: reserve.reservationId },
                 data: { status: "RELEASED" },
               });
-              placed = true; // stop trying other mailboxes for this row
+              placed = true;
               break;
             }
 
@@ -628,7 +733,7 @@ export async function sendSequenceIntroductionBatch(input: {
                 mailboxIdentityId: m.id,
                 queuedAt: new Date(),
                 metadata: {
-                  kind: SEQUENCE_INTRO_SEND_METADATA_KIND,
+                  kind: metadataKind,
                   sequenceId,
                   sequenceStepSendId: pr.stepSend.id,
                   sequenceEnrollmentId: pr.stepSend.enrollment.id,
@@ -636,7 +741,7 @@ export async function sendSequenceIntroductionBatch(input: {
                   contactListId: sequence.contactListId,
                   templateId: template.id,
                   idempotencyKey: pr.stepSend.idempotencyKey,
-                  stepCategory: "INTRODUCTION",
+                  stepCategory: category,
                 } as object,
               },
             });
@@ -647,14 +752,6 @@ export async function sendSequenceIntroductionBatch(input: {
               created.id,
             );
 
-            // Transition the plan row to SENT and link the
-            // OutboundEmail. The worker will run the actual provider
-            // send; if that fails the worker flips OutboundEmail to
-            // FAILED but that does not retroactively un-SENT the plan
-            // row — this mirrors the governed/pilot contract where
-            // the ledger tracks intent-to-send, provider events track
-            // dispatch outcome. D4e.3 can reconcile FAILED outbound
-            // rows back to the plan row if needed.
             await tx.clientEmailSequenceStepSend.update({
               where: { id: pr.stepSend.id },
               data: {
@@ -667,16 +764,14 @@ export async function sendSequenceIntroductionBatch(input: {
               },
             });
 
-            // Advance the enrollment's currentStepPosition to 1 once
-            // the INTRODUCTION step has been dispatched. This is the
-            // only write D4e.2 makes against enrollment state; D4e.3
-            // will be responsible for follow-up advancement and any
-            // transition to COMPLETED.
+            // Advance the enrollment's currentStepPosition to the
+            // current step's position so the next follow-up's
+            // position sanity check sees a consistent picture.
             await tx.clientEmailSequenceEnrollment.update({
               where: { id: pr.stepSend.enrollment.id },
               data: {
                 currentStepPosition: Math.max(
-                  1,
+                  stepPosition,
                   pr.stepSend.enrollment.currentStepPosition,
                 ),
               },
@@ -714,9 +809,10 @@ export async function sendSequenceIntroductionBatch(input: {
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new SequenceIntroSendError(
+    throw new SequenceStepSendError(
       "NO_MAILBOX_CAPACITY",
-      `Sequence introduction dispatch failed: ${msg}`,
+      `Sequence ${category} dispatch failed: ${msg}`,
+      category,
     );
   }
 
@@ -729,13 +825,13 @@ export async function sendSequenceIntroductionBatch(input: {
     });
   }
 
-  // 8. Kick the worker. The queue processor owns the actual Graph /
+  // 9. Kick the worker. The queue processor owns the actual Graph /
   //    Gmail send and reservation CONSUME / RELEASE.
   if (queued.length > 0) {
     await triggerOutboundQueueDrain();
   }
 
-  // 9. Recompute aggregate remaining capacity for the UI summary.
+  // 10. Recompute aggregate remaining capacity for the UI summary.
   let aggregateRemainingAfter = 0;
   for (const m of pool) {
     const cap = Math.max(1, m.dailySendCap || 30);
@@ -752,6 +848,7 @@ export async function sendSequenceIntroductionBatch(input: {
   return {
     sequenceId,
     stepId,
+    category,
     counts: {
       ...counts,
       queued: queued.length,
@@ -766,17 +863,37 @@ export async function sendSequenceIntroductionBatch(input: {
   };
 }
 
-/**
- * Page-level read-only snapshot for the Outreach "Send introduction"
- * UI. Computes per-sequence counts of READY / BLOCKED / SUPPRESSED /
- * SENT step-send rows for the INTRODUCTION step, the allowlist config
- * state, and whether a dispatch action should be enabled.
- */
-export type SequenceIntroSendUiSnapshot = {
+// ---------------------------------------------------------------------------
+// Back-compat wrapper for D4e.2 call sites that only knew about intro.
+// ---------------------------------------------------------------------------
+
+export async function sendSequenceIntroductionBatch(input: {
+  staff: StaffUser;
+  clientId: string;
+  sequenceId: string;
+  confirmationPhrase: string;
+}): Promise<SequenceStepSendBatchResult> {
+  return sendSequenceStepBatch({
+    staff: input.staff,
+    clientId: input.clientId,
+    sequenceId: input.sequenceId,
+    category: "INTRODUCTION",
+    confirmationPhrase: input.confirmationPhrase,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// UI snapshot loaders.
+// ---------------------------------------------------------------------------
+
+export type SequenceStepSendUiSnapshot = {
   sequenceId: string;
   sequenceName: string;
   sequenceStatus: string;
+  category: ClientEmailTemplateCategory;
   stepId: string | null;
+  stepPosition: number | null;
+  delayDays: number;
   templateApproved: boolean;
   enrollmentCount: number;
   readyCount: number;
@@ -788,23 +905,49 @@ export type SequenceIntroSendUiSnapshot = {
   allowlistedReadyCount: number;
   /** READY rows whose recipient domain is NOT in the allowlist. */
   allowlistBlockedReadyCount: number;
+  /**
+   * READY rows whose previous-step SENT record is missing. Always 0
+   * for INTRODUCTION.
+   */
+  previousStepMissingCount: number;
+  /**
+   * READY rows where the previous step has SENT but `delayDays` has
+   * not yet elapsed for at least one contact. Always 0 for
+   * INTRODUCTION.
+   */
+  delayPendingCount: number;
+  /** Earliest moment any blocked-by-delay row will become eligible. */
+  earliestEligibleAtIso: string | null;
   hardCap: number;
   sendable: boolean;
   disabledReason: string | null;
 };
 
-export type SequenceIntroSendUiAllowlist = {
+export type SequenceStepSendUiAllowlist = {
   configured: boolean;
   domains: readonly string[];
 };
 
-export async function loadSequenceIntroSendUiSnapshots(
+/** @deprecated use `SequenceStepSendUiSnapshot`. */
+export type SequenceIntroSendUiSnapshot = SequenceStepSendUiSnapshot;
+/** @deprecated use `SequenceStepSendUiAllowlist`. */
+export type SequenceIntroSendUiAllowlist = SequenceStepSendUiAllowlist;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * PR D4e.3 — read-only snapshot for every (sequence × category) pair
+ * that has a step in the sequence. Drives the Outreach "Send
+ * preparation" card's INTRODUCTION dispatch block AND the new
+ * FOLLOW_UP_N dispatch blocks.
+ */
+export async function loadSequenceStepSendUiSnapshots(
   clientId: string,
 ): Promise<{
-  allowlist: SequenceIntroSendUiAllowlist;
-  snapshots: SequenceIntroSendUiSnapshot[];
+  allowlist: SequenceStepSendUiAllowlist;
+  snapshots: SequenceStepSendUiSnapshot[];
 }> {
-  const allowlist: SequenceIntroSendUiAllowlist = {
+  const allowlist: SequenceStepSendUiAllowlist = {
     configured: typeof process.env.GOVERNED_TEST_EMAIL_DOMAINS === "string",
     domains: allowedGovernedTestEmailDomains(),
   };
@@ -817,9 +960,11 @@ export async function loadSequenceIntroSendUiSnapshots(
       name: true,
       status: true,
       steps: {
-        where: { category: "INTRODUCTION" },
         select: {
           id: true,
+          category: true,
+          position: true,
+          delayDays: true,
           templateId: true,
           template: { select: { status: true } },
         },
@@ -833,6 +978,8 @@ export async function loadSequenceIntroSendUiSnapshots(
   }
 
   const sequenceIds = sequences.map((s) => s.id);
+  // Load both the step-send rows for the sequences (for counts) AND
+  // the previous-category SENT rows (for the delay-elapsed hints).
   const planRows = await prisma.clientEmailSequenceStepSend.findMany({
     where: {
       clientId,
@@ -841,98 +988,203 @@ export async function loadSequenceIntroSendUiSnapshots(
     select: {
       sequenceId: true,
       stepId: true,
+      enrollmentId: true,
       status: true,
+      updatedAt: true,
       contact: { select: { email: true } },
     },
   });
 
   const allowSet = new Set(allowlist.domains);
+  const nowMs = Date.now();
 
-  const snapshots: SequenceIntroSendUiSnapshot[] = sequences.map((s) => {
-    const introStep = s.steps[0] ?? null;
-    const rows = planRows.filter(
-      (r) => r.sequenceId === s.id && introStep && r.stepId === introStep.id,
-    );
+  // Index previous-category SENT rows per (sequenceId, stepId) to
+  // compute the delay-elapsed hints for each follow-up category.
+  const sentByStepByEnrollment = new Map<string, Map<string, string>>();
+  for (const r of planRows) {
+    if (r.status !== "SENT") continue;
+    const key = `${r.sequenceId}:${r.stepId}`;
+    const inner =
+      sentByStepByEnrollment.get(key) ?? new Map<string, string>();
+    const sentIso = r.updatedAt.toISOString();
+    const existing = inner.get(r.enrollmentId);
+    if (!existing || sentIso > existing) {
+      inner.set(r.enrollmentId, sentIso);
+    }
+    sentByStepByEnrollment.set(key, inner);
+  }
 
-    let readyCount = 0;
-    let blockedCount = 0;
-    let suppressedCount = 0;
-    let sentCount = 0;
-    let failedCount = 0;
-    let allowlistedReadyCount = 0;
-    let allowlistBlockedReadyCount = 0;
+  const snapshots: SequenceStepSendUiSnapshot[] = [];
+  for (const s of sequences) {
+    for (const step of s.steps) {
+      const category = step.category;
+      const rows = planRows.filter(
+        (r) => r.sequenceId === s.id && r.stepId === step.id,
+      );
 
-    for (const r of rows) {
-      switch (r.status as ClientEmailSequenceStepSendStatus) {
-        case "READY":
-          readyCount += 1;
-          if (r.contact?.email) {
-            const dom =
-              extractDomainFromEmail(r.contact.email)?.toLowerCase() ?? "";
-            if (allowlist.configured && allowSet.has(dom)) {
-              allowlistedReadyCount += 1;
+      let readyCount = 0;
+      let blockedCount = 0;
+      let suppressedCount = 0;
+      let sentCount = 0;
+      let failedCount = 0;
+      let allowlistedReadyCount = 0;
+      let allowlistBlockedReadyCount = 0;
+      let previousStepMissingCount = 0;
+      let delayPendingCount = 0;
+      let earliestEligibleAtMs: number | null = null;
+
+      // Resolve previous-category step for this sequence (if any).
+      const prevCategory = previousCategoryFor(category);
+      const prevStep =
+        prevCategory === null
+          ? null
+          : (s.steps.find((x) => x.category === prevCategory) ?? null);
+      const prevSentByEnrollmentId =
+        prevStep === null
+          ? null
+          : (sentByStepByEnrollment.get(`${s.id}:${prevStep.id}`) ??
+              new Map<string, string>());
+
+      for (const r of rows) {
+        switch (r.status as ClientEmailSequenceStepSendStatus) {
+          case "READY": {
+            readyCount += 1;
+            if (r.contact?.email) {
+              const dom =
+                extractDomainFromEmail(r.contact.email)?.toLowerCase() ?? "";
+              if (allowlist.configured && allowSet.has(dom)) {
+                allowlistedReadyCount += 1;
+              } else {
+                allowlistBlockedReadyCount += 1;
+              }
             } else {
               allowlistBlockedReadyCount += 1;
             }
-          } else {
-            allowlistBlockedReadyCount += 1;
+
+            if (prevCategory !== null) {
+              const prevSentAtIso =
+                prevSentByEnrollmentId?.get(r.enrollmentId) ?? null;
+              if (prevSentAtIso === null) {
+                previousStepMissingCount += 1;
+              } else {
+                const eligibleAtMs =
+                  Date.parse(prevSentAtIso) + step.delayDays * DAY_MS;
+                if (nowMs < eligibleAtMs) {
+                  delayPendingCount += 1;
+                  if (
+                    earliestEligibleAtMs === null ||
+                    eligibleAtMs < earliestEligibleAtMs
+                  ) {
+                    earliestEligibleAtMs = eligibleAtMs;
+                  }
+                }
+              }
+            }
+            break;
           }
-          break;
-        case "BLOCKED":
-          blockedCount += 1;
-          break;
-        case "SUPPRESSED":
-          suppressedCount += 1;
-          break;
-        case "SENT":
-          sentCount += 1;
-          break;
-        case "FAILED":
-          failedCount += 1;
-          break;
-        default:
-          break;
+          case "BLOCKED":
+            blockedCount += 1;
+            break;
+          case "SUPPRESSED":
+            suppressedCount += 1;
+            break;
+          case "SENT":
+            sentCount += 1;
+            break;
+          case "FAILED":
+            failedCount += 1;
+            break;
+          default:
+            break;
+        }
       }
-    }
 
-    const templateApproved = introStep?.template.status === "APPROVED";
-    let disabledReason: string | null = null;
-    if (s.status !== "APPROVED") {
-      disabledReason = `Sequence is ${s.status}, not APPROVED.`;
-    } else if (!introStep) {
-      disabledReason = "Sequence has no INTRODUCTION step.";
-    } else if (!templateApproved) {
-      disabledReason = "INTRODUCTION template is not APPROVED.";
-    } else if (!allowlist.configured) {
-      disabledReason =
-        "GOVERNED_TEST_EMAIL_DOMAINS is not configured — sequence sending is disabled.";
-    } else if (allowlist.domains.length === 0) {
-      disabledReason =
-        "GOVERNED_TEST_EMAIL_DOMAINS resolved to an empty list.";
-    } else if (allowlistedReadyCount === 0) {
-      disabledReason =
-        "No READY records whose recipient domain passes GOVERNED_TEST_EMAIL_DOMAINS.";
-    }
+      const templateApproved = step.template.status === "APPROVED";
+      // Effective "ready now" = allowlisted AND not blocked by
+      // previous-step/delay for follow-ups. The dispatcher is the
+      // single source of truth but this snapshot is used to gate the
+      // UI button.
+      const effectiveReadyNow =
+        prevCategory === null
+          ? allowlistedReadyCount
+          : Math.max(
+              0,
+              allowlistedReadyCount -
+                previousStepMissingCount -
+                delayPendingCount,
+            );
 
-    return {
-      sequenceId: s.id,
-      sequenceName: s.name,
-      sequenceStatus: s.status,
-      stepId: introStep?.id ?? null,
-      templateApproved,
-      enrollmentCount: s._count.enrollments,
-      readyCount,
-      blockedCount,
-      suppressedCount,
-      sentCount,
-      failedCount,
-      allowlistedReadyCount,
-      allowlistBlockedReadyCount,
-      hardCap: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
-      sendable: disabledReason === null,
-      disabledReason,
-    };
-  });
+      let disabledReason: string | null = null;
+      if (s.status !== "APPROVED") {
+        disabledReason = `Sequence is ${s.status}, not APPROVED.`;
+      } else if (!templateApproved) {
+        disabledReason = `${category} template is not APPROVED.`;
+      } else if (!allowlist.configured) {
+        disabledReason =
+          "GOVERNED_TEST_EMAIL_DOMAINS is not configured — sequence sending is disabled.";
+      } else if (allowlist.domains.length === 0) {
+        disabledReason =
+          "GOVERNED_TEST_EMAIL_DOMAINS resolved to an empty list.";
+      } else if (effectiveReadyNow === 0) {
+        if (previousStepMissingCount > 0 && prevCategory !== null) {
+          disabledReason = `Previous step (${prevCategory}) has not been SENT for any allowlisted recipient yet.`;
+        } else if (delayPendingCount > 0) {
+          disabledReason = `Delay (${String(step.delayDays)} days) has not elapsed for any allowlisted recipient yet.`;
+        } else {
+          disabledReason =
+            "No READY records whose recipient domain passes GOVERNED_TEST_EMAIL_DOMAINS.";
+        }
+      }
+
+      snapshots.push({
+        sequenceId: s.id,
+        sequenceName: s.name,
+        sequenceStatus: s.status,
+        category,
+        stepId: step.id,
+        stepPosition: step.position,
+        delayDays: step.delayDays,
+        templateApproved,
+        enrollmentCount: s._count.enrollments,
+        readyCount,
+        blockedCount,
+        suppressedCount,
+        sentCount,
+        failedCount,
+        allowlistedReadyCount,
+        allowlistBlockedReadyCount,
+        previousStepMissingCount,
+        delayPendingCount,
+        earliestEligibleAtIso:
+          earliestEligibleAtMs === null
+            ? null
+            : new Date(earliestEligibleAtMs).toISOString(),
+        hardCap: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+        sendable: disabledReason === null,
+        disabledReason,
+      });
+    }
+  }
 
   return { allowlist, snapshots };
+}
+
+/**
+ * @deprecated use `loadSequenceStepSendUiSnapshots`. Retained so the
+ * outreach page and the D4e.2 UI can still call the introduction-only
+ * loader while we migrate (same underlying query, filtered to
+ * INTRODUCTION).
+ */
+export async function loadSequenceIntroSendUiSnapshots(
+  clientId: string,
+): Promise<{
+  allowlist: SequenceStepSendUiAllowlist;
+  snapshots: SequenceStepSendUiSnapshot[];
+}> {
+  const { allowlist, snapshots } =
+    await loadSequenceStepSendUiSnapshots(clientId);
+  return {
+    allowlist,
+    snapshots: snapshots.filter((s) => s.category === "INTRODUCTION"),
+  };
 }
