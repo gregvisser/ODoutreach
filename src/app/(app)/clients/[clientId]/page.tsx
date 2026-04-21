@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
 import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
@@ -16,6 +17,8 @@ import {
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
+import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
+import { prisma } from "@/lib/db";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
   OUTREACH_MAILBOX_DAILY_CAP,
@@ -31,12 +34,20 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ clientId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function ClientDetailPage({ params }: Props) {
+export default async function ClientDetailPage({ params, searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
+  const sp = searchParams ? await searchParams : {};
+  const justCreated =
+    typeof sp.created === "string"
+      ? sp.created === "1"
+      : Array.isArray(sp.created)
+        ? sp.created[0] === "1"
+        : false;
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
@@ -44,7 +55,12 @@ export default async function ClientDetailPage({ params }: Props) {
   const client = bundle.client;
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
 
-  const sequenceCounts = await getClientEmailSequenceCounts(client.id);
+  const [sequenceCounts, enrolledContactsCount] = await Promise.all([
+    getClientEmailSequenceCounts(client.id),
+    prisma.clientEmailSequenceEnrollment.count({
+      where: { clientId: client.id },
+    }),
+  ]);
 
   const outreachPilotRunnable =
     bundle.hasGovernedMailbox &&
@@ -86,6 +102,28 @@ export default async function ClientDetailPage({ params }: Props) {
     ...snapshot,
     suppressionLatestSyncAt,
   });
+
+  const gettingStarted = buildGettingStartedViewModel({
+    clientId: client.id,
+    clientStatus: client.status,
+    briefStatus: bundle.onboardingCompletion.status,
+    connectedSendingCount: bundle.connectedSendingCount,
+    suppressionSheetCount: bundle.suppressionSheetRows.length,
+    contactsTotal: client._count.contacts,
+    enrolledContactsCount,
+    approvedTemplatesCount: sequenceCounts.approvedTemplatesTotal,
+    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
+    outreachPilotRunnable,
+  });
+
+  const statusCopy =
+    client.status === "ACTIVE"
+      ? "Active — approved for live outreach. Modules remain editable."
+      : client.status === "PAUSED"
+        ? "Paused — outreach suspended. Review suppression, mailboxes, and sequences before resuming."
+        : client.status === "ARCHIVED"
+          ? "Archived — read-only. No new outreach will be sent from this workspace."
+          : "Onboarding — not approved for live outreach. Complete the workspace modules before launch.";
 
   const dailyCapacity = bundle.connectedSendingCount * OUTREACH_MAILBOX_DAILY_CAP;
   const snapshotItems = [
@@ -197,6 +235,26 @@ export default async function ClientDetailPage({ params }: Props) {
         clientStatus={client.status}
         launchStageLabel={launchStage}
         steps={steps}
+      />
+
+      {justCreated ? (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-400/60 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-950/30 dark:text-emerald-100"
+        >
+          <p className="font-medium">Client workspace created.</p>
+          <p className="mt-1 text-emerald-900/80 dark:text-emerald-100/80">
+            Complete the setup modules below before launch. No emails, imports,
+            or suppression syncs have run yet.
+          </p>
+        </div>
+      ) : null}
+
+      <p className="text-sm text-muted-foreground">{statusCopy}</p>
+
+      <ClientGettingStartedCard
+        viewModel={gettingStarted}
+        clientStatus={client.status}
       />
 
       <Card className="border-border/80 shadow-sm">
