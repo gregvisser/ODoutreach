@@ -105,11 +105,18 @@ export async function runContactCsvImport(args: {
     where: { clientId },
     select: { id: true, email: true },
   });
+  // PR F1: Contact.email is nullable. The dedupe sets are keyed on the
+  // normalized email, so no-email existing contacts contribute nothing to
+  // these maps — a CSV row with an email can never "duplicate" a row
+  // without one.
+  const existingRowsWithEmail = existingRows.filter(
+    (c): c is { id: string; email: string } => typeof c.email === "string",
+  );
   const existing = new Set(
-    existingRows.map((c) => normalizeEmail(c.email)),
+    existingRowsWithEmail.map((c) => normalizeEmail(c.email)),
   );
   const existingIdByEmail = new Map(
-    existingRows.map((c) => [normalizeEmail(c.email), c.id]),
+    existingRowsWithEmail.map((c) => [normalizeEmail(c.email), c.id]),
   );
 
   const seenInFile = new Set<string>();

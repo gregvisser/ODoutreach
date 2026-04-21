@@ -66,6 +66,18 @@ export async function sendEmailToContact(
     return { ok: false, outcome: "failed", error: "Contact not found in this workspace" };
   }
 
+  // PR F1: contact.email is nullable. Reject the send here — the send path
+  // must never normalize or dispatch to a null email, even if the caller
+  // somehow routed to a no-email contact.
+  if (!contact.email) {
+    return {
+      ok: false,
+      outcome: "failed",
+      error:
+        "Contact has no email address on file. Add an email before sending, or reach out via another channel.",
+    };
+  }
+
   const to = normalizeEmail(contact.email);
   const toDomain = extractDomainFromEmail(to) || contact.emailDomain || null;
 

@@ -1,0 +1,21 @@
+-- PR F1: relax Contact.email NOT NULL.
+--
+-- Contacts can now be persisted without an email address. This is the
+-- first step of the "universal contacts / email-optional" phase
+-- (docs/ops/UNIVERSAL_CONTACTS_AND_LISTS_PLAN.md §0). Nothing in this
+-- PR writes NULL emails yet — import, RocketReach, and manual creation
+-- paths continue to require a valid email. PR F2 hardens policy/query
+-- layers; PR F3 adds UI surfaces for no-email contacts.
+--
+-- Safety:
+--   * Pure DDL, single-column constraint relaxation. Non-destructive.
+--   * `@@unique("clientId", "email")` remains. Postgres treats NULLs
+--     as distinct for unique-index purposes, so multiple no-email
+--     contacts can coexist in the same client workspace without
+--     violating the constraint. Existing non-null rows are
+--     unaffected.
+--   * Rollback is `ALTER TABLE "Contact" ALTER COLUMN "email" SET NOT NULL;`
+--     which succeeds as long as no NULLs have been inserted. F1 alone
+--     does not insert any NULL emails.
+
+ALTER TABLE "Contact" ALTER COLUMN "email" DROP NOT NULL;

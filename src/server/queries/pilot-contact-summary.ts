@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { PilotContactSummary } from "@/lib/pilot-contact-types";
+import {
+  summarizePilotContacts,
+  type PilotContactSummary,
+} from "@/lib/pilot-contact-types";
 import { prisma } from "@/lib/db";
 
 export async function getPilotContactSummaryForClient(
@@ -10,15 +13,8 @@ export async function getPilotContactSummaryForClient(
     where: { clientId },
     select: { email: true, isSuppressed: true },
   });
-  const totalContacts = contacts.length;
-  const suppressedCount = contacts.filter((c) => c.isSuppressed).length;
-  const eligible = contacts.filter((c) => !c.isSuppressed);
-  const eligibleCount = eligible.length;
-  const eligibleEmailsSample = eligible.slice(0, 10).map((c) => c.email);
-  return {
-    totalContacts,
-    suppressedCount,
-    eligibleCount,
-    eligibleEmailsSample,
-  };
+  // PR F1: eligibility reducer lives in `pilot-contact-types` so it can be
+  // tested without Prisma. It correctly treats null emails as valid-but-
+  // not-email-sendable.
+  return summarizePilotContacts(contacts);
 }

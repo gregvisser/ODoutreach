@@ -419,7 +419,15 @@ model ContactImportBatch {
 model Contact {
   id                     String        @id @default(cuid())
   clientId               String
-  email                  String
+  /// Email is nullable as of PR F1. Contacts can be persisted and kept in
+  /// lists for enrichment/cold-outreach pipelines even when no email is
+  /// known. The Postgres `@@unique([clientId, email])` constraint still
+  /// prevents duplicate emails per client; NULLs are treated as distinct
+  /// by the default unique-index semantics, so multiple no-email contacts
+  /// can coexist in the same client workspace. Every send / suppression /
+  /// enrollment path treats null email as "valid but not email-sendable"
+  /// — see `src/lib/client-contacts-readiness.ts` and PR F2 hardening.
+  email                  String?
   /// Optional full name from CSV / enrichment
   fullName               String?
   /// Normalized domain part of email (lowercase), for display and guards
@@ -431,8 +439,7 @@ model Contact {
   /// First-class outreach identifiers from the CSV/RocketReach import contract
   /// (docs/ops/CLIENT_WORKSPACE_MODULE_AUDIT.md §0.1). A contact is valid when
   /// it is not suppressed AND has at least one of email / linkedIn /
-  /// mobilePhone / officePhone. Email remains required today; email-optional
-  /// persistence is a deferred follow-up.
+  /// mobilePhone / officePhone.
   linkedIn               String?
   mobilePhone            String?
   officePhone            String?
