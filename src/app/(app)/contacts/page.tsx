@@ -250,48 +250,58 @@ export default async function ContactsPage({ searchParams }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contacts.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">{row.email}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.fullName ||
-                      [row.firstName, row.lastName].filter(Boolean).join(" ") ||
-                      "—"}
-                  </TableCell>
-                  <TableCell>{row.client.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{row.source}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.importBatch?.fileName ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    {row.isSuppressed ? (
-                      <span className="space-y-0.5">
-                        <Badge variant="destructive">Yes</Badge>
-                        <p className="text-[10px] text-muted-foreground">
-                          email/domain list
-                        </p>
-                      </span>
-                    ) : (
-                      <Badge variant="secondary">No</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <SendToContactForm
-                      clientId={row.clientId}
-                      contactId={row.id}
-                      toEmail={row.email}
-                      contactLabel={
-                        row.fullName ||
-                        [row.firstName, row.lastName].filter(Boolean).join(" ") ||
-                        row.email
-                      }
-                      isSuppressed={row.isSuppressed}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {contacts.map((row) => {
+                const nameLabel =
+                  row.fullName ||
+                  [row.firstName, row.lastName].filter(Boolean).join(" ");
+                // PR F1: email can be null. Fall back to "—" in the cell
+                // and to a friendly label for the send sheet so the
+                // operator still sees a human identifier.
+                const contactLabel =
+                  nameLabel || row.email || "Unnamed contact";
+                return (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium">
+                      {row.email ?? (
+                        <span className="text-xs text-muted-foreground">
+                          No email
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {nameLabel || "—"}
+                    </TableCell>
+                    <TableCell>{row.client.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{row.source}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.importBatch?.fileName ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      {row.isSuppressed ? (
+                        <span className="space-y-0.5">
+                          <Badge variant="destructive">Yes</Badge>
+                          <p className="text-[10px] text-muted-foreground">
+                            email/domain list
+                          </p>
+                        </span>
+                      ) : (
+                        <Badge variant="secondary">No</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <SendToContactForm
+                        clientId={row.clientId}
+                        contactId={row.id}
+                        toEmail={row.email}
+                        contactLabel={contactLabel}
+                        isSuppressed={row.isSuppressed}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           {contacts.length === 0 ? (

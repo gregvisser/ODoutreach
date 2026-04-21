@@ -99,6 +99,22 @@ export async function refreshContactSuppressionFlagsForClient(
     const slice = contacts.slice(i, i + chunk);
     await Promise.all(
       slice.map(async (c) => {
+        // PR F1: a contact with no email cannot be on an email-suppression
+        // list (suppression is keyed on an email string). Stamp the check
+        // timestamp and leave `isSuppressed` as-is (false for new rows).
+        // Domain-level suppression matching is still impossible without an
+        // address. This intentionally does NOT surface as suppressed so
+        // the contact remains "valid but not email-sendable".
+        if (!c.email) {
+          await prisma.contact.update({
+            where: { id: c.id },
+            data: {
+              isSuppressed: false,
+              lastSuppressionCheckAt: now,
+            },
+          });
+          return;
+        }
         const decision = await evaluateSuppression(clientId, c.email);
         await prisma.contact.update({
           where: { id: c.id },

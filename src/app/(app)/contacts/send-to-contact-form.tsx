@@ -20,7 +20,12 @@ import { cn } from "@/lib/utils";
 type Props = {
   clientId: string;
   contactId: string;
-  toEmail: string;
+  /**
+   * PR F1: contacts may be persisted without an email. Null disables the
+   * send trigger — the outreach send path refuses null-email sends at the
+   * server layer too, so this is defence-in-depth.
+   */
+  toEmail: string | null;
   contactLabel: string;
   isSuppressed: boolean;
 };
@@ -41,6 +46,20 @@ export function SendToContactForm({
   contactLabel,
   isSuppressed,
 }: Props) {
+  if (!toEmail) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled
+        title="No email on file for this contact"
+        className="shrink-0"
+      >
+        No email
+      </Button>
+    );
+  }
   return (
     <Sheet>
       <SheetTrigger

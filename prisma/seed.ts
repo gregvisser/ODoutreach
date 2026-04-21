@@ -292,8 +292,12 @@ async function main() {
 
     let firstOutboundId: string | null = null;
     for (const contact of contactRows) {
-      const oid = `seed-out-${c.slug}-${contact.email}`;
-      const toDomain = extractDomainFromEmail(contact.email);
+      // PR F1: seed only creates outbound rows for contacts that have an
+      // email — no-email contacts are valid but not email-sendable.
+      if (!contact.email) continue;
+      const contactEmail = contact.email;
+      const oid = `seed-out-${c.slug}-${contactEmail}`;
+      const toDomain = extractDomainFromEmail(contactEmail);
       const providerMessageId = `mock-seed-${oid}`;
       await prisma.outboundEmail.upsert({
         where: { id: oid },
@@ -303,7 +307,7 @@ async function main() {
           campaignId,
           contactId: contact.id,
           staffUserId: staff.id,
-          toEmail: contact.email,
+          toEmail: contactEmail,
           toDomain,
           fromAddress: `hello@${c.slug}.opensdoors.local`,
           subject: `Quick idea for ${contact.company ?? "your team"}`,
