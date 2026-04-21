@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
+import { ContactReadinessBadge } from "@/components/contacts/contact-readiness-badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -10,7 +11,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { ContactReadinessStatusLabel } from "@/lib/client-contacts-readiness";
+import {
+  MISSING_EMAIL_KPI_DISPLAY,
+  MISSING_IDENTIFIER_KPI_DISPLAY,
+} from "@/lib/contacts/contact-status-display";
 import { cn } from "@/lib/utils";
 import { requireStaffUser } from "@/server/auth/staff";
 import { loadClientListsOverview } from "@/server/contacts/contact-lists-view";
@@ -35,34 +39,6 @@ function formatDate(value: Date | string | null | undefined): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return DATE_FORMATTER.format(date);
-}
-
-function statusBadgeVariant(
-  status: ContactReadinessStatusLabel,
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "email_sendable":
-      return "default";
-    case "valid_no_email":
-      return "secondary";
-    case "suppressed":
-      return "destructive";
-    case "missing_identifier":
-      return "outline";
-  }
-}
-
-function statusBadgeLabel(status: ContactReadinessStatusLabel): string {
-  switch (status) {
-    case "email_sendable":
-      return "Email-sendable";
-    case "valid_no_email":
-      return "Valid, no email";
-    case "suppressed":
-      return "Suppressed";
-    case "missing_identifier":
-      return "Missing identifier";
-  }
 }
 
 function listStatusBadgeVariant(
@@ -148,16 +124,16 @@ export default async function ClientContactsPage({ params }: Props) {
     },
     {
       id: "missing-email",
-      label: "Missing email",
+      label: MISSING_EMAIL_KPI_DISPLAY.label,
       value: totals.uniqueContacts.missingEmail,
-      hint: "Not suppressed and reachable by LinkedIn / phone, but no email on file.",
+      hint: MISSING_EMAIL_KPI_DISPLAY.tooltip,
       tone: "warning",
     },
     {
       id: "missing-identifier",
-      label: "Missing identifier",
+      label: MISSING_IDENTIFIER_KPI_DISPLAY.label,
       value: totals.uniqueContacts.missingOutreachIdentifier,
-      hint: "No email, LinkedIn, mobile, or office phone on file.",
+      hint: MISSING_IDENTIFIER_KPI_DISPLAY.tooltip,
       tone: "warning",
     },
   ];
@@ -386,12 +362,10 @@ export default async function ClientContactsPage({ params }: Props) {
                                   .join(" · ") || "—"}
                               </p>
                             </div>
-                            <Badge
-                              variant={statusBadgeVariant(member.status)}
+                            <ContactReadinessBadge
+                              status={member.status}
                               className="self-start sm:self-center"
-                            >
-                              {statusBadgeLabel(member.status)}
-                            </Badge>
+                            />
                           </li>
                         ))}
                       </ul>

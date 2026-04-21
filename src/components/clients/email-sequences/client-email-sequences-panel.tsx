@@ -445,7 +445,27 @@ function EnrollmentBlock({
       return "Every list member is already enrolled.";
     }
     if (preview.enrollable === 0) {
-      return "No email-sendable contacts left to enroll.";
+      // PR F3: name each blocker bucket so the operator sees why
+      // no list member is enrollable — missing email vs missing every
+      // identifier vs suppressed — instead of a generic fallback.
+      const reasons: string[] = [];
+      if (preview.missingEmail > 0) {
+        reasons.push(
+          `${String(preview.missingEmail)} have no email on file (Valid, no email)`,
+        );
+      }
+      if (preview.missingIdentifier > 0) {
+        reasons.push(
+          `${String(preview.missingIdentifier)} have no contact identifier`,
+        );
+      }
+      if (preview.suppressed > 0) {
+        reasons.push(`${String(preview.suppressed)} suppressed`);
+      }
+      if (reasons.length === 0) {
+        return "No email-sendable contacts left to enroll.";
+      }
+      return `No email-sendable contacts left to enroll — ${reasons.join(", ")}.`;
     }
     return null;
   })();
