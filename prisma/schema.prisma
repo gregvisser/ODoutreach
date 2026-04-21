@@ -129,6 +129,39 @@ enum ClientEmailSequenceEnrollmentStatus {
   EXCLUDED
 }
 
+/// PR D4e.1 — per-step send-planning lifecycle. RECORDS ONLY in this
+/// PR: no send execution, no reservation, no OutboundEmail creation
+/// from this status. The worker that consumes READY rows lands in
+/// D4e.2 behind the allowlist gate.
+///
+///   * PLANNED    — row created; composition / readiness not yet
+///                  evaluated.
+///   * READY      — composition succeeded, recipient email present,
+///                  template APPROVED, no suppression — eligible for
+///                  D4e.2 to later convert into an OutboundEmail.
+///   * SKIPPED    — operator/policy opted out of this step for this
+///                  enrollment (e.g. enrollment was EXCLUDED).
+///   * SUPPRESSED — recipient email is currently suppressed
+///                  (per-tenant suppression rules).
+///   * BLOCKED    — non-suppression readiness failure (missing email,
+///                  unknown placeholder, template not approved,
+///                  missing unsubscribe link, wrong client, etc.).
+///                  `blockedReason` carries the detail.
+///   * SENT       — (D4e.2+) step-send was actually dispatched and is
+///                  now linked to an `OutboundEmail`. Never written
+///                  in D4e.1.
+///   * FAILED     — (D4e.2+) terminal composition/dispatch failure.
+///                  Never written in D4e.1.
+enum ClientEmailSequenceStepSendStatus {
+  PLANNED
+  READY
+  SKIPPED
+  SUPPRESSED
+  BLOCKED
+  SENT
+  FAILED
+}
+
 enum OutboundEmailStatus {
   /// Legacy — prefer REQUESTED for new rows
   PREPARING
@@ -231,6 +264,7 @@ model StaffUser {
   emailSequencesCreated    ClientEmailSequence[]   @relation("ClientEmailSequenceCreatedBy")
   emailSequencesApproved   ClientEmailSequence[]   @relation("ClientEmailSequenceApprovedBy")
   sequenceEnrollmentsCreated ClientEmailSequenceEnrollment[] @relation("ClientEmailSequenceEnrollmentCreatedBy")
+  sequenceStepSendsCreated   ClientEmailSequenceStepSend[]   @relation("ClientEmailSequenceStepSendCreatedBy")
 
   @@index([invitedById])
 }
@@ -277,6 +311,7 @@ model Client {
   emailTemplates          ClientEmailTemplate[]
   emailSequences          ClientEmailSequence[]
   sequenceEnrollments     ClientEmailSequenceEnrollment[]
+  sequenceStepSends       ClientEmailSequenceStepSend[]
 
   @@index([status])
 }
@@ -461,6 +496,7 @@ model Contact {
   inboundReplies  InboundReply[]
   listMemberships ContactListMember[]
   sequenceEnrollments ClientEmailSequenceEnrollment[]
+  sequenceStepSends ClientEmailSequenceStepSend[]
 
   @@unique([clientId, email])
   @@index([clientId])
@@ -488,6 +524,7 @@ model ContactList {
   members   ContactListMember[]
   sequences ClientEmailSequence[]
   sequenceEnrollments ClientEmailSequenceEnrollment[]
+  sequenceStepSends ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([name])
@@ -649,6 +686,7 @@ model ClientEmailTemplate {
   createdBy    StaffUser? @relation("ClientEmailTemplateCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   approvedBy   StaffUser? @relation("ClientEmailTemplateApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
   sequenceSteps ClientEmailSequenceStep[]
+  sequenceStepSends ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -687,6 +725,7 @@ model ClientEmailSequence {
   approvedBy   StaffUser?                @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
   steps        ClientEmailSequenceStep[]
   enrollments  ClientEmailSequenceEnrollment[]
+  stepSends    ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -712,6 +751,7 @@ model ClientEmailSequenceStep {
 
   sequence ClientEmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
   template ClientEmailTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  stepSends ClientEmailSequenceStepSend[]
 
   @@unique([sequenceId, position])
   @@unique([sequenceId, category])
@@ -759,12 +799,96 @@ model ClientEmailSequenceEnrollment {
   contact     Contact             @relation(fields: [contactId], references: [id], onDelete: Restrict)
   contactList ContactList         @relation(fields: [contactListId], references: [id], onDelete: Restrict)
   createdBy   StaffUser?          @relation("ClientEmailSequenceEnrollmentCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  stepSends   ClientEmailSequenceStepSend[]
 
   @@unique([sequenceId, contactId])
   @@index([clientId])
   @@index([sequenceId, status])
   @@index([contactId])
   @@index([contactListId])
+  @@index([createdByStaffUserId])
+}
+
+/// Per-enrollment, per-step send-planning record (PR D4e.1 — records only).
+///
+/// A row captures the intent to send a specific sequence step to a
+/// specific enrolled contact. It is produced by the operator-triggered
+/// planner (`src/server/email-sequences/step-sends.ts`) which:
+///   * re-validates every cross-table invariant
+///     (sequence↔enrollment↔step↔template↔client),
+///   * renders subject + body through the pure composition helper,
+///   * captures a preview snapshot for audit / UI,
+///   * classifies the row as READY / SUPPRESSED / BLOCKED / SKIPPED.
+///
+/// RECORDS ONLY in D4e.1:
+///   * No `OutboundEmail` is created from this row.
+///   * `MailboxSendReservation` is NOT reserved.
+///   * No ESP / Graph / Gmail API calls are issued.
+///   * `SENT` and `FAILED` are reserved for D4e.2+ and are never
+///     written by D4e.1 code paths.
+///
+/// Idempotency:
+///   * `idempotencyKey` is `seq:<sequenceId>:enr:<enrollmentId>:step:<stepId>`
+///     so re-running "Prepare send records" for the same step is
+///     idempotent and cannot fan out duplicate rows.
+///   * `@@unique([enrollmentId, stepId])` backs the same invariant at
+///     the DB layer (belt + braces).
+///
+/// Tenant isolation is enforced at the application layer in D4e.1
+/// (the planner loads every related row through `clientId`-scoped
+/// reads). DB triggers are deliberately deferred to D4e.2 when the
+/// worker consumes these rows.
+model ClientEmailSequenceStepSend {
+  id                   String                            @id @default(cuid())
+  clientId             String
+  sequenceId           String
+  enrollmentId         String
+  stepId               String
+  templateId           String
+  contactId            String
+  contactListId        String
+  status               ClientEmailSequenceStepSendStatus @default(PLANNED)
+  /// Stable key built from (sequenceId, enrollmentId, stepId) — lets
+  /// D4e.2 correlate a plan row to the actual dispatch attempt.
+  idempotencyKey       String                            @unique
+  /// Rendered preview captured at plan time (truncated). Not used for
+  /// the eventual send — D4e.2 re-renders at dispatch to pick up any
+  /// post-plan template edits or signature changes.
+  subjectPreview       String?
+  bodyPreview          String?                           @db.Text
+  /// Populated when status ∈ (BLOCKED, SUPPRESSED, SKIPPED).
+  blockedReason        String?
+  /// Populated only when the D4e.2 dispatcher fails — never written
+  /// by D4e.1 code.
+  failureReason        String?
+  /// Set by D4e.2+ once this plan row has been converted into an
+  /// actual outbound send. `ON DELETE SET NULL` so deleting an
+  /// outbound row leaves the audit plan row behind.
+  outboundEmailId      String?
+  plannedFor           DateTime?
+  createdByStaffUserId String?
+  createdAt            DateTime                          @default(now())
+  updatedAt            DateTime                          @updatedAt
+
+  client             Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sequence           ClientEmailSequence           @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  enrollment         ClientEmailSequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step               ClientEmailSequenceStep       @relation(fields: [stepId], references: [id], onDelete: Restrict)
+  template           ClientEmailTemplate           @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  contact            Contact                       @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  contactList        ContactList                   @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  outboundEmail      OutboundEmail?                @relation(fields: [outboundEmailId], references: [id], onDelete: SetNull)
+  createdByStaffUser StaffUser?                    @relation("ClientEmailSequenceStepSendCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, stepId])
+  @@index([clientId])
+  @@index([sequenceId])
+  @@index([enrollmentId])
+  @@index([stepId])
+  @@index([templateId])
+  @@index([contactId])
+  @@index([contactListId])
+  @@index([status])
   @@index([createdByStaffUserId])
 }
 
@@ -830,6 +954,7 @@ model OutboundEmail {
   sendReservation MailboxSendReservation?
   inboundReplies  InboundReply[]          @relation("ReplyToOutbound")
   providerEvents  OutboundProviderEvent[]
+  sequenceStepSends ClientEmailSequenceStepSend[]
 
   @@index([clientId, createdAt])
   @@index([clientId, sentAt])
