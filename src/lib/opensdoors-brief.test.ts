@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   briefLooksFilled,
   computeOnboardingBriefCompletion,
+  getClientSenderProfile,
   mergeBriefIntoFormData,
   ONBOARDING_READINESS_KEYS,
   ONBOARDING_READINESS_LABELS,
@@ -80,5 +81,63 @@ describe("computeOnboardingBriefCompletion", () => {
     expect(labels.toLowerCase()).not.toContain("api");
     expect(labels.toLowerCase()).not.toContain("password");
     expect(labels.toLowerCase()).not.toContain("secret");
+  });
+
+  it("includes emailSignature as a readiness field", () => {
+    expect(ONBOARDING_READINESS_KEYS).toContain("emailSignature");
+    expect(ONBOARDING_READINESS_LABELS.emailSignature).toMatch(/signature/i);
+    expect(ONBOARDING_READINESS_LABELS.emailSignature).toContain("{{email_signature}}");
+  });
+});
+
+describe("getClientSenderProfile", () => {
+  it("resolves company name from the client row", () => {
+    const profile = getClientSenderProfile({
+      client: { name: "Acme Ltd" },
+      formData: {},
+    });
+    expect(profile.senderCompanyName).toBe("Acme Ltd");
+    expect(profile.emailSignature).toBe("");
+    expect(profile.tradingName).toBeNull();
+    expect(profile.businessAddress).toBeNull();
+  });
+
+  it("returns structured signature from the brief", () => {
+    const profile = getClientSenderProfile({
+      client: { name: "Acme Ltd" },
+      formData: {
+        emailSignature: "  Jane Doe\nHead of Growth\njane@acme.co ",
+        tradingName: "Acme Trading Co",
+        businessAddress: "1 High St",
+      },
+    });
+    expect(profile.senderCompanyName).toBe("Acme Ltd");
+    expect(profile.emailSignature).toBe("Jane Doe\nHead of Growth\njane@acme.co");
+    expect(profile.tradingName).toBe("Acme Trading Co");
+    expect(profile.businessAddress).toBe("1 High St");
+  });
+
+  it("treats whitespace-only brief fields as unset", () => {
+    const profile = getClientSenderProfile({
+      client: { name: "Acme" },
+      formData: {
+        emailSignature: "   ",
+        tradingName: "   ",
+        businessAddress: "\n\t ",
+      },
+    });
+    expect(profile.emailSignature).toBe("");
+    expect(profile.tradingName).toBeNull();
+    expect(profile.businessAddress).toBeNull();
+  });
+
+  it("tolerates malformed formData", () => {
+    const profile = getClientSenderProfile({
+      client: { name: "Acme" },
+      formData: null,
+    });
+    expect(profile.senderCompanyName).toBe("Acme");
+    expect(profile.emailSignature).toBe("");
+    expect(profile.tradingName).toBeNull();
   });
 });

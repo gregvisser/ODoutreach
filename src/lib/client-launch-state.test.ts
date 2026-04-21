@@ -20,6 +20,7 @@ const readyBrief = computeOnboardingBriefCompletion(
       "exclusions",
       "campaignObjective",
       "senderIdentityNotes",
+      "emailSignature",
       "mailboxSetupNotes",
       "sequenceNotes",
     ].map((k) => [k, "x"]),

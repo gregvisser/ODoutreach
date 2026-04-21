@@ -12,6 +12,13 @@ export const opensDoorsBriefFieldsSchema = z.object({
   assetNotes: z.string().optional(),
   complianceNotes: z.string().optional(),
   senderIdentityNotes: z.string().optional(),
+  /**
+   * Structured email signature block rendered at send time for the
+   * `{{email_signature}}` template placeholder. Plain text only —
+   * kept deliberately simple so the send path does not need to
+   * escape HTML. Falls back to empty string if absent.
+   */
+  emailSignature: z.string().optional(),
   /** How the five outreach mailboxes are named, owned, or handed off */
   mailboxSetupNotes: z.string().optional(),
   campaignObjective: z.string().optional(),
@@ -53,6 +60,7 @@ export const ONBOARDING_READINESS_KEYS = [
   "exclusions",
   "campaignObjective",
   "senderIdentityNotes",
+  "emailSignature",
   "mailboxSetupNotes",
   "sequenceNotes",
 ] as const satisfies readonly (keyof OpensDoorsBriefFields)[];
@@ -68,6 +76,7 @@ export const ONBOARDING_READINESS_LABELS: Record<OnboardingReadinessKey, string>
   exclusions: "Exclusions / do-not-target",
   campaignObjective: "Campaign objective",
   senderIdentityNotes: "Sender identity notes",
+  emailSignature: "Email signature (renders {{email_signature}})",
   mailboxSetupNotes: "Mailbox setup notes",
   sequenceNotes: "Sequence / message notes",
 };
@@ -114,6 +123,42 @@ export function computeOnboardingBriefCompletion(
     percent,
     status,
     nextRecommendedLabel,
+  };
+}
+
+/**
+ * PR E — Typed sender profile derived from the Client row + stored
+ * brief. This is the single helper the future sequence send path
+ * (PR D4e) will call to resolve the sender-side placeholders so we
+ * don't re-parse brief JSON in multiple places.
+ *
+ * `senderCompanyName` is taken from `Client.name` (the canonical
+ * workspace label). `emailSignature` comes from the brief and is
+ * trimmed; if absent, it falls back to an empty string so template
+ * rendering stays deterministic. `tradingName` exposes the optional
+ * brief-provided legal/trading name when callers want a display
+ * string different from the workspace label.
+ */
+export type ClientSenderProfile = {
+  senderCompanyName: string;
+  emailSignature: string;
+  tradingName: string | null;
+  businessAddress: string | null;
+};
+
+export function getClientSenderProfile(params: {
+  client: { name: string };
+  formData: unknown;
+}): ClientSenderProfile {
+  const brief = parseOpensDoorsBrief(params.formData);
+  const signature = (brief.emailSignature ?? "").trim();
+  const trading = (brief.tradingName ?? "").trim();
+  const address = (brief.businessAddress ?? "").trim();
+  return {
+    senderCompanyName: params.client.name,
+    emailSignature: signature,
+    tradingName: trading.length > 0 ? trading : null,
+    businessAddress: address.length > 0 ? address : null,
   };
 }
 

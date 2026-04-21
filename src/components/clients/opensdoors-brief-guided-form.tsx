@@ -74,11 +74,32 @@ const SECTIONS: {
     ],
   },
   {
-    id: "outreach",
-    title: "Outreach setup",
-    lead: "How sending is set up — mailboxes, voice, sequences, and tooling.",
+    id: "sender-identity",
+    title: "Sender identity & signature",
+    lead:
+      "The sender profile the outreach platform speaks from. Feeds the {{sender_name}}, {{sender_company_name}}, and {{email_signature}} placeholders at send time.",
     fields: [
-      { key: "senderIdentityNotes", label: "Approved sender identity notes", rows: 2 },
+      {
+        key: "senderIdentityNotes",
+        label: "Approved sender identity notes",
+        rows: 2,
+        helper:
+          "Who signs outreach — approved first/last names, titles, and any reply-to policy.",
+      },
+      {
+        key: "emailSignature",
+        label: "Email signature block",
+        rows: 5,
+        helper:
+          "Plain text, one signature per line. Rendered into every sequence step that includes the {{email_signature}} placeholder. Leave blank to render no signature.",
+      },
+    ],
+  },
+  {
+    id: "outreach",
+    title: "Sequences, mailboxes & sourcing",
+    lead: "How sending is set up — mailboxes, sequences, sourcing, and pilot templates.",
+    fields: [
       {
         key: "mailboxSetupNotes",
         label: "Outreach mailboxes — setup / naming / ownership",
