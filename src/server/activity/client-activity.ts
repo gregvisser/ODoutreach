@@ -268,6 +268,8 @@ export async function loadClientActivityTimeline(
       title: `Inbound message from ${row.fromEmail}`,
       description: row.subject ? `“${row.subject}”` : undefined,
       actorLabel: row.fromEmail,
+      // PR J — link inbound messages to the new read/reply detail route.
+      href: `/clients/${clientId}/activity/messages/${row.id}`,
       sourceModel: "InboundMailboxMessage",
     });
   }
