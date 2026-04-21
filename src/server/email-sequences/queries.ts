@@ -58,6 +58,8 @@ export type SequenceSummary = {
     name: string;
     memberCount: number;
     emailSendableCount: number;
+    /** PR F2: informational — not-suppressed members with no email. */
+    missingEmailCount: number;
   };
   steps: SequenceStepSummary[];
   createdAtIso: string;
@@ -123,11 +125,24 @@ async function loadContactListReadinessMap(
   clientId: string,
   listIds: string[],
 ): Promise<
-  Map<string, { memberCount: number; emailSendableCount: number; name: string }>
+  Map<
+    string,
+    {
+      memberCount: number;
+      emailSendableCount: number;
+      missingEmailCount: number;
+      name: string;
+    }
+  >
 > {
   const out = new Map<
     string,
-    { memberCount: number; emailSendableCount: number; name: string }
+    {
+      memberCount: number;
+      emailSendableCount: number;
+      missingEmailCount: number;
+      name: string;
+    }
   >();
   if (listIds.length === 0) return out;
 
@@ -160,6 +175,7 @@ async function loadContactListReadinessMap(
       name: list.name,
       memberCount: summary.total,
       emailSendableCount: summary.emailSendable,
+      missingEmailCount: summary.missingEmail,
     });
   }
   return out;
@@ -303,6 +319,7 @@ export async function loadClientEmailSequencesOverview(
         name: s.contactList.name,
         memberCount: 0,
         emailSendableCount: 0,
+        missingEmailCount: 0,
       };
 
     const steps: SequenceStepSummary[] = s.steps.map((step) => ({
@@ -373,6 +390,7 @@ export async function loadClientEmailSequencesOverview(
         name: s.contactList.name,
         memberCount: listReadiness.memberCount,
         emailSendableCount: listReadiness.emailSendableCount,
+        missingEmailCount: listReadiness.missingEmailCount,
       },
       steps,
       createdAtIso: s.createdAt.toISOString(),
@@ -438,7 +456,12 @@ export function buildSequenceLaunchReadinessMap(params: {
         status: seq.status,
         hasAlreadyLaunched: false,
       },
-      contactList: seq.contactList,
+      contactList: {
+        id: seq.contactList.id,
+        memberCount: seq.contactList.memberCount,
+        emailSendableCount: seq.contactList.emailSendableCount,
+        missingEmailCount: seq.contactList.missingEmailCount,
+      },
       steps: seq.steps.map((s) => ({
         category: s.category,
         template: {

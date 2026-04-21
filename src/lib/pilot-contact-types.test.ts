@@ -74,6 +74,83 @@ describe("summarizePilotContacts", () => {
       suppressedCount: 0,
       eligibleCount: 0,
       eligibleEmailsSample: [],
+      missingEmailCount: 0,
+      missingIdentifierCount: 0,
     });
+  });
+
+  it("PR F2: counts `missingEmailCount` for not-suppressed contacts with a non-email identifier and no email", () => {
+    const out = summarizePilotContacts([
+      {
+        email: null,
+        isSuppressed: false,
+        linkedIn: "https://linkedin.com/in/a",
+      },
+      {
+        email: null,
+        isSuppressed: false,
+        mobilePhone: "+44 7000 000000",
+      },
+      { email: "ok@x.com", isSuppressed: false },
+    ]);
+    expect(out.eligibleCount).toBe(1);
+    expect(out.missingEmailCount).toBe(2);
+    expect(out.missingIdentifierCount).toBe(0);
+  });
+
+  it("PR F2: counts `missingIdentifierCount` for not-suppressed contacts with zero identifiers", () => {
+    const out = summarizePilotContacts([
+      {
+        email: null,
+        isSuppressed: false,
+        linkedIn: null,
+        mobilePhone: null,
+        officePhone: null,
+      },
+      {
+        email: "",
+        isSuppressed: false,
+        linkedIn: "",
+        mobilePhone: "",
+        officePhone: "",
+      },
+      { email: "ok@x.com", isSuppressed: false },
+    ]);
+    expect(out.eligibleCount).toBe(1);
+    expect(out.missingEmailCount).toBe(0);
+    expect(out.missingIdentifierCount).toBe(2);
+  });
+
+  it("PR F2: a suppressed no-email contact stays in `suppressedCount` only (suppression wins)", () => {
+    const out = summarizePilotContacts([
+      {
+        email: null,
+        isSuppressed: true,
+        linkedIn: "https://linkedin.com/in/x",
+      },
+    ]);
+    expect(out.suppressedCount).toBe(1);
+    expect(out.missingEmailCount).toBe(0);
+    expect(out.missingIdentifierCount).toBe(0);
+    expect(out.eligibleCount).toBe(0);
+  });
+
+  it("PR F2: buckets partition the total exactly", () => {
+    const out = summarizePilotContacts([
+      { email: "ok@x.com", isSuppressed: false },
+      { email: "sup@x.com", isSuppressed: true },
+      {
+        email: null,
+        isSuppressed: false,
+        linkedIn: "https://li/x",
+      },
+      { email: null, isSuppressed: false },
+    ]);
+    expect(
+      out.eligibleCount +
+        out.suppressedCount +
+        out.missingEmailCount +
+        out.missingIdentifierCount,
+    ).toBe(out.totalContacts);
   });
 });

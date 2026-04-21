@@ -58,6 +58,15 @@ export type SequenceLaunchReadinessSnapshotInput = {
     id: string;
     memberCount: number;
     emailSendableCount: number;
+    /**
+     * PR F2: members that are NOT suppressed and have at least one
+     * non-email identifier but NO email. Purely informational — never
+     * counted toward email-sendable recipients. When a list consists
+     * only of `valid_no_email` contacts the rail will still block
+     * launch, but the detail text now calls that out explicitly so the
+     * operator knows *why* the list isn't sendable.
+     */
+    missingEmailCount?: number;
   } | null;
   steps: ReadonlyArray<{
     category:
@@ -170,11 +179,16 @@ export function evaluateSequenceLaunchReadiness(
 
   // 3. Contact list attached
   if (input.contactList) {
+    const missingEmailCount = input.contactList.missingEmailCount ?? 0;
+    const noEmailHint =
+      missingEmailCount > 0
+        ? ` (${String(missingEmailCount)} with no email on file)`
+        : "";
     checks.push(
       pass(
         "contact_list_attached",
         "Target contact list attached",
-        `List has ${String(input.contactList.memberCount)} member(s), ${String(input.contactList.emailSendableCount)} email-sendable.`,
+        `List has ${String(input.contactList.memberCount)} member(s), ${String(input.contactList.emailSendableCount)} email-sendable${noEmailHint}.`,
       ),
     );
   } else {
@@ -347,11 +361,20 @@ export function evaluateSequenceLaunchReadiness(
       ),
     );
   } else {
+    // PR F2: when the attached list exists but every member is either
+    // suppressed / missing email / missing identifier, be explicit so the
+    // operator knows a "0 pending" rail is not a records bug — it's a
+    // pipeline-shape issue (valid-no-email contacts cannot launch a send).
+    const missingEmailCount = input.contactList?.missingEmailCount ?? 0;
+    const detail =
+      missingEmailCount > 0
+        ? `No PENDING enrollments; list has no email-sendable contacts (${String(missingEmailCount)} with no email on file).`
+        : "No PENDING enrollments and no email-sendable contacts left to enroll.";
     checks.push(
       fail(
         "pending_email_sendable_recipients",
         "Pending email-sendable recipient(s)",
-        "No PENDING enrollments and no email-sendable contacts left to enroll.",
+        detail,
         "blocker",
       ),
     );

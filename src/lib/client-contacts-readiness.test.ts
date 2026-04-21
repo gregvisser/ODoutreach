@@ -92,7 +92,7 @@ describe("classifyContactReadiness", () => {
 });
 
 describe("summarizeContactReadiness", () => {
-  it("aggregates readiness counts across a mixed set", () => {
+  it("aggregates readiness counts across a mixed set with mutually exclusive non-sendable buckets (F2)", () => {
     const summary = summarizeContactReadiness([
       { email: "a@example.com", isSuppressed: false },
       { email: "b@example.com", isSuppressed: true },
@@ -106,8 +106,18 @@ describe("summarizeContactReadiness", () => {
     expect(summary.valid).toBe(4);
     expect(summary.emailSendable).toBe(2);
     expect(summary.suppressed).toBe(1);
-    expect(summary.missingEmail).toBe(3);
+    // PR F2: `missingEmail` is now exactly the `valid_no_email` bucket
+    // (not suppressed, has a non-email identifier, no email) — it no
+    // longer double-counts the missing-identifier contact.
+    expect(summary.missingEmail).toBe(2);
     expect(summary.missingOutreachIdentifier).toBe(1);
+    // The four non-sendable buckets must partition `total - emailSendable`.
+    expect(
+      summary.emailSendable +
+        summary.suppressed +
+        summary.missingEmail +
+        summary.missingOutreachIdentifier,
+    ).toBe(summary.total);
   });
 
   it("returns all-zero counts for an empty set", () => {
@@ -132,5 +142,26 @@ describe("summarizeContactReadiness", () => {
     expect(summary.missingOutreachIdentifier).toBe(0);
     expect(summary.valid).toBe(0);
     expect(summary.emailSendable).toBe(0);
+  });
+
+  it("PR F2: missingEmail counts only `valid_no_email`, not contacts with no identifiers", () => {
+    // A contact with no email AND no other identifier is missing-identifier,
+    // not missing-email. The buckets must not overlap.
+    const summary = summarizeContactReadiness([
+      { email: null, linkedIn: null, mobilePhone: null, officePhone: null, isSuppressed: false },
+    ]);
+    expect(summary.missingEmail).toBe(0);
+    expect(summary.missingOutreachIdentifier).toBe(1);
+    expect(summary.valid).toBe(0);
+  });
+
+  it("PR F2: a LinkedIn-only not-suppressed contact is counted exactly once as missingEmail", () => {
+    const summary = summarizeContactReadiness([
+      { email: null, linkedIn: "https://linkedin.com/in/x", isSuppressed: false },
+    ]);
+    expect(summary.valid).toBe(1);
+    expect(summary.emailSendable).toBe(0);
+    expect(summary.missingEmail).toBe(1);
+    expect(summary.missingOutreachIdentifier).toBe(0);
   });
 });

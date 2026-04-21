@@ -148,6 +148,7 @@ export type EnrollmentReadinessReason =
   | "sequence_not_approval_ready"
   | "sequence_archived"
   | "no_candidates"
+  | "all_already_enrolled"
   | "no_email_sendable"
   | "ready";
 
@@ -157,6 +158,11 @@ export type EnrollmentReadinessReason =
  * be READY_FOR_REVIEW or APPROVED (so staff have committed to a list
  * and a template ladder) and the list to have at least one
  * email-sendable candidate that isn't already enrolled.
+ *
+ * PR F2: distinguishes `all_already_enrolled` from `no_email_sendable`
+ * so the UI can tell the operator "nothing new to enroll" vs "the list
+ * has members but none are email-sendable (suppressed / no-email /
+ * missing-identifier)".
  */
 export function checkEnrollmentReadiness(params: {
   sequenceStatus:
@@ -180,6 +186,17 @@ export function checkEnrollmentReadiness(params: {
     return { ok: false, reason: "no_candidates" };
   }
   if (preview.enrollable === 0) {
+    // Prefer the more-specific "everyone already enrolled" message when
+    // every candidate is already on a prior enrollment row — otherwise
+    // fall back to the email-sendability blocker.
+    if (
+      preview.alreadyEnrolled > 0 &&
+      preview.suppressed === 0 &&
+      preview.missingEmail === 0 &&
+      preview.missingIdentifier === 0
+    ) {
+      return { ok: false, reason: "all_already_enrolled" };
+    }
     return { ok: false, reason: "no_email_sendable" };
   }
   return { ok: true, reason: "ready" };

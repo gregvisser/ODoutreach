@@ -199,6 +199,11 @@ export async function enrollSequenceContacts(input: {
           "LIST_EMPTY",
           "Target contact list has no members.",
         );
+      case "all_already_enrolled":
+        throw new EnrollmentFailure(
+          "NO_ELIGIBLE_CONTACTS",
+          "Every list member is already enrolled in this sequence.",
+        );
       case "no_email_sendable":
         throw new EnrollmentFailure(
           "NO_ELIGIBLE_CONTACTS",

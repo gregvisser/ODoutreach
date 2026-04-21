@@ -150,14 +150,14 @@ export default async function ClientContactsPage({ params }: Props) {
       id: "missing-email",
       label: "Missing email",
       value: totals.uniqueContacts.missingEmail,
-      hint: "Not suppressed, but no email address stored.",
+      hint: "Not suppressed and reachable by LinkedIn / phone, but no email on file.",
       tone: "warning",
     },
     {
       id: "missing-identifier",
       label: "Missing identifier",
       value: totals.uniqueContacts.missingOutreachIdentifier,
-      hint: "No email, LinkedIn, mobile, or office phone stored.",
+      hint: "No email, LinkedIn, mobile, or office phone on file.",
       tone: "warning",
     },
   ];
