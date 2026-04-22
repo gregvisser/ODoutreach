@@ -84,6 +84,14 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
             oauthGoogleConfigured={bundle.oauthGoogleReady}
             sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
+            clientBriefFallback={{
+              senderDisplayNameFallback: client.name,
+              emailSignatureFallback:
+                typeof bundle.brief.emailSignature === "string" &&
+                bundle.brief.emailSignature.trim().length > 0
+                  ? bundle.brief.emailSignature
+                  : null,
+            }}
             mailboxOAuthBanner={
               mailboxOAuthResult === "connected"
                 ? { type: "ok" as const, text: "Mailbox OAuth completed — connection status updated." }

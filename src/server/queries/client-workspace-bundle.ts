@@ -98,6 +98,12 @@ export async function loadClientWorkspaceBundle(
     lastSyncAt: m.lastSyncAt?.toISOString() ?? null,
     lastError: m.lastError,
     updatedAt: m.updatedAt.toISOString(),
+    senderDisplayName: m.senderDisplayName,
+    senderSignatureHtml: m.senderSignatureHtml,
+    senderSignatureText: m.senderSignatureText,
+    senderSignatureSource: m.senderSignatureSource,
+    senderSignatureSyncedAt: m.senderSignatureSyncedAt?.toISOString() ?? null,
+    senderSignatureSyncError: m.senderSignatureSyncError,
   }));
 
   const graphInboxRows = graphInbox.map((m) => ({

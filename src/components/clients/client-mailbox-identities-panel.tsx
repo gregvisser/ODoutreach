@@ -14,6 +14,17 @@ import {
   updateClientMailboxIdentity,
   type MailboxActionResult as IdentityActionResult,
 } from "@/app/(app)/clients/mailbox-identities-actions";
+import {
+  syncMailboxSignatureAction,
+  updateMailboxSignatureAction,
+  type MailboxSignatureActionResult,
+} from "@/app/(app)/clients/mailbox-signature-actions";
+import {
+  buildSenderSignatureViewModel,
+  SENDER_SIGNATURE_STATUS,
+  type SenderSignatureClientBriefFallback,
+  type SenderSignatureSource,
+} from "@/lib/mailboxes/sender-signature";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -64,6 +75,23 @@ export type MailboxIdentityRow = {
   lastSyncAt: string | null;
   lastError: string | null;
   updatedAt: string;
+  senderDisplayName: string | null;
+  senderSignatureHtml: string | null;
+  senderSignatureText: string | null;
+  senderSignatureSource: string | null;
+  senderSignatureSyncedAt: string | null;
+  senderSignatureSyncError: string | null;
+};
+
+const SIGNATURE_BADGE_CLASSES: Record<SenderSignatureSource, string> = {
+  gmail_send_as:
+    "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200",
+  manual: "bg-blue-500/15 text-blue-800 dark:text-blue-200",
+  client_brief_fallback:
+    "bg-amber-500/15 text-amber-800 dark:text-amber-200",
+  unsupported_provider:
+    "bg-muted text-muted-foreground",
+  missing: "bg-destructive/15 text-destructive",
 };
 
 function notify(
@@ -190,6 +218,7 @@ export function ClientMailboxIdentitiesPanel({
   oauthGoogleConfigured,
   mailboxOAuthBanner,
   sendingReadinessByMailboxId,
+  clientBriefFallback,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
@@ -199,6 +228,7 @@ export function ClientMailboxIdentitiesPanel({
   mailboxOAuthBanner: { type: "ok" | "err"; text: string } | null;
   /** When the workspace has mailbox rows, the server provides UTC-day ledger counts. */
   sendingReadinessByMailboxId?: Record<string, MailboxLedgerReadiness>;
+  clientBriefFallback: SenderSignatureClientBriefFallback;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -207,6 +237,8 @@ export function ClientMailboxIdentitiesPanel({
   );
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<MailboxIdentityRow | null>(null);
+  const [signatureEditRow, setSignatureEditRow] =
+    useState<MailboxIdentityRow | null>(null);
 
   const now = useMemo(() => new Date(), []);
   const activeCount = rows.filter((r) => r.isActive).length;
@@ -234,6 +266,18 @@ export function ClientMailboxIdentitiesPanel({
         return;
       }
       window.location.href = r.startUrl;
+    });
+  };
+
+  const runSignature = (action: () => Promise<MailboxSignatureActionResult>) => {
+    startTransition(async () => {
+      const r = await action();
+      if (r.ok) {
+        setBanner({ type: "ok", text: r.message });
+        router.refresh();
+      } else {
+        setBanner({ type: "err", text: r.error });
+      }
     });
   };
 
@@ -476,6 +520,156 @@ export function ClientMailboxIdentitiesPanel({
           </TableBody>
         </Table>
       </div>
+
+      {rows.length > 0 ? (
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Sender identity</h3>
+            <p className="text-xs text-muted-foreground">
+              Each mailbox can carry its own sender name and email signature.
+              Gmail mailboxes can sync the signature directly from{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                users.settings.sendAs
+              </code>
+              . Outlook/Microsoft mailboxes don&rsquo;t expose a reliable
+              signature API; add a manual signature instead. When the mailbox
+              has no signature of its own, sends fall back to the client
+              brief&rsquo;s signature.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {rows.map((row) => {
+              const vm = buildSenderSignatureViewModel(
+                {
+                  provider: row.provider,
+                  email: row.email,
+                  displayName: row.displayName,
+                  senderDisplayName: row.senderDisplayName,
+                  senderSignatureHtml: row.senderSignatureHtml,
+                  senderSignatureText: row.senderSignatureText,
+                  senderSignatureSource: row.senderSignatureSource,
+                  senderSignatureSyncedAt: row.senderSignatureSyncedAt,
+                  senderSignatureSyncError: row.senderSignatureSyncError,
+                },
+                clientBriefFallback,
+              );
+              const badgeClass = SIGNATURE_BADGE_CLASSES[vm.source];
+              const badgeLabel = SENDER_SIGNATURE_STATUS[vm.source];
+              return (
+                <div
+                  key={`sig-${row.id}`}
+                  className="flex flex-col gap-2 rounded-lg border border-border/80 p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{row.email}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {vm.resolvedDisplayName}
+                      </div>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-md px-1.5 py-0.5 text-xs font-medium",
+                        badgeClass,
+                      )}
+                    >
+                      {badgeLabel}
+                    </span>
+                  </div>
+                  {vm.resolvedSignatureText ? (
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-2 py-1.5 text-xs leading-snug">
+                      {vm.resolvedSignatureText}
+                    </pre>
+                  ) : (
+                    <p className="text-xs italic text-muted-foreground">
+                      No signature on file for this mailbox or client brief.
+                    </p>
+                  )}
+                  <div className="text-[11px] text-muted-foreground">
+                    {vm.lastSyncedAtIso
+                      ? `Last synced ${format(new Date(vm.lastSyncedAtIso), "MMM d, yyyy HH:mm")} UTC`
+                      : "Never synced."}
+                    {row.provider === "MICROSOFT" ? (
+                      <span className="mt-1 block">
+                        Outlook signature sync is not available through the
+                        supported Microsoft Graph mailbox API. Add a manual
+                        signature for this mailbox.
+                      </span>
+                    ) : null}
+                  </div>
+                  {vm.syncError ? (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+                      {vm.syncError}
+                    </div>
+                  ) : null}
+                  {canMutate ? (
+                    <div className="flex flex-wrap gap-1">
+                      {row.provider === "GOOGLE" ? (
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          disabled={
+                            pending ||
+                            !row.isActive ||
+                            row.connectionStatus !== "CONNECTED"
+                          }
+                          title={
+                            row.connectionStatus !== "CONNECTED"
+                              ? "Connect this Gmail mailbox first."
+                              : undefined
+                          }
+                          onClick={() =>
+                            runSignature(async () =>
+                              syncMailboxSignatureAction(clientId, row.id),
+                            )
+                          }
+                        >
+                          Sync from Gmail
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => setSignatureEditRow(row)}
+                      >
+                        Edit manual signature
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {canMutate ? (
+        <Sheet
+          open={signatureEditRow !== null}
+          onOpenChange={(o) => {
+            if (!o) setSignatureEditRow(null);
+          }}
+        >
+          <SheetContent side="right" className="w-full max-w-md sm:max-w-lg">
+            {signatureEditRow ? (
+              <MailboxSignatureForm
+                key={`sigform-${signatureEditRow.id}`}
+                clientId={clientId}
+                row={signatureEditRow}
+                disabled={pending}
+                onSubmit={(payload) => {
+                  runSignature(async () => {
+                    const r = await updateMailboxSignatureAction(payload);
+                    if (r.ok) setSignatureEditRow(null);
+                    return r;
+                  });
+                }}
+              />
+            ) : null}
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       {canMutate ? (
         <Sheet
@@ -734,6 +928,115 @@ function MailboxForm(props: MailboxFormProps) {
           </SheetClose>
           <Button type="submit" disabled={disabled} className="w-full sm:w-auto">
             {submitLabel}
+          </Button>
+        </SheetFooter>
+      </form>
+    </>
+  );
+}
+
+function MailboxSignatureForm(props: {
+  clientId: string;
+  row: MailboxIdentityRow;
+  disabled: boolean;
+  onSubmit: (payload: Parameters<typeof updateMailboxSignatureAction>[0]) => void;
+}) {
+  const { clientId, row, disabled } = props;
+  const [senderDisplayName, setSenderDisplayName] = useState(
+    row.senderDisplayName ?? row.displayName ?? "",
+  );
+  const [signatureText, setSignatureText] = useState(row.senderSignatureText ?? "");
+  const [signatureHtml, setSignatureHtml] = useState(row.senderSignatureHtml ?? "");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  return (
+    <>
+      <SheetHeader>
+        <SheetTitle>Manual sender signature</SheetTitle>
+        <SheetDescription>
+          Used when composing sends from <strong>{row.email}</strong>. Takes
+          precedence over the client brief signature. Plain text is used for
+          send bodies today; HTML is stored for future rich sends.
+        </SheetDescription>
+      </SheetHeader>
+      <form
+        className="flex flex-col gap-4 px-4 pb-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          props.onSubmit({
+            clientId,
+            mailboxId: row.id,
+            senderDisplayName: senderDisplayName.trim() || null,
+            signatureText: signatureText.trim() || null,
+            signatureHtml: signatureHtml.trim() || null,
+          });
+        }}
+      >
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="sig-display">
+            Sender display name
+          </label>
+          <input
+            id="sig-display"
+            className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={senderDisplayName}
+            onChange={(e) => setSenderDisplayName(e.target.value)}
+            placeholder="e.g. Greg Visser, OpensDoors"
+          />
+          <p className="text-xs text-muted-foreground">
+            Resolves <code>{"{{sender_name}}"}</code> for sends that go through
+            this mailbox. Falls back to the workspace name when empty.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="sig-text">
+            Signature (plain text)
+          </label>
+          <textarea
+            id="sig-text"
+            rows={6}
+            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={signatureText}
+            onChange={(e) => setSignatureText(e.target.value)}
+            placeholder={"e.g.\n--\nGreg Visser\nOpensDoors Outreach\n+44 ..."}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="self-start text-xs text-muted-foreground underline"
+          onClick={() => setShowAdvanced((s) => !s)}
+        >
+          {showAdvanced ? "Hide" : "Show"} HTML signature (advanced)
+        </button>
+        {showAdvanced ? (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="sig-html">
+              Signature (HTML)
+            </label>
+            <textarea
+              id="sig-html"
+              rows={6}
+              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              value={signatureHtml}
+              onChange={(e) => setSignatureHtml(e.target.value)}
+              placeholder="<div>Greg Visser</div><div>OpensDoors</div>"
+            />
+            <p className="text-xs text-muted-foreground">
+              Stored for future HTML send path. Current sends use the plain
+              text rendering derived from this value when the plain text
+              field above is empty.
+            </p>
+          </div>
+        ) : null}
+
+        <SheetFooter className="gap-2 sm:justify-end">
+          <SheetClose className={cn(buttonVariants({ variant: "outline" }), "w-full sm:w-auto")}>
+            Cancel
+          </SheetClose>
+          <Button type="submit" disabled={disabled} className="w-full sm:w-auto">
+            Save manual signature
           </Button>
         </SheetFooter>
       </form>
