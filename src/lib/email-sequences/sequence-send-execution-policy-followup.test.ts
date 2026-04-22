@@ -542,6 +542,7 @@ describe("aggregate counters (SequenceStepSendPlanCounts)", () => {
       blockedWrongCategory: 1,
       blockedPlanClassifier: 0,
       blockedPrevious: 2,
+      blockedLaunchApproval: 0,
     });
   });
 });

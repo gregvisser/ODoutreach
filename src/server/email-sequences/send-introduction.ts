@@ -5,6 +5,11 @@ import type {
   ClientEmailTemplateCategory,
 } from "@/generated/prisma/enums";
 import {
+  blockedReasonForSequenceStepSend,
+  evaluateSendGovernance,
+  type SendKind,
+} from "@/lib/clients/client-send-governance";
+import {
   CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
 } from "@/lib/controlled-pilot-constants";
 import {
@@ -392,7 +397,11 @@ export async function sendSequenceStepBatch(input: {
       select: {
         id: true,
         name: true,
+        status: true,
         defaultSenderEmail: true,
+        // PR L — launch approval trail drives the real-prospect gate.
+        launchApprovedAt: true,
+        launchApprovalMode: true,
         onboarding: { select: { formData: true } },
       },
     }),
@@ -456,6 +465,18 @@ export async function sendSequenceStepBatch(input: {
   const queued: SequenceStepSendQueuedRow[] = [];
   let suppressedAtExecutionTime = 0;
   const nowIsoForClassifier = new Date().toISOString();
+  const governanceSendKind: SendKind =
+    category === "INTRODUCTION"
+      ? "SEQUENCE_INTRODUCTION"
+      : "SEQUENCE_FOLLOW_UP";
+  // PR L — one-click unsubscribe is not wired yet. Every caller in
+  // production flips this to `false`, which means every non-allowlisted
+  // recipient stays blocked by the governance helper until a future PR
+  // implements the List-Unsubscribe-Post header + handler.
+  const oneClickUnsubscribeReady = false;
+  const allowlistDomainSet = new Set(
+    allowlist.domains.map((d) => d.toLowerCase()),
+  );
 
   type PreparedRow = {
     stepSend: (typeof stepSendRows)[number];
@@ -511,6 +532,50 @@ export async function sendSequenceStepBatch(input: {
             const hit = previousSentByEnrollmentId.get(row.enrollmentId);
             return hit ? { status: "SENT", sentAtIso: hit.sentAtIso } : null;
           })();
+
+    // PR L — run the real-prospect gate BEFORE the plan-time classifier
+    // so every non-allowlisted recipient carries an explicit launch-
+    // approval blocker reason on its step-send row, independent of the
+    // D4e allowlist detail. Allowlisted recipients are passed through
+    // to the existing classifier unchanged.
+    const contactDomain =
+      extractDomainFromEmail(row.contact.email ?? "")?.toLowerCase() ?? null;
+    const recipientAllowlisted =
+      allowlist.configured &&
+      contactDomain !== null &&
+      allowlistDomainSet.has(contactDomain);
+    const governance = evaluateSendGovernance({
+      client: {
+        status: client.status,
+        launchApprovedAt: client.launchApprovedAt,
+        launchApprovalMode: client.launchApprovalMode,
+      },
+      recipientAllowlisted,
+      sendKind: governanceSendKind,
+      oneClickUnsubscribeReady,
+    });
+    if (!governance.allowed) {
+      const governanceReason = blockedReasonForSequenceStepSend(governance);
+      blocked.push({
+        stepSendId: row.id,
+        contactEmail: row.contact.email,
+        reason: governanceReason,
+        decisionReason: "blocked_allowlist_domain",
+      });
+      counts = {
+        ...counts,
+        total: counts.total + 1,
+        blockedLaunchApproval: counts.blockedLaunchApproval + 1,
+      };
+      await prisma.clientEmailSequenceStepSend.update({
+        where: { id: row.id },
+        data: {
+          status: "BLOCKED",
+          blockedReason: truncate(governanceReason, 500),
+        },
+      });
+      continue;
+    }
 
     const decision = classifySequenceStepSendExecution({
       category,
