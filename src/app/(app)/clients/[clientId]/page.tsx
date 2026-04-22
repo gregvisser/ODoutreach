@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
+import { ClientLaunchApprovalCard } from "@/components/clients/client-launch-approval-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
 import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
@@ -17,7 +18,12 @@ import {
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
+import {
+  evaluateClientLaunchApproval,
+  type LaunchApprovalChecklistItem,
+} from "@/lib/clients/client-launch-approval";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
+import { parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import { prisma } from "@/lib/db";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
@@ -26,7 +32,11 @@ import {
   THEORETICAL_MAX_CLIENT_DAILY_SENDS,
 } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import {
+  ONE_CLICK_UNSUBSCRIBE_READY,
+} from "@/server/clients/launch-approval";
 import { getClientEmailSequenceCounts } from "@/server/email-sequences/queries";
+import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -115,6 +125,51 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     approvedSequencesCount: sequenceCounts.approvedSequencesCount,
     outreachPilotRunnable,
   });
+
+  const briefFields = parseOpensDoorsBrief(client.onboarding?.formData);
+  const hasSenderSignature = !!briefFields.emailSignature?.trim();
+  const launchApprovalEvaluation = evaluateClientLaunchApproval({
+    clientStatus: client.status,
+    gettingStarted,
+    readinessRows,
+    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
+    approvedIntroductionTemplatesCount:
+      sequenceCounts.approvedIntroductionTemplatesCount,
+    enrolledContactsCount,
+    hasSenderSignature,
+    oneClickUnsubscribeReady: ONE_CLICK_UNSUBSCRIBE_READY,
+    mode: "CONTROLLED_INTERNAL",
+  });
+  const canMutateClient = await getClientMailboxMutationAllowed(staff, client.id);
+  const storedChecklist: LaunchApprovalChecklistItem[] | null = (() => {
+    const raw = client.launchApprovalChecklist;
+    if (!Array.isArray(raw)) return null;
+    const items: LaunchApprovalChecklistItem[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      if (
+        typeof e.id === "string" &&
+        typeof e.label === "string" &&
+        typeof e.ok === "boolean" &&
+        typeof e.detail === "string"
+      ) {
+        items.push({
+          id: e.id as LaunchApprovalChecklistItem["id"],
+          label: e.label,
+          ok: e.ok,
+          detail: e.detail,
+        });
+      }
+    }
+    return items.length > 0 ? items : null;
+  })();
+  const approvedByStaff = client.launchApprovedByStaffUserId
+    ? await prisma.staffUser.findUnique({
+        where: { id: client.launchApprovedByStaffUserId },
+        select: { id: true, email: true, displayName: true },
+      })
+    : null;
 
   const statusCopy =
     client.status === "ACTIVE"
@@ -255,6 +310,22 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       <ClientGettingStartedCard
         viewModel={gettingStarted}
         clientStatus={client.status}
+      />
+
+      <ClientLaunchApprovalCard
+        clientId={client.id}
+        clientStatus={client.status}
+        canMutate={canMutateClient}
+        canApprove={launchApprovalEvaluation.canApprove}
+        blockers={launchApprovalEvaluation.blockers}
+        warnings={launchApprovalEvaluation.warnings}
+        checklist={launchApprovalEvaluation.checklist}
+        evaluatedMode="CONTROLLED_INTERNAL"
+        launchApprovedAt={client.launchApprovedAt?.toISOString() ?? null}
+        approvedByStaff={approvedByStaff}
+        launchApprovalMode={client.launchApprovalMode}
+        launchApprovalNotes={client.launchApprovalNotes}
+        storedChecklist={storedChecklist}
       />
 
       <Card className="border-border/80 shadow-sm">
