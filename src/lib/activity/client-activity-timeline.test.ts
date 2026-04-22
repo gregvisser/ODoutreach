@@ -144,11 +144,16 @@ describe("eventTypeLabel and severityLabel", () => {
       "sequence",
       "enrollment",
       "step_send",
+      "unsubscribe",
       "audit",
     ];
     for (const t of types) {
       expect(eventTypeLabel(t).length).toBeGreaterThan(0);
     }
+  });
+
+  it("labels unsubscribe events as 'Unsubscribe' (PR O)", () => {
+    expect(eventTypeLabel("unsubscribe")).toBe("Unsubscribe");
   });
 
   it("returns a non-empty label for every severity", () => {
