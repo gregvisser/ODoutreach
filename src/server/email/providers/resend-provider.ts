@@ -17,6 +17,21 @@ export class ResendEmailProvider implements OutboundEmailProvider {
       headers["Idempotency-Key"] = input.idempotencyKey.trim();
     }
 
+    const outboundHeaders: Record<string, string> = {
+      "X-OpensDoors-Correlation-Id": input.correlationId,
+    };
+    if (input.extraHeaders) {
+      for (const h of input.extraHeaders) {
+        if (typeof h?.name !== "string" || typeof h?.value !== "string") continue;
+        const name = h.name.trim();
+        const value = h.value.trim();
+        if (!name || !value) continue;
+        if (/[\r\n:]/.test(name)) continue;
+        if (/[\r\n]/.test(value)) continue;
+        outboundHeaders[name] = value;
+      }
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers,
@@ -25,9 +40,7 @@ export class ResendEmailProvider implements OutboundEmailProvider {
         to: [input.to],
         subject: input.subject,
         text: input.bodyText,
-        headers: {
-          "X-OpensDoors-Correlation-Id": input.correlationId,
-        },
+        headers: outboundHeaders,
       }),
     });
 

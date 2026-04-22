@@ -6,15 +6,37 @@ const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send
 
 /**
  * Build a minimal RFC 5322 plain-text message (UTF-8 body). For governed test / operator sends.
+ *
+ * Optional `extraHeaders` are injected before the standard headers so
+ * compliance headers (e.g. `List-Unsubscribe`,
+ * `List-Unsubscribe-Post`) travel with the provider send. Each entry
+ * must be `{ name, value }` — names and values are validated for CR
+ * or LF injection and silently dropped if unsafe. The caller is
+ * responsible for supplying canonical values (see
+ * `buildListUnsubscribeHeaders`).
  */
 export function buildRfc5322PlainTextEmail(input: {
   from: string;
   to: string;
   subject: string;
   bodyText: string;
+  extraHeaders?: ReadonlyArray<{ name: string; value: string }>;
 }): string {
-  const { from, to, subject, bodyText } = input;
+  const { from, to, subject, bodyText, extraHeaders } = input;
+  const safeExtra: string[] = [];
+  if (extraHeaders) {
+    for (const h of extraHeaders) {
+      if (typeof h?.name !== "string" || typeof h?.value !== "string") continue;
+      const name = h.name.trim();
+      const value = h.value.trim();
+      if (!name || !value) continue;
+      if (/[\r\n:]/.test(name)) continue;
+      if (/[\r\n]/.test(value)) continue;
+      safeExtra.push(`${name}: ${value}`);
+    }
+  }
   const lines = [
+    ...safeExtra,
     `From: ${from}`,
     `To: ${to}`,
     `Subject: ${subject}`,

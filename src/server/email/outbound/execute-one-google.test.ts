@@ -31,8 +31,11 @@ vi.mock("@/server/mailbox/sending-policy", () => ({
 vi.mock("@/server/mailbox/google-mailbox-access", () => ({
   getGoogleGmailAccessTokenForMailbox: (...a: unknown[]) => getGoogleToken(...a),
 }));
+const { buildRfc } = vi.hoisted(() => ({
+  buildRfc: vi.fn(() => "rfc"),
+}));
 vi.mock("@/server/mailbox/gmail-sendmail", () => ({
-  buildRfc5322PlainTextEmail: vi.fn(() => "rfc"),
+  buildRfc5322PlainTextEmail: (...a: unknown[]) => buildRfc(...a),
   sendGmailUsersMessagesSend: (...a: unknown[]) => sendGmail(...a),
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
@@ -109,5 +112,45 @@ describe("executeOutboundSend — Google governed path", () => {
     expect(r.ok).toBe(false);
     expect(markReleased).toHaveBeenCalledWith("out1");
     expect(markConsumed).not.toHaveBeenCalled();
+  });
+
+  it("PR N — passes List-Unsubscribe headers to RFC 5322 builder when metadata carries them", async () => {
+    findUnique.mockImplementation(
+      (q: { where?: { id: string }; select?: { mailboxIdentityId?: true } } | undefined) => {
+        if (q && "select" in q && q.select && "mailboxIdentityId" in (q.select ?? {})) {
+          return Promise.resolve({ mailboxIdentityId: "m1" });
+        }
+        return Promise.resolve({
+          ...baseRow,
+          metadata: {
+            kind: "sequenceIntroductionSend",
+            headers: {
+              listUnsubscribe: "<https://app.example.com/unsubscribe/raw-g>",
+              listUnsubscribePost: "List-Unsubscribe=One-Click",
+            },
+          },
+        });
+      },
+    );
+    await executeOutboundSend("out1");
+    const call = buildRfc.mock.calls[0][0] as {
+      extraHeaders?: Array<{ name: string; value: string }>;
+    };
+    expect(call.extraHeaders).toEqual([
+      {
+        name: "List-Unsubscribe",
+        value: "<https://app.example.com/unsubscribe/raw-g>",
+      },
+      {
+        name: "List-Unsubscribe-Post",
+        value: "List-Unsubscribe=One-Click",
+      },
+    ]);
+  });
+
+  it("PR N — passes no extraHeaders when metadata lacks unsubscribe header shape", async () => {
+    await executeOutboundSend("out1");
+    const call = buildRfc.mock.calls[0][0] as { extraHeaders?: unknown };
+    expect(call.extraHeaders).toBeUndefined();
   });
 });
