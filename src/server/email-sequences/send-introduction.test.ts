@@ -48,6 +48,9 @@ import { sendSequenceStepBatch } from "./send-introduction";
 const staff = { id: "staff1" } as StaffUser;
 
 const ORIG_ALLOWLIST_ENV = process.env.GOVERNED_TEST_EMAIL_DOMAINS;
+const ORIG_AUTH_URL = process.env.AUTH_URL;
+const ORIG_INTERNAL_APP_URL = process.env.INTERNAL_APP_URL;
+const ORIG_NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL;
 
 function mountSequence(overrides?: Record<string, unknown>) {
   prismaMock.clientEmailSequence.findUnique.mockResolvedValue({
@@ -168,6 +171,12 @@ function mountReadyRow(contactEmail: string, id = "ss-1") {
 describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
   beforeEach(() => {
     process.env.GOVERNED_TEST_EMAIL_DOMAINS = "bidlow.co.uk";
+    // PR M: default to "unsubscribe not ready" so pre-existing tests
+    // keep asserting the `blocked_unsubscribe_required` gate. Tests
+    // that want the gate open must set AUTH_URL explicitly.
+    delete process.env.AUTH_URL;
+    delete process.env.INTERNAL_APP_URL;
+    delete process.env.NEXT_PUBLIC_APP_URL;
     prismaMock.client.findUniqueOrThrow.mockReset();
     prismaMock.clientEmailSequence.findUnique.mockReset();
     prismaMock.clientEmailSequenceStepSend.findMany.mockReset();
@@ -285,6 +294,43 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it("reaches the send transaction for ACTIVE + LIVE_PROSPECT allowlisted recipient once AUTH_URL is configured (PR M)", async () => {
+    mountSequence();
+    mountMailboxPool();
+    mountClient({
+      status: "ACTIVE",
+      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+      launchApprovalMode: "LIVE_PROSPECT",
+    });
+    mountReadyRow("ada@bidlow.co.uk", "ss-live-prospect-ready");
+
+    // PR M: once a public base URL is configured the
+    // `isOneClickUnsubscribeReady()` helper flips to true, which
+    // unblocks the `blocked_unsubscribe_required` gate. Launch
+    // approval + allowlist still have to pass; this test proves
+    // those stack together.
+    process.env.AUTH_URL = "https://outreach.example.com";
+
+    prismaMock.$transaction.mockImplementation(async () => {
+      throw new Error("reached-transaction");
+    });
+
+    await expect(
+      sendSequenceStepBatch({
+        staff,
+        clientId: "c1",
+        sequenceId: "seq-1",
+        category: "INTRODUCTION",
+        confirmationPhrase: "SEND INTRODUCTION",
+      }),
+    ).rejects.toThrow(/reached-transaction/);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(
+      prismaMock.clientEmailSequenceStepSend.update,
+    ).not.toHaveBeenCalled();
+  });
+
   it("blocks ACTIVE + LIVE_PROSPECT non-allowlisted with unsubscribe_required (because one-click unsubscribe is not wired)", async () => {
     mountSequence();
     mountMailboxPool();
@@ -319,6 +365,17 @@ function afterEachRestoreEnv(): void {
       delete process.env.GOVERNED_TEST_EMAIL_DOMAINS;
     } else {
       process.env.GOVERNED_TEST_EMAIL_DOMAINS = ORIG_ALLOWLIST_ENV;
+    }
+    for (const [k, v] of [
+      ["AUTH_URL", ORIG_AUTH_URL],
+      ["INTERNAL_APP_URL", ORIG_INTERNAL_APP_URL],
+      ["NEXT_PUBLIC_APP_URL", ORIG_NEXT_PUBLIC_APP_URL],
+    ] as const) {
+      if (v === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = v;
+      }
     }
   };
   // Registering here keeps the describe body declarative.

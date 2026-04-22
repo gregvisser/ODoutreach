@@ -13,6 +13,11 @@ function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/api/dev/simulate-webhook-replay")) return true;
   if (pathname.startsWith("/api/webhooks/resend")) return true;
   if (pathname.startsWith("/api/internal/outbound")) return true;
+  // PR M — public one-click unsubscribe endpoints. The GET route shows
+  // the confirmation page; the POST route (and /api variant) performs
+  // the actual unsubscribe. No auth — the token itself is the proof.
+  if (pathname.startsWith("/unsubscribe/")) return true;
+  if (pathname.startsWith("/api/unsubscribe/")) return true;
   return false;
 }
 

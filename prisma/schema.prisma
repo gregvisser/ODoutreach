@@ -331,6 +331,7 @@ model Client {
   emailSequences          ClientEmailSequence[]
   sequenceEnrollments     ClientEmailSequenceEnrollment[]
   sequenceStepSends       ClientEmailSequenceStepSend[]
+  unsubscribeTokens       UnsubscribeToken[]
   launchApprovedBy        StaffUser?                     @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([status])
@@ -518,6 +519,7 @@ model Contact {
   listMemberships ContactListMember[]
   sequenceEnrollments ClientEmailSequenceEnrollment[]
   sequenceStepSends ClientEmailSequenceStepSend[]
+  unsubscribeTokens UnsubscribeToken[]
 
   @@unique([clientId, email])
   @@index([clientId])
@@ -655,6 +657,47 @@ model SuppressedDomain {
 
   @@unique([clientId, domain])
   @@index([clientId])
+}
+
+/// PR M — One-click unsubscribe token.
+///
+/// Opaque per-recipient-per-send token created when a sequence email is
+/// dispatched. The raw token is embedded in the outbound email (body
+/// link + List-Unsubscribe header); only the SHA-256 hash is stored in
+/// the database so a leaked database dump cannot be used to forge
+/// unsubscribe links for other recipients.
+///
+/// `purpose` stays `"outreach_unsubscribe"` today; future compliance
+/// flows (e.g. Customer Account identity confirmation) can reuse the
+/// same table with a different purpose without schema changes.
+model UnsubscribeToken {
+  id              String @id @default(cuid())
+  /// SHA-256 (hex) of the raw token. Unique so each raw token resolves
+  /// to exactly one row.
+  tokenHash       String @unique
+  clientId        String
+  contactId       String?
+  outboundEmailId String?
+  /// Normalized lowercase recipient email the token was issued for.
+  /// Authoritative for the resulting `SuppressedEmail` row.
+  email           String
+  /// Normalized recipient domain captured at issue time for audit only.
+  emailDomain     String?
+  /// Reason the token was issued. Default `"outreach_unsubscribe"` —
+  /// other compliance purposes may reuse this table in future PRs.
+  purpose         String    @default("outreach_unsubscribe")
+  /// When the token was redeemed. Null = never used.
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contact       Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  outboundEmail OutboundEmail? @relation(fields: [outboundEmailId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([email])
+  @@index([contactId])
+  @@index([outboundEmailId])
 }
 
 // ——— Outreach (not CRM) ———
@@ -976,6 +1019,7 @@ model OutboundEmail {
   inboundReplies  InboundReply[]          @relation("ReplyToOutbound")
   providerEvents  OutboundProviderEvent[]
   sequenceStepSends ClientEmailSequenceStepSend[]
+  unsubscribeTokens UnsubscribeToken[]
 
   @@index([clientId, createdAt])
   @@index([clientId, sentAt])

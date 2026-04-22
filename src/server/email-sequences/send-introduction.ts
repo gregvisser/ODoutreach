@@ -53,6 +53,15 @@ import {
   mailboxIneligibleForGovernedSendExecution,
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
+import {
+  isOneClickUnsubscribeReady,
+  resolvePublicBaseUrl,
+} from "@/lib/unsubscribe/one-click-readiness";
+import {
+  buildUnsubscribeUrl,
+  generateRawUnsubscribeToken,
+  hashUnsubscribeToken,
+} from "@/lib/unsubscribe/unsubscribe-token";
 
 /**
  * PR D4e.2 / D4e.3 — operator-triggered sequence step dispatcher.
@@ -193,6 +202,14 @@ function sortMailboxesForPoolPick(
   });
 }
 
+/**
+ * Fallback unsubscribe link used only when one-click unsubscribe is
+ * NOT wired (no public base URL configured). Preserves the previous
+ * D4e.1 placeholder shape so allowlisted governed-test sends keep
+ * rendering with a non-empty unsubscribe token. Real-prospect sends
+ * are gated by `isOneClickUnsubscribeReady()` in the send governance
+ * helper, so this branch is never taken for non-allowlisted recipients.
+ */
 function buildUnsubscribePlaceholder(
   clientDefaultSenderEmail: string | null,
 ): string {
@@ -419,8 +436,24 @@ export async function sendSequenceStepBatch(input: {
     client: { name: client.name },
     formData: client.onboarding?.formData ?? null,
   });
-  const unsubscribeLink = buildUnsubscribePlaceholder(client.defaultSenderEmail);
-  const senderRow = buildSenderRow(client, brief, unsubscribeLink);
+  // PR M — resolve the public base URL once per run. Real unsubscribe
+  // URLs are built per-recipient inside the dispatch transaction (the
+  // raw token is hashed + stored in `UnsubscribeToken`). If the public
+  // base URL is not configured we fall back to the legacy mailto
+  // placeholder so allowlisted / governed-test sends keep composing
+  // with a non-empty `{{unsubscribe_link}}`; the real-prospect gate in
+  // `evaluateSendGovernance` has already blocked non-allowlisted
+  // recipients in that case.
+  const publicBaseUrl = resolvePublicBaseUrl();
+  const oneClickReady = isOneClickUnsubscribeReady();
+  const fallbackUnsubscribeLink = buildUnsubscribePlaceholder(
+    client.defaultSenderEmail,
+  );
+  const placeholderSenderRow = buildSenderRow(
+    client,
+    brief,
+    fallbackUnsubscribeLink,
+  );
 
   // 4. Live allowlist snapshot (env read once per run).
   const allowlist = {
@@ -469,11 +502,12 @@ export async function sendSequenceStepBatch(input: {
     category === "INTRODUCTION"
       ? "SEQUENCE_INTRODUCTION"
       : "SEQUENCE_FOLLOW_UP";
-  // PR L — one-click unsubscribe is not wired yet. Every caller in
-  // production flips this to `false`, which means every non-allowlisted
-  // recipient stays blocked by the governance helper until a future PR
-  // implements the List-Unsubscribe-Post header + handler.
-  const oneClickUnsubscribeReady = false;
+  // PR M — one-click unsubscribe is wired when the public base URL is
+  // configured. `isOneClickUnsubscribeReady()` only reports whether
+  // the rail is available; LIVE_PROSPECT launch approval + operator
+  // confirmation + suppression/capacity checks remain required for
+  // real prospect sends.
+  const oneClickUnsubscribeReady = oneClickReady;
   const allowlistDomainSet = new Set(
     allowlist.domains.map((d) => d.toLowerCase()),
   );
@@ -522,7 +556,11 @@ export async function sendSequenceStepBatch(input: {
         officePhone: row.contact.officePhone,
         isSuppressed: row.contact.isSuppressed,
       },
-      sender: senderRow,
+      // Use the placeholder sender row for plan-time classification.
+      // The real per-recipient unsubscribe URL is built inside the
+      // dispatch transaction below before composing the email we
+      // actually queue.
+      sender: placeholderSenderRow,
     };
 
     const prevProjection: SequenceStepSendPreviousStep =
@@ -746,6 +784,29 @@ export async function sendSequenceStepBatch(input: {
             if (!reserve.ok) continue;
             if (reserve.duplicate) continue;
 
+            // PR M — mint a per-recipient unsubscribe token at
+            // dispatch time so the outbound body + List-Unsubscribe
+            // header carry a real, resolvable link. When the public
+            // base URL is not configured we fall back to the legacy
+            // mailto placeholder; the governance helper has already
+            // blocked non-allowlisted recipients in that case so this
+            // branch only ever affects allowlisted / governed-test
+            // sends.
+            let rawUnsubscribeToken: string | null = null;
+            let unsubscribeUrlForSend = fallbackUnsubscribeLink;
+            if (publicBaseUrl !== null) {
+              rawUnsubscribeToken = generateRawUnsubscribeToken();
+              unsubscribeUrlForSend = buildUnsubscribeUrl({
+                baseUrl: publicBaseUrl,
+                rawToken: rawUnsubscribeToken,
+              });
+            }
+            const senderRowForSend = buildSenderRow(
+              client,
+              brief,
+              unsubscribeUrlForSend,
+            );
+
             // Compose at dispatch time — we re-render to ensure the
             // actual sent bytes match what we class-checked seconds
             // ago. The planner's stored preview is informational.
@@ -753,7 +814,7 @@ export async function sendSequenceStepBatch(input: {
               subject: template.subject,
               content: template.content,
               contact: pr.candidate.contact,
-              sender: senderRow,
+              sender: senderRowForSend,
             });
             if (!composition.ok || !composition.sendReady) {
               blocked.push({
@@ -807,9 +868,32 @@ export async function sendSequenceStepBatch(input: {
                   templateId: template.id,
                   idempotencyKey: pr.stepSend.idempotencyKey,
                   stepCategory: category,
+                  // `unsubscribeTokenHash` is intentionally NOT the raw
+                  // token — only the hex hash is persisted so a leaked
+                  // database dump cannot be used to forge unsubscribe
+                  // links. The raw token only lives in the email body
+                  // and the List-Unsubscribe header.
+                  unsubscribeTokenConfigured: rawUnsubscribeToken !== null,
                 } as object,
               },
             });
+
+            // PR M — persist the unsubscribe token immediately so the
+            // public route can redeem it even if the worker later
+            // fails to dispatch. Only the hash is stored.
+            if (rawUnsubscribeToken !== null) {
+              await tx.unsubscribeToken.create({
+                data: {
+                  tokenHash: hashUnsubscribeToken(rawUnsubscribeToken),
+                  clientId,
+                  contactId: pr.candidate.contact.id,
+                  outboundEmailId: created.id,
+                  email: toEmail,
+                  emailDomain: toDomain,
+                  purpose: "outreach_unsubscribe",
+                },
+              });
+            }
 
             await linkReservationToOutboundInTransaction(
               tx,
