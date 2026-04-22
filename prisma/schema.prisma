@@ -33,6 +33,17 @@ enum ClientLifecycleStatus {
   ARCHIVED
 }
 
+/// PR K — Launch approval mode recorded alongside `Client.launchApprovedAt`.
+/// CONTROLLED_INTERNAL: approved for staff/allowlisted recipient pilots only
+/// (current operational mode; does not require one-click unsubscribe).
+/// LIVE_PROSPECT: approved for live prospect outreach — requires one-click
+/// unsubscribe readiness which is not yet implemented, so this mode is not
+/// selectable from the UI until a future PR wires it up.
+enum ClientLaunchApprovalMode {
+  CONTROLLED_INTERNAL
+  LIVE_PROSPECT
+}
+
 enum ClientMemberRole {
   LEAD
   CONTRIBUTOR
@@ -265,6 +276,7 @@ model StaffUser {
   emailSequencesApproved   ClientEmailSequence[]   @relation("ClientEmailSequenceApprovedBy")
   sequenceEnrollmentsCreated ClientEmailSequenceEnrollment[] @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated   ClientEmailSequenceStepSend[]   @relation("ClientEmailSequenceStepSendCreatedBy")
+  clientsLaunchApproved      Client[]                        @relation("ClientLaunchApprovedBy")
 
   @@index([invitedById])
 }
@@ -285,6 +297,13 @@ model Client {
   defaultSenderEmail   String?
   /// Provider/domain verification is tracked outside this app until integrated — gates real sends when enforced
   senderIdentityStatus SenderIdentityStatus  @default(NOT_SET)
+  /// PR K — Recorded launch approval trail (null for legacy ACTIVE clients predating the workflow).
+  launchApprovedAt            DateTime?
+  launchApprovedByStaffUserId String?
+  launchApprovalMode          ClientLaunchApprovalMode?
+  launchApprovalNotes         String?                    @db.Text
+  /// Snapshot of the readiness checklist recorded at approval time — never rewritten after approval.
+  launchApprovalChecklist     Json?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -312,8 +331,10 @@ model Client {
   emailSequences          ClientEmailSequence[]
   sequenceEnrollments     ClientEmailSequenceEnrollment[]
   sequenceStepSends       ClientEmailSequenceStepSend[]
+  launchApprovedBy        StaffUser?                     @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([launchApprovedByStaffUserId])
 }
 
 /// Connected outreach sending/receiving identity for a client workspace (max 5 active per client).
