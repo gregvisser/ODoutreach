@@ -97,6 +97,7 @@ export function ClientActivityTimelinePanel({
   const enrollmentCount = byType.enrollment ?? 0;
   const listCount = byType.contact_list ?? 0;
   const mailboxCount = byType.mailbox_oauth ?? 0;
+  const unsubscribeCount = byType.unsubscribe ?? 0;
 
   return (
     <div className="space-y-6">
@@ -122,7 +123,7 @@ export function ClientActivityTimelinePanel({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-5">
         <span>
           Bounces: <span className="font-medium text-foreground">{bounceCount}</span>
         </span>
@@ -137,6 +138,10 @@ export function ClientActivityTimelinePanel({
         <span>
           Mailbox events:{" "}
           <span className="font-medium text-foreground">{mailboxCount}</span>
+        </span>
+        <span>
+          Unsubscribes:{" "}
+          <span className="font-medium text-foreground">{unsubscribeCount}</span>
         </span>
       </div>
 

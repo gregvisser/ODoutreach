@@ -14,6 +14,7 @@ import {
   SEQUENCE_FOLLOWUP_SEND_METADATA_KIND,
   SEQUENCE_INTRO_SEND_METADATA_KIND,
 } from "@/lib/email-sequences/sequence-send-execution-constants";
+import { maskEmailForDisplay } from "@/lib/unsubscribe/unsubscribe-token";
 
 /**
  * PR H — unified activity timeline loader.
@@ -200,6 +201,7 @@ export async function loadClientActivityTimeline(
         entityType: true,
         entityId: true,
         createdAt: true,
+        metadata: true,
         staffUser: { select: { displayName: true, email: true } },
       },
     }),
@@ -430,6 +432,31 @@ export async function loadClientActivityTimeline(
         : row.action === "LOGIN"
           ? "info"
           : "info";
+    // PR O — recipient unsubscribes are written as AuditLog rows by
+    // `performUnsubscribe`:
+    //   action=UPDATE, entityType=UnsubscribeToken,
+    //   metadata.kind=recipient_unsubscribed, metadata.email=<raw email>.
+    // Render them as a dedicated timeline event with a masked email so
+    // the operator can see unsubscribe volume without exposing raw
+    // recipient addresses in the timeline surface.
+    if (
+      row.entityType === "UnsubscribeToken" &&
+      readAuditMetadataKind(row.metadata) === "recipient_unsubscribed"
+    ) {
+      const rawEmail = readAuditMetadataEmail(row.metadata);
+      const masked = maskEmailForDisplay(rawEmail);
+      events.push({
+        id: `audit:${row.id}`,
+        occurredAt: row.createdAt,
+        type: "unsubscribe",
+        severity: "warning",
+        title: "Recipient unsubscribed",
+        description: `${masked} unsubscribed from this client's outreach.`,
+        actorLabel: "Unsubscribe link",
+        sourceModel: "AuditLog",
+      });
+      continue;
+    }
     // Mailbox-connection audits get a nicer label so the operator sees
     // "Mailbox connected" instead of a generic UPDATE on
     // ClientMailboxIdentity.
@@ -567,6 +594,44 @@ function readOutboundMetadataStepCategory(meta: unknown): string | null {
   ) {
     const cat = (meta as Record<string, unknown>).stepCategory;
     return typeof cat === "string" ? cat : null;
+  }
+  return null;
+}
+
+/**
+ * PR O — defensively reads `metadata.kind` off an `AuditLog.metadata`
+ * JSON column. Returns `null` when the column is missing, not an
+ * object, an array, or when `kind` is not a string. The timeline
+ * falls back to the generic audit rendering on any null.
+ */
+function readAuditMetadataKind(meta: unknown): string | null {
+  if (
+    meta !== null &&
+    typeof meta === "object" &&
+    !Array.isArray(meta) &&
+    "kind" in (meta as Record<string, unknown>)
+  ) {
+    const kind = (meta as Record<string, unknown>).kind;
+    return typeof kind === "string" ? kind : null;
+  }
+  return null;
+}
+
+/**
+ * PR O — defensively reads `metadata.email` off an `AuditLog.metadata`
+ * JSON column written by `performUnsubscribe`. Returns `null` when
+ * absent or non-string so `maskEmailForDisplay` can emit its
+ * `(unknown recipient)` fallback instead of leaking raw metadata.
+ */
+function readAuditMetadataEmail(meta: unknown): string | null {
+  if (
+    meta !== null &&
+    typeof meta === "object" &&
+    !Array.isArray(meta) &&
+    "email" in (meta as Record<string, unknown>)
+  ) {
+    const email = (meta as Record<string, unknown>).email;
+    return typeof email === "string" ? email : null;
   }
   return null;
 }

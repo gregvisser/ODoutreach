@@ -31,6 +31,7 @@ export type TimelineEventType =
   | "sequence"
   | "enrollment"
   | "step_send"
+  | "unsubscribe"
   | "audit";
 
 export type TimelineEventSeverity = "info" | "success" | "warning" | "error";
@@ -155,6 +156,7 @@ const EVENT_TYPE_LABELS: Record<TimelineEventType, string> = {
   sequence: "Sequence",
   enrollment: "Enrollment",
   step_send: "Sequence step send",
+  unsubscribe: "Unsubscribe",
   audit: "Audit",
 };
 
