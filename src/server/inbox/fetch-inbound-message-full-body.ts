@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  classifyInboundFullBodyError,
+  type InboundFullBodyErrorCategory,
+} from "@/lib/inbox/inbound-full-body-errors";
 import { prisma } from "@/lib/db";
 import type { StaffUser } from "@/generated/prisma/client";
 import { fetchGmailInboundMessageFullBody } from "@/server/mailbox/gmail-message-body";
@@ -18,7 +22,19 @@ export type FetchInboundFullBodyResult =
       fullBodySource: string;
       fullBodyFetchedAt: string;
     }
-  | { ok: false; error: string; errorCode: string };
+  | {
+      ok: false;
+      error: string;
+      errorCode: string;
+      /**
+       * PR Q — operator-facing classification of the failure so the UI
+       * can render a short, non-raw banner instead of the provider's
+       * stack-shaped message.
+       */
+      category?: InboundFullBodyErrorCategory;
+      title?: string;
+      retryable?: boolean;
+    };
 
 /**
  * PR P — Fetch and cache the full body of an InboundMailboxMessage
@@ -100,7 +116,13 @@ export async function fetchInboundMessageFullBody(input: {
       accessToken,
       providerMessageId: message.providerMessageId,
     });
-    if (!res.ok) return res;
+    if (!res.ok) {
+      return classifyAndReturn({
+        provider: "MICROSOFT",
+        errorCode: res.errorCode,
+        rawMessage: res.error,
+      });
+    }
     return persistFullBody({
       messageId: message.id,
       bodyText: res.normalized.text,
@@ -125,7 +147,13 @@ export async function fetchInboundMessageFullBody(input: {
       accessToken,
       providerMessageId: message.providerMessageId,
     });
-    if (!res.ok) return res;
+    if (!res.ok) {
+      return classifyAndReturn({
+        provider: "GOOGLE",
+        errorCode: res.errorCode,
+        rawMessage: res.error,
+      });
+    }
     return persistFullBody({
       messageId: message.id,
       bodyText: res.normalized.text,
@@ -139,6 +167,32 @@ export async function fetchInboundMessageFullBody(input: {
     ok: false,
     errorCode: "PROVIDER_UNSUPPORTED",
     error: `Full-body fetch is not supported for provider ${mailbox.provider}.`,
+  };
+}
+
+/**
+ * PR Q — build a classified {ok: false} result from a provider error.
+ * The operator-facing `error` becomes the classifier's short message;
+ * the original provider text is kept in `errorCode` only (no stack,
+ * no raw JSON, no body content).
+ */
+function classifyAndReturn(input: {
+  provider: "MICROSOFT" | "GOOGLE";
+  errorCode: string;
+  rawMessage: string;
+}): FetchInboundFullBodyResult {
+  const classified = classifyInboundFullBodyError({
+    provider: input.provider,
+    errorCode: input.errorCode,
+    rawMessage: input.rawMessage,
+  });
+  return {
+    ok: false,
+    errorCode: input.errorCode,
+    error: classified.message,
+    category: classified.category,
+    title: classified.title,
+    retryable: classified.retryable,
   };
 }
 

@@ -269,4 +269,106 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
     if (!res.ok) expect(res.errorCode).toBe("ErrorItemNotFound");
     expect(inboundUpdate).not.toHaveBeenCalled();
   });
+
+  it("PR Q — classifies Microsoft ErrorItemNotFound as message_not_available", async () => {
+    inboundFindFirst.mockResolvedValue({
+      id: "m5",
+      mailboxIdentityId: "mb1",
+      providerMessageId: "pm5",
+    });
+    mailboxFindFirst.mockResolvedValue({
+      id: "mb1",
+      provider: "MICROSOFT",
+      connectionStatus: "CONNECTED",
+      email: "ops@acme.test",
+    });
+    fetchMs.mockResolvedValue({
+      ok: false,
+      error:
+        "Graph message fetch failed: The specified object was not found in the store.",
+      errorCode: "ErrorItemNotFound",
+    });
+
+    const res = await fetchInboundMessageFullBody({
+      staff: STAFF,
+      clientId: "client-a",
+      inboundMessageId: "m5",
+    });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.errorCode).toBe("ErrorItemNotFound");
+      expect(res.category).toBe("message_not_available");
+      expect(res.retryable).toBe(false);
+      expect(res.title).toMatch(/no longer available/i);
+      expect(res.error).toMatch(/moved or deleted/i);
+      expect(res.error).not.toContain("The specified object was not found");
+    }
+    expect(inboundUpdate).not.toHaveBeenCalled();
+  });
+
+  it("PR Q — classifies Gmail 404 as message_not_available", async () => {
+    inboundFindFirst.mockResolvedValue({
+      id: "m6",
+      mailboxIdentityId: "mb2",
+      providerMessageId: "pm6",
+    });
+    mailboxFindFirst.mockResolvedValue({
+      id: "mb2",
+      provider: "GOOGLE",
+      connectionStatus: "CONNECTED",
+      email: "replies@opensdoors.co",
+    });
+    fetchGmail.mockResolvedValue({
+      ok: false,
+      error: "Gmail message fetch failed: Requested entity was not found.",
+      errorCode: "gmail_404",
+    });
+
+    const res = await fetchInboundMessageFullBody({
+      staff: STAFF,
+      clientId: "client-a",
+      inboundMessageId: "m6",
+    });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.category).toBe("message_not_available");
+      expect(res.retryable).toBe(false);
+    }
+    expect(inboundUpdate).not.toHaveBeenCalled();
+  });
+
+  it("PR Q — classifies Microsoft auth errors as provider_auth_error", async () => {
+    inboundFindFirst.mockResolvedValue({
+      id: "m7",
+      mailboxIdentityId: "mb1",
+      providerMessageId: "pm7",
+    });
+    mailboxFindFirst.mockResolvedValue({
+      id: "mb1",
+      provider: "MICROSOFT",
+      connectionStatus: "CONNECTED",
+      email: "ops@acme.test",
+    });
+    fetchMs.mockResolvedValue({
+      ok: false,
+      error: "Graph message fetch failed: Access token has expired.",
+      errorCode: "InvalidAuthenticationToken",
+    });
+
+    const res = await fetchInboundMessageFullBody({
+      staff: STAFF,
+      clientId: "client-a",
+      inboundMessageId: "m7",
+    });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.category).toBe("provider_auth_error");
+      expect(res.retryable).toBe(false);
+      expect(res.title).toMatch(/reconnect/i);
+    }
+    expect(inboundUpdate).not.toHaveBeenCalled();
+  });
 });

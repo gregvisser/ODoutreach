@@ -78,6 +78,15 @@ export function mapGmailMessageToRow(msg: GmailApiMessageDetail): MappedGmailInb
     conversationId: msg.threadId != null ? msg.threadId : null,
     metadata: {
       threadId: msg.threadId != null ? msg.threadId : null,
+      // PR Q — capture Gmail's `internalDate` so future fetch/debug has
+      // a provider-stable timestamp (in ms since epoch, as Gmail returns).
+      internalDate: msg.internalDate != null ? msg.internalDate : null,
+      // RFC 5322 Message-ID header is a stable cross-provider identifier;
+      // Gmail exposes it via the "Message-ID" (or "Message-Id") header.
+      rfc822MessageId:
+        headerValue(headers, "Message-ID") ??
+        headerValue(headers, "Message-Id") ??
+        null,
     },
   };
 }
@@ -128,6 +137,9 @@ export async function getGmailMessageMetadata(
   url.searchParams.append("metadataHeaders", "To");
   url.searchParams.append("metadataHeaders", "Subject");
   url.searchParams.append("metadataHeaders", "Date");
+  // PR Q — capture the RFC 5322 Message-ID so we have a cross-provider
+  // stable identifier for future fallback lookups.
+  url.searchParams.append("metadataHeaders", "Message-ID");
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
   });

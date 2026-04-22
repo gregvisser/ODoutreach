@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { fetchInboundMessageFullBodyAction } from "@/app/(app)/clients/[clientId]/activity/messages/[messageId]/reply-actions";
 import { Button } from "@/components/ui/button";
+import type { InboundFullBodyErrorCategory } from "@/lib/inbox/inbound-full-body-errors";
 
 type Props = {
   clientId: string;
@@ -55,7 +56,14 @@ export function InboundMessageFullBody(props: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [banner, setBanner] = useState<
-    | { tone: "ok" | "err"; text: string }
+    | { tone: "ok"; text: string }
+    | {
+        tone: "err";
+        title: string;
+        text: string;
+        category: InboundFullBodyErrorCategory | "unclassified";
+        retryable: boolean;
+      }
     | null
   >(null);
 
@@ -106,7 +114,13 @@ export function InboundMessageFullBody(props: Props) {
         });
         router.refresh();
       } else {
-        setBanner({ tone: "err", text: result.error });
+        setBanner({
+          tone: "err",
+          title: result.title ?? "Full body fetch failed",
+          text: result.error,
+          category: result.category ?? "unclassified",
+          retryable: result.retryable ?? true,
+        });
       }
     });
   };
@@ -159,7 +173,11 @@ export function InboundMessageFullBody(props: Props) {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" onClick={onFetch} disabled={pending}>
+            <Button
+              type="button"
+              onClick={onFetch}
+              disabled={pending || fetchButtonHardDisabled(banner)}
+            >
               {pending ? "Fetching full body…" : "Fetch full email body"}
             </Button>
             <span className="text-xs text-muted-foreground">
@@ -171,16 +189,58 @@ export function InboundMessageFullBody(props: Props) {
       )}
 
       {banner ? (
-        <p
-          className={
-            banner.tone === "ok"
-              ? "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
-              : "rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-          }
-        >
-          {banner.text}
-        </p>
+        banner.tone === "ok" ? (
+          <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            {banner.text}
+          </p>
+        ) : (
+          <div
+            className={
+              banner.category === "message_not_available"
+                ? "rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                : "rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            }
+          >
+            <p className="font-medium">{banner.title}</p>
+            <p className="mt-1">{banner.text}</p>
+            {banner.category === "message_not_available" ? (
+              <p className="mt-1 text-xs">
+                ODoutreach still has the preview captured at ingestion above.
+                This can happen if the email was moved to another folder or
+                deleted in Outlook/Gmail after it was ingested.
+              </p>
+            ) : null}
+            {!banner.retryable ? (
+              <p className="mt-1 text-xs">
+                Retrying will keep returning the same result until the
+                underlying cause is fixed.
+              </p>
+            ) : null}
+          </div>
+        )
       ) : null}
     </div>
   );
+}
+
+/**
+ * PR Q — keep the Fetch button visible but disable it after a
+ * non-retryable classified failure (e.g. message_not_available) so
+ * operators don't spam the provider with identical requests.
+ */
+function fetchButtonHardDisabled(
+  banner:
+    | { tone: "ok"; text: string }
+    | {
+        tone: "err";
+        title: string;
+        text: string;
+        category: InboundFullBodyErrorCategory | "unclassified";
+        retryable: boolean;
+      }
+    | null,
+): boolean {
+  if (!banner) return false;
+  if (banner.tone === "ok") return false;
+  return !banner.retryable;
 }
