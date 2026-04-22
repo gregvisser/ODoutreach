@@ -13,6 +13,15 @@ export type SendEmailInput = {
   tag?: string;
   /** Per-attempt key — Resend `Idempotency-Key`; mock uses deterministic ids */
   idempotencyKey?: string;
+  /**
+   * Compliance headers emitted alongside the message body. Providers
+   * that support arbitrary outbound headers (Resend, mock) pass these
+   * through verbatim; providers with restrictions (Graph) map known
+   * names (e.g. `List-Unsubscribe`) onto their native mechanism.
+   * Safe to omit — callers without a hosted unsubscribe URL should
+   * pass `undefined` rather than invented values.
+   */
+  extraHeaders?: ReadonlyArray<{ name: string; value: string }>;
 };
 
 export type SendEmailSuccess = {

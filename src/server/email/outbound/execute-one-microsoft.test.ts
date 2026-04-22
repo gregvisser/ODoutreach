@@ -117,4 +117,37 @@ describe("executeOutboundSend — Microsoft governed path", () => {
     expect(sendGraph).not.toHaveBeenCalled();
     expect(markReleased).toHaveBeenCalled();
   });
+
+  it("PR N — passes listUnsubscribeUrl to Graph when metadata carries canonical headers", async () => {
+    findUnique.mockImplementation(
+      (q: { where?: { id: string }; select?: { mailboxIdentityId?: true } } | undefined) => {
+        if (q && "select" in q && q.select && "mailboxIdentityId" in (q.select ?? {})) {
+          return Promise.resolve({ mailboxIdentityId: "m1" });
+        }
+        return Promise.resolve({
+          ...baseRow,
+          metadata: {
+            kind: "sequenceIntroductionSend",
+            headers: {
+              listUnsubscribe: "<https://app.example.com/unsubscribe/raw-x>",
+              listUnsubscribePost: "List-Unsubscribe=One-Click",
+            },
+          },
+        });
+      },
+    );
+    await executeOutboundSend("out1");
+    const call = sendGraph.mock.calls[0][0] as {
+      options?: { listUnsubscribeUrl?: string };
+    };
+    expect(call.options?.listUnsubscribeUrl).toBe(
+      "https://app.example.com/unsubscribe/raw-x",
+    );
+  });
+
+  it("PR N — omits Graph options entirely when metadata has no unsubscribe headers", async () => {
+    await executeOutboundSend("out1");
+    const call = sendGraph.mock.calls[0][0] as { options?: unknown };
+    expect(call.options).toBeUndefined();
+  });
 });

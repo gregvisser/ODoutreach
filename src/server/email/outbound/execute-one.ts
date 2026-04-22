@@ -26,6 +26,42 @@ import {
 } from "./retry-policy";
 
 /**
+ * PR N — pull the List-Unsubscribe header values that
+ * `sendSequenceStepBatch` persisted into `OutboundEmail.metadata.headers`.
+ *
+ * The metadata shape is not enforced at the DB level (it is
+ * `Json?`), so we defensively narrow each field and fall back to
+ * `null` on any shape mismatch. Returns `null` when no compliance
+ * headers are configured for this row.
+ */
+function readListUnsubscribeHeadersFromMetadata(
+  metadata: unknown,
+): { listUnsubscribe: string; listUnsubscribePost: string } | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const headers = (metadata as { headers?: unknown }).headers;
+  if (!headers || typeof headers !== "object") return null;
+  const lu = (headers as { listUnsubscribe?: unknown }).listUnsubscribe;
+  const lup = (headers as { listUnsubscribePost?: unknown }).listUnsubscribePost;
+  if (typeof lu !== "string" || typeof lup !== "string") return null;
+  const luTrim = lu.trim();
+  const lupTrim = lup.trim();
+  if (!luTrim || !lupTrim) return null;
+  if (/[\r\n]/.test(luTrim) || /[\r\n]/.test(lupTrim)) return null;
+  return { listUnsubscribe: luTrim, listUnsubscribePost: lupTrim };
+}
+
+/**
+ * Extract the hosted URL from an already-angle-bracketed
+ * `List-Unsubscribe` value (`<https://...>`). Returns `null` if the
+ * value is not wrapped or not an http(s) URL — Microsoft Graph's
+ * extended-property workaround requires the URL form.
+ */
+function extractHostedListUnsubscribeUrl(listUnsubscribe: string): string | null {
+  const m = listUnsubscribe.match(/^<(https?:\/\/[^>]+)>$/);
+  return m ? m[1] : null;
+}
+
+/**
  * Executes provider send for PROCESSING rows. Idempotent if `providerMessageId` already set.
  * Uses conditional updates so duplicate worker invocations cannot double-apply SENT.
  */
@@ -111,6 +147,14 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     row.providerIdempotencyKey?.trim() ??
     `osm_fallback_${row.id}_a${row.sendAttempt}`;
 
+  const listUnsub = readListUnsubscribeHeadersFromMetadata(row.metadata);
+  const providerExtraHeaders = listUnsub
+    ? [
+        { name: "List-Unsubscribe", value: listUnsub.listUnsubscribe },
+        { name: "List-Unsubscribe-Post", value: listUnsub.listUnsubscribePost },
+      ]
+    : undefined;
+
   try {
     const provider = getOutboundEmailProvider();
     const result = await provider.send({
@@ -121,6 +165,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
       bodyText: row.bodySnapshot,
       tag: row.clientId,
       idempotencyKey,
+      extraHeaders: providerExtraHeaders,
     });
 
     if (result.ok === false) {
@@ -276,6 +321,13 @@ async function sendViaConnectedMailboxOrFail(
       await markFailed(row.id, "INVALID_PAYLOAD", "Missing subject or body snapshot");
       return { ok: false, error: "Invalid payload" };
     }
+    const listUnsub = readListUnsubscribeHeadersFromMetadata(row.metadata);
+    const gmailExtraHeaders = listUnsub
+      ? [
+          { name: "List-Unsubscribe", value: listUnsub.listUnsubscribe },
+          { name: "List-Unsubscribe-Post", value: listUnsub.listUnsubscribePost },
+        ]
+      : undefined;
     try {
       const accessToken = await getGoogleGmailAccessTokenForMailbox(mailbox.id);
       const rfc = buildRfc5322PlainTextEmail({
@@ -283,6 +335,7 @@ async function sendViaConnectedMailboxOrFail(
         to,
         subject,
         bodyText: body,
+        extraHeaders: gmailExtraHeaders,
       });
       const result = await sendGmailUsersMessagesSend({
         accessToken,
@@ -348,6 +401,11 @@ async function sendViaConnectedMailboxOrFail(
     return { ok: false, error: "Invalid payload" };
   }
 
+  const listUnsub = readListUnsubscribeHeadersFromMetadata(row.metadata);
+  const graphListUnsubscribeUrl = listUnsub
+    ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe)
+    : null;
+
   try {
     const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
     const result = await sendMicrosoftGraphSendMail({
@@ -356,6 +414,9 @@ async function sendViaConnectedMailboxOrFail(
       subject,
       bodyText: body,
       correlationId: row.correlationId,
+      options: graphListUnsubscribeUrl
+        ? { listUnsubscribeUrl: graphListUnsubscribeUrl }
+        : undefined,
     });
     if (result.ok === false) {
       return await handleSendFailure(

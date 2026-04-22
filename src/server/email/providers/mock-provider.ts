@@ -19,7 +19,12 @@ export class MockEmailProvider implements OutboundEmailProvider {
       ok: true,
       providerMessageId,
       providerName: this.name,
-      raw: { simulated: true, to: input.to, idempotencyKey: input.idempotencyKey },
+      raw: {
+        simulated: true,
+        to: input.to,
+        idempotencyKey: input.idempotencyKey,
+        extraHeaders: input.extraHeaders ?? [],
+      },
     };
   }
 }

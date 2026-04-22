@@ -62,6 +62,7 @@ import {
   generateRawUnsubscribeToken,
   hashUnsubscribeToken,
 } from "@/lib/unsubscribe/unsubscribe-token";
+import { buildListUnsubscribeHeaders } from "@/lib/unsubscribe/list-unsubscribe-headers";
 
 /**
  * PR D4e.2 / D4e.3 — operator-triggered sequence step dispatcher.
@@ -794,13 +795,21 @@ export async function sendSequenceStepBatch(input: {
             // sends.
             let rawUnsubscribeToken: string | null = null;
             let unsubscribeUrlForSend = fallbackUnsubscribeLink;
+            let hostedUnsubscribeUrl: string | null = null;
             if (publicBaseUrl !== null) {
               rawUnsubscribeToken = generateRawUnsubscribeToken();
-              unsubscribeUrlForSend = buildUnsubscribeUrl({
+              hostedUnsubscribeUrl = buildUnsubscribeUrl({
                 baseUrl: publicBaseUrl,
                 rawToken: rawUnsubscribeToken,
               });
+              unsubscribeUrlForSend = hostedUnsubscribeUrl;
             }
+            // PR N — build List-Unsubscribe / List-Unsubscribe-Post
+            // header values only when we have a hosted http(s) URL.
+            // The helper returns null for the mailto fallback so we
+            // never emit a header pointing at a placeholder.
+            const listUnsubscribeHeaders =
+              buildListUnsubscribeHeaders(hostedUnsubscribeUrl);
             const senderRowForSend = buildSenderRow(
               client,
               brief,
@@ -874,6 +883,22 @@ export async function sendSequenceStepBatch(input: {
                   // links. The raw token only lives in the email body
                   // and the List-Unsubscribe header.
                   unsubscribeTokenConfigured: rawUnsubscribeToken !== null,
+                  // PR N — persist the canonical List-Unsubscribe
+                  // header values so the outbound executor can read
+                  // them back without re-deriving the URL (the raw
+                  // token is gone by then). Only the hosted URL is
+                  // written; mailto fallbacks stay out.
+                  listUnsubscribeHeadersConfigured:
+                    listUnsubscribeHeaders !== null,
+                  headers:
+                    listUnsubscribeHeaders !== null
+                      ? {
+                          listUnsubscribe:
+                            listUnsubscribeHeaders.listUnsubscribe,
+                          listUnsubscribePost:
+                            listUnsubscribeHeaders.listUnsubscribePost,
+                        }
+                      : undefined,
                 } as object,
               },
             });
