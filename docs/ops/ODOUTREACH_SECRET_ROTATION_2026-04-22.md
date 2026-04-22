@@ -82,14 +82,23 @@ Not present (nothing to rotate):
 - `ODoutreach` app: only keyId `4a5af18a-7e81-4b8d-a4e8-2508918d0c1a` (exp 2028-04-22) remains
 - `opensdoors-mailbox-microsoft-oauth` app: only keyId `57150a77-95eb-4366-9f6e-76c528651cbb` (exp 2028-04-22) remains
 
-## What was BLOCKED / MANUAL this run
+## What was left outstanding this run
 
-| Setting | Reason | Exact manual steps |
+> Post-run clarification (added 2026-04-22 after the operator log was filed): of the four items below, one is a **technical blocker** that requires an internal engineering change, and three are **approved deferred external-provider credential items pending OpensDoors authorisation/configuration**. They are *not* emergency blockers against the ODoutreach product build; OpensDoors has explicitly chosen to hold them until their own Workspace / vendor processes run.
+
+### Technical blocker (internal)
+
+| Setting | Reason | Resolution path |
 |---|---|---|
-| `MAILBOX_OAUTH_SECRET` | Is the AES-256-GCM key for every stored mailbox refresh token. See "Critical finding" above. | Requires dual-key migration in `src/server/mailbox/oauth-crypto.ts` + re-encrypt pass, then cut-over. Do not rotate alone. |
-| `MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET` | `gcloud` CLI not installed in this session | Google Cloud Console → APIs & Services → Credentials → select the mailbox OAuth client → "Add Secret" / rotate → copy new value → set in Azure App Service via `az webapp config appsettings set` (or ARM PUT) → restart → `/api/health` → delete old secret in console |
-| `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | `gcloud` CLI not installed in this session | Google Cloud Console → IAM & Admin → Service Accounts → identify the account (do not print its full email publicly) → Keys → "Add key" → JSON → base64-encode the JSON contents → set in Azure App Service → restart → `/api/health` → delete the old key in console |
-| `ROCKETREACH_API_KEY` | No API/portal access from this session | RocketReach dashboard → API keys → generate new key → set in Azure App Service → restart → `/api/health` → revoke old key |
+| `MAILBOX_OAUTH_SECRET` | AES-256-GCM key (sha256'd) for every stored mailbox refresh token. See "Critical finding" above. | Dual-key migration in `src/server/mailbox/oauth-crypto.ts` (accept `MAILBOX_OAUTH_SECRET` or `MAILBOX_OAUTH_SECRET_NEXT` on decrypt, write only with `_NEXT`) + background re-encrypt pass over `StoredMailboxCredential` + cut-over. Planned as a separate engineering task. |
+
+### Approved deferred external-provider credential items (OpensDoors-authorised)
+
+| Setting | Status | OpensDoors-authorised path |
+|---|---|---|
+| `MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET` | Deferred pending OpensDoors Google Workspace client account setup/authorisation. | Once Workspace setup is complete: Google Cloud Console → APIs & Services → Credentials → select the mailbox OAuth client → "Add Secret" / rotate → copy new value → set in Azure App Service (without echoing) → restart → `/api/health` green → delete old secret in console. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | Deferred pending OpensDoors Google Workspace / Sheets configuration. | Google Cloud Console → IAM & Admin → Service Accounts → identify the account (do not print its full email publicly) → Keys → "Add key" → JSON → base64-encode the JSON contents in memory → set in Azure App Service → restart → `/api/health` green → delete the old key in console. |
+| `ROCKETREACH_API_KEY` | Deferred pending OpensDoors authorisation (expected the following day). | RocketReach dashboard → API keys → generate new key → set in Azure App Service → restart → `/api/health` green → revoke old key. Do **not** run a RocketReach import as part of the rotation proof; a tiny names-only configuration probe is sufficient. |
 
 ## Explicit env domain values now set
 
@@ -151,14 +160,21 @@ No send / reply / import / sync / approval / fetch actions were triggered.
 - No imports, sends, suppression syncs, replies, approvals, or on-demand
   fetches were triggered in this run.
 
-## Remaining manual follow-ups
+## Remaining follow-ups
 
-1. Rotate `MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET` via Google Cloud Console.
-2. Rotate `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` via Google Cloud Console.
-3. Rotate `ROCKETREACH_API_KEY` via RocketReach dashboard.
-4. Plan and implement dual-key migration for `MAILBOX_OAUTH_SECRET`, then rotate.
+1. **Technical blocker** — Plan and implement dual-key migration for
+   `MAILBOX_OAUTH_SECRET`, then rotate. Internal engineering task.
+2. **Approved deferred** — `MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET` via Google
+   Cloud Console, once OpensDoors Google Workspace client account setup /
+   authorisation completes.
+3. **Approved deferred** — `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` via Google
+   Cloud Console, once OpensDoors Google Workspace / Sheets configuration
+   completes.
+4. **Approved deferred** — `ROCKETREACH_API_KEY` via RocketReach dashboard,
+   once OpensDoors authorises / provides the key (expected the following
+   day).
 5. (Optional) add `GOVERNED_TEST_EMAIL_DOMAINS` real-prospect domains when
-   a live-prospect launch is explicitly approved.
+   a live-prospect launch is explicitly approved by Greg.
 
 ## A+ handover blocker status
 
@@ -170,7 +186,10 @@ No send / reply / import / sync / approval / fetch actions were triggered.
 - Google OAuth / Google SA / RocketReach: documented manual follow-ups remain
 - `MAILBOX_OAUTH_SECRET`: documented dual-key migration required
 
-The security posture has moved from "B / exception" (pre-rotation) to
-"A- / two provider secrets plus one dual-key-migration-gated secret remain
-on the manual follow-up list". Full A+ is achievable after the four
-remaining items above are closed.
+The security posture has moved from **B / exception** (pre-rotation) to
+**A- with approved deferred external-provider credentials**: session-rotatable
+production secrets have been rotated and verified, one internal dual-key
+migration (`MAILBOX_OAUTH_SECRET`) is planned, and three OpensDoors-authorised
+deferred external-provider credentials (Google OAuth, Google service-account,
+RocketReach) remain pending OpensDoors Workspace / vendor configuration. Full
+A+ is achievable once the four items above are closed.
