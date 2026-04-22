@@ -495,6 +495,11 @@ export async function sendClientEmailSequenceIntroductionAction(
         `${String(result.counts.blockedAllowlist)} blocked by allowlist`,
       );
     }
+    if (result.counts.blockedLaunchApproval > 0) {
+      parts.push(
+        `${String(result.counts.blockedLaunchApproval)} blocked by launch-approval gate`,
+      );
+    }
     if (result.counts.suppressedAtExecutionTime > 0) {
       parts.push(
         `${String(result.counts.suppressedAtExecutionTime)} suppressed at dispatch`,
@@ -593,6 +598,11 @@ export async function sendClientEmailSequenceStepAction(
     if (result.counts.blockedAllowlist > 0) {
       parts.push(
         `${String(result.counts.blockedAllowlist)} blocked by allowlist`,
+      );
+    }
+    if (result.counts.blockedLaunchApproval > 0) {
+      parts.push(
+        `${String(result.counts.blockedLaunchApproval)} blocked by launch-approval gate`,
       );
     }
     if (result.counts.suppressedAtExecutionTime > 0) {

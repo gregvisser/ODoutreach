@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { REAL_PROSPECT_SEND_GATE_COPY } from "@/lib/clients/client-send-governance";
 import {
   getSequenceStepSendConfirmationPhrase,
   SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
@@ -108,7 +109,11 @@ export function SequenceSendPreparationPanel({
           below send real email, but only to recipients whose domain matches
           the governed-test allowlist and only for one step category at a
           time (INTRODUCTION or FOLLOW_UP_N). Each dispatch requires its own
-          typed confirmation phrase.
+          typed confirmation phrase. Allowlisted/test sends can be dispatched
+          manually — real prospect sends require{" "}
+          <strong>LIVE_PROSPECT launch approval</strong> and{" "}
+          <strong>one-click unsubscribe</strong>. No cron or background
+          worker dispatches these; only the buttons below do.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -371,6 +376,15 @@ function IntroSendDispatchBlock({
         </ul>
       ) : null}
 
+      {introSend.allowlistBlockedReadyCount > 0 ? (
+        <div
+          className="mt-2 rounded border border-amber-400/60 bg-amber-100/60 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-200"
+          data-testid="real-prospect-send-gate"
+        >
+          {REAL_PROSPECT_SEND_GATE_COPY}
+        </div>
+      ) : null}
+
       <form
         action={sendClientEmailSequenceIntroductionAction}
         className="mt-3 flex flex-wrap items-center gap-2"
@@ -592,6 +606,15 @@ function StepSendDispatchBlock({
             <li key={r}>{r}</li>
           ))}
         </ul>
+      ) : null}
+
+      {stepSnapshot.allowlistBlockedReadyCount > 0 ? (
+        <div
+          className="mt-2 rounded border border-amber-400/60 bg-amber-100/60 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-200"
+          data-testid="real-prospect-send-gate"
+        >
+          {REAL_PROSPECT_SEND_GATE_COPY}
+        </div>
       ) : null}
 
       <form

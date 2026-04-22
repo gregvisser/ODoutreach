@@ -555,6 +555,14 @@ export type SequenceStepSendPlanCounts = {
   blockedPlanClassifier: number;
   /** Previous step not SENT OR delay not yet elapsed. Follow-ups only. */
   blockedPrevious: number;
+  /**
+   * PR L — rows blocked by the launch-approval / real-prospect gate.
+   * Non-allowlisted recipients that would require LIVE_PROSPECT
+   * approval + one-click unsubscribe to send are counted here. They
+   * are also persisted to the step-send row with a `blocked_*` code
+   * prefix so the outreach timeline can label them.
+   */
+  blockedLaunchApproval: number;
 };
 
 export function zeroSequenceStepSendPlanCounts(): SequenceStepSendPlanCounts {
@@ -567,6 +575,7 @@ export function zeroSequenceStepSendPlanCounts(): SequenceStepSendPlanCounts {
     blockedWrongCategory: 0,
     blockedPlanClassifier: 0,
     blockedPrevious: 0,
+    blockedLaunchApproval: 0,
   };
 }
 
