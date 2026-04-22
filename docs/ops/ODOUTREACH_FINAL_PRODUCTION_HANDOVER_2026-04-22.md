@@ -10,6 +10,42 @@
 
 ---
 
+## Post-rotation update — 2026-04-22
+
+> Added after the original handover was filed. The paragraphs below supersede the "B / exception" framing used in §1, §9 and §12 for the items they cover.
+
+- **Current final production SHA**: `2a1e576` (main, after PR #54 — secret rotation documentation merged and deployed green).
+- **Session-rotatable secrets completed this evening** (see [`ODOUTREACH_SECRET_ROTATION_2026-04-22.md`](./ODOUTREACH_SECRET_ROTATION_2026-04-22.md) for the full operator log):
+  - `AUTH_SECRET`
+  - `PROCESS_QUEUE_SECRET`
+  - `AUTH_MICROSOFT_ENTRA_ID_SECRET` (staff SSO app; old keyId deleted after verification)
+  - `MAILBOX_MICROSOFT_OAUTH_CLIENT_SECRET` (mailbox OAuth app; old keyId deleted after verification)
+  - `DATABASE_URL` / Postgres admin password (URL params preserved; `prisma migrate status` proved DB access post-rotation)
+- **Explicit environment domains set**:
+  - `STAFF_EMAIL_DOMAINS=bidlow.co.uk,opensdoors.co.uk`
+  - `GOVERNED_TEST_EMAIL_DOMAINS=bidlow.co.uk,opensdoors.co.uk`
+- **Health and DB access proven after rotation**: `/api/health` returned `{ ok:true, checks:{ database:"ok" } }` on both `opensdoors.bidlow.co.uk` and `app-opensdoors-outreach-prod.azurewebsites.net`; `npx prisma migrate status` against the new `DATABASE_URL` returned "Database schema is up to date" (22 migrations).
+
+### Still outstanding — one technical item and three approved deferrals
+
+- **`MAILBOX_OAUTH_SECRET` — technical blocker.** This env value is used (sha256'd) as the AES-256-GCM key that encrypts every stored mailbox OAuth refresh token in the database (see `src/server/mailbox/oauth-crypto.ts`). Rotating it in place would brick every connected mailbox on every client. Requires a dual-key migration in app code (accept either current or `_NEXT` secret on decrypt, write only with `_NEXT`, re-encrypt all `StoredMailboxCredential` rows, then cut over) before it can be rotated safely. Planned as a separate engineering task.
+- **Approved deferred external-provider credential items — pending OpensDoors authorisation/configuration.** These are explicitly *not* blockers against OpensDoors' own programme; they are items OpensDoors chose to hold until their own Workspace / vendor processes run:
+  1. **Google OAuth client secret (`MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET`)** — deferred until OpensDoors' Google Workspace client account setup / authorisation is completed on their side.
+  2. **Google service-account key (`GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`)** — deferred until OpensDoors' Google Workspace / Sheets configuration is completed on their side.
+  3. **RocketReach API key (`ROCKETREACH_API_KEY`)** — deferred until OpensDoors authorises / provides the key (tomorrow).
+
+### Updated security grade
+
+- **Before rotation**: **B / exception** — known-exposed credentials still live.
+- **After this evening's session rotation**: **A-** — all session-rotatable production secrets rotated and verified, with one internal technical migration and three approved deferred external-provider items remaining.
+- **A+ requires all four of the following**:
+  1. `MAILBOX_OAUTH_SECRET` dual-key migration and rotation.
+  2. OpensDoors-authorised Google OAuth credential setup/rotation.
+  3. OpensDoors-authorised Google service-account / Sheets credential setup/rotation.
+  4. OpensDoors-authorised RocketReach API key setup/rotation.
+
+---
+
 ## 1. Executive status
 
 | Dimension | Status | Grade |
@@ -21,7 +57,7 @@
 | **Real-prospect sending** | Technically supported, but only when every gate is green: `ACTIVE` client + `launchApprovedAt` in `LIVE_PROSPECT` mode + one-click unsubscribe ready + suppression configured + templates & sequence `APPROVED` + enrolled contacts email-sendable + mailbox capacity + operator typed confirmation. | Green once secrets rotated |
 
 **Bottom line:**
-The A–Z product build is complete. The **one** remaining must-do before unrestricted operational handover is **rotating the exposed secrets** (see §9). Everything else on the road to A+ is polish, retention hygiene, and the first controlled real-client campaign proof.
+The A–Z product build is complete. Session-rotatable production secrets were rotated on 2026-04-22 (see the *Post-rotation update* block above, and [`ODOUTREACH_SECRET_ROTATION_2026-04-22.md`](./ODOUTREACH_SECRET_ROTATION_2026-04-22.md)). Remaining security items are one internal dual-key migration (`MAILBOX_OAUTH_SECRET`) and three approved deferred external-provider credentials pending OpensDoors authorisation/configuration. Everything else on the road to A+ is polish, retention hygiene, and the first controlled real-client campaign proof.
 
 ---
 
@@ -155,40 +191,42 @@ These are **design decisions**, not gaps:
 
 ---
 
-## 9. Remaining security exception — **the only A+ blocker**
+## 9. Remaining security items (post-rotation state)
 
-The **one** outstanding gap before unrestricted handover is **secret rotation**. All product and governance work is done; the credentials known to have been exposed pre-audit have not yet been rotated.
+As of 2026-04-22 the session-rotatable production secrets have been rotated and verified. The remaining items below are explicitly tracked and are **not** emergency rotations; they are either a planned internal migration or approved deferrals pending OpensDoors authorisation/configuration. See the *Post-rotation update* block at the top of this document for the live-session summary and [`ODOUTREACH_SECRET_ROTATION_2026-04-22.md`](./ODOUTREACH_SECRET_ROTATION_2026-04-22.md) for the operator log.
 
-### Secrets to rotate (minimum)
+### Completed this evening
 
-- `DATABASE_URL` / Postgres admin password
-- `AUTH_SECRET` (NextAuth signing secret)
-- `AUTH_MICROSOFT_ENTRA_ID_SECRET`
-- `MAILBOX_MICROSOFT_OAUTH_CLIENT_SECRET`
-- `MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET`
-- `MAILBOX_OAUTH_SECRET`
+- `AUTH_SECRET`
 - `PROCESS_QUEUE_SECRET`
-- `ROCKETREACH_API_KEY`
-- `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`
-- Any webhook / provider secrets present in app settings at rotation time
+- `AUTH_MICROSOFT_ENTRA_ID_SECRET` (old keyId deleted)
+- `MAILBOX_MICROSOFT_OAUTH_CLIENT_SECRET` (old keyId deleted)
+- `DATABASE_URL` / Postgres admin password
+- Explicit `STAFF_EMAIL_DOMAINS` and `GOVERNED_TEST_EMAIL_DOMAINS` set to `bidlow.co.uk,opensdoors.co.uk`
 
-### Why this is the handover blocker
+### Outstanding — 1 technical blocker (internal)
 
-- The platform is otherwise A-grade; the send governance, unsubscribe, suppression, tenancy, audit, inbound reading and Activity layers are complete.
-- Without rotation, a historical compromise could still be live, which is incompatible with handing the system to wider OpensDoors staff or pointing it at real prospects at volume.
-- Rotation is operational, not a code change — the app reads from Azure App Settings; there is no schema, no migration and no code in the way.
+- **`MAILBOX_OAUTH_SECRET` — technical blocker requiring dual-key migration.** Used (sha256'd) as the AES-256-GCM key for every stored mailbox OAuth refresh token in `src/server/mailbox/oauth-crypto.ts`. In-place rotation would disconnect every mailbox on every client. Must be replaced via a planned engineering change: (a) add a `MAILBOX_OAUTH_SECRET_NEXT` env var; (b) accept either key on decrypt, write only with `_NEXT`; (c) background re-encrypt pass over `StoredMailboxCredential`; (d) cut over and retire the old value. Only rotation path safe without breaking live mailbox connectivity.
 
-### Rotation sequence (operator checklist)
+### Outstanding — 3 approved deferred external-provider credential items
 
-1. Rotate the DB admin password first. Update `DATABASE_URL` app setting. Force a restart of `app-opensdoors-outreach-prod`.
-2. Rotate each OAuth/provider secret in its home console (Entra, Google Cloud, RocketReach). Update app settings. Restart.
-3. Rotate `AUTH_SECRET`, `MAILBOX_OAUTH_SECRET`, `PROCESS_QUEUE_SECRET`. Restart.
-4. Re-issue the Google service account JSON if Greg has access to the SA; update `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`.
-5. Verify `/api/health` returns `ok:true` with `database: ok` after each restart.
-6. Smoke-test one governed outreach flow (allowlist-internal, not real prospect) to confirm OAuth tokens refresh correctly.
-7. Tick §9 off in a follow-up handover note.
+> Pending OpensDoors authorisation/configuration. These are **not** blockers of the ODoutreach product build; OpensDoors has chosen to hold them until their own Workspace / vendor processes run.
 
-**Until §9 is done, security is B / exception. After §9 is done, security is A-.**
+1. **`MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET`** — deferred pending OpensDoors Google Workspace client account setup/authorisation.
+2. **`GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`** — deferred pending OpensDoors Google Workspace / Sheets configuration.
+3. **`ROCKETREACH_API_KEY`** — deferred pending OpensDoors authorisation (expected the following day).
+
+### Verification steps when each outstanding item lands
+
+1. Update the relevant Azure App Service setting (without echoing the value to terminal or committing it).
+2. Restart `app-opensdoors-outreach-prod`.
+3. `/api/health` must return `ok:true` with `database: ok` on both hostnames.
+4. For `MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET`: a governed mailbox reconnect test on an allowlist-internal mailbox must complete token refresh without error.
+5. For `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`: a suppression-sync dry run (operator-initiated, not automated) must succeed.
+6. For `ROCKETREACH_API_KEY`: no import should be run as part of the rotation proof; a tiny names-only configuration probe is enough.
+7. Record the rotation in a follow-up addendum to [`ODOUTREACH_SECRET_ROTATION_2026-04-22.md`](./ODOUTREACH_SECRET_ROTATION_2026-04-22.md).
+
+**Security state summary:** before rotation = **B / exception**; after this evening's session rotation = **A-** with the four tracked items above; after all four items are closed = **A+**.
 
 ---
 
@@ -215,7 +253,7 @@ Before the first real client campaign, in order:
 
 ## 11. Known limitations / future improvements
 
-- **§9 — secret rotation.** The final A+ blocker. Listed here again for completeness.
+- **§9 — remaining security items after the 2026-04-22 rotation.** One internal dual-key migration (`MAILBOX_OAUTH_SECRET`) plus three approved deferred external-provider credentials (Google OAuth client, Google service-account / Sheets, RocketReach API key) pending OpensDoors authorisation/configuration. Listed here for completeness.
 - **Reporting** can still improve — sequence-step funnels, cohort breakdown by launch approval mode, weekly summary email.
 - **Retention policy for stored inbound bodies.** `InboundMailboxMessage.bodyText` is currently unbounded in time. A written policy (e.g. purge after N days, or purge on client offboarding) is recommended before scale.
 - **RFC 8058 `mailto:` fallback** on `List-Unsubscribe` for Microsoft Graph sends (Graph sendMail JSON path does not carry `mailto:` cleanly; Gmail raw-MIME already supports it).
@@ -234,20 +272,25 @@ Before the first real client campaign, in order:
 |---|---|
 | Product / live-outreach capability | **A-** |
 | Controlled operational readiness | **A** |
-| Security posture before secret rotation | **B / exception** |
-| Security posture after secret rotation | **A-** |
-| Real-prospect readiness after secret rotation **and** §10 checklist | **A-** |
+| Security posture **before** 2026-04-22 rotation | **B / exception** |
+| Security posture **after** 2026-04-22 session rotation (this report's live state) | **A-** with approved deferred external-provider credentials |
+| Real-prospect readiness after rotation **and** §10 checklist | **A-** |
 
 **Honest take on A+:**
-A+ is achievable, but only after two things:
+A+ is achievable once the four items tracked in the updated §9 are closed:
 
-1. **§9 secret rotation is completed** (removes the B / exception).
-2. **A first controlled real-client campaign proof is run successfully** against a small, scoped audience with full Activity + unsubscribe + reply coverage.
+1. **`MAILBOX_OAUTH_SECRET` dual-key migration and rotation** (internal engineering task).
+2. **OpensDoors-authorised Google OAuth credential setup/rotation** (`MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET`).
+3. **OpensDoors-authorised Google service-account / Sheets credential setup/rotation** (`GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`).
+4. **OpensDoors-authorised RocketReach API key setup/rotation** (`ROCKETREACH_API_KEY`).
 
-The code, schema and governance are ready. The remaining path to A+ is operational, not engineering.
+…plus **a first controlled real-client campaign proof** against a small, scoped audience with full Activity + unsubscribe + reply coverage.
+
+The code, schema and governance are ready. The session-rotatable secrets are rotated. The remaining path to A+ is one internal migration, three OpensDoors-authorised external-provider credentials, and the first real-client proof.
 
 ---
 
 ## Changelog
 
 - **2026-04-22** — Initial final handover report. Supersedes the 2026-04-21 C+ audit after PRs #43–#52 closed every P0/P1 gap except §9 (secret rotation).
+- **2026-04-22 (post-rotation addendum)** — Added *Post-rotation update — 2026-04-22* section at the top; rewrote §9 from "the only A+ blocker" framing to the post-rotation state with one internal technical item and three approved deferred external-provider credentials pending OpensDoors authorisation/configuration; refreshed §1 bottom line, §11 and §12 accordingly. Prod SHA at the time of this addendum: `2a1e576` (merge of PR #54).
