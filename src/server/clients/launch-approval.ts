@@ -133,7 +133,16 @@ export async function loadClientLaunchApprovalSnapshot(
   });
 
   const brief = parseOpensDoorsBrief(client.onboarding?.formData);
-  const hasSenderSignature = !!brief.emailSignature?.trim();
+  // A mailbox-level signature (synced or manual) satisfies launch readiness
+  // just like the brief fallback — any connected mailbox with either a
+  // stored text or HTML signature is enough (PR — mailbox sender signatures).
+  const hasBriefSignature = !!brief.emailSignature?.trim();
+  const hasAnyMailboxSignature = client.mailboxIdentities.some(
+    (m) =>
+      (m.senderSignatureText && m.senderSignatureText.trim().length > 0) ||
+      (m.senderSignatureHtml && m.senderSignatureHtml.trim().length > 0),
+  );
+  const hasSenderSignature = hasBriefSignature || hasAnyMailboxSignature;
 
   const policyInput: LaunchApprovalPolicyInput = {
     clientStatus: client.status,

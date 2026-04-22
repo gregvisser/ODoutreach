@@ -362,6 +362,20 @@ model ClientMailboxIdentity {
   dailyWindowResetAt   DateTime?
   lastSyncAt           DateTime?
   lastError            String?                 @db.Text
+  /// Per-mailbox sender identity (PR — mailbox sender signatures, 2026-04-22).
+  /// Populated automatically from Gmail `users.settings.sendAs` when available;
+  /// otherwise set manually via the Mailboxes UI. Falls back to the client
+  /// brief signature at composition time when these are empty.
+  senderDisplayName    String?
+  /// Raw HTML signature as retrieved from Gmail `sendAs.signature` or pasted
+  /// manually. Never rendered without going through the signature helper.
+  senderSignatureHtml  String?                 @db.Text
+  /// Plain-text rendering used by the current text-body send path.
+  senderSignatureText  String?                 @db.Text
+  /// `gmail_send_as` | `manual` | `unsupported_provider` | null (missing).
+  senderSignatureSource String?
+  senderSignatureSyncedAt DateTime?
+  senderSignatureSyncError String?             @db.Text
   /// Opaque CSRF value for in-flight OAuth (Microsoft / Google mailbox connection)
   oauthState           String?                 @unique
   oauthStateExpiresAt  DateTime?

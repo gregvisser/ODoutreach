@@ -45,6 +45,10 @@ import {
   type ClientSenderProfile,
 } from "@/lib/opensdoors-brief";
 import { composeSequenceEmail } from "@/lib/email-sequences/sequence-email-composition";
+import {
+  chooseSignatureForSend,
+  type SenderSignatureMailbox,
+} from "@/lib/mailboxes/sender-signature";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
 import {
@@ -222,12 +226,38 @@ function buildSenderRow(
   client: { name: string; defaultSenderEmail: string | null },
   brief: ClientSenderProfile,
   unsubscribeLink: string,
+  /**
+   * Per-mailbox sender identity. When provided, the mailbox's configured
+   * signature/display name take priority over the brief fallback (PR —
+   * mailbox sender signatures, 2026-04-22).
+   */
+  mailbox?: SenderSignatureMailbox | null,
 ) {
+  let senderName = client.name;
+  let senderEmail: string | null = client.defaultSenderEmail;
+  let emailSignature: string = brief.emailSignature;
+
+  if (mailbox) {
+    const sel = chooseSignatureForSend({
+      mailbox,
+      clientBrief: {
+        senderDisplayNameFallback: client.name,
+        emailSignatureFallback:
+          brief.emailSignature && brief.emailSignature.length > 0
+            ? brief.emailSignature
+            : null,
+      },
+    });
+    senderName = sel.senderDisplayName ?? client.name;
+    senderEmail = mailbox.email;
+    emailSignature = sel.emailSignatureText ?? "";
+  }
+
   return {
-    senderName: client.name,
-    senderEmail: client.defaultSenderEmail,
+    senderName,
+    senderEmail,
     senderCompanyName: brief.senderCompanyName,
-    emailSignature: brief.emailSignature,
+    emailSignature,
     unsubscribeLink: unsubscribeLink.length > 0 ? unsubscribeLink : null,
   };
 }
@@ -814,6 +844,17 @@ export async function sendSequenceStepBatch(input: {
               client,
               brief,
               unsubscribeUrlForSend,
+              {
+                provider: m.provider,
+                email: m.email,
+                displayName: m.displayName,
+                senderDisplayName: m.senderDisplayName,
+                senderSignatureHtml: m.senderSignatureHtml,
+                senderSignatureText: m.senderSignatureText,
+                senderSignatureSource: m.senderSignatureSource,
+                senderSignatureSyncedAt: m.senderSignatureSyncedAt,
+                senderSignatureSyncError: m.senderSignatureSyncError,
+              },
             );
 
             // Compose at dispatch time — we re-render to ensure the
