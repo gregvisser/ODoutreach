@@ -108,6 +108,7 @@ export async function loadClientWorkspaceBundle(
     bodyPreview: m.bodyPreview,
     receivedAt: m.receivedAt.toISOString(),
     conversationId: m.conversationId,
+    hasFullBody: !!(m.bodyText && m.bodyText.trim().length > 0),
     mailbox: m.mailbox,
   }));
 

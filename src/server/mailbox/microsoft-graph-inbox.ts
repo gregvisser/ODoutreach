@@ -1,5 +1,6 @@
 import "server-only";
 
+import { normalizeMicrosoftMessageBody } from "@/lib/inbox/inbound-body-normalization";
 import { normalizeEmail } from "@/lib/normalize";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -79,6 +80,19 @@ export type MappedInboxRow = {
   receivedAt: Date;
   conversationId: string | null;
   metadata: Record<string, string | null | boolean>;
+  /**
+   * PR P — full-body cache fields extracted from Graph `message.body`.
+   * When Graph returns a usable body, we normalize it to safe plain
+   * text at ingest time so operators can read the whole reply without
+   * an extra fetch. `null` when Graph did not include a body payload.
+   */
+  fullBody: {
+    bodyText: string;
+    bodyContentType: "text" | "html" | "multipart";
+    fullBodySize: number;
+    fullBodySource: "MICROSOFT_GRAPH";
+    fullBodyFetchedAt: Date;
+  } | null;
 };
 
 /**
@@ -104,6 +118,20 @@ export function mapGraphInboxMessageToRow(
       : msg.body?.content
         ? clip(stripHtmlLight(msg.body.content), PREVIEW_MAX)
         : null;
+  const normalized = normalizeMicrosoftMessageBody(
+    msg.body ?? null,
+    msg.bodyPreview ?? null,
+  );
+  const fullBody: MappedInboxRow["fullBody"] =
+    normalized.contentType !== "empty" && normalized.text.trim().length > 0
+      ? {
+          bodyText: normalized.text,
+          bodyContentType: normalized.contentType,
+          fullBodySize: normalized.size,
+          fullBodySource: "MICROSOFT_GRAPH",
+          fullBodyFetchedAt: new Date(),
+        }
+      : null;
   return {
     providerMessageId: msg.id,
     fromEmail,
@@ -116,6 +144,7 @@ export function mapGraphInboxMessageToRow(
     metadata: {
       internetMessageId: msg.internetMessageId != null ? msg.internetMessageId : null,
     },
+    fullBody,
   };
 }
 

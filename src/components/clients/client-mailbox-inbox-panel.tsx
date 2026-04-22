@@ -24,6 +24,7 @@ type Row = {
   bodyPreview: string | null;
   receivedAt: string;
   conversationId: string | null;
+  hasFullBody?: boolean;
   mailbox: { id: string; email: string; displayName: string | null };
 };
 
@@ -176,6 +177,20 @@ export function ClientMailboxInboxPanel({
                     className="max-w-[min(20rem,40vw)] whitespace-normal break-words text-xs text-muted-foreground"
                     title={m.bodyPreview ?? undefined}
                   >
+                    <span
+                      className={
+                        m.hasFullBody
+                          ? "mr-1 inline-flex rounded border border-emerald-300 bg-emerald-50 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800"
+                          : "mr-1 inline-flex rounded border border-muted-foreground/30 bg-muted/30 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                      }
+                      title={
+                        m.hasFullBody
+                          ? "Full body has been fetched and cached for this message."
+                          : "Only a preview is cached. Open the message to fetch the full body."
+                      }
+                    >
+                      {m.hasFullBody ? "Full" : "Preview"}
+                    </span>
                     {m.bodyPreview
                       ? m.bodyPreview.length > 220
                         ? `${m.bodyPreview.slice(0, 220)}…`
