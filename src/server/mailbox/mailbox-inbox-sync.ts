@@ -122,6 +122,15 @@ export async function syncMicrosoftInboxForMailbox(input: {
         conversationId: row.conversationId,
         metadata: meta,
         ingestionSource: "MICROSOFT_GRAPH",
+        ...(row.fullBody
+          ? {
+              bodyText: row.fullBody.bodyText,
+              bodyContentType: row.fullBody.bodyContentType,
+              fullBodySize: row.fullBody.fullBodySize,
+              fullBodySource: row.fullBody.fullBodySource,
+              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+            }
+          : {}),
       },
       update: {
         toEmail: row.toEmail,
@@ -130,6 +139,15 @@ export async function syncMicrosoftInboxForMailbox(input: {
         receivedAt: row.receivedAt,
         conversationId: row.conversationId,
         metadata: meta,
+        ...(row.fullBody
+          ? {
+              bodyText: row.fullBody.bodyText,
+              bodyContentType: row.fullBody.bodyContentType,
+              fullBodySize: row.fullBody.fullBodySize,
+              fullBodySource: row.fullBody.fullBodySource,
+              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+            }
+          : {}),
       },
     });
     n += 1;

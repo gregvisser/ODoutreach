@@ -264,16 +264,16 @@ model StaffUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships              ClientMembership[]
-  auditLogs                AuditLog[]
-  outboundSends            OutboundEmail[]         @relation("OutboundInitiator")
-  mailboxIdentitiesCreated ClientMailboxIdentity[] @relation("MailboxIdentityCreatedBy")
-  contactListsCreated      ContactList[]           @relation("ContactListCreatedBy")
-  contactListMembersAdded  ContactListMember[]     @relation("ContactListMemberAddedBy")
-  emailTemplatesCreated    ClientEmailTemplate[]   @relation("ClientEmailTemplateCreatedBy")
-  emailTemplatesApproved   ClientEmailTemplate[]   @relation("ClientEmailTemplateApprovedBy")
-  emailSequencesCreated    ClientEmailSequence[]   @relation("ClientEmailSequenceCreatedBy")
-  emailSequencesApproved   ClientEmailSequence[]   @relation("ClientEmailSequenceApprovedBy")
+  memberships                ClientMembership[]
+  auditLogs                  AuditLog[]
+  outboundSends              OutboundEmail[]                 @relation("OutboundInitiator")
+  mailboxIdentitiesCreated   ClientMailboxIdentity[]         @relation("MailboxIdentityCreatedBy")
+  contactListsCreated        ContactList[]                   @relation("ContactListCreatedBy")
+  contactListMembersAdded    ContactListMember[]             @relation("ContactListMemberAddedBy")
+  emailTemplatesCreated      ClientEmailTemplate[]           @relation("ClientEmailTemplateCreatedBy")
+  emailTemplatesApproved     ClientEmailTemplate[]           @relation("ClientEmailTemplateApprovedBy")
+  emailSequencesCreated      ClientEmailSequence[]           @relation("ClientEmailSequenceCreatedBy")
+  emailSequencesApproved     ClientEmailSequence[]           @relation("ClientEmailSequenceApprovedBy")
   sequenceEnrollmentsCreated ClientEmailSequenceEnrollment[] @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated   ClientEmailSequenceStepSend[]   @relation("ClientEmailSequenceStepSendCreatedBy")
   clientsLaunchApproved      Client[]                        @relation("ClientLaunchApprovedBy")
@@ -284,28 +284,28 @@ model StaffUser {
 // ——— Tenant / workspace ———
 
 model Client {
-  id                   String                @id @default(cuid())
-  name                 String
-  slug                 String                @unique
-  status               ClientLifecycleStatus @default(ONBOARDING)
-  industry             String?
-  website              String?
-  notes                String?
+  id                          String                    @id @default(cuid())
+  name                        String
+  slug                        String                    @unique
+  status                      ClientLifecycleStatus     @default(ONBOARDING)
+  industry                    String?
+  website                     String?
+  notes                       String?
   /// Opaque token for inbound webhook URL — maps to this tenant only
-  inboundIngestToken   String                @unique @default(cuid())
+  inboundIngestToken          String                    @unique @default(cuid())
   /// Default From: for outbound (operational placeholder until per-mailbox config)
-  defaultSenderEmail   String?
+  defaultSenderEmail          String?
   /// Provider/domain verification is tracked outside this app until integrated — gates real sends when enforced
-  senderIdentityStatus SenderIdentityStatus  @default(NOT_SET)
+  senderIdentityStatus        SenderIdentityStatus      @default(NOT_SET)
   /// PR K — Recorded launch approval trail (null for legacy ACTIVE clients predating the workflow).
   launchApprovedAt            DateTime?
   launchApprovedByStaffUserId String?
   launchApprovalMode          ClientLaunchApprovalMode?
-  launchApprovalNotes         String?                    @db.Text
+  launchApprovalNotes         String?                   @db.Text
   /// Snapshot of the readiness checklist recorded at approval time — never rewritten after approval.
   launchApprovalChecklist     Json?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt                   DateTime                  @default(now())
+  updatedAt                   DateTime                  @updatedAt
 
   memberships             ClientMembership[]
   onboarding              ClientOnboarding?
@@ -332,7 +332,7 @@ model Client {
   sequenceEnrollments     ClientEmailSequenceEnrollment[]
   sequenceStepSends       ClientEmailSequenceStepSend[]
   unsubscribeTokens       UnsubscribeToken[]
-  launchApprovedBy        StaffUser?                     @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
+  launchApprovedBy        StaffUser?                      @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([launchApprovedByStaffUserId])
@@ -399,26 +399,45 @@ model MailboxIdentitySecret {
 
 /// Inbox rows ingested from Microsoft Graph (delegated Mail.Read) — not ESP webhooks.
 model InboundMailboxMessage {
-  id                String   @id @default(cuid())
-  clientId          String
-  mailboxIdentityId String
+  id                     String    @id @default(cuid())
+  clientId               String
+  mailboxIdentityId      String
   /// Microsoft Graph message id (id property)
-  providerMessageId String
-  fromEmail         String
-  toEmail           String?
-  subject           String?  @db.Text
+  providerMessageId      String
+  fromEmail              String
+  toEmail                String?
+  subject                String?   @db.Text
   /// Short preview; avoid storing full body in this slice
-  snippet           String?  @db.Text
-  bodyPreview       String?  @db.Text
-  receivedAt        DateTime
+  snippet                String?   @db.Text
+  bodyPreview            String?   @db.Text
+  receivedAt             DateTime
   /// Graph conversationId (threading)
-  conversationId    String?
+  conversationId         String?
   /// e.g. MICROSOFT_GRAPH — extensible
-  ingestionSource   String   @default("MICROSOFT_GRAPH")
+  ingestionSource        String    @default("MICROSOFT_GRAPH")
   /// Opaque: internetMessageId, odata, etc. (no raw MIME)
-  metadata          Json?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  metadata               Json?
+  /// PR P — full inbound body, safely normalized.
+  /// Always prefer rendering `bodyText` (plain text extracted from the
+  /// provider payload). Set by ingestion (Microsoft) or the on-demand
+  /// fetch action (Gmail / backfill). `NULL` when only a preview exists.
+  bodyText               String?   @db.Text
+  /// Raw provider content type for `bodyText`: "text", "html", or
+  /// "multipart". Used for operator debug, not for render decisions.
+  bodyContentType        String?
+  /// Byte length of the raw provider body we normalized (before
+  /// extraction). Lets us surface "Fetched X KB" without re-fetching.
+  fullBodySize           Int?
+  /// "MICROSOFT_GRAPH" | "GMAIL_API" — where we pulled the body from.
+  fullBodySource         String?
+  /// Timestamp of the last successful full-body fetch. `NULL` means we
+  /// still only have a snippet/preview for this message.
+  fullBodyFetchedAt      DateTime?
+  /// Storage version bump if we change normalization rules so
+  /// re-fetching can be forced. Starts at 1.
+  fullBodyStorageVersion Int       @default(1)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   client  Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   mailbox ClientMailboxIdentity @relation(fields: [mailboxIdentityId], references: [id], onDelete: Cascade)
@@ -511,15 +530,15 @@ model Contact {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
-  client          Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  importBatch     ContactImportBatch?    @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  rocketReach     RocketReachEnrichment?
-  outboundEmails  OutboundEmail[]
-  inboundReplies  InboundReply[]
-  listMemberships ContactListMember[]
+  client              Client                          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  importBatch         ContactImportBatch?             @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  rocketReach         RocketReachEnrichment?
+  outboundEmails      OutboundEmail[]
+  inboundReplies      InboundReply[]
+  listMemberships     ContactListMember[]
   sequenceEnrollments ClientEmailSequenceEnrollment[]
-  sequenceStepSends ClientEmailSequenceStepSend[]
-  unsubscribeTokens UnsubscribeToken[]
+  sequenceStepSends   ClientEmailSequenceStepSend[]
+  unsubscribeTokens   UnsubscribeToken[]
 
   @@unique([clientId, email])
   @@index([clientId])
@@ -542,12 +561,12 @@ model ContactList {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  client    Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  createdBy StaffUser?            @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  members   ContactListMember[]
-  sequences ClientEmailSequence[]
+  client              Client?                         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy           StaffUser?                      @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  members             ContactListMember[]
+  sequences           ClientEmailSequence[]
   sequenceEnrollments ClientEmailSequenceEnrollment[]
-  sequenceStepSends ClientEmailSequenceStepSend[]
+  sequenceStepSends   ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([name])
@@ -671,10 +690,10 @@ model SuppressedDomain {
 /// flows (e.g. Customer Account identity confirmation) can reuse the
 /// same table with a different purpose without schema changes.
 model UnsubscribeToken {
-  id              String @id @default(cuid())
+  id              String    @id @default(cuid())
   /// SHA-256 (hex) of the raw token. Unique so each raw token resolves
   /// to exactly one row.
-  tokenHash       String @unique
+  tokenHash       String    @unique
   clientId        String
   contactId       String?
   outboundEmailId String?
@@ -746,10 +765,10 @@ model ClientEmailTemplate {
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
 
-  client       Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy    StaffUser? @relation("ClientEmailTemplateCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  approvedBy   StaffUser? @relation("ClientEmailTemplateApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
-  sequenceSteps ClientEmailSequenceStep[]
+  client            Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy         StaffUser?                    @relation("ClientEmailTemplateCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy        StaffUser?                    @relation("ClientEmailTemplateApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  sequenceSteps     ClientEmailSequenceStep[]
   sequenceStepSends ClientEmailSequenceStepSend[]
 
   @@index([clientId])
@@ -783,13 +802,13 @@ model ClientEmailSequence {
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
-  client       Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  contactList  ContactList               @relation(fields: [contactListId], references: [id], onDelete: Restrict)
-  createdBy    StaffUser?                @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  approvedBy   StaffUser?                @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
-  steps        ClientEmailSequenceStep[]
-  enrollments  ClientEmailSequenceEnrollment[]
-  stepSends    ClientEmailSequenceStepSend[]
+  client      Client                          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contactList ContactList                     @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy   StaffUser?                      @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy  StaffUser?                      @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  steps       ClientEmailSequenceStep[]
+  enrollments ClientEmailSequenceEnrollment[]
+  stepSends   ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -813,8 +832,8 @@ model ClientEmailSequenceStep {
   createdAt  DateTime                    @default(now())
   updatedAt  DateTime                    @updatedAt
 
-  sequence ClientEmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
-  template ClientEmailTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  sequence  ClientEmailSequence           @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  template  ClientEmailTemplate           @relation(fields: [templateId], references: [id], onDelete: Restrict)
   stepSends ClientEmailSequenceStepSend[]
 
   @@unique([sequenceId, position])
@@ -841,28 +860,28 @@ model ClientEmailSequenceStep {
 ///   * `(sequenceId, contactId)` is unique so re-running enrollment
 ///     is idempotent and cannot duplicate a recipient
 model ClientEmailSequenceEnrollment {
-  id                   String                                @id @default(cuid())
+  id                   String                              @id @default(cuid())
   clientId             String
   sequenceId           String
   contactId            String
   contactListId        String
-  status               ClientEmailSequenceEnrollmentStatus  @default(PENDING)
+  status               ClientEmailSequenceEnrollmentStatus @default(PENDING)
   /// Free-form operator note when status === EXCLUDED (e.g. "suppressed at enroll time").
   exclusionReason      String?
   /// 0 means not started; step-send wiring in PR D4e advances this.
-  currentStepPosition  Int                                   @default(0)
-  enrolledAt           DateTime                              @default(now())
+  currentStepPosition  Int                                 @default(0)
+  enrolledAt           DateTime                            @default(now())
   pausedAt             DateTime?
   completedAt          DateTime?
   createdByStaffUserId String?
-  createdAt            DateTime                              @default(now())
-  updatedAt            DateTime                              @updatedAt
+  createdAt            DateTime                            @default(now())
+  updatedAt            DateTime                            @updatedAt
 
-  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  sequence    ClientEmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
-  contact     Contact             @relation(fields: [contactId], references: [id], onDelete: Restrict)
-  contactList ContactList         @relation(fields: [contactListId], references: [id], onDelete: Restrict)
-  createdBy   StaffUser?          @relation("ClientEmailSequenceEnrollmentCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  client      Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sequence    ClientEmailSequence           @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contact     Contact                       @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  contactList ContactList                   @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy   StaffUser?                    @relation("ClientEmailSequenceEnrollmentCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   stepSends   ClientEmailSequenceStepSend[]
 
   @@unique([sequenceId, contactId])
@@ -1010,14 +1029,14 @@ model OutboundEmail {
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
-  client          Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  campaign        Campaign?               @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contact         Contact?                @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  staffUser       StaffUser?              @relation("OutboundInitiator", fields: [staffUserId], references: [id], onDelete: SetNull)
-  mailbox         ClientMailboxIdentity?  @relation(fields: [mailboxIdentityId], references: [id], onDelete: SetNull)
-  sendReservation MailboxSendReservation?
-  inboundReplies  InboundReply[]          @relation("ReplyToOutbound")
-  providerEvents  OutboundProviderEvent[]
+  client            Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaign          Campaign?                     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contact           Contact?                      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  staffUser         StaffUser?                    @relation("OutboundInitiator", fields: [staffUserId], references: [id], onDelete: SetNull)
+  mailbox           ClientMailboxIdentity?        @relation(fields: [mailboxIdentityId], references: [id], onDelete: SetNull)
+  sendReservation   MailboxSendReservation?
+  inboundReplies    InboundReply[]                @relation("ReplyToOutbound")
+  providerEvents    OutboundProviderEvent[]
   sequenceStepSends ClientEmailSequenceStepSend[]
   unsubscribeTokens UnsubscribeToken[]
 

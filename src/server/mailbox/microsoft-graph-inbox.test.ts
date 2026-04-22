@@ -49,4 +49,30 @@ describe("mapGraphInboxMessageToRow", () => {
     });
     expect(a?.providerMessageId).toBe(b?.providerMessageId);
   });
+
+  it("extracts safe full body when Graph returns HTML body", () => {
+    const r = mapGraphInboxMessageToRow({
+      id: "m-html",
+      from: { emailAddress: { address: "a@b.co" } },
+      body: { content: "<p>Hello <script>bad()</script>World</p>", contentType: "html" },
+      bodyPreview: "Hello World",
+    });
+    expect(r).not.toBeNull();
+    expect(r!.fullBody).not.toBeNull();
+    expect(r!.fullBody!.bodyContentType).toBe("html");
+    expect(r!.fullBody!.fullBodySource).toBe("MICROSOFT_GRAPH");
+    expect(r!.fullBody!.bodyText).toContain("Hello");
+    expect(r!.fullBody!.bodyText).toContain("World");
+    expect(r!.fullBody!.bodyText).not.toContain("bad");
+    expect(r!.fullBody!.bodyText).not.toContain("<");
+  });
+
+  it("leaves fullBody null when Graph returned no body payload", () => {
+    const r = mapGraphInboxMessageToRow({
+      id: "m-none",
+      from: { emailAddress: { address: "a@b.co" } },
+    });
+    expect(r).not.toBeNull();
+    expect(r!.fullBody).toBeNull();
+  });
 });

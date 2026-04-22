@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { InboundMessageFullBody } from "@/components/activity/inbound-message-full-body";
 import { InboundMessageReplyForm } from "@/components/activity/inbound-message-reply-form";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -58,15 +59,6 @@ export default async function InboundMessageDetailPage({ params }: Props) {
     canSendReason = `Replies are only supported on Microsoft 365 and Google Workspace mailboxes (this mailbox is ${mailbox.provider}).`;
   }
 
-  // Honest body display: we only store snippet / clipped preview today.
-  const displayBody =
-    (message.bodyPreview && message.bodyPreview.trim().length > 0
-      ? message.bodyPreview
-      : null) ??
-    (message.snippet && message.snippet.trim().length > 0
-      ? message.snippet
-      : null);
-
   return (
     <div className="space-y-8">
       <div>
@@ -109,8 +101,8 @@ export default async function InboundMessageDetailPage({ params }: Props) {
             </Badge>
           </div>
           <CardDescription>
-            Conversation snapshot stored by the inbox sync. We store a
-            snippet/preview only — not the full original body.
+            Conversation snapshot stored by the inbox sync. Full bodies
+            are fetched on demand and cached here for this workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -144,25 +136,23 @@ export default async function InboundMessageDetailPage({ params }: Props) {
             ) : null}
           </dl>
 
-          <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Preview
-            </p>
-            {displayBody ? (
-              <pre className="mt-1 max-h-96 overflow-y-auto whitespace-pre-wrap break-words font-sans text-sm text-foreground">
-                {displayBody}
-              </pre>
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground italic">
-                No preview available for this message.
-              </p>
-            )}
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              ODoutreach only stores a short preview of incoming mail — full
-              bodies stay in the source mailbox ({mailbox.email}). Open the
-              message there to read the full thread.
-            </p>
-          </div>
+          <InboundMessageFullBody
+            clientId={clientId}
+            inboundMessageId={message.id}
+            bodyText={message.bodyText ?? null}
+            bodyContentType={message.bodyContentType ?? null}
+            fullBodySize={message.fullBodySize ?? null}
+            fullBodySource={message.fullBodySource ?? null}
+            fullBodyFetchedAt={
+              message.fullBodyFetchedAt
+                ? new Date(message.fullBodyFetchedAt).toISOString()
+                : null
+            }
+            bodyPreview={message.bodyPreview ?? null}
+            snippet={message.snippet ?? null}
+            mailboxEmail={mailbox.email}
+            provider={mailbox.provider}
+          />
 
           {linkedReply ? (
             <p className="rounded-md border border-border/70 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
