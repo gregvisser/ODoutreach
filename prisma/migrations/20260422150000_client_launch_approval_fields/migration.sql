@@ -1,4 +1,4 @@
-﻿-- PR K — Client launch approval workflow (additive only).
+-- PR K — Client launch approval workflow (additive only).
 --
 -- Adds explicit approval metadata to the Client model so an authorised
 -- operator can record a launch approval trail (who/when/mode/checklist/notes).
