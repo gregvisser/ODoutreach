@@ -52,7 +52,7 @@ export function AppSidebar({ className }: { className?: string }) {
         })}
       </nav>
       <div className="border-t border-sidebar-border p-4 text-xs text-muted-foreground">
-        Tenant-scoped data · Staff only
+        Internal workspace — staff access only
       </div>
     </aside>
   );

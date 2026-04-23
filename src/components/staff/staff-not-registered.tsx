@@ -17,17 +17,18 @@ export function StaffNotRegistered({ email }: { email?: string | null }) {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
       <Card className="max-w-md border-border/80 shadow-lg">
         <CardHeader>
-          <CardTitle>Not registered as staff</CardTitle>
+          <CardTitle>You&apos;re not on the access list yet</CardTitle>
           <CardDescription>
-            Your Microsoft account signed in, but this app only allows users who exist in the
-            staff directory. An administrator must create a{" "}
-            <code className="rounded bg-muted px-1 text-xs">StaffUser</code> row for your work
-            email (or run seed with your email / Entra object id) before you can use the console.
+            Your Microsoft sign-in worked, but this account hasn&apos;t been
+            added to OpensDoors Outreach. Ask an administrator to invite your
+            work email from Settings → Staff access, then try again.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {email ? (
-            <p className="font-mono text-sm text-muted-foreground">{email}</p>
+            <p className="text-sm text-muted-foreground">
+              Signed in as <span className="font-medium text-foreground">{email}</span>
+            </p>
           ) : null}
           <Button
             variant="outline"

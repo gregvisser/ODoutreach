@@ -131,21 +131,21 @@ function providerConnectionHint(
   oauthOk: boolean,
 ): string {
   if (!oauthOk) {
-    return "Server OAuth for this provider is not configured — set mailbox OAuth env vars.";
+    return "This provider isn't connected yet. Ask an administrator to finish setup in Settings.";
   }
   switch (row.connectionStatus) {
     case "DRAFT":
-      return "Not yet authorized — use Connect to start OAuth.";
+      return "Not connected yet — use Connect to sign in with Microsoft or Google.";
     case "PENDING_CONNECTION":
-      return "Complete sign-in in the Microsoft or Google window, or run Connect again.";
+      return "Finish sign-in in the provider window, or press Connect again.";
     case "CONNECTED":
       return row.connectedAt
-        ? `Authorized — linked ${format(new Date(row.connectedAt), "MMM d, yyyy HH:mm")} UTC`
-        : "Authorized with provider.";
+        ? `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`
+        : "Connected.";
     case "CONNECTION_ERROR":
-      return "Authorization failed — see Last error, fix, then Reconnect.";
+      return "Sign-in didn't complete. Check the last error below and reconnect.";
     case "DISCONNECTED":
-      return "Tokens cleared — use Connect to authorize again.";
+      return "Disconnected — use Connect to sign in again.";
     default:
       return "";
   }
@@ -161,22 +161,22 @@ export type MailboxLedgerReadiness = {
 };
 
 function ineligibleCodeToMessage(code: string | null): string {
-  if (!code) return "Not eligible to send";
+  if (!code) return "Not ready to send";
   switch (code) {
     case "inactive_mailbox":
-      return "Inactive mailbox";
+      return "Mailbox is paused";
     case "mailbox_not_connected":
       return "Not connected";
     case "sending_not_allowed_for_mailbox":
-      return "Sending not allowed (capability off)";
+      return "Sending turned off for this mailbox";
     case "sending_disabled":
-      return "Operator disabled sending";
+      return "Sending paused by an operator";
     case "daily_send_cap_reached_stale_counter":
-      return "Stored counter may be at cap";
+      return "Daily limit may be reached";
     case "daily_ledger_cap_reached":
-      return "Daily cap reached (ledger, UTC day)";
+      return "Daily limit reached for today";
     default:
-      return "Not eligible to send";
+      return "Not ready to send";
   }
 }
 
@@ -187,7 +187,7 @@ function eligibilityLabel(
 ) {
   if (ledger) {
     if (ledger.eligible) {
-      return "Eligible for governed sends (UTC day ledger)";
+      return "Ready to send today";
     }
     return ineligibleCodeToMessage(ledger.ineligibleCode);
   }
@@ -205,9 +205,7 @@ function eligibilityLabel(
     },
     now,
   );
-  return eligible
-    ? "Ready to send (when pipeline is enabled — no mailboxes: legacy path)"
-    : "Not eligible to send";
+  return eligible ? "Ready to send today" : "Not ready to send";
 }
 
 export function ClientMailboxIdentitiesPanel({
@@ -328,8 +326,11 @@ export function ClientMailboxIdentitiesPanel({
           <span className="font-medium text-foreground">
             {activeCount}/{MAX_ACTIVE_MAILBOXES_PER_CLIENT}
           </span>
-          . Default send cap {DEFAULT_MAILBOX_DAILY_SEND_CAP}/day per mailbox (product rule). Governed
-          sends use a UTC-day reservation ledger; counter column is reconciled on send outcomes.
+          . Each mailbox sends up to{" "}
+          <span className="font-medium text-foreground">
+            {DEFAULT_MAILBOX_DAILY_SEND_CAP}/day
+          </span>
+          . Daily totals reset each day and reconcile with real send outcomes.
         </p>
         {canMutate ? (
           <Sheet open={addOpen} onOpenChange={setAddOpen}>
@@ -341,9 +342,9 @@ export function ClientMailboxIdentitiesPanel({
             <SheetContent side="right" className="w-full max-w-md sm:max-w-lg">
               <MailboxForm
                 variant="create"
-                title="Add mailbox identity"
-                description="Creates a draft identity — then use Connect to authorize with the selected provider."
-                submitLabel="Create"
+                title="Add a mailbox"
+                description="Enter the sender address and provider. After saving, press Connect to sign in with Microsoft or Google."
+                submitLabel="Save"
                 clientId={clientId}
                 disabled={pending}
                 onSubmitCreate={(payload) => {
@@ -366,8 +367,8 @@ export function ClientMailboxIdentitiesPanel({
               <TableHead>Mailbox</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Connection</TableHead>
-              <TableHead>Send readiness</TableHead>
-              <TableHead className="text-right">Cap / booked (UTC day)</TableHead>
+              <TableHead>Sending</TableHead>
+              <TableHead className="text-right">Sent today / cap</TableHead>
               <TableHead className="min-w-[220px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -375,8 +376,8 @@ export function ClientMailboxIdentitiesPanel({
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
-                  No mailbox identities yet. Add active mailboxes as needed (up to five per client for
-                  maximum recommended daily capacity).
+                  No mailboxes connected yet. Add up to five sending mailboxes
+                  — one per sender, using Microsoft 365 or Google Workspace.
                 </TableCell>
               </TableRow>
             ) : (
@@ -447,18 +448,18 @@ export function ClientMailboxIdentitiesPanel({
                         <>
                           <div>
                             {ledger.bookedInUtcDay} / {ledger.cap}{" "}
-                            <span className="text-muted-foreground">booked (UTC day)</span>
+                            <span className="text-muted-foreground">today</span>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {ledger.remaining} remaining today (UTC)
+                            {ledger.remaining} remaining
                           </div>
                         </>
                       ) : (
                         <>
-                          {row.dailySendCap} / {row.emailsSentToday}
+                          {row.emailsSentToday} / {row.dailySendCap}
                           {row.dailyWindowResetAt ? (
                             <div className="text-xs text-muted-foreground">
-                              Resets UTC {format(new Date(row.dailyWindowResetAt), "MMM d HH:mm")}
+                              Resets {format(new Date(row.dailyWindowResetAt), "d MMM, HH:mm")}
                             </div>
                           ) : null}
                         </>
@@ -526,15 +527,12 @@ export function ClientMailboxIdentitiesPanel({
           <div>
             <h3 className="text-sm font-semibold">Sender identity</h3>
             <p className="text-xs text-muted-foreground">
-              Each mailbox can carry its own sender name and email signature.
-              Gmail mailboxes can sync the signature directly from{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
-                users.settings.sendAs
-              </code>
-              . Outlook/Microsoft mailboxes don&rsquo;t expose a reliable
-              signature API; add a manual signature instead. When the mailbox
-              has no signature of its own, sends fall back to the client
-              brief&rsquo;s signature.
+              Each mailbox can have its own sender name and email signature.
+              Google Workspace mailboxes can pull the signature straight from
+              Gmail. Microsoft 365 mailboxes don&rsquo;t expose a signature
+              over the API — add one manually instead. If a mailbox has no
+              signature of its own, sends fall back to the one on the client
+              brief.
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">

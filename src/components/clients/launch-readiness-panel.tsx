@@ -71,7 +71,7 @@ export function LaunchReadinessPanel({
 
       <details className="rounded-lg border border-border/80 bg-muted/20">
         <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-foreground select-none marker:hidden [&::-webkit-details-marker]:hidden">
-          View technical checks
+          Show detailed checklist
         </summary>
         <div className="border-t border-border/80 px-3 py-3">{technicalChecks}</div>
       </details>

@@ -12,6 +12,7 @@ import {
   ClientPerformanceChart,
   VolumeTrendChart,
 } from "@/components/dashboard/dashboard-charts";
+import { outboundStatusLabel } from "@/lib/ui/status-labels";
 import { requireStaffUser } from "@/server/auth/staff";
 import { getDashboardSummaryForStaff } from "@/server/queries/dashboard";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -52,29 +53,29 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-1 text-muted-foreground">
-          Metrics and activity limited to workspaces you can access. Operations only — not
-          a sales pipeline.
+          A read-only overview of sending and replies across the clients you
+          can access.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Emails sent (14d)"
+          label="Emails sent (14 days)"
           value={summary.sentTotal.toLocaleString()}
-          hint="Outbound sends tracked"
+          hint="Outbound messages delivered"
         />
         <StatCard
-          label="Replies (14d)"
+          label="Replies (14 days)"
           value={summary.replyTotal.toLocaleString()}
-          hint="Inbound replies logged"
+          hint="Replies received"
         />
         <StatCard
-          label="Reply rate (approx)"
+          label="Reply rate"
           value={`${summary.replyRate}%`}
-          hint="Replies ÷ sends (window)"
+          hint="Replies ÷ sends"
         />
         <StatCard
-          label="Active clients (in scope)"
+          label="Active clients"
           value={summary.clientCount.toLocaleString()}
           hint={`${summary.campaignsActive} active campaigns`}
         />
@@ -83,15 +84,14 @@ export default async function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="border-border/80 shadow-sm lg:col-span-3">
           <CardHeader>
-            <CardTitle>Send & reply trend</CardTitle>
-            <CardDescription>
-              Daily totals for accessible workspaces only.
-            </CardDescription>
+            <CardTitle>Sends and replies</CardTitle>
+            <CardDescription>Daily totals across your clients.</CardDescription>
           </CardHeader>
           <CardContent>
             {trendData.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No reporting snapshots yet — run seed or nightly rollups.
+                No send activity in the last 14 days. Once outreach starts going
+                out, daily totals will appear here.
               </p>
             ) : (
               <VolumeTrendChart data={trendData} />
@@ -101,11 +101,14 @@ export default async function DashboardPage() {
         <Card className="border-border/80 shadow-sm lg:col-span-2">
           <CardHeader>
             <CardTitle>By client</CardTitle>
-            <CardDescription>Sent volume (14d)</CardDescription>
+            <CardDescription>Sends per client over the last 14 days.</CardDescription>
           </CardHeader>
           <CardContent>
             {clientBars.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No data yet.</p>
+              <p className="text-sm text-muted-foreground">
+                Nothing to compare yet — send activity will appear here once
+                campaigns are running.
+              </p>
             ) : (
               <ClientPerformanceChart data={clientBars} />
             )}
@@ -117,7 +120,7 @@ export default async function DashboardPage() {
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
             <CardTitle>Recent sends</CardTitle>
-            <CardDescription>Latest outbound activity (scoped)</CardDescription>
+            <CardDescription>The most recent outbound messages.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {summary.recentOutbound.length === 0 ? (
@@ -139,8 +142,8 @@ export default async function DashboardPage() {
                       {row.client.name}
                       {row.subject ? ` · ${row.subject}` : ""}
                     </p>
-                    <p className="mt-0.5 text-[10px] uppercase text-muted-foreground">
-                      {row.status.replace(/_/g, " ")}
+                    <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {outboundStatusLabel(row.status)}
                     </p>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">
@@ -156,7 +159,7 @@ export default async function DashboardPage() {
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
             <CardTitle>Recent replies</CardTitle>
-            <CardDescription>Inbound reply log</CardDescription>
+            <CardDescription>The most recent replies from prospects.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {summary.recentReplies.length === 0 ? (
@@ -214,7 +217,8 @@ function StatCard({
 function EmptyRow() {
   return (
     <p className="text-sm text-muted-foreground">
-      No rows yet — seed the database or connect sending/reply webhooks.
+      Nothing to show yet. Activity from your clients will appear here once
+      campaigns start sending and replies come in.
     </p>
   );
 }

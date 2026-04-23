@@ -17,13 +17,13 @@ function headlineBadge(h: SenderReadinessReport["headline"]) {
     case "ready":
       return <Badge className="bg-emerald-600/15 text-emerald-800 dark:text-emerald-200">Ready</Badge>;
     case "mock_dev":
-      return <Badge variant="secondary">Mock / dev</Badge>;
+      return <Badge variant="secondary">Test mode</Badge>;
     case "needs_verification":
       return <Badge variant="outline" className="border-amber-500/50 text-amber-800 dark:text-amber-200">
-        Needs verification
+        Needs attention
       </Badge>;
     case "not_configured":
-      return <Badge variant="outline">Not configured</Badge>;
+      return <Badge variant="outline">Missing</Badge>;
     case "blocked_by_domain_policy":
       return <Badge variant="destructive">Blocked</Badge>;
   }
@@ -46,22 +46,25 @@ export function SenderReadinessPanel({
   report: SenderReadinessReport;
   compact?: boolean;
 }) {
+  const providerLabel =
+    report.providerMode === "resend"
+      ? "Resend"
+      : report.providerMode === "mock"
+        ? "Test mode (no real sending)"
+        : report.providerMode;
+
   return (
     <div className={cn("space-y-3 text-sm", compact && "text-xs")}>
       <div className="flex flex-wrap items-center gap-2">
         {headlineBadge(report.headline)}
         <span className="text-muted-foreground">
-          Provider: <span className="font-mono text-foreground">{report.providerMode}</span>
-        </span>
-        <span className="text-muted-foreground">
-          DB status:{" "}
-          <span className="font-mono text-foreground">{report.identityStatus}</span>
+          Delivery: <span className="text-foreground">{providerLabel}</span>
         </span>
       </div>
       <p className="text-foreground">{report.summary}</p>
       <p>
-        <span className="text-muted-foreground">Effective From (preview): </span>
-        <span className="font-mono">{report.effectiveFrom}</span>
+        <span className="text-muted-foreground">Sends as: </span>
+        <span className="font-medium">{report.effectiveFrom}</span>
       </p>
       <ul className="space-y-2 border-t border-border pt-3">
         {report.checks.map((c) => (
@@ -77,16 +80,27 @@ export function SenderReadinessPanel({
         ))}
       </ul>
       {!compact ? (
-        <p className="text-xs text-muted-foreground border-t border-border pt-3">
-          <strong className="text-foreground">Configured</strong> = workspace has a default From address.{" "}
-          <strong className="text-foreground">Verified (app)</strong> = operators marked VERIFIED_READY after
-          Resend checks. <strong className="text-foreground">Verified (ESP)</strong> = domain/DKIM in the
-          Resend dashboard — still required independently. See{" "}
-          <Link className="underline" href="/operations/outbound">
-            Operations
-          </Link>{" "}
-          to mark readiness.
-        </p>
+        <details className="border-t border-border pt-3 text-xs text-muted-foreground">
+          <summary className="cursor-pointer font-medium text-foreground">
+            About sender readiness
+          </summary>
+          <div className="mt-2 space-y-1.5 leading-relaxed">
+            <p>
+              A sender is <strong className="text-foreground">ready</strong>{" "}
+              when the workspace has a default From address, an operator has
+              marked it verified inside OpensDoors, and the sending domain is
+              verified with the email provider (DKIM, etc.).
+            </p>
+            <p>
+              Operators can update readiness from the{" "}
+              <Link className="underline" href="/operations/outbound">
+                operations area
+              </Link>
+              . Sending-domain verification happens in the email provider&apos;s
+              dashboard.
+            </p>
+          </div>
+        </details>
       ) : null}
     </div>
   );

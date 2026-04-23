@@ -46,8 +46,8 @@ export default async function ClientActivityPage({ params }: Props) {
           {bundle.client.name}
         </h1>
         <p className="mt-1 text-muted-foreground">
-          Recent sends, replies, imports, lists, templates, sequences, and
-          system events for this client.
+          Recent sends, replies, imports, and updates for this client — read
+          only.
         </p>
       </div>
 
@@ -55,8 +55,7 @@ export default async function ClientActivityPage({ params }: Props) {
         <CardHeader>
           <CardTitle>Activity timeline</CardTitle>
           <CardDescription>
-            Unified view of operator and system events across this workspace.
-            Read-only — no actions are taken from this page.
+            Everything that happened in this workspace, newest first.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -66,10 +65,10 @@ export default async function ClientActivityPage({ params }: Props) {
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Recent governed sends (details)</CardTitle>
+          <CardTitle>Recent test and pilot sends</CardTitle>
           <CardDescription>
-            Governed test and controlled pilot rows with UTC-day reservation
-            detail. Use the timeline above for a chronological view.
+            The internal proof emails and pilot runs sent for this client, with
+            delivery detail.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -82,9 +81,9 @@ export default async function ClientActivityPage({ params }: Props) {
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Mailbox inbox (preview)</CardTitle>
+          <CardTitle>Inbox preview</CardTitle>
           <CardDescription>
-            Recent messages from connected Microsoft 365 or Google Workspace
+            Recent messages from connected Microsoft 365 and Google Workspace
             mailboxes.
           </CardDescription>
         </CardHeader>

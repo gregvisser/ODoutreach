@@ -16,15 +16,18 @@ export function StaffEmailBlocked({ email }: { email: string }) {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
       <Card className="max-w-md border-border/80 shadow-lg">
         <CardHeader>
-          <CardTitle>Access restricted</CardTitle>
+          <CardTitle>Email domain not allowed</CardTitle>
           <CardDescription>
-            Your account is signed in and you are registered as staff, but this email domain is not
-            allowed by <code className="rounded bg-muted px-1 text-xs">STAFF_EMAIL_DOMAINS</code>.
-            Ask an administrator to add your domain or update your staff email in the directory.
+            Your Microsoft sign-in worked, but OpensDoors Outreach is restricted
+            to a specific list of email domains. Ask an administrator to add
+            your domain to the allowlist, or sign in with an approved work
+            email.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="font-mono text-sm text-muted-foreground">{email}</p>
+          <p className="text-sm text-muted-foreground">
+            Signed in as <span className="font-medium text-foreground">{email}</span>
+          </p>
           <Button
             variant="outline"
             type="button"

@@ -74,16 +74,16 @@ export function describeSenderReadiness(input: {
 
   checks.push({
     id: "default_sender",
-    label: "Workspace default From address",
+    label: "Default From address",
     state: input.defaultSenderEmail?.trim() ? "pass" : "warn",
     detail: input.defaultSenderEmail?.trim()
-      ? "Set on this client"
-      : "Not set — using DEFAULT_OUTBOUND_FROM or platform fallback",
+      ? "A client-specific From address is set."
+      : "No client-specific From address — a platform fallback is being used.",
   });
 
   checks.push({
     id: "allowlist",
-    label: "Domain allowlist (ALLOWED_SENDER_EMAIL_DOMAINS)",
+    label: "Sender domain allowlist",
     state: process.env.ALLOWED_SENDER_EMAIL_DOMAINS?.trim()
       ? blockedDomain
         ? "fail"
@@ -91,14 +91,14 @@ export function describeSenderReadiness(input: {
       : "na",
     detail: process.env.ALLOWED_SENDER_EMAIL_DOMAINS?.trim()
       ? blockedDomain
-        ? `Domain "${blockedDomain}" is not in the allowlist — sends will throw at execution.`
-        : "Sender domain is allowed."
-      : "Not enforced — any resolved From domain is accepted by the app.",
+        ? `The sender domain "${blockedDomain}" isn't on the workspace allowlist — sends will be blocked until it's added.`
+        : "The sender domain is allowed."
+      : "No allowlist is enforced — any resolved sender domain is accepted.",
   });
 
   checks.push({
     id: "identity_enum",
-    label: "Recorded identity status (manual in app)",
+    label: "Sender marked verified in OpensDoors",
     state:
       input.senderIdentityStatus === "VERIFIED_READY"
         ? "pass"
@@ -107,16 +107,16 @@ export function describeSenderReadiness(input: {
           : "warn",
     detail:
       input.senderIdentityStatus === "NOT_SET"
-        ? "NOT_SET — configure default sender and mark verified when Resend is ready."
+        ? "Not yet marked ready. An operator confirms the sender is verified after setting it up in the email provider."
         : input.senderIdentityStatus === "CONFIGURED_UNVERIFIED"
-          ? "Address configured; operators must mark VERIFIED_READY after Resend domain/sender checks."
-          : "VERIFIED_READY — aligned with operational checklist for real ESP.",
+          ? "The sender address is set but hasn't been confirmed yet. An operator marks it ready once the provider shows verified."
+          : "An operator has confirmed this sender is ready to use for live outreach.",
   });
 
   if (providerMode === "resend") {
     checks.push({
       id: "resend_verification",
-      label: "Resend production readiness",
+      label: "Email provider verification",
       state:
         blockedDomain
           ? "fail"
@@ -124,26 +124,26 @@ export function describeSenderReadiness(input: {
             ? "pass"
             : "warn",
       detail: blockedDomain
-        ? "Fix domain allowlist before any live send."
+        ? "Fix the sender domain allowlist before any live send."
         : input.senderIdentityStatus === "VERIFIED_READY"
-          ? "Identity marked ready — still verify domain/DKIM in Resend dashboard independently."
-          : "Resend may reject or throttle until domain/sender is verified in Resend; mark VERIFIED_READY in Operations after verification.",
+          ? "Marked ready in OpensDoors. Make sure DKIM and the sending domain also show verified in the email provider's dashboard."
+          : "The email provider may reject or throttle sends until the sender domain is verified on their side.",
     });
   } else {
     checks.push({
       id: "resend_verification",
-      label: "Resend production readiness",
+      label: "Email provider verification",
       state: "na",
-      detail: "EMAIL_PROVIDER is mock — no real ESP; use for local/staging functional tests only.",
+      detail: "This workspace is in test mode — nothing is actually sent.",
     });
   }
 
   if (usedFallback) {
     checks.push({
       id: "fallback",
-      label: "Fallback From address",
+      label: "Using fallback From address",
       state: "warn",
-      detail: `Effective From resolves to ${from} — set Client.defaultSenderEmail for a client-specific envelope.`,
+      detail: `Sends will go out as ${from} until a client-specific default sender is set.`,
     });
   }
 
@@ -153,22 +153,23 @@ export function describeSenderReadiness(input: {
   if (providerMode === "mock") {
     headline = "mock_dev";
     summary =
-      "Mock provider: no network sends. Use for development; switch EMAIL_PROVIDER=resend for real ESP.";
+      "This workspace is in test mode — no real messages are sent. An administrator switches on live delivery in production.";
   } else if (blockedDomain) {
     headline = "blocked_by_domain_policy";
-    summary = `Sender domain is not allowed by ALLOWED_SENDER_EMAIL_DOMAINS — configure an allowed domain or adjust the allowlist before sending.`;
+    summary =
+      "The sender's domain isn't on the allowlist. Use a different sender address or ask an administrator to update the allowlist.";
   } else if (!input.defaultSenderEmail?.trim()) {
     headline = "not_configured";
     summary =
-      "No workspace default sender — sends use env/platform fallback; set defaultSenderEmail and verify in Resend for production.";
+      "No client-specific sender is set. A platform fallback is being used — set a default From address on this client to go live cleanly.";
   } else if (input.senderIdentityStatus !== "VERIFIED_READY") {
     headline = "needs_verification";
     summary =
-      "Default sender is set but identity is not VERIFIED_READY — confirm domain/sender in Resend, then mark ready in Operations.";
+      "The sender address is set, but nobody has confirmed it's ready. Verify the sender in the email provider, then mark it ready in the operations area.";
   } else {
     headline = "ready";
     summary =
-      "Configured and marked VERIFIED_READY — confirm DNS/DKIM in Resend remains healthy for production.";
+      "This sender is configured and verified — confirm DNS and DKIM still look healthy in the email provider's dashboard periodically.";
   }
 
   return {

@@ -85,11 +85,11 @@ export function OnboardingForm() {
   return (
     <Card className="mx-auto max-w-2xl border-border/80 shadow-lg">
       <CardHeader>
-        <CardTitle>Create client workspace</CardTitle>
+        <CardTitle>Client details</CardTitle>
         <CardDescription>
-          Creates an isolated tenant shell with <strong>ONBOARDING</strong> status.
-          Mailboxes, suppression, contact lists, templates, and sequences are
-          configured inside the client workspace modules — not here.
+          The new client starts in <strong>Onboarding</strong>. You&apos;ll add
+          mailboxes, suppression, contacts, templates, and sequences from
+          inside the client workspace once it&apos;s created.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

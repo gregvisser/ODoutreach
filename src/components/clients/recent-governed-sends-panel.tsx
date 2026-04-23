@@ -10,15 +10,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { outboundStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
 import type { GovernedSendLedgerRow } from "@/server/queries/governed-send-ledger";
 
 function ts(iso: string | null) {
   if (!iso) return "—";
   try {
-    return format(new Date(iso), "yyyy-MM-dd HH:mm:ss") + " UTC";
+    return format(new Date(iso), "d MMM, HH:mm");
   } catch {
     return iso;
+  }
+}
+
+function reservationLabel(status: string | null): string {
+  if (!status) return "—";
+  switch (status) {
+    case "CONSUMED":
+      return "Sent";
+    case "RESERVED":
+      return "Holding slot";
+    case "RELEASED":
+      return "Released";
+    default:
+      return status;
   }
 }
 
@@ -31,30 +46,33 @@ export function RecentGovernedSendsPanel({
 }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">How the ledger relates to “booked (UTC day)”</p>
+      <details className="rounded-md border border-border/80 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <summary className="cursor-pointer font-medium text-foreground">
+          About today&rsquo;s sending totals
+        </summary>
+        <p className="mt-2">
+          Each mailbox has a daily sending cap. &ldquo;Sent today&rdquo; counts
+          both finished sends and messages currently being sent — the same
+          number shown on the mailbox page. Today&rsquo;s window:{" "}
+          <span className="font-medium text-foreground">
+            {currentUtcWindowKey}
+          </span>{" "}
+          (UTC).
+        </p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>
-            <strong>Booked today</strong> counts{" "}
-            <span className="font-mono text-xs">RESERVED</span> +{" "}
-            <span className="font-mono text-xs">CONSUMED</span> reservations for the current UTC
-            window (<span className="font-mono">{currentUtcWindowKey}</span>), per mailbox — same
-            basis as the mailbox table.
+            <strong>Sent</strong> — the message went out; the slot is counted.
           </li>
           <li>
-            <span className="font-mono text-xs">CONSUMED</span> — send completed; slot counted
-            against the daily cap.
+            <strong>Holding slot</strong> — the send is queued or in flight;
+            the slot is reserved until it completes.
           </li>
           <li>
-            <span className="font-mono text-xs">RESERVED</span> — slot held (queued / in flight);
-            still counts as booked until released or consumed.
-          </li>
-          <li>
-            <span className="font-mono text-xs">RELEASED</span> — slot returned without sending;
-            does not count toward the cap for that window.
+            <strong>Released</strong> — a reserved slot was returned without
+            sending; it doesn&rsquo;t count toward the cap.
           </li>
         </ul>
-      </div>
+      </details>
 
       <div className="overflow-x-auto rounded-lg border border-border/80">
         <Table>
@@ -62,42 +80,35 @@ export function RecentGovernedSendsPanel({
             <TableRow>
               <TableHead>To</TableHead>
               <TableHead>Subject</TableHead>
-              <TableHead>Mailbox</TableHead>
-              <TableHead>Outbound</TableHead>
-              <TableHead>Reservation</TableHead>
-              <TableHead>UTC window</TableHead>
-              <TableHead>Created (UTC)</TableHead>
-              <TableHead>Sent (UTC)</TableHead>
-              <TableHead>Idempotency</TableHead>
+              <TableHead>From mailbox</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Slot</TableHead>
+              <TableHead>Day</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead>Sent</TableHead>
               <TableHead className="text-right">Detail</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-muted-foreground">
-                  No governed test sends recorded for this workspace yet.
+                <TableCell colSpan={9} className="text-muted-foreground">
+                  No test or pilot sends for this client yet. These show up
+                  once you dispatch an internal test or pilot email.
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((r) => (
                 <TableRow key={r.outboundId}>
-                  <TableCell className="max-w-[180px] align-top font-mono text-xs">
+                  <TableCell className="max-w-[200px] align-top text-sm">
                     {r.toEmail}
                   </TableCell>
-                  <TableCell className="max-w-[200px] align-top text-sm">
+                  <TableCell className="max-w-[220px] align-top text-sm">
                     {r.subject ?? "—"}
                   </TableCell>
                   <TableCell className="align-top text-sm">
                     {r.mailboxEmail ? (
-                      <div>
-                        <div className="font-medium">{r.mailboxEmail}</div>
-                        {r.mailboxIdentityId ? (
-                          <div className="mt-0.5 font-mono text-[10px] text-muted-foreground break-all">
-                            {r.mailboxIdentityId}
-                          </div>
-                        ) : null}
-                      </div>
+                      <div className="font-medium">{r.mailboxEmail}</div>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
@@ -113,17 +124,13 @@ export function RecentGovernedSendsPanel({
                             : "bg-muted text-muted-foreground",
                       )}
                     >
-                      {r.outboundStatus}
+                      {outboundStatusLabel(r.outboundStatus)}
                     </span>
                   </TableCell>
-                  <TableCell className="align-top">
-                    {r.reservationStatus ? (
-                      <span className="font-mono text-xs">{r.reservationStatus}</span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                  <TableCell className="align-top text-xs">
+                    {reservationLabel(r.reservationStatus)}
                   </TableCell>
-                  <TableCell className="align-top font-mono text-xs">
+                  <TableCell className="align-top whitespace-nowrap text-xs text-muted-foreground">
                     {r.windowKey ?? "—"}
                   </TableCell>
                   <TableCell className="align-top whitespace-nowrap text-xs text-muted-foreground">
@@ -131,9 +138,6 @@ export function RecentGovernedSendsPanel({
                   </TableCell>
                   <TableCell className="align-top whitespace-nowrap text-xs text-muted-foreground">
                     {ts(r.sentAtIso)}
-                  </TableCell>
-                  <TableCell className="align-top font-mono text-[10px] text-muted-foreground">
-                    {r.idempotencyKeyShort ?? "—"}
                   </TableCell>
                   <TableCell className="align-top text-right">
                     <Link

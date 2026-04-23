@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+
 import {
   Table,
   TableBody,
@@ -6,11 +8,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listRecentStaffAccessAuditLogs } from "@/server/staff-access/list-recent-staff-audit";
+import {
+  listRecentStaffAccessAuditLogs,
+  staffAuditActionLabel,
+} from "@/server/staff-access/list-recent-staff-audit";
 
-function formatUtc(iso: string): string {
+function formatWhen(iso: string): string {
   const d = new Date(iso);
-  return `${d.toISOString().replace("T", " ").slice(0, 16)} UTC`;
+  return format(d, "d MMM yyyy, HH:mm");
 }
 
 export async function StaffAccessRecentActivity() {
@@ -21,19 +26,22 @@ export async function StaffAccessRecentActivity() {
       <div>
         <h2 className="text-lg font-medium">Recent activity</h2>
         <p className="text-sm text-muted-foreground">
-          Audit trail for staff invitations and role changes (newest first). Times are UTC.
+          Who changed staff access and when (newest first).
         </p>
       </div>
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No staff access actions recorded yet.</p>
+        <p className="text-sm text-muted-foreground">
+          No staff access changes recorded yet. Invite a colleague or update a
+          role and it will show up here.
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="whitespace-nowrap">When (UTC)</TableHead>
+                <TableHead className="whitespace-nowrap">When</TableHead>
                 <TableHead>Action</TableHead>
-                <TableHead>Actor</TableHead>
+                <TableHead>Done by</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead className="min-w-[240px]">Detail</TableHead>
               </TableRow>
@@ -41,17 +49,21 @@ export async function StaffAccessRecentActivity() {
             <TableBody>
               {rows.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell className="whitespace-nowrap font-mono text-xs">
-                    <time dateTime={r.createdAtIso}>{formatUtc(r.createdAtIso)}</time>
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <time dateTime={r.createdAtIso}>{formatWhen(r.createdAtIso)}</time>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{r.auditAction}</TableCell>
-                  <TableCell className="max-w-[200px] break-all font-mono text-xs">
+                  <TableCell className="text-xs">
+                    {staffAuditActionLabel(r.auditAction)}
+                  </TableCell>
+                  <TableCell className="max-w-[200px] break-all text-xs text-muted-foreground">
                     {r.actorEmail ?? "—"}
                   </TableCell>
-                  <TableCell className="max-w-[200px] break-all font-mono text-xs">
+                  <TableCell className="max-w-[200px] break-all text-xs text-muted-foreground">
                     {r.targetEmail ?? "—"}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.detail}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {r.detail}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
