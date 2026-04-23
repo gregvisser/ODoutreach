@@ -55,3 +55,28 @@ Step-by-step live verification checklist: **[STAFF_ACCESS_MANUAL_PROOF.md](./STA
 - Invitee must **accept** the Microsoft invitation email (or redeem via admin-provided link).
 - Entra **Conditional Access** / **MFA** policies apply at sign-in as configured in the tenant.
 - If Graph permissions are missing, admins see errors from server actions — fix permissions and retry.
+
+## Invitation error classification
+
+Guest-invitation failures from Microsoft Graph are classified by
+`src/lib/staff-access/invitation-errors.ts` into stable operator-facing
+codes. Raw Graph JSON payloads are never shown in the UI — only a clean
+message, the Graph HTTP status, and the Microsoft `request-id` (useful for
+tenant admins to correlate with Entra sign-in / audit logs).
+
+| Code | What it means | Admin action |
+|------|---------------|--------------|
+| `missing_graph_permission` | Graph replied 401/403 `Authorization_RequestDenied` or equivalent. The Entra app registration does not have working invite permissions. | Grant `User.Invite.All` (Application) and admin consent on the ODoutreach Entra app registration. |
+| `admin_consent_required` | Graph says admin consent is required. | Grant admin consent for the ODoutreach Entra app registration in the Bidlow tenant. |
+| `guest_invitation_not_allowed_by_tenant` | Graph says B2B invitations are disabled by policy. | Enable external collaboration / B2B guest invitations in Entra External Identities. |
+| `signed_in_admin_lacks_required_role` | Graph says the signed-in user isn’t allowed to invite. | Assign Guest Inviter / User Administrator, or allow tenant-default guest-invite. |
+| `invited_user_already_exists` | The invitee already exists in the tenant. | Use Entra to manage the existing guest, or use **Sync invite status**. |
+| `invited_user_email_invalid` | Graph rejected the email address. | Use a valid external email address. |
+| `graph_rate_limited` | Graph returned 429. | Wait and retry once. Do not retry in a loop. |
+| `graph_service_unavailable` | Graph returned 5xx. | Microsoft-side; check Microsoft 365 service health. |
+| `unknown_graph_invite_error` | Everything else. | Share the Microsoft `request-id` with the Bidlow Entra admin. |
+
+The API endpoint used is the supported Microsoft Graph **v1.0**
+`POST /invitations` — not `/beta`. If the UI ever shows a Graph `request-id`
+referencing an internal `/beta/…` path, that comes from Microsoft’s own
+`innerError` payload, not from the ODoutreach code path.

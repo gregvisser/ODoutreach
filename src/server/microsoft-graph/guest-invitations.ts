@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  classifyInvitationError,
+  type ClassifiedInvitationError,
+} from "@/lib/staff-access/invitation-errors";
+
 import { graphFetch } from "./app-client";
 
 export type GraphInvitationResult = {
@@ -9,7 +14,27 @@ export type GraphInvitationResult = {
 };
 
 /**
- * Create a B2B guest invitation in the Entra tenant (sends email when sendInvitationMessage is true).
+ * Typed error thrown by `createGuestInvitation` when Microsoft Graph
+ * refuses the invitation. The classifier result is attached so callers
+ * can render clean operator copy without touching the raw Graph body.
+ */
+export class GuestInvitationError extends Error {
+  readonly classified: ClassifiedInvitationError;
+
+  constructor(classified: ClassifiedInvitationError) {
+    super(classified.message);
+    this.name = "GuestInvitationError";
+    this.classified = classified;
+  }
+}
+
+/**
+ * Create a B2B guest invitation in the Entra tenant using the supported
+ * Microsoft Graph v1.0 endpoint (`POST /invitations`). Throws a
+ * `GuestInvitationError` with a classified, operator-safe payload on failure.
+ *
+ * Shape reference (Graph v1.0):
+ *   https://learn.microsoft.com/graph/api/invitation-post
  */
 export async function createGuestInvitation(
   email: string,
@@ -25,15 +50,27 @@ export async function createGuestInvitation(
   });
 
   const text = await res.text();
+
   if (!res.ok) {
-    throw new Error(`Graph invitation failed (${res.status}): ${text}`);
+    const classified = classifyInvitationError({
+      status: res.status,
+      body: text,
+    });
+    throw new GuestInvitationError(classified);
   }
 
-  const json = JSON.parse(text) as {
+  let json: {
     id?: string;
     status?: string;
     invitedUser?: { id?: string };
   };
+  try {
+    json = JSON.parse(text) as typeof json;
+  } catch {
+    throw new GuestInvitationError(
+      classifyInvitationError({ status: res.status, body: text }),
+    );
+  }
 
   if (!json.id || !json.invitedUser?.id) {
     throw new Error("Graph invitation response missing id or invitedUser.id");
