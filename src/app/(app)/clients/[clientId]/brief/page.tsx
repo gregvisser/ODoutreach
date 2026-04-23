@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ClientBrandPanel } from "@/components/clients/client-brand-panel";
+import { ClientLogo } from "@/components/clients/client-logo";
 import { OpensDoorsBriefGuidedForm } from "@/components/clients/opensdoors-brief-guided-form";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -51,22 +53,33 @@ export default async function ClientBriefPage({ params }: Props) {
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Client brief
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-            <Badge variant="outline">{clientStatusLabel(client.status)}</Badge>
-            <Badge variant={readinessBadgeVariant(completion.status)}>
-              Brief · {completion.percent}%
-            </Badge>
+        <div className="flex gap-4">
+          <ClientLogo
+            clientName={client.name}
+            logoUrl={client.logoUrl}
+            logoAltText={client.logoAltText}
+            size={64}
+            className="mt-1"
+          />
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Client brief
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-3xl font-semibold tracking-tight">
+                {client.name}
+              </h1>
+              <Badge variant="outline">{clientStatusLabel(client.status)}</Badge>
+              <Badge variant={readinessBadgeVariant(completion.status)}>
+                Brief · {completion.percent}%
+              </Badge>
+            </div>
+            <p className="max-w-2xl text-muted-foreground">
+              The single source of truth for this client — who they are, who
+              they&rsquo;re targeting, and how their outreach should sound.
+              Fill this in before importing contacts or sending.
+            </p>
           </div>
-          <p className="max-w-2xl text-muted-foreground">
-            The single source of truth for this client — who they are, who
-            they&rsquo;re targeting, and how their outreach should sound.
-            Fill this in before importing contacts or sending.
-          </p>
         </div>
         <Link
           href={base}
@@ -77,8 +90,16 @@ export default async function ClientBriefPage({ params }: Props) {
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-        <div className="min-w-0 rounded-xl border border-border/80 bg-card p-6 shadow-sm">
-          <OpensDoorsBriefGuidedForm clientId={client.id} initial={brief} />
+        <div className="min-w-0 space-y-6">
+          <ClientBrandPanel
+            clientId={client.id}
+            clientName={client.name}
+            initialLogoUrl={client.logoUrl}
+            initialLogoAltText={client.logoAltText}
+          />
+          <div className="rounded-xl border border-border/80 bg-card p-6 shadow-sm">
+            <OpensDoorsBriefGuidedForm clientId={client.id} initial={brief} />
+          </div>
         </div>
 
         <aside className="space-y-4 lg:sticky lg:top-24">

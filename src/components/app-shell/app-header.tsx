@@ -3,6 +3,7 @@
 import { signOut, useSession } from "next-auth/react";
 import { Menu } from "lucide-react";
 
+import { AppBrandLogo } from "@/components/brand/app-brand-logo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -19,7 +20,7 @@ export function AppHeader() {
   const { data: session } = useSession();
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md md:px-8">
+    <header className="sticky top-0 z-40 grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md md:px-8">
       <div className="flex items-center gap-3">
         <Sheet>
           <SheetTrigger
@@ -38,9 +39,9 @@ export function AppHeader() {
             <AppSidebar className="border-0" />
           </SheetContent>
         </Sheet>
-        <p className="hidden text-sm text-muted-foreground sm:block">
-          OpensDoors Outreach
-        </p>
+      </div>
+      <div className="flex min-w-0 justify-center">
+        <AppBrandLogo heightClassName="h-7" />
       </div>
       <div className="flex items-center gap-3">
         <span className="hidden max-w-[200px] truncate text-sm text-muted-foreground sm:inline">

@@ -291,6 +291,10 @@ model Client {
   industry                    String?
   website                     String?
   notes                       String?
+  /// Optional per-client logo URL — rendered in the client workspace header, overview, and brief.
+  logoUrl                     String?
+  /// Optional accessible alt text for `logoUrl`. When null, UI falls back to the client name.
+  logoAltText                 String?
   /// Opaque token for inbound webhook URL — maps to this tenant only
   inboundIngestToken          String                    @unique @default(cuid())
   /// Default From: for outbound (operational placeholder until per-mailbox config)

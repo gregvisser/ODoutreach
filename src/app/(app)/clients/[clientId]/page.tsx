@@ -301,6 +301,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         clientStatus={client.status}
         launchStageLabel={launchStage}
         steps={steps}
+        logoUrl={client.logoUrl}
+        logoAltText={client.logoAltText}
       />
 
       {justCreated ? (

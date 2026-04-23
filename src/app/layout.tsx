@@ -23,6 +23,10 @@ export const metadata: Metadata = {
   },
   description:
     "Cold outreach operations for OpensDoors — multi-tenant, suppression-aware, reply-tracked.",
+  // Favicon/app icon is handled by Next.js metadata-files convention:
+  //   - `src/app/icon.svg`   → branded vector app icon (modern browsers)
+  //   - `src/app/favicon.ico` → legacy .ico fallback
+  // Keep those files in sync when swapping in final brand artwork.
 };
 
 export default function RootLayout({

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { BRAND } from "@/components/brand/brand-config";
 import { cn } from "@/lib/utils";
 
 import { mainNav } from "./nav-config";
@@ -17,17 +18,28 @@ export function AppSidebar({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-sm font-bold">
-          OD
-        </div>
+      <Link
+        href="/dashboard"
+        className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
+        aria-label={`${BRAND.name} ${BRAND.product} home`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- Local SVG served from /public. */}
+        <img
+          src={BRAND.markSrc}
+          alt=""
+          aria-hidden="true"
+          className="h-9 w-9 shrink-0 rounded-lg"
+          width={36}
+          height={36}
+          decoding="async"
+        />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold tracking-tight">
-            OpensDoors
+            {BRAND.name}
           </p>
-          <p className="text-xs text-muted-foreground">Outreach</p>
+          <p className="text-xs text-muted-foreground">{BRAND.product}</p>
         </div>
-      </div>
+      </Link>
       <nav className="flex-1 space-y-0.5 p-3">
         {mainNav.map((item) => {
           const active =
