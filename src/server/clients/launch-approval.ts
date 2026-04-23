@@ -13,7 +13,6 @@ import {
   type LaunchApprovalPolicyResult,
 } from "@/lib/clients/client-launch-approval";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
-import { parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import { REQUIRED_OUTREACH_MAILBOX_COUNT } from "@/lib/outreach-mailbox-model";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 import { getClientEmailSequenceCounts } from "@/server/email-sequences/queries";
@@ -132,17 +131,14 @@ export async function loadClientLaunchApprovalSnapshot(
     outreachPilotRunnable: snapshotInput.outreachPilotRunnable,
   });
 
-  const brief = parseOpensDoorsBrief(client.onboarding?.formData);
-  // A mailbox-level signature (synced or manual) satisfies launch readiness
-  // just like the brief fallback — any connected mailbox with either a
-  // stored text or HTML signature is enough (PR — mailbox sender signatures).
-  const hasBriefSignature = !!brief.emailSignature?.trim();
+  // Sender signatures for launch approval are taken from per-mailbox identity
+  // in Mailboxes — not from the business brief.
   const hasAnyMailboxSignature = client.mailboxIdentities.some(
     (m) =>
       (m.senderSignatureText && m.senderSignatureText.trim().length > 0) ||
       (m.senderSignatureHtml && m.senderSignatureHtml.trim().length > 0),
   );
-  const hasSenderSignature = hasBriefSignature || hasAnyMailboxSignature;
+  const hasSenderSignature = hasAnyMailboxSignature;
 
   const policyInput: LaunchApprovalPolicyInput = {
     clientStatus: client.status,

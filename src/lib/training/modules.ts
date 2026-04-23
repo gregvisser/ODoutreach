@@ -246,10 +246,10 @@ const onboardingModule: TrainingModule = {
   ],
   nextSteps: [
     {
-      label: "Fill in the operating brief",
+      label: "Fill in the business brief",
       moduleId: "brief",
       description:
-        "The brief is the single source of truth for how outreach reads and who it speaks to.",
+        "The brief holds business identity, ICP, and positioning. Signatures and mailbox setup are on the Mailboxes page.",
     },
     {
       label: "Connect outreach mailboxes",
@@ -296,73 +296,71 @@ const onboardingModule: TrainingModule = {
 const briefModule: TrainingModule = {
   id: "brief",
   order: 2,
-  title: "The operating brief",
-  tagline: "Single source of truth for how OpensDoors outreach sounds.",
+  title: "The business brief",
+  tagline: "Source of truth for who the client is and who they want to reach.",
   purpose:
-    "The Brief defines who this client is, who they're targeting, and how their outreach should sound. Fields on the Brief feed placeholders at send time ({{sender_name}}, {{sender_company_name}}, {{email_signature}}), drive the launch-readiness checks, and are what the next operator reads before touching a sequence.",
+    "The Brief captures company identity, main contact, ICP (service areas, industries, company sizes, job titles), positioning, compliance, and internal ownership. Template placeholders like {{email_signature}} and per-mailbox sender names are configured on the Mailboxes page, not in the brief.",
   details: [
-    "The Brief is broken into five panels: Business basics, Offer and positioning, Targeting rules, Compliance and assets, Sender identity & signature, and Sequences/mailboxes/sourcing. Each panel maps to a downstream module.",
-    "Empty fields produce generic emails and block launch. Don't treat any field as optional.",
+    "Sections group fields clearly: company identity, main contact, service and ICP (structured multi-selects that build a shared term list), positioning, compliance with optional PDFs, and internal notes.",
+    "Empty required fields block launch. Operational setup (mailboxes, sequences, sourcing) has its own modules.",
   ],
   screenshots: [
     {
       src: "/training/training-brief.png",
-      alt: "Client brief page with Business basics, Offer and positioning, Targeting rules and Sender identity panels",
+      alt: "Client brief page with company identity, ICP, and positioning sections",
       caption:
-        "Client brief — broken into clear panels. The Up next sidebar tracks remaining fields.",
+        "Client brief — business and targeting. Use the Mailboxes page for sender signatures.",
       width: FULL_W,
       height: FULL_H,
     },
   ],
   steps: [
     {
-      title: "Fill in Business basics",
+      title: "Fill in Company identity",
       detail:
-        "Trading name (if different from the workspace title), business address, service areas / target geography. For OpensDoors this is the UK trading address and the geography they target.",
+        "Workspace name is fixed at creation. Add website, sector, LinkedIn, and a structured business address (or type it manually if address lookup is not connected).",
     },
     {
-      title: "Capture Offer and positioning",
+      title: "Capture the main client contact",
       detail:
-        "USPs, offer / proposition, campaign objective. This is the material that will show up — paraphrased — inside templates. Write it as you'd say it out loud on a sales call.",
+        "Name, role, work email, and status — the person you brief internally, not the From: line on email (that is mailbox-level).",
     },
     {
-      title: "Define Targeting rules",
+      title: "Define service areas and ICP",
       detail:
-        "Target customer profile and explicit exclusions / do-not-target criteria. Exclusions are how you keep partners, competitors and existing customers out of outreach before the suppression sheets even run.",
+        "Use the chip fields for service areas, industries, company sizes, and job titles. New values you add are saved for other clients. Legacy free-text fields still work for older briefs.",
     },
     {
-      title: "Record Compliance and assets",
+      title: "Positioning and proof",
       detail:
-        "Compliance notes (regulated sectors, consent basis) and attachments / assets / notes. The operator reviewing a sequence later reads this before approval.",
+        "Value proposition, core offer, differentiators, proof notes, and exclusions. This is what operators and copy should align to before templates and sequences.",
     },
     {
-      title: "Set Sender identity and signature",
+      title: "Compliance and PDFs",
       detail:
-        "Approved sender identity notes (who signs outreach — e.g. Samantha) and the plain-text email signature block. The signature renders into every sequence step that contains {{email_signature}}.",
+        "Compliance notes plus PDF uploads for accreditations or supporting documents when needed.",
     },
     {
-      title: "Fill Sequences, mailboxes & sourcing notes",
+      title: "Internal ownership",
       detail:
-        "Mailbox setup / naming / ownership (five mailboxes for OpensDoors), sequence notes, sourcing notes, and the suppression Google Sheet URL as a reference.",
+        "Assign an account manager and add internal notes that should not appear in customer-facing copy.",
     },
     {
       title: "Click Save brief",
       detail:
-        "Saving doesn't send anything. It just persists the brief — the launch-readiness checks re-run against the updated fields.",
+        "Saving does not send email. Mailboxes, signatures, and sequences are configured in their own pages.",
     },
   ],
   whatGoodLooksLike: [
-    "Every panel on the brief has content, not just the headline fields.",
-    'The Up next sidebar shows "No fields missing" rather than a list of gaps.',
-    "Approved sender identity names the exact person who signs outreach (e.g. Samantha) — not a generic role.",
-    'The email signature block renders as you want it to appear: name, title, company, phone — one line each, plain text.',
-    "Mailbox setup notes name all five OpensDoors mailbox owners and any handoff rules.",
+    "ICP chips are filled (or legacy profile text) so sourcing and sequences have a clear audience.",
+    "Positioning fields read like a tight sales narrative, not marketing fluff.",
+    "Account manager and main contact are named so the next operator knows who to call.",
+    "Compliance PDFs are attached when the sector needs evidence on file.",
   ],
   commonMistakes: [
-    'Leaving the signature block empty — every send with {{email_signature}} will render a bare "Best," with no name underneath.',
-    'Writing USPs as a brochure slogan — operators copy-paste this into templates; keep it how a salesperson actually says it.',
-    "Skipping exclusions — letting partners and competitors slip through into outreach is the most common avoidable embarrassment.",
-    "Pasting HTML into the signature block — signature rendering is plain text only.",
+    "Treating the brief as the place to configure mailboxes or sequences — those live under Mailboxes, Sequences, and Sources.",
+    "Expecting the brief to set {{email_signature}} — configure signatures per mailbox in Mailboxes (brief may still hold legacy text for old data).",
+    "Skipping exclusions — keep partners and competitors out of the ICP and suppression lists before sends.",
   ],
   nextSteps: [
     {
@@ -393,12 +391,12 @@ const briefModule: TrainingModule = {
   callout: {
     tone: "warn",
     heading: "The brief gates launch",
-    body: "Launch approval, signature rendering, and pilot sends all read the brief. A partial brief silently produces empty placeholders in outgoing copy.",
+    body: "A thin brief means thin messaging and blocks readiness. Signatures and mailbox capacity are still configured on the Mailboxes page.",
   },
   outcomes: [
-    "You know which brief fields feed which template placeholders.",
+    "You can separate business brief content from operational setup.",
     "You can spot a brief that is too thin to launch from.",
-    "You understand why the brief is written first, before mailboxes or contacts.",
+    "You know where to go for signatures and sending identity (Mailboxes).",
   ],
 };
 

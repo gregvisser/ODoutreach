@@ -276,7 +276,9 @@ model StaffUser {
   emailSequencesApproved     ClientEmailSequence[]           @relation("ClientEmailSequenceApprovedBy")
   sequenceEnrollmentsCreated ClientEmailSequenceEnrollment[] @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated   ClientEmailSequenceStepSend[]   @relation("ClientEmailSequenceStepSendCreatedBy")
-  clientsLaunchApproved      Client[]                        @relation("ClientLaunchApprovedBy")
+  clientsLaunchApproved         Client[]                        @relation("ClientLaunchApprovedBy")
+  clientsAsBriefAccountManager  Client[]                        @relation("ClientBriefAccountManager")
+  clientComplianceFilesUploaded ClientComplianceAttachment[]  @relation("ClientComplianceUpload")
 
   @@index([invitedById])
 }
@@ -308,6 +310,15 @@ model Client {
   launchApprovalNotes         String?                   @db.Text
   /// Snapshot of the readiness checklist recorded at approval time — never rewritten after approval.
   launchApprovalChecklist     Json?
+  /// Per-client business brief — structured v2. JSON keys: line1, line2, city, region, postalCode, country, formattedSummary
+  briefBusinessAddress            Json?
+  /// Main point of contact: firstName, lastName, role, email, mobile, status (string enum: active|inactive|unknown)
+  briefMainContact                Json?
+  /// Company LinkedIn page URL
+  briefLinkedinUrl                String?
+  /// Operator-only context — not shown in outreach templates
+  briefInternalNotes              String?                   @db.Text
+  briefAssignedAccountManagerId   String?
   createdAt                   DateTime                  @default(now())
   updatedAt                   DateTime                  @updatedAt
 
@@ -336,10 +347,71 @@ model Client {
   sequenceEnrollments     ClientEmailSequenceEnrollment[]
   sequenceStepSends       ClientEmailSequenceStepSend[]
   unsubscribeTokens       UnsubscribeToken[]
-  launchApprovedBy        StaffUser?                      @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
+  launchApprovedBy         StaffUser?                 @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
+  briefAccountManager      StaffUser?                 @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
+  briefTaxonomyLinks       ClientBriefTermLink[]
+  complianceAttachments    ClientComplianceAttachment[]
+  briefTaxonomyFirstUses   BriefTaxonomyTerm[]        @relation("BriefTermFirstClient")
 
   @@index([status])
   @@index([launchApprovedByStaffUserId])
+  @@index([briefAssignedAccountManagerId])
+}
+
+/// Reusable brief vocabulary: service areas, ICP industries, company sizes, target titles
+enum BriefTaxonomyKind {
+  SERVICE_AREA
+  TARGET_INDUSTRY
+  COMPANY_SIZE
+  JOB_TITLE
+}
+
+model BriefTaxonomyTerm {
+  id                  String            @id @default(cuid())
+  kind                BriefTaxonomyKind
+  /// Lowercase, trimmed, single-spaced — dedupe key
+  normalizedValue     String
+  /// Original casing for display
+  displayValue        String
+  /// Client workspace that first created this value (for audit)
+  firstUsedByClientId String?
+  createdAt           DateTime          @default(now())
+
+  firstUsedByClient Client?                 @relation("BriefTermFirstClient", fields: [firstUsedByClientId], references: [id], onDelete: SetNull)
+  clientLinks       ClientBriefTermLink[]
+
+  @@unique([kind, normalizedValue])
+  @@index([kind])
+  @@index([firstUsedByClientId])
+}
+
+model ClientBriefTermLink {
+  clientId String
+  termId   String
+  client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  term     BriefTaxonomyTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, termId])
+  @@index([clientId])
+  @@index([termId])
+}
+
+model ClientComplianceAttachment {
+  id                    String   @id @default(cuid())
+  clientId              String
+  fileName              String
+  mimeType              String
+  sizeBytes             Int
+  /// PDF bytes only — size-capped in application code
+  data                  Bytes
+  createdAt             DateTime @default(now())
+  uploadedByStaffUserId String?
+
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy StaffUser? @relation("ClientComplianceUpload", fields: [uploadedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([uploadedByStaffUserId])
 }
 
 /// Connected outreach sending/receiving identity for a client workspace (max 5 active per client).
@@ -366,10 +438,10 @@ model ClientMailboxIdentity {
   dailyWindowResetAt       DateTime?
   lastSyncAt               DateTime?
   lastError                String?                 @db.Text
-  /// Per-mailbox sender identity (PR — mailbox sender signatures, 2026-04-22).
-  /// Populated automatically from Gmail `users.settings.sendAs` when available;
-  /// otherwise set manually via the Mailboxes UI. Falls back to the client
-  /// brief signature at composition time when these are empty.
+  /// Per-mailbox sender identity. Populated from Gmail `users.settings.sendAs` when
+  /// available; otherwise set manually in Mailboxes. Optional client-level text in
+  /// the historical brief may still be used as a last-resort composition fallback
+  /// for `{{email_signature}}` for legacy data — operators configure signatures here.
   senderDisplayName        String?
   /// Raw HTML signature as retrieved from Gmail `sendAs.signature` or pasted
   /// manually. Never rendered without going through the signature helper.

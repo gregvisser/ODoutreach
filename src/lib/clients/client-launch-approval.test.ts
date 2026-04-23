@@ -96,7 +96,7 @@ describe("evaluateClientLaunchApproval", () => {
     );
     expect(result.canApprove).toBe(false);
     expect(result.blockers.length).toBeGreaterThanOrEqual(8);
-    expect(result.blockers).toContain("Operating brief is not complete.");
+    expect(result.blockers).toContain("Business brief is not complete.");
     expect(result.blockers).toContain("No sending mailbox is connected.");
     expect(result.blockers).toContain("No approved sequence.");
     expect(result.blockers).toContain("No sequence enrollments.");

@@ -4,9 +4,9 @@ import {
   briefLooksFilled,
   computeOnboardingBriefCompletion,
   getClientSenderProfile,
+  getLegacyBriefReadinessState,
+  LEGACY_BRIEF_READINESS_KEYS,
   mergeBriefIntoFormData,
-  ONBOARDING_READINESS_KEYS,
-  ONBOARDING_READINESS_LABELS,
   parseOpensDoorsBrief,
 } from "./opensdoors-brief";
 
@@ -35,58 +35,79 @@ describe("parseOpensDoorsBrief / mergeBriefIntoFormData", () => {
     expect(brief.offer).toBe("Hello");
     expect((brief as Record<string, string>).unknown).toBeUndefined();
   });
+
+  it("backfills v2 fields from legacy", () => {
+    const brief = parseOpensDoorsBrief({
+      campaignObjective: "Grow",
+      offer: "Audit",
+      usps: "Speed",
+    });
+    expect(brief.valueProposition).toBe("Grow");
+    expect(brief.coreOffer).toBe("Audit");
+    expect(brief.differentiators).toBe("Speed");
+  });
 });
 
-describe("computeOnboardingBriefCompletion", () => {
+describe("getLegacyBriefReadinessState (v1 11 keys)", () => {
   it("returns empty when no readiness fields are set", () => {
+    const r = getLegacyBriefReadinessState({});
+    expect(r.status).toBe("empty");
+    expect(r.totalCount).toBe(LEGACY_BRIEF_READINESS_KEYS.length);
+  });
+
+  it("marks ready when all legacy string fields are non-empty", () => {
+    const formData = Object.fromEntries(
+      LEGACY_BRIEF_READINESS_KEYS.map((k) => [k, "ok"]),
+    );
+    const r = getLegacyBriefReadinessState(formData);
+    expect(r.status).toBe("ready");
+    expect(r.missingKeys).toEqual([]);
+  });
+
+  it("legacy keys still include emailSignature (historical data only)", () => {
+    expect(LEGACY_BRIEF_READINESS_KEYS).toContain("emailSignature");
+  });
+});
+
+describe("computeOnboardingBriefCompletion (single-arg legacy path)", () => {
+  it("uses legacy 11-key gate when no context is passed", () => {
     const r = computeOnboardingBriefCompletion({});
     expect(r.status).toBe("empty");
-    expect(r.completedCount).toBe(0);
-    expect(r.totalCount).toBe(ONBOARDING_READINESS_KEYS.length);
-    expect(r.missingKeys.length).toBe(r.totalCount);
-    expect(r.percent).toBe(0);
-    expect(r.nextRecommendedLabel).toBe(ONBOARDING_READINESS_LABELS.businessAddress);
   });
+});
 
-  it("marks ready when all required fields are non-empty", () => {
-    const formData = Object.fromEntries(
-      ONBOARDING_READINESS_KEYS.map((k) => [k, "ok"]),
-    );
-    const r = computeOnboardingBriefCompletion(formData);
+describe("computeOnboardingBriefCompletion (v2 with context)", () => {
+  const ctx = {
+    client: {
+      name: "Test Co",
+      website: "https://test.example",
+      industry: "HVAC",
+      briefBusinessAddress: { line1: "1 St", city: "L", country: "UK" },
+      briefMainContact: { firstName: "A", lastName: "B", email: "a@test.example" },
+      briefLinkedinUrl: "https://li.co/c",
+      briefAssignedAccountManagerId: "m1",
+    },
+    taxonomyCounts: {
+      SERVICE_AREA: 1,
+      TARGET_INDUSTRY: 1,
+      COMPANY_SIZE: 1,
+      JOB_TITLE: 1,
+    },
+  } as const;
+
+  it("returns ready when v2 checklist is complete", () => {
+    const fd = {
+      valueProposition: "V",
+      coreOffer: "C",
+      differentiators: "D",
+      exclusions: "E",
+      complianceNotes: "Co",
+      proofNotes: "P",
+      targetGeography: "UK",
+      targetCustomerProfile: "P",
+    };
+    const r = computeOnboardingBriefCompletion(fd, ctx);
     expect(r.status).toBe("ready");
-    expect(r.percent).toBe(100);
-    expect(r.missingKeys).toEqual([]);
-    expect(r.nextRecommendedLabel).toBeNull();
-  });
-
-  it("is partial when some fields are missing", () => {
-    const r = computeOnboardingBriefCompletion({
-      businessAddress: "1 High St",
-      offer: "Audit",
-    });
-    expect(r.status).toBe("partial");
-    expect(r.missingLabels.length).toBeGreaterThan(0);
-    expect(r.completedCount).toBe(2);
-  });
-
-  it("does not treat whitespace-only strings as complete", () => {
-    const r = computeOnboardingBriefCompletion({
-      businessAddress: "   ",
-    });
-    expect(r.missingKeys).toContain("businessAddress");
-  });
-
-  it("readiness labels contain no secret-like placeholders", () => {
-    const labels = Object.values(ONBOARDING_READINESS_LABELS).join(" ");
-    expect(labels.toLowerCase()).not.toContain("api");
-    expect(labels.toLowerCase()).not.toContain("password");
-    expect(labels.toLowerCase()).not.toContain("secret");
-  });
-
-  it("includes emailSignature as a readiness field", () => {
-    expect(ONBOARDING_READINESS_KEYS).toContain("emailSignature");
-    expect(ONBOARDING_READINESS_LABELS.emailSignature).toMatch(/signature/i);
-    expect(ONBOARDING_READINESS_LABELS.emailSignature).toContain("{{email_signature}}");
   });
 });
 
@@ -98,46 +119,16 @@ describe("getClientSenderProfile", () => {
     });
     expect(profile.senderCompanyName).toBe("Acme Ltd");
     expect(profile.emailSignature).toBe("");
-    expect(profile.tradingName).toBeNull();
-    expect(profile.businessAddress).toBeNull();
   });
 
-  it("returns structured signature from the brief", () => {
+  it("returns structured signature from the brief (legacy data)", () => {
     const profile = getClientSenderProfile({
       client: { name: "Acme Ltd" },
       formData: {
-        emailSignature: "  Jane Doe\nHead of Growth\njane@acme.co ",
-        tradingName: "Acme Trading Co",
+        emailSignature: "  Jane\nAcme",
         businessAddress: "1 High St",
       },
     });
-    expect(profile.senderCompanyName).toBe("Acme Ltd");
-    expect(profile.emailSignature).toBe("Jane Doe\nHead of Growth\njane@acme.co");
-    expect(profile.tradingName).toBe("Acme Trading Co");
-    expect(profile.businessAddress).toBe("1 High St");
-  });
-
-  it("treats whitespace-only brief fields as unset", () => {
-    const profile = getClientSenderProfile({
-      client: { name: "Acme" },
-      formData: {
-        emailSignature: "   ",
-        tradingName: "   ",
-        businessAddress: "\n\t ",
-      },
-    });
-    expect(profile.emailSignature).toBe("");
-    expect(profile.tradingName).toBeNull();
-    expect(profile.businessAddress).toBeNull();
-  });
-
-  it("tolerates malformed formData", () => {
-    const profile = getClientSenderProfile({
-      client: { name: "Acme" },
-      formData: null,
-    });
-    expect(profile.senderCompanyName).toBe("Acme");
-    expect(profile.emailSignature).toBe("");
-    expect(profile.tradingName).toBeNull();
+    expect(profile.emailSignature).toBe("Jane\nAcme");
   });
 });

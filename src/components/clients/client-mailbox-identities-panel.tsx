@@ -531,8 +531,9 @@ export function ClientMailboxIdentitiesPanel({
               Google Workspace mailboxes can pull the signature straight from
               Gmail. Microsoft 365 mailboxes don&rsquo;t expose a signature
               over the API — add one manually instead. If a mailbox has no
-              signature of its own, sends fall back to the one on the client
-              brief.
+              signature of its own, sends may fall back to legacy
+              client-level signature text (if it was stored before mailboxes
+              were the default source of truth).
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -580,7 +581,8 @@ export function ClientMailboxIdentitiesPanel({
                     </pre>
                   ) : (
                     <p className="text-xs italic text-muted-foreground">
-                      No signature on file for this mailbox or client brief.
+                      No signature on file for this mailbox (and no legacy
+                      client-level fallback).
                     </p>
                   )}
                   <div className="text-[11px] text-muted-foreground">
@@ -952,9 +954,10 @@ function MailboxSignatureForm(props: {
       <SheetHeader>
         <SheetTitle>Manual sender signature</SheetTitle>
         <SheetDescription>
-          Used when composing sends from <strong>{row.email}</strong>. Takes
-          precedence over the client brief signature. Plain text is used for
-          send bodies today; HTML is stored for future rich sends.
+          Used when composing sends from <strong>{row.email}</strong>. This
+          overrides any legacy client-level signature still on file. Plain
+          text is used for send bodies today; HTML is stored for future rich
+          sends.
         </SheetDescription>
       </SheetHeader>
       <form

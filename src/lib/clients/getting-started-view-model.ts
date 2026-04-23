@@ -66,9 +66,9 @@ export function buildGettingStartedViewModel(
   const items: GettingStartedItem[] = [
     {
       id: "brief",
-      label: "Complete the operating brief",
+      label: "Complete the business brief",
       description:
-        "Capture trading name, target customer, USPs, and sender identity so templates can render correctly.",
+        "Identity, ICP, positioning, and compliance. Signatures and mailbox setup are on Mailboxes.",
       href: `${base}/brief`,
       done: input.briefStatus === "ready",
     },

@@ -122,7 +122,7 @@ export function evaluateClientLaunchApproval(
   }
 
   if (!briefDone) {
-    blockers.push("Operating brief is not complete.");
+    blockers.push("Business brief is not complete.");
   }
   if (!mailboxesDone) {
     blockers.push("No sending mailbox is connected.");
@@ -143,7 +143,7 @@ export function evaluateClientLaunchApproval(
     blockers.push("No sequence enrollments.");
   }
   if (!input.hasSenderSignature) {
-    blockers.push("Sender signature is missing from the brief.");
+    blockers.push("A sender signature is not configured on any connected mailbox.");
   }
 
   // Launch readiness rows that are "not_started" or "needs_attention" must
@@ -187,7 +187,7 @@ export function evaluateClientLaunchApproval(
   const checklist: LaunchApprovalChecklistItem[] = [
     {
       id: "brief",
-      label: "Operating brief complete",
+      label: "Business brief complete",
       ok: briefDone,
       detail: briefDone ? "All required brief fields completed" : "Open Brief to complete",
     },
@@ -238,8 +238,8 @@ export function evaluateClientLaunchApproval(
       label: "Sender signature",
       ok: input.hasSenderSignature,
       detail: input.hasSenderSignature
-        ? "Brief provides a sender signature"
-        : "Add a sender signature to the brief",
+        ? "At least one connected mailbox has a signature"
+        : "Add a signature in Mailboxes for a connected sending mailbox",
     },
     {
       id: "launch_readiness",
