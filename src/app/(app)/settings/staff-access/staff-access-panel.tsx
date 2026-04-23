@@ -159,6 +159,30 @@ function InviteForm({
         complete any MFA your organisation requires — after that they appear in
         the list below with the role you choose here.
       </p>
+      <details className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer font-medium text-foreground">
+          What the Bidlow Entra admin needs to have configured
+        </summary>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            Microsoft Graph <strong>application</strong> permission{" "}
+            <code>User.Invite.All</code> on the ODoutreach Entra app
+            registration.
+          </li>
+          <li>
+            <strong>Admin consent</strong> granted for that permission.
+          </li>
+          <li>
+            <strong>B2B guest invitations enabled</strong> in the tenant’s
+            External Identities settings.
+          </li>
+          <li>
+            If a delegated flow is ever used, the signed-in admin needs the{" "}
+            <em>Guest Inviter</em> (or <em>User Administrator</em>) role, or
+            tenant-default guest-invite must be allowed.
+          </li>
+        </ul>
+      </details>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-2">
           <Label htmlFor="invite-email">Work email</Label>

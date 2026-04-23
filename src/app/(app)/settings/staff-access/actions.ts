@@ -13,7 +13,19 @@ import { assertLastActiveAdminProtected } from "@/server/staff-access/last-admin
 import {
   createGuestInvitation,
   getGuestUserExternalState,
+  GuestInvitationError,
 } from "@/server/microsoft-graph/guest-invitations";
+import { formatInvitationErrorForBanner } from "@/lib/staff-access/invitation-errors";
+
+function describeInvitationFailure(e: unknown, fallback: string): string {
+  if (e instanceof GuestInvitationError) {
+    return formatInvitationErrorForBanner(e.classified);
+  }
+  if (e instanceof Error) {
+    return e.message;
+  }
+  return fallback;
+}
 
 export type StaffActionResult =
   | { ok: true; message?: string }
@@ -86,7 +98,10 @@ export async function inviteStaffUser(
       });
     } catch (graphErr) {
       await prisma.staffUser.delete({ where: { id: draft.id } });
-      throw graphErr;
+      return {
+        ok: false,
+        error: describeInvitationFailure(graphErr, "Invitation failed"),
+      };
     }
 
     await logStaffAccessAudit({
@@ -131,7 +146,7 @@ export async function resendStaffInvitation(staffUserId: string): Promise<StaffA
     } catch (e) {
       const hint =
         " If Microsoft rejects a duplicate invite, use “Sync invite status” or ask the user to check their inbox.";
-      const msg = e instanceof Error ? e.message + hint : "Resend failed" + hint;
+      const msg = describeInvitationFailure(e, "Resend failed") + hint;
       return { ok: false, error: msg };
     }
 
