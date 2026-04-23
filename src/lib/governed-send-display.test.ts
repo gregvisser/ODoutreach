@@ -11,7 +11,7 @@ describe("shortenIdempotencyKey", () => {
 
   it("shortens governedTest:client:uuid style keys to last 8 of uuid", () => {
     const k =
-      "governedTest:cmo2zipl90000ggo8c9j4ysfn:c89f12e6-38ed-41f4-b1aa-075db7430058";
+      "governedTest:clnexampleclient000000000:c89f12e6-38ed-41f4-b1aa-075db7430058";
     expect(shortenIdempotencyKey(k)).toBe("…b7430058");
   });
 
