@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  GraduationCap,
   LayoutDashboard,
   ListFilter,
   Mail,
@@ -27,5 +28,6 @@ export const mainNav: NavItem[] = [
   { title: "Suppression", href: "/suppression", icon: ListFilter },
   { title: "Activity", href: "/activity", icon: Activity },
   { title: "Reports", href: "/reporting", icon: PieChart },
+  { title: "Training", href: "/training", icon: GraduationCap },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
