@@ -3,12 +3,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { BRAND } from "@/components/brand/brand-config";
 import { cn } from "@/lib/utils";
 
 import { mainNav } from "./nav-config";
 
-export function AppSidebar({ className }: { className?: string }) {
+type BrandProp = {
+  markUrl: string;
+  brandName: string;
+  productName: string;
+  logoAltText: string;
+};
+
+export function AppSidebar({
+  className,
+  brand,
+}: {
+  className?: string;
+  brand: BrandProp;
+}) {
   const pathname = usePathname();
 
   return (
@@ -20,24 +32,24 @@ export function AppSidebar({ className }: { className?: string }) {
     >
       <Link
         href="/dashboard"
-        className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
-        aria-label={`${BRAND.name} ${BRAND.product} home`}
+        className="flex h-20 items-center gap-3 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
+        aria-label={`${brand.brandName} ${brand.productName} home`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- Local SVG served from /public. */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- URL can be external (admin-supplied) or local SVG; optimizer is unnecessary. */}
         <img
-          src={BRAND.markSrc}
+          src={brand.markUrl}
           alt=""
           aria-hidden="true"
-          className="h-9 w-9 shrink-0 rounded-lg"
-          width={36}
-          height={36}
+          className="h-10 w-10 shrink-0 rounded-lg"
+          width={40}
+          height={40}
           decoding="async"
         />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold tracking-tight">
-            {BRAND.name}
+            {brand.brandName}
           </p>
-          <p className="text-xs text-muted-foreground">{BRAND.product}</p>
+          <p className="text-xs text-muted-foreground">{brand.productName}</p>
         </div>
       </Link>
       <nav className="flex-1 space-y-0.5 p-3">

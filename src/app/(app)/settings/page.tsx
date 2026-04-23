@@ -42,14 +42,14 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle className="text-lg">Global brand</CardTitle>
             <CardDescription>
-              Favicon, centered app logo, and sign-in artwork are managed in
-              one place.
+              Edit the centered app logo, sidebar mark, favicon, and brand
+              name — changes apply to every signed-in operator.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              Preview the current app logo and favicon, and see where client
-              logos are managed.
+              Admin-only editor with live previews. Per-client logos are
+              managed separately in each client&rsquo;s brief.
             </p>
             <Link
               href="/settings/branding"

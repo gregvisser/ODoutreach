@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { SessionProvider } from "@/components/providers/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { getGlobalBrand } from "@/server/branding/get-global-brand";
 
 import "./globals.css";
 
@@ -16,18 +17,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "OpensDoors Outreach",
-    template: "%s · OpensDoors",
-  },
-  description:
-    "Cold outreach operations for OpensDoors — multi-tenant, suppression-aware, reply-tracked.",
-  // Favicon/app icon is handled by Next.js metadata-files convention:
-  //   - `src/app/icon.svg`   → branded vector app icon (modern browsers)
-  //   - `src/app/favicon.ico` → legacy .ico fallback
-  // Keep those files in sync when swapping in final brand artwork.
-};
+/**
+ * Metadata is generated per-request so the admin-saved favicon, brand
+ * name, and product name flow into the `<head>` immediately after a
+ * save. When no custom values are stored, `getGlobalBrand()` returns
+ * the shipped OpensDoors defaults (identical to the previous static
+ * behaviour), so the page remains fully branded in the empty state.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getGlobalBrand();
+  return {
+    title: {
+      default: `${brand.brandName} ${brand.productName}`,
+      template: `%s · ${brand.brandName}`,
+    },
+    description:
+      "Cold outreach operations — multi-tenant, suppression-aware, reply-tracked.",
+    icons: {
+      icon: [{ url: brand.faviconUrl }],
+      shortcut: [{ url: brand.faviconUrl }],
+      apple: [{ url: brand.faviconUrl }],
+    },
+  };
+}
 
 export default function RootLayout({
   children,

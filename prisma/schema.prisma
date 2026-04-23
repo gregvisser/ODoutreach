@@ -344,51 +344,51 @@ model Client {
 
 /// Connected outreach sending/receiving identity for a client workspace (max 5 active per client).
 model ClientMailboxIdentity {
-  id                   String                  @id @default(cuid())
-  clientId             String
-  provider             MailboxProvider
+  id                       String                  @id @default(cuid())
+  clientId                 String
+  provider                 MailboxProvider
   /// Normalized lowercase email — single source of truth for display and uniqueness
-  email                String
-  emailNormalized      String
-  displayName          String?
-  connectionStatus     MailboxConnectionStatus @default(DRAFT)
-  isActive             Boolean                 @default(true)
-  isPrimary            Boolean                 @default(false)
+  email                    String
+  emailNormalized          String
+  displayName              String?
+  connectionStatus         MailboxConnectionStatus @default(DRAFT)
+  isActive                 Boolean                 @default(true)
+  isPrimary                Boolean                 @default(false)
   /// Provider capability — future send/reply integration
-  canSend              Boolean                 @default(true)
-  canReceive           Boolean                 @default(true)
+  canSend                  Boolean                 @default(true)
+  canReceive               Boolean                 @default(true)
   /// OpensDoors hard rule: default 30 sends per mailbox per rolling/window day (enforced in later slices)
-  dailySendCap         Int                     @default(30)
+  dailySendCap             Int                     @default(30)
   /// Operator toggle to pause sending without deleting the row
-  isSendingEnabled     Boolean                 @default(true)
+  isSendingEnabled         Boolean                 @default(true)
   /// Counters reset when `now` passes `dailyWindowResetAt` (worker/sync responsibility in later slices)
-  emailsSentToday      Int                     @default(0)
-  dailyWindowResetAt   DateTime?
-  lastSyncAt           DateTime?
-  lastError            String?                 @db.Text
+  emailsSentToday          Int                     @default(0)
+  dailyWindowResetAt       DateTime?
+  lastSyncAt               DateTime?
+  lastError                String?                 @db.Text
   /// Per-mailbox sender identity (PR — mailbox sender signatures, 2026-04-22).
   /// Populated automatically from Gmail `users.settings.sendAs` when available;
   /// otherwise set manually via the Mailboxes UI. Falls back to the client
   /// brief signature at composition time when these are empty.
-  senderDisplayName    String?
+  senderDisplayName        String?
   /// Raw HTML signature as retrieved from Gmail `sendAs.signature` or pasted
   /// manually. Never rendered without going through the signature helper.
-  senderSignatureHtml  String?                 @db.Text
+  senderSignatureHtml      String?                 @db.Text
   /// Plain-text rendering used by the current text-body send path.
-  senderSignatureText  String?                 @db.Text
+  senderSignatureText      String?                 @db.Text
   /// `gmail_send_as` | `manual` | `unsupported_provider` | null (missing).
-  senderSignatureSource String?
-  senderSignatureSyncedAt DateTime?
-  senderSignatureSyncError String?             @db.Text
+  senderSignatureSource    String?
+  senderSignatureSyncedAt  DateTime?
+  senderSignatureSyncError String?                 @db.Text
   /// Opaque CSRF value for in-flight OAuth (Microsoft / Google mailbox connection)
-  oauthState           String?                 @unique
-  oauthStateExpiresAt  DateTime?
+  oauthState               String?                 @unique
+  oauthStateExpiresAt      DateTime?
   /// Provider account id after connect (e.g. Google `sub`, Microsoft Graph `id`) — not a secret
-  providerLinkedUserId String?
-  connectedAt          DateTime?
-  createdByStaffUserId String?
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
+  providerLinkedUserId     String?
+  connectedAt              DateTime?
+  createdByStaffUserId     String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
   client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy             StaffUser?               @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
@@ -1169,6 +1169,34 @@ model ReportingDailySnapshot {
 
   @@unique([clientId, date])
   @@index([clientId, date])
+}
+
+// ——— Global branding ———
+
+/// Singleton row (id = "global") storing admin-editable global branding
+/// overrides. Every column is nullable — when a column is NULL the UI
+/// falls back to the static defaults in `src/lib/branding/global-brand.ts`
+/// and the SVG files under `public/branding/`. Only one row is ever
+/// written, keyed by `id = "global"` via upsert.
+model GlobalBrandSetting {
+  id             String   @id
+  /// Horizontal wordmark URL rendered centered in the app header.
+  appLogoUrl     String?
+  /// Monogram/mark URL used for the sidebar, sign-in card, and favicon fallback.
+  appMarkUrl     String?
+  /// Optional favicon URL. When null, the UI falls back to `appMarkUrl`,
+  /// then to the static `/branding/opensdoors-mark.svg`.
+  appFaviconUrl  String?
+  /// Visible brand name (e.g. "OpensDoors").
+  appBrandName   String?
+  /// Short product label paired with the brand name (e.g. "Outreach").
+  appProductName String?
+  /// Accessible alt text for the app logo. When null, the UI falls
+  /// back to `"{appBrandName} {appProductName}"`.
+  appLogoAltText String?
+  updatedAt      DateTime @updatedAt
+  /// Optional staff id that last touched the row — for audit display.
+  updatedById    String?
 }
 
 // ——— Audit ———
