@@ -50,8 +50,10 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Connected sender accounts, daily capacity, and sender identity for
-          this client.
+          Shared workspace mailboxes for this client — connected sender
+          accounts, daily capacity, and sender identity. Any authorised
+          operator on this client can send from and reply through any
+          connected mailbox here.
         </p>
       </div>
 

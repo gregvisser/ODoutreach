@@ -42,6 +42,37 @@ export function isMailboxExecutionEligible(m: {
   return mailboxIneligibleForGovernedSendExecution(m) === null;
 }
 
+/**
+ * Workspace-based mailbox access rule (shared by sequence + controlled pilot sends).
+ *
+ * An authorised operator for a client workspace may use **any** connected
+ * sending mailbox on that workspace — eligibility is mailbox-specific
+ * (connection status, `canSend`, `isSendingEnabled`, `isActive`, ledger
+ * cap, suppression, signature), never operator-specific. This helper is
+ * the single labelled place where the filter lives so future contributors
+ * cannot accidentally reintroduce operator-email / mailbox-owner scoping.
+ *
+ * What is NOT here (intentionally):
+ *   - signed-in staff email
+ *   - `StaffUser.id` or any operator identity
+ *   - mailbox `createdByStaffUserId` / "owner" predicates
+ *
+ * What callers still enforce outside this helper:
+ *   - `requireClientAccess(staff, clientId)` — workspace authorisation
+ *   - `requireClientEmailSequenceMutator` / `requireClientMailboxMutator`
+ *     — role/membership gating for sending or managing
+ *   - per-recipient suppression + audit trail
+ *   - reply path: mailbox is the **receiving** mailbox for the thread,
+ *     not the operator's personal mailbox
+ */
+export function eligibleWorkspaceMailboxPool(
+  rows: ClientMailboxIdentity[],
+): ClientMailboxIdentity[] {
+  return rows.filter(
+    (m) => mailboxIneligibleForGovernedSendExecution(m) === null,
+  );
+}
+
 export function mailboxIneligibleReasonFromStaticState(
   m: {
     isActive: boolean;
