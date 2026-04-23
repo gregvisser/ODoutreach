@@ -16,8 +16,8 @@ import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import {
   countBookedSendSlotsInUtcWindow,
+  eligibleWorkspaceMailboxPool,
   linkReservationToOutboundInTransaction,
-  mailboxIneligibleForGovernedSendExecution,
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
@@ -44,10 +44,15 @@ export type ControlledPilotBatchResult =
 const SUBJECT_MAX = 300;
 const BODY_MAX = 50_000;
 
+/**
+ * Workspace mailbox pool for this controlled-pilot batch. Delegates to
+ * `eligibleWorkspaceMailboxPool` so the "workspace-based, not
+ * operator-owned" rule lives in exactly one place.
+ */
 function executionEligibleMailboxes(
   rows: ClientMailboxIdentity[],
 ): ClientMailboxIdentity[] {
-  return rows.filter((m) => mailboxIneligibleForGovernedSendExecution(m) === null);
+  return eligibleWorkspaceMailboxPool(rows);
 }
 
 function sortMailboxesForPilotPick(

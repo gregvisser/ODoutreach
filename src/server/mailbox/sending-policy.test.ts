@@ -7,6 +7,7 @@ vi.mock("@/lib/db", () => ({ prisma: {} }));
 
 import {
   countBookedSendSlotsInUtcWindow,
+  eligibleWorkspaceMailboxPool,
   mailboxIneligibleForGovernedSendExecution,
   mailboxIneligibleReasonFromStaticState,
   resolveSendingGovernance,
@@ -168,6 +169,88 @@ describe("tryReserveSendSlotInTransaction", () => {
     expect(r.ok).toBe(true);
     expect("duplicate" in r && r.duplicate).toBe(false);
     if (r.ok) expect(create).toHaveBeenCalled();
+  });
+});
+
+describe("eligibleWorkspaceMailboxPool (shared workspace mailbox access rule)", () => {
+  it("includes every healthy connected mailbox regardless of which staff member connected it", () => {
+    const rows = [
+      baseMailbox({
+        id: "m-alice",
+        email: "alice@client.example",
+        createdByStaffUserId: "staff-alice",
+      }),
+      baseMailbox({
+        id: "m-bob",
+        email: "bob@client.example",
+        createdByStaffUserId: "staff-bob",
+        isPrimary: false,
+      }),
+      baseMailbox({
+        id: "m-carol",
+        email: "carol@client.example",
+        createdByStaffUserId: null,
+        isPrimary: false,
+      }),
+    ];
+    const pool = eligibleWorkspaceMailboxPool(rows);
+    expect(pool.map((m) => m.id).sort()).toEqual([
+      "m-alice",
+      "m-bob",
+      "m-carol",
+    ]);
+  });
+
+  it("excludes a mailbox that is not connected", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({ id: "ok" }),
+      baseMailbox({ id: "bad", connectionStatus: "DISCONNECTED" }),
+    ]);
+    expect(pool.map((m) => m.id)).toEqual(["ok"]);
+  });
+
+  it("excludes a mailbox with sending disabled", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({ id: "ok" }),
+      baseMailbox({ id: "bad", isSendingEnabled: false }),
+    ]);
+    expect(pool.map((m) => m.id)).toEqual(["ok"]);
+  });
+
+  it("excludes an inactive mailbox", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({ id: "ok" }),
+      baseMailbox({ id: "bad", isActive: false }),
+    ]);
+    expect(pool.map((m) => m.id)).toEqual(["ok"]);
+  });
+
+  it("excludes a mailbox where canSend is false", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({ id: "ok" }),
+      baseMailbox({ id: "bad", canSend: false }),
+    ]);
+    expect(pool.map((m) => m.id)).toEqual(["ok"]);
+  });
+
+  it("does not filter by mailbox emailNormalized — any operator-email coupling would be a regression", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({
+        id: "unrelated",
+        email: "ops-shared@client.example",
+        emailNormalized: "ops-shared@client.example",
+      }),
+    ]);
+    expect(pool).toHaveLength(1);
+    expect(pool[0]?.emailNormalized).toBe("ops-shared@client.example");
+  });
+
+  it("returns an empty pool when no mailbox is healthy", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({ id: "a", connectionStatus: "DISCONNECTED" }),
+      baseMailbox({ id: "b", isSendingEnabled: false }),
+    ]);
+    expect(pool).toEqual([]);
   });
 });
 

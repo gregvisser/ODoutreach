@@ -78,8 +78,8 @@ export default async function InboundMessageDetailPage({ params }: Props) {
             : "(no subject)"}
         </h1>
         <p className="mt-1 text-muted-foreground">
-          Received by {bundle.client.name} — read the message and reply from
-          the connected mailbox.
+          Received by {bundle.client.name} — any authorised operator on this
+          client can reply from the connected mailbox that received it.
         </p>
       </div>
 

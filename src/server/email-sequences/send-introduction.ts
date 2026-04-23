@@ -53,8 +53,8 @@ import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
 import {
   countBookedSendSlotsInUtcWindow,
+  eligibleWorkspaceMailboxPool,
   linkReservationToOutboundInTransaction,
-  mailboxIneligibleForGovernedSendExecution,
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
 import {
@@ -186,12 +186,15 @@ export type SequenceIntroSendResult = SequenceStepSendBatchResult;
 // Mailbox-pool helpers (shared by INTRODUCTION and follow-up flows).
 // ---------------------------------------------------------------------------
 
+/**
+ * Workspace mailbox pool for this sequence send. Delegates to
+ * `eligibleWorkspaceMailboxPool` so the "workspace-based, not
+ * operator-owned" rule lives in exactly one place.
+ */
 function executionEligibleMailboxes(
   rows: ClientMailboxIdentity[],
 ): ClientMailboxIdentity[] {
-  return rows.filter(
-    (m) => mailboxIneligibleForGovernedSendExecution(m) === null,
-  );
+  return eligibleWorkspaceMailboxPool(rows);
 }
 
 function sortMailboxesForPoolPick(
