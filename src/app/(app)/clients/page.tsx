@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ClientLogo } from "@/components/clients/client-logo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { clientStatusLabel } from "@/lib/ui/status-labels";
@@ -64,7 +65,17 @@ export default async function ClientsPage() {
             <TableBody>
               {clients.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="flex items-center gap-3">
+                      <ClientLogo
+                        clientName={c.name}
+                        logoUrl={c.logoUrl}
+                        logoAltText={c.logoAltText}
+                        size={32}
+                      />
+                      <span className="min-w-0 truncate">{c.name}</span>
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{clientStatusLabel(c.status)}</Badge>
                   </TableCell>

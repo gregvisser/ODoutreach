@@ -34,6 +34,35 @@ export default async function SettingsPage() {
 
       <section className="space-y-3">
         <SectionHeading
+          title="Branding"
+          description="How OpensDoors Outreach appears across the portal. Per-client logos are managed on each client's brief."
+        />
+
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Global brand</CardTitle>
+            <CardDescription>
+              Favicon, centered app logo, and sign-in artwork are managed in
+              one place.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Preview the current app logo and favicon, and see where client
+              logos are managed.
+            </p>
+            <Link
+              href="/settings/branding"
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open branding →
+            </Link>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <SectionHeading
           title="Team access"
           description="Who can sign in to OpensDoors Outreach and what they can do."
         />

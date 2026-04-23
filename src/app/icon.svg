@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="od-icon-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#1f2937"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" ry="14" fill="url(#od-icon-bg)"/>
+  <path
+    d="M41 18.5 L28 32 L41 45.5"
+    fill="none"
+    stroke="#f9fafb"
+    stroke-width="2.25"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.55"
+  />
+  <g fill="#f9fafb" font-family="'Geist','Inter','Helvetica Neue',Arial,sans-serif" font-weight="700">
+    <text x="14.5" y="42" font-size="26" letter-spacing="-1.2">O</text>
+    <text x="34" y="42" font-size="26" letter-spacing="-1.2">D</text>
+  </g>
+</svg>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OpensDoors">
+  <title>OpensDoors</title>
+  <!--
+    Placeholder OpensDoors monogram mark. Renders as a circular "OD"
+    tile with an opening-door chevron. Replace this SVG (or add
+    /public/branding/opensdoors-mark.png alongside it) to swap in the
+    final brand artwork without changing any component markup.
+  -->
+  <defs>
+    <linearGradient id="od-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#1f2937"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" ry="14" fill="url(#od-bg)"/>
+  <!-- Open-door chevron, suggesting a door ajar -->
+  <path
+    d="M41 18.5 L28 32 L41 45.5"
+    fill="none"
+    stroke="#f9fafb"
+    stroke-width="2.25"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.55"
+  />
+  <!-- OD monogram -->
+  <g fill="#f9fafb" font-family="'Geist','Inter','Helvetica Neue',Arial,sans-serif" font-weight="700">
+    <text x="14.5" y="42" font-size="26" letter-spacing="-1.2">O</text>
+    <text x="34" y="42" font-size="26" letter-spacing="-1.2">D</text>
+  </g>
+</svg>
