@@ -13,12 +13,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  computeOnboardingBriefCompletion,
-  parseOpensDoorsBrief,
-} from "@/lib/opensdoors-brief";
+import { parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import { clientStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
+import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -30,7 +28,7 @@ type Props = {
 };
 
 function readinessBadgeVariant(
-  status: ReturnType<typeof computeOnboardingBriefCompletion>["status"],
+  status: "empty" | "partial" | "ready",
 ): "default" | "secondary" | "outline" {
   if (status === "ready") return "default";
   if (status === "partial") return "secondary";
@@ -42,12 +40,19 @@ export default async function ClientBriefPage({ params }: Props) {
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
 
-  const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
+  const [bundle, staffOptions] = await Promise.all([
+    loadClientWorkspaceBundle(clientId, accessible, staff),
+    prisma.staffUser.findMany({
+      where: { isActive: true },
+      orderBy: { email: "asc" },
+      select: { id: true, email: true, displayName: true },
+    }),
+  ]);
   if (!bundle.client) notFound();
   const client = bundle.client;
 
   const brief = parseOpensDoorsBrief(client.onboarding?.formData);
-  const completion = computeOnboardingBriefCompletion(client.onboarding?.formData);
+  const completion = bundle.onboardingCompletion;
   const base = `/clients/${client.id}`;
 
   return (
@@ -75,9 +80,9 @@ export default async function ClientBriefPage({ params }: Props) {
               </Badge>
             </div>
             <p className="max-w-2xl text-muted-foreground">
-              The single source of truth for this client — who they are, who
-              they&rsquo;re targeting, and how their outreach should sound.
-              Fill this in before importing contacts or sending.
+              Business and targeting truth for this workspace — identity, ICP,
+              positioning, and compliance. Sender signatures and mailbox setup
+              live under Mailboxes.
             </p>
           </div>
         </div>
@@ -98,7 +103,28 @@ export default async function ClientBriefPage({ params }: Props) {
             initialLogoAltText={client.logoAltText}
           />
           <div className="rounded-xl border border-border/80 bg-card p-6 shadow-sm">
-            <OpensDoorsBriefGuidedForm clientId={client.id} initial={brief} />
+            <OpensDoorsBriefGuidedForm
+              clientId={client.id}
+              clientName={client.name}
+              initial={brief}
+              clientRow={{
+                website: client.website ?? "",
+                industry: client.industry ?? "",
+                briefLinkedinUrl: client.briefLinkedinUrl ?? "",
+                briefInternalNotes: client.briefInternalNotes ?? "",
+                briefAssignedAccountManagerId: client.briefAssignedAccountManagerId,
+                briefBusinessAddress: client.briefBusinessAddress,
+                briefMainContact: client.briefMainContact,
+              }}
+              taxonomyLinks={client.briefTaxonomyLinks}
+              staffOptions={staffOptions}
+              complianceFiles={client.complianceAttachments.map((c) => ({
+                id: c.id,
+                fileName: c.fileName,
+                sizeBytes: c.sizeBytes,
+                createdAt: c.createdAt.toISOString(),
+              }))}
+            />
           </div>
         </div>
 

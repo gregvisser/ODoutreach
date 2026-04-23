@@ -33,6 +33,16 @@ export async function getClientByIdForStaff(
     include: {
       onboarding: true,
       suppressionSources: true,
+      briefTaxonomyLinks: { include: { term: true } },
+      complianceAttachments: {
+        select: {
+          id: true,
+          fileName: true,
+          sizeBytes: true,
+          mimeType: true,
+          createdAt: true,
+        },
+      },
       mailboxIdentities: {
         orderBy: [{ isPrimary: "desc" }, { emailNormalized: "asc" }],
       },

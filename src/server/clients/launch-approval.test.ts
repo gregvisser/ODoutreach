@@ -39,7 +39,7 @@ function snapshotWithPolicy(overrides: {
     checklist: [
       {
         id: "brief",
-        label: "Operating brief complete",
+        label: "Business brief complete",
         ok: overrides.canApprove,
         detail: "test",
       },
@@ -113,14 +113,14 @@ describe("approveClientLaunch", () => {
         Promise.resolve(
           snapshotWithPolicy({
             canApprove: false,
-            blockers: ["Operating brief is not complete."],
+            blockers: ["Business brief is not complete."],
           }),
         ),
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.code).toBe("POLICY_BLOCKED");
-      expect(result.blockers).toEqual(["Operating brief is not complete."]);
+      expect(result.blockers).toEqual(["Business brief is not complete."]);
     }
     expect(prismaMock.client.update).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();

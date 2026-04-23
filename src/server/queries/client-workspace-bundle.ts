@@ -1,10 +1,7 @@
 import "server-only";
 
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
-import {
-  computeOnboardingBriefCompletion,
-  parseOpensDoorsBrief,
-} from "@/lib/opensdoors-brief";
+import { computeOnboardingBriefCompletion, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import {
   REQUIRED_OUTREACH_MAILBOX_COUNT,
   sumAggregateRemainingAcrossEligible,
@@ -137,7 +134,44 @@ export async function loadClientWorkspaceBundle(
   });
 
   const brief = parseOpensDoorsBrief(client.onboarding?.formData);
-  const onboardingCompletion = computeOnboardingBriefCompletion(client.onboarding?.formData);
+
+  const taxono = {
+    SERVICE_AREA: 0,
+    TARGET_INDUSTRY: 0,
+    COMPANY_SIZE: 0,
+    JOB_TITLE: 0,
+  };
+  for (const link of client.briefTaxonomyLinks) {
+    switch (link.term.kind) {
+      case "SERVICE_AREA":
+        taxono.SERVICE_AREA += 1;
+        break;
+      case "TARGET_INDUSTRY":
+        taxono.TARGET_INDUSTRY += 1;
+        break;
+      case "COMPANY_SIZE":
+        taxono.COMPANY_SIZE += 1;
+        break;
+      case "JOB_TITLE":
+        taxono.JOB_TITLE += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const onboardingCompletion = computeOnboardingBriefCompletion(client.onboarding?.formData, {
+    client: {
+      name: client.name,
+      website: client.website,
+      industry: client.industry,
+      briefBusinessAddress: client.briefBusinessAddress,
+      briefMainContact: client.briefMainContact,
+      briefLinkedinUrl: client.briefLinkedinUrl,
+      briefAssignedAccountManagerId: client.briefAssignedAccountManagerId,
+    },
+    taxonomyCounts: taxono,
+  });
   const suppressionSheetRows = client.suppressionSources.filter((s) => !!s.spreadsheetId?.trim());
 
   const governedReadiness =

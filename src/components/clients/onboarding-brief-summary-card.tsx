@@ -34,10 +34,10 @@ export function OnboardingBriefSummaryCard({ clientId, completion }: Props) {
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>Operating brief</CardTitle>
+            <CardTitle>Business brief</CardTitle>
             <CardDescription>
-              Operating context for sourcing and sending — stored in{" "}
-              <code className="text-xs">ClientOnboarding.formData</code>.
+              Client identity, targeting, and compliance. Text fields are stored in
+              onboarding data; ICP &amp; areas use shared lookup values.
             </CardDescription>
           </div>
           <Badge variant={statusBadgeVariant(completion.status)} className="shrink-0">
