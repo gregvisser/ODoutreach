@@ -15,6 +15,7 @@
     "worker:outbound": "tsx scripts/process-outbound-queue.ts",
     "staging:preflight": "tsx scripts/preflight-staging-env.ts",
     "staging:verify-health": "tsx scripts/verify-deployment-health.ts",
+    "ops:retire-test-client": "tsx scripts/retire-test-client.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
