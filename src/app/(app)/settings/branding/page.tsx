@@ -30,9 +30,7 @@ export default async function SettingsBrandingPage() {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">Branding</h1>
         <p className="max-w-2xl text-muted-foreground">
-          Controls how {BRAND.name} {BRAND.product}
-          {" appears across the portal. Global branding is shared by every workspace."}
-          {" Per-client logos are managed on each client\u2019s brief."}
+          {`Controls how ${BRAND.name} ${BRAND.product} appears across the portal. Global branding is shared by every workspace. Per-client logos are managed on each client\u2019s brief.`}
         </p>
       </div>
 
