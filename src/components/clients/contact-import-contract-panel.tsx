@@ -20,11 +20,11 @@ export function ContactImportContractPanel() {
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Contact import contract</CardTitle>
+        <CardTitle>What your file needs</CardTitle>
         <CardDescription>
-          CSV and RocketReach intake accept these headings. Fields may be
-          empty. A row only needs one outreach identifier to count as a valid
-          contact.
+          CSV files and RocketReach imports accept the headings below. Empty
+          cells are fine. A row just needs one way to reach the contact to
+          count as valid.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -59,11 +59,11 @@ export function ContactImportContractPanel() {
           </div>
           <div className="rounded-md border border-border/80 bg-muted/40 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Email-sendable
+              Ready to email
             </p>
             <p className="mt-1 text-sm">
-              Valid contact <em>with</em> an email address. Pilot email sends
-              only use email-sendable contacts.
+              A valid contact that also has an email address. Only these
+              contacts are included in pilot and live email sends.
             </p>
           </div>
         </div>
@@ -76,9 +76,9 @@ export function ContactImportContractPanel() {
 
         {EMAIL_REQUIRED_FOR_PERSISTENCE ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-            <strong>Note:</strong> email is currently required to persist a
-            contact. LinkedIn-only and phone-only contacts will be storable
-            once the email-optional persistence follow-up lands.
+            <strong>Heads up:</strong> today an email address is required to
+            save a contact. Support for LinkedIn-only and phone-only contacts
+            is coming.
           </p>
         ) : null}
       </CardContent>

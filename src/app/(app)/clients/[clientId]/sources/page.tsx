@@ -48,9 +48,9 @@ export default async function ClientSourcesPage({ params }: Props) {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Import contacts from RocketReach into this workspace (API key from
-          environment). Imports must be saved to a named email list. Lists are
-          used later by sequences.
+          Bring contacts into this client by importing from RocketReach or
+          uploading a CSV. Every import is saved to a named list you can use
+          later when launching a sequence.
         </p>
       </div>
 
@@ -58,16 +58,16 @@ export default async function ClientSourcesPage({ params }: Props) {
 
       <Card className="border-dashed border-primary/30 bg-primary/5 shadow-sm">
         <CardHeader>
-          <CardTitle>CSV import (with preview)</CardTitle>
+          <CardTitle>CSV upload</CardTitle>
           <CardDescription>
-            CSV imports run from the global{" "}
-            <span className="font-medium">Contacts</span> page. The new Preview
-            step shows exactly which rows will create contacts, attach to a
-            list, or be skipped —{" "}
+            Run CSV imports from the main{" "}
+            <span className="font-medium">Contacts</span> page. You&rsquo;ll
+            see a Preview of exactly which rows will be added, updated, or
+            skipped before anything is saved —{" "}
             <span className="font-medium">
-              Preview does not create contacts.
+              Preview never creates contacts on its own.
             </span>{" "}
-            You then press Confirm import to write.
+            Press Confirm import when the preview looks right.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -78,25 +78,25 @@ export default async function ClientSourcesPage({ params }: Props) {
             Open CSV import for {client.name}
           </Link>
           <p className="text-xs text-muted-foreground">
-            The Contacts page filters automatically to this client. Pick a list
-            target on the CSV form, upload the file, and press Preview.
+            The Contacts page filters automatically to this client. Choose a
+            target list, upload the file, and press Preview.
           </p>
         </CardContent>
       </Card>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Email lists for this client</CardTitle>
+          <CardTitle>Lists for this client</CardTitle>
           <CardDescription>
-            Client-scoped lists owned by <span className="font-medium">{client.name}</span>.
-            Create a list during import below, or reuse an existing list when
-            re-importing.
+            Contact lists belong to{" "}
+            <span className="font-medium">{client.name}</span>. Create a new
+            list during import, or reuse an existing list when topping up.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {lists.length === 0 ? (
             <p className="rounded-md border border-dashed border-border/80 bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
-              No lists yet — the next import creates one.
+              No lists yet. Run an import below to create the first one.
             </p>
           ) : (
             <ul className="divide-y divide-border/60 rounded-md border border-border/80">

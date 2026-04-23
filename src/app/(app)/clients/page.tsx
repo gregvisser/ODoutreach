@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { clientStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -35,18 +36,19 @@ export default async function ClientsPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Clients</h1>
           <p className="mt-1 text-muted-foreground">
-            Workspaces you are allowed to access — data never mixes between tenants.
+            The client workspaces you can access. Each client keeps its own
+            contacts, mailboxes, and outreach.
           </p>
         </div>
         <Link href="/clients/new" className={cn(buttonVariants())}>
-          Onboard client
+          Add client
         </Link>
       </div>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Workspaces</CardTitle>
-          <CardDescription>Status and quick counts from live data</CardDescription>
+          <CardTitle>All clients</CardTitle>
+          <CardDescription>Current status and live totals.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -64,7 +66,7 @@ export default async function ClientsPage() {
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{c.status}</Badge>
+                    <Badge variant="secondary">{clientStatusLabel(c.status)}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {c._count.contacts}
@@ -85,9 +87,19 @@ export default async function ClientsPage() {
             </TableBody>
           </Table>
           {clients.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No accessible clients — request membership or use an admin role.
-            </p>
+            <div className="space-y-2 py-10 text-center text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">No clients yet</p>
+              <p>
+                Add your first client to start onboarding mailboxes, contacts,
+                and outreach.
+              </p>
+              <Link
+                href="/clients/new"
+                className={cn(buttonVariants(), "mt-2 inline-flex")}
+              >
+                Add client
+              </Link>
+            </div>
           ) : null}
         </CardContent>
       </Card>

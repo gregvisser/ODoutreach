@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { staffRoleLabel } from "@/lib/ui/status-labels";
 
 const RECENT_LIMIT = 40;
 
@@ -31,22 +32,42 @@ function formatStaffAuditDetail(metadata: unknown): string {
     }
     case "invitation_status_sync": {
       const email = String(m.inviteeEmail ?? "");
-      const ext = String(m.externalUserState ?? "");
       const state = String(m.guestInvitationState ?? "");
-      return `Invite status synced${email ? ` (${email})` : ""}${ext ? ` — Microsoft: ${ext}` : ""}${state ? ` → app: ${state}` : ""}`;
+      const humanState =
+        state === "ACCEPTED"
+          ? "accepted"
+          : state === "PENDING"
+            ? "still pending"
+            : state.toLowerCase();
+      return `Refreshed invitation status${email ? ` for ${email}` : ""}${
+        humanState ? ` — ${humanState}` : ""
+      }`;
     }
     case "role_change": {
-      const from = String(m.fromRole ?? "");
-      const to = String(m.toRole ?? "");
-      return `Role ${from} → ${to}`;
+      const from = staffRoleLabel(String(m.fromRole ?? ""));
+      const to = staffRoleLabel(String(m.toRole ?? ""));
+      return `Role changed from ${from} to ${to}`;
     }
     case "active_change": {
-      const active = m.isActive === true ? "active" : m.isActive === false ? "inactive" : String(m.isActive ?? "");
-      return `Active set to ${active}`;
+      if (m.isActive === true) return "Sign-in allowed";
+      if (m.isActive === false) return "Sign-in blocked";
+      return "Sign-in state changed";
     }
     default:
-      return JSON.stringify(metadata);
+      return "—";
   }
+}
+
+const STAFF_AUDIT_ACTION_LABELS: Record<string, string> = {
+  CREATE: "Invite",
+  UPDATE: "Update",
+  SYNC: "Refresh",
+  DELETE: "Remove",
+};
+
+export function staffAuditActionLabel(action: string): string {
+  if (!action) return "—";
+  return STAFF_AUDIT_ACTION_LABELS[action] ?? action[0] + action.slice(1).toLowerCase();
 }
 
 /**

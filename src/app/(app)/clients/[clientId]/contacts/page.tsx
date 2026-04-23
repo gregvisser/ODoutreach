@@ -57,11 +57,11 @@ function listStatusBadgeVariant(
 function listStatusLabel(status: ListStatusLabel): string {
   switch (status) {
     case "ready_for_sequence":
-      return "Ready for sequence";
+      return "Ready to use";
     case "needs_email_sendable":
-      return "Needs email-sendable contacts";
+      return "Needs emails";
     case "needs_contacts":
-      return "Needs contacts";
+      return "Empty";
   }
 }
 
@@ -98,28 +98,28 @@ export default async function ClientContactsPage({ params }: Props) {
       id: "total-lists",
       label: "Total lists",
       value: totals.totalLists,
-      hint: "Named email lists attached to this client.",
+      hint: "Contact lists attached to this client.",
       tone: "muted",
     },
     {
       id: "total-members",
-      label: "Total members",
+      label: "Unique contacts",
       value: totals.uniqueContacts.total,
-      hint: "Unique contacts across all lists for this client.",
+      hint: "Across every list — counted once.",
       tone: "muted",
     },
     {
       id: "email-sendable",
-      label: "Email-sendable",
+      label: "Ready to email",
       value: totals.uniqueContacts.emailSendable,
-      hint: "Valid contacts with an email address.",
+      hint: "Have a valid email address.",
       tone: "primary",
     },
     {
       id: "suppressed",
       label: "Suppressed",
       value: totals.uniqueContacts.suppressed,
-      hint: "Excluded by client suppression rules.",
+      hint: "Blocked by this client's rules.",
       tone: "danger",
     },
     {
@@ -145,12 +145,12 @@ export default async function ClientContactsPage({ params }: Props) {
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Contacts
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight">Email lists</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Contact lists</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground">
-            Named lists attached to{" "}
+            Lists of contacts for{" "}
             <span className="font-medium text-foreground">{client.name}</span>.
-            Imports are saved to lists, and sequences will later send to one
-            selected list.
+            Each import is saved to a list, and every sequence sends to one
+            list you choose.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -201,11 +201,11 @@ export default async function ClientContactsPage({ params }: Props) {
       {lists.length === 0 ? (
         <Card className="border-dashed border-border/80 bg-muted/30 shadow-sm">
           <CardHeader>
-            <CardTitle>No email lists yet</CardTitle>
+            <CardTitle>No contact lists yet</CardTitle>
             <CardDescription>
-              This client does not have any email lists. Go to Sources to
-              import contacts into a named list — that creates the list and
-              attaches the imported contacts to it.
+              This client doesn&rsquo;t have any lists. Head over to Sources
+              to import contacts — the import will create a list and fill it
+              with the contacts you bring in.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -213,7 +213,7 @@ export default async function ClientContactsPage({ params }: Props) {
               href={`${base}/sources`}
               className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
             >
-              Open sources
+              Import contacts
             </Link>
           </CardContent>
         </Card>
@@ -294,7 +294,7 @@ export default async function ClientContactsPage({ params }: Props) {
                   <dl className="grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5">
                       <dt className="font-medium uppercase tracking-wider text-muted-foreground">
-                        Email-sendable
+                        Ready to email
                       </dt>
                       <dd className="text-base font-semibold tabular-nums">
                         {readiness.emailSendable}
@@ -332,8 +332,8 @@ export default async function ClientContactsPage({ params }: Props) {
                     </p>
                     {list.recentMembers.length === 0 ? (
                       <p className="rounded-md border border-dashed border-border/80 bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-                        No members yet — next import into this list will add
-                        contacts here.
+                        No contacts in this list yet. Contacts appear here
+                        after your next import into this list.
                       </p>
                     ) : (
                       <ul className="divide-y divide-border/60 rounded-md border border-border/80">
@@ -399,36 +399,31 @@ export default async function ClientContactsPage({ params }: Props) {
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Bridge-phase note</CardTitle>
+          <CardTitle>How these counts work</CardTitle>
           <CardDescription>
-            Contacts are currently stored in the bridge model while the
-            universal contact pool is being phased in. Lists are the
-            operating unit for future sequences — each sequence will send to
+            Lists are the building block for outreach. Each sequence sends to
             exactly one list.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="list-disc space-y-1 pl-6 text-sm text-muted-foreground">
             <li>
-              Contact identifiers (email, LinkedIn, mobile, office) drive the
-              readiness counts above.
+              Readiness is based on contact details — email, LinkedIn, mobile,
+              and office phone.
             </li>
             <li>
-              Counts at the top of the page are computed over{" "}
-              <span className="font-medium text-foreground">unique contacts</span>{" "}
-              across all lists for this client, so a contact in two lists is
-              not counted twice.
+              The numbers at the top count each contact once, even if they
+              appear in several lists.
             </li>
             <li>
-              This page never triggers imports, sends, or suppression sync —
-              use the{" "}
+              This page is read-only. Import contacts from the{" "}
               <Link
                 href={`${base}/sources`}
                 className="underline underline-offset-2"
               >
                 Sources
               </Link>{" "}
-              tab to import contacts into a list.
+              tab.
             </li>
           </ul>
         </CardContent>

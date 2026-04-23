@@ -99,8 +99,8 @@ export default async function ClientOutreachPage({
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Approved email templates, governed proof send, and controlled pilot. Sequences
-          and sequence-driven sending are not enabled yet.
+          Manage templates and sequences for this client, send internal proof
+          emails, and run a small pilot before going live.
         </p>
       </div>
 
@@ -135,10 +135,10 @@ export default async function ClientOutreachPage({
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Governed test send (operator)</CardTitle>
+          <CardTitle>Send an internal test email</CardTitle>
           <CardDescription>
-            Queue exactly one internal proof email through the reservation ledger — no bulk. For
-            verification only.
+            Queue a single proof email to an internal address so you can see
+            how the message lands before pilot or live sends.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -153,12 +153,14 @@ export default async function ClientOutreachPage({
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Controlled pilot send</CardTitle>
+          <CardTitle>Run a pilot send</CardTitle>
           <CardDescription>
-            Queue up to {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} recipients per run across the{" "}
-            <strong>mailbox pool</strong>. Type <span className="font-mono text-xs">SEND PILOT</span> to
-            confirm. Pool capacity reflects remaining slots today (cap {String(OUTREACH_MAILBOX_DAILY_CAP)}
-            /mailbox in UTC day).
+            Send the first message to a small batch of up to{" "}
+            {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} real recipients, spread
+            across your connected mailboxes. Type{" "}
+            <span className="font-medium">SEND PILOT</span> to confirm. Each
+            mailbox can send up to {String(OUTREACH_MAILBOX_DAILY_CAP)} emails
+            per day.
           </CardDescription>
         </CardHeader>
         <CardContent>

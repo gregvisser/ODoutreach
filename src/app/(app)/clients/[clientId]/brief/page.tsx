@@ -15,6 +15,7 @@ import {
   computeOnboardingBriefCompletion,
   parseOpensDoorsBrief,
 } from "@/lib/opensdoors-brief";
+import { clientStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -52,18 +53,19 @@ export default async function ClientBriefPage({ params }: Props) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Operating brief
+            Client brief
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-            <Badge variant="outline">{client.status}</Badge>
+            <Badge variant="outline">{clientStatusLabel(client.status)}</Badge>
             <Badge variant={readinessBadgeVariant(completion.status)}>
               Brief · {completion.percent}%
             </Badge>
           </div>
           <p className="max-w-2xl text-muted-foreground">
-            Capture the operating brief before sourcing and sending. This is the single place for
-            client context — everything else in the workspace builds on it.
+            The single source of truth for this client — who they are, who
+            they&rsquo;re targeting, and how their outreach should sound.
+            Fill this in before importing contacts or sending.
           </p>
         </div>
         <Link
@@ -82,9 +84,10 @@ export default async function ClientBriefPage({ params }: Props) {
         <aside className="space-y-4 lg:sticky lg:top-24">
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">Brief readiness</CardTitle>
+              <CardTitle className="text-base">Brief progress</CardTitle>
               <CardDescription>
-                {completion.completedCount} of {completion.totalCount} required fields complete.
+                {completion.completedCount} of {completion.totalCount} required
+                fields filled in.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -107,13 +110,14 @@ export default async function ClientBriefPage({ params }: Props) {
               {completion.nextRecommendedLabel ? (
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Next recommended
+                    Up next
                   </p>
                   <p className="text-sm text-foreground">{completion.nextRecommendedLabel}</p>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Brief is complete against the required checklist. Refine templates anytime.
+                  All required fields are filled in. You can keep refining
+                  templates any time.
                 </p>
               )}
 
@@ -134,8 +138,10 @@ export default async function ClientBriefPage({ params }: Props) {
 
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">Next modules</CardTitle>
-              <CardDescription>Continue the operating pathway for this workspace.</CardDescription>
+              <CardTitle className="text-base">Jump to</CardTitle>
+              <CardDescription>
+                Other areas for this client.
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               <Link

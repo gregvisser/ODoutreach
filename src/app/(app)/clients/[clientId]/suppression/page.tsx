@@ -28,7 +28,8 @@ export default async function ClientSuppressionPage({ params }: Props) {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Google Sheets suppression sources and sync for this workspace.
+          Connect a Google Sheet of do-not-contact addresses so sends to those
+          people are blocked automatically.
         </p>
       </div>
 

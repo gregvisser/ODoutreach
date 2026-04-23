@@ -50,15 +50,17 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Connected sender accounts, capacity, and identity readiness for this workspace.
+          Connected sender accounts, daily capacity, and sender identity for
+          this client.
         </p>
       </div>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Outbound sender identity</CardTitle>
+          <CardTitle>Sender identity</CardTitle>
           <CardDescription>
-            Configured vs verified vs allowlisted — operational envelope for this client.
+            Where outbound email is sent from and whether that sender is ready
+            to go live.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -68,12 +70,13 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Mailbox identities</CardTitle>
+          <CardTitle>Connected mailboxes</CardTitle>
           <CardDescription>
-            Connect up to <strong>five</strong> outreach senders (cap {String(OUTREACH_MAILBOX_DAILY_CAP)}
-            /day each, {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day pooled). OAuth tokens stay on the
-            server. Microsoft Graph <strong>Mail.Read</strong> / <strong>Mail.Send</strong> and Gmail{" "}
-            <strong>readonly</strong> / <strong>send</strong> scopes; reconnect after scope changes.
+            Connect up to <strong>five</strong> sending mailboxes. Each mailbox
+            sends up to {String(OUTREACH_MAILBOX_DAILY_CAP)} messages per day,
+            for a total of {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} per day
+            across the pool. Sign-in is via Microsoft 365 or Google Workspace
+            and happens on their side — credentials are never stored here.
           </CardDescription>
         </CardHeader>
         <CardContent>

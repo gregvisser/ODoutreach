@@ -39,7 +39,7 @@ export function AppHeader() {
           </SheetContent>
         </Sheet>
         <p className="hidden text-sm text-muted-foreground sm:block">
-          Internal outreach console
+          OpensDoors Outreach
         </p>
       </div>
       <div className="flex items-center gap-3">

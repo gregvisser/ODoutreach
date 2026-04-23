@@ -31,6 +31,7 @@ import {
   REQUIRED_OUTREACH_MAILBOX_COUNT,
   THEORETICAL_MAX_CLIENT_DAILY_SENDS,
 } from "@/lib/outreach-mailbox-model";
+import { clientStatusLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   ONE_CLICK_UNSUBSCRIBE_READY,
@@ -184,7 +185,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   const snapshotItems = [
     {
       label: "Client status",
-      value: client.status,
+      value: clientStatusLabel(client.status),
       hint: "Workspace state",
     },
     {
@@ -200,61 +201,71 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     {
       label: "Latest activity",
       value: snapshot.latestActivityLabel ?? "—",
-      hint: snapshot.latestActivityLabel ? "UTC, governed ledger" : "No sends yet",
+      hint: snapshot.latestActivityLabel ? "Most recent send" : "No sends yet",
     },
   ];
 
   const checklistItems = [
-    { label: "Staff access / app login", ok: true, detail: "OpensDoors staff session" },
-    { label: "Client workspace", ok: client.status === "ACTIVE", detail: client.status },
+    { label: "Staff sign-in", ok: true, detail: "You're signed in to OpensDoors" },
+    {
+      label: "Client workspace active",
+      ok: client.status === "ACTIVE",
+      detail: clientStatusLabel(client.status),
+    },
     {
       label: "Operating brief",
       ok: briefChecklistReady,
       detail: briefChecklistReady
-        ? "Required brief fields complete"
-        : "Open Brief and complete the operating brief",
+        ? "All required fields complete"
+        : "Open the brief and complete the required fields",
     },
     {
-      label: "Suppression sheet ids",
+      label: "Suppression sources",
       ok: bundle.suppressionSheetRows.length > 0,
       detail:
         bundle.suppressionSheetRows.length > 0
-          ? `${String(bundle.suppressionSheetRows.length)} source(s) with spreadsheet id`
-          : "Add Sheet URLs under Suppression",
+          ? `${String(bundle.suppressionSheetRows.length)} Google Sheet${bundle.suppressionSheetRows.length === 1 ? "" : "s"} attached`
+          : "Attach at least one suppression sheet",
     },
     {
-      label: "Google Sheets API (service account)",
+      label: "Google Sheets integration",
       ok: bundle.googleSheetsEnvReady,
-      detail: bundle.googleSheetsEnvReady ? "Env present" : "Set GOOGLE_SERVICE_ACCOUNT_JSON*",
+      detail: bundle.googleSheetsEnvReady
+        ? "Connected"
+        : "Ask an administrator to connect Google Workspace in Settings",
     },
     {
-      label: "RocketReach API key (import)",
+      label: "RocketReach (optional)",
       ok: bundle.rocketReachEnvReady,
-      detail: bundle.rocketReachEnvReady ? "ROCKETREACH_API_KEY present" : "Optional until import",
+      detail: bundle.rocketReachEnvReady
+        ? "Connected"
+        : "Not connected — CSV upload still works without this",
     },
     {
-      label: "Contacts / lead rows",
+      label: "Contacts",
       ok: client._count.contacts > 0,
-      detail: `${String(client._count.contacts)} contact(s)`,
+      detail: `${String(client._count.contacts)} contact${client._count.contacts === 1 ? "" : "s"} in workspace`,
     },
     {
-      label: "Microsoft mailbox path",
+      label: "Microsoft 365 mailbox",
       ok: client.mailboxIdentities.some(
         (m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED",
       ),
-      detail: "At least one connected Microsoft identity",
+      detail: "At least one connected Microsoft mailbox",
     },
     {
-      label: "Google Workspace mailbox path",
+      label: "Google Workspace mailbox",
       ok: client.mailboxIdentities.some(
         (m) => m.provider === "GOOGLE" && m.connectionStatus === "CONNECTED",
       ),
-      detail: "At least one connected Google identity",
+      detail: "At least one connected Google Workspace mailbox",
     },
     {
-      label: "Governed sender + OAuth env",
+      label: "Test sender ready",
       ok: bundle.hasGovernedMailbox && bundle.oauthReadyForGovernedTest,
-      detail: bundle.hasGovernedMailbox ? "Mailbox + provider OAuth" : "Connect a mailbox",
+      detail: bundle.hasGovernedMailbox
+        ? "A connected mailbox can send proof emails"
+        : "Connect a mailbox to enable test sends",
     },
     {
       label: "Outreach mailbox capacity",
@@ -262,23 +273,23 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       detail: formatOutreachMailboxCapacityChecklistDetail(bundle.connectedSendingCount),
     },
     {
-      label: "Inbound fetch",
+      label: "Inbound reply fetch",
       ok: client.mailboxIdentities.some(
         (m) =>
           m.connectionStatus === "CONNECTED" &&
           (m.provider === "MICROSOFT" || m.provider === "GOOGLE"),
       ),
-      detail: "Use Activity → inbox preview",
+      detail: "Check Activity → inbox preview to confirm replies are coming in",
     },
     {
-      label: "Ledger / pool capacity (UTC day)",
+      label: "Daily send capacity",
       ok: bundle.aggregateRemaining >= 1,
-      detail: `${String(bundle.aggregateRemaining)} remaining today · theoretical max ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} when ${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} eligible mailboxes have capacity (${String(OUTREACH_MAILBOX_DAILY_CAP)} each)`,
+      detail: `${String(bundle.aggregateRemaining)} send${bundle.aggregateRemaining === 1 ? "" : "s"} remaining today (max ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day with ${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} mailboxes at ${String(OUTREACH_MAILBOX_DAILY_CAP)} each)`,
     },
     {
-      label: "Controlled pilot send",
+      label: "Pilot send ready",
       ok: outreachPilotRunnable,
-      detail: "Uses mailbox pool (not primary-only)",
+      detail: "Uses the full mailbox pool",
     },
   ];
 
@@ -332,7 +343,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         <CardHeader>
           <CardTitle>Launch readiness</CardTitle>
           <CardDescription>
-            The single module-level status view for this client.
+            A section-by-section view of what&apos;s ready and what still needs
+            attention before this client goes live.
           </CardDescription>
         </CardHeader>
         <CardContent>

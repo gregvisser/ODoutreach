@@ -16,12 +16,16 @@ export default async function StaffAccessPage() {
   if (staff.role !== "ADMIN") {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
-        <h1 className="text-2xl font-semibold">Staff Access</h1>
+        <h1 className="text-2xl font-semibold">Staff access</h1>
         <p className="text-muted-foreground">
-          Only administrators can manage staff invitations and roles.
+          Only administrators can invite colleagues or change roles. Contact an
+          administrator if you need access adjusted.
         </p>
-        <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}>
-          Back to Settings
+        <Link
+          href="/settings"
+          className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}
+        >
+          Back to settings
         </Link>
       </div>
     );
@@ -51,18 +55,18 @@ export default async function StaffAccessPage() {
     <div className="mx-auto max-w-6xl space-y-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Staff Access</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Staff access</h1>
           <p className="mt-1 text-muted-foreground">
-            Invite OpensDoors staff as guests in the Bidlow Entra tenant and manage roles. Sign-in
-            and MFA remain in Microsoft Entra; this app only stores staff records and invitation
-            metadata.
+            Invite colleagues, assign roles, and deactivate access. Invitations
+            and sign-in are handled by Microsoft 365 — this page manages who is
+            allowed into OpensDoors Outreach and what they can do.
           </p>
         </div>
         <Link
           href="/settings"
           className={cn(buttonVariants({ variant: "ghost" }), "text-sm shrink-0")}
         >
-          ← Settings
+          ← Back to settings
         </Link>
       </div>
 

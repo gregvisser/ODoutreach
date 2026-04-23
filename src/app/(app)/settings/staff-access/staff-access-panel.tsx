@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { STAFF_ROLE_LABELS } from "@/lib/ui/status-labels";
 
 import {
   inviteStaffUser,
@@ -27,6 +28,13 @@ import {
 } from "./actions";
 
 const ROLES = ["ADMIN", "MANAGER", "OPERATOR", "VIEWER"] as const;
+
+const ROLE_HINTS: Record<(typeof ROLES)[number], string> = {
+  ADMIN: "Full access, including staff and settings",
+  MANAGER: "Manage clients, sending, and approvals",
+  OPERATOR: "Day-to-day outreach work",
+  VIEWER: "Read-only access",
+};
 
 export type StaffRow = {
   id: string;
@@ -106,10 +114,10 @@ export function StaffAccessPanel({ initialRows }: { initialRows: StaffRow[] }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Email</TableHead>
+              <TableHead>Person</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead>Invite status</TableHead>
+              <TableHead>Sign-in</TableHead>
+              <TableHead>Invitation</TableHead>
               <TableHead className="min-w-[220px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -145,11 +153,11 @@ function InviteForm({
         onInvite(e.currentTarget);
       }}
     >
-      <h2 className="text-lg font-medium">Invite staff (Microsoft guest)</h2>
+      <h2 className="text-lg font-medium">Invite a colleague</h2>
       <p className="text-sm text-muted-foreground">
-        Sends a Bidlow-tenant guest invitation. The person must still accept the email and sign
-        in with Entra MFA. A matching staff row is created first — sign-in does not grant access
-        without it.
+        Microsoft 365 sends the invitation email. They accept, sign in, and
+        complete any MFA your organisation requires — after that they appear in
+        the list below with the role you choose here.
       </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-2">
@@ -175,15 +183,18 @@ function InviteForm({
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {STAFF_ROLE_LABELS[r]}
               </option>
             ))}
           </select>
+          <p className="text-[11px] text-muted-foreground">
+            {ROLE_HINTS.OPERATOR}
+          </p>
         </div>
         <div className="flex items-end gap-2 pb-2">
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input type="checkbox" name="isActive" defaultChecked className="rounded border-input" />
-            Active
+            Allow sign-in straight away
           </label>
         </div>
         <div className="flex items-end">
@@ -211,15 +222,15 @@ function StaffRowActions({
 
   const inviteLabel =
     row.guestInvitationState === "PENDING"
-      ? "Pending"
+      ? "Invitation sent"
       : row.guestInvitationState === "ACCEPTED"
         ? "Accepted"
         : "—";
 
   const meta = [
-    row.invitedAt ? `Invited ${format(new Date(row.invitedAt), "yyyy-MM-dd HH:mm")}` : null,
+    row.invitedAt ? `Invited ${format(new Date(row.invitedAt), "d MMM yyyy")}` : null,
     row.invitationLastSentAt
-      ? `Last sent ${format(new Date(row.invitationLastSentAt), "yyyy-MM-dd HH:mm")}`
+      ? `Last sent ${format(new Date(row.invitationLastSentAt), "d MMM yyyy")}`
       : null,
     row.invitedByEmail ? `By ${row.invitedByEmail}` : null,
   ]
@@ -228,18 +239,18 @@ function StaffRowActions({
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-xs">{row.email}</TableCell>
+      <TableCell className="text-sm">{row.email}</TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as StaffRow["role"])}
             disabled={disabled}
-            className="h-8 max-w-[140px] rounded-md border border-input bg-transparent px-2 text-xs"
+            className="h-8 max-w-[160px] rounded-md border border-input bg-transparent px-2 text-xs"
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {STAFF_ROLE_LABELS[r]}
               </option>
             ))}
           </select>
@@ -260,7 +271,18 @@ function StaffRowActions({
           </Button>
         </div>
       </TableCell>
-      <TableCell>{row.isActive ? "Yes" : "No"}</TableCell>
+      <TableCell>
+        <span
+          className={cn(
+            "inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+            row.isActive
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
+              : "border-border bg-muted text-muted-foreground",
+          )}
+        >
+          {row.isActive ? "Active" : "Blocked"}
+        </span>
+      </TableCell>
       <TableCell className="max-w-[200px] text-xs text-muted-foreground">
         <div>{inviteLabel}</div>
         {meta ? <div className="mt-1 text-[11px] leading-snug">{meta}</div> : null}
@@ -283,7 +305,7 @@ function StaffRowActions({
               });
             }}
           >
-            {row.isActive ? "Deactivate" : "Activate"}
+            {row.isActive ? "Block sign-in" : "Allow sign-in"}
           </Button>
           {row.guestInvitationState !== "NONE" || row.graphInvitedUserObjectId ? (
             <>
@@ -300,7 +322,7 @@ function StaffRowActions({
                   });
                 }}
               >
-                Resend invite
+                Resend invitation
               </Button>
               <Button
                 type="button"
@@ -315,7 +337,7 @@ function StaffRowActions({
                   });
                 }}
               >
-                Sync invite status
+                Refresh invitation status
               </Button>
             </>
           ) : null}
