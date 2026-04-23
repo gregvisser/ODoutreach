@@ -1,12 +1,13 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { searchAddressesAction } from "@/app/(app)/clients/search-address-action";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import type { AddressSuggestion } from "@/lib/address-lookup/address-lookup";
+import { ADDRESS_SEARCH_MIN_LEN } from "@/lib/address-lookup/address-search-input";
+import type { AddressLookupResult, AddressSuggestion } from "@/lib/address-lookup/types";
 
 type Structured = {
   line1: string;
@@ -28,6 +29,8 @@ const empty: Structured = {
   formattedSummary: "",
 };
 
+const LOOKUP_DEBOUNCE_MS = 400;
+
 type Props = {
   value: Partial<Structured> | null;
   legacyText: string;
@@ -41,7 +44,11 @@ export function BriefAddressBlock({ value, legacyText, onChange }: Props) {
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [showManual, setShowManual] = useState(true);
   const [providerHint, setProviderHint] = useState<string | null>(null);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
+  const [noMatchHint, setNoMatchHint] = useState(false);
   const [pending, start] = useTransition();
+  const runSeq = useRef(0);
+  const qRef = useRef(q);
 
   function applyStructured(s: AddressSuggestion["structured"]) {
     onChange({
@@ -55,40 +62,100 @@ export function BriefAddressBlock({ value, legacyText, onChange }: Props) {
     });
   }
 
-  function onSearch() {
-    start(async () => {
-      const r = await searchAddressesAction(q);
+  function applySearchResult(
+    r: AddressLookupResult,
+  ) {
+    if (!r.providerConfigured) {
       setProviderHint(
-        r.providerConfigured
-          ? null
-          : "No live address lookup is configured. Enter the registered business address in the fields below.",
+        "Address lookup is not set up in this environment. You can type the business address in the fields below.",
       );
-      setSuggestions(r.suggestions);
-      setShowManual(true);
+    } else {
+      setProviderHint(null);
+    }
+    setLookupMessage(r.lookupMessage ?? null);
+    if (r.providerConfigured && r.noMatches) {
+      setNoMatchHint(true);
+    } else {
+      setNoMatchHint(false);
+    }
+    setSuggestions(r.suggestions);
+    setShowManual(true);
+  }
+
+  function runSearch(query: string) {
+    const t = query.trim();
+    qRef.current = query;
+    start(async () => {
+      const my = ++runSeq.current;
+      const r = await searchAddressesAction(t);
+      if (my !== runSeq.current) {
+        return;
+      }
+      if (qRef.current.trim() !== t) {
+        return;
+      }
+      applySearchResult(r);
     });
   }
+
+  useEffect(() => {
+    const t = q.trim();
+    if (t.length < ADDRESS_SEARCH_MIN_LEN) {
+      return;
+    }
+    const id = window.setTimeout(() => {
+      start(async () => {
+        const my = ++runSeq.current;
+        const r = await searchAddressesAction(t);
+        if (my !== runSeq.current) {
+          return;
+        }
+        if (qRef.current.trim() !== t) {
+          return;
+        }
+        applySearchResult(r);
+      });
+    }, LOOKUP_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [q, start]);
 
   return (
     <div className="space-y-4">
       <div>
         <Label htmlFor={`${baseId}-q`}>Search address (postcode or street)</Label>
         <p className="text-xs text-muted-foreground">
-          Suggestions appear when a provider is available. You can always type the
-          address manually.
+          Suggestions update as you type. You can always type the full address in the
+          fields below.
         </p>
         <div className="mt-1.5 flex max-w-2xl gap-2">
           <Input
             id={`${baseId}-q`}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setQ(next);
+              qRef.current = next;
+              if (next.trim().length < ADDRESS_SEARCH_MIN_LEN) {
+                setSuggestions([]);
+                setNoMatchHint(false);
+                setLookupMessage(null);
+                setProviderHint(null);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                onSearch();
+                if (q.trim().length >= ADDRESS_SEARCH_MIN_LEN) {
+                  runSearch(q);
+                }
               }
             }}
             placeholder="e.g. SW1A 1AA or 10 Downing Street"
             className="flex-1"
+            autoComplete="off"
+            spellCheck={false}
           />
           <button
             type="button"
@@ -96,14 +163,28 @@ export function BriefAddressBlock({ value, legacyText, onChange }: Props) {
               "shrink-0 rounded-md border border-border bg-background px-3 text-sm font-medium",
               "hover:bg-muted",
             )}
-            onClick={onSearch}
-            disabled={pending}
+            onClick={() => {
+              if (q.trim().length >= ADDRESS_SEARCH_MIN_LEN) {
+                runSearch(q);
+              }
+            }}
+            disabled={pending || q.trim().length < ADDRESS_SEARCH_MIN_LEN}
+            title={q.trim().length < ADDRESS_SEARCH_MIN_LEN ? "Type at least 3 characters" : "Search now"}
           >
             {pending ? "…" : "Search"}
           </button>
         </div>
         {providerHint ? (
           <p className="mt-2 text-xs text-amber-800 dark:text-amber-200/90">{providerHint}</p>
+        ) : null}
+        {lookupMessage ? (
+          <p className="mt-2 text-xs text-amber-800 dark:text-amber-200/90">{lookupMessage}</p>
+        ) : null}
+        {noMatchHint && !lookupMessage && !providerHint && suggestions.length === 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            No matches for that search. Try a different postcode or street, or type the
+            address below.
+          </p>
         ) : null}
         {suggestions.length > 0 ? (
           <ul className="mt-2 max-h-44 max-w-2xl overflow-auto rounded-md border border-border bg-popover text-sm shadow">
