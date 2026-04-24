@@ -20,8 +20,10 @@
  *   * For send-readiness (`sendReady === true`) the contact MUST have
  *     an email and the sender MUST provide an unsubscribe link value —
  *     even if the template does not reference `{{ unsubscribe_link }}`.
- *     The dispatcher also appends a standard unsubscribe line when the
- *     link is not already in the body (`ensureUnsubscribeLinkInPlainTextBody`).
+ *     After the composed body (template + `{{email_signature}}`, etc.),
+ *     the dispatcher appends a standard unsubscribe line when the link is
+ *     not already in the body (`ensureUnsubscribeLinkInPlainTextBody`) so the
+ *     footer always follows the signature.
  */
 
 import {

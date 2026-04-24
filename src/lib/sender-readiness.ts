@@ -135,7 +135,7 @@ export function describeSenderReadiness(input: {
       label: "Email provider verification",
       state: "na",
       detail:
-        "Mock email transport — no messages are delivered to real inboxes. Production uses a live provider (EMAIL_PROVIDER).",
+        "Non-sending transport: messages are not delivered to real inboxes. A live provider (EMAIL_PROVIDER) is used in production delivery.",
     });
   }
 
@@ -154,7 +154,7 @@ export function describeSenderReadiness(input: {
   if (providerMode === "mock") {
     headline = "mock_dev";
     summary =
-      "Mock email transport is active — no real messages are sent. Configure a live email provider in hosting (EMAIL_PROVIDER) for production delivery.";
+      "No external email delivery: the platform is using a non-sending transport. Configure a live email provider in hosting (EMAIL_PROVIDER) for real message delivery.";
   } else if (blockedDomain) {
     headline = "blocked_by_domain_policy";
     summary =
