@@ -18,10 +18,10 @@
  *   * Only snake_case tokens are supported in D4e.1. CamelCase /
  *     aliasing is deferred so the surface area of D4e.2 stays small.
  *   * For send-readiness (`sendReady === true`) the contact MUST have
- *     an email and the sender MUST provide an unsubscribe link — even
- *     if the template itself does not reference `{{ unsubscribe_link }}`.
- *     D4e.2 will inject the compliance footer at dispatch time; we
- *     keep the guard here so plan rows cannot be READY without one.
+ *     an email and the sender MUST provide an unsubscribe link value —
+ *     even if the template does not reference `{{ unsubscribe_link }}`.
+ *     The dispatcher also appends a standard unsubscribe line when the
+ *     link is not already in the body (`ensureUnsubscribeLinkInPlainTextBody`).
  */
 
 import {

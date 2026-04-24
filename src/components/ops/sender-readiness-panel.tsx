@@ -17,7 +17,11 @@ function headlineBadge(h: SenderReadinessReport["headline"]) {
     case "ready":
       return <Badge className="bg-emerald-600/15 text-emerald-800 dark:text-emerald-200">Ready</Badge>;
     case "mock_dev":
-      return <Badge variant="secondary">Test mode</Badge>;
+      return (
+        <Badge variant="secondary" title="EMAIL_PROVIDER=mock — no external delivery">
+          No external delivery
+        </Badge>
+      );
     case "needs_verification":
       return <Badge variant="outline" className="border-amber-500/50 text-amber-800 dark:text-amber-200">
         Needs attention
@@ -50,7 +54,7 @@ export function SenderReadinessPanel({
     report.providerMode === "resend"
       ? "Resend"
       : report.providerMode === "mock"
-        ? "Test mode (no real sending)"
+        ? "Mock transport (not delivered externally)"
         : report.providerMode;
 
   return (

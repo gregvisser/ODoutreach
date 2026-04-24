@@ -18,7 +18,7 @@ export default async function StaffAccessPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <h1 className="text-2xl font-semibold">Staff access</h1>
         <p className="text-muted-foreground">
-          Only administrators can invite colleagues or change roles. Contact an
+          Only administrators can add staff or change roles. Contact an
           administrator if you need access adjusted.
         </p>
         <Link
@@ -57,9 +57,11 @@ export default async function StaffAccessPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Staff access</h1>
           <p className="mt-1 text-muted-foreground">
-            Invite colleagues, assign roles, and deactivate access. Invitations
-            and sign-in are handled by Microsoft 365 — this page manages who is
-            allowed into OpensDoors Outreach and what they can do.
+            Add people to the app, assign roles, and turn access on or off. Staff
+            who already have a <code className="text-xs">StaffUser</code> row
+            sign in directly with Microsoft 365 (MFA is enforced by your
+            organisation). Optional B2B guest invitation is only needed when you
+            want Microsoft to add someone to a tenant as a guest first.
           </p>
         </div>
         <Link

@@ -15,6 +15,12 @@ import {
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
 
+import {
+  complianceMetadata,
+  prepareContactSendCompliance,
+} from "@/lib/unsubscribe/contact-send-compliance";
+import { hashUnsubscribeToken } from "@/lib/unsubscribe/unsubscribe-token";
+
 import { triggerOutboundQueueDrain } from "./outbound/trigger-queue";
 
 export type SendToContactInput = {
@@ -81,6 +87,20 @@ export async function sendEmailToContact(
   const to = normalizeEmail(contact.email);
   const toDomain = extractDomainFromEmail(to) || contact.emailDomain || null;
 
+  const clientRow = await prisma.client.findFirst({
+    where: { id: clientId },
+    select: { defaultSenderEmail: true },
+  });
+  if (!clientRow) {
+    return { ok: false, outcome: "failed", error: "Workspace not found" };
+  }
+
+  const compliance = prepareContactSendCompliance({
+    bodyText,
+    clientDefaultSenderEmail: clientRow.defaultSenderEmail,
+  });
+  const effectiveBody = compliance.finalBody;
+
   const decision = await evaluateSuppression(clientId, to);
 
   if (decision.suppressed) {
@@ -92,7 +112,7 @@ export async function sendEmailToContact(
         toEmail: to,
         toDomain,
         subject,
-        bodySnapshot: bodyText,
+        bodySnapshot: effectiveBody,
         status: "BLOCKED_SUPPRESSION",
         suppressionSnapshot: decision as object,
         fromAddress: null,
@@ -109,10 +129,7 @@ export async function sendEmailToContact(
   }
 
   const defaultFrom =
-    (await prisma.client.findUnique({
-      where: { id: clientId },
-      select: { defaultSenderEmail: true },
-    }))?.defaultSenderEmail?.trim() ||
+    clientRow.defaultSenderEmail?.trim() ||
     process.env.DEFAULT_OUTBOUND_FROM?.trim() ||
     `noreply@opensdoors.local`;
 
@@ -125,19 +142,37 @@ export async function sendEmailToContact(
   const governance = await loadGovernedSendingMailbox(clientId);
 
   if (governance.mode === "legacy") {
-    const row = await prisma.outboundEmail.create({
-      data: {
-        clientId,
-        contactId,
-        staffUserId: staff.id,
-        toEmail: to,
-        toDomain,
-        subject,
-        bodySnapshot: bodyText,
-        status: "QUEUED",
-        fromAddress: defaultFrom,
-        queuedAt: new Date(),
-      },
+    const meta = complianceMetadata(compliance);
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.outboundEmail.create({
+        data: {
+          clientId,
+          contactId,
+          staffUserId: staff.id,
+          toEmail: to,
+          toDomain,
+          subject,
+          bodySnapshot: effectiveBody,
+          status: "QUEUED",
+          fromAddress: defaultFrom,
+          queuedAt: new Date(),
+          metadata: meta as object | undefined,
+        },
+      });
+      if (compliance.kind === "hosted") {
+        await tx.unsubscribeToken.create({
+          data: {
+            tokenHash: hashUnsubscribeToken(compliance.rawToken),
+            clientId,
+            contactId,
+            outboundEmailId: created.id,
+            email: to,
+            emailDomain: toDomain,
+            purpose: "outreach_unsubscribe",
+          },
+        });
+      }
+      return created;
     });
     await triggerOutboundQueueDrain();
     return {
@@ -158,6 +193,8 @@ export async function sendEmailToContact(
       ),
     };
   }
+
+  const meta = complianceMetadata(compliance);
 
   const txResult = await prisma.$transaction(async (tx) => {
     const m = await tx.clientMailboxIdentity.findFirstOrThrow({
@@ -190,16 +227,30 @@ export async function sendEmailToContact(
       toEmail: to,
       toDomain,
       subject,
-      bodySnapshot: bodyText,
+      bodySnapshot: effectiveBody,
       status: "QUEUED" as const,
       fromAddress,
       mailboxIdentityId: m.id,
       queuedAt: new Date(),
+      metadata: meta as object | undefined,
     };
 
     if (reserve.duplicate) {
       if (reserve.outboundEmailId === null) {
         const created = await tx.outboundEmail.create({ data: newOutboundData });
+        if (compliance.kind === "hosted") {
+          await tx.unsubscribeToken.create({
+            data: {
+              tokenHash: hashUnsubscribeToken(compliance.rawToken),
+              clientId,
+              contactId,
+              outboundEmailId: created.id,
+              email: to,
+              emailDomain: toDomain,
+              purpose: "outreach_unsubscribe",
+            },
+          });
+        }
         await linkReservationToOutboundInTransaction(tx, reserve.reservationId, created.id);
         return {
           kind: "created" as const,
@@ -214,6 +265,19 @@ export async function sendEmailToContact(
     }
 
     const created = await tx.outboundEmail.create({ data: newOutboundData });
+    if (compliance.kind === "hosted") {
+      await tx.unsubscribeToken.create({
+        data: {
+          tokenHash: hashUnsubscribeToken(compliance.rawToken),
+          clientId,
+          contactId,
+          outboundEmailId: created.id,
+          email: to,
+          emailDomain: toDomain,
+          purpose: "outreach_unsubscribe",
+        },
+      });
+    }
     await linkReservationToOutboundInTransaction(tx, reserve.reservationId, created.id);
     return {
       kind: "created" as const,

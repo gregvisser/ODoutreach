@@ -153,11 +153,14 @@ function InviteForm({
         onInvite(e.currentTarget);
       }}
     >
-      <h2 className="text-lg font-medium">Invite a colleague</h2>
+      <h2 className="text-lg font-medium">Optional: guest invitation (B2B)</h2>
       <p className="text-sm text-muted-foreground">
-        Microsoft 365 sends the invitation email. They accept, sign in, and
-        complete any MFA your organisation requires — after that they appear in
-        the list below with the role you choose here.
+        Use this when the person should be added to the tenant as a B2B guest
+        first. If they are already in{" "}
+        <code className="text-xs">StaffUser</code>, they can sign in without
+        this step. Microsoft 365 delivers the
+        invite; after acceptance they appear in the list with the role you
+        choose.
       </p>
       <details className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <summary className="cursor-pointer font-medium text-foreground">
