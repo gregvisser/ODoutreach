@@ -11,6 +11,8 @@ type AzureMapsAddress = {
   countrySubdivisionName?: string;
   countrySubdivisionCode?: string;
   postalCode?: string;
+  /** Full postcode when the provider has more precision than `postalCode` (e.g. UK full code). */
+  extendedPostalCode?: string;
   countryCode?: string;
   country?: string;
   freeformAddress?: string;
@@ -76,6 +78,32 @@ function regionFromAzureMapsAddress(a: AzureMapsAddress): string | undefined {
 }
 
 /**
+ * UK postcodes: outward (2-4) + space + inward (3). Azure often returns a compact
+ * `extendedPostalCode` without a space; `postalCode` may be sector-only (e.g. "SW1A").
+ */
+export function formatUkPostcodeForDisplay(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, "").toUpperCase();
+  if (t.length < 5) {
+    return raw.trim();
+  }
+  return `${t.slice(0, -3)} ${t.slice(-3)}`;
+}
+
+/**
+ * Prefers `extendedPostalCode` when present so the full UK postcode is preserved.
+ */
+export function postalCodeFromAzureMapsAddress(a: AzureMapsAddress): string | undefined {
+  const ext = a.extendedPostalCode?.trim();
+  if (ext) {
+    if ((a.countryCode ?? "").toUpperCase() === "GB") {
+      return formatUkPostcodeForDisplay(ext);
+    }
+    return ext;
+  }
+  return a.postalCode?.trim() || undefined;
+}
+
+/**
  * Suggestion list label — one readable line, preferring Azure freeform text.
  */
 export function labelFromAzureMapsAddress(a: AzureMapsAddress): string {
@@ -92,7 +120,7 @@ export function labelFromAzureMapsAddress(a: AzureMapsAddress): string {
   if (city) {
     parts.push(city);
   }
-  const pc = a.postalCode?.trim();
+  const pc = postalCodeFromAzureMapsAddress(a);
   if (pc) {
     parts.push(pc);
   }
@@ -131,7 +159,7 @@ export function mapAzureMapsResultToSuggestion(
       line2,
       city,
       region: regionFromAzureMapsAddress(addr),
-      postalCode: addr.postalCode?.trim() || undefined,
+      postalCode: postalCodeFromAzureMapsAddress(addr),
       country: addr.country?.trim() || (code === "GB" ? "United Kingdom" : undefined),
       formattedSummary: addr.freeformAddress?.trim() || label,
     },

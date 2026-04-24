@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatUkPostcodeForDisplay,
   labelFromAzureMapsAddress,
   line1FromAzureMapsAddress,
   mapAzureMapsResultToSuggestion,
   mapAzureMapsSearchResponse,
+  postalCodeFromAzureMapsAddress,
 } from "./azure-maps-map";
 
 describe("line1FromAzureMapsAddress", () => {
@@ -31,6 +33,27 @@ describe("labelFromAzureMapsAddress", () => {
       countryCode: "GB",
     });
     expect(l).toBe("1 Example St, City, ZZ9 9ZZ");
+  });
+});
+
+describe("formatUkPostcodeForDisplay", () => {
+  it("inserts a space for compact UK postcodes", () => {
+    expect(formatUkPostcodeForDisplay("sw1a1aa")).toBe("SW1A 1AA");
+  });
+
+  it("normalizes existing spaced postcodes", () => {
+    expect(formatUkPostcodeForDisplay("SW1A  1AA")).toBe("SW1A 1AA");
+  });
+});
+
+describe("postalCodeFromAzureMapsAddress", () => {
+  it("prefers extendedPostalCode for GB when sector-only postalCode is present", () => {
+    const pc = postalCodeFromAzureMapsAddress({
+      countryCode: "GB",
+      postalCode: "SW1A",
+      extendedPostalCode: "SW1A1AA",
+    });
+    expect(pc).toBe("SW1A 1AA");
   });
 });
 
@@ -78,6 +101,29 @@ describe("mapAzureMapsResultToSuggestion", () => {
     expect(s?.structured.line2).toBeUndefined();
     expect(s?.structured.region).toBeUndefined();
     expect(s?.id).toBe("GB/PAD/x");
+  });
+
+  it("uses extendedPostalCode for the full UK postcode in structured and label", () => {
+    const s = mapAzureMapsResultToSuggestion(
+      {
+        id: "GB/ADDR/x",
+        type: "Point Address",
+        address: {
+          streetNumber: "1",
+          streetName: "Example St",
+          municipality: "Westminster, London",
+          postalCode: "SW1A",
+          extendedPostalCode: "SW1A1AA",
+          countryCode: "GB",
+          country: "United Kingdom",
+          freeformAddress: "1 Example St, Westminster, London, SW1A 1AA, United Kingdom",
+        },
+      },
+      0,
+    );
+    expect(s).not.toBeNull();
+    expect(s?.structured.postalCode).toBe("SW1A 1AA");
+    expect(s?.label).toBe("1 Example St, Westminster, London, SW1A 1AA, United Kingdom");
   });
 });
 
