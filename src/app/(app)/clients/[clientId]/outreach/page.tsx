@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import { OUTREACH_HERO_ADDENDUM } from "@/lib/mailboxes/mailbox-workspace-model";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -100,7 +101,7 @@ export default async function ClientOutreachPage({
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
           Manage templates and sequences for this client, send internal proof
-          emails, and run a small pilot before going live.
+          emails, and run a small pilot before going live. {OUTREACH_HERO_ADDENDUM}
         </p>
       </div>
 

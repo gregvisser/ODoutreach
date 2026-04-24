@@ -23,16 +23,20 @@
  *   send limits and governance. Replies stay on the receiving mailbox/thread.
  *
  * **Signatures**
- * - Google: signature can be read from Gmail send-as and stored on the
- *   mailbox row.
- * - Microsoft: the Graph APIs used by ODoutreach do not provide a reliable
- *   server-side “Outlook signature” read — operators set a signature in
- *   OpensDoors (or use client brief fallback) until a future API path exists.
+ * - Google Workspace: `users.settings.sendAs` is read and stored on the
+ *   mailbox row (“Sync from Gmail” in the UI) when the operator requests it.
+ * - Microsoft 365: the supported Graph path in this app does not expose a
+ *   server-side Outlook signature. Operators set a plain-text (or HTML)
+ *   signature in OpensDoors, or the send path may use a legacy client-brief
+ *   fallback. Do not claim automatic Outlook signature pull in product copy.
  *
  * **Unsubscribe**
- * - Every outbound body must include a resolvable unsubscribe URL; sequence
- *   dispatch and one-off contact sends append a standard footer when the
- *   link is not already present. Hosted one-click links and List-Unsubscribe
- *   headers are used when the public app URL is configured.
+ * - Composition builds the final body with template + mailbox/brief
+ *   signature first; `ensureUnsubscribeLinkInPlainTextBody` then appends a
+ *   resolvable footer when the URL is not already present, so the unsubscribe
+ *   line always comes after the signature in production sends. Sequence
+ *   dispatch, one-off contact sends, and the outbound worker all use this
+ *   pattern. Hosted one-click and List-Unsubscribe header metadata apply when
+ *   the public app base URL is configured.
  */
 export const PRODUCTION_PLATFORM_RULES_VERSION = 1 as const;

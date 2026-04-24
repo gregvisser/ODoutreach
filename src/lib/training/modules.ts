@@ -404,17 +404,17 @@ const mailboxesModule: TrainingModule = {
   id: "mailboxes",
   order: 3,
   title: "Mailboxes and sender identities",
-  tagline: "Five OpensDoors mailboxes working together — 30/day each.",
+  tagline: "Shared workspace pool — up to five addresses, 30 sends/day each.",
   purpose:
-    "The Mailboxes page shows every connected sending account for a client, its provider (Microsoft 365 or Google Workspace), connection state, daily capacity and sender identity. Reading this page before every launch is how you avoid silently sending from the wrong mailbox — or not sending at all.",
+    "The Mailboxes page lists every connected sending address for a client, its provider (Microsoft 365 or Google Workspace), connection state, daily capacity, and per-mailbox sender identity. Mailboxes belong to the client workspace; any authorised operator on that client may send from an eligible address in the pool. Read this page before every launch to avoid the wrong From address or a silent zero-capacity state.",
   details: [
     `OpensDoors runs outreach from up to ${String(ex.capacity.maxMailboxes)} connected mailboxes per workspace. Each mailbox sends up to ${String(ex.capacity.perMailboxDailyCap)} messages per UTC day, for a pooled ceiling of ${String(ex.capacity.dailyTheoreticalMax)} sends per day.`,
-    "Each mailbox carries its own sender identity, its own signature, and its own daily counter. The workspace does not share caps across mailboxes and it does not round-robin blindly — the planner picks the mailbox with the most remaining slots, breaking ties by primary then id.",
+    "Each mailbox has its own sender name, signature, and daily counter. The workspace pools capacity: the planner prefers the mailbox with the most remaining slots, breaking ties with the primary address — it is not a personal lock on a mailbox for one operator.",
   ],
   screenshots: [
     {
       src: "/training/training-mailboxes.png",
-      alt: "Mailboxes sender identity panel showing test mode, default From address and sender readiness checklist",
+      alt: "Mailboxes sender identity panel: default From address and sender readiness checklist",
       caption:
         "Mailboxes — top of page. Sender identity readiness is the gate for live delivery.",
       width: FULL_W,
@@ -448,7 +448,7 @@ const mailboxesModule: TrainingModule = {
     {
       title: "Check the daily capacity line",
       detail:
-        "The header reads 'Active mailboxes: X/5. Each mailbox sends up to 30/day.' With five connected mailboxes you have a 150-send ceiling; with three you only have 90.",
+        "The table header summarises the workspace pool: active count, per-mailbox day cap, and sent today. With five connected mailboxes the theoretical ceiling is 150/day; with three it is 90.",
     },
     {
       title: "Do not reconnect or disconnect during training",
@@ -458,10 +458,10 @@ const mailboxesModule: TrainingModule = {
   ],
   whatGoodLooksLike: [
     "All five OpensDoors mailboxes (adam@, elys@, danielle@, joe@, greg@) show Connected with a green pill.",
-    "One mailbox is marked Primary — typically the account manager's mailbox.",
+    "One mailbox is marked Primary — used as a tie-break for the planner, not an exclusive lock.",
     "Every mailbox has a non-empty signature, either synced from Gmail or pasted manually.",
     'Header reads "Active mailboxes: 5/5" and capacity is "150/day" for a fully staffed OpensDoors workspace.',
-    "Sender readiness shows Ready (not Test mode) once the client is approved for live outreach.",
+    "Sender readiness shows a live email provider (not a non-delivery transport) when the client is approved for real outreach delivery.",
   ],
   commonMistakes: [
     "Launching with three connected mailboxes and assuming 150/day — check the header; the capacity is 3 × 30 = 90.",

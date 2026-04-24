@@ -52,9 +52,9 @@ export function SenderReadinessPanel({
 }) {
   const providerLabel =
     report.providerMode === "resend"
-      ? "Resend"
+      ? "Resend (live API)"
       : report.providerMode === "mock"
-        ? "Mock transport (not delivered externally)"
+        ? "Not delivering externally (EMAIL_PROVIDER=mock or unset)"
         : report.providerMode;
 
   return (

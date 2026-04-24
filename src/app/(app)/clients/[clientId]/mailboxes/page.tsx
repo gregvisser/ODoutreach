@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
+import { WORKSPACE_MAILBOXES_HERO } from "@/lib/mailboxes/mailbox-workspace-model";
 import {
   THEORETICAL_MAX_CLIENT_DAILY_SENDS,
   OUTREACH_MAILBOX_DAILY_CAP,
@@ -49,12 +50,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           Mailboxes
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-        <p className="mt-1 text-muted-foreground">
-          Shared workspace mailboxes for this client — connected sender
-          accounts, daily capacity, and sender identity. Any authorised
-          operator on this client can send from and reply through any
-          connected mailbox here.
-        </p>
+        <p className="mt-1 text-muted-foreground">{WORKSPACE_MAILBOXES_HERO}</p>
       </div>
 
       <Card className="border-border/80 shadow-sm">
@@ -74,11 +70,12 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         <CardHeader>
           <CardTitle>Connected mailboxes</CardTitle>
           <CardDescription>
-            Connect up to <strong>five</strong> sending mailboxes. Each mailbox
-            sends up to {String(OUTREACH_MAILBOX_DAILY_CAP)} messages per day,
-            for a total of {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} per day
-            across the pool. Sign-in is via Microsoft 365 or Google Workspace
-            and happens on their side — credentials are never stored here.
+            Connect up to <strong>five</strong> shared workspace sending
+            addresses. Each connected mailbox sends up to{" "}
+            {String(OUTREACH_MAILBOX_DAILY_CAP)} messages per UTC day, for a
+            maximum of {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} per day
+            across the pool. OAuth sign-in runs in Microsoft 365 or Google
+            Workspace — this app does not store mailbox passwords.
           </CardDescription>
         </CardHeader>
         <CardContent>

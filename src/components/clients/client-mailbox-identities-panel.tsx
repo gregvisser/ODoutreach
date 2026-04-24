@@ -126,6 +126,26 @@ function oauthReadyForRow(
     : oauthGoogleConfigured;
 }
 
+/**
+ * Provider-specific honest footnote: Gmail can be pulled; M365 is manual in-app.
+ * Does not print signature contents.
+ */
+function signatureFootnote(
+  row: MailboxIdentityRow,
+  vm: ReturnType<typeof buildSenderSignatureViewModel>,
+): string | null {
+  if (row.provider === "GOOGLE") {
+    if (vm.source === "gmail_send_as" && vm.lastSyncedAtIso) {
+      return "Gmail send-as: signature was pulled from Google Workspace. Use Sync from Gmail to refresh when you change it in the admin console.";
+    }
+    return "Gmail: connect the mailbox, then Sync from Gmail to import the send-as signature from Google.";
+  }
+  if (row.provider === "MICROSOFT") {
+    return "Microsoft 365: the supported Graph path in this app does not read Outlook signatures. Set the text here, or use the brief fallback if configured.";
+  }
+  return null;
+}
+
 function providerConnectionHint(
   row: MailboxIdentityRow,
   oauthOk: boolean,
@@ -322,15 +342,18 @@ export function ClientMailboxIdentitiesPanel({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Active mailboxes:{" "}
+          <span className="text-foreground font-medium">Workspace pool:</span>{" "}
           <span className="font-medium text-foreground">
             {activeCount}/{MAX_ACTIVE_MAILBOXES_PER_CLIENT}
-          </span>
-          . Each mailbox sends up to{" "}
+          </span>{" "}
+          active addresses. Each connected mailbox can send up to{" "}
           <span className="font-medium text-foreground">
-            {DEFAULT_MAILBOX_DAILY_SEND_CAP}/day
-          </span>
-          . Daily totals reset each day and reconcile with real send outcomes.
+            {DEFAULT_MAILBOX_DAILY_SEND_CAP}
+          </span>{" "}
+          / UTC day. Totals cap outreach for this client and match real
+          send outcomes. Any authorised operator on this client may use an
+          eligible mailbox from this pool; replies stay on the receiving
+          thread.
         </p>
         {canMutate ? (
           <Sheet open={addOpen} onOpenChange={setAddOpen}>
@@ -374,10 +397,12 @@ export function ClientMailboxIdentitiesPanel({
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
-              <TableRow>
+                <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
-                  No mailboxes connected yet. Add up to five sending mailboxes
-                  — one per sender, using Microsoft 365 or Google Workspace.
+                  No mailboxes connected for this client yet. Add up to five
+                  shared workspace sending addresses (Microsoft 365 or
+                  Google Workspace) — these belong to the client, not to an
+                  individual operator.
                 </TableCell>
               </TableRow>
             ) : (
@@ -397,7 +422,10 @@ export function ClientMailboxIdentitiesPanel({
                       ) : null}
                       <div className="mt-1 flex flex-wrap gap-1">
                         {row.isPrimary ? (
-                          <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
+                          <span
+                            className="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary"
+                            title="When several mailboxes are available, the planner prefers the primary for tie-breaks. Any authorised operator can still use other eligible pool mailboxes."
+                          >
                             Primary
                           </span>
                         ) : null}
@@ -527,13 +555,14 @@ export function ClientMailboxIdentitiesPanel({
           <div>
             <h3 className="text-sm font-semibold">Sender identity</h3>
             <p className="text-xs text-muted-foreground">
-              Each mailbox can have its own sender name and email signature.
-              Google Workspace mailboxes can pull the signature straight from
-              Gmail. Microsoft 365 mailboxes don&rsquo;t expose a signature
-              over the API — add one manually instead. If a mailbox has no
-              signature of its own, sends may fall back to legacy
-              client-level signature text (if it was stored before mailboxes
-              were the default source of truth).
+              Each address has its own From display name and signature. Google
+              Workspace: use <strong>Sync from Gmail</strong> to read the
+              current Gmail send-as signature. Microsoft 365: enter the
+              signature in OpensDoors; Outlook is not read automatically. If
+              a mailbox is missing a signature, governed sends can fall back to
+              legacy client brief text only when that older field is set.
+              Outbound email always appends a compliant unsubscribe line
+              <strong> after</strong> this signature in production sends.
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -552,6 +581,7 @@ export function ClientMailboxIdentitiesPanel({
                 },
                 clientBriefFallback,
               );
+              const foot = signatureFootnote(row, vm);
               const badgeClass = SIGNATURE_BADGE_CLASSES[vm.source];
               const badgeLabel = SENDER_SIGNATURE_STATUS[vm.source];
               return (
@@ -585,17 +615,16 @@ export function ClientMailboxIdentitiesPanel({
                       client-level fallback).
                     </p>
                   )}
-                  <div className="text-[11px] text-muted-foreground">
-                    {vm.lastSyncedAtIso
-                      ? `Last synced ${format(new Date(vm.lastSyncedAtIso), "MMM d, yyyy HH:mm")} UTC`
-                      : "Never synced."}
-                    {row.provider === "MICROSOFT" ? (
-                      <span className="mt-1 block">
-                        Outlook signature sync is not available through the
-                        supported Microsoft Graph mailbox API. Add a manual
-                        signature for this mailbox.
-                      </span>
-                    ) : null}
+                  <div className="text-[11px] text-muted-foreground space-y-1">
+                    <p>
+                      {vm.lastSyncedAtIso
+                        ? `Last updated in OpensDoors: ${format(
+                            new Date(vm.lastSyncedAtIso),
+                            "MMM d, yyyy HH:mm",
+                          )} UTC`
+                        : "No signature timestamp yet — add or sync a signature above."}
+                    </p>
+                    {foot ? <p className="leading-snug">{foot}</p> : null}
                   </div>
                   {vm.syncError ? (
                     <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">

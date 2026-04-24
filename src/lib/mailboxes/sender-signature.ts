@@ -74,11 +74,11 @@ export type SenderSignatureViewModel = {
 
 /** Canonical human-readable labels used in UI copy and tests. */
 export const SENDER_SIGNATURE_STATUS: Record<SenderSignatureSource, string> = {
-  gmail_send_as: "Synced from Gmail",
-  manual: "Manual",
-  client_brief_fallback: "Using client brief fallback",
-  unsupported_provider: "Automatic sync unsupported",
-  missing: "Missing",
+  gmail_send_as: "Synced from Gmail (send-as)",
+  manual: "Set in OpensDoors",
+  client_brief_fallback: "Client brief (legacy) fallback",
+  unsupported_provider: "Microsoft 365: set in OpensDoors (no Outlook pull)",
+  missing: "Signature not configured",
 };
 
 const HTML_BLOCK_TAGS = new Set([

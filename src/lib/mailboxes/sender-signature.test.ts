@@ -80,7 +80,7 @@ describe("buildSenderSignatureViewModel", () => {
     expect(vm.hasMailboxSignature).toBe(true);
     expect(vm.resolvedSignatureText).toBe("Greg Visser\nBidlow");
     expect(vm.source).toBe("manual");
-    expect(SENDER_SIGNATURE_STATUS[vm.source]).toBe("Manual");
+    expect(SENDER_SIGNATURE_STATUS[vm.source]).toBe("Set in OpensDoors");
   });
 
   it("tags synced Gmail signatures as gmail_send_as", () => {
@@ -94,7 +94,7 @@ describe("buildSenderSignatureViewModel", () => {
     );
     expect(vm.source).toBe("gmail_send_as");
     expect(vm.lastSyncedAtIso).toBe("2026-04-22T10:00:00.000Z");
-    expect(SENDER_SIGNATURE_STATUS[vm.source]).toBe("Synced from Gmail");
+    expect(SENDER_SIGNATURE_STATUS[vm.source]).toBe("Synced from Gmail (send-as)");
   });
 
   it("falls back to the brief signature when mailbox is empty", () => {
@@ -112,7 +112,7 @@ describe("buildSenderSignatureViewModel", () => {
     expect(vm.source).toBe("unsupported_provider");
     expect(vm.automaticSyncSupported).toBe(false);
     expect(SENDER_SIGNATURE_STATUS[vm.source]).toBe(
-      "Automatic sync unsupported",
+      "Microsoft 365: set in OpensDoors (no Outlook pull)",
     );
   });
 
