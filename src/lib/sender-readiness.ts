@@ -134,7 +134,8 @@ export function describeSenderReadiness(input: {
       id: "resend_verification",
       label: "Email provider verification",
       state: "na",
-      detail: "This workspace is in test mode — nothing is actually sent.",
+      detail:
+        "Mock email transport — no messages are delivered to real inboxes. Production uses a live provider (EMAIL_PROVIDER).",
     });
   }
 
@@ -153,7 +154,7 @@ export function describeSenderReadiness(input: {
   if (providerMode === "mock") {
     headline = "mock_dev";
     summary =
-      "This workspace is in test mode — no real messages are sent. An administrator switches on live delivery in production.";
+      "Mock email transport is active — no real messages are sent. Configure a live email provider in hosting (EMAIL_PROVIDER) for production delivery.";
   } else if (blockedDomain) {
     headline = "blocked_by_domain_policy";
     summary =

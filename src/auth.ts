@@ -3,9 +3,14 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
 import type { NextAuthConfig } from "next-auth";
 
-import { getTenantIdFromEntraIssuer } from "@/lib/entra-tenant";
+import { isEntraSignInAllowed } from "@/lib/entra-tenant";
 
-export { getTenantIdFromEntraIssuer };
+export {
+  getAllowedEntraTenantIdsFromEnv,
+  getTenantIdFromEntraIssuer,
+  isEntraSignInAllowed,
+  isMultiTenantEntraIssuer,
+} from "@/lib/entra-tenant";
 
 /** OIDC issuer must not end with `/` — avoids `.../v2.0//.well-known` and discovery issues. */
 function normalizeEntraIssuer(issuer: string | undefined): string | undefined {
@@ -18,7 +23,8 @@ function normalizeEntraIssuer(issuer: string | undefined): string | undefined {
  *
  * Env (see .env.example):
  * - AUTH_MICROSOFT_ENTRA_ID_ID, AUTH_MICROSOFT_ENTRA_ID_SECRET
- * - AUTH_MICROSOFT_ENTRA_ID_ISSUER (single-tenant: https://login.microsoftonline.com/<tenant-id>/v2.0/)
+ * - AUTH_MICROSOFT_ENTRA_ID_ISSUER (https://login.microsoftonline.com/<tenant-id>/v2.0/ or .../common/... for multi-tenant)
+ * - ALLOWED_ENTRA_TENANT_IDS (required when using common/organizations — comma-separated directory UUIDs, e.g. Bidlow + OpensDoors)
  * - AUTH_SECRET, AUTH_URL (local: http://localhost:3000)
  */
 const entraIssuer = normalizeEntraIssuer(process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER);
@@ -34,11 +40,9 @@ const config = {
   ],
   callbacks: {
     async signIn({ profile }) {
-      const expected = getTenantIdFromEntraIssuer(entraIssuer);
-      if (!expected || !profile) return true;
+      if (!profile) return true;
       const tid = (profile as { tid?: string }).tid;
-      if (!tid) return true;
-      return tid.toLowerCase() === expected;
+      return isEntraSignInAllowed(entraIssuer, tid);
     },
     async jwt({ token, profile }) {
       if (profile) {

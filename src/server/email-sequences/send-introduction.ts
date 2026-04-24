@@ -67,6 +67,7 @@ import {
   hashUnsubscribeToken,
 } from "@/lib/unsubscribe/unsubscribe-token";
 import { buildListUnsubscribeHeaders } from "@/lib/unsubscribe/list-unsubscribe-headers";
+import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-unsubscribe-in-body";
 
 /**
  * PR D4e.2 / D4e.3 — operator-triggered sequence step dispatcher.
@@ -895,7 +896,11 @@ export async function sendSequenceStepBatch(input: {
 
             const fromAddress = normalizeEmail(m.email);
             const subject = truncate(composition.subject, SUBJECT_DB_MAX);
-            const bodyText = truncate(composition.body, BODY_DB_MAX);
+            const bodyWithFooter = ensureUnsubscribeLinkInPlainTextBody(
+              composition.body,
+              unsubscribeUrlForSend,
+            );
+            const bodyText = truncate(bodyWithFooter, BODY_DB_MAX);
             const toDomain = extractDomainFromEmail(toEmail) || null;
 
             const created = await tx.outboundEmail.create({
