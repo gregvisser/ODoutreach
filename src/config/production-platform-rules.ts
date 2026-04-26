@@ -3,6 +3,22 @@
  * enforced in code across auth, mailboxes, sends, and UI — this module is
  * documentation + stable identifiers for tests and future refactors.
  *
+ * **Outbound — client outreach (primary)**
+ * - Normal **prospect** sends (sequences, one-off contact, controlled pilot when
+ *   governed) create `OutboundEmail` rows **with** `mailboxIdentityId` and
+ *   execute in the worker via **Microsoft Graph** or **Gmail users.messages.send**
+ *   (`executeOutboundSend` → `sendViaConnectedMailboxOrFail`), using the
+ *   **shared workspace mailbox pool** (any authorised operator; per-mailbox caps).
+ * - This path does **not** use a global ESP (Resend) for delivery. Domain
+ *   reputation and delivery are the customer’s mailbox provider.
+ *
+ * **Outbound — legacy / platform (secondary)**
+ * - Rows **without** `mailboxIdentityId` still use the pluggable
+ *   `getOutboundEmailProvider()` stack: **mock** (dev) or **Resend** when
+ *   `EMAIL_PROVIDER=resend` — for older or test rows, not the normal
+ *   client-outreach product path. Do not present `EMAIL_PROVIDER` as a
+ *   prerequisite for “live” client outreach when connected mailboxes exist.
+ *
  * **Authentication**
  * - Staff sign in with Microsoft (Entra / Microsoft 365). MFA is entirely
  *   the tenant’s responsibility (Conditional Access), not reimplemented here.
@@ -39,4 +55,4 @@
  *   pattern. Hosted one-click and List-Unsubscribe header metadata apply when
  *   the public app base URL is configured.
  */
-export const PRODUCTION_PLATFORM_RULES_VERSION = 1 as const;
+export const PRODUCTION_PLATFORM_RULES_VERSION = 2 as const;

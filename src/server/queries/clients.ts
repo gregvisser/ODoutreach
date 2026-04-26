@@ -11,6 +11,15 @@ export async function listClientsForStaff(accessibleClientIds: string[]) {
     orderBy: { name: "asc" },
     include: {
       onboarding: true,
+      mailboxIdentities: {
+        select: {
+          email: true,
+          isActive: true,
+          connectionStatus: true,
+          canSend: true,
+          isSendingEnabled: true,
+        },
+      },
       _count: {
         select: {
           contacts: true,

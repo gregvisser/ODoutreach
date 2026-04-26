@@ -119,8 +119,8 @@ Server-only **request** path: `sendEmailToContact` in `src/server/email/send-out
 | **HTTP** | `POST /api/internal/outbound/process-queue` with `Authorization: Bearer PROCESS_QUEUE_SECRET` and JSON `{ "limit": 10 }`. Set `INTERNAL_APP_URL` when calling from another host. |
 | **Dev manual** | `POST /api/dev/process-outbound-queue` with `x-dev-secret: OUTBOUND_DEV_QUEUE_SECRET` (or same Bearer as `PROCESS_QUEUE_SECRET`). |
 
-- **Mock provider (default):** no network; generates a fake `providerMessageId`. Safe for local dev.
-- **Resend:** `EMAIL_PROVIDER=resend` and `RESEND_API_KEY`. From: `Client.defaultSenderEmail` → `DEFAULT_OUTBOUND_FROM` → `noreply@opensdoors.local`.
+- **Primary client outreach (prospects):** `OutboundEmail` rows **with** `mailboxIdentityId` are sent in the worker via **Microsoft Graph** or **Gmail** (`sendViaConnectedMailboxOrFail` in `execute-outbound`) — the customer’s connected mailbox, not a global Resend path.
+- **Mock / Resend (legacy & non-mailbox rows):** rows **without** `mailboxIdentityId` use `getOutboundEmailProvider()` — **mock** (default) or **Resend** when `EMAIL_PROVIDER=resend` and `RESEND_API_KEY` is set. From resolution: `row.fromAddress` / `Client.defaultSenderEmail` → `DEFAULT_OUTBOUND_FROM` → `noreply@opensdoors.local` for that legacy path only.
 
 **Provider webhooks (Resend):** `POST /api/webhooks/resend` — Svix-signed; set `RESEND_WEBHOOK_SECRET` from the Resend webhook settings. Events update `OutboundEmail` by `providerMessageId` (globally unique from Resend) and append `OutboundProviderEvent` rows. **Never** matches across tenants incorrectly: the outbound row’s `clientId` is loaded from DB after id lookup.
 
@@ -128,7 +128,7 @@ Server-only **request** path: `sendEmailToContact` in `src/server/email/send-out
 
 **Send idempotency (limitations honest):** each queue claim increments `sendAttempt` and sets deterministic `providerIdempotencyKey` (`osm_{id}_a{n}`). **Resend** receives `Idempotency-Key`; the **mock** provider derives a stable fake message id from that key. **`SENT` is applied with `updateMany` where `providerMessageId` is still null** so duplicate completion does not double-write. Exact-once delivery at the ESP is **not** guaranteed if the provider ignores idempotency or a crash happens between ESP accept and DB commit — operations should use **Outbound ops** for stale locks and safe retries.
 
-**Sender identity:** `Client.senderIdentityStatus` (`NOT_SET` | `CONFIGURED_UNVERIFIED` | `VERIFIED_READY`) and `defaultSenderEmail`. Resolution in `src/server/email/sender-identity.ts`. Optional env **`ALLOWED_SENDER_EMAIL_DOMAINS`** restricts From domains. Mark **VERIFIED_READY** on the **Outbound ops** page after Resend domain verification.
+**Sender identity:** `Client.senderIdentityStatus` (`NOT_SET` | `CONFIGURED_UNVERIFIED` | `VERIFIED_READY`) and `defaultSenderEmail`. Resolution in `src/server/email/sender-identity.ts` applies to **legacy** outbound rows and governance; normal prospect sends use the **mailboxes** you connect. Optional env **`ALLOWED_SENDER_EMAIL_DOMAINS`** can restrict From preview. Mark **VERIFIED_READY** in **Outbound ops** when your process requires it; Resend domain verification matters for **Resend**-transport rows, not for Graph/Gmail sends.
 
 **Dev: simulate delivery/bounce** (needs `providerMessageId` on the row after send): `POST /api/dev/simulate-provider-event` with JSON `{ "outboundEmailId": "...", "eventType": "email.delivered" }` and `x-dev-secret: OUTBOUND_DEV_PROVIDER_EVENT_SECRET`.
 
@@ -160,7 +160,7 @@ Before enqueueing mail to a recipient address (any other code path you add):
 
 **Recommended:** `AUTH_URL` (public app URL in staging/prod), `PROCESS_QUEUE_SECRET`, `INTERNAL_APP_URL`, `STAFF_EMAIL_DOMAINS` (if you lock staff by domain).
 
-**Recommended for real email:** `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`.
+**For legacy ESP rows / webhooks:** `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` (normal prospect outreach with connected mailboxes does **not** need Resend for transport).
 
 **Optional product:** Google service account vars (suppression sync), `ROCKETREACH_API_KEY`, `SEED_ENTRA_OBJECT_ID`.
 

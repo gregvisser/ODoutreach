@@ -53,13 +53,14 @@ export function resolveValidatedSenderForClient(input: {
     warnings.push("Using global DEFAULT_OUTBOUND_FROM or platform fallback — set Client.defaultSenderEmail for this workspace.");
   }
 
+  // Legacy-ESP / non-mailbox path only: rows with a mailbox use Graph/Gmail in the worker.
   const providerMode = (process.env.EMAIL_PROVIDER ?? "mock").toLowerCase().trim();
   const verificationRequired =
     providerMode === "resend" && input.clientSenderIdentityStatus !== "VERIFIED_READY";
 
   if (verificationRequired) {
     warnings.push(
-      "Sender identity is not VERIFIED_READY — Resend may reject until domain/sender is verified in Resend.",
+      "Sender identity is not VERIFIED_READY — if this send used the Resend transport, Resend may reject until domain/sender is verified in Resend.",
     );
   }
 
