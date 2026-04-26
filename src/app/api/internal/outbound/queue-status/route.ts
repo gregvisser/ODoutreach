@@ -63,6 +63,8 @@ export async function GET(req: NextRequest) {
     },
     integrations: {
       emailProvider: (process.env.EMAIL_PROVIDER ?? "mock").toLowerCase(),
+      /** Client outreach with `mailboxIdentityId` uses Graph/Gmail in the worker, not this ESP. */
+      clientOutreachModel: "mailbox_native_when_outbound_row_has_mailbox" as const,
       resendWebhookSecretConfigured: Boolean(process.env.RESEND_WEBHOOK_SECRET?.trim()),
       autoprocessOutboundQueue: process.env.AUTOPROCESS_OUTBOUND_QUEUE === "true",
     },

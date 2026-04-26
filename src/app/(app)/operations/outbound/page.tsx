@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { MailboxOutreachRowInput } from "@/lib/outreach-mailbox-transport";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { cn } from "@/lib/utils";
 import { requireStaffUser } from "@/server/auth/staff";
@@ -50,10 +51,20 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
   const selectedClient = clientFilter
     ? clients.find((c) => c.id === clientFilter)
     : undefined;
+  const mapMb = (c: (typeof clients)[0]): MailboxOutreachRowInput[] =>
+    c.mailboxIdentities.map((m) => ({
+      email: m.email,
+      isActive: m.isActive,
+      connectionStatus: m.connectionStatus,
+      canSend: m.canSend,
+      isSendingEnabled: m.isSendingEnabled,
+    }));
+
   const selectedSenderReport = selectedClient
     ? describeSenderReadiness({
         defaultSenderEmail: selectedClient.defaultSenderEmail,
         senderIdentityStatus: selectedClient.senderIdentityStatus,
+        outreachMailboxes: mapMb(selectedClient),
       })
     : null;
 
@@ -117,6 +128,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                   const r = describeSenderReadiness({
                     defaultSenderEmail: c.defaultSenderEmail,
                     senderIdentityStatus: c.senderIdentityStatus,
+                    outreachMailboxes: mapMb(c),
                   });
                   return (
                     <TableRow key={c.id}>

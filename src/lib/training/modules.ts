@@ -494,7 +494,7 @@ const mailboxesModule: TrainingModule = {
   callout: {
     tone: "info",
     heading: "Test mode vs. live",
-    body: "A workspace in test mode sends as noreply@opensdoors.local and never reaches prospects. Live delivery is enabled by an admin once the brief, mailboxes, suppression and pilot are all green.",
+    body: "For real prospect outreach, OpensDoors delivers through your **connected** Microsoft 365 or Google mailboxes in the shared pool — not through a single global email API. A `noreply@` placeholder and mock transport apply only to legacy or test rows without a mailbox. Connect mailboxes, complete the brief, suppression, and pilot checks, then you are live through your own domains.",
   },
   outcomes: [
     "You know which five mailboxes OpensDoors sends from and their per-mailbox daily caps.",

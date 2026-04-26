@@ -131,6 +131,13 @@ export async function loadClientWorkspaceBundle(
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
     senderIdentityStatus: client.senderIdentityStatus,
+    outreachMailboxes: client.mailboxIdentities.map((m) => ({
+      email: m.email,
+      isActive: m.isActive,
+      connectionStatus: m.connectionStatus,
+      canSend: m.canSend,
+      isSendingEnabled: m.isSendingEnabled,
+    })),
   });
 
   const brief = parseOpensDoorsBrief(client.onboarding?.formData);

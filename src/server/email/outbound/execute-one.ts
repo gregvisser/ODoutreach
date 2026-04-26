@@ -116,6 +116,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     return await sendViaConnectedMailboxOrFail(row, to);
   }
 
+  // Legacy / non-mailbox row: Resend or mock (see getOutboundEmailProvider).
   const client = await prisma.client.findUnique({
     where: { id: row.clientId },
     select: {
