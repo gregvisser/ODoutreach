@@ -1,19 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
-import { WORKSPACE_MAILBOXES_HERO } from "@/lib/mailboxes/mailbox-workspace-model";
-import {
-  THEORETICAL_MAX_CLIENT_DAILY_SENDS,
-  OUTREACH_MAILBOX_DAILY_CAP,
-} from "@/lib/outreach-mailbox-model";
+import { Card, CardContent } from "@/components/ui/card";
+import { MAILBOXES_PAGE_INTRO } from "@/lib/mailboxes/mailbox-workspace-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -44,41 +33,17 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const client = bundle.client;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Mailboxes
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Mailboxes</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">{client.name}</p>
+        <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          {MAILBOXES_PAGE_INTRO}
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-        <p className="mt-1 text-muted-foreground">{WORKSPACE_MAILBOXES_HERO}</p>
       </div>
 
       <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Sender identity</CardTitle>
-          <CardDescription>
-            Where outbound email is sent from and whether that sender is ready
-            to go live.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SenderReadinessPanel report={bundle.senderReport} />
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Connected mailboxes</CardTitle>
-          <CardDescription>
-            Connect up to <strong>five</strong> shared workspace sending
-            addresses. Each connected mailbox sends up to{" "}
-            {String(OUTREACH_MAILBOX_DAILY_CAP)} messages per UTC day, for a
-            maximum of {String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)} per day
-            across the pool. OAuth sign-in runs in Microsoft 365 or Google
-            Workspace — this app does not store mailbox passwords.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <ClientMailboxIdentitiesPanel
             clientId={client.id}
             rows={bundle.mailboxRows}
@@ -86,6 +51,8 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
             oauthGoogleConfigured={bundle.oauthGoogleReady}
             sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
+            senderReport={bundle.senderReport}
+            aggregateRemaining={bundle.aggregateRemaining}
             clientBriefFallback={{
               senderDisplayNameFallback: client.name,
               emailSignatureFallback:
@@ -96,16 +63,19 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             }}
             mailboxOAuthBanner={
               mailboxOAuthResult === "connected"
-                ? { type: "ok" as const, text: "Mailbox OAuth completed — connection status updated." }
+                ? {
+                    type: "ok" as const,
+                    text: "Mailbox connected. Connection status was updated.",
+                  }
                 : mailboxOAuthResult === "error"
                   ? {
                       type: "err" as const,
                       text:
                         mailboxOAuthReason === "staff_session"
-                          ? "Sign in to OpensDoors, then run mailbox connection again."
+                          ? "Sign in to OpensDoors, then connect the mailbox again."
                           : mailboxOAuthReason === "mailbox_removed"
-                            ? "That mailbox was removed from this workspace. Restore it on the Mailboxes page before connecting OAuth again."
-                            : "Mailbox OAuth did not complete. Check the last error on the row or retry connection.",
+                            ? "That mailbox is removed from this workspace. Restore it first, then connect again."
+                            : "Mailbox sign-in did not complete. Open the row below and try again.",
                     }
                   : null
             }

@@ -10,6 +10,11 @@ export const WORKSPACE_MAILBOXES_HERO =
   "Any authorised operator on this workspace can send and reply from any connected, eligible mailbox; " +
   "replies stay on the mailbox and thread that received the message.";
 
+/** Short intro on the Mailboxes page (operator-facing). */
+export const MAILBOXES_PAGE_INTRO =
+  "Connect the client email accounts that ODoutreach can use for outreach. " +
+  "Any authorised operator on this client can use connected mailboxes in the shared sending pool.";
+
 export const OUTREACH_HERO_ADDENDUM =
   "Template and sequence sends use the shared client mailbox pool. Capacity, governance, and sender identity are all configured in Mailboxes.";
 

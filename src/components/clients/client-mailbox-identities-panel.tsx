@@ -21,12 +21,21 @@ import {
   updateMailboxSignatureAction,
   type MailboxSignatureActionResult,
 } from "@/app/(app)/clients/mailbox-signature-actions";
+import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
 import {
   buildSenderSignatureViewModel,
-  SENDER_SIGNATURE_STATUS,
   type SenderSignatureClientBriefFallback,
-  type SenderSignatureSource,
 } from "@/lib/mailboxes/sender-signature";
+import {
+  computePoolDailyMax,
+  countConnectedMailboxes,
+  countMailboxNeedsAttention,
+  mailboxesWhatToDoNext,
+  mailboxRowOperatorStatus,
+  MAX_CONNECTED_MAILBOXES,
+  operatorSignatureTableLabel,
+} from "@/lib/mailboxes/mailboxes-operator-model";
+import type { SenderReadinessReport } from "@/lib/sender-readiness";
 import { Textarea } from "@/components/ui/textarea";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -51,7 +60,6 @@ import { cn } from "@/lib/utils";
 import {
   DEFAULT_MAILBOX_DAILY_SEND_CAP,
   isMailboxSendingEligible,
-  MAX_ACTIVE_MAILBOXES_PER_CLIENT,
 } from "@/lib/mailbox-identities";
 
 export type MailboxIdentityRow = {
@@ -88,17 +96,6 @@ export type MailboxIdentityRow = {
   senderSignatureSyncError: string | null;
 };
 
-const SIGNATURE_BADGE_CLASSES: Record<SenderSignatureSource, string> = {
-  gmail_send_as:
-    "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200",
-  manual: "bg-blue-500/15 text-blue-800 dark:text-blue-200",
-  client_brief_fallback:
-    "bg-amber-500/15 text-amber-800 dark:text-amber-200",
-  unsupported_provider:
-    "bg-muted text-muted-foreground",
-  missing: "bg-destructive/15 text-destructive",
-};
-
 function notify(
   result: IdentityActionResult,
   ok: (m: string) => void,
@@ -113,14 +110,6 @@ const PROVIDERS = [
   { value: "GOOGLE", label: "Google Workspace" },
 ] as const;
 
-const STATUSES = [
-  { value: "DRAFT", label: "Draft" },
-  { value: "PENDING_CONNECTION", label: "Pending connection" },
-  { value: "CONNECTED", label: "Connected" },
-  { value: "CONNECTION_ERROR", label: "Connection error" },
-  { value: "DISCONNECTED", label: "Disconnected" },
-] as const;
-
 function oauthReadyForRow(
   row: MailboxIdentityRow,
   oauthMicrosoftConfigured: boolean,
@@ -131,24 +120,14 @@ function oauthReadyForRow(
     : oauthGoogleConfigured;
 }
 
-/**
- * Provider-specific honest footnote: Gmail can be pulled; M365 is manual in-app.
- * Does not print signature contents.
- */
-function signatureFootnote(
-  row: MailboxIdentityRow,
-  vm: ReturnType<typeof buildSenderSignatureViewModel>,
-): string | null {
-  if (row.provider === "GOOGLE") {
-    if (vm.source === "gmail_send_as" && vm.lastSyncedAtIso) {
-      return "Gmail send-as: signature was pulled from Google Workspace. Use Sync from Gmail to refresh when you change it in the admin console.";
-    }
-    return "Gmail: connect the mailbox, then Sync from Gmail to import the send-as signature from Google.";
+function connectActionLabel(row: MailboxIdentityRow): string {
+  if (row.connectionStatus === "CONNECTED") {
+    return "Reconnect";
   }
-  if (row.provider === "MICROSOFT") {
-    return "Microsoft 365: the supported Graph path in this app does not read Outlook signatures. Set the text here, or use the brief fallback if configured.";
+  if (row.connectionStatus === "PENDING_CONNECTION") {
+    return "Complete sign-in";
   }
-  return null;
+  return "Connect";
 }
 
 function providerConnectionHint(
@@ -247,6 +226,8 @@ export function ClientMailboxIdentitiesPanel({
   mailboxOAuthBanner,
   sendingReadinessByMailboxId,
   clientBriefFallback,
+  senderReport,
+  aggregateRemaining,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
@@ -257,6 +238,9 @@ export function ClientMailboxIdentitiesPanel({
   /** When the workspace has mailbox rows, the server provides UTC-day ledger counts. */
   sendingReadinessByMailboxId?: Record<string, MailboxLedgerReadiness>;
   clientBriefFallback: SenderSignatureClientBriefFallback;
+  senderReport: SenderReadinessReport;
+  /** Sum of remaining send slots (UTC day) across ledgers — from workspace bundle. */
+  aggregateRemaining: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -280,7 +264,54 @@ export function ClientMailboxIdentitiesPanel({
     () => rows.filter((r) => r.workspaceRemovedAt),
     [rows],
   );
-  const activeCount = activeRows.filter((r) => r.isActive).length;
+  const signatureViewModels = useMemo(
+    () =>
+      activeRows.map((row) =>
+        buildSenderSignatureViewModel(
+          {
+            provider: row.provider,
+            email: row.email,
+            displayName: row.displayName,
+            senderDisplayName: row.senderDisplayName,
+            senderSignatureHtml: row.senderSignatureHtml,
+            senderSignatureText: row.senderSignatureText,
+            senderSignatureSource: row.senderSignatureSource,
+            senderSignatureSyncedAt: row.senderSignatureSyncedAt,
+            senderSignatureSyncError: row.senderSignatureSyncError,
+          },
+          clientBriefFallback,
+        ),
+      ),
+    [activeRows, clientBriefFallback],
+  );
+
+  const poolDailyMax = useMemo(
+    () => computePoolDailyMax(activeRows, sendingReadinessByMailboxId),
+    [activeRows, sendingReadinessByMailboxId],
+  );
+
+  const needsAttentionCount = useMemo(
+    () =>
+      countMailboxNeedsAttention({
+        activeRows,
+        viewModels: signatureViewModels,
+      }),
+    [activeRows, signatureViewModels],
+  );
+
+  const connectedMailboxCount = useMemo(
+    () => countConnectedMailboxes(activeRows),
+    [activeRows],
+  );
+
+  const whatNext = useMemo(
+    () =>
+      mailboxesWhatToDoNext({
+        activeRowCount: activeRows.length,
+        needsAttentionCount,
+      }),
+    [activeRows.length, needsAttentionCount],
+  );
 
   const run = (action: () => Promise<IdentityActionResult>) => {
     startTransition(async () => {
@@ -361,26 +392,47 @@ export function ClientMailboxIdentitiesPanel({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          <span className="text-foreground font-medium">Workspace pool:</span>{" "}
-          <span className="font-medium text-foreground">
-            {activeCount}/{MAX_ACTIVE_MAILBOXES_PER_CLIENT}
-          </span>{" "}
-          active addresses. Each connected mailbox can send up to{" "}
-          <span className="font-medium text-foreground">
-            {DEFAULT_MAILBOX_DAILY_SEND_CAP}
-          </span>{" "}
-          / UTC day. Totals cap outreach for this client and match real
-          send outcomes. Any authorised operator on this client may use an
-          eligible mailbox from this pool; replies stay on the receiving
-          thread.
-        </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Connected mailboxes</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+            {connectedMailboxCount}{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              / {String(MAX_CONNECTED_MAILBOXES)}
+            </span>
+          </p>
+        </div>
+        <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Daily capacity (remaining / pool max)</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+            {aggregateRemaining}{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              / {String(Math.max(0, poolDailyMax))}
+            </span>
+          </p>
+        </div>
+        <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Needs attention</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+            {String(needsAttentionCount)}
+          </p>
+        </div>
+      </div>
+
+      <p className="text-sm text-foreground" role="status">
+        {whatNext.message}
+      </p>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         {canMutate ? (
           <>
             <Sheet open={addOpen} onOpenChange={setAddOpen}>
               <SheetTrigger
-                className={cn(buttonVariants({ size: "sm" }), pending && "pointer-events-none opacity-60")}
+                className={cn(
+                  buttonVariants({ size: "sm" }),
+                  "w-full sm:w-auto",
+                  pending && "pointer-events-none opacity-60",
+                )}
               >
                 Add mailbox
               </SheetTrigger>
@@ -482,16 +534,16 @@ export function ClientMailboxIdentitiesPanel({
         ) : null}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border/80">
+      <div className="overflow-x-auto rounded-lg border border-border/80 -mx-1 px-1 sm:mx-0 sm:px-0">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Mailbox</TableHead>
               <TableHead>Provider</TableHead>
-              <TableHead>Connection</TableHead>
-              <TableHead>Sending</TableHead>
-              <TableHead className="text-right">Sent today / cap</TableHead>
-              <TableHead className="min-w-[220px]">Actions</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Sent today</TableHead>
+              <TableHead>Primary</TableHead>
+              <TableHead className="min-w-[12rem]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -499,8 +551,8 @@ export function ClientMailboxIdentitiesPanel({
                 <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
                   {removedRows.length > 0
-                    ? "No active mailboxes in this list — all addresses for this client are removed from the workspace. Restore one below, or add a new mailbox. Historical sends and inbox messages in OpensDoors are preserved."
-                    : "No mailboxes connected for this client yet. Add up to five shared workspace sending addresses (Microsoft 365 or Google Workspace) — these belong to the client, not to an individual operator."}
+                    ? "No active mailboxes. Restore one under “Show removed mailboxes” or add a new mailbox. History in OpensDoors is kept."
+                    : "No mailboxes yet. Add a Microsoft 365 or Google workspace address the client can use for outreach (up to five in this pool)."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -511,88 +563,54 @@ export function ClientMailboxIdentitiesPanel({
                   oauthMicrosoftConfigured,
                   oauthGoogleConfigured,
                 );
+                const op = mailboxRowOperatorStatus(row);
                 return (
                   <TableRow key={row.id}>
-                    <TableCell className="align-top">
-                      <div className="font-medium">{row.email}</div>
+                    <TableCell className="align-top min-w-[10rem] max-w-[14rem]">
+                      <div className="font-medium break-all">{row.email}</div>
                       {row.displayName ? (
-                        <div className="text-xs text-muted-foreground">{row.displayName}</div>
+                        <div className="text-xs text-muted-foreground break-words">{row.displayName}</div>
                       ) : null}
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {row.isPrimary ? (
-                          <span
-                            className="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary"
-                            title="When several mailboxes are available, the planner prefers the primary for tie-breaks. Any authorised operator can still use other eligible pool mailboxes."
-                          >
-                            Primary
-                          </span>
-                        ) : null}
-                        <span
-                          className={cn(
-                            "rounded-md px-1.5 py-0.5 text-xs font-medium",
-                            row.isActive
-                              ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
-                              : "bg-muted text-muted-foreground",
-                          )}
-                        >
-                          {row.isActive ? "Active" : "Inactive"}
-                        </span>
-                      </div>
+                      {row.isActive ? null : (
+                        <div className="mt-1 text-xs text-muted-foreground">Paused from pool</div>
+                      )}
                     </TableCell>
-                    <TableCell className="align-top text-sm">
+                    <TableCell className="align-top text-sm whitespace-nowrap">
                       {PROVIDERS.find((p) => p.value === row.provider)?.label ?? row.provider}
                     </TableCell>
-                    <TableCell className="align-top text-sm">
-                      <div className="font-medium">
-                        {STATUSES.find((s) => s.value === row.connectionStatus)?.label ??
-                          row.connectionStatus}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {providerConnectionHint(row, oauthOk)}
-                      </div>
-                      {row.providerLinkedUserId ? (
-                        <div className="mt-1 font-mono text-[10px] text-muted-foreground break-all">
-                          Provider id: {row.providerLinkedUserId}
+                    <TableCell className="align-top text-sm min-w-[10rem] max-w-xs">
+                      <div className="font-medium text-foreground">{op.label}</div>
+                      {op.sublabel ? (
+                        <div className="mt-1 text-xs text-muted-foreground leading-snug">
+                          {op.sublabel}
                         </div>
                       ) : null}
                     </TableCell>
-                    <TableCell className="align-top text-xs text-muted-foreground max-w-[240px]">
-                      {eligibilityLabel(row, now, ledger)}
-                      {!row.isSendingEnabled ? (
-                        <span className="mt-1 block text-amber-700 dark:text-amber-300">
-                          Sending paused by operator.
-                        </span>
-                      ) : null}
-                      {row.lastError ? (
-                        <span className="mt-1 block text-destructive line-clamp-3" title={row.lastError}>
-                          {row.lastError}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="align-top text-right text-sm tabular-nums">
+                    <TableCell className="align-top text-right text-sm tabular-nums whitespace-nowrap">
                       {ledger ? (
-                        <>
-                          <div>
-                            {ledger.bookedInUtcDay} / {ledger.cap}{" "}
-                            <span className="text-muted-foreground">today</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {ledger.remaining} remaining
-                          </div>
-                        </>
+                        <span>
+                          {ledger.bookedInUtcDay} / {ledger.cap}
+                        </span>
                       ) : (
-                        <>
+                        <span>
                           {row.emailsSentToday} / {row.dailySendCap}
-                          {row.dailyWindowResetAt ? (
-                            <div className="text-xs text-muted-foreground">
-                              Resets {format(new Date(row.dailyWindowResetAt), "d MMM, HH:mm")}
-                            </div>
-                          ) : null}
-                        </>
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="align-top text-sm">
+                      {row.isPrimary ? (
+                        <span
+                          className="rounded-md bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary"
+                          title="Used as the preferred mailbox when a send could use more than one address."
+                        >
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell className="align-top">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1 max-w-md">
                         {canMutate ? (
                           <>
                             <Button
@@ -607,24 +625,16 @@ export function ClientMailboxIdentitiesPanel({
                             </Button>
                             <Button
                               size="xs"
-                              variant="outline"
-                              disabled={pending}
-                              onClick={() => setEditRow(row)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              size="xs"
                               variant="secondary"
                               disabled={pending || !oauthOk || !row.isActive}
                               title={
                                 !oauthOk
-                                  ? "Configure mailbox OAuth env vars for this provider"
+                                  ? "The administrator must complete provider sign-in for this app before mailboxes can connect."
                                   : undefined
                               }
                               onClick={() => startOAuth(row.id)}
                             >
-                              {row.connectionStatus === "CONNECTED" ? "Reconnect" : "Connect"}
+                              {connectActionLabel(row)}
                             </Button>
                             <Button
                               size="xs"
@@ -639,13 +649,22 @@ export function ClientMailboxIdentitiesPanel({
                               variant="outline"
                               className="text-destructive border-destructive/60"
                               disabled={pending}
-                              title="Archive this address for the workspace. OAuth and sync stop; message history in OpensDoors remains."
+                              title="Stops use of this address in the pool. In-app history is kept. Use Disconnect to revoke sign-in only."
                               onClick={() => {
                                 setRemoveTarget(row);
                                 setRemoveNote("");
                               }}
                             >
-                              Remove from workspace
+                              Remove
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              className="text-muted-foreground"
+                              disabled={pending}
+                              onClick={() => setEditRow(row)}
+                            >
+                              Edit
                             </Button>
                           </>
                         ) : (
@@ -726,127 +745,160 @@ export function ClientMailboxIdentitiesPanel({
       ) : null}
 
       {activeRows.length > 0 ? (
-        <div className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold">Sender identity</h3>
-            <p className="text-xs text-muted-foreground">
-              Each address has its own From display name and signature. Google
-              Workspace: use <strong>Sync from Gmail</strong> to read the
-              current Gmail send-as signature. Microsoft 365: enter the
-              signature in OpensDoors; Outlook is not read automatically. If
-              a mailbox is missing a signature, governed sends can fall back to
-              legacy client brief text only when that older field is set.
-              Outbound email always appends a compliant unsubscribe line
-              <strong> after</strong> this signature in production sends.
-            </p>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Sender signatures</h3>
+          <div className="overflow-x-auto rounded-lg border border-border/80 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mailbox</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[1%] whitespace-nowrap">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activeRows.map((row, i) => {
+                  const vm = signatureViewModels[i]!;
+                  const sig = operatorSignatureTableLabel(row, vm);
+                  return (
+                    <TableRow key={`sig-${row.id}`}>
+                      <TableCell className="align-top text-sm break-all max-w-[14rem]">
+                        <div className="font-medium">{row.email}</div>
+                        <div className="text-xs text-muted-foreground">{vm.resolvedDisplayName}</div>
+                      </TableCell>
+                      <TableCell className="align-top text-sm">
+                        <div>{sig.label}</div>
+                        {vm.syncError ? (
+                          <div className="mt-1 text-xs text-destructive" title={vm.syncError}>
+                            Sync issue — see Advanced details for the full message.
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="align-top">
+                        {canMutate ? (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {row.provider === "GOOGLE" ? (
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                disabled={
+                                  pending ||
+                                  !row.isActive ||
+                                  row.connectionStatus !== "CONNECTED"
+                                }
+                                title={
+                                  row.connectionStatus !== "CONNECTED"
+                                    ? "Connect this mailbox first."
+                                    : undefined
+                                }
+                                onClick={() =>
+                                  runSignature(async () =>
+                                    syncMailboxSignatureAction(clientId, row.id),
+                                  )
+                                }
+                              >
+                                Sync from Gmail
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => setSignatureEditRow(row)}
+                            >
+                              Set signature
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">View only</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {activeRows.map((row) => {
-              const vm = buildSenderSignatureViewModel(
-                {
-                  provider: row.provider,
-                  email: row.email,
-                  displayName: row.displayName,
-                  senderDisplayName: row.senderDisplayName,
-                  senderSignatureHtml: row.senderSignatureHtml,
-                  senderSignatureText: row.senderSignatureText,
-                  senderSignatureSource: row.senderSignatureSource,
-                  senderSignatureSyncedAt: row.senderSignatureSyncedAt,
-                  senderSignatureSyncError: row.senderSignatureSyncError,
-                },
-                clientBriefFallback,
-              );
-              const foot = signatureFootnote(row, vm);
-              const badgeClass = SIGNATURE_BADGE_CLASSES[vm.source];
-              const badgeLabel = SENDER_SIGNATURE_STATUS[vm.source];
-              return (
-                <div
-                  key={`sig-${row.id}`}
-                  className="flex flex-col gap-2 rounded-lg border border-border/80 p-3 text-sm"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{row.email}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {vm.resolvedDisplayName}
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "rounded-md px-1.5 py-0.5 text-xs font-medium",
-                        badgeClass,
-                      )}
-                    >
-                      {badgeLabel}
-                    </span>
-                  </div>
-                  {vm.resolvedSignatureText ? (
-                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-2 py-1.5 text-xs leading-snug">
-                      {vm.resolvedSignatureText}
-                    </pre>
-                  ) : (
-                    <p className="text-xs italic text-muted-foreground">
-                      No signature on file for this mailbox (and no legacy
-                      client-level fallback).
-                    </p>
-                  )}
-                  <div className="text-[11px] text-muted-foreground space-y-1">
-                    <p>
-                      {vm.lastSyncedAtIso
-                        ? `Last updated in OpensDoors: ${format(
-                            new Date(vm.lastSyncedAtIso),
-                            "MMM d, yyyy HH:mm",
-                          )} UTC`
-                        : "No signature timestamp yet — add or sync a signature above."}
-                    </p>
-                    {foot ? <p className="leading-snug">{foot}</p> : null}
-                  </div>
-                  {vm.syncError ? (
-                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-                      {vm.syncError}
-                    </div>
-                  ) : null}
-                  {canMutate ? (
-                    <div className="flex flex-wrap gap-1">
-                      {row.provider === "GOOGLE" ? (
-                        <Button
-                          size="xs"
-                          variant="secondary"
-                          disabled={
-                            pending ||
-                            !row.isActive ||
-                            row.connectionStatus !== "CONNECTED"
-                          }
-                          title={
-                            row.connectionStatus !== "CONNECTED"
-                              ? "Connect this Gmail mailbox first."
-                              : undefined
-                          }
-                          onClick={() =>
-                            runSignature(async () =>
-                              syncMailboxSignatureAction(clientId, row.id),
-                            )
-                          }
-                        >
-                          Sync from Gmail
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => setSignatureEditRow(row)}
-                      >
-                        Edit manual signature
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+          <details className="group rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+            <summary className="cursor-pointer font-medium text-foreground">
+              About signatures
+            </summary>
+            <div className="mt-2 space-y-2 text-xs text-muted-foreground leading-relaxed">
+              <p>
+                Gmail: when you use <strong>Sync from Gmail</strong>, the send-as
+                signature is pulled from Google. Microsoft 365: set the
+                signature in ODoutreach (Outlook is not read automatically). A
+                missing mailbox signature may use a short client-level fallback
+                when one is configured. Production sends add consent text after
+                the signature.
+              </p>
+            </div>
+          </details>
         </div>
       ) : null}
+
+      <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-3 py-2 text-sm">
+        <summary className="cursor-pointer font-medium text-foreground">
+          Advanced details
+        </summary>
+        <p className="text-xs text-muted-foreground mt-1 mb-3">
+          For administrators and troubleshooting. Includes transport notes, internal ids, and
+          connection diagnostics.
+        </p>
+        <SenderReadinessPanel report={senderReport} />
+        <div className="mt-4 space-y-4 text-xs">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Per-mailbox technical
+          </p>
+          {activeRows.map((row, advIdx) => {
+            const ledger = sendingReadinessByMailboxId?.[row.id];
+            const oauthOk = oauthReadyForRow(
+              row,
+              oauthMicrosoftConfigured,
+              oauthGoogleConfigured,
+            );
+            const advVm = signatureViewModels[advIdx]!;
+            return (
+              <div
+                key={`adv-${row.id}`}
+                className="rounded-md border border-border/60 bg-background/80 p-3 space-y-2"
+              >
+                <div className="font-mono text-[11px] font-medium break-all text-foreground">
+                  {row.email}
+                </div>
+                <div className="space-y-1 text-muted-foreground">
+                  <p>
+                    <span className="text-foreground/80">Provider link id: </span>
+                    {row.providerLinkedUserId?.trim() ? row.providerLinkedUserId : "—"}
+                  </p>
+                  <p>
+                    <span className="text-foreground/80">Internal connection: </span>
+                    {row.connectionStatus}
+                    {" · "}
+                    {providerConnectionHint(row, oauthOk)}
+                  </p>
+                  <p>
+                    <span className="text-foreground/80">Send readiness: </span>
+                    {eligibilityLabel(row, now, ledger)}
+                  </p>
+                  {advVm.syncError ? (
+                    <p className="text-destructive break-words">
+                      <span className="text-foreground/80">Signature sync: </span>
+                      {advVm.syncError}
+                    </p>
+                  ) : null}
+                  {row.lastError ? (
+                    <p className="text-destructive break-words">
+                      <span className="text-foreground/80">Connection last error: </span>
+                      {row.lastError}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
       {canMutate ? (
         <Sheet
