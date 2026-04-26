@@ -788,7 +788,7 @@ export function ClientMailboxIdentitiesPanel({
                   const opState = getOperatorSignatureState(row, vm, selection);
                   return (
                     <TableRow key={`sig-${row.id}`}>
-                      <TableCell className="align-top text-sm break-all max-w-[14rem]">
+                      <TableCell className="align-top text-sm break-all max-w-[14rem] min-w-[8rem]">
                         <div className="font-medium">{row.email}</div>
                         <div className="text-xs text-muted-foreground">
                           {row.connectionStatus === "CONNECTED" ? (
@@ -820,12 +820,13 @@ export function ClientMailboxIdentitiesPanel({
                       <TableCell className="align-top text-sm text-muted-foreground">
                         {humanizeSignatureSource(selection.source)}
                       </TableCell>
-                      <TableCell className="align-top">
-                        <div className="flex flex-wrap justify-end gap-1">
+                      <TableCell className="align-top w-[1%] min-w-[10.5rem]">
+                        <div className="flex flex-nowrap justify-end gap-1">
                           <Button
                             type="button"
                             size="xs"
                             variant="secondary"
+                            className="shrink-0"
                             disabled={pending}
                             onClick={() => {
                               setPreviewRow(row);
@@ -839,6 +840,7 @@ export function ClientMailboxIdentitiesPanel({
                                 <Button
                                   size="xs"
                                   variant="outline"
+                                  className="shrink-0"
                                   disabled={
                                     pending ||
                                     !row.isActive ||
@@ -861,6 +863,7 @@ export function ClientMailboxIdentitiesPanel({
                               <Button
                                 size="xs"
                                 variant="outline"
+                                className="shrink-0"
                                 disabled={pending}
                                 onClick={() => setSignatureEditRow(row)}
                               >
@@ -916,10 +919,13 @@ export function ClientMailboxIdentitiesPanel({
                     pvm,
                     preview.selection,
                   );
-                  return (
+                    return (
                     <>
                       <SheetHeader>
-                        <SheetTitle>Signature preview (no email sent)</SheetTitle>
+                        <SheetTitle>Signature preview</SheetTitle>
+                        <p className="text-sm text-muted-foreground" role="status">
+                          No email was sent.
+                        </p>
                         <SheetDescription>
                           {previewRow.email} — {pstate.shortDescription}
                         </SheetDescription>
@@ -930,7 +936,7 @@ export function ClientMailboxIdentitiesPanel({
                           {pstate.label}
                         </p>
                         <p>
-                          <span className="font-medium text-foreground">Pipeline source:</span>{" "}
+                          <span className="font-medium text-foreground">Source:</span>{" "}
                           {humanizeSignatureSource(preview.selection.source)}
                         </p>
                         <p className="text-xs text-muted-foreground">
@@ -980,7 +986,7 @@ export function ClientMailboxIdentitiesPanel({
           For administrators and troubleshooting. Includes transport notes, internal ids, and
           connection diagnostics.
         </p>
-        <SenderReadinessPanel report={senderReport} />
+        <SenderReadinessPanel report={senderReport} viewContext="mailboxesClient" />
         <div className="mt-4 space-y-4 text-xs">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Per-mailbox technical
