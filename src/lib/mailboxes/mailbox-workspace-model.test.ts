@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAILBOXES_PAGE_INTRO,
   OUTREACH_HERO_ADDENDUM,
   UNSUBSCRIBE_AFTER_SIGNATURE,
   WORKSPACE_MAILBOXES_HERO,
@@ -15,6 +16,11 @@ describe("mailbox-workspace-model", () => {
   it("ties outreach to the shared pool", () => {
     expect(OUTREACH_HERO_ADDENDUM).toContain("shared");
     expect(OUTREACH_HERO_ADDENDUM).toContain("Mailboxes");
+  });
+
+  it("uses a short mailboxes page intro for operators", () => {
+    expect(MAILBOXES_PAGE_INTRO).toContain("ODoutreach");
+    expect(MAILBOXES_PAGE_INTRO).toContain("Connect");
   });
 
   it("documents unsubscribe ordering as signature-then-footer", () => {
