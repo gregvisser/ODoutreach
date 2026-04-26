@@ -495,7 +495,7 @@ const mailboxesModule: TrainingModule = {
   callout: {
     tone: "info",
     heading: "Test mode vs. live",
-    body: "For real prospect outreach, OpensDoors delivers through your **connected** Microsoft 365 or Google mailboxes in the shared pool — not through a single global email API. A `noreply@` placeholder and mock transport apply only to legacy or test rows without a mailbox. Connect mailboxes, complete the brief, suppression, and pilot checks, then you are live through your own domains.",
+    body: "For real prospect outreach, OpensDoors delivers through your **connected** Microsoft 365 or Google mailboxes in the shared pool — not through a single global email API. A `noreply@` placeholder and mock transport apply only to legacy or test rows without a mailbox. Connect mailboxes, complete the brief, suppression, and launch readiness, then you are live through your own domains.",
   },
   outcomes: [
     "You know which five mailboxes OpensDoors sends from and their per-mailbox daily caps.",
@@ -800,11 +800,11 @@ const outreachModule: TrainingModule = {
   id: "outreach",
   order: 7,
   title: "Outreach — templates and sequences",
-  tagline: "Build OpensDoors Friendly Introduction 1 into a launch-ready sequence.",
+  tagline: "Build OpensDoors Friendly Introduction 1 into a production sequence you can launch.",
   purpose:
-    "The Outreach tab is where templates are written, reviewed, approved, and assembled into sequences. It also owns the controlled pilot sender (governed test domains only) and the launch-readiness checklist for this client. Approving a template or sequence does not send email — sending is always a separate action.",
+    "The Outreach tab is where templates and sequences are built, launch readiness is checked, and you choose contacts, sending mailbox, intro timing, and optional follow-ups. Sequences need an Introduction step; follow-ups are added only if you want them. Saving a template or sequence does not send email — scheduling and launch are separate actions. A small optional internal batch tool still exists for operators who use the SEND PILOT confirmation with strict limits.",
   details: [
-    "Templates are scoped to a client and a category (Introduction, Follow-up 1–5). Sequences reference approved templates by id and attach exactly one email list as the audience.",
+    "Templates are scoped to a client and a category (Introduction, Follow-up 1–5). Sequences pick saved templates by category; you only need an Introduction to start, then use Add follow-up for additional steps when needed.",
     'The worked example template for OpensDoors is "OpensDoors Friendly Introduction 1". Study its placeholders — it uses {{first_name}}, {{company_name}} and {{email_signature}} and that is exactly what every downstream send depends on.',
   ],
   screenshots: [
@@ -812,7 +812,7 @@ const outreachModule: TrainingModule = {
       src: "/training/training-outreach.png",
       alt: "Outreach page showing templates KPI cards (Total, Approved, Ready for review, Draft, Archived) and the New template form",
       caption:
-        "Outreach — templates overview, status KPI cards, and the New template form. Saving or approving a template does not send email.",
+        "Outreach — templates overview, status KPI cards, and the New template form. Saving a template does not send email.",
       width: FULL_W,
       height: FULL_H,
     },
@@ -837,39 +837,39 @@ const outreachModule: TrainingModule = {
         "The Supported placeholders panel lists every token the renderer understands. Unknown placeholders block approval. For the first touch: {{first_name}}, {{company_name}}, {{email_signature}}.",
     },
     {
-      title: "Save the draft, then approve it",
+      title: "Save the draft, then use it in a sequence",
       detail:
-        'Draft templates are invisible to the sequence builder. Only approved templates appear in the step picker — this is how we keep half-written copy off the wire.',
+        "Saved templates appear in the step picker for their category. Keep drafts until the copy is ready; archived templates are not used for new sends.",
     },
     {
       title: "Create the sequence",
       detail:
-        'New sequence → pick the target email list, attach OpensDoors Friendly Introduction 1 as step 1 (Introduction), add Follow-up 1–5 templates as later steps, set delays in days.',
+        "New sequence → pick the target email list, choose sending mailbox (or auto-pick from the eligible pool), attach OpensDoors Friendly Introduction 1 as the Introduction, set intro send time (now or delay by hours/days), add follow-ups with Add follow-up only when you need them, and set step delays.",
     },
     {
-      title: "Mark the sequence Ready for review, then Approved",
+      title: "Review launch readiness, then schedule or launch",
       detail:
-        'Readiness shows blockers (no approved Introduction template, no list, etc.). Approving the sequence arms it for enrollment — but does not send.',
+        "Readiness shows real blockers (missing Introduction, no list, no connected mailbox, unsubscribe not ready, etc.). Meeting readiness means you can schedule production sends — launch is still a deliberate action.",
     },
     {
-      title: "Run a controlled pilot before going live",
+      title: "Optional: internal verification or limited first batch",
       detail:
-        "Controlled pilot sends go to governed test domains (internal) only — external recipients are rejected server-side. Use it to verify signature rendering, subject personalisation, and threading. Typing 'SEND PILOT' into the confirmation field gates the run.",
+        "For internal checks, use the governed test send to an allowlisted address. A separate small-batch tool with SEND PILOT confirmation exists for a capped first run; production sequence launches use the main path above.",
     },
   ],
   whatGoodLooksLike: [
-    "Every template used in a sequence is Approved (not Ready for review, not Draft).",
+    "The Introduction step is filled, placeholders resolve in preview, and any follow-ups you added are intentional — not a fixed five steps you did not need.",
     "Subject and body preview cleanly for a typical OpensDoors prospect — no stray brace, no unresolved placeholder.",
-    "Signature renders as expected when piloted: the sending mailbox's signature wins; the brief's signature is the fallback.",
-    "Launch readiness panel is entirely green before any real-prospect send.",
-    "Pilot run completes and the recipients see the message in their allowlisted inbox within a few minutes.",
+    "Signature renders as expected in preview: the chosen sending mailbox's signature wins; the brief's signature is the fallback.",
+    "Launch readiness is clear before any real-prospect send: contacts, mailbox, timing, and compliance gates are satisfied.",
+    "When you use the internal verification path, the message lands in the allowlisted inbox and matches what you saw in preview.",
   ],
   commonMistakes: [
     'Using {{company_name}} and {{sender_company_name}} interchangeably — {{company_name}} is the target company; {{sender_company_name}} is OpensDoors (the sender).',
     'Leaving {{email_signature}} off the body — every real sequence should sign off properly.',
-    "Approving a template without reading it out loud — awkward sentences always make it out in volume.",
-    "Launching a pilot with external recipients — the server rejects them, but operators waste time constructing the list.",
-    "Clicking Queue pilot batch during training — don't. Training walks through the flow; it doesn't run pilots.",
+    "Shipping copy you have not read out loud — awkward sentences always make it out in volume.",
+    "Using the small-batch confirmation tool with external lists that are not allowlisted — the server may reject; use the production sequence path for real prospects.",
+    "Clicking send or queue during training when you only meant to explore the UI — treat every launch as real.",
   ],
   nextSteps: [
     {
@@ -906,8 +906,8 @@ const outreachModule: TrainingModule = {
   },
   outcomes: [
     "You can open OpensDoors Friendly Introduction 1 and recognise every placeholder.",
-    "You can draft, approve, and wire a template into a sequence without asking.",
-    "You know Queue pilot batch is the one button that reaches real inboxes — and you never press it during training.",
+    "You can draft, save, and wire a template into a sequence and add only the follow-up steps you need.",
+    "You know production launches go through the sequence path with preview, and you only trigger optional small-batch or internal tools when you intend to — not during a training walkthrough.",
   ],
 };
 

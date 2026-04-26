@@ -39,8 +39,13 @@ describe("resolveMicrosoftMailboxOAuthConnection", () => {
       primaryEmail: "admin@b.co",
     });
     const f = vi.mocked(fetch);
-    f.mockImplementation(async (input: string | URL) => {
-      const u = typeof input === "string" ? input : input.toString();
+    f.mockImplementation(async (input: string | URL | Request) => {
+      const u =
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.toString();
       if (u.includes("/mailFolders/inbox/messages")) {
         return new Response(JSON.stringify({ value: [] }), { status: 200 });
       }

@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import {
   assertContactListClientScope,
   normalizeContactListName,
-  resolveImportListTarget,
 } from "./contact-lists-policy";
 import type {
   ImportListTarget,

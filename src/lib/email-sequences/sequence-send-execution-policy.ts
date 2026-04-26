@@ -158,6 +158,8 @@ export function classifySequenceIntroSendExecution(
     // INTRODUCTION has no previous-step / delay guard.
     previousStepSend: null,
     delayDays: 0,
+    delayHours: 0,
+    skipDomainAllowlist: false,
     nowIso: new Date(0).toISOString(),
   });
 
@@ -278,6 +280,13 @@ export type SequenceStepSendExecutionInput = {
   previousStepSend: SequenceStepSendPreviousStep;
   /** `delayDays` on the current step (>= 0). */
   delayDays: number;
+  /** Additional delay hours after the previous step (follow-ups) or after schedule start (intro is handled at queue time). */
+  delayHours: number;
+  /**
+   * When true, skip the governed-test domain allowlist (use after
+   * `evaluateSendGovernance` returned `live_prospect`).
+   */
+  skipDomainAllowlist: boolean;
   /** Current wall-clock time as an ISO string. Injected for purity. */
   nowIso: string;
   /**
@@ -291,6 +300,7 @@ export type SequenceStepSendExecutionInput = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 function safeParseIso(iso: string): number | null {
   const t = Date.parse(iso);
@@ -387,34 +397,42 @@ export function classifySequenceStepSendExecution(
     };
   }
 
-  // 4. Allowlist — hard gate for pilot/governed-test phase.
-  if (!input.allowlist.configured) {
-    return {
-      sendable: false,
-      reason: "blocked_allowlist_not_configured",
-      detail:
-        "GOVERNED_TEST_EMAIL_DOMAINS is not configured — refusing to send sequence steps.",
-      classification,
-    };
-  }
-  const allow = isRecipientDomainAllowedForSequenceIntroSend(
-    input.candidate.contact.email,
-    input.allowlist,
-  );
-  if (!allow.allowed) {
-    const domainLabel = allow.domain ?? "(no domain)";
-    const detail =
-      allow.reason === "allowlist_empty"
-        ? "GOVERNED_TEST_EMAIL_DOMAINS resolved to an empty allowlist."
-        : allow.reason === "invalid_email"
-          ? "Contact email has no valid domain — cannot evaluate allowlist."
-          : `Recipient domain ${domainLabel} is not in GOVERNED_TEST_EMAIL_DOMAINS.`;
-    return {
-      sendable: false,
-      reason: "blocked_allowlist_domain",
-      detail,
-      classification,
-    };
+  // 4. Allowlist — required for allowlisted / internal test sends;
+  //     skipped for live real-prospect dispatch after send governance.
+  let recipientDomainForResult = "";
+  if (!input.skipDomainAllowlist) {
+    if (!input.allowlist.configured) {
+      return {
+        sendable: false,
+        reason: "blocked_allowlist_not_configured",
+        detail:
+          "GOVERNED_TEST_EMAIL_DOMAINS is not configured — allowlisted test sends are disabled.",
+        classification,
+      };
+    }
+    const allow = isRecipientDomainAllowedForSequenceIntroSend(
+      input.candidate.contact.email,
+      input.allowlist,
+    );
+    if (!allow.allowed) {
+      const domainLabel = allow.domain ?? "(no domain)";
+      const detail =
+        allow.reason === "allowlist_empty"
+          ? "GOVERNED_TEST_EMAIL_DOMAINS resolved to an empty allowlist."
+          : allow.reason === "invalid_email"
+            ? "Contact email has no valid domain — cannot evaluate allowlist."
+            : `Recipient domain ${domainLabel} is not in GOVERNED_TEST_EMAIL_DOMAINS.`;
+      return {
+        sendable: false,
+        reason: "blocked_allowlist_domain",
+        detail,
+        classification,
+      };
+    }
+    recipientDomainForResult = allow.domain ?? "";
+  } else {
+    recipientDomainForResult =
+      normaliseDomain(input.candidate.contact.email) ?? "";
   }
 
   // 5. Follow-up-only guards: previous step SENT + delay elapsed +
@@ -443,14 +461,16 @@ export function classifySequenceStepSendExecution(
         classification,
       };
     }
-    const delayMs = Math.max(0, input.delayDays) * DAY_MS;
+    const delayMs =
+      Math.max(0, input.delayDays) * DAY_MS +
+      Math.max(0, input.delayHours) * HOUR_MS;
     if (nowMs < prevSentAtMs + delayMs) {
       const remainingMs = prevSentAtMs + delayMs - nowMs;
       const remainingHrs = Math.ceil(remainingMs / (60 * 60 * 1000));
       return {
         sendable: false,
         reason: "blocked_delay_not_elapsed",
-        detail: `Delay of ${String(input.delayDays)} day(s) has not elapsed since previous step SENT (~${String(remainingHrs)}h remaining).`,
+        detail: `Delay after the previous step has not elapsed (~${String(remainingHrs)}h remaining).`,
         classification,
       };
     }
@@ -477,7 +497,7 @@ export function classifySequenceStepSendExecution(
     sendable: true,
     reason: "sendable",
     classification,
-    allowlistedDomain: allow.domain ?? "",
+    allowlistedDomain: recipientDomainForResult,
   };
 }
 

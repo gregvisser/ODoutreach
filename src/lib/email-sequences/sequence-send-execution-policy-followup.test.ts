@@ -108,6 +108,8 @@ function baseInput(
         ? sentPreviousStep("2026-04-10T00:00:00Z")
         : overrides.previousStepSend,
     delayDays: overrides.delayDays ?? 3,
+    delayHours: overrides.delayHours ?? 0,
+    skipDomainAllowlist: overrides.skipDomainAllowlist ?? false,
     nowIso: overrides.nowIso ?? "2026-04-15T00:00:00Z",
     enrollmentCurrentStepPosition:
       overrides.enrollmentCurrentStepPosition ?? 1,
@@ -128,25 +130,28 @@ describe("previousCategoryFor", () => {
 
 describe("classifySequenceStepSendExecution — INTRODUCTION", () => {
   it("returns sendable for the same inputs D4e.2 accepted", () => {
-    const decision = classifySequenceStepSendExecution({
-      category: "INTRODUCTION",
-      stepCategory: "INTRODUCTION",
-      stepSend: { id: "sss-1", status: "READY", outboundEmailId: null },
-      candidate: baseCandidate({
-        step: { id: "step-1", sequenceId: "seq-1", templateId: "tpl-1" },
-        template: {
-          id: "tpl-1",
-          clientId: "client-1",
-          status: "APPROVED",
-          subject: "Hello {{first_name}}",
-          content: "Hi {{first_name}},\n\nRegards,\n{{sender_name}}",
-        },
+    const decision = classifySequenceStepSendExecution(
+      baseInput({
+        category: "INTRODUCTION",
+        stepCategory: "INTRODUCTION",
+        stepPosition: 1,
+        stepSend: { id: "sss-1", status: "READY", outboundEmailId: null },
+        candidate: baseCandidate({
+          step: { id: "step-1", sequenceId: "seq-1", templateId: "tpl-1" },
+          template: {
+            id: "tpl-1",
+            clientId: "client-1",
+            status: "APPROVED",
+            subject: "Hello {{first_name}}",
+            content: "Hi {{first_name}},\n\nRegards,\n{{sender_name}}",
+          },
+        }),
+        previousStepSend: null,
+        delayDays: 0,
+        delayHours: 0,
+        nowIso: "2026-04-15T00:00:00Z",
       }),
-      allowlist: { configured: true, domains: ["bidlow.co.uk"] },
-      previousStepSend: null,
-      delayDays: 0,
-      nowIso: "2026-04-15T00:00:00Z",
-    });
+    );
     expect(decision.sendable).toBe(true);
     if (decision.sendable) {
       expect(decision.allowlistedDomain).toBe("bidlow.co.uk");
@@ -154,25 +159,28 @@ describe("classifySequenceStepSendExecution — INTRODUCTION", () => {
   });
 
   it("does NOT require a previous step or delay for INTRODUCTION", () => {
-    const decision = classifySequenceStepSendExecution({
-      category: "INTRODUCTION",
-      stepCategory: "INTRODUCTION",
-      stepSend: { id: "sss-1", status: "READY", outboundEmailId: null },
-      candidate: baseCandidate({
-        step: { id: "step-1", sequenceId: "seq-1", templateId: "tpl-1" },
-        template: {
-          id: "tpl-1",
-          clientId: "client-1",
-          status: "APPROVED",
-          subject: "Hi {{first_name}}",
-          content: "Hi {{first_name}},\n\n—{{sender_name}}",
-        },
+    const decision = classifySequenceStepSendExecution(
+      baseInput({
+        category: "INTRODUCTION",
+        stepCategory: "INTRODUCTION",
+        stepPosition: 1,
+        stepSend: { id: "sss-1", status: "READY", outboundEmailId: null },
+        candidate: baseCandidate({
+          step: { id: "step-1", sequenceId: "seq-1", templateId: "tpl-1" },
+          template: {
+            id: "tpl-1",
+            clientId: "client-1",
+            status: "APPROVED",
+            subject: "Hi {{first_name}}",
+            content: "Hi {{first_name}},\n\n—{{sender_name}}",
+          },
+        }),
+        previousStepSend: null,
+        delayDays: 0,
+        delayHours: 0,
+        nowIso: "2026-04-15T00:00:00Z",
       }),
-      allowlist: { configured: true, domains: ["bidlow.co.uk"] },
-      previousStepSend: null,
-      delayDays: 0,
-      nowIso: "2026-04-15T00:00:00Z",
-    });
+    );
     expect(decision.sendable).toBe(true);
   });
 });

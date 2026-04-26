@@ -103,15 +103,24 @@ function parseCategoryFromForm(
     : null;
 }
 
+function parseLaunchPreferredMailboxId(
+  formData: FormData,
+): string | null {
+  const v = String(formData.get("launchPreferredMailboxId") ?? "").trim();
+  return v.length > 0 ? v : null;
+}
+
 function parseSteps(formData: FormData): Array<{
   category: ClientEmailTemplateCategory;
   templateId: string;
   delayDays: number;
+  delayHours: number;
 }> {
   const steps: Array<{
     category: ClientEmailTemplateCategory;
     templateId: string;
     delayDays: number;
+    delayHours: number;
   }> = [];
   for (const category of TEMPLATE_CATEGORY_ORDER) {
     const templateId = String(formData.get(`template_${category}`) ?? "").trim();
@@ -119,12 +128,16 @@ function parseSteps(formData: FormData): Array<{
     const rawDelay = String(
       formData.get(`delay_${category}`) ?? (category === "INTRODUCTION" ? "0" : "3"),
     ).trim();
+    const rawDelayH = String(formData.get(`delayHours_${category}`) ?? "0").trim();
     const parsedDelay = Number.parseInt(rawDelay, 10);
-    const delayDays = Number.isFinite(parsedDelay) ? parsedDelay : 0;
+    const parsedDelayH = Number.parseInt(rawDelayH, 10);
+    const delayDays = Number.isFinite(parsedDelay) ? Math.max(0, parsedDelay) : 0;
+    const delayHours = Number.isFinite(parsedDelayH) ? Math.max(0, parsedDelayH) : 0;
     steps.push({
       category,
       templateId,
-      delayDays: category === "INTRODUCTION" ? 0 : delayDays,
+      delayDays: category === "INTRODUCTION" ? delayDays : delayDays,
+      delayHours: category === "INTRODUCTION" ? delayHours : delayHours,
     });
   }
   return steps;
@@ -149,6 +162,7 @@ export async function createClientEmailSequenceAction(
       name,
       description: description.trim() ? description : null,
       contactListId,
+      launchPreferredMailboxId: parseLaunchPreferredMailboxId(formData),
     });
 
     const steps = parseSteps(formData);
@@ -196,6 +210,7 @@ export async function updateClientEmailSequenceAction(
       name,
       description: description.trim() ? description : null,
       contactListId,
+      launchPreferredMailboxId: parseLaunchPreferredMailboxId(formData),
     });
 
     const steps = parseSteps(formData);

@@ -51,6 +51,7 @@ function snapshot(
       connectedSendingCount: 3,
       aggregateRemainingToday: 90,
     },
+    outboundUnsubscribeReady: true,
     ...overrides,
   };
 }
@@ -77,7 +78,23 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
     expect(r.checks[0]?.status).toBe("fail");
   });
 
-  it("blocks when sequence is DRAFT", () => {
+  it("blocks when sequence is archived", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        sequence: {
+          id: "seq1",
+          clientId: "c1",
+          status: "ARCHIVED",
+          hasAlreadyLaunched: false,
+        },
+      }),
+    );
+    const activeCheck = r.checks.find((c) => c.id === "sequence_approved");
+    expect(activeCheck?.status).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("DRAFT sequence is allowed for launch checks (not a blocker)", () => {
     const r = evaluateSequenceLaunchReadiness(
       snapshot({
         sequence: {
@@ -88,14 +105,13 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
         },
       }),
     );
-    const approvedCheck = r.checks.find((c) => c.id === "sequence_approved");
-    expect(approvedCheck?.status).toBe("fail");
-    expect(r.canLaunch).toBe(false);
+    const activeCheck = r.checks.find((c) => c.id === "sequence_approved");
+    expect(activeCheck?.status).toBe("pass");
   });
 
-  it("blocks when intro template is not APPROVED", () => {
+  it("blocks when intro template is archived", () => {
     const s = snapshot();
-    s.steps[0]!.template.status = "DRAFT";
+    s.steps[0]!.template.status = "ARCHIVED";
     const r = evaluateSequenceLaunchReadiness(s);
     const check = r.checks.find(
       (c) => c.id === "introduction_template_approved",
@@ -104,9 +120,10 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
     expect(r.canLaunch).toBe(false);
   });
 
-  it("blocks when an approved step is missing {{unsubscribe_link}}", () => {
-    const s = snapshot();
-    s.steps[1]!.template.content = "Follow up with no unsub";
+  it("blocks when intro is missing {{unsubscribe_link}} and no public URL", () => {
+    const s = snapshot({ outboundUnsubscribeReady: false });
+    s.steps[0]!.template.content = "Hi with no token";
+    s.steps[0]!.template.subject = "Hi";
     const r = evaluateSequenceLaunchReadiness(s);
     const check = r.checks.find(
       (c) => c.id === "unsubscribe_placeholder_present",

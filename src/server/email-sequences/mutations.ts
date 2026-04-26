@@ -138,6 +138,7 @@ export type CreateSequenceInput = {
   name: string;
   description: string | null;
   contactListId: string;
+  launchPreferredMailboxId: string | null;
 };
 
 export async function createSequence(
@@ -157,6 +158,20 @@ export async function createSequence(
   }
   await assertContactListBelongsToClient(input.clientId, input.contactListId);
 
+  const mb = (input.launchPreferredMailboxId ?? "").trim();
+  if (mb) {
+    const mailbox = await prisma.clientMailboxIdentity.findFirst({
+      where: { id: mb, clientId: input.clientId },
+      select: { id: true },
+    });
+    if (!mailbox) {
+      throw new SequenceMutationFailure({
+        code: "NOT_FOUND",
+        message: "Selected sending mailbox was not found for this client.",
+      });
+    }
+  }
+
   return prisma.clientEmailSequence.create({
     data: {
       clientId: input.clientId,
@@ -165,6 +180,7 @@ export async function createSequence(
       description: input.description?.trim() ? input.description.trim() : null,
       status: "DRAFT",
       createdByStaffUserId: input.staffUserId,
+      launchPreferredMailboxId: mb || null,
     },
   });
 }
@@ -175,6 +191,8 @@ export type UpdateSequenceMetadataInput = {
   name: string;
   description: string | null;
   contactListId: string;
+  /** Null/empty = auto-pick from the eligible mailbox pool at send time. */
+  launchPreferredMailboxId: string | null;
 };
 
 export async function updateSequenceMetadata(
@@ -215,12 +233,27 @@ export async function updateSequenceMetadata(
   }
   await assertContactListBelongsToClient(input.clientId, input.contactListId);
 
+  const mb = (input.launchPreferredMailboxId ?? "").trim();
+  if (mb) {
+    const mailbox = await prisma.clientMailboxIdentity.findFirst({
+      where: { id: mb, clientId: input.clientId },
+      select: { id: true },
+    });
+    if (!mailbox) {
+      throw new SequenceMutationFailure({
+        code: "NOT_FOUND",
+        message: "Selected sending mailbox was not found for this client.",
+      });
+    }
+  }
+
   return prisma.clientEmailSequence.update({
     where: { id: input.sequenceId },
     data: {
       name: input.name.trim(),
       description: input.description?.trim() ? input.description.trim() : null,
       contactListId: input.contactListId,
+      launchPreferredMailboxId: mb || null,
     },
   });
 }
@@ -240,6 +273,7 @@ export type SetSequenceStepsInput = {
     category: ClientEmailTemplateCategory;
     templateId: string;
     delayDays: number;
+    delayHours: number;
   }>;
   /**
    * Target status the caller wants to validate against. Passing
@@ -317,6 +351,7 @@ export async function setSequenceSteps(
       category: s.category,
       position: index + 1,
       delayDays: s.delayDays,
+      delayHours: s.delayHours,
       template: {
         id: t.id,
         category: t.category,
@@ -353,6 +388,7 @@ export async function setSequenceSteps(
           category: s.category,
           position: s.position,
           delayDays: s.delayDays,
+          delayHours: s.delayHours,
         })),
       });
     }
@@ -386,6 +422,7 @@ async function loadSequenceForMutation(
           category: true,
           position: true,
           delayDays: true,
+          delayHours: true,
           templateId: true,
           template: {
             select: { id: true, category: true, status: true, clientId: true },
@@ -422,6 +459,7 @@ export async function markSequenceReadyForReview(
       category: s.category,
       position: s.position,
       delayDays: s.delayDays,
+      delayHours: s.delayHours,
       template: {
         id: s.template.id,
         category: s.template.category,
@@ -460,6 +498,7 @@ export async function approveSequence(
       category: s.category,
       position: s.position,
       delayDays: s.delayDays,
+      delayHours: s.delayHours,
       template: {
         id: s.template.id,
         category: s.template.category,
@@ -543,9 +582,9 @@ function approvalBlockedMessage(
     case "empty_list":
       return "Target contact list has no email-sendable contacts yet.";
     case "missing_introduction":
-      return "Sequences need an approved introduction step before they can be approved.";
+      return "Add an introduction step with a non-archived template before approval.";
     case "unapproved_step":
-      return "Every step must use an APPROVED template before the sequence can be approved.";
+      return "Every step must use a non-archived template before the sequence can be approved.";
     case "category_mismatch":
       return "A step's template category no longer matches the step category — fix the step first.";
     case "no_steps":

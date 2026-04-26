@@ -30,21 +30,24 @@ function baseMember(
     contact: contactOverride,
     ...contactPrimitive
   } = overrides as RawListMemberForView & Partial<RawListMemberForView["contact"]>;
+  const defaultContact: RawListMemberForView["contact"] = {
+    id: "contact-1",
+    email: "alice@example.com",
+    fullName: "Alice Example",
+    firstName: null,
+    lastName: null,
+    company: "ACME Ltd",
+    linkedIn: null,
+    mobilePhone: null,
+    officePhone: null,
+    isSuppressed: false,
+  };
   return {
     id: id ?? "member-1",
     contactListId: contactListId ?? "list-1",
     addedAt: addedAt ?? new Date("2026-04-05T00:00:00Z"),
     contact: {
-      id: "contact-1",
-      email: "alice@example.com",
-      fullName: "Alice Example",
-      firstName: null,
-      lastName: null,
-      company: "ACME Ltd",
-      linkedIn: null,
-      mobilePhone: null,
-      officePhone: null,
-      isSuppressed: false,
+      ...defaultContact,
       ...(contactPrimitive as Partial<RawListMemberForView["contact"]>),
       ...(contactOverride ?? {}),
     },

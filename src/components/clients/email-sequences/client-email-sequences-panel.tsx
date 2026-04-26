@@ -57,6 +57,8 @@ type Props = {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
   };
+  /** Mailboxes that may send in this workspace (for sequence mailbox picker). */
+  launchMailboxOptions: Array<{ id: string; email: string; label: string }>;
 };
 
 function formatDate(iso: string | null): string {
@@ -96,9 +98,14 @@ export function ClientEmailSequencesPanel(props: Props) {
     flash,
     launchReadinessBySequenceId,
     mailboxSnapshot,
+    launchMailboxOptions,
   } = props;
-  const { sequences, counts, contactLists, approvedTemplatesByCategory } =
-    overview;
+  const {
+    sequences,
+    counts,
+    contactLists,
+    sequenceTemplatesByCategory,
+  } = overview;
 
   const launchReadyCount = sequences.filter(
     (s) => launchReadinessBySequenceId[s.id]?.canLaunch === true,
@@ -113,12 +120,12 @@ export function ClientEmailSequencesPanel(props: Props) {
     {
       label: SEQUENCE_STATUS_LABELS.APPROVED,
       value: counts.byStatus.APPROVED,
-      hint: "Signed off by OpensDoors",
+      hint: "Optional sign-off (internal)",
     },
     {
       label: SEQUENCE_STATUS_LABELS.READY_FOR_REVIEW,
       value: counts.byStatus.READY_FOR_REVIEW,
-      hint: "Awaiting OpensDoors approval",
+      hint: "In review (optional workflow)",
     },
     {
       label: SEQUENCE_STATUS_LABELS.DRAFT,
@@ -131,9 +138,9 @@ export function ClientEmailSequencesPanel(props: Props) {
       hint: "Kept for history — not usable",
     },
     {
-      label: "Launch-ready",
+      label: "Ready to review send",
       value: launchReadyCount,
-      hint: "All blockers cleared (no-send yet)",
+      hint: "Checks pass in the list below (send from next section)",
     },
   ];
 
@@ -145,8 +152,8 @@ export function ClientEmailSequencesPanel(props: Props) {
       <CardHeader>
         <CardTitle>Email sequences</CardTitle>
         <CardDescription>
-          Sequences combine an email list with approved templates. This step
-          only saves the sequence; it does not send email.
+          Build a production sequence: introduction plus optional follow-ups, a
+          target list, and a preferred mailbox. Saving does not send email.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -186,7 +193,8 @@ export function ClientEmailSequencesPanel(props: Props) {
           focusSequenceId={flash.focusSequenceId}
           sequences={sequences}
           contactLists={contactLists}
-          approvedTemplatesByCategory={approvedTemplatesByCategory}
+          sequenceTemplatesByCategory={sequenceTemplatesByCategory}
+          launchMailboxOptions={launchMailboxOptions}
         />
 
         <div className="space-y-3">
@@ -245,8 +253,8 @@ function SequenceCard({
 }) {
   const { readiness } = sequence;
   const canReady =
-    readiness.approvedIntroduction &&
-    readiness.unapprovedStepCount === 0 &&
+    readiness.hasIntroduction &&
+    readiness.unusableStepCount === 0 &&
     readiness.mismatchedStepCount === 0 &&
     readiness.hasContactList;
   const canApprove = readiness.canBeApproved;
@@ -304,7 +312,11 @@ function SequenceCard({
               </span>
               <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 {step.category !== "INTRODUCTION" && (
-                  <span>+{String(step.delayDays)}d</span>
+                  <span>
+                    +
+                    {String(step.delayDays)}d
+                    {step.delayHours > 0 ? ` ${String(step.delayHours)}h` : ""}
+                  </span>
                 )}
                 <Badge
                   variant={
@@ -340,10 +352,10 @@ function SequenceCard({
 
       {!canApprove && sequence.status !== "ARCHIVED" && (
         <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
-          {!readiness.approvedIntroduction
-            ? "Needs an APPROVED introduction template before this sequence can be approved."
-            : readiness.unapprovedStepCount > 0
-              ? "A step uses a non-approved template — approval is blocked."
+          {!readiness.hasIntroduction
+            ? "Add an introduction step with a non-archived template before this sequence can be approved."
+            : readiness.unusableStepCount > 0
+              ? "A step uses an archived template — fix or replace it first."
               : readiness.emailSendableCount === 0
                 ? "Target list has 0 email-sendable contacts."
                 : readiness.mismatchedStepCount > 0
