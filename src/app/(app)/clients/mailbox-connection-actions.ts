@@ -5,6 +5,7 @@ import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 
 import type { MailboxProvider } from "@/generated/prisma/enums";
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -49,6 +50,13 @@ export async function prepareMailboxOAuthConnection(
   });
   if (!row) {
     return { ok: false, error: "Mailbox not found." };
+  }
+  if (isMailboxRemovedFromWorkspace(row)) {
+    return {
+      ok: false,
+      error:
+        "This mailbox was removed from the workspace. Use Restore, then run Connect when you are ready to reconnect provider access.",
+    };
   }
 
   const configured =
@@ -137,6 +145,9 @@ export async function disconnectMailboxIdentity(
   });
   if (!existing) {
     return { ok: false, error: "Mailbox not found." };
+  }
+  if (isMailboxRemovedFromWorkspace(existing)) {
+    return { ok: false, error: "This mailbox was removed from the workspace — nothing to disconnect." };
   }
 
   await prisma.$transaction(async (tx) => {

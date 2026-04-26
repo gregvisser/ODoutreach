@@ -1,6 +1,7 @@
 import "server-only";
 
 import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { prisma } from "@/lib/db";
 import type { Prisma, ClientMailboxIdentity, MailboxConnectionStatus } from "@/generated/prisma/client";
@@ -24,7 +25,9 @@ export function mailboxIneligibleForGovernedSendExecution(m: {
   connectionStatus: MailboxConnectionStatus;
   canSend: boolean;
   isSendingEnabled: boolean;
+  workspaceRemovedAt?: Date | null;
 }): string | null {
+  if (isMailboxRemovedFromWorkspace(m)) return "mailbox_removed_from_workspace";
   if (!m.isActive) return "inactive_mailbox";
   if (m.connectionStatus !== "CONNECTED") return "mailbox_not_connected";
   if (!m.canSend) return "sending_not_allowed_for_mailbox";
@@ -38,6 +41,7 @@ export function isMailboxExecutionEligible(m: {
   connectionStatus: MailboxConnectionStatus;
   canSend: boolean;
   isSendingEnabled: boolean;
+  workspaceRemovedAt?: Date | null;
 }): boolean {
   return mailboxIneligibleForGovernedSendExecution(m) === null;
 }
@@ -79,12 +83,14 @@ export function mailboxIneligibleReasonFromStaticState(
     connectionStatus: MailboxConnectionStatus;
     canSend: boolean;
     isSendingEnabled: boolean;
+    workspaceRemovedAt?: Date | null;
   },
   now: Date,
   dailyWindowResetAt: Date | null,
   dailySendCap: number,
   emailsSentToday: number,
 ): string | null {
+  if (isMailboxRemovedFromWorkspace(m)) return "mailbox_removed_from_workspace";
   if (!m.isActive) return "inactive_mailbox";
   if (m.connectionStatus !== "CONNECTED") return "mailbox_not_connected";
   if (!m.canSend) return "sending_not_allowed_for_mailbox";
@@ -147,7 +153,11 @@ export async function loadGovernedSendingMailbox(
   });
 
   const canSend = (r: ClientMailboxIdentity) =>
-    r.isActive && r.connectionStatus === "CONNECTED" && r.canSend && r.isSendingEnabled;
+    !isMailboxRemovedFromWorkspace(r) &&
+    r.isActive &&
+    r.connectionStatus === "CONNECTED" &&
+    r.canSend &&
+    r.isSendingEnabled;
 
   const primaryConnected = rows.find((r) => r.isPrimary && canSend(r)) ?? null;
   const anyConnected = primaryConnected ?? (rows.find((r) => canSend(r)) ?? null);
@@ -316,6 +326,8 @@ function humanMessageForIneligible(
       return `Sending is not enabled for ${mailbox.email}.`;
     case "sending_disabled":
       return `Operator disabled sending for ${mailbox.email}.`;
+    case "mailbox_removed_from_workspace":
+      return `Mailbox ${mailbox.email} was removed from this workspace.`;
     case "daily_send_cap_reached_stale_counter":
       return "The stored per-mailbox counter may be at cap; the live ledger is enforced when you send.";
     default:

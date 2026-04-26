@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getAppBaseUrl } from "@/lib/mailbox-oauth-app-url";
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { buildGoogleMailboxAuthorizeUrl } from "@/server/mailbox/google-mailbox-oauth";
@@ -43,6 +44,9 @@ export async function GET(req: Request) {
   });
   if (!mailbox || mailbox.provider !== "GOOGLE") {
     return fail("invalid_mailbox");
+  }
+  if (isMailboxRemovedFromWorkspace(mailbox)) {
+    return fail("mailbox_removed");
   }
 
   const now = Date.now();

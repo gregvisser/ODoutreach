@@ -13,6 +13,7 @@ export type MailboxOutreachRowInput = {
   canSend: boolean;
   isSendingEnabled: boolean;
   email: string;
+  workspaceRemovedAt?: Date | null;
 };
 
 /**
@@ -20,6 +21,7 @@ export type MailboxOutreachRowInput = {
  * flags only — not daily cap, which is enforced at send time).
  */
 function isMailboxRowEligible(m: MailboxOutreachRowInput): boolean {
+  if (m.workspaceRemovedAt) return false;
   if (!m.isActive) return false;
   if (m.connectionStatus !== "CONNECTED") return false;
   if (!m.canSend) return false;

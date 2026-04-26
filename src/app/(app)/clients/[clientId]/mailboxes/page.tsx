@@ -103,7 +103,9 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
                       text:
                         mailboxOAuthReason === "staff_session"
                           ? "Sign in to OpensDoors, then run mailbox connection again."
-                          : "Mailbox OAuth did not complete. Check the last error on the row or retry connection.",
+                          : mailboxOAuthReason === "mailbox_removed"
+                            ? "That mailbox was removed from this workspace. Restore it on the Mailboxes page before connecting OAuth again."
+                            : "Mailbox OAuth did not complete. Check the last error on the row or retry connection.",
                     }
                   : null
             }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { isRecipientAllowedForGovernedTest } from "@/lib/governed-test-recipient";
 import { prisma } from "@/lib/db";
@@ -93,6 +94,12 @@ export async function queueMicrosoftGovernedTestSend(input: {
     const m = await tx.clientMailboxIdentity.findFirstOrThrow({
       where: { id: governance.mailbox.id, clientId },
     });
+    if (isMailboxRemovedFromWorkspace(m)) {
+      return {
+        kind: "reserve_fail" as const,
+        error: humanizeGovernanceRejection("mailbox_removed_from_workspace", m),
+      };
+    }
     const reserve = await tryReserveSendSlotInTransaction(tx, {
       clientId,
       mailbox: m,

@@ -268,6 +268,7 @@ model StaffUser {
   auditLogs                  AuditLog[]
   outboundSends              OutboundEmail[]                 @relation("OutboundInitiator")
   mailboxIdentitiesCreated   ClientMailboxIdentity[]         @relation("MailboxIdentityCreatedBy")
+  mailboxesWorkspaceRemoved  ClientMailboxIdentity[]         @relation("MailboxIdentityWorkspaceRemovedBy")
   contactListsCreated        ContactList[]                   @relation("ContactListCreatedBy")
   contactListMembersAdded    ContactListMember[]             @relation("ContactListMemberAddedBy")
   emailTemplatesCreated      ClientEmailTemplate[]           @relation("ClientEmailTemplateCreatedBy")
@@ -459,11 +460,17 @@ model ClientMailboxIdentity {
   providerLinkedUserId     String?
   connectedAt              DateTime?
   createdByStaffUserId     String?
+  /// Set when the mailbox address is taken out of the active workspace pool. Row + history preserved.
+  workspaceRemovedAt       DateTime?
+  workspaceRemovedById     String?
+  /// Optional short operator context (e.g. reason code); not a secret.
+  workspaceRemovedNote     String?                 @db.VarChar(2000)
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
   client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy             StaffUser?               @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  workspaceRemovedBy    StaffUser?               @relation("MailboxIdentityWorkspaceRemovedBy", fields: [workspaceRemovedById], references: [id], onDelete: SetNull)
   secret                MailboxIdentitySecret?
   graphIngestedMessages InboundMailboxMessage[]
   sendReservations      MailboxSendReservation[]
@@ -471,7 +478,9 @@ model ClientMailboxIdentity {
 
   @@unique([clientId, emailNormalized])
   @@index([clientId, isActive])
+  @@index([clientId, workspaceRemovedAt])
   @@index([createdByStaffUserId])
+  @@index([workspaceRemovedById])
 }
 
 /// Server-side OAuth token material for a mailbox identity (never exposed to the client UI).

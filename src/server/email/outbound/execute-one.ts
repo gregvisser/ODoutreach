@@ -303,6 +303,14 @@ async function sendViaConnectedMailboxOrFail(
     await markFailed(row.id, "MAILBOX_MISSING", "Linked mailbox not found for this client");
     return { ok: false, error: "Linked mailbox not found" };
   }
+  if (mailbox.workspaceRemovedAt) {
+    await markFailed(
+      row.id,
+      "MAILBOX_REMOVED",
+      "Mailbox was removed from the workspace before send completed",
+    );
+    return { ok: false, error: "Mailbox removed from workspace" };
+  }
 
   const ineligible = mailboxIneligibleForGovernedSendExecution(mailbox);
   if (ineligible) {

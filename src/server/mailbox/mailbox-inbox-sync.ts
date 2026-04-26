@@ -30,6 +30,13 @@ export async function syncMailboxInboxForMailbox(input: {
   if (!mailbox) {
     return { ok: false, error: "Mailbox not found for this workspace." };
   }
+  if (mailbox.workspaceRemovedAt) {
+    return {
+      ok: false,
+      error:
+        "This address was removed from the workspace. Inbox sync is off; historical messages in OpensDoors stay visible. Restore the mailbox to sync again.",
+    };
+  }
   if (mailbox.provider === "MICROSOFT") {
     return syncMicrosoftInboxForMailbox(input);
   }

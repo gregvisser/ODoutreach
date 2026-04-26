@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { evaluateSuppression, type SuppressionDecision } from "@/server/outreach/suppression-guard";
@@ -200,6 +201,12 @@ export async function sendEmailToContact(
     const m = await tx.clientMailboxIdentity.findFirstOrThrow({
       where: { id: governance.mailbox.id, clientId },
     });
+    if (isMailboxRemovedFromWorkspace(m)) {
+      return {
+        kind: "reserve_fail" as const,
+        error: humanizeGovernanceRejection("mailbox_removed_from_workspace", m),
+      };
+    }
     const reserve = await tryReserveSendSlotInTransaction(tx, {
       clientId,
       mailbox: m,

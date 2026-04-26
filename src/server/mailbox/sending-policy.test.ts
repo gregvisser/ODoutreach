@@ -43,6 +43,9 @@ function baseMailbox(
     oauthStateExpiresAt: null,
     providerLinkedUserId: "x",
     connectedAt: new Date(),
+    workspaceRemovedAt: null,
+    workspaceRemovedById: null,
+    workspaceRemovedNote: null,
     createdByStaffUserId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -70,6 +73,12 @@ describe("mailboxIneligibleReasonFromStaticState", () => {
       mailboxIneligibleReasonFromStaticState(m, t0, null, 30, 0),
     ).toBe("sending_disabled");
   });
+  it("returns mailbox_removed_from_workspace when soft-removed", () => {
+    const m = baseMailbox({ workspaceRemovedAt: new Date() });
+    expect(
+      mailboxIneligibleReasonFromStaticState(m, t0, null, 30, 0),
+    ).toBe("mailbox_removed_from_workspace");
+  });
   it("allows when under cap with ledger to be used later", () => {
     const m = baseMailbox({ emailsSentToday: 5 });
     expect(
@@ -82,6 +91,12 @@ describe("mailboxIneligibleForGovernedSendExecution", () => {
   it("returns null for a fully eligible mailbox", () => {
     const m = baseMailbox();
     expect(mailboxIneligibleForGovernedSendExecution(m)).toBeNull();
+  });
+  it("returns mailbox_removed_from_workspace when soft-removed", () => {
+    const m = baseMailbox({ workspaceRemovedAt: new Date() });
+    expect(mailboxIneligibleForGovernedSendExecution(m)).toBe(
+      "mailbox_removed_from_workspace",
+    );
   });
   it("returns mailbox_not_connected when disconnected", () => {
     const m = baseMailbox({ connectionStatus: "DISCONNECTED" });
@@ -221,6 +236,14 @@ describe("eligibleWorkspaceMailboxPool (shared workspace mailbox access rule)", 
     const pool = eligibleWorkspaceMailboxPool([
       baseMailbox({ id: "ok" }),
       baseMailbox({ id: "bad", isActive: false }),
+    ]);
+    expect(pool.map((m) => m.id)).toEqual(["ok"]);
+  });
+
+  it("excludes a mailbox removed from the workspace (soft archive)", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({ id: "ok" }),
+      baseMailbox({ id: "bad", workspaceRemovedAt: new Date() }),
     ]);
     expect(pool.map((m) => m.id)).toEqual(["ok"]);
   });
