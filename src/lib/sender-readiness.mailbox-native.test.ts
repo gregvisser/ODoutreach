@@ -24,7 +24,6 @@ describe("describeSenderReadiness (mailbox-native outreach)", () => {
     } else {
       process.env.EMAIL_PROVIDER = envProvider;
     }
-    vi.unstubAllEnvs();
   });
 
   it("does not headline mock_dev when a mailbox is eligible, even if EMAIL_PROVIDER is mock", () => {
