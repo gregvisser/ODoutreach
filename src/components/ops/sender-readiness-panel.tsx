@@ -2,6 +2,11 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import type { SenderReadinessReport } from "@/lib/sender-readiness";
+import {
+  deliveryLineForMailboxesOperator,
+  filterSenderReadinessChecksForMailboxesOperator,
+  readinessSummaryForMailboxesOperator,
+} from "@/lib/mailboxes/sender-readiness-operator-mailboxes";
 import { cn } from "@/lib/utils";
 
 export function SenderReadinessHeadlineBadge({
@@ -9,10 +14,12 @@ export function SenderReadinessHeadlineBadge({
 }: {
   headline: SenderReadinessReport["headline"];
 }) {
-  return headlineBadge(headline);
+  return headlineBadge(headline, "operations");
 }
 
-function headlineBadge(h: SenderReadinessReport["headline"]) {
+type ReadinessViewContext = "operations" | "mailboxesClient";
+
+function headlineBadge(h: SenderReadinessReport["headline"], context: ReadinessViewContext) {
   switch (h) {
     case "ready":
       return <Badge className="bg-emerald-600/15 text-emerald-800 dark:text-emerald-200">Ready</Badge>;
@@ -23,7 +30,14 @@ function headlineBadge(h: SenderReadinessReport["headline"]) {
         </Badge>
       );
     case "mock_dev":
-      return (
+      return context === "mailboxesClient" ? (
+        <Badge
+          variant="secondary"
+          title="The platform is in a non-production or test style mode. Connect a mailbox in this list for how real outreach sends are delivered."
+        >
+          Platform: test or mock mode
+        </Badge>
+      ) : (
         <Badge variant="secondary" title="Legacy global transport (EMAIL_PROVIDER) is mock or unset — not the primary client outreach path when mailboxes are connected">
           Legacy transport: mock
         </Badge>
@@ -74,27 +88,41 @@ function deliveryLabel(report: SenderReadinessReport): string {
 export function SenderReadinessPanel({
   report,
   compact,
+  viewContext = "operations",
 }: {
   report: SenderReadinessReport;
   compact?: boolean;
+  /**
+   * Mailboxes: strip legacy transport and env-specific wording so operators
+   * never see `EMAIL_PROVIDER` or third-party product names in this panel
+   * (this panel is already under "Advanced details").
+   */
+  viewContext?: ReadinessViewContext;
 }) {
-  const providerLine = deliveryLabel(report);
+  const mailboxesPolish = viewContext === "mailboxesClient";
+  const providerLine = mailboxesPolish
+    ? deliveryLineForMailboxesOperator(report)
+    : deliveryLabel(report);
+  const summary = mailboxesPolish ? readinessSummaryForMailboxesOperator(report) : report.summary;
+  const checks = mailboxesPolish
+    ? filterSenderReadinessChecksForMailboxesOperator(report.checks)
+    : report.checks;
 
   return (
     <div className={cn("space-y-3 text-sm", compact && "text-xs")}>
       <div className="flex flex-wrap items-center gap-2">
-        {headlineBadge(report.headline)}
+        {headlineBadge(report.headline, viewContext)}
         <span className="text-muted-foreground">
           Delivery: <span className="text-foreground">{providerLine}</span>
         </span>
       </div>
-      <p className="text-foreground">{report.summary}</p>
+      <p className="text-foreground">{summary}</p>
       <p>
         <span className="text-muted-foreground">Sends as (preview): </span>
         <span className="font-medium">{report.effectiveFrom}</span>
       </p>
       <ul className="space-y-2 border-t border-border pt-3">
-        {report.checks.map((c) => (
+        {checks.map((c) => (
           <li key={c.id} className="flex gap-2">
             {stateDot(c.state)}
             <div>
@@ -106,7 +134,22 @@ export function SenderReadinessPanel({
           </li>
         ))}
       </ul>
-      {!compact ? (
+      {!compact && mailboxesPolish ? (
+        <div className="border-t border-border pt-3 text-xs text-muted-foreground leading-relaxed">
+          <p>
+            <strong className="text-foreground">About this section:</strong> It summarises
+            how sender and preview data fit together. Normal prospect outreach is meant to
+            go through the connected mailboxes on this page. If your process still has extra
+            governance in the <strong className="text-foreground">operations</strong> area, use{" "}
+            <Link className="underline" href="/operations/outbound">
+              Outbound
+            </Link>{" "}
+            with an administrator. Per-mailbox work stays here in{" "}
+            <strong className="text-foreground">Mailboxes</strong>.
+          </p>
+        </div>
+      ) : null}
+      {!compact && !mailboxesPolish ? (
         <details className="border-t border-border pt-3 text-xs text-muted-foreground">
           <summary className="cursor-pointer font-medium text-foreground">
             About sender readiness
