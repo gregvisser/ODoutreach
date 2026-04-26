@@ -101,6 +101,11 @@ export type SequenceLaunchReadinessSnapshotInput = {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
   };
+  /**
+   * True when a public app URL is configured so unsubscribe links can
+   * be generated at send time (see `isOneClickUnsubscribeReady`).
+   */
+  outboundUnsubscribeReady: boolean;
 };
 
 export type SequenceLaunchReadiness = {
@@ -157,22 +162,22 @@ export function evaluateSequenceLaunchReadiness(
     pass("sequence_exists", "Sequence exists", "Loaded from database."),
   );
 
-  // 2. Sequence approved
-  if (input.sequence.status === "APPROVED") {
+  // 2. Sequence usable (not archived — draft/ready/approved are all fine for launch)
+  if (input.sequence.status === "ARCHIVED") {
     checks.push(
-      pass(
+      fail(
         "sequence_approved",
-        "Sequence approved",
-        "OpensDoors staff has signed off on this sequence.",
+        "Sequence active",
+        "This sequence is archived — restore it from the sequence card before launch.",
+        "blocker",
       ),
     );
   } else {
     checks.push(
-      fail(
+      pass(
         "sequence_approved",
-        "Sequence approved",
-        `Sequence status is ${input.sequence.status} — approve it before launch.`,
-        "blocker",
+        "Sequence active",
+        "Sequence is saved and not archived — you can review and send.",
       ),
     );
   }
@@ -202,22 +207,22 @@ export function evaluateSequenceLaunchReadiness(
     );
   }
 
-  // 4. Introduction template approved
+  // 4. Introduction step present with a non-archived template
   const introStep = input.steps.find((s) => s.category === "INTRODUCTION");
-  if (introStep && introStep.template.status === "APPROVED") {
+  if (introStep && introStep.template.status !== "ARCHIVED") {
     checks.push(
       pass(
         "introduction_template_approved",
-        "Introduction template approved",
-        "Introduction step uses an APPROVED template.",
+        "Introduction in place",
+        "Introduction step has template content to send.",
       ),
     );
   } else if (!introStep) {
     checks.push(
       fail(
         "introduction_template_approved",
-        "Introduction template approved",
-        "Sequence has no introduction step.",
+        "Introduction in place",
+        "Sequence has no introduction step — add one before launch.",
         "blocker",
       ),
     );
@@ -225,86 +230,78 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "introduction_template_approved",
-        "Introduction template approved",
-        `Introduction template is ${introStep.template.status}.`,
+        "Introduction in place",
+        "Introduction uses an archived template — pick an active one.",
         "blocker",
       ),
     );
   }
 
-  // 5. All step templates approved
-  const unapprovedStepCount = input.steps.filter(
-    (s) => s.template.status !== "APPROVED",
+  // 5. All configured steps use non-archived templates
+  const archivedOrMissingCount = input.steps.filter(
+    (s) => s.template.status === "ARCHIVED",
   ).length;
   if (input.steps.length === 0) {
     checks.push(
       fail(
         "all_step_templates_approved",
-        "Every step template approved",
-        "Sequence has no steps.",
+        "Steps ready",
+        "Sequence has no steps — add an introduction at minimum.",
         "blocker",
       ),
     );
-  } else if (unapprovedStepCount === 0) {
+  } else if (archivedOrMissingCount === 0) {
     checks.push(
       pass(
         "all_step_templates_approved",
-        "Every step template approved",
-        `${String(input.steps.length)} step(s) all APPROVED.`,
+        "Steps ready",
+        `${String(input.steps.length)} configured step(s) use active templates (follow-ups optional).`,
       ),
     );
   } else {
     checks.push(
       fail(
         "all_step_templates_approved",
-        "Every step template approved",
-        `${String(unapprovedStepCount)} step(s) use non-APPROVED templates.`,
+        "Steps ready",
+        `${String(archivedOrMissingCount)} step(s) reference archived templates — replace or remove them.`,
         "blocker",
       ),
     );
   }
 
-  // 6. Unsubscribe placeholder present (at least one required slot).
-  // Rail policy: every APPROVED step template must render
-  // `{{unsubscribe_link}}` somewhere in subject/content. If any step is
-  // missing it we downgrade to a blocker — we want an unsubscribe path
-  // guaranteed at every hop, not just the first email. Non-APPROVED
-  // templates are skipped because the approval check above already
-  // surfaced them.
-  const approvedSteps = input.steps.filter(
-    (s) => s.template.status === "APPROVED",
-  );
-  if (approvedSteps.length === 0) {
+  // 6. Unsubscribe: intro template has {{unsubscribe_link}} and/or
+  // the public app URL is set so a hosted link is added at send time.
+  const intro = introStep;
+  if (!intro) {
     checks.push(
       fail(
         "unsubscribe_placeholder_present",
-        "Unsubscribe placeholder present",
-        "No approved step templates to check.",
-        "warning",
+        "Unsubscribe & compliance",
+        "Add an introduction step first (required for a compliant send).",
+        "blocker",
       ),
     );
   } else {
-    const stepsMissingUnsub = approvedSteps.filter((s) => {
-      const tokens = extractPlaceholders(
-        s.template.subject ?? "",
-        s.template.content ?? "",
-      );
-      return !tokens.unique.includes("unsubscribe_link");
-    });
-    if (stepsMissingUnsub.length === 0) {
+    const hasToken = extractPlaceholders(
+      intro.template.subject ?? "",
+      intro.template.content ?? "",
+    ).unique.includes("unsubscribe_link");
+    if (hasToken || input.outboundUnsubscribeReady) {
       checks.push(
         pass(
           "unsubscribe_placeholder_present",
-          "Unsubscribe placeholder present",
-          "Every approved step template includes {{unsubscribe_link}}.",
+          "Unsubscribe & compliance",
+          hasToken
+            ? "Introduction includes {{unsubscribe_link}} in subject or content."
+            : "Public app URL is configured — unsubscribe is generated and appended at send time.",
         ),
       );
     } else {
       checks.push(
         fail(
           "unsubscribe_placeholder_present",
-          "Unsubscribe placeholder present",
-          `${String(stepsMissingUnsub.length)} approved step(s) missing {{unsubscribe_link}}.`,
+          "Unsubscribe & compliance",
+          "Add {{unsubscribe_link}} to the introduction template or configure a public app URL (AUTH_URL / NEXT_PUBLIC_APP_URL) for hosted unsubscribe generation.",
           "blocker",
         ),
       );

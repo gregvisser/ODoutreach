@@ -37,6 +37,7 @@ export type SequenceStepSummary = {
   category: ClientEmailTemplateCategory;
   position: number;
   delayDays: number;
+  delayHours: number;
   template: {
     id: string;
     name: string;
@@ -53,6 +54,8 @@ export type SequenceSummary = {
   name: string;
   description: string | null;
   status: ClientEmailSequenceStatus;
+  /** Preferred sending mailbox; null = auto-pick from the eligible pool. */
+  launchPreferredMailboxId: string | null;
   contactList: {
     id: string;
     name: string;
@@ -101,12 +104,13 @@ export type ClientEmailSequencesOverview = {
   sequences: SequenceSummary[];
   counts: SequenceCounts;
   contactLists: SequenceListOption[];
-  approvedTemplatesByCategory: Record<
+  /** Non-archived templates available for sequence steps (draft/ready/approved). */
+  sequenceTemplatesByCategory: Record<
     ClientEmailTemplateCategory,
     SequenceTemplateOption[]
   >;
-  approvedIntroductionCount: number;
-  approvedTemplatesTotal: number;
+  sequenceIntroductionTemplateCount: number;
+  sequenceTemplatesTotal: number;
 };
 
 function makeStatusCounts(
@@ -200,13 +204,13 @@ export async function loadClientEmailSequencesOverview(
       sequences: [],
       counts: makeStatusCounts([]),
       contactLists: [],
-      approvedTemplatesByCategory: emptyApprovedByCategory,
-      approvedIntroductionCount: 0,
-      approvedTemplatesTotal: 0,
+      sequenceTemplatesByCategory: emptyApprovedByCategory,
+      sequenceIntroductionTemplateCount: 0,
+      sequenceTemplatesTotal: 0,
     };
   }
 
-  const [sequenceRows, allListRows, approvedTemplates] = await Promise.all([
+  const [sequenceRows, allListRows, sequenceTemplateRows] = await Promise.all([
     prisma.clientEmailSequence.findMany({
       where: { clientId },
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
@@ -217,6 +221,7 @@ export async function loadClientEmailSequencesOverview(
         description: true,
         status: true,
         contactListId: true,
+        launchPreferredMailboxId: true,
         createdAt: true,
         updatedAt: true,
         approvedAt: true,
@@ -231,6 +236,7 @@ export async function loadClientEmailSequencesOverview(
             category: true,
             position: true,
             delayDays: true,
+            delayHours: true,
             template: {
               select: {
                 id: true,
@@ -268,7 +274,7 @@ export async function loadClientEmailSequencesOverview(
       take: 50,
     }),
     prisma.clientEmailTemplate.findMany({
-      where: { clientId, status: "APPROVED" },
+      where: { clientId, status: { not: "ARCHIVED" } },
       orderBy: [{ category: "asc" }, { updatedAt: "desc" }],
       select: { id: true, name: true, category: true, status: true },
     }),
@@ -298,20 +304,20 @@ export async function loadClientEmailSequencesOverview(
     };
   });
 
-  const approvedTemplatesByCategory = Object.fromEntries(
+  const sequenceTemplatesByCategory = Object.fromEntries(
     TEMPLATE_CATEGORY_ORDER.map((c) => [c, [] as SequenceTemplateOption[]]),
   ) as Record<ClientEmailTemplateCategory, SequenceTemplateOption[]>;
-  for (const t of approvedTemplates) {
-    approvedTemplatesByCategory[t.category].push({
+  for (const t of sequenceTemplateRows) {
+    sequenceTemplatesByCategory[t.category].push({
       id: t.id,
       name: t.name,
       category: t.category,
       status: t.status,
     });
   }
-  const approvedIntroductionCount =
-    approvedTemplatesByCategory.INTRODUCTION.length;
-  const approvedTemplatesTotal = approvedTemplates.length;
+  const sequenceIntroductionTemplateCount =
+    sequenceTemplatesByCategory.INTRODUCTION.length;
+  const sequenceTemplatesTotal = sequenceTemplateRows.length;
 
   const sequences: SequenceSummary[] = sequenceRows.map((s) => {
     const listReadiness =
@@ -327,6 +333,7 @@ export async function loadClientEmailSequencesOverview(
       category: step.category,
       position: step.position,
       delayDays: step.delayDays,
+      delayHours: step.delayHours ?? 0,
       template: {
         id: step.template.id,
         name: step.template.name,
@@ -347,6 +354,7 @@ export async function loadClientEmailSequencesOverview(
         category: step.category,
         position: step.position,
         delayDays: step.delayDays,
+        delayHours: step.delayHours,
         template: {
           id: step.template.id,
           category: step.template.category,
@@ -385,6 +393,7 @@ export async function loadClientEmailSequencesOverview(
       name: s.name,
       description: s.description,
       status: s.status,
+      launchPreferredMailboxId: s.launchPreferredMailboxId,
       contactList: {
         id: s.contactList.id,
         name: s.contactList.name,
@@ -424,9 +433,9 @@ export async function loadClientEmailSequencesOverview(
     sequences,
     counts: makeStatusCounts(sequences.map((s) => ({ status: s.status }))),
     contactLists,
-    approvedTemplatesByCategory,
-    approvedIntroductionCount,
-    approvedTemplatesTotal,
+    sequenceTemplatesByCategory,
+    sequenceIntroductionTemplateCount,
+    sequenceTemplatesTotal,
   };
 }
 
@@ -446,6 +455,7 @@ export function buildSequenceLaunchReadinessMap(params: {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
   };
+  outboundUnsubscribeReady: boolean;
 }): Record<string, SequenceLaunchReadiness> {
   const out: Record<string, SequenceLaunchReadiness> = {};
   for (const seq of params.sequences) {
@@ -477,6 +487,7 @@ export function buildSequenceLaunchReadinessMap(params: {
         newlyEnrollableEmailSendable: seq.enrollment.preview.enrollable,
       },
       mailbox: params.mailbox,
+      outboundUnsubscribeReady: params.outboundUnsubscribeReady,
     });
     out[seq.id] = readiness;
   }

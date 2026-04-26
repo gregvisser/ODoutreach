@@ -201,8 +201,13 @@ function executionEligibleMailboxes(
 function sortMailboxesForPoolPick(
   pool: ClientMailboxIdentity[],
   localRemaining: Map<string, number>,
+  preferredMailboxId: string | null,
 ): ClientMailboxIdentity[] {
   return [...pool].sort((a, b) => {
+    if (preferredMailboxId) {
+      if (a.id === preferredMailboxId && b.id !== preferredMailboxId) return -1;
+      if (b.id === preferredMailboxId && a.id !== preferredMailboxId) return 1;
+    }
     const ra = localRemaining.get(a.id) ?? 0;
     const rb = localRemaining.get(b.id) ?? 0;
     if (rb !== ra) return rb - ra;
@@ -311,6 +316,7 @@ export async function sendSequenceStepBatch(input: {
       name: true,
       status: true,
       contactListId: true,
+      launchPreferredMailboxId: true,
       steps: {
         where: { category },
         select: {
@@ -319,6 +325,7 @@ export async function sendSequenceStepBatch(input: {
           category: true,
           position: true,
           delayDays: true,
+          delayHours: true,
           templateId: true,
           template: {
             select: {
@@ -347,10 +354,10 @@ export async function sendSequenceStepBatch(input: {
       category,
     );
   }
-  if (sequence.status !== "APPROVED") {
+  if (sequence.status === "ARCHIVED") {
     throw new SequenceStepSendError(
       "SEQUENCE_NOT_APPROVED",
-      `Sequence is ${sequence.status}, not APPROVED.`,
+      "Sequence is archived — restore it to a draft or approved state before sending.",
       category,
     );
   }
@@ -365,11 +372,11 @@ export async function sendSequenceStepBatch(input: {
   if (
     !step.template ||
     step.template.clientId !== clientId ||
-    step.template.status !== "APPROVED"
+    step.template.status === "ARCHIVED"
   ) {
     throw new SequenceStepSendError(
       "TEMPLATE_NOT_APPROVED",
-      `${category} template is missing or not APPROVED.`,
+      `${category} template is missing or archived — pick an active template.`,
       category,
     );
   }
@@ -377,7 +384,9 @@ export async function sendSequenceStepBatch(input: {
   const stepCategory: ClientEmailTemplateCategory = step.category;
   const stepPosition = step.position;
   const stepDelayDays = Math.max(0, step.delayDays ?? 0);
+  const stepDelayHours = Math.max(0, step.delayHours ?? 0);
   const template = step.template;
+  const preferredMailboxId = sequence.launchPreferredMailboxId;
 
   // 2. Load READY step-send rows + enrollment + contact projections.
   const stepSendRows = await prisma.clientEmailSequenceStepSend.findMany({
@@ -466,6 +475,16 @@ export async function sendSequenceStepBatch(input: {
       category,
     );
   }
+  if (
+    preferredMailboxId &&
+    !pool.some((m) => m.id === preferredMailboxId)
+  ) {
+    throw new SequenceStepSendError(
+      "NO_MAILBOX_POOL",
+      "The selected sending mailbox is not connected or is not eligible for sending. Open Mailboxes to connect a mailbox or clear the selection to auto-pick from the pool.",
+      category,
+    );
+  }
 
   const brief = getClientSenderProfile({
     client: { name: client.name },
@@ -551,6 +570,8 @@ export async function sendSequenceStepBatch(input: {
     stepSend: (typeof stepSendRows)[number];
     candidate: SequenceStepSendCandidate;
     decision: Extract<SequenceStepSendExecutionDecision, { sendable: true }>;
+    /** When true, skip in-tx domain allowlist re-check (live prospect path). */
+    liveProspectSend: boolean;
   };
   const prepared: PreparedRow[] = [];
 
@@ -662,6 +683,9 @@ export async function sendSequenceStepBatch(input: {
       allowlist,
       previousStepSend: prevProjection,
       delayDays: stepDelayDays,
+      delayHours: stepDelayHours,
+      skipDomainAllowlist:
+        governance.mode === "live_prospect",
       nowIso: nowIsoForClassifier,
       enrollmentCurrentStepPosition: row.enrollment.currentStepPosition,
       stepPosition,
@@ -697,7 +721,12 @@ export async function sendSequenceStepBatch(input: {
       continue;
     }
 
-    prepared.push({ stepSend: row, candidate, decision });
+    prepared.push({
+      stepSend: row,
+      candidate,
+      decision,
+      liveProspectSend: governance.mode === "live_prospect",
+    });
   }
 
   // 7. Live suppression re-check per sendable row (belt-and-braces —
@@ -781,8 +810,11 @@ export async function sendSequenceStepBatch(input: {
 
         for (const pr of dispatchable) {
           const toEmail = normalizeEmail(pr.candidate.contact.email ?? "");
-          // Belt-and-braces allowlist re-check inside the tx.
-          if (!isRecipientAllowedForGovernedTest(toEmail)) {
+          // Belt-and-braces allowlist re-check for governed-test sends.
+          if (
+            !pr.liveProspectSend &&
+            !isRecipientAllowedForGovernedTest(toEmail)
+          ) {
             blocked.push({
               stepSendId: pr.stepSend.id,
               contactEmail: toEmail,
@@ -801,7 +833,11 @@ export async function sendSequenceStepBatch(input: {
             continue;
           }
 
-          const sorted = sortMailboxesForPoolPick(pool, localRemaining);
+          const sorted = sortMailboxesForPoolPick(
+            pool,
+            localRemaining,
+            preferredMailboxId,
+          );
           let placed = false;
 
           for (const m of sorted) {
@@ -903,6 +939,16 @@ export async function sendSequenceStepBatch(input: {
             const bodyText = truncate(bodyWithFooter, BODY_DB_MAX);
             const toDomain = extractDomainFromEmail(toEmail) || null;
 
+            const introScheduleDelayMs =
+              category === "INTRODUCTION"
+                ? stepDelayDays * 24 * 60 * 60 * 1000 +
+                  stepDelayHours * 60 * 60 * 1000
+                : 0;
+            const sendNotBefore =
+              introScheduleDelayMs > 0
+                ? new Date(at.getTime() + introScheduleDelayMs)
+                : null;
+
             const created = await tx.outboundEmail.create({
               data: {
                 clientId,
@@ -916,6 +962,7 @@ export async function sendSequenceStepBatch(input: {
                 fromAddress,
                 mailboxIdentityId: m.id,
                 queuedAt: new Date(),
+                nextRetryAt: sendNotBefore,
                 metadata: {
                   kind: metadataKind,
                   sequenceId,

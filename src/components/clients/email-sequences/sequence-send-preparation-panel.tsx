@@ -101,19 +101,16 @@ export function SequenceSendPreparationPanel({
       className="border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Send preparation (records + dispatch)</CardTitle>
+        <CardTitle>Send preparation</CardTitle>
         <CardDescription>
-          Preparing send records <strong>does not send email</strong>. It only renders the
-          introduction step&rsquo;s subject and body against each enrolled contact and
-          records which recipients would be ready for send. Dispatch blocks
-          below send real email, but only to recipients whose domain matches
-          the governed-test allowlist and only for one step category at a
-          time (INTRODUCTION or FOLLOW_UP_N). Each dispatch requires its own
-          typed confirmation phrase. Allowlisted/test sends can be dispatched
-          manually — real prospect sends require{" "}
-          <strong>LIVE_PROSPECT launch approval</strong> and{" "}
-          <strong>one-click unsubscribe</strong>. No cron or background
-          worker dispatches these; only the buttons below do.
+          <strong>Prepare</strong> builds or refreshes per-recipient send rows (no
+          email sent). <strong>Launch / Send</strong> below queues real
+          messages through your connected mailboxes, subject to suppression,
+          caps, and the checks shown on each block. Real campaigns to
+          non-test recipients require a client in{" "}
+          <strong>LIVE_PROSPECT</strong> launch mode, a public app URL for
+          unsubscribe, and a typed confirmation on each send. No background
+          worker auto-sends these; only the actions below do.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -135,7 +132,9 @@ export function SequenceSendPreparationPanel({
             blockReasons.push("Sequence has no INTRODUCTION step.");
           }
           if (s.introductionStepId !== null && !s.introductionApproved) {
-            blockReasons.push("INTRODUCTION template is not APPROVED.");
+            blockReasons.push(
+              "Introduction template is missing or archived — pick an active template.",
+            );
           }
           if (s.enrollmentCount === 0) {
             blockReasons.push("No enrollments yet — enroll contacts first.");

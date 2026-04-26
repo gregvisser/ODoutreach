@@ -636,7 +636,9 @@ export async function loadClientSequencePrepSnapshots(
       sequenceStatus: s.status,
       introductionStepId: introStepId,
       introductionTemplateId: introStep?.templateId ?? null,
-      introductionApproved: introStep?.template.status === "APPROVED",
+      introductionApproved: introStep
+        ? introStep.template.status !== "ARCHIVED"
+        : false,
       enrollmentCount: s._count.enrollments,
       counts: { ...counts, total },
       latestPreparedAtIso,

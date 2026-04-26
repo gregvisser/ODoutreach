@@ -18,12 +18,13 @@ import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
  *   - Sequence belongs to one client; target ContactList must be same
  *     client (verified at the server-helper layer, not here).
  *   - Each step references one ClientEmailTemplate.
- *   - Only APPROVED templates may appear in READY_FOR_REVIEW /
- *     APPROVED sequences.
  *   - INTRODUCTION is required for READY_FOR_REVIEW / APPROVED.
  *   - Step category must match template category.
- *   - delayDays >= 0, INTRODUCTION delayDays must be 0.
+ *   - delayDays >= 0, delayHours >= 0; total relative delay per step
+ *     is capped (see SEQUENCE_MAX_STEP_DELAY_HOURS).
  *   - No duplicate categories, no duplicate positions.
+ *   - Template approval is not required for any status — templates must
+ *     exist, belong to the client, and not be structurally invalid.
  */
 
 export const SEQUENCE_STATUS_LABELS: Record<ClientEmailSequenceStatus, string> =
@@ -63,6 +64,8 @@ export const SEQUENCE_FOLLOW_UP_ORDER: readonly ClientEmailTemplateCategory[] =
 export const SEQUENCE_NAME_MAX = 120;
 export const SEQUENCE_DESCRIPTION_MAX = 1_000;
 export const SEQUENCE_DELAY_DAYS_MAX = 180;
+/** Max combined delay (days + hours) on a single step, as total hours (180 days). */
+export const SEQUENCE_MAX_STEP_DELAY_HOURS = SEQUENCE_DELAY_DAYS_MAX * 24;
 
 // ————————————————————————————————————————————————————————————————
 // Metadata validation
@@ -127,6 +130,7 @@ export type SequenceStepInput = {
   category: ClientEmailTemplateCategory;
   position: number;
   delayDays: number;
+  delayHours: number;
   template: {
     id: string;
     category: ClientEmailTemplateCategory;
@@ -156,7 +160,7 @@ export type SequenceStepIssue = {
     | "TEMPLATE_NOT_APPROVED"
     | "TEMPLATE_WRONG_CLIENT"
     | "NEGATIVE_DELAY"
-    | "INTRODUCTION_DELAY"
+    | "DELAY_HOURS_INVALID"
     | "DELAY_TOO_LARGE"
     | "MISSING_INTRODUCTION"
     | "NO_STEPS";
@@ -172,9 +176,6 @@ export function validateSequenceSteps(
   input: SequenceStepsValidationInput,
 ): SequenceStepsValidationResult {
   const issues: SequenceStepIssue[] = [];
-  const wantsApprovalStrength =
-    input.targetStatus === "READY_FOR_REVIEW" ||
-    input.targetStatus === "APPROVED";
 
   const seenCategories = new Map<ClientEmailTemplateCategory, number>();
   const seenPositions = new Map<number, number>();
@@ -221,41 +222,52 @@ export function validateSequenceSteps(
       });
     }
 
+    const delayH = step.delayHours ?? 0;
+    if (!Number.isFinite(delayH) || delayH < 0) {
+      issues.push({
+        stepIndex: index,
+        code: "DELAY_HOURS_INVALID",
+        message: "Delay hours cannot be negative.",
+      });
+    }
+
     if (step.delayDays < 0) {
       issues.push({
         stepIndex: index,
         code: "NEGATIVE_DELAY",
         message: "Delay days cannot be negative.",
       });
-    } else if (step.delayDays > SEQUENCE_DELAY_DAYS_MAX) {
-      issues.push({
-        stepIndex: index,
-        code: "DELAY_TOO_LARGE",
-        message: `Delay must be ${SEQUENCE_DELAY_DAYS_MAX} days or fewer.`,
-      });
-    }
-
-    if (step.category === "INTRODUCTION") {
-      hasIntroduction = true;
-      if (step.delayDays !== 0) {
+    } else {
+      const totalHours = step.delayDays * 24 + Math.max(0, delayH);
+      if (totalHours > SEQUENCE_MAX_STEP_DELAY_HOURS) {
         issues.push({
           stepIndex: index,
-          code: "INTRODUCTION_DELAY",
-          message: "Introduction step must have a 0-day delay.",
+          code: "DELAY_TOO_LARGE",
+          message: `Combined step delay must be within ${String(SEQUENCE_DELAY_DAYS_MAX)} days (days + hours).`,
+        });
+      } else if (step.delayDays > SEQUENCE_DELAY_DAYS_MAX) {
+        issues.push({
+          stepIndex: index,
+          code: "DELAY_TOO_LARGE",
+          message: `Delay must be ${String(SEQUENCE_DELAY_DAYS_MAX)} days or fewer.`,
         });
       }
     }
 
-    if (wantsApprovalStrength && step.template.status !== "APPROVED") {
+    if (step.category === "INTRODUCTION") {
+      hasIntroduction = true;
+    }
+
+    if (step.template.status === "ARCHIVED") {
       issues.push({
         stepIndex: index,
         code: "TEMPLATE_NOT_APPROVED",
-        message: `Step uses a template that is ${step.template.status} — only APPROVED templates can power ready/approved sequences.`,
+        message: "Cannot use an archived template in a sequence step.",
       });
     }
   });
 
-  if (wantsApprovalStrength) {
+  if (input.targetStatus === "READY_FOR_REVIEW" || input.targetStatus === "APPROVED") {
     if (input.steps.length === 0) {
       issues.push({
         stepIndex: null,
@@ -267,7 +279,7 @@ export function validateSequenceSteps(
         stepIndex: null,
         code: "MISSING_INTRODUCTION",
         message:
-          "Sequences need an approved introduction step before they can be marked ready or approved.",
+          "Add an introduction step before marking the sequence ready or approved.",
       });
     }
   }
@@ -292,10 +304,11 @@ export type SequenceReadinessSummary = {
   hasContactList: boolean;
   contactListMemberCount: number;
   emailSendableCount: number;
-  approvedIntroduction: boolean;
-  approvedFollowUpCount: number;
-  /** Template rows that are NOT APPROVED (DRAFT/READY/ARCHIVED). */
-  unapprovedStepCount: number;
+  /** Introduction step present with a non-archived template. */
+  hasIntroduction: boolean;
+  followUpCount: number;
+  /** Template rows that are archived or mismatched. */
+  unusableStepCount: number;
   /** Rows whose category does not match their template category. */
   mismatchedStepCount: number;
   /** True when the sequence could transition to APPROVED right now. */
@@ -309,44 +322,39 @@ export function summarizeSequenceReadiness(
   const contactListMemberCount = input.contactList?.memberCount ?? 0;
   const emailSendableCount = input.contactList?.emailSendableCount ?? 0;
 
-  let approvedIntroduction = false;
-  let approvedFollowUpCount = 0;
-  let unapprovedStepCount = 0;
+  let hasIntroduction = false;
+  let followUpCount = 0;
+  let unusableStepCount = 0;
   let mismatchedStepCount = 0;
 
   for (const step of input.steps) {
     if (step.template.category !== step.category) mismatchedStepCount += 1;
-    if (step.template.status !== "APPROVED") unapprovedStepCount += 1;
-    if (
-      step.category === "INTRODUCTION" &&
-      step.template.status === "APPROVED" &&
-      step.template.category === "INTRODUCTION"
-    ) {
-      approvedIntroduction = true;
-    }
-    if (
-      step.category !== "INTRODUCTION" &&
-      step.template.status === "APPROVED" &&
-      step.template.category === step.category
-    ) {
-      approvedFollowUpCount += 1;
+    if (step.template.status === "ARCHIVED") unusableStepCount += 1;
+    if (step.template.category === step.category && step.template.status !== "ARCHIVED") {
+      if (step.category === "INTRODUCTION") {
+        hasIntroduction = true;
+      } else {
+        followUpCount += 1;
+      }
+    } else if (step.template.status !== "ARCHIVED") {
+      /* mismatch will be counted in mismatchedStepCount */
     }
   }
 
   const canBeApproved =
     hasContactList &&
     emailSendableCount > 0 &&
-    approvedIntroduction &&
-    unapprovedStepCount === 0 &&
+    hasIntroduction &&
+    unusableStepCount === 0 &&
     mismatchedStepCount === 0;
 
   return {
     hasContactList,
     contactListMemberCount,
     emailSendableCount,
-    approvedIntroduction,
-    approvedFollowUpCount,
-    unapprovedStepCount,
+    hasIntroduction,
+    followUpCount,
+    unusableStepCount,
     mismatchedStepCount,
     canBeApproved,
   };
@@ -414,10 +422,10 @@ export function canApproveSequence(
   if (readiness.mismatchedStepCount > 0) {
     return { ok: false, reason: "category_mismatch", readiness };
   }
-  if (!readiness.approvedIntroduction) {
+  if (!readiness.hasIntroduction) {
     return { ok: false, reason: "missing_introduction", readiness };
   }
-  if (readiness.unapprovedStepCount > 0) {
+  if (readiness.unusableStepCount > 0) {
     return { ok: false, reason: "unapproved_step", readiness };
   }
   if (readiness.emailSendableCount === 0) {

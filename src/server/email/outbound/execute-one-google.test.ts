@@ -25,8 +25,10 @@ vi.mock("@/server/mailbox/sending-policy", () => ({
     (m: { connectionStatus: string } | { connectionStatus?: string }) =>
       m.connectionStatus === "DISCONNECTED" ? "mailbox_not_connected" : null,
   ),
-  markReservationConsumedForOutbound: (...a: unknown[]) => markConsumed(...a),
-  markReservationReleasedForOutbound: (...a: unknown[]) => markReleased(...a),
+  markReservationConsumedForOutbound: (...a: unknown[]) =>
+    (markConsumed as (...args: unknown[]) => unknown)(...a),
+  markReservationReleasedForOutbound: (...a: unknown[]) =>
+    (markReleased as (...args: unknown[]) => unknown)(...a),
 }));
 vi.mock("@/server/mailbox/google-mailbox-access", () => ({
   getGoogleGmailAccessTokenForMailbox: (...a: unknown[]) => getGoogleToken(...a),
@@ -35,8 +37,10 @@ const { buildRfc } = vi.hoisted(() => ({
   buildRfc: vi.fn(() => "rfc"),
 }));
 vi.mock("@/server/mailbox/gmail-sendmail", () => ({
-  buildRfc5322PlainTextEmail: (...a: unknown[]) => buildRfc(...a),
-  sendGmailUsersMessagesSend: (...a: unknown[]) => sendGmail(...a),
+  buildRfc5322PlainTextEmail: (...a: unknown[]) =>
+    (buildRfc as (...args: unknown[]) => string)(...a),
+  sendGmailUsersMessagesSend: (...a: unknown[]) =>
+    (sendGmail as (...args: unknown[]) => unknown)(...a),
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),
@@ -133,10 +137,12 @@ describe("executeOutboundSend — Google governed path", () => {
       },
     );
     await executeOutboundSend("out1");
-    const call = buildRfc.mock.calls[0][0] as {
+    const rfcCalls = buildRfc.mock.calls as unknown as unknown[][];
+    expect(rfcCalls.length).toBeGreaterThan(0);
+    const firstArg = rfcCalls[0]![0] as {
       extraHeaders?: Array<{ name: string; value: string }>;
     };
-    expect(call.extraHeaders).toEqual([
+    expect(firstArg.extraHeaders).toEqual([
       {
         name: "List-Unsubscribe",
         value: "<https://app.example.com/unsubscribe/raw-g>",
@@ -150,7 +156,9 @@ describe("executeOutboundSend — Google governed path", () => {
 
   it("PR N — passes no extraHeaders when metadata lacks unsubscribe header shape", async () => {
     await executeOutboundSend("out1");
-    const call = buildRfc.mock.calls[0][0] as { extraHeaders?: unknown };
-    expect(call.extraHeaders).toBeUndefined();
+    const rfcCalls = buildRfc.mock.calls as unknown as unknown[][];
+    expect(rfcCalls.length).toBeGreaterThan(0);
+    const firstArg = rfcCalls[0]![0] as { extraHeaders?: unknown };
+    expect(firstArg.extraHeaders).toBeUndefined();
   });
 });

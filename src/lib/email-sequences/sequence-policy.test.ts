@@ -21,6 +21,7 @@ function stepFor(
     category,
     position,
     delayDays: category === "INTRODUCTION" ? 0 : 3,
+    delayHours: 0,
     template: {
       id: `tpl-${category}-${String(position)}`,
       category,
@@ -120,22 +121,7 @@ describe("validateSequenceSteps", () => {
     expect(res.issues.some((i) => i.code === "CATEGORY_MISMATCH")).toBe(true);
   });
 
-  it("allows unapproved templates in DRAFT but blocks them at READY", () => {
-    const draft = validateSequenceSteps({
-      steps: [
-        stepFor("INTRODUCTION", 1, {
-          template: {
-            id: "tpl-draft",
-            category: "INTRODUCTION",
-            status: "DRAFT",
-            clientId: "client-1",
-          },
-        }),
-      ],
-      targetStatus: "DRAFT",
-    });
-    expect(draft.ok).toBe(true);
-
+  it("allows non-APPROVED (draft/ready) templates at any status; blocks archived", () => {
     const ready = validateSequenceSteps({
       steps: [
         stepFor("INTRODUCTION", 1, {
@@ -149,20 +135,36 @@ describe("validateSequenceSteps", () => {
       ],
       targetStatus: "READY_FOR_REVIEW",
     });
-    expect(ready.issues.some((i) => i.code === "TEMPLATE_NOT_APPROVED")).toBe(
+    expect(ready.ok).toBe(true);
+  });
+
+  it("rejects archived templates in ready/approved", () => {
+    const res = validateSequenceSteps({
+      steps: [
+        stepFor("INTRODUCTION", 1, {
+          template: {
+            id: "t1",
+            category: "INTRODUCTION",
+            status: "ARCHIVED",
+            clientId: "client-1",
+          },
+        }),
+      ],
+      targetStatus: "READY_FOR_REVIEW",
+    });
+    expect(res.issues.some((i) => i.code === "TEMPLATE_NOT_APPROVED")).toBe(
       true,
     );
   });
 
-  it("rejects negative delays and introduction delays", () => {
+  it("rejects negative delays", () => {
     const res = validateSequenceSteps({
       steps: [
-        stepFor("INTRODUCTION", 1, { delayDays: 2 }),
+        stepFor("INTRODUCTION", 1, { delayDays: 0 }),
         stepFor("FOLLOW_UP_1", 2, { delayDays: -1 }),
       ],
       targetStatus: "DRAFT",
     });
-    expect(res.issues.some((i) => i.code === "INTRODUCTION_DELAY")).toBe(true);
     expect(res.issues.some((i) => i.code === "NEGATIVE_DELAY")).toBe(true);
   });
 
@@ -215,16 +217,16 @@ describe("validateSequenceSteps", () => {
 });
 
 describe("summarizeSequenceReadiness", () => {
-  it("is approvable when list + approved intro + sendable contacts are present", () => {
+  it("is approvable when list + intro + sendable contacts are present", () => {
     const readiness = summarizeSequenceReadiness({
       contactList: populatedList,
       steps: [stepFor("INTRODUCTION", 1), stepFor("FOLLOW_UP_1", 2)],
     });
     expect(readiness.hasContactList).toBe(true);
     expect(readiness.emailSendableCount).toBe(8);
-    expect(readiness.approvedIntroduction).toBe(true);
-    expect(readiness.approvedFollowUpCount).toBe(1);
-    expect(readiness.unapprovedStepCount).toBe(0);
+    expect(readiness.hasIntroduction).toBe(true);
+    expect(readiness.followUpCount).toBe(1);
+    expect(readiness.unusableStepCount).toBe(0);
     expect(readiness.canBeApproved).toBe(true);
   });
 
@@ -246,7 +248,7 @@ describe("summarizeSequenceReadiness", () => {
     if (!decision.ok) expect(decision.reason).toBe("empty_list");
   });
 
-  it("blocks approval when the introduction is unapproved", () => {
+  it("approves when the introduction is draft but not archived", () => {
     const decision = canApproveSequence({
       contactList: populatedList,
       steps: [
@@ -260,20 +262,37 @@ describe("summarizeSequenceReadiness", () => {
         }),
       ],
     });
+    expect(decision.ok).toBe(true);
+  });
+
+  it("blocks approval when the introduction template is archived", () => {
+    const decision = canApproveSequence({
+      contactList: populatedList,
+      steps: [
+        stepFor("INTRODUCTION", 1, {
+          template: {
+            id: "tpl-arch",
+            category: "INTRODUCTION",
+            status: "ARCHIVED",
+            clientId: "client-1",
+          },
+        }),
+      ],
+    });
     expect(decision.ok).toBe(false);
     if (!decision.ok) expect(decision.reason).toBe("missing_introduction");
   });
 
-  it("blocks approval when any follow-up is unapproved", () => {
+  it("blocks approval when a follow-up template is archived", () => {
     const decision = canApproveSequence({
       contactList: populatedList,
       steps: [
         stepFor("INTRODUCTION", 1),
         stepFor("FOLLOW_UP_1", 2, {
           template: {
-            id: "tpl-draft-fu",
+            id: "tpl-arch-fu",
             category: "FOLLOW_UP_1",
-            status: "READY_FOR_REVIEW",
+            status: "ARCHIVED",
             clientId: "client-1",
           },
         }),

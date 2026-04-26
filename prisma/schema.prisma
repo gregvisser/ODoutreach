@@ -473,8 +473,9 @@ model ClientMailboxIdentity {
   workspaceRemovedBy    StaffUser?               @relation("MailboxIdentityWorkspaceRemovedBy", fields: [workspaceRemovedById], references: [id], onDelete: SetNull)
   secret                MailboxIdentitySecret?
   graphIngestedMessages InboundMailboxMessage[]
-  sendReservations      MailboxSendReservation[]
-  outboundSends         OutboundEmail[]
+  sendReservations            MailboxSendReservation[]
+  outboundSends               OutboundEmail[]
+  preferredForSequenceLaunches ClientEmailSequence[] @relation("SequenceLaunchMailbox")
 
   @@unique([clientId, emailNormalized])
   @@index([clientId, isActive])
@@ -880,47 +881,47 @@ model ClientEmailTemplate {
 /// Per-client email sequence (PR D4b — records-only foundation).
 ///
 /// A sequence pairs one client-scoped `ContactList` with an ordered set
-/// of steps (`ClientEmailSequenceStep`), each referencing one APPROVED
-/// `ClientEmailTemplate`. Approval is OpensDoors-gated and does NOT
-/// schedule or send email — sending / scheduling is intentionally
-/// deferred to a later PR. The D4b UI + server helpers enforce
-/// cross-table invariants (sequence↔list client match, step↔template
-/// client match, step category === template category, only APPROVED
-/// templates in APPROVED sequences) in the application layer.
+/// of steps (`ClientEmailSequenceStep`) referencing `ClientEmailTemplate`
+/// rows. The application enforces invariants; optional
+/// `launchPreferredMailboxId` pins dispatch to one mailbox, otherwise
+/// the eligible pool is used.
 model ClientEmailSequence {
-  id                    String                    @id @default(cuid())
-  clientId              String
-  contactListId         String
-  name                  String
-  description           String?
-  status                ClientEmailSequenceStatus @default(DRAFT)
-  createdByStaffUserId  String?
-  approvedByStaffUserId String?
-  approvedAt            DateTime?
-  archivedAt            DateTime?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  id                       String                    @id @default(cuid())
+  clientId                 String
+  contactListId            String
+  name                     String
+  description              String?
+  status                   ClientEmailSequenceStatus @default(DRAFT)
+  createdByStaffUserId     String?
+  approvedByStaffUserId    String?
+  approvedAt               DateTime?
+  archivedAt               DateTime?
+  launchPreferredMailboxId String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
-  client      Client                          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  contactList ContactList                     @relation(fields: [contactListId], references: [id], onDelete: Restrict)
-  createdBy   StaffUser?                      @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  approvedBy  StaffUser?                      @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
-  steps       ClientEmailSequenceStep[]
-  enrollments ClientEmailSequenceEnrollment[]
-  stepSends   ClientEmailSequenceStepSend[]
+  client                  Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contactList              ContactList               @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy                StaffUser?                 @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy               StaffUser?                 @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  launchPreferredMailbox   ClientMailboxIdentity?     @relation("SequenceLaunchMailbox", fields: [launchPreferredMailboxId], references: [id], onDelete: SetNull)
+  steps                    ClientEmailSequenceStep[]
+  enrollments              ClientEmailSequenceEnrollment[]
+  stepSends                ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([clientId, status])
   @@index([contactListId])
   @@index([createdByStaffUserId])
   @@index([approvedByStaffUserId])
+  @@index([launchPreferredMailboxId])
 }
 
 /// Ordered step inside a `ClientEmailSequence` (PR D4b). Each row pins
 /// a single template at a single category slot — unique per
 /// `(sequenceId, position)` and per `(sequenceId, category)` so a
 /// sequence can hold at most one INTRODUCTION, one FOLLOW_UP_1, etc.
-/// `delayDays` is records-only metadata for a future scheduler.
+/// `delayDays` + `delayHours` schedule time after the previous step (intro: after launch/enrollment).
 model ClientEmailSequenceStep {
   id         String                      @id @default(cuid())
   sequenceId String
@@ -928,6 +929,7 @@ model ClientEmailSequenceStep {
   category   ClientEmailTemplateCategory
   position   Int
   delayDays  Int                         @default(0)
+  delayHours Int                        @default(0)
   createdAt  DateTime                    @default(now())
   updatedAt  DateTime                    @updatedAt
 

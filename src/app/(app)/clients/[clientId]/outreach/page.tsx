@@ -15,6 +15,7 @@ import {
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { OUTREACH_HERO_ADDENDUM } from "@/lib/mailboxes/mailbox-workspace-model";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
+import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   buildSequenceLaunchReadinessMap,
@@ -27,6 +28,7 @@ import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queri
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -84,12 +86,31 @@ export default async function ClientOutreachPage({
     focusSequenceId: firstParam(sp.sequenceId),
   };
 
+  const launchMailboxOptions = bundle.mailboxRows
+    .filter((m) =>
+      isMailboxExecutionEligible({
+        isActive: m.isActive,
+        connectionStatus: m.connectionStatus,
+        canSend: m.canSend,
+        isSendingEnabled: m.isSendingEnabled,
+        workspaceRemovedAt: m.workspaceRemovedAt
+          ? new Date(m.workspaceRemovedAt)
+          : null,
+      }),
+    )
+    .map((m) => ({
+      id: m.id,
+      email: m.email,
+      label: m.displayName?.trim() ? m.displayName : m.email,
+    }));
+
   const launchReadinessBySequenceId = buildSequenceLaunchReadinessMap({
     sequences: sequencesOverview.sequences,
     mailbox: {
       connectedSendingCount: bundle.connectedSendingCount,
       aggregateRemainingToday: bundle.aggregateRemaining,
     },
+    outboundUnsubscribeReady: isOneClickUnsubscribeReady(),
   });
 
   return (
@@ -100,8 +121,8 @@ export default async function ClientOutreachPage({
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Manage templates and sequences for this client, send internal proof
-          emails, and run a small pilot before going live. {OUTREACH_HERO_ADDENDUM}
+          Build templates and production sequences, review launch checks, and
+          send from connected client mailboxes. {OUTREACH_HERO_ADDENDUM}
         </p>
       </div>
 
@@ -124,6 +145,7 @@ export default async function ClientOutreachPage({
           connectedSendingCount: bundle.connectedSendingCount,
           aggregateRemainingToday: bundle.aggregateRemaining,
         }}
+        launchMailboxOptions={launchMailboxOptions}
       />
 
       <SequenceSendPreparationPanel
@@ -136,10 +158,10 @@ export default async function ClientOutreachPage({
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Send an internal test email</CardTitle>
+          <CardTitle>Send an internal verification email</CardTitle>
           <CardDescription>
-            Queue a single proof email to an internal address so you can see
-            how the message lands before pilot or live sends.
+            Queue a single message to a governed internal address to confirm
+            layout, signature, and personalisation before wider sending.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -154,14 +176,14 @@ export default async function ClientOutreachPage({
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Run a pilot send</CardTitle>
+          <CardTitle>Limited first batch (optional)</CardTitle>
           <CardDescription>
             Send the first message to a small batch of up to{" "}
             {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} real recipients, spread
             across your connected mailboxes. Type{" "}
             <span className="font-medium">SEND PILOT</span> to confirm. Each
             mailbox can send up to {String(OUTREACH_MAILBOX_DAILY_CAP)} emails
-            per day.
+            per day. Production sequences above use the main launch path.
           </CardDescription>
         </CardHeader>
         <CardContent>
