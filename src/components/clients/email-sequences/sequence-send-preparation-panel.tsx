@@ -107,7 +107,7 @@ export function SequenceSendPreparationPanel({
           email sent). <strong>Launch / Send</strong> below queues real
           messages through your connected mailboxes, subject to suppression,
           caps, and the checks shown on each block. Real campaigns to
-          non-test recipients require a client in{" "}
+          live-prospect campaigns require a client in{" "}
           <strong>LIVE_PROSPECT</strong> launch mode, a public app URL for
           unsubscribe, and a typed confirmation on each send. No background
           worker auto-sends these; only the actions below do.

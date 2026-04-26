@@ -48,10 +48,7 @@ type Props = {
     error: string | null;
     focusSequenceId: string | null;
   };
-  /**
-   * PR D4d — per-sequence launch-readiness snapshot keyed by sequence id.
-   * Sending is still disabled in this PR; the rail is purely informational.
-   */
+  /** Per-sequence launch readiness: contacts, intro, compliance, and mailbox context. */
   launchReadinessBySequenceId: Record<string, SequenceLaunchReadiness>;
   mailboxSnapshot: {
     connectedSendingCount: number;
@@ -601,7 +598,8 @@ function LaunchReadinessBlock({
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             Pool snapshot: {String(mailboxSnapshot.connectedSendingCount)}{" "}
             mailbox(es) · {String(mailboxSnapshot.aggregateRemainingToday)}{" "}
-            slot(s) remaining today. Sending remains disabled in this PR.
+            slot(s) remaining today. Prepare and dispatch runs from
+            the Send preparation section on this page.
           </p>
         </div>
       </div>

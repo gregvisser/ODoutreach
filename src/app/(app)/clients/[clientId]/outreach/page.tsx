@@ -178,12 +178,13 @@ export default async function ClientOutreachPage({
         <CardHeader>
           <CardTitle>Limited first batch (optional)</CardTitle>
           <CardDescription>
-            Send the first message to a small batch of up to{" "}
+            Optional safety cap: send a first small batch to up to{" "}
             {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} real recipients, spread
-            across your connected mailboxes. Type{" "}
-            <span className="font-medium">SEND PILOT</span> to confirm. Each
+            across your connected mailboxes. The panel requires an exact
+            confirmation phrase in the field below. Each
             mailbox can send up to {String(OUTREACH_MAILBOX_DAILY_CAP)} emails
-            per day. Production sequences above use the main launch path.
+            per day. Production sequences use the form and Send preparation
+            above; this is an additional optional path.
           </CardDescription>
         </CardHeader>
         <CardContent>
