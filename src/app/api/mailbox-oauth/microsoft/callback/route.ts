@@ -1,15 +1,9 @@
 import { prisma } from "@/lib/db";
-import { normalizeEmail } from "@/lib/normalize";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import {
-  exchangeMicrosoftMailboxAuthCode,
-  fetchMicrosoftGraphPrimaryEmail,
-} from "@/server/mailbox/microsoft-mailbox-oauth";
+import { exchangeMicrosoftMailboxAuthCode } from "@/server/mailbox/microsoft-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import {
-  mailboxEmailsAlign,
-  mailboxOAuthRedirectToClient,
-} from "@/server/mailbox/mailbox-oauth-callback-shared";
+import { mailboxOAuthRedirectToClient } from "@/server/mailbox/mailbox-oauth-callback-shared";
+import { resolveMicrosoftMailboxOAuthConnection } from "@/server/mailbox/mailbox-oauth-microsoft-resolve";
 import { encryptMailboxCredentialJson } from "@/server/mailbox/oauth-crypto";
 
 export async function GET(req: Request) {
@@ -108,12 +102,10 @@ export async function GET(req: Request) {
         "Microsoft did not return a refresh token — ensure offline_access scope and consent.",
       );
     }
-    const me = await fetchMicrosoftGraphPrimaryEmail(tokens.access_token);
-    if (!mailboxEmailsAlign(mailbox.emailNormalized, me.primaryEmail)) {
-      throw new Error(
-        `Signed-in Microsoft account (${normalizeEmail(me.primaryEmail)}) does not match this mailbox (${mailbox.emailNormalized}).`,
-      );
-    }
+    const resolved = await resolveMicrosoftMailboxOAuthConnection({
+      accessToken: tokens.access_token,
+      mailboxEmailNormalized: mailbox.emailNormalized,
+    });
 
     const now = Date.now();
     const expiresAt =
@@ -149,7 +141,7 @@ export async function GET(req: Request) {
           connectionStatus: "CONNECTED",
           oauthState: null,
           oauthStateExpiresAt: null,
-          providerLinkedUserId: me.id,
+          providerLinkedUserId: resolved.mailboxGraphUserId,
           connectedAt: new Date(),
           lastError: null,
         },
@@ -164,7 +156,8 @@ export async function GET(req: Request) {
         kind: "mailbox_oauth_callback",
         provider: "MICROSOFT",
         outcome: "connected",
-        providerLinkedUserId: me.id,
+        providerLinkedUserId: resolved.mailboxGraphUserId,
+        oauthMicrosoftActorEmail: resolved.oauthPrimaryEmail,
       },
     });
 

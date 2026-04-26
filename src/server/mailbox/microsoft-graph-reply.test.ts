@@ -28,6 +28,7 @@ describe("sendMicrosoftGraphReply", () => {
 
     const result = await sendMicrosoftGraphReply({
       accessToken: "tok",
+      mailboxUserPrincipalName: "mailbox@test.dev",
       providerMessageId: "msg-1",
       bodyText: "Thanks!",
       correlationId: "corr-1",
@@ -40,7 +41,7 @@ describe("sendMicrosoftGraphReply", () => {
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/me/messages/msg-1/reply");
+    expect(url).toContain("/users/mailbox%40test.dev/messages/msg-1/reply");
     expect(init.method).toBe("POST");
     const body = JSON.parse((init.body as string) ?? "{}") as {
       comment: string;
@@ -58,6 +59,7 @@ describe("sendMicrosoftGraphReply", () => {
 
     await sendMicrosoftGraphReply({
       accessToken: "tok",
+      mailboxUserPrincipalName: "mailbox@test.dev",
       providerMessageId: "AAMkAD/with spaces+slash",
       bodyText: "x",
       correlationId: "c",
@@ -75,6 +77,7 @@ describe("sendMicrosoftGraphReply", () => {
 
     const result = await sendMicrosoftGraphReply({
       accessToken: "tok",
+      mailboxUserPrincipalName: "mailbox@test.dev",
       providerMessageId: "missing",
       bodyText: "x",
       correlationId: "c",
@@ -94,6 +97,7 @@ describe("sendMicrosoftGraphReply", () => {
 
     const result = await sendMicrosoftGraphReply({
       accessToken: "tok",
+      mailboxUserPrincipalName: "mailbox@test.dev",
       providerMessageId: "m",
       bodyText: "x",
       correlationId: "c",
@@ -113,6 +117,7 @@ describe("sendMicrosoftGraphReply", () => {
 
     const result = await sendMicrosoftGraphReply({
       accessToken: "tok",
+      mailboxUserPrincipalName: "mailbox@test.dev",
       providerMessageId: "m",
       bodyText: "x",
       correlationId: "c",

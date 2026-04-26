@@ -25,11 +25,18 @@ export function microsoftMailboxOAuthTenant(): string {
 /** Use in tests and app docs — must match `microsoftMailboxOAuthScopes()`. */
 export const MICROSOFT_GRAPH_SCOPE_MAIL_READ = "https://graph.microsoft.com/Mail.Read";
 export const MICROSOFT_GRAPH_SCOPE_MAIL_SEND = "https://graph.microsoft.com/Mail.Send";
+/** Delegated — read mail the signed-in user can reach (shared / delegated mailboxes). */
+export const MICROSOFT_GRAPH_SCOPE_MAIL_READ_SHARED =
+  "https://graph.microsoft.com/Mail.Read.Shared";
+/** Delegated — send mail from mailboxes the signed-in user may send on behalf of. */
+export const MICROSOFT_GRAPH_SCOPE_MAIL_SEND_SHARED =
+  "https://graph.microsoft.com/Mail.Send.Shared";
 
 /**
  * Delegated scopes — identity + refresh + inbox read + send for Microsoft Graph.
- * Adding or changing Graph scopes (e.g. `Mail.Read`, `Mail.Send`) requires a mailbox reconnect
- * to obtain fresh admin/user consent and refresh token.
+ * `Mail.Read.Shared` / `Mail.Send.Shared` allow a workspace admin to connect a **row**
+ * for another mailbox when Exchange Online grants delegate/full-access/send-as rights.
+ * Adding or changing Graph scopes requires a mailbox reconnect for fresh consent.
  */
 export function microsoftMailboxOAuthScopes(): string {
   return [
@@ -40,6 +47,8 @@ export function microsoftMailboxOAuthScopes(): string {
     "User.Read",
     MICROSOFT_GRAPH_SCOPE_MAIL_READ,
     MICROSOFT_GRAPH_SCOPE_MAIL_SEND,
+    MICROSOFT_GRAPH_SCOPE_MAIL_READ_SHARED,
+    MICROSOFT_GRAPH_SCOPE_MAIL_SEND_SHARED,
   ].join(" ");
 }
 

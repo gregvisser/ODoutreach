@@ -59,8 +59,15 @@ reply against the original conversation.
 - We do not filter mailbox visibility by `createdByStaffUserId`.
 - We do not tie a sequence or a reply to a "personal" mailbox.
 
-The only place a provider-account email is matched to a mailbox address
-is the OAuth callback (`mailboxEmailsAlign`), which verifies that the
-external sign-in used during the connect flow matches the declared
-mailbox — this is a connection-time integrity check, not a runtime
-routing rule.
+At **connection** time, the OAuth callback still validates provider truth:
+
+- **Microsoft:** `resolveMicrosoftMailboxOAuthConnection` — if the Microsoft
+  user who consented is not the row address, Graph must allow them to open
+  that mailbox’s inbox (delegate / shared-mailbox access) before tokens are
+  stored; runtime calls use `/users/{row}/…` so sends match the declared mailbox.
+- **Google:** `verifyGoogleMailboxOAuthForWorkspaceRow` — same-address OAuth,
+  or a successful Gmail `users/{row}/profile` probe (rare without domain-wide
+  delegation).
+
+This is not runtime operator-email routing; it prevents storing tokens that
+cannot actually reach the workspace mailbox row.

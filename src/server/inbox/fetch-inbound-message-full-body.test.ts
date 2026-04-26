@@ -99,6 +99,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "MICROSOFT",
       connectionStatus: "DISCONNECTED",
       email: "ops@acme.test",
+      emailNormalized: "ops@acme.test",
     });
     const res = await fetchInboundMessageFullBody({
       staff: STAFF,
@@ -122,6 +123,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "MICROSOFT",
       connectionStatus: "CONNECTED",
       email: "ops@acme.test",
+      emailNormalized: "ops@acme.test",
     });
     fetchMs.mockResolvedValue({
       ok: true,
@@ -152,6 +154,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
     expect(fetchMs).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "ms-access",
+        mailboxUserPrincipalName: "ops@acme.test",
         providerMessageId: "pm1",
       }),
     );
@@ -180,6 +183,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "GOOGLE",
       connectionStatus: "CONNECTED",
       email: "replies@opensdoors.co",
+      emailNormalized: "replies@opensdoors.co",
     });
     fetchGmail.mockResolvedValue({
       ok: true,
@@ -225,6 +229,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "MICROSOFT",
       connectionStatus: "CONNECTED",
       email: "ops@acme.test",
+      emailNormalized: "ops@acme.test",
     });
     fetchMs.mockResolvedValue({
       ok: true,
@@ -254,6 +259,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "MICROSOFT",
       connectionStatus: "CONNECTED",
       email: "ops@acme.test",
+      emailNormalized: "ops@acme.test",
     });
     fetchMs.mockResolvedValue({
       ok: false,
@@ -281,6 +287,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "MICROSOFT",
       connectionStatus: "CONNECTED",
       email: "ops@acme.test",
+      emailNormalized: "ops@acme.test",
     });
     fetchMs.mockResolvedValue({
       ok: false,
@@ -318,6 +325,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "GOOGLE",
       connectionStatus: "CONNECTED",
       email: "replies@opensdoors.co",
+      emailNormalized: "replies@opensdoors.co",
     });
     fetchGmail.mockResolvedValue({
       ok: false,
@@ -350,6 +358,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
       provider: "MICROSOFT",
       connectionStatus: "CONNECTED",
       email: "ops@acme.test",
+      emailNormalized: "ops@acme.test",
     });
     fetchMs.mockResolvedValue({
       ok: false,

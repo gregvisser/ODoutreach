@@ -16,6 +16,7 @@ describe("sendMicrosoftGraphSendMail", () => {
     );
     const r = await sendMicrosoftGraphSendMail({
       accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
       to: "a@b.co",
       subject: "s",
       bodyText: "b",
@@ -36,11 +37,15 @@ describe("sendMicrosoftGraphSendMail", () => {
 
     await sendMicrosoftGraphSendMail({
       accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
       to: "a@b.co",
       subject: "s",
       bodyText: "b",
       correlationId: "corr-x",
     });
+
+    const [reqUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(reqUrl).toContain("/users/sender%40tenant.test/sendMail");
 
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as {
       message: Record<string, unknown>;
@@ -60,6 +65,7 @@ describe("sendMicrosoftGraphSendMail", () => {
 
     await sendMicrosoftGraphSendMail({
       accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
       to: "a@b.co",
       subject: "s",
       bodyText: "b",
@@ -97,6 +103,7 @@ describe("sendMicrosoftGraphSendMail", () => {
       fetchMock.mockClear();
       await sendMicrosoftGraphSendMail({
         accessToken: "t",
+        mailboxUserPrincipalName: "sender@tenant.test",
         to: "a@b.co",
         subject: "s",
         bodyText: "b",
@@ -119,6 +126,7 @@ describe("sendMicrosoftGraphSendMail", () => {
     );
     const r = await sendMicrosoftGraphSendMail({
       accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
       to: "a@b.co",
       subject: "s",
       bodyText: "b",

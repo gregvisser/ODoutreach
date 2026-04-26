@@ -30,8 +30,9 @@ type GraphMessagePayload = {
 };
 
 /**
- * POST /me/sendMail — as the connected mailbox user. `from` is implied by the token;
- * the Outbound row still stores the mailbox address for audit.
+ * POST `/users/{mailbox}/sendMail` — sends from the **declared** workspace mailbox row.
+ * The access token belongs to the Microsoft user who completed OAuth (often a delegate);
+ * shared `Mail.Send` scopes route the send through the target user's mailbox.
  *
  * `options.listUnsubscribeUrl`, when provided and well-formed, is
  * emitted via the `String 0x1045` single-value extended property so
@@ -40,13 +41,24 @@ type GraphMessagePayload = {
  */
 export async function sendMicrosoftGraphSendMail(input: {
   accessToken: string;
+  /** Target mailbox UPN / SMTP address (row `emailNormalized`). */
+  mailboxUserPrincipalName: string;
   to: string;
   subject: string;
   bodyText: string;
   correlationId: string;
   options?: GraphSendMailOptions;
 }): Promise<SendEmailResult> {
-  const { accessToken, to, subject, bodyText, correlationId, options } = input;
+  const {
+    accessToken,
+    mailboxUserPrincipalName,
+    to,
+    subject,
+    bodyText,
+    correlationId,
+    options,
+  } = input;
+  const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
   const message: GraphMessagePayload = {
     subject,
     body: { contentType: "Text", content: bodyText },
@@ -70,7 +82,7 @@ export async function sendMicrosoftGraphSendMail(input: {
     }
   }
 
-  const res = await fetch(`${GRAPH}/me/sendMail`, {
+  const res = await fetch(`${GRAPH}/users/${userSeg}/sendMail`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -98,7 +110,11 @@ export async function sendMicrosoftGraphSendMail(input: {
     return { ok: false, error: `Microsoft Graph auth failed: ${text}`, code: "401" };
   }
   if (res.status === 403) {
-    return { ok: false, error: `Microsoft Graph forbidden (check Mail.Send consent): ${text}`, code: "403" };
+    return {
+      ok: false,
+      error: `Microsoft Graph forbidden (check Mail.Send / Mail.Send.Shared and mailbox delegate rights): ${text}`,
+      code: "403",
+    };
   }
   if (res.status >= 500) {
     return { ok: false, error: `Microsoft Graph server error: ${text}`, code: String(res.status) };

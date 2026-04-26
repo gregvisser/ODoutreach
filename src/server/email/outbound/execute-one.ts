@@ -411,6 +411,7 @@ async function sendViaConnectedMailboxOrFail(
     const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
     const result = await sendMicrosoftGraphSendMail({
       accessToken,
+      mailboxUserPrincipalName: mailbox.emailNormalized,
       to,
       subject,
       bodyText: body,

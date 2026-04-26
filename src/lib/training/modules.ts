@@ -410,6 +410,7 @@ const mailboxesModule: TrainingModule = {
   details: [
     `OpensDoors runs outreach from up to ${String(ex.capacity.maxMailboxes)} connected mailboxes per workspace. Each mailbox sends up to ${String(ex.capacity.perMailboxDailyCap)} messages per UTC day, for a pooled ceiling of ${String(ex.capacity.dailyTheoreticalMax)} sends per day.`,
     "Each mailbox has its own sender name, signature, and daily counter. The workspace pools capacity: the planner prefers the mailbox with the most remaining slots, breaking ties with the primary address — it is not a personal lock on a mailbox for one operator.",
+    "Connection is workspace-admin-managed: an authorised operator runs Connect for each row. Microsoft 365 supports a delegate (e.g. IT admin) completing OAuth when Exchange grants them access to that mailbox; Google usually requires the mailbox's own Google account unless the tenant uses a documented delegation setup.",
   ],
   screenshots: [
     {

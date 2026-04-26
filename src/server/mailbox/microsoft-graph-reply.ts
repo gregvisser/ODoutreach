@@ -5,23 +5,23 @@ import type { SendEmailResult } from "@/server/email/providers/types";
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
 /**
- * POST /me/messages/{id}/reply — sends a reply to a specific inbound
- * message and preserves the original conversation thread automatically.
- * Microsoft Graph assembles the reply using the original subject and
- * recipients; the `comment` body is prepended as the reply text.
+ * POST `/users/{mailbox}/messages/{id}/reply` — reply in the **declared** mailbox's thread.
  *
- * Requires the mailbox token to have Mail.Send (delegated). Returns 202
- * on success (same shape as /sendMail).
+ * Requires delegated Mail.Send (and typically Mail.Send.Shared when the OAuth
+ * actor differs from the mailbox row). Returns 202 on success.
  */
 export async function sendMicrosoftGraphReply(input: {
   accessToken: string;
+  mailboxUserPrincipalName: string;
   providerMessageId: string;
   bodyText: string;
   correlationId: string;
 }): Promise<SendEmailResult> {
-  const { accessToken, providerMessageId, bodyText, correlationId } = input;
+  const { accessToken, mailboxUserPrincipalName, providerMessageId, bodyText, correlationId } =
+    input;
+  const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
   const id = encodeURIComponent(providerMessageId);
-  const res = await fetch(`${GRAPH}/me/messages/${id}/reply`, {
+  const res = await fetch(`${GRAPH}/users/${userSeg}/messages/${id}/reply`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -48,7 +48,7 @@ export async function sendMicrosoftGraphReply(input: {
   if (res.status === 403) {
     return {
       ok: false,
-      error: `Microsoft Graph forbidden (check Mail.Send consent): ${text}`,
+      error: `Microsoft Graph forbidden (check Mail.Send / Mail.Send.Shared and delegate rights): ${text}`,
       code: "403",
     };
   }

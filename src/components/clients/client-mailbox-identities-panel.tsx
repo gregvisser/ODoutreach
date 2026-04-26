@@ -155,7 +155,7 @@ function providerConnectionHint(
   }
   switch (row.connectionStatus) {
     case "DRAFT":
-      return "Not connected yet — use Connect to sign in with Microsoft or Google.";
+      return "Not connected yet — use Connect so an authorised operator can finish provider sign-in for this workspace mailbox.";
     case "PENDING_CONNECTION":
       return "Finish sign-in in the provider window, or press Connect again.";
     case "CONNECTED":
@@ -165,7 +165,7 @@ function providerConnectionHint(
     case "CONNECTION_ERROR":
       return "Sign-in didn't complete. Check the last error below and reconnect.";
     case "DISCONNECTED":
-      return "Disconnected — use Connect to sign in again.";
+      return "Disconnected — use Connect to run provider sign-in again (Microsoft delegate or the Gmail user for this row).";
     default:
       return "";
   }
@@ -366,7 +366,7 @@ export function ClientMailboxIdentitiesPanel({
               <MailboxForm
                 variant="create"
                 title="Add a mailbox"
-                description="Enter the sender address and provider. After saving, press Connect to sign in with Microsoft or Google."
+                description="Enter the sender address and provider. After saving, press Connect: Microsoft allows a delegate/admin to sign in if they have mailbox access; Google usually needs that mailbox's Google account (unless your Workspace delegation is configured)."
                 submitLabel="Save"
                 clientId={clientId}
                 disabled={pending}

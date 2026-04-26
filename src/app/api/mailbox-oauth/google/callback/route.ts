@@ -1,15 +1,12 @@
 import { prisma } from "@/lib/db";
-import { normalizeEmail } from "@/lib/normalize";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   exchangeGoogleMailboxAuthCode,
   fetchGoogleUserEmailAndSub,
 } from "@/server/mailbox/google-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import {
-  mailboxEmailsAlign,
-  mailboxOAuthRedirectToClient,
-} from "@/server/mailbox/mailbox-oauth-callback-shared";
+import { mailboxOAuthRedirectToClient } from "@/server/mailbox/mailbox-oauth-callback-shared";
+import { verifyGoogleMailboxOAuthForWorkspaceRow } from "@/server/mailbox/mailbox-oauth-google-verify";
 import { encryptMailboxCredentialJson } from "@/server/mailbox/oauth-crypto";
 
 export async function GET(req: Request) {
@@ -109,11 +106,11 @@ export async function GET(req: Request) {
       );
     }
     const profile = await fetchGoogleUserEmailAndSub(tokens.access_token);
-    if (!mailboxEmailsAlign(mailbox.emailNormalized, profile.email)) {
-      throw new Error(
-        `Signed-in Google account (${normalizeEmail(profile.email)}) does not match this mailbox (${mailbox.emailNormalized}).`,
-      );
-    }
+    await verifyGoogleMailboxOAuthForWorkspaceRow({
+      accessToken: tokens.access_token,
+      mailboxEmailNormalized: mailbox.emailNormalized,
+      oauthUserEmail: profile.email,
+    });
 
     const now = Date.now();
     const expiresAt =
