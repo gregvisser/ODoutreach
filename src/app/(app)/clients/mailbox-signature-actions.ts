@@ -9,6 +9,7 @@ import {
   htmlSignatureToText,
   normaliseSignatureHtml,
 } from "@/lib/mailboxes/sender-signature";
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 import { syncGmailSignatureForMailbox } from "@/server/mailbox/gmail-signature-sync";
@@ -75,10 +76,16 @@ async function assertMailboxBelongsToClient(
       emailNormalized: true,
       provider: true,
       connectionStatus: true,
+      workspaceRemovedAt: true,
     },
   });
   if (!row) {
     throw new Error("Mailbox not found for this client.");
+  }
+  if (isMailboxRemovedFromWorkspace(row)) {
+    throw new Error(
+      "This mailbox was removed from the workspace. Restore it first if you need to change signatures or sync from Gmail.",
+    );
   }
   return row;
 }

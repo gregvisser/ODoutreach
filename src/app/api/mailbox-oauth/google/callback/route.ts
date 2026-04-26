@@ -1,3 +1,4 @@
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -34,6 +35,13 @@ export async function GET(req: Request) {
   }
 
   const clientId = mailbox.clientId;
+
+  if (isMailboxRemovedFromWorkspace(mailbox)) {
+    return mailboxOAuthRedirectToClient(clientId, {
+      mailbox_oauth: "error",
+      reason: "mailbox_removed",
+    });
+  }
 
   if (err) {
     const desc = url.searchParams.get("error_description") ?? err;

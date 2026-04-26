@@ -10,6 +10,8 @@ import {
 } from "@/app/(app)/clients/mailbox-connection-actions";
 import {
   createClientMailboxIdentity,
+  removeClientMailboxFromWorkspace,
+  restoreClientMailboxToWorkspace,
   setClientMailboxPrimary,
   updateClientMailboxIdentity,
   type MailboxActionResult as IdentityActionResult,
@@ -25,6 +27,7 @@ import {
   type SenderSignatureClientBriefFallback,
   type SenderSignatureSource,
 } from "@/lib/mailboxes/sender-signature";
+import { Textarea } from "@/components/ui/textarea";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -64,6 +67,8 @@ export type MailboxIdentityRow = {
     | "DISCONNECTED";
   providerLinkedUserId: string | null;
   connectedAt: string | null;
+  /** ISO — when set, the address is archived for this workspace and must not send or sync. */
+  workspaceRemovedAt: string | null;
   isActive: boolean;
   isPrimary: boolean;
   canSend: boolean;
@@ -195,6 +200,8 @@ function ineligibleCodeToMessage(code: string | null): string {
       return "Daily limit may be reached";
     case "daily_ledger_cap_reached":
       return "Daily limit reached for today";
+    case "mailbox_removed_from_workspace":
+      return "Removed from workspace";
     default:
       return "Not ready to send";
   }
@@ -221,6 +228,9 @@ function eligibilityLabel(
       emailsSentToday: row.emailsSentToday,
       dailyWindowResetAt: row.dailyWindowResetAt
         ? new Date(row.dailyWindowResetAt)
+        : null,
+      workspaceRemovedAt: row.workspaceRemovedAt
+        ? new Date(row.workspaceRemovedAt)
         : null,
     },
     now,
@@ -257,9 +267,20 @@ export function ClientMailboxIdentitiesPanel({
   const [editRow, setEditRow] = useState<MailboxIdentityRow | null>(null);
   const [signatureEditRow, setSignatureEditRow] =
     useState<MailboxIdentityRow | null>(null);
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<MailboxIdentityRow | null>(null);
+  const [removeNote, setRemoveNote] = useState("");
 
   const now = useMemo(() => new Date(), []);
-  const activeCount = rows.filter((r) => r.isActive).length;
+  const activeRows = useMemo(
+    () => rows.filter((r) => !r.workspaceRemovedAt),
+    [rows],
+  );
+  const removedRows = useMemo(
+    () => rows.filter((r) => r.workspaceRemovedAt),
+    [rows],
+  );
+  const activeCount = activeRows.filter((r) => r.isActive).length;
 
   const run = (action: () => Promise<IdentityActionResult>) => {
     startTransition(async () => {
@@ -356,30 +377,108 @@ export function ClientMailboxIdentitiesPanel({
           thread.
         </p>
         {canMutate ? (
-          <Sheet open={addOpen} onOpenChange={setAddOpen}>
-            <SheetTrigger
-              className={cn(buttonVariants({ size: "sm" }), pending && "pointer-events-none opacity-60")}
+          <>
+            <Sheet open={addOpen} onOpenChange={setAddOpen}>
+              <SheetTrigger
+                className={cn(buttonVariants({ size: "sm" }), pending && "pointer-events-none opacity-60")}
+              >
+                Add mailbox
+              </SheetTrigger>
+              <SheetContent side="right" className="w-full max-w-md sm:max-w-lg">
+                <MailboxForm
+                  variant="create"
+                  title="Add a mailbox"
+                  description="Enter the sender address and provider. After saving, press Connect: Microsoft allows a delegate/admin to sign in if they have mailbox access; Google usually needs that mailbox's Google account (unless your Workspace delegation is configured)."
+                  submitLabel="Save"
+                  clientId={clientId}
+                  disabled={pending}
+                  onSubmitCreate={(payload) => {
+                    run(async () => {
+                      const r = await createClientMailboxIdentity(payload);
+                      if (r.ok) setAddOpen(false);
+                      return r;
+                    });
+                  }}
+                />
+              </SheetContent>
+            </Sheet>
+            <Sheet
+              open={removeTarget !== null}
+              onOpenChange={(o) => {
+                if (!o) {
+                  setRemoveTarget(null);
+                  setRemoveNote("");
+                }
+              }}
             >
-              Add mailbox
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full max-w-md sm:max-w-lg">
-              <MailboxForm
-                variant="create"
-                title="Add a mailbox"
-                description="Enter the sender address and provider. After saving, press Connect: Microsoft allows a delegate/admin to sign in if they have mailbox access; Google usually needs that mailbox's Google account (unless your Workspace delegation is configured)."
-                submitLabel="Save"
-                clientId={clientId}
-                disabled={pending}
-                onSubmitCreate={(payload) => {
-                  run(async () => {
-                    const r = await createClientMailboxIdentity(payload);
-                    if (r.ok) setAddOpen(false);
-                    return r;
-                  });
-                }}
-              />
-            </SheetContent>
-          </Sheet>
+              <SheetContent side="right" className="w-full max-w-md sm:max-w-lg">
+                <SheetHeader>
+                  <SheetTitle>Remove from workspace</SheetTitle>
+                  <SheetDescription className="text-left text-sm text-muted-foreground">
+                    This address will not be used for future sends, replies, inbox sync, or signature sync.
+                    Outbound and inbound history already stored in OpensDoors remains visible.{" "}
+                    <span className="text-foreground font-medium">Disconnect</span> only revokes OAuth and
+                    keeps the row; removal archives the address until you run Restore.
+                  </SheetDescription>
+                </SheetHeader>
+                {removeTarget ? (
+                  <div className="space-y-3 py-2">
+                    <p className="text-sm">
+                      <span className="font-medium">{removeTarget.email}</span>
+                    </p>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground" htmlFor="remove-mailbox-note">
+                        Optional note (internal)
+                      </label>
+                      <Textarea
+                        id="remove-mailbox-note"
+                        value={removeNote}
+                        onChange={(e) => setRemoveNote(e.target.value)}
+                        rows={3}
+                        disabled={pending}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                <SheetFooter className="mt-4 flex flex-row flex-wrap gap-2 sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => {
+                      setRemoveTarget(null);
+                      setRemoveNote("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={pending || !removeTarget}
+                    onClick={() => {
+                      if (!removeTarget) return;
+                      const t = removeTarget;
+                      run(async () => {
+                        const r = await removeClientMailboxFromWorkspace({
+                          clientId,
+                          mailboxId: t.id,
+                          note: removeNote.trim() || null,
+                        });
+                        if (r.ok) {
+                          setRemoveTarget(null);
+                          setRemoveNote("");
+                        }
+                        return r;
+                      });
+                    }}
+                  >
+                    Remove from workspace
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+          </>
         ) : null}
       </div>
 
@@ -396,17 +495,16 @@ export function ClientMailboxIdentitiesPanel({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? (
+            {activeRows.length === 0 ? (
                 <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground">
-                  No mailboxes connected for this client yet. Add up to five
-                  shared workspace sending addresses (Microsoft 365 or
-                  Google Workspace) — these belong to the client, not to an
-                  individual operator.
+                  {removedRows.length > 0
+                    ? "No active mailboxes in this list — all addresses for this client are removed from the workspace. Restore one below, or add a new mailbox. Historical sends and inbox messages in OpensDoors are preserved."
+                    : "No mailboxes connected for this client yet. Add up to five shared workspace sending addresses (Microsoft 365 or Google Workspace) — these belong to the client, not to an individual operator."}
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row) => {
+              activeRows.map((row) => {
                 const ledger = sendingReadinessByMailboxId?.[row.id];
                 const oauthOk = oauthReadyForRow(
                   row,
@@ -536,6 +634,19 @@ export function ClientMailboxIdentitiesPanel({
                             >
                               Disconnect
                             </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              className="text-destructive border-destructive/60"
+                              disabled={pending}
+                              title="Archive this address for the workspace. OAuth and sync stop; message history in OpensDoors remains."
+                              onClick={() => {
+                                setRemoveTarget(row);
+                                setRemoveNote("");
+                              }}
+                            >
+                              Remove from workspace
+                            </Button>
                           </>
                         ) : (
                           <span className="text-xs text-muted-foreground">View only</span>
@@ -550,7 +661,71 @@ export function ClientMailboxIdentitiesPanel({
         </Table>
       </div>
 
-      {rows.length > 0 ? (
+      {removedRows.length > 0 ? (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-0 text-muted-foreground"
+            onClick={() => setShowRemoved((v) => !v)}
+          >
+            {showRemoved ? "Hide" : "Show"} removed mailboxes ({removedRows.length})
+          </Button>
+          {showRemoved ? (
+            <div className="overflow-x-auto rounded-lg border border-dashed border-border/80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Removed mailbox</TableHead>
+                    <TableHead>Provider</TableHead>
+                    <TableHead>Removed at</TableHead>
+                    <TableHead className="min-w-[180px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {removedRows.map((row) => (
+                    <TableRow key={`rm-${row.id}`}>
+                      <TableCell>
+                        <div className="font-medium">{row.email}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Not used for new sends, replies, or sync. History in OpensDoors is kept.
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {PROVIDERS.find((p) => p.value === row.provider)?.label ?? row.provider}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {row.workspaceRemovedAt
+                          ? format(new Date(row.workspaceRemovedAt), "d MMM yyyy, HH:mm")
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {canMutate ? (
+                          <Button
+                            size="xs"
+                            variant="secondary"
+                            disabled={pending}
+                            onClick={() =>
+                              run(async () => restoreClientMailboxToWorkspace({ clientId, mailboxId: row.id }))
+                            }
+                          >
+                            Restore to workspace
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">View only</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeRows.length > 0 ? (
         <div className="space-y-3">
           <div>
             <h3 className="text-sm font-semibold">Sender identity</h3>
@@ -566,7 +741,7 @@ export function ClientMailboxIdentitiesPanel({
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {rows.map((row) => {
+            {activeRows.map((row) => {
               const vm = buildSenderSignatureViewModel(
                 {
                   provider: row.provider,

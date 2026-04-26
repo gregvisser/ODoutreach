@@ -121,6 +121,14 @@ export async function replyToInboundMailboxMessage(
       error: "The mailbox that received this message is no longer connected.",
     };
   }
+  if (mailbox.workspaceRemovedAt) {
+    return {
+      ok: false,
+      errorCode: "MAILBOX_REMOVED_FROM_WORKSPACE",
+      error:
+        "This mailbox was removed from the workspace. Historical messages stay visible, but you cannot reply from it until the address is restored.",
+    };
+  }
   const ineligible = mailboxIneligibleForGovernedSendExecution(mailbox);
   if (ineligible) {
     return {

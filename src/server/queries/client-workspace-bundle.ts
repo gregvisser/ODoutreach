@@ -84,6 +84,7 @@ export async function loadClientWorkspaceBundle(
     connectionStatus: m.connectionStatus,
     providerLinkedUserId: m.providerLinkedUserId,
     connectedAt: m.connectedAt?.toISOString() ?? null,
+    workspaceRemovedAt: m.workspaceRemovedAt?.toISOString() ?? null,
     isActive: m.isActive,
     isPrimary: m.isPrimary,
     canSend: m.canSend,
@@ -118,6 +119,7 @@ export async function loadClientWorkspaceBundle(
   const connectedMailboxInbox = client.mailboxIdentities
     .filter(
       (m) =>
+        !m.workspaceRemovedAt &&
         (m.provider === "MICROSOFT" || m.provider === "GOOGLE") &&
         m.connectionStatus === "CONNECTED",
     )
@@ -137,6 +139,7 @@ export async function loadClientWorkspaceBundle(
       connectionStatus: m.connectionStatus,
       canSend: m.canSend,
       isSendingEnabled: m.isSendingEnabled,
+      workspaceRemovedAt: m.workspaceRemovedAt,
     })),
   });
 

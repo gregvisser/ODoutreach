@@ -14,6 +14,8 @@ export type MailboxEligibilityInput = {
   dailySendCap: number;
   emailsSentToday: number;
   dailyWindowResetAt: Date | null;
+  /** Soft-removed from workspace — never eligible. */
+  workspaceRemovedAt?: Date | null;
 };
 
 /** UTC midnight at the start of the calendar day after `from`. */
@@ -51,6 +53,7 @@ export function isUnderDailySendCap(input: MailboxEligibilityInput, now: Date): 
  * Operational sending readiness for UI and future send pipeline (no provider calls in this slice).
  */
 export function isMailboxSendingEligible(input: MailboxEligibilityInput, now: Date): boolean {
+  if (input.workspaceRemovedAt) return false;
   if (!input.isActive) return false;
   if (input.connectionStatus !== "CONNECTED") return false;
   if (!input.canSend || !input.isSendingEnabled) return false;

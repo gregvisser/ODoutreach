@@ -85,6 +85,7 @@ export async function fetchInboundMessageFullBody(input: {
       connectionStatus: true,
       email: true,
       emailNormalized: true,
+      workspaceRemovedAt: true,
     },
   });
   if (!mailbox) {
@@ -92,6 +93,14 @@ export async function fetchInboundMessageFullBody(input: {
       ok: false,
       errorCode: "MAILBOX_NOT_FOUND",
       error: "The mailbox for this message is no longer linked to this workspace.",
+    };
+  }
+  if (mailbox.workspaceRemovedAt) {
+    return {
+      ok: false,
+      errorCode: "MAILBOX_REMOVED_FROM_WORKSPACE",
+      error:
+        "This mailbox was removed from the workspace. We keep the message preview, but we do not fetch full bodies for removed mailboxes. Restore the mailbox to fetch the full text.",
     };
   }
   if (mailbox.connectionStatus !== "CONNECTED") {

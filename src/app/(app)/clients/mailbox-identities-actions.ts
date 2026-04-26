@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { isValidEmailFormat, normalizeEmail } from "@/lib/normalize";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -84,6 +85,20 @@ export async function createClientMailboxIdentity(
     return { ok: false, error: "Enter a valid email address." };
   }
 
+  const emailDupe = await prisma.clientMailboxIdentity.findFirst({
+    where: { clientId: data.data.clientId, emailNormalized },
+  });
+  if (emailDupe) {
+    if (emailDupe.workspaceRemovedAt) {
+      return {
+        ok: false,
+        error:
+          "This email was removed from the workspace. Open Mailboxes, show removed mailboxes, and click Restore — then run Connect if needed.",
+      };
+    }
+    return { ok: false, error: "A mailbox with this email already exists for this client." };
+  }
+
   assertPrimaryRequiresActive(data.data.isPrimary, data.data.isActive);
 
   const now = new Date();
@@ -92,7 +107,11 @@ export async function createClientMailboxIdentity(
   try {
     await prisma.$transaction(async (tx) => {
       const activeCount = await tx.clientMailboxIdentity.count({
-        where: { clientId: data.data.clientId, isActive: true },
+        where: {
+          clientId: data.data.clientId,
+          isActive: true,
+          workspaceRemovedAt: null,
+        },
       });
       if (data.data.isActive) {
         assertActiveMailboxLimit(activeCount, true);
@@ -176,11 +195,15 @@ export async function updateClientMailboxIdentity(
       if (!existing) {
         throw new Error("Mailbox not found.");
       }
+      if (isMailboxRemovedFromWorkspace(existing)) {
+        throw new Error("This mailbox was removed from the workspace. Restore it before editing.");
+      }
 
       const activeCount = await tx.clientMailboxIdentity.count({
         where: {
           clientId: data.data.clientId,
           isActive: true,
+          workspaceRemovedAt: null,
           id: { not: existing.id },
         },
       });
@@ -257,6 +280,9 @@ export async function setClientMailboxPrimary(
         where: { id: mailboxId, clientId },
       });
       if (!row) throw new Error("Mailbox not found.");
+      if (isMailboxRemovedFromWorkspace(row)) {
+        throw new Error("Removed mailboxes cannot be primary. Restore the mailbox first.");
+      }
       if (!row.isActive) throw new Error("Primary mailbox must be active.");
 
       await tx.clientMailboxIdentity.updateMany({
@@ -279,5 +305,202 @@ export async function setClientMailboxPrimary(
   }
 
   revalidatePath(`/clients/${clientId}`);
+  return { ok: true };
+}
+
+const removeFromWorkspaceSchema = z.object({
+  clientId: z.string().min(1),
+  mailboxId: z.string().min(1),
+  note: z.string().max(2000).optional().nullable(),
+});
+
+export async function removeClientMailboxFromWorkspace(
+  raw: z.infer<typeof removeFromWorkspaceSchema>,
+): Promise<MailboxActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  const data = removeFromWorkspaceSchema.safeParse(raw);
+  if (!data.success) {
+    return { ok: false, error: data.error.issues[0]?.message ?? "Invalid input" };
+  }
+  try {
+    await requireClientMailboxMutator(staff, data.data.clientId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
+  }
+
+  const noteTrim = data.data.note?.trim() || null;
+  const clientId = data.data.clientId;
+  const mailboxId = data.data.mailboxId;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.clientMailboxIdentity.findFirst({
+        where: { id: mailboxId, clientId },
+      });
+      if (!existing) {
+        throw new Error("Mailbox not found.");
+      }
+      if (isMailboxRemovedFromWorkspace(existing)) {
+        throw new Error("This mailbox is already removed from the workspace.");
+      }
+
+      await tx.mailboxSendReservation.updateMany({
+        where: { mailboxIdentityId: existing.id, status: "RESERVED" },
+        data: { status: "RELEASED" },
+      });
+
+      await tx.mailboxIdentitySecret.deleteMany({ where: { mailboxIdentityId: existing.id } });
+
+      const wasPrimary = existing.isPrimary;
+
+      if (wasPrimary) {
+        await tx.clientMailboxIdentity.updateMany({
+          where: { clientId, isPrimary: true },
+          data: { isPrimary: false },
+        });
+        const nextPrimary = await tx.clientMailboxIdentity.findFirst({
+          where: {
+            clientId,
+            id: { not: existing.id },
+            workspaceRemovedAt: null,
+            isActive: true,
+            connectionStatus: "CONNECTED",
+            canSend: true,
+            isSendingEnabled: true,
+          },
+          orderBy: { emailNormalized: "asc" },
+        });
+        if (nextPrimary) {
+          await tx.clientMailboxIdentity.update({
+            where: { id: nextPrimary.id },
+            data: { isPrimary: true },
+          });
+        }
+      }
+
+      await tx.clientMailboxIdentity.update({
+        where: { id: existing.id },
+        data: {
+          workspaceRemovedAt: new Date(),
+          workspaceRemovedById: staff.id,
+          workspaceRemovedNote: noteTrim,
+          isActive: false,
+          isPrimary: false,
+          isSendingEnabled: false,
+          canSend: false,
+          canReceive: false,
+          connectionStatus: "DISCONNECTED",
+          oauthState: null,
+          oauthStateExpiresAt: null,
+          providerLinkedUserId: null,
+          connectedAt: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          staffUserId: staff.id,
+          clientId,
+          action: "UPDATE",
+          entityType: "ClientMailboxIdentity",
+          entityId: existing.id,
+          metadata: {
+            kind: "mailbox_workspace_removed",
+            email: existing.emailNormalized,
+            provider: existing.provider,
+            wasPrimary,
+            note: noteTrim,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Remove failed" };
+  }
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}/mailboxes`);
+  return { ok: true };
+}
+
+const restoreToWorkspaceSchema = z.object({
+  clientId: z.string().min(1),
+  mailboxId: z.string().min(1),
+});
+
+export async function restoreClientMailboxToWorkspace(
+  raw: z.infer<typeof restoreToWorkspaceSchema>,
+): Promise<MailboxActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  const data = restoreToWorkspaceSchema.safeParse(raw);
+  if (!data.success) {
+    return { ok: false, error: data.error.issues[0]?.message ?? "Invalid input" };
+  }
+  try {
+    await requireClientMailboxMutator(staff, data.data.clientId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
+  }
+
+  const clientId = data.data.clientId;
+  const mailboxId = data.data.mailboxId;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.clientMailboxIdentity.findFirst({
+        where: { id: mailboxId, clientId },
+      });
+      if (!existing) {
+        throw new Error("Mailbox not found.");
+      }
+      if (!isMailboxRemovedFromWorkspace(existing)) {
+        throw new Error("This mailbox is not removed. Nothing to restore.");
+      }
+
+      const otherActive = await tx.clientMailboxIdentity.count({
+        where: {
+          clientId,
+          isActive: true,
+          workspaceRemovedAt: null,
+          id: { not: existing.id },
+        },
+      });
+      assertActiveMailboxLimit(otherActive, true);
+
+      await tx.clientMailboxIdentity.update({
+        where: { id: existing.id },
+        data: {
+          workspaceRemovedAt: null,
+          workspaceRemovedById: null,
+          workspaceRemovedNote: null,
+          isActive: true,
+          canSend: true,
+          canReceive: true,
+          isSendingEnabled: true,
+          connectionStatus: "DISCONNECTED",
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          staffUserId: staff.id,
+          clientId,
+          action: "UPDATE",
+          entityType: "ClientMailboxIdentity",
+          entityId: existing.id,
+          metadata: {
+            kind: "mailbox_workspace_restored",
+            email: existing.emailNormalized,
+            provider: existing.provider,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Restore failed" };
+  }
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}/mailboxes`);
   return { ok: true };
 }
