@@ -22,10 +22,16 @@ import {
   type MailboxSignatureActionResult,
 } from "@/app/(app)/clients/mailbox-signature-actions";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
+import { buildMailboxSignatureSendPreview } from "@/lib/mailboxes/mailbox-signature-send-preview";
 import {
   buildSenderSignatureViewModel,
+  chooseSignatureForSend,
   type SenderSignatureClientBriefFallback,
 } from "@/lib/mailboxes/sender-signature";
+import {
+  getOperatorSignatureState,
+  humanizeSignatureSource,
+} from "@/lib/mailboxes/signature-operator-state";
 import {
   computePoolDailyMax,
   countConnectedMailboxes,
@@ -33,7 +39,6 @@ import {
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
   MAX_CONNECTED_MAILBOXES,
-  operatorSignatureTableLabel,
 } from "@/lib/mailboxes/mailboxes-operator-model";
 import type { SenderReadinessReport } from "@/lib/sender-readiness";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,6 +66,21 @@ import {
   DEFAULT_MAILBOX_DAILY_SEND_CAP,
   isMailboxSendingEligible,
 } from "@/lib/mailbox-identities";
+import type { SenderSignatureMailbox } from "@/lib/mailboxes/sender-signature";
+
+function toSenderMailbox(row: MailboxIdentityRow): SenderSignatureMailbox {
+  return {
+    provider: row.provider,
+    email: row.email,
+    displayName: row.displayName,
+    senderDisplayName: row.senderDisplayName,
+    senderSignatureHtml: row.senderSignatureHtml,
+    senderSignatureText: row.senderSignatureText,
+    senderSignatureSource: row.senderSignatureSource,
+    senderSignatureSyncedAt: row.senderSignatureSyncedAt,
+    senderSignatureSyncError: row.senderSignatureSyncError,
+  };
+}
 
 export type MailboxIdentityRow = {
   id: string;
@@ -251,6 +271,7 @@ export function ClientMailboxIdentitiesPanel({
   const [editRow, setEditRow] = useState<MailboxIdentityRow | null>(null);
   const [signatureEditRow, setSignatureEditRow] =
     useState<MailboxIdentityRow | null>(null);
+  const [previewRow, setPreviewRow] = useState<MailboxIdentityRow | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<MailboxIdentityRow | null>(null);
   const [removeNote, setRemoveNote] = useState("");
@@ -752,66 +773,102 @@ export function ClientMailboxIdentitiesPanel({
               <TableHeader>
                 <TableRow>
                   <TableHead>Mailbox</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Readiness</TableHead>
+                  <TableHead className="min-w-[7rem]">Source</TableHead>
                   <TableHead className="w-[1%] whitespace-nowrap">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {activeRows.map((row, i) => {
                   const vm = signatureViewModels[i]!;
-                  const sig = operatorSignatureTableLabel(row, vm);
+                  const selection = chooseSignatureForSend({
+                    mailbox: toSenderMailbox(row),
+                    clientBrief: clientBriefFallback,
+                  });
+                  const opState = getOperatorSignatureState(row, vm, selection);
                   return (
                     <TableRow key={`sig-${row.id}`}>
                       <TableCell className="align-top text-sm break-all max-w-[14rem]">
                         <div className="font-medium">{row.email}</div>
-                        <div className="text-xs text-muted-foreground">{vm.resolvedDisplayName}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.connectionStatus === "CONNECTED" ? (
+                            <span className="text-emerald-800 dark:text-emerald-200">Connected</span>
+                          ) : (
+                            <span className="text-amber-800 dark:text-amber-200">Not connected</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {vm.resolvedDisplayName}
+                        </div>
                       </TableCell>
-                      <TableCell className="align-top text-sm">
-                        <div>{sig.label}</div>
+                      <TableCell className="align-top text-sm max-w-[12rem]">
+                        <div className="font-medium text-foreground leading-snug">
+                          {opState.label}
+                        </div>
                         {vm.syncError ? (
-                          <div className="mt-1 text-xs text-destructive" title={vm.syncError}>
-                            Sync issue — see Advanced details for the full message.
+                          <div
+                            className="mt-1 text-xs text-destructive"
+                            title={vm.syncError}
+                          >
+                            Sync error — use Preview or Advanced details to review.
                           </div>
                         ) : null}
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {opState.recommendedAction}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top text-sm text-muted-foreground">
+                        {humanizeSignatureSource(selection.source)}
                       </TableCell>
                       <TableCell className="align-top">
-                        {canMutate ? (
-                          <div className="flex flex-wrap justify-end gap-1">
-                            {row.provider === "GOOGLE" ? (
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="secondary"
+                            disabled={pending}
+                            onClick={() => {
+                              setPreviewRow(row);
+                            }}
+                          >
+                            Preview signature
+                          </Button>
+                          {canMutate ? (
+                            <>
+                              {row.provider === "GOOGLE" ? (
+                                <Button
+                                  size="xs"
+                                  variant="outline"
+                                  disabled={
+                                    pending ||
+                                    !row.isActive ||
+                                    row.connectionStatus !== "CONNECTED"
+                                  }
+                                  title={
+                                    row.connectionStatus !== "CONNECTED"
+                                      ? "Connect this mailbox first."
+                                      : undefined
+                                  }
+                                  onClick={() =>
+                                    runSignature(async () =>
+                                      syncMailboxSignatureAction(clientId, row.id),
+                                    )
+                                  }
+                                >
+                                  Sync from Gmail
+                                </Button>
+                              ) : null}
                               <Button
                                 size="xs"
-                                variant="secondary"
-                                disabled={
-                                  pending ||
-                                  !row.isActive ||
-                                  row.connectionStatus !== "CONNECTED"
-                                }
-                                title={
-                                  row.connectionStatus !== "CONNECTED"
-                                    ? "Connect this mailbox first."
-                                    : undefined
-                                }
-                                onClick={() =>
-                                  runSignature(async () =>
-                                    syncMailboxSignatureAction(clientId, row.id),
-                                  )
-                                }
+                                variant="outline"
+                                disabled={pending}
+                                onClick={() => setSignatureEditRow(row)}
                               >
-                                Sync from Gmail
+                                Set signature
                               </Button>
-                            ) : null}
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              disabled={pending}
-                              onClick={() => setSignatureEditRow(row)}
-                            >
-                              Set signature
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">View only</span>
-                        )}
+                            </>
+                          ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -825,15 +882,93 @@ export function ClientMailboxIdentitiesPanel({
             </summary>
             <div className="mt-2 space-y-2 text-xs text-muted-foreground leading-relaxed">
               <p>
-                Gmail: when you use <strong>Sync from Gmail</strong>, the send-as
-                signature is pulled from Google. Microsoft 365: set the
-                signature in ODoutreach (Outlook is not read automatically). A
-                missing mailbox signature may use a short client-level fallback
-                when one is configured. Production sends add consent text after
-                the signature.
+                Gmail: <strong>Sync from Gmail</strong> copies the send-as
+                signature from Google. Microsoft 365: you must <strong>set
+                the signature in ODoutreach</strong> — Outlook is not read
+                automatically. Use <strong>Preview signature</strong> to confirm
+                the text and see where the compliant unsubscribe line is
+                added (no email is sent in preview). If no mailbox signature
+                exists, a short client-level brief may be used as a last-resort
+                fallback when the pipeline allows.
               </p>
             </div>
           </details>
+          <Sheet
+            open={previewRow !== null}
+            onOpenChange={(o) => {
+              if (!o) setPreviewRow(null);
+            }}
+          >
+            <SheetContent
+              side="right"
+              className="w-full max-w-md sm:max-w-lg overflow-y-auto"
+            >
+              {previewRow ? (
+                (() => {
+                  const mb = toSenderMailbox(previewRow);
+                  const pvm = buildSenderSignatureViewModel(mb, clientBriefFallback);
+                  const preview = buildMailboxSignatureSendPreview({
+                    mailbox: mb,
+                    clientBrief: clientBriefFallback,
+                  });
+                  const pstate = getOperatorSignatureState(
+                    previewRow,
+                    pvm,
+                    preview.selection,
+                  );
+                  return (
+                    <>
+                      <SheetHeader>
+                        <SheetTitle>Signature preview (no email sent)</SheetTitle>
+                        <SheetDescription>
+                          {previewRow.email} — {pstate.shortDescription}
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="mt-4 space-y-3 px-1 pb-2 text-sm">
+                        <p>
+                          <span className="font-medium text-foreground">Readiness:</span>{" "}
+                          {pstate.label}
+                        </p>
+                        <p>
+                          <span className="font-medium text-foreground">Pipeline source:</span>{" "}
+                          {humanizeSignatureSource(preview.selection.source)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {preview.footnote}
+                        </p>
+                        <div>
+                          <p className="text-xs font-medium text-foreground">
+                            Signature block + compliance footer (plain text)
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            The unsubscribe line is always appended <strong>after</strong> the
+                            signature (same order as a real send; sample URL
+                            only).
+                          </p>
+                          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-muted/30 p-2 text-xs leading-relaxed text-foreground">
+                            {preview.bodyPlain}
+                          </pre>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {pstate.recommendedAction}
+                        </p>
+                      </div>
+                      <SheetFooter className="mt-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full sm:w-auto"
+                          onClick={() => setPreviewRow(null)}
+                        >
+                          Close
+                        </Button>
+                      </SheetFooter>
+                    </>
+                  );
+                })()
+              ) : null}
+            </SheetContent>
+          </Sheet>
         </div>
       ) : null}
 
