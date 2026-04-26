@@ -24,14 +24,16 @@ export type MicrosoftGraphMessage = {
 const PREVIEW_MAX = 4000;
 
 /**
- * Fetches the most recent inbox messages for the signed-in Graph user (delegated token).
+ * Fetches the most recent inbox messages for a **declared** workspace mailbox (delegated token).
  */
 export async function listMicrosoftGraphInboxMessages(
   accessToken: string,
+  mailboxUserPrincipalName: string,
   options: { top?: number } = {},
 ): Promise<MicrosoftGraphMessage[]> {
   const top = Math.min(Math.max(options.top ?? 25, 1), 50);
-  const url = new URL(`${GRAPH}/me/mailFolders/inbox/messages`);
+  const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
+  const url = new URL(`${GRAPH}/users/${userSeg}/mailFolders/inbox/messages`);
   url.searchParams.set("$top", String(top));
   url.searchParams.set("$orderby", "receivedDateTime desc");
   url.searchParams.set(

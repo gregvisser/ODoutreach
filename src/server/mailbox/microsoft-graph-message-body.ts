@@ -40,9 +40,10 @@ export type FetchMicrosoftMessageBodyResult =
  */
 export async function fetchMicrosoftInboundMessageFullBody(input: {
   accessToken: string;
+  mailboxUserPrincipalName: string;
   providerMessageId: string;
 }): Promise<FetchMicrosoftMessageBodyResult> {
-  const { accessToken, providerMessageId } = input;
+  const { accessToken, mailboxUserPrincipalName, providerMessageId } = input;
   if (!accessToken) {
     return { ok: false, error: "Missing access token", errorCode: "no_token" };
   }
@@ -53,8 +54,9 @@ export async function fetchMicrosoftInboundMessageFullBody(input: {
       errorCode: "no_message_id",
     };
   }
+  const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
   const url = new URL(
-    `${GRAPH}/me/messages/${encodeURIComponent(providerMessageId)}`,
+    `${GRAPH}/users/${userSeg}/messages/${encodeURIComponent(providerMessageId)}`,
   );
   url.searchParams.set(
     "$select",

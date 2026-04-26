@@ -84,6 +84,7 @@ export async function fetchInboundMessageFullBody(input: {
       provider: true,
       connectionStatus: true,
       email: true,
+      emailNormalized: true,
     },
   });
   if (!mailbox) {
@@ -114,6 +115,7 @@ export async function fetchInboundMessageFullBody(input: {
     }
     const res = await fetchMicrosoftInboundMessageFullBody({
       accessToken,
+      mailboxUserPrincipalName: mailbox.emailNormalized,
       providerMessageId: message.providerMessageId,
     });
     if (!res.ok) {

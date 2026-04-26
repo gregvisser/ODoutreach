@@ -60,7 +60,7 @@ export type ReplyToInboundMessageResult =
  *   2. Mailbox must be ACTIVE, CONNECTED, can send, sending-enabled.
  *   3. Recipient must not be in the client's suppression list.
  *   4. Ledger reservation acquired before the provider call (30/day cap).
- *   5. Provider replies via `/me/messages/{id}/reply` (Microsoft) or
+ *   5. Provider replies via `/users/{mailbox}/messages/{id}/reply` (Microsoft) or
  *      `users.messages.send` with `threadId` (Gmail) so the reply joins
  *      the original thread.
  *   6. On provider success: OutboundEmail marked `SENT`, reservation
@@ -237,6 +237,7 @@ export async function replyToInboundMailboxMessage(
       );
       const result = await sendMicrosoftGraphReply({
         accessToken,
+        mailboxUserPrincipalName: mailbox.emailNormalized,
         providerMessageId: message.providerMessageId,
         bodyText: body,
         correlationId,

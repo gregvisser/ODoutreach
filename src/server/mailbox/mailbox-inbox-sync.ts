@@ -75,7 +75,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
 
   let items: Awaited<ReturnType<typeof listMicrosoftGraphInboxMessages>>;
   try {
-    items = await listMicrosoftGraphInboxMessages(access, { top });
+    items = await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, { top });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Graph fetch failed";
     const now = new Date();

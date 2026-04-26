@@ -25,8 +25,11 @@ See `.env.example` for:
 
 1. Create a mailbox row on the client page (draft identity, pick provider and email).
 2. Ensure env vars and provider registrations are in place; then click **Connect** (or **Reconnect**).
-3. Complete sign-in at Microsoft or Google as the **same mailbox user** as the row email.
-4. On success, status becomes **Connected**; **Disconnect** revokes stored credentials in the app (provider-side token revocation is not implemented in this slice).
+3. **Microsoft 365:** complete sign-in as a user who may act for that mailbox (often the mailbox itself, or a delegate with Full Access / Send As). The Entra app must include delegated **`Mail.Read.Shared`** and **`Mail.Send.Shared`** (plus `Mail.Read` / `Mail.Send`) so Graph can use `/users/{mailbox}/…` for inbox, send, and reply.
+4. **Google Workspace:** complete sign-in as the Gmail user for that row unless your organisation has configured a delegation path that makes `users/{email}/profile` succeed for another actor (most tenants still use the mailbox account for 3-legged OAuth).
+5. On success, status becomes **Connected**; **Disconnect** removes stored credentials in the app (provider-side token revocation is not implemented in this slice).
+
+See `src/config/mailbox-connection-platform-rules.ts` for the in-repo product rules.
 
 ## Audit
 
