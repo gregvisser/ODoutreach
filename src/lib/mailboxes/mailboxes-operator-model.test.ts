@@ -6,6 +6,8 @@ import {
   countMailboxNeedsAttention,
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
+  MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
+  microsoftConnectionErrorSublabel,
   operatorSignatureTableLabel,
   type OperatorMailboxRow,
 } from "./mailboxes-operator-model";
@@ -47,9 +49,48 @@ describe("mailboxRowOperatorStatus", () => {
     const r1 = { ...base(), connectionStatus: "PENDING_CONNECTION" as const };
     expect(mailboxRowOperatorStatus(r1).label).toBe("Needs approval");
     const r2 = { ...base(), connectionStatus: "CONNECTION_ERROR" as const, provider: "MICROSOFT" as const };
-    expect(mailboxRowOperatorStatus(r2).sublabel).toContain("Microsoft 365");
+    expect(mailboxRowOperatorStatus(r2).sublabel).toBe(
+      MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
+    );
     const r3 = { ...base(), isSendingEnabled: false };
     expect(mailboxRowOperatorStatus(r3).label).toBe("Sending paused");
+  });
+
+  it("surfaces Microsoft Graph 404 hint for CONNECTION_ERROR without exposing raw lastError in sublabel", () => {
+    const msg =
+      "Microsoft sign-in (greg@opensdoors.co.uk) cannot open joe@opensdoors.co.uk in Microsoft Graph (HTTP 404). Provider detail: ...";
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: msg,
+    });
+    expect(s.sublabel).toBe(
+      "Microsoft Graph could not find or open this mailbox. Check it exists as an Exchange mailbox and that the connecting user has delegated access.",
+    );
+    expect(s.sublabel).not.toContain("Provider detail");
+  });
+
+  it("surfaces Microsoft Graph 403 hint for CONNECTION_ERROR", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: "Forbidden (HTTP 403) from Graph",
+    });
+    expect(s.sublabel).toBe(
+      "Microsoft Graph denied access. Grant delegated Full Access and Send As/Send on behalf, then reconnect.",
+    );
+  });
+
+  it("keeps Google CONNECTION_ERROR copy generic", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      provider: "GOOGLE",
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: "HTTP 404 should not map on Google row",
+    });
+    expect(s.sublabel).toBe(
+      "Connection did not complete. Reconnect and approve access in Google.",
+    );
   });
 
   it("does not use EMAIL_PROVIDER or global transport in labels", () => {
@@ -58,6 +99,37 @@ describe("mailboxRowOperatorStatus", () => {
     expect(t).not.toContain("EMAIL_PROVIDER");
     expect(t).not.toContain("Resend");
     expect(t).not.toContain("legacy");
+  });
+});
+
+describe("microsoftConnectionErrorSublabel", () => {
+  it("returns generic copy when lastError is empty", () => {
+    expect(microsoftConnectionErrorSublabel(null)).toBe(
+      MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
+    );
+    expect(microsoftConnectionErrorSublabel("")).toBe(
+      MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
+    );
+  });
+
+  it("maps OAuth access_denied", () => {
+    expect(
+      microsoftConnectionErrorSublabel(
+        "Microsoft OAuth: access_denied — user cancelled",
+      ),
+    ).toBe(
+      "Microsoft sign-in was declined or cancelled. Use Connect again and approve access, or ask your admin if consent is blocked.",
+    );
+  });
+
+  it("maps AADSTS admin consent style errors", () => {
+    expect(
+      microsoftConnectionErrorSublabel(
+        "Microsoft OAuth: AADSTS65001 — consent required from an administrator",
+      ),
+    ).toBe(
+      "Microsoft Entra may require admin approval for this app. Ask an admin to grant delegated permissions, then reconnect.",
+    );
   });
 });
 

@@ -51,6 +51,39 @@ export type OperatorMailboxStatus = {
   sublabel?: string;
 };
 
+/** Generic Microsoft connection-error hint when no mapped `lastError` pattern matches. */
+export const MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC =
+  "Connection did not complete. Reconnect and approve access in Microsoft 365." as const;
+
+/**
+ * Concise table sublabel for Microsoft `CONNECTION_ERROR` rows based on stored `lastError`.
+ * Full provider text remains in Advanced details only.
+ */
+export function microsoftConnectionErrorSublabel(
+  lastError: string | null | undefined,
+): string {
+  const err = lastError?.trim() ?? "";
+  if (!err) {
+    return MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC;
+  }
+  if (err.includes("HTTP 404")) {
+    return "Microsoft Graph could not find or open this mailbox. Check it exists as an Exchange mailbox and that the connecting user has delegated access.";
+  }
+  if (err.includes("HTTP 403")) {
+    return "Microsoft Graph denied access. Grant delegated Full Access and Send As/Send on behalf, then reconnect.";
+  }
+  if (/access_denied/i.test(err)) {
+    return "Microsoft sign-in was declined or cancelled. Use Connect again and approve access, or ask your admin if consent is blocked.";
+  }
+  if (
+    /\bAADSTS/i.test(err) &&
+    /consent|administrator|admin consent|requires an administrator/i.test(err)
+  ) {
+    return "Microsoft Entra may require admin approval for this app. Ask an admin to grant delegated permissions, then reconnect.";
+  }
+  return MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC;
+}
+
 export function mailboxRowOperatorStatus(
   row: OperatorMailboxRow,
 ): OperatorMailboxStatus {
@@ -66,7 +99,7 @@ export function mailboxRowOperatorStatus(
       label: "Connection failed",
       sublabel:
         row.provider === "MICROSOFT"
-          ? "Connection did not complete. Reconnect and approve access in Microsoft 365."
+          ? microsoftConnectionErrorSublabel(row.lastError)
           : "Connection did not complete. Reconnect and approve access in Google.",
     };
   }
