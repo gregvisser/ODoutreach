@@ -236,9 +236,9 @@ function buildSenderRow(
   brief: ClientSenderProfile,
   unsubscribeLink: string,
   /**
-   * Per-mailbox sender identity. When provided, the mailbox's configured
-   * signature/display name take priority over the brief fallback (PR —
-   * mailbox sender signatures, 2026-04-22).
+   * Per-mailbox sender identity. When provided, only mailbox-stored
+   * signature text/HTML is used — client-brief `emailSignature` is not
+   * applied as a fallback.
    */
   mailbox?: SenderSignatureMailbox | null,
 ) {
@@ -250,11 +250,8 @@ function buildSenderRow(
     const sel = chooseSignatureForSend({
       mailbox,
       clientBrief: {
-        senderDisplayNameFallback: client.name,
-        emailSignatureFallback:
-          brief.emailSignature && brief.emailSignature.length > 0
-            ? brief.emailSignature
-            : null,
+        senderDisplayNameFallback: null,
+        emailSignatureFallback: null,
       },
     });
     senderName = sel.senderDisplayName ?? client.name;

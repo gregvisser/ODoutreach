@@ -5,8 +5,7 @@
  *
  *   * `src/lib/mailboxes/sender-signature.test.ts` — direct unit tests
  *   * `src/components/clients/client-mailbox-identities-panel.tsx` — UI view model
- *   * `src/server/email-sequences/send-introduction.ts` and
- *     `src/server/email-sequences/step-sends.ts` — `chooseSignatureForSend`
+ *   * `src/server/email-sequences/send-introduction.ts` — `chooseSignatureForSend`
  *
  * We deliberately keep the HTML→text conversion tiny and defensive: the
  * sends today are plain-text MIME, so for composition we only need a
@@ -37,15 +36,17 @@ export type SenderSignatureMailbox = {
   senderSignatureSyncError: string | null;
 };
 
-/** Client-level brief fallback — the shape already returned by `getClientSenderProfile`. */
+/**
+ * Client-level brief fields (legacy). `emailSignatureFallback` is not used for
+ * mailbox-native send resolution — per-mailbox signature is required.
+ */
 export type SenderSignatureClientBriefFallback = {
   /**
-   * Brief-level sender display name — currently the workspace `client.name`
-   * is used as a generic fallback, but we keep this as a separate input so
-   * a future per-client signer name can slot in without changing callers.
+   * Optional display hint; not used for mailbox identity when mailbox fields
+   * are set (kept for callers that still pass the shape).
    */
   senderDisplayNameFallback: string | null;
-  /** `ClientSenderProfile.emailSignature` — brief-level text. */
+  /** Ignored for mailbox send/preview; do not use as a signature body fallback. */
   emailSignatureFallback: string | null;
 };
 
@@ -76,9 +77,9 @@ export type SenderSignatureViewModel = {
 export const SENDER_SIGNATURE_STATUS: Record<SenderSignatureSource, string> = {
   gmail_send_as: "Synced from Gmail (send-as)",
   manual: "Set in OpensDoors",
-  client_brief_fallback: "Client brief (legacy) fallback",
+  client_brief_fallback: "Client brief (legacy) — not used for mailbox sends",
   unsupported_provider: "Microsoft 365: set in OpensDoors (no Outlook pull)",
-  missing: "Signature not configured",
+  missing: "None — mailbox signature required",
 };
 
 const HTML_BLOCK_TAGS = new Set([
@@ -192,20 +193,14 @@ function isoFrom(value: Date | string | null | undefined): string | null {
 function resolveSource(
   stored: string | null,
   hasText: boolean,
-  hasFallback: boolean,
   provider: "MICROSOFT" | "GOOGLE",
 ): SenderSignatureSource {
-  // Trust the stored tag when present AND the mailbox actually has text
-  // for it; if the tag says `gmail_send_as` but the text is empty, fall
-  // through to the fallback-or-missing branch.
   if (hasText) {
     if (stored === "gmail_send_as" || stored === "manual") {
       return stored;
     }
-    // Stored tag unknown but we have text — treat as manual.
     return "manual";
   }
-  if (hasFallback) return "client_brief_fallback";
   if (provider === "MICROSOFT") return "unsupported_provider";
   return "missing";
 }
@@ -214,9 +209,9 @@ export function buildSenderSignatureViewModel(
   mailbox: SenderSignatureMailbox,
   clientBrief: SenderSignatureClientBriefFallback,
 ): SenderSignatureViewModel {
+  void clientBrief;
   const mailboxText = trimOrNull(mailbox.senderSignatureText);
   const mailboxHtml = trimOrNull(mailbox.senderSignatureHtml);
-  const fallbackText = trimOrNull(clientBrief.emailSignatureFallback);
 
   const hasMailboxSignature =
     mailboxText !== null ||
@@ -224,21 +219,17 @@ export function buildSenderSignatureViewModel(
 
   const resolvedText = hasMailboxSignature
     ? (mailboxText ?? htmlSignatureToText(mailboxHtml ?? ""))
-    : (fallbackText ?? "");
+    : "";
 
   const source = resolveSource(
     mailbox.senderSignatureSource,
     hasMailboxSignature,
-    fallbackText !== null,
     mailbox.provider,
   );
 
-  // Display name priority: per-mailbox sender display, mailbox connection
-  // display, client-level fallback, bare email. Never returns empty.
   const resolvedDisplayName =
     trimOrNull(mailbox.senderDisplayName) ??
     trimOrNull(mailbox.displayName) ??
-    trimOrNull(clientBrief.senderDisplayNameFallback) ??
     mailbox.email;
 
   return {
@@ -260,22 +251,18 @@ export type SenderSignatureSelection = {
 };
 
 /**
- * Choose the sender display name + text signature for a send composition.
- *
- * Priority:
- *   1. Mailbox `senderSignatureText` (synced from Gmail or manually entered).
- *   2. Mailbox `senderSignatureHtml` converted to text on the fly.
- *   3. Client brief `emailSignature`.
- *   4. Missing.
+ * Choose the sender display name + text signature for mailbox-native sends.
+ * Uses mailbox-owned text/HTML only. Client-brief `emailSignature` is never
+ * used as a body fallback (avoids the wrong person’s name on a mailbox).
  */
 export function chooseSignatureForSend(params: {
   mailbox: SenderSignatureMailbox;
   clientBrief: SenderSignatureClientBriefFallback;
 }): SenderSignatureSelection {
   const { mailbox, clientBrief } = params;
+  void clientBrief;
   const mailboxText = trimOrNull(mailbox.senderSignatureText);
   const mailboxHtml = trimOrNull(mailbox.senderSignatureHtml);
-  const fallbackText = trimOrNull(clientBrief.emailSignatureFallback);
 
   let emailSignatureText: string | null = null;
   let source: SenderSignatureSource;
@@ -294,25 +281,17 @@ export function chooseSignatureForSend(params: {
         mailbox.senderSignatureSource === "gmail_send_as"
           ? "gmail_send_as"
           : "manual";
-    } else if (fallbackText !== null) {
-      emailSignatureText = fallbackText;
-      source = "client_brief_fallback";
     } else {
       source =
         mailbox.provider === "MICROSOFT" ? "unsupported_provider" : "missing";
     }
-  } else if (fallbackText !== null) {
-    emailSignatureText = fallbackText;
-    source = "client_brief_fallback";
   } else {
     source =
       mailbox.provider === "MICROSOFT" ? "unsupported_provider" : "missing";
   }
 
   const senderDisplayName =
-    trimOrNull(mailbox.senderDisplayName) ??
-    trimOrNull(mailbox.displayName) ??
-    trimOrNull(clientBrief.senderDisplayNameFallback);
+    trimOrNull(mailbox.senderDisplayName) ?? trimOrNull(mailbox.displayName);
 
   return {
     senderDisplayName,

@@ -890,9 +890,8 @@ export function ClientMailboxIdentitiesPanel({
                 the signature in ODoutreach</strong> — Outlook is not read
                 automatically. Use <strong>Preview signature</strong> to confirm
                 the text and see where the compliant unsubscribe line is
-                added (no email is sent in preview). If no mailbox signature
-                exists, a short client-level brief may be used as a last-resort
-                fallback when the pipeline allows.
+                added (no email is sent in preview).                 Production sends use per-mailbox signatures only — a client
+                brief does not fill in a missing mailbox signature.
               </p>
             </div>
           </details>

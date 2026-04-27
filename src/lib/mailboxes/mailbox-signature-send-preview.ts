@@ -35,7 +35,7 @@ export type MailboxSignatureSendPreview = {
 };
 
 const PLACEHOLDER_NO_SIG =
-  "No per-mailbox signature is available for this address yet. Set one in ODoutreach, sync from Gmail (Google) where supported, or configure a client-level brief so sends can still include a compliant footer when allowed.";
+  "No mailbox signature configured. This mailbox does not have its own signature yet. Add a per-mailbox signature so outreach sent from this mailbox matches the sender identity.";
 
 /**
  * Pure, no-send, no-IO: build the final plain-text “signature + unsubscribe
@@ -48,21 +48,27 @@ export function buildMailboxSignatureSendPreview(input: {
 }): MailboxSignatureSendPreview {
   const selection = chooseSignatureForSend(input);
   const text = selection.emailSignatureText?.trim() ?? "";
-  const base = text.length > 0 ? text : PLACEHOLDER_NO_SIG;
+  const hasSig = text.length > 0;
+  const base = hasSig ? text : PLACEHOLDER_NO_SIG;
   const withFooter = ensureUnsubscribeLinkInPlainTextBody(
     base,
     MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
   );
 
+  const baseFootnote =
+    "This preview does not send email, create tokens, or change data. " +
+    "In production, the line after your signature includes a real unsubscribe link per message (unique URL, not the sample above). " +
+    "The unsubscribe line is always added after the signature in the same way shown here.";
+
   return {
     selection,
-    signatureTextUsed: text.length > 0 ? text : null,
+    signatureTextUsed: hasSig ? text : null,
     bodyPlain: withFooter,
     sampleUnsubscribeUrl: MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
     isPreview: true,
-    footnote:
-      "This preview does not send email, create tokens, or change data. " +
-      "In production, the line after your signature includes a real unsubscribe link per message (unique URL, not the sample above). " +
-      "The unsubscribe line is always added after the signature in the same way shown here.",
+    footnote: hasSig
+      ? baseFootnote
+      : "The unsubscribe footer will be added after the mailbox signature once one is configured. " +
+        baseFootnote,
   };
 }

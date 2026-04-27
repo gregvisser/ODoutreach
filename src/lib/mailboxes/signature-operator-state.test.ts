@@ -94,15 +94,15 @@ describe("getOperatorSignatureState", () => {
     expect(s.sendReadyFromSignature).toBe(true);
   });
 
-  it("uses warning_fallback when only client brief supplies text", () => {
+  it("returns missing when only client brief has text (not used for mailbox identity)", () => {
     const r = row();
     const mb = mbox();
     const vm = buildSenderSignatureViewModel(mb, brief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
     const s = getOperatorSignatureState(r, vm, sel);
-    expect(sel.source).toBe("client_brief_fallback");
-    expect(s.kind).toBe("warning_fallback");
-    expect(s.sendReadyFromSignature).toBe(true);
+    expect(sel.source).toBe("unsupported_provider");
+    expect(s.kind).toBe("missing");
+    expect(s.sendReadyFromSignature).toBe(false);
   });
 
   it("returns missing with no text and no fallback (Microsoft)", () => {

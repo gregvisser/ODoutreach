@@ -97,11 +97,11 @@ describe("buildSenderSignatureViewModel", () => {
     expect(SENDER_SIGNATURE_STATUS[vm.source]).toBe("Synced from Gmail (send-as)");
   });
 
-  it("falls back to the brief signature when mailbox is empty", () => {
+  it("does not use the brief as signature text when mailbox is empty", () => {
     const vm = buildSenderSignatureViewModel(makeMailbox(), fallback);
     expect(vm.hasMailboxSignature).toBe(false);
-    expect(vm.resolvedSignatureText).toBe("-- \nBidlow Team");
-    expect(vm.source).toBe("client_brief_fallback");
+    expect(vm.resolvedSignatureText).toBe("");
+    expect(vm.source).toBe("missing");
   });
 
   it("reports unsupported for Microsoft when nothing is set anywhere", () => {
@@ -125,7 +125,7 @@ describe("buildSenderSignatureViewModel", () => {
     expect(vm.automaticSyncSupported).toBe(true);
   });
 
-  it("resolves display name from mailbox > brief > email", () => {
+  it("resolves display name from mailbox > connection label > email (no client brief for identity)", () => {
     const a = buildSenderSignatureViewModel(
       makeMailbox({ senderDisplayName: "Greg (mailbox)" }),
       fallback,
@@ -133,7 +133,7 @@ describe("buildSenderSignatureViewModel", () => {
     expect(a.resolvedDisplayName).toBe("Greg (mailbox)");
 
     const b = buildSenderSignatureViewModel(makeMailbox(), fallback);
-    expect(b.resolvedDisplayName).toBe("Bidlow Client");
+    expect(b.resolvedDisplayName).toBe("sender@example.com");
 
     const c = buildSenderSignatureViewModel(makeMailbox(), {
       senderDisplayNameFallback: null,
@@ -183,13 +183,13 @@ describe("chooseSignatureForSend", () => {
     expect(sel.source).toBe("gmail_send_as");
   });
 
-  it("falls back to brief when mailbox is empty", () => {
+  it("returns no signature when mailbox is empty (ignores client brief text)", () => {
     const sel = chooseSignatureForSend({
       mailbox: makeMailbox(),
       clientBrief: fallback,
     });
-    expect(sel.emailSignatureText).toBe("Brief signature");
-    expect(sel.source).toBe("client_brief_fallback");
+    expect(sel.emailSignatureText).toBeNull();
+    expect(sel.source).toBe("missing");
   });
 
   it("reports unsupported_provider for Microsoft when nothing is set anywhere", () => {
@@ -210,6 +210,18 @@ describe("chooseSignatureForSend", () => {
       clientBrief: {
         senderDisplayNameFallback: null,
         emailSignatureFallback: null,
+      },
+    });
+    expect(sel.emailSignatureText).toBeNull();
+    expect(sel.source).toBe("missing");
+  });
+
+  it("does not use client brief text as Google mailbox signature when mailbox is empty", () => {
+    const sel = chooseSignatureForSend({
+      mailbox: makeMailbox({ provider: "GOOGLE" }),
+      clientBrief: {
+        senderDisplayNameFallback: "Client",
+        emailSignatureFallback: "Other person signature",
       },
     });
     expect(sel.emailSignatureText).toBeNull();

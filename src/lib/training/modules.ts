@@ -860,7 +860,7 @@ const outreachModule: TrainingModule = {
   whatGoodLooksLike: [
     "The Introduction step is filled, placeholders resolve in preview, and any follow-ups you added are intentional — not a fixed five steps you did not need.",
     "Subject and body preview cleanly for a typical OpensDoors prospect — no stray brace, no unresolved placeholder.",
-    "Signature renders as expected in preview: the chosen sending mailbox's signature wins; the brief's signature is the fallback.",
+    "Signature renders as expected in preview: only the chosen sending mailbox's own signature is used — a client brief does not substitute for a missing mailbox signature.",
     "Launch readiness is clear before any real-prospect send: contacts, mailbox, timing, and compliance gates are satisfied.",
     "When you use the internal verification path, the message lands in the allowlisted inbox and matches what you saw in preview.",
   ],
@@ -902,7 +902,7 @@ const outreachModule: TrainingModule = {
   callout: {
     tone: "info",
     heading: "Signature resolution is mailbox-first",
-    body: "When a send goes out from elys@opensdoors.co.uk, the signature Elys carries on her mailbox wins. The brief-level signature only renders if the specific mailbox does not have one.",
+    body: "When a send goes out from elys@opensdoors.co.uk, only the signature stored on that mailbox is used. If none is configured, you add a per-mailbox signature first — the client brief is not applied as a stand-in.",
   },
   outcomes: [
     "You can open OpensDoors Friendly Introduction 1 and recognise every placeholder.",

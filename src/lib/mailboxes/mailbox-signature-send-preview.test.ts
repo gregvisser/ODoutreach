@@ -48,7 +48,8 @@ describe("buildMailboxSignatureSendPreview", () => {
       clientBrief: { senderDisplayNameFallback: null, emailSignatureFallback: null },
     });
     expect(p.signatureTextUsed).toBeNull();
-    expect(p.bodyPlain).toContain("Set one in ODoutreach");
+    expect(p.bodyPlain).toContain("No mailbox signature configured");
+    expect(p.footnote).toMatch(/unsubscribe footer will be added after the mailbox signature/i);
     expect(p.bodyPlain).toContain(MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL);
   });
 
@@ -56,5 +57,20 @@ describe("buildMailboxSignatureSendPreview", () => {
     const p = buildMailboxSignatureSendPreview({ mailbox: mbox(), clientBrief: brief });
     expect(p.bodyPlain).toContain(MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL);
     expect(p.bodyPlain).not.toMatch(/token=[a-z0-9]{20,}/i);
+  });
+
+  it("does not inject client brief signature when mailbox has no per-mailbox signature", () => {
+    const p = buildMailboxSignatureSendPreview({
+      mailbox: mbox({
+        senderSignatureText: null,
+        senderSignatureSource: null,
+      }),
+      clientBrief: {
+        senderDisplayNameFallback: "Someone else",
+        emailSignatureFallback: "Joe McKevitt\nVP",
+      },
+    });
+    expect(p.bodyPlain).not.toContain("Joe McKevitt");
+    expect(p.selection.source).toBe("unsupported_provider");
   });
 });
