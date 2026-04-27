@@ -1,5 +1,5 @@
-/** Operator must type this exactly (case-sensitive) to queue a controlled pilot batch. */
-export const CONTROLLED_PILOT_CONFIRMATION_PHRASE = "SEND PILOT";
+/** Operator must type this exactly (case-sensitive) to queue a limited first batch. */
+export const CONTROLLED_PILOT_CONFIRMATION_PHRASE = "CONFIRM LIMITED BATCH";
 
 /** Default max recipients shown in UI (operator can request up to hard max). */
 export const CONTROLLED_PILOT_DEFAULT_MAX_RECIPIENTS = 5;

@@ -802,7 +802,7 @@ const outreachModule: TrainingModule = {
   title: "Outreach — templates and sequences",
   tagline: "Build OpensDoors Friendly Introduction 1 into a production sequence you can launch.",
   purpose:
-    "The Outreach tab is where templates and sequences are built, launch readiness is checked, and you choose contacts, sending mailbox, intro timing, and optional follow-ups. Sequences need an Introduction step; follow-ups are added only if you want them. Saving a template or sequence does not send email — scheduling and launch are separate actions. A small optional internal batch tool still exists for operators who use the SEND PILOT confirmation with strict limits.",
+    "The Outreach tab is where templates and sequences are built, launch readiness is checked, and you choose contacts, sending mailbox, intro timing, and optional follow-ups. Sequences need an Introduction step; follow-ups are added only if you want them. Saving a template or sequence does not send email — scheduling and launch are separate actions. A small optional limited-batch tool still exists for operators who type the exact confirmation phrase with strict limits.",
   details: [
     "Templates are scoped to a client and a category (Introduction, Follow-up 1–5). Sequences pick saved templates by category; you only need an Introduction to start, then use Add follow-up for additional steps when needed.",
     'The worked example template for OpensDoors is "OpensDoors Friendly Introduction 1". Study its placeholders — it uses {{first_name}}, {{company_name}} and {{email_signature}} and that is exactly what every downstream send depends on.',
@@ -854,7 +854,7 @@ const outreachModule: TrainingModule = {
     {
       title: "Optional: internal verification or limited first batch",
       detail:
-        "For internal checks, use the governed test send to an allowlisted address. A separate small-batch tool with SEND PILOT confirmation exists for a capped first run; production sequence launches use the main path above.",
+        "For internal layout checks, use internal verification to an allowlisted address. A separate small-batch path uses a typed confirmation phrase for a capped first run; production sequence launches use the main path above.",
     },
   ],
   whatGoodLooksLike: [

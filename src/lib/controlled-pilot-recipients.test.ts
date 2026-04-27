@@ -43,6 +43,6 @@ describe("parsePilotRecipientLines", () => {
 
 describe("controlled pilot confirmation phrase", () => {
   it("is stable for operator docs", () => {
-    expect(CONTROLLED_PILOT_CONFIRMATION_PHRASE).toBe("SEND PILOT");
+    expect(CONTROLLED_PILOT_CONFIRMATION_PHRASE).toBe("CONFIRM LIMITED BATCH");
   });
 });

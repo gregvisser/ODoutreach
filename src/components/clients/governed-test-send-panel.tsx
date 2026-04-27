@@ -40,7 +40,7 @@ export function GovernedTestSendPanel({
     if (!addr) {
       setMessage({
         type: "err",
-        text: "Enter the exact internal test recipient address (allowlisted domain only).",
+        text: "Enter the exact internal verification recipient address (allowlisted domain only).",
       });
       return;
     }
@@ -68,21 +68,21 @@ export function GovernedTestSendPanel({
     return (
       <p className="text-sm text-muted-foreground">
         Connect a Microsoft 365 or Google Workspace sending mailbox and ensure it is eligible
-        (connected, sending allowed) to run the governed test send.
+        (connected, sending allowed) to run the internal verification send.
       </p>
     );
   }
 
   if (!canMutate) {
     return (
-      <p className="text-sm text-muted-foreground">You do not have permission to queue this test.</p>
+      <p className="text-sm text-muted-foreground">You do not have permission to queue this verification send.</p>
     );
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <div className="space-y-2">
-        <Label htmlFor="governed-test-to">Internal test recipient (allowlisted domain only)</Label>
+        <Label htmlFor="governed-test-to">Internal verification recipient (allowlisted domain only)</Label>
         <Input
           id="governed-test-to"
           type="email"
@@ -99,9 +99,9 @@ export function GovernedTestSendPanel({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={pending} size="sm" variant="secondary">
-          {pending ? "Queueing…" : "Send test email"}
+          {pending ? "Queueing…" : "Send verification email"}
         </Button>
-        <p className="text-xs text-muted-foreground">Subject and body are fixed; one governed send per action.</p>
+        <p className="text-xs text-muted-foreground">Subject and body are fixed; one verification send per action.</p>
       </div>
       {message ? (
         <p

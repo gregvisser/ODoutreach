@@ -60,11 +60,11 @@ export function ControlledPilotSendPanel({
   const [confirmation, setConfirmation] = useState("");
   const [recipients, setRecipients] = useState("");
   const [subject, setSubject] = useState(
-    initialSubject?.trim() || "Pilot — ODoutreach",
+    initialSubject?.trim() || "Limited batch — ODoutreach",
   );
   const [body, setBody] = useState(
     initialBody?.trim() ||
-      "Hello — this is a controlled pilot message from our workspace. Reply if you have questions.",
+      "Hello — this is a limited first batch message from our workspace. Reply if you have questions.",
   );
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -106,7 +106,7 @@ export function ControlledPilotSendPanel({
           /day. Total pooled capacity is connected eligible mailboxes × {prerequisites.perMailboxCap}/day.
           Recommended: up to {prerequisites.recommendedMaxConnectedMailboxes} connected mailboxes (theoretical
           max {prerequisites.theoreticalMaxDaily}/day when all {prerequisites.recommendedMaxConnectedMailboxes}{" "}
-          have remaining capacity). Fewer mailboxes do not block onboarding or pilot — you run with reduced
+          have remaining capacity). Fewer mailboxes do not block onboarding or this path — you run with reduced
           daily capacity until you add more (up to the recommended maximum).
         </p>
         <ul className="mt-2 list-inside list-disc space-y-1">
@@ -183,7 +183,7 @@ export function ControlledPilotSendPanel({
           </li>
         </ul>
         <p className="mt-2 text-xs text-foreground">
-          Controlled pilot uses a <strong>mailbox pool</strong> ({prerequisites.pilotAllocationMode}
+          The limited first batch path uses a <strong>mailbox pool</strong> ({prerequisites.pilotAllocationMode}
           ): each message reserves one slot on the best mailbox (most remaining / primary tie-break), up to{" "}
           {String(CONTROLLED_PILOT_HARD_MAX_RECIPIENTS)} recipients per run.
         </p>
@@ -194,10 +194,10 @@ export function ControlledPilotSendPanel({
       </div>
 
       {!canMutate ? (
-        <p className="text-sm text-muted-foreground">You do not have permission to queue pilot sends.</p>
+        <p className="text-sm text-muted-foreground">You do not have permission to queue a limited batch.</p>
       ) : !ready ? (
         <p className="text-sm text-muted-foreground">
-          Fix the prerequisites above before queueing a pilot batch.
+          Fix the prerequisites above before queueing a limited batch.
         </p>
       ) : (
         <form onSubmit={onSubmit} className="space-y-4">
@@ -255,7 +255,7 @@ export function ControlledPilotSendPanel({
             />
           </div>
           <Button type="submit" disabled={pending}>
-            {pending ? "Queueing…" : "Queue pilot batch"}
+            {pending ? "Queueing…" : "Queue limited batch"}
           </Button>
           {message ? (
             <p

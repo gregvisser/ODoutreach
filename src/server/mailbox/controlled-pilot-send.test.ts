@@ -83,14 +83,14 @@ describe("queueControlledPilotBatch", () => {
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.error).toMatch(/SEND PILOT/);
+    expect(r.error).toMatch(/CONFIRM LIMITED BATCH/);
   });
 
   it("blocks when no execution-eligible mailboxes", async () => {
     const r = await queueControlledPilotBatch({
       staff,
       clientId: "c1",
-      confirmationPhrase: "SEND PILOT",
+      confirmationPhrase: "CONFIRM LIMITED BATCH",
       recipientLines: "a@bidlow.co.uk",
       subject: "S",
       bodyText: "B",
@@ -113,7 +113,7 @@ describe("queueControlledPilotBatch", () => {
     const r = await queueControlledPilotBatch({
       staff,
       clientId: "c1",
-      confirmationPhrase: "SEND PILOT",
+      confirmationPhrase: "CONFIRM LIMITED BATCH",
       recipientLines: "a@bidlow.co.uk",
       subject: "S",
       bodyText: "B",
@@ -128,7 +128,7 @@ describe("queueControlledPilotBatch", () => {
     const r = await queueControlledPilotBatch({
       staff,
       clientId: "c1",
-      confirmationPhrase: "SEND PILOT",
+      confirmationPhrase: "CONFIRM LIMITED BATCH",
       recipientLines: lines,
       subject: "S",
       bodyText: "B",

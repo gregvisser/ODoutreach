@@ -160,7 +160,7 @@ export default async function ClientOutreachPage({
         <CardHeader>
           <CardTitle>Send an internal verification email</CardTitle>
           <CardDescription>
-            Queue a single message to a governed internal address to confirm
+            Queue a single message to an allowlisted internal address to confirm
             layout, signature, and personalisation before wider sending.
           </CardDescription>
         </CardHeader>
