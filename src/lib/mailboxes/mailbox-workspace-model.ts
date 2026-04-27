@@ -20,7 +20,7 @@ export const OUTREACH_HERO_ADDENDUM =
 
 /**
  * Unsubscribe: the composed plain-text body must already include the
- * mailbox/brief signature before compliance layers append the footer. See
+ * mailbox signature block before compliance layers append the footer. See
  * `ensureUnsubscribeLinkInPlainTextBody` in send pipelines.
  */
 export const UNSUBSCRIBE_AFTER_SIGNATURE = true as const;

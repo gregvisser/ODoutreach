@@ -11,7 +11,6 @@ export type OperatorSignatureStateKind =
   | "error_sync"
   | "ready_gmail"
   | "ready_od"
-  | "warning_fallback"
   | "missing";
 
 export type OperatorSignatureState = {
@@ -20,8 +19,8 @@ export type OperatorSignatureState = {
   shortDescription: string;
   recommendedAction: string;
   /**
-   * When true, the composition path has non-empty `emailSignatureText` in
-   * `chooseSignatureForSend` (including a client brief fallback when used).
+   * When true, the composition path has non-empty mailbox `emailSignatureText`
+   * from `chooseSignatureForSend`.
    */
   sendReadyFromSignature: boolean;
 };
@@ -47,15 +46,12 @@ const TEMPLATES: Record<OperatorSignatureStateKind, Omit<OperatorSignatureState,
     shortDescription: "A signature is saved on this mailbox in ODoutreach (required for Microsoft 365).",
     recommendedAction: "Use “Preview” before go-live, or edit if the footer should change.",
   },
-  warning_fallback: {
-    label: "Warning — Using client fallback",
-    shortDescription: "This mailbox has no per-mailbox signature, so the older client-level brief text is used when the send pipeline allows it. Prefer a dedicated mailbox signature for accuracy.",
-    recommendedAction: "Set a per-mailbox signature, or preview to confirm the brief text is acceptable as a last resort.",
-  },
   missing: {
-    label: "Missing — set a signature",
-    shortDescription: "No usable per-mailbox signature and no client brief fallback. Sends that need a signed footer are blocked until you set one.",
-    recommendedAction: "Set a signature in ODoutreach, or sync from Gmail. Optionally use the client brief only as a fallback, not a substitute for mailbox setup.",
+    label: "No mailbox signature configured",
+    shortDescription:
+      "This mailbox does not have its own signature yet. Add a per-mailbox signature so outreach sent from this mailbox matches the sender identity.",
+    recommendedAction:
+      "Set a per-mailbox signature in ODoutreach, or use Sync from Gmail (Google) where supported. Client-level brief text is not used for mailbox sends.",
   },
 };
 
@@ -69,11 +65,11 @@ export function humanizeSignatureSource(source: SenderSignatureSource): string {
     case "manual":
       return "Set in ODoutreach";
     case "client_brief_fallback":
-      return "Client brief (fallback)";
+      return "Client brief (legacy) — not used for mailbox";
     case "unsupported_provider":
       return "Not set (set in ODoutreach; Outlook is not read automatically)";
     case "missing":
-      return "None";
+      return "None — mailbox signature required";
     default:
       return String(source);
   }
@@ -96,9 +92,6 @@ export function getOperatorSignatureState(
   }
   const text = selection.emailSignatureText?.trim() ?? "";
   if (text.length > 0) {
-    if (selection.source === "client_brief_fallback") {
-      return { kind: "warning_fallback", sendReadyFromSignature: true, ...TEMPLATES.warning_fallback };
-    }
     if (selection.source === "gmail_send_as") {
       return { kind: "ready_gmail", sendReadyFromSignature: true, ...TEMPLATES.ready_gmail };
     }

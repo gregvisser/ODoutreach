@@ -109,7 +109,7 @@ export function connectionNeedsAttention(
 
 export function signatureNeedsAttention(vm: SenderSignatureViewModel): boolean {
   if (vm.syncError?.trim()) return true;
-  if (vm.source === "missing" && !vm.resolvedSignatureText?.trim()) return true;
+  if (!vm.hasMailboxSignature) return true;
   return false;
 }
 
@@ -201,9 +201,6 @@ export function operatorSignatureTableLabel(
     if (vm.source === "manual") {
       return { label: "Set in ODoutreach", isSyncedGmail: false };
     }
-    if (vm.source === "client_brief_fallback") {
-      return { label: "Using client fallback signature", isSyncedGmail: false };
-    }
     if (vm.source === "missing") {
       return { label: "Needs signature", isSyncedGmail: false };
     }
@@ -212,9 +209,6 @@ export function operatorSignatureTableLabel(
   if (row.provider === "MICROSOFT") {
     if (vm.source === "manual") {
       return { label: "Set in ODoutreach", isSyncedGmail: false };
-    }
-    if (vm.source === "client_brief_fallback") {
-      return { label: "Using client fallback signature", isSyncedGmail: false };
     }
     if (vm.source === "missing" || vm.source === "unsupported_provider") {
       return { label: "Needs signature", isSyncedGmail: false };
