@@ -104,7 +104,7 @@ export type ClientEmailSequencesOverview = {
   sequences: SequenceSummary[];
   counts: SequenceCounts;
   contactLists: SequenceListOption[];
-  /** Non-archived templates available for sequence steps (draft/ready/approved). */
+  /** Non-archived templates (any of draft, ready for review, or approved) for sequence steps. */
   sequenceTemplatesByCategory: Record<
     ClientEmailTemplateCategory,
     SequenceTemplateOption[]
