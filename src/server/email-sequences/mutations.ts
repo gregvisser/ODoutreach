@@ -24,11 +24,15 @@ import { prisma } from "@/lib/db";
  *
  * Callers (server actions) must re-verify staff auth + client access +
  * mutator permission before invoking these helpers — this layer trusts
- * the `clientId` / `staffUserId` passed in. All cross-table invariants
+ * the `clientId` / `staffUserId` passed in. Cross-table invariants
  * (sequence↔list clientId, step↔template clientId, step category ===
- * template category, only approved templates in ready/approved
- * sequences) are enforced here before writing. No send / schedule
- * behaviour is introduced.
+ * template category) and `validateSequenceSteps` are enforced here:
+ * archived templates cannot be used; one Introduction step is required
+ * when targeting ready/approved sequence status; follow-ups are optional;
+ * template **approval** (template row status) is not required for
+ * production launch. No send/schedule here — live sends still enforce
+ * suppression, unsubscribe, mailbox eligibility, daily caps, reservations,
+ * and audit on the execution path.
  */
 
 export type SequenceMutationErrorCode =
@@ -276,8 +280,9 @@ export type SetSequenceStepsInput = {
     delayHours: number;
   }>;
   /**
-   * Target status the caller wants to validate against. Passing
-   * `"DRAFT"` accepts unapproved templates so operators can iterate.
+   * Target status for `validateSequenceSteps` (e.g. DRAFT while editing vs
+   * READY_FOR_REVIEW / APPROVED with stricter step rules). Draft/ready
+   * template content is allowed; archived templates are never allowed.
    */
   targetStatus: ClientEmailSequenceStatus;
 };

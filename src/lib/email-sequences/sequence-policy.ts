@@ -10,9 +10,9 @@ import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
  * Pure policy helpers for client email sequences (PR D4b). No DB / no
  * Prisma client imports. All DB-facing behaviour lives in
  * `src/server/email-sequences/*`; keeping this layer pure lets unit
- * tests cover the interesting branches (unapproved template blocks
- * approval, mismatched category rejected, duplicate positions, empty
- * list blocks approval, etc.) without spinning up Prisma.
+ * tests cover the interesting branches (archived template rejected,
+ * mismatched category, duplicate positions, empty list, etc.) without
+ * spinning up Prisma.
  *
  * Sequence rules enforced here:
  *   - Sequence belongs to one client; target ContactList must be same
@@ -142,9 +142,10 @@ export type SequenceStepInput = {
 export type SequenceStepsValidationInput = {
   steps: SequenceStepInput[];
   /**
-   * Target status the caller wants to validate against. DRAFT accepts
-   * unapproved templates so operators can iterate; READY/APPROVED
-   * require approved templates + introduction.
+   * Target status the caller wants to validate against. DRAFT / edits use
+   * the same per-step rules; READY_FOR_REVIEW / APPROVED need at least
+   * one Introduction step. Template **approval** (row status) is not
+   * required — only non-archived templates, with follow-ups optional.
    */
   targetStatus: ClientEmailSequenceStatus;
   /** Sequence's clientId — used to confirm template ownership. */
