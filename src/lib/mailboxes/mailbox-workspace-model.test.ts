@@ -21,6 +21,7 @@ describe("mailbox-workspace-model", () => {
   it("uses a short mailboxes page intro for operators", () => {
     expect(MAILBOXES_PAGE_INTRO).toContain("ODoutreach");
     expect(MAILBOXES_PAGE_INTRO).toContain("Connect");
+    expect(MAILBOXES_PAGE_INTRO).toContain("Clients do not need");
   });
 
   it("documents unsubscribe ordering as signature-then-footer", () => {

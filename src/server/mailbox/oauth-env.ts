@@ -16,6 +16,12 @@ export function isGoogleMailboxOAuthConfigured(): boolean {
   );
 }
 
+/**
+ * V2 authorize/token host segment: `…/login.microsoftonline.com/{tenant}/oauth2/v2.0/…`
+ * - Default `common` allows any organisational account (multi-tenant) where the app registration allows it.
+ * - A single-tenant id (e.g. only Bidlow) will reject users from other orgs (AADSTS50020) — avoid for client mailboxes in other tenants.
+ * - `organizations` also restricts to work/school accounts only.
+ */
 export function microsoftMailboxOAuthTenant(): string {
   return (
     process.env.MAILBOX_MICROSOFT_OAUTH_TENANT?.trim() || "common"

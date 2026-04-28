@@ -159,9 +159,9 @@ function providerConnectionHint(
   }
   switch (row.connectionStatus) {
     case "DRAFT":
-      return "Not connected yet — use Connect so an authorised operator can finish provider sign-in for this workspace mailbox.";
+      return "Not connected — press Connect. The mailbox owner or their Microsoft/Google admin can complete provider sign-in and MFA in the window that opens.";
     case "PENDING_CONNECTION":
-      return "Finish sign-in in the provider window, or press Connect again.";
+      return "Finish sign-in in the Microsoft or Google window (mailbox owner or admin), or press Connect again.";
     case "CONNECTED":
       return row.connectedAt
         ? `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`
@@ -461,7 +461,7 @@ export function ClientMailboxIdentitiesPanel({
                 <MailboxForm
                   variant="create"
                   title="Add a mailbox"
-                  description="Enter the sender address and provider. After saving, press Connect: Microsoft allows a delegate/admin to sign in if they have mailbox access; Google usually needs that mailbox's Google account (unless your Workspace delegation is configured)."
+                  description="Enter the client’s sender address and provider. After saving, press Connect mailbox with Microsoft or Google — the mailbox owner or their admin completes provider sign-in; they do not need ODoutreach Staff Access. Microsoft: delegate or shared access is supported when granted in Exchange. Google: usually the mailbox’s Google user (domain-wide delegation is an org prerequisite if you use a different model)."
                   submitLabel="Save"
                   clientId={clientId}
                   disabled={pending}

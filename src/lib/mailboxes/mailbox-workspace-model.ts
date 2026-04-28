@@ -12,7 +12,9 @@ export const WORKSPACE_MAILBOXES_HERO =
 
 /** Short intro on the Mailboxes page (operator-facing). */
 export const MAILBOXES_PAGE_INTRO =
-  "Connect the client email accounts that ODoutreach can use for outreach. " +
+  "Clients do not need ODoutreach sign-in. Staff use Connect to start the mailbox connection; the mailbox owner " +
+  "or their Microsoft/Google admin completes provider sign-in and MFA in the browser. " +
+  "Tokens are stored for this client workspace, not the staff user personally. " +
   "Any authorised operator on this client can use connected mailboxes in the shared sending pool.";
 
 export const OUTREACH_HERO_ADDENDUM =

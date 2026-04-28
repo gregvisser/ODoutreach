@@ -1,6 +1,6 @@
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
-import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { tryGetOpensDoorsStaff } from "@/server/auth/staff";
 import {
   exchangeGoogleMailboxAuthCode,
   fetchGoogleUserEmailAndSub,
@@ -54,13 +54,8 @@ export async function GET(req: Request) {
         oauthStateExpiresAt: null,
       },
     });
-    let staffId: string | null = null;
-    try {
-      const staff = await requireOpensDoorsStaff();
-      staffId = staff.id;
-    } catch {
-      /* still redirect */
-    }
+    const staff = await tryGetOpensDoorsStaff();
+    const staffId = staff?.id ?? null;
     await auditMailboxConnectionChange({
       staffUserId: staffId,
       clientId,
@@ -85,26 +80,8 @@ export async function GET(req: Request) {
     });
   }
 
-  let staffId: string | null = null;
-  try {
-    const staff = await requireOpensDoorsStaff();
-    staffId = staff.id;
-  } catch {
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: {
-        connectionStatus: "CONNECTION_ERROR",
-        lastError:
-          "Sign in to OpensDoors in this browser, then retry mailbox connection from the client page.",
-        oauthState: null,
-        oauthStateExpiresAt: null,
-      },
-    });
-    return mailboxOAuthRedirectToClient(clientId, {
-      mailbox_oauth: "error",
-      reason: "staff_session",
-    });
-  }
+  const callbackStaff = await tryGetOpensDoorsStaff();
+  const staffId = callbackStaff?.id ?? null;
 
   try {
     const tokens = await exchangeGoogleMailboxAuthCode(code);
