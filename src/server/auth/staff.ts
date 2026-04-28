@@ -139,6 +139,19 @@ export async function requireOpensDoorsStaff(): Promise<StaffUser> {
   return staff;
 }
 
+/**
+ * Best-effort staff row for the current session (e.g. mailbox OAuth callback when the
+ * Microsoft/Google account completing redirect may not be an ODoutreach operator).
+ * Does not throw; returns null when unauthenticated or not an active allowed staff user.
+ */
+export async function tryGetOpensDoorsStaff(): Promise<StaffUser | null> {
+  try {
+    return await requireOpensDoorsStaff();
+  } catch {
+    return null;
+  }
+}
+
 /** Admin-only operations (staff management). Does not bypass Entra or StaffUser checks. */
 export async function requireStaffAdmin(): Promise<StaffUser> {
   const staff = await requireOpensDoorsStaff();

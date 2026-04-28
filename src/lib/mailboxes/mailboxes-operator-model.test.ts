@@ -6,6 +6,8 @@ import {
   countMailboxNeedsAttention,
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
+  MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
+  microsoftConnectionErrorSublabel,
   operatorSignatureTableLabel,
   type OperatorMailboxRow,
 } from "./mailboxes-operator-model";
@@ -46,10 +48,45 @@ describe("mailboxRowOperatorStatus", () => {
     expect(mailboxRowOperatorStatus(r0).label).toBe("Needs connection");
     const r1 = { ...base(), connectionStatus: "PENDING_CONNECTION" as const };
     expect(mailboxRowOperatorStatus(r1).label).toBe("Needs approval");
+    expect(mailboxRowOperatorStatus(r1).sublabel).toContain("mailbox owner");
     const r2 = { ...base(), connectionStatus: "CONNECTION_ERROR" as const, provider: "MICROSOFT" as const };
-    expect(mailboxRowOperatorStatus(r2).sublabel).toContain("Microsoft 365");
+    expect(mailboxRowOperatorStatus(r2).sublabel).toBe(
+      MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
+    );
     const r3 = { ...base(), isSendingEnabled: false };
     expect(mailboxRowOperatorStatus(r3).label).toBe("Sending paused");
+  });
+
+  it("maps Microsoft AADSTS50020 to tenant guidance without raw error in sublabel", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      connectionStatus: "CONNECTION_ERROR",
+      lastError:
+        "Microsoft OAuth: AADSTS50020: User from wrong tenant. ... cannot access application ... in that tenant",
+    });
+    expect(s.sublabel).toContain("wrong tenant");
+    expect(s.sublabel).not.toContain("AADSTS50020");
+  });
+
+  it("maps Microsoft Graph 404 in lastError", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: "cannot open joe@x in Microsoft Graph (HTTP 404).",
+    });
+    expect(s.sublabel).toContain("Microsoft Graph could not find");
+  });
+
+  it("keeps Google CONNECTION_ERROR copy generic", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      provider: "GOOGLE",
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: "AADSTS50020 should not map for Google",
+    });
+    expect(s.sublabel).toBe(
+      "Connection did not complete. Reconnect and approve access in Google.",
+    );
   });
 
   it("does not use EMAIL_PROVIDER or global transport in labels", () => {
@@ -58,6 +95,14 @@ describe("mailboxRowOperatorStatus", () => {
     expect(t).not.toContain("EMAIL_PROVIDER");
     expect(t).not.toContain("Resend");
     expect(t).not.toContain("legacy");
+  });
+});
+
+describe("microsoftConnectionErrorSublabel", () => {
+  it("maps AADSTS50020", () => {
+    expect(
+      microsoftConnectionErrorSublabel("error AADSTS50020 user not in tenant"),
+    ).toContain("wrong tenant");
   });
 });
 

@@ -71,11 +71,9 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
                   ? {
                       type: "err" as const,
                       text:
-                        mailboxOAuthReason === "staff_session"
-                          ? "Sign in to OpensDoors, then connect the mailbox again."
-                          : mailboxOAuthReason === "mailbox_removed"
-                            ? "That mailbox is removed from this workspace. Restore it first, then connect again."
-                            : "Mailbox sign-in did not complete. Open the row below and try again.",
+                        mailboxOAuthReason === "mailbox_removed"
+                          ? "That mailbox is removed from this workspace. Restore it first, then connect again."
+                          : "Mailbox sign-in did not complete. Open the row below and try again, or have the mailbox owner open Connect on a browser where they can sign in to Microsoft or Google.",
                     }
                   : null
             }

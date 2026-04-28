@@ -81,6 +81,13 @@ export function StaffAccessPanel({ initialRows }: { initialRows: StaffRow[] }) {
 
   return (
     <div className="space-y-8">
+      <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">
+        <span className="text-foreground font-medium">Staff Access</span> is only for
+        people who need to sign in to ODoutreach. Do not add client mailbox owners here
+        unless they also work as operators — they can complete Microsoft or Google
+        mailbox OAuth without a Staff user row. Optional B2B guest below is for inviting
+        operators into the tenant, not for connecting client send mailboxes.
+      </p>
       {banner && (
         <div
           role="status"
