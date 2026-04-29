@@ -20,6 +20,7 @@ import {
 } from "@/lib/email-sequences/sequence-policy";
 import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
 import { prisma } from "@/lib/db";
+import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
 import { loadSequenceEnrollmentPreviews } from "./enrollments";
 
 /**
@@ -531,4 +532,24 @@ export async function getClientEmailSequenceCounts(
     approvedIntroductionTemplatesCount,
     approvedTemplatesTotal,
   };
+}
+
+/**
+ * True when at least one non-ARCHIVED sequence for this client passes
+ * `evaluateSequenceLaunchReadiness` (the same production launch rail as the
+ * Outreach page). Aligned with PR #79: draft/ready templates and sequences
+ * are allowed; APPROVED status is not required.
+ */
+export async function getClientHasProductionLaunchableSequence(
+  clientId: string,
+  mailbox: { connectedSendingCount: number; aggregateRemainingToday: number },
+): Promise<boolean> {
+  if (!clientId) return false;
+  const overview = await loadClientEmailSequencesOverview(clientId);
+  const map = buildSequenceLaunchReadinessMap({
+    sequences: overview.sequences,
+    mailbox,
+    outboundUnsubscribeReady: isOneClickUnsubscribeReady(),
+  });
+  return overview.sequences.some((seq) => map[seq.id]?.canLaunch === true);
 }

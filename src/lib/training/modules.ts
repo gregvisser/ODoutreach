@@ -658,7 +658,7 @@ const contactsModule: TrainingModule = {
     {
       label: "Build the outreach sequence",
       moduleId: "outreach",
-      description: "Pick a clean list and wire it to the approved intro template.",
+      description: "Pick a clean list and wire it to the launchable introduction template.",
     },
   ],
   portalLink: {

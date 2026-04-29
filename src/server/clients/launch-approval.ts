@@ -15,7 +15,7 @@ import {
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
 import { REQUIRED_OUTREACH_MAILBOX_COUNT } from "@/lib/outreach-mailbox-model";
 import { getAccessibleClientIds } from "@/server/tenant/access";
-import { getClientEmailSequenceCounts } from "@/server/email-sequences/queries";
+import { getClientHasProductionLaunchableSequence } from "@/server/email-sequences/queries";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import type { StaffUser } from "@/generated/prisma/client";
@@ -75,8 +75,11 @@ export async function loadClientLaunchApprovalSnapshot(
   if (!bundle.client) return null;
   const client = bundle.client;
 
-  const [sequenceCounts, enrolledContactsCount] = await Promise.all([
-    getClientEmailSequenceCounts(client.id),
+  const [hasProductionLaunchableSequence, enrolledContactsCount] = await Promise.all([
+    getClientHasProductionLaunchableSequence(client.id, {
+      connectedSendingCount: bundle.connectedSendingCount,
+      aggregateRemainingToday: bundle.aggregateRemaining,
+    }),
     prisma.clientEmailSequenceEnrollment.count({
       where: { clientId: client.id },
     }),
@@ -108,9 +111,7 @@ export async function loadClientLaunchApprovalSnapshot(
     latestActivityLabel: bundle.latestGovernedAt
       ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
       : null,
-    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
-    approvedIntroductionTemplatesCount:
-      sequenceCounts.approvedIntroductionTemplatesCount,
+    hasProductionLaunchableSequence,
   };
 
   const readinessRows = buildLaunchReadinessRows({
@@ -126,8 +127,7 @@ export async function loadClientLaunchApprovalSnapshot(
     suppressionSheetCount: bundle.suppressionSheetRows.length,
     contactsTotal: client._count.contacts,
     enrolledContactsCount,
-    approvedTemplatesCount: sequenceCounts.approvedTemplatesTotal,
-    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
+    hasProductionLaunchableSequence,
     outreachPilotRunnable: snapshotInput.outreachPilotRunnable,
   });
 
@@ -144,9 +144,7 @@ export async function loadClientLaunchApprovalSnapshot(
     clientStatus: client.status,
     gettingStarted,
     readinessRows,
-    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
-    approvedIntroductionTemplatesCount:
-      sequenceCounts.approvedIntroductionTemplatesCount,
+    hasProductionLaunchableSequence,
     enrolledContactsCount,
     hasSenderSignature,
     oneClickUnsubscribeReady: ONE_CLICK_UNSUBSCRIBE_READY,

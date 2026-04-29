@@ -68,8 +68,12 @@ export type LaunchApprovalPolicyInput = {
   readinessRows: ReadonlyArray<
     Pick<LaunchReadinessRow, "id" | "label" | "pillStatus">
   >;
-  approvedSequencesCount: number;
-  approvedIntroductionTemplatesCount: number;
+  /**
+   * At least one non-archived sequence passes
+   * `evaluateSequenceLaunchReadiness` (templates may be DRAFT; APPROVED not
+   * required).
+   */
+  hasProductionLaunchableSequence: boolean;
   enrolledContactsCount: number;
   hasSenderSignature: boolean;
   /**
@@ -108,8 +112,6 @@ export function evaluateClientLaunchApproval(
   const mailboxesDone = byId.mailboxes?.done ?? false;
   const suppressionDone = byId.suppression?.done ?? false;
   const contactsDone = byId.contacts?.done ?? false;
-  const templatesDone = byId.templates?.done ?? false;
-  const sequencesDone = byId.sequences?.done ?? false;
   const enrollmentsDone = byId.enrollments?.done ?? false;
 
   // Status gate — only ONBOARDING / PAUSED can be approved for launch.
@@ -133,11 +135,10 @@ export function evaluateClientLaunchApproval(
   if (!contactsDone) {
     blockers.push("No contacts are loaded.");
   }
-  if (!templatesDone || input.approvedIntroductionTemplatesCount < 1) {
-    blockers.push("No approved introduction template.");
-  }
-  if (!sequencesDone || input.approvedSequencesCount < 1) {
-    blockers.push("No approved sequence.");
+  if (!input.hasProductionLaunchableSequence) {
+    blockers.push(
+      "No launchable production sequence — open Outreach and pass the sequence launch checks (introduction step, active templates, enrollments, and compliance on the launch rail).",
+    );
   }
   if (!enrollmentsDone || input.enrolledContactsCount < 1) {
     blockers.push("No sequence enrollments.");
@@ -146,14 +147,15 @@ export function evaluateClientLaunchApproval(
     blockers.push("A sender signature is not configured on any connected mailbox.");
   }
 
-  // Launch readiness rows that are "not_started" or "needs_attention" must
-  // be resolved before approval. "reduced_capacity" and "monitoring" are
-  // informational — they never block approval on their own.
-  const readinessBlockers = input.readinessRows.filter(
+  // Launch readiness: same as the overview "Launch readiness" card, but
+  // the Activity row is informational for first-time activation (no
+  // proof send is required to flip the client ACTIVE).
+  const nonActivityReadinessBlockers = input.readinessRows.filter(
     (row) =>
-      row.pillStatus === "not_started" || row.pillStatus === "needs_attention",
+      row.id !== "activity" &&
+      (row.pillStatus === "not_started" || row.pillStatus === "needs_attention"),
   );
-  for (const row of readinessBlockers) {
+  for (const row of nonActivityReadinessBlockers) {
     blockers.push(`Launch readiness blocker: ${row.label}.`);
   }
 
@@ -182,6 +184,11 @@ export function evaluateClientLaunchApproval(
         "One-click unsubscribe is not wired up yet. Acceptable for controlled internal pilots only.",
       );
     }
+  }
+
+  const activityRow = input.readinessRows.find((r) => r.id === "activity");
+  if (activityRow?.pillStatus === "not_started") {
+    warnings.push("No outreach activity yet — expected before the first live send.");
   }
 
   const checklist: LaunchApprovalChecklistItem[] = [
@@ -217,15 +224,19 @@ export function evaluateClientLaunchApproval(
     },
     {
       id: "template",
-      label: "Approved introduction template",
-      ok: templatesDone && input.approvedIntroductionTemplatesCount >= 1,
-      detail: `${String(input.approvedIntroductionTemplatesCount)} approved introduction template(s)`,
+      label: "Introduction ready",
+      ok: input.hasProductionLaunchableSequence,
+      detail: input.hasProductionLaunchableSequence
+        ? "Introduction step passes the production launch rail"
+        : "Configure an introduction in Outreach; APPROVED template status is not required",
     },
     {
       id: "sequence",
-      label: "Approved sequence",
-      ok: sequencesDone && input.approvedSequencesCount >= 1,
-      detail: `${String(input.approvedSequencesCount)} approved sequence(s)`,
+      label: "Launchable sequence",
+      ok: input.hasProductionLaunchableSequence,
+      detail: input.hasProductionLaunchableSequence
+        ? "At least one non-archived sequence passes the same checks as the Outreach launch rail"
+        : "Add a non-archived sequence with a valid intro step; draft/ready are allowed",
     },
     {
       id: "enrollment",
@@ -244,11 +255,11 @@ export function evaluateClientLaunchApproval(
     {
       id: "launch_readiness",
       label: "Launch readiness clear",
-      ok: readinessBlockers.length === 0,
+      ok: nonActivityReadinessBlockers.length === 0,
       detail:
-        readinessBlockers.length === 0
-          ? "No needs-attention / not-started modules"
-          : `${String(readinessBlockers.length)} module(s) need attention`,
+        nonActivityReadinessBlockers.length === 0
+          ? "No hard module blockers (Activity is informational pre-first send)"
+          : `${String(nonActivityReadinessBlockers.length)} module(s) need attention`,
     },
     {
       id: "one_click_unsubscribe",

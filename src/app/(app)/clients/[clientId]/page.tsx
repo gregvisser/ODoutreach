@@ -23,7 +23,6 @@ import {
   type LaunchApprovalChecklistItem,
 } from "@/lib/clients/client-launch-approval";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
-import { parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import { prisma } from "@/lib/db";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
@@ -36,7 +35,7 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   ONE_CLICK_UNSUBSCRIBE_READY,
 } from "@/server/clients/launch-approval";
-import { getClientEmailSequenceCounts } from "@/server/email-sequences/queries";
+import { getClientHasProductionLaunchableSequence } from "@/server/email-sequences/queries";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -66,8 +65,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   const client = bundle.client;
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
 
-  const [sequenceCounts, enrolledContactsCount] = await Promise.all([
-    getClientEmailSequenceCounts(client.id),
+  const [hasProductionLaunchableSequence, enrolledContactsCount] = await Promise.all([
+    getClientHasProductionLaunchableSequence(client.id, {
+      connectedSendingCount: bundle.connectedSendingCount,
+      aggregateRemainingToday: bundle.aggregateRemaining,
+    }),
     prisma.clientEmailSequenceEnrollment.count({
       where: { clientId: client.id },
     }),
@@ -101,9 +103,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     latestActivityLabel: bundle.latestGovernedAt
       ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
       : null,
-    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
-    approvedIntroductionTemplatesCount:
-      sequenceCounts.approvedIntroductionTemplatesCount,
+    hasProductionLaunchableSequence,
   };
 
   const steps = buildClientWorkflowSteps(snapshot);
@@ -122,20 +122,20 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     suppressionSheetCount: bundle.suppressionSheetRows.length,
     contactsTotal: client._count.contacts,
     enrolledContactsCount,
-    approvedTemplatesCount: sequenceCounts.approvedTemplatesTotal,
-    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
+    hasProductionLaunchableSequence,
     outreachPilotRunnable,
   });
 
-  const briefFields = parseOpensDoorsBrief(client.onboarding?.formData);
-  const hasSenderSignature = !!briefFields.emailSignature?.trim();
+  const hasSenderSignature = client.mailboxIdentities.some(
+    (m) =>
+      (m.senderSignatureText && m.senderSignatureText.trim().length > 0) ||
+      (m.senderSignatureHtml && m.senderSignatureHtml.trim().length > 0),
+  );
   const launchApprovalEvaluation = evaluateClientLaunchApproval({
     clientStatus: client.status,
     gettingStarted,
     readinessRows,
-    approvedSequencesCount: sequenceCounts.approvedSequencesCount,
-    approvedIntroductionTemplatesCount:
-      sequenceCounts.approvedIntroductionTemplatesCount,
+    hasProductionLaunchableSequence,
     enrolledContactsCount,
     hasSenderSignature,
     oneClickUnsubscribeReady: ONE_CLICK_UNSUBSCRIBE_READY,

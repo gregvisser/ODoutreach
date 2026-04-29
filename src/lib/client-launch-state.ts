@@ -41,6 +41,11 @@ export type ClientLaunchSnapshotInput = {
    * category `INTRODUCTION`. Optional for the same reason as above.
    */
   approvedIntroductionTemplatesCount?: number;
+  /**
+   * When true, at least one sequence passes the production launch rail (same
+   * as Outreach). Preferred over approved* counts for UI metrics.
+   */
+  hasProductionLaunchableSequence?: boolean;
 };
 
 /** Status pill for the compact Launch readiness panel (UI copy). */
@@ -194,10 +199,12 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
 
   const approvedSequences = input.approvedSequencesCount ?? 0;
   const approvedIntroTemplates = input.approvedIntroductionTemplatesCount ?? 0;
+  const hasLaunchable = input.hasProductionLaunchableSequence === true;
 
   const outreachRow = ((): LaunchReadinessRow => {
-    const sequenceHint =
-      approvedSequences > 0
+    const sequenceHint = hasLaunchable
+      ? " · launchable sequence"
+      : approvedSequences > 0
         ? ` · ${String(approvedSequences)} approved sequence${approvedSequences === 1 ? "" : "s"}`
         : approvedIntroTemplates > 0
           ? " · sequence pending approval"
@@ -207,7 +214,19 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         id: "outreach",
         label: "Outreach",
         pillStatus: "ready",
-        metric: `Pilot ready${sequenceHint}`,
+        metric: hasLaunchable
+          ? "Pilot ready · launchable production sequence"
+          : `Pilot ready${sequenceHint}`,
+        href: `${base}/outreach`,
+        actionLabel: "Open outreach",
+      };
+    }
+    if (hasLaunchable) {
+      return {
+        id: "outreach",
+        label: "Outreach",
+        pillStatus: "ready",
+        metric: "Launchable production sequence",
         href: `${base}/outreach`,
         actionLabel: "Open outreach",
       };
@@ -238,7 +257,9 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
       id: "activity",
       label: "Activity",
       pillStatus: has ? "monitoring" : "not_started",
-      metric: has ? "Recent sends available" : "No activity yet",
+      metric: has
+        ? "Recent sends available"
+        : "No outreach activity yet — expected before first send",
       href: `${base}/activity`,
       actionLabel: "Open activity",
     };
@@ -299,9 +320,11 @@ export function buildClientWorkflowSteps(input: ClientLaunchSnapshotInput): Clie
   const contactsComplete = input.contactsTotal > 0 && input.contactsEligible >= 1;
   const contactsStarted = input.contactsTotal > 0;
 
-  const outreachComplete = input.outreachPilotRunnable;
+  const outreachComplete =
+    input.outreachPilotRunnable || input.hasProductionLaunchableSequence === true;
   const outreachStarted =
     input.outreachPilotRunnable ||
+    input.hasProductionLaunchableSequence === true ||
     (input.connectedSendingCount >= 1 && input.contactsTotal > 0);
 
   const activityComplete = input.latestActivityLabel != null;

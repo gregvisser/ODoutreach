@@ -21,10 +21,12 @@ export type GettingStartedInput = {
   contactsTotal: number;
   /** Number of contacts enrolled in at least one sequence (0 if none). */
   enrolledContactsCount: number;
-  /** APPROVED `ClientEmailTemplate` rows (any category). */
-  approvedTemplatesCount: number;
-  /** APPROVED `ClientEmailSequence` rows. */
-  approvedSequencesCount: number;
+  /**
+   * At least one non-archived sequence passes the production launch rail
+   * (`evaluateSequenceLaunchReadiness`); template/sequence APPROVED status
+   * is not required.
+   */
+  hasProductionLaunchableSequence: boolean;
   /** True when the pilot can actually run end-to-end. */
   outreachPilotRunnable: boolean;
 };
@@ -98,19 +100,19 @@ export function buildGettingStartedViewModel(
     },
     {
       id: "templates",
-      label: "Approve message templates",
+      label: "Write the introduction (and optional follow-ups)",
       description:
-        "Draft and approve the introduction template and any follow-up templates for this client's voice.",
+        "Draft the introduction email and any follow-up templates. Follow-ups are optional; you do not need an APPROVED status to launch in production.",
       href: `${base}/outreach`,
-      done: input.approvedTemplatesCount >= 1,
+      done: input.hasProductionLaunchableSequence,
     },
     {
       id: "sequences",
-      label: "Build and approve a sequence",
+      label: "Build a launchable sequence",
       description:
-        "Assemble templates into a sequence, set step delays, and get it approved before enrollment.",
+        "Assemble templates into a sequence with an introduction step. The production launch rail allows draft/ready sequences — approval is not required to activate the workspace.",
       href: `${base}/outreach`,
-      done: input.approvedSequencesCount >= 1,
+      done: input.hasProductionLaunchableSequence,
     },
     {
       id: "enrollments",
