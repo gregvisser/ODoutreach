@@ -34,7 +34,9 @@ function makeGettingStarted(
 }
 
 function makeReadinessRows(
-  overrides: Partial<Record<string, "ready" | "not_started" | "needs_attention" | "reduced_capacity" | "monitoring">> = {},
+  overrides: Partial<
+    Record<string, "ready" | "not_started" | "needs_attention" | "reduced_capacity" | "monitoring">
+  > = {},
 ) {
   const ids = ["brief", "mailboxes", "sources", "suppression", "contacts", "outreach", "activity"] as const;
   return ids.map((id) => ({
@@ -60,8 +62,7 @@ function allGreenInput(
       launch: true,
     }),
     readinessRows: makeReadinessRows(),
-    approvedSequencesCount: 1,
-    approvedIntroductionTemplatesCount: 1,
+    hasProductionLaunchableSequence: true,
     enrolledContactsCount: 5,
     hasSenderSignature: true,
     oneClickUnsubscribeReady: false,
@@ -83,8 +84,7 @@ describe("evaluateClientLaunchApproval", () => {
           sequences: false,
           enrollments: false,
         }),
-        approvedSequencesCount: 0,
-        approvedIntroductionTemplatesCount: 0,
+        hasProductionLaunchableSequence: false,
         enrolledContactsCount: 0,
         hasSenderSignature: false,
         readinessRows: makeReadinessRows({
@@ -95,10 +95,12 @@ describe("evaluateClientLaunchApproval", () => {
       }),
     );
     expect(result.canApprove).toBe(false);
-    expect(result.blockers.length).toBeGreaterThanOrEqual(8);
+    expect(result.blockers.length).toBeGreaterThanOrEqual(6);
     expect(result.blockers).toContain("Business brief is not complete.");
     expect(result.blockers).toContain("No sending mailbox is connected.");
-    expect(result.blockers).toContain("No approved sequence.");
+    expect(
+      result.blockers.some((b) => b.includes("No launchable production sequence")),
+    ).toBe(true);
     expect(result.blockers).toContain("No sequence enrollments.");
   });
 
@@ -108,6 +110,40 @@ describe("evaluateClientLaunchApproval", () => {
     expect(result.blockers).toEqual([]);
     // One-click unsubscribe is a warning under CONTROLLED_INTERNAL.
     expect(result.warnings.some((w) => /one-click unsubscribe/i.test(w))).toBe(true);
+  });
+
+  it("passes when Activity is not_started (no prior sends) if other rows are ready", () => {
+    const result = evaluateClientLaunchApproval(
+      allGreenInput({
+        readinessRows: makeReadinessRows({ activity: "not_started" }),
+      }),
+    );
+    expect(result.canApprove).toBe(true);
+    expect(
+      result.warnings.some((w) => /no outreach activity yet/i.test(w)),
+    ).toBe(true);
+  });
+
+  it("does not require APPROVED template/sequence — uses production launchable flag", () => {
+    const result = evaluateClientLaunchApproval(
+      allGreenInput({ hasProductionLaunchableSequence: true }),
+    );
+    const template = result.checklist.find((c) => c.id === "template");
+    const sequence = result.checklist.find((c) => c.id === "sequence");
+    expect(template?.ok).toBe(true);
+    expect(template?.label).toBe("Introduction ready");
+    expect(sequence?.ok).toBe(true);
+    expect(sequence?.label).toBe("Launchable sequence");
+  });
+
+  it("blocks when no production launchable sequence is present", () => {
+    const result = evaluateClientLaunchApproval(
+      allGreenInput({ hasProductionLaunchableSequence: false }),
+    );
+    expect(result.canApprove).toBe(false);
+    expect(
+      result.blockers.some((b) => b.includes("No launchable production sequence")),
+    ).toBe(true);
   });
 
   it("blocks LIVE_PROSPECT approval while one-click unsubscribe is not wired up", () => {
@@ -136,7 +172,7 @@ describe("evaluateClientLaunchApproval", () => {
     expect(result.blockers).toContain("Client is ARCHIVED and cannot be launched.");
   });
 
-  it("blocks when any launch readiness row is not_started or needs_attention", () => {
+  it("blocks when any non-Activity launch readiness row is needs_attention", () => {
     const result = evaluateClientLaunchApproval(
       allGreenInput({
         readinessRows: makeReadinessRows({ outreach: "needs_attention" }),
@@ -146,6 +182,14 @@ describe("evaluateClientLaunchApproval", () => {
     expect(
       result.blockers.some((b) => b.includes("Launch readiness blocker: outreach")),
     ).toBe(true);
+  });
+
+  it("does not block on Activity not_started alone (first activation)", () => {
+    const result = evaluateClientLaunchApproval(
+      allGreenInput({ readinessRows: makeReadinessRows({ activity: "not_started" }) }),
+    );
+    expect(result.canApprove).toBe(true);
+    expect(result.blockers.some((b) => b.includes("Activity"))).toBe(false);
   });
 
   it("does not block on reduced_capacity / monitoring readiness rows", () => {

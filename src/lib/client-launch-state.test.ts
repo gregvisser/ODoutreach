@@ -141,16 +141,17 @@ describe("buildLaunchReadinessRows", () => {
     expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
   });
 
-  it("surfaces approved sequence hint on the outreach row when pilot-ready", () => {
+  it("prioritises launchable production sequence over approved counts when pilot-ready", () => {
     const row = buildLaunchReadinessRows(
       basePanel({
         outreachPilotRunnable: true,
-        approvedSequencesCount: 2,
-        approvedIntroductionTemplatesCount: 1,
+        hasProductionLaunchableSequence: true,
+        approvedSequencesCount: 0,
+        approvedIntroductionTemplatesCount: 0,
       }),
     ).find((r) => r.id === "outreach");
     expect(row?.pillStatus).toBe("ready");
-    expect(row?.metric).toContain("2 approved sequences");
+    expect(row?.metric).toBe("Pilot ready · launchable production sequence");
   });
 
   it("hints that a sequence is pending approval when introduction templates exist but no approved sequence", () => {
@@ -159,15 +160,23 @@ describe("buildLaunchReadinessRows", () => {
         outreachPilotRunnable: true,
         approvedSequencesCount: 0,
         approvedIntroductionTemplatesCount: 1,
+        hasProductionLaunchableSequence: false,
       }),
     ).find((r) => r.id === "outreach");
     expect(row?.metric).toContain("sequence pending approval");
   });
 
-  it("omits sequence hint entirely when both signals are absent", () => {
+  it("omits extra hint when no launchable sequence and no approved rollups", () => {
     const row = buildLaunchReadinessRows(
-      basePanel({ outreachPilotRunnable: true }),
+      basePanel({ outreachPilotRunnable: true, hasProductionLaunchableSequence: false }),
     ).find((r) => r.id === "outreach");
     expect(row?.metric).toBe("Pilot ready");
+  });
+
+  it("uses informational copy for Activity when there is no send history yet", () => {
+    const row = buildLaunchReadinessRows(basePanel({ latestActivityLabel: null })).find(
+      (r) => r.id === "activity",
+    );
+    expect(row?.metric).toContain("No outreach activity yet");
   });
 });
