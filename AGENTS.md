@@ -33,3 +33,13 @@ See `package.json` scripts. Highlights:
 - Advisory lock timeout on migrations: if a previous `prisma migrate` process died, terminate stale PG connections before retrying (`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE ...`).
 - In Cloud Agent Docker-in-Docker environments, start `dockerd` before `docker compose up -d`. Use `fuse-overlayfs` storage driver and `iptables-legacy`.
 - `npm run build` uses the `--webpack` flag (not Turbopack) for production builds.
+
+### Testing without Entra SSO
+
+The dev API routes (gated by `x-dev-secret` header) allow exercising core outbound pipeline logic without signing in:
+- `POST /api/dev/process-outbound-queue` — drain send queue
+- `POST /api/dev/simulate-provider-event` — simulate delivery/bounce webhooks
+- `POST /api/dev/simulate-inbound` — simulate inbound reply ingestion
+- `POST /api/dev/simulate-webhook-replay` — test deduplication
+
+Secrets for these routes are set in `.env` (see `OUTBOUND_DEV_*` / `INBOUND_DEV_*` vars). See README "Local smoke test" section for the full flow.
