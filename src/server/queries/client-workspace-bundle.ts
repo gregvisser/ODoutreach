@@ -1,6 +1,7 @@
 import "server-only";
 
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import { prisma } from "@/lib/db";
 import { computeOnboardingBriefCompletion, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import {
   REQUIRED_OUTREACH_MAILBOX_COUNT,
@@ -29,6 +30,37 @@ import type { StaffUser } from "@/generated/prisma/client";
 
 export type ClientWorkspaceBundle = Awaited<ReturnType<typeof loadClientWorkspaceBundle>>;
 
+const MAILBOX_REAUTH_FAILURE_RE =
+  /invalid_grant|AADSTS50076|multi-factor authentication|refresh token missing|requires this mailbox to re-authenticate/i;
+
+async function getRecentMailboxAuthFailuresForClient(clientId: string) {
+  const rows = await prisma.outboundEmail.findMany({
+    where: {
+      clientId,
+      status: "FAILED",
+      providerMessageId: null,
+      mailboxIdentityId: { not: null },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+    select: {
+      mailboxIdentityId: true,
+      lastErrorMessage: true,
+      failureReason: true,
+    },
+  });
+  const failures = new Map<string, string>();
+  for (const row of rows) {
+    const mailboxId = row.mailboxIdentityId;
+    const message = row.lastErrorMessage ?? row.failureReason ?? "";
+    if (!mailboxId || !MAILBOX_REAUTH_FAILURE_RE.test(message)) continue;
+    if (!failures.has(mailboxId)) {
+      failures.set(mailboxId, message);
+    }
+  }
+  return failures;
+}
+
 /**
  * Shared server data for client workspace routes (overview + module pages).
  * One place to keep queries aligned with the production A–Z workflow.
@@ -48,6 +80,7 @@ export async function loadClientWorkspaceBundle(
     pilotContactSummary,
     governedMailbox,
     canMutateMailboxes,
+    recentMailboxAuthFailures,
   ] = await Promise.all([
     getRecentInboundMailboxMessagesForClient(clientId, 50),
     getMailboxSendingReadinessForClient(clientId, client.mailboxIdentities),
@@ -55,6 +88,7 @@ export async function loadClientWorkspaceBundle(
     getPilotContactSummaryForClient(clientId),
     loadGovernedSendingMailbox(clientId),
     getClientMailboxMutationAllowed(staff, client.id),
+    getRecentMailboxAuthFailuresForClient(clientId),
   ]);
 
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
@@ -76,12 +110,21 @@ export async function loadClientWorkspaceBundle(
     sendingReadiness.map((s) => [s.mailboxId, s]),
   );
 
-  const mailboxRows = client.mailboxIdentities.map((m) => ({
+  const mailboxRows = client.mailboxIdentities.map((m) => {
+    const authFailure = recentMailboxAuthFailures.get(m.id);
+    const connectionStatus = authFailure ? "CONNECTION_ERROR" : m.connectionStatus;
+    const lastError = authFailure
+      ? `Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. ${authFailure}`.slice(
+          0,
+          4000,
+        )
+      : m.lastError;
+    return {
     id: m.id,
     email: m.email,
     displayName: m.displayName,
     provider: m.provider,
-    connectionStatus: m.connectionStatus,
+    connectionStatus,
     providerLinkedUserId: m.providerLinkedUserId,
     connectedAt: m.connectedAt?.toISOString() ?? null,
     workspaceRemovedAt: m.workspaceRemovedAt?.toISOString() ?? null,
@@ -94,7 +137,7 @@ export async function loadClientWorkspaceBundle(
     emailsSentToday: m.emailsSentToday,
     dailyWindowResetAt: m.dailyWindowResetAt?.toISOString() ?? null,
     lastSyncAt: m.lastSyncAt?.toISOString() ?? null,
-    lastError: m.lastError,
+    lastError,
     updatedAt: m.updatedAt.toISOString(),
     senderDisplayName: m.senderDisplayName,
     senderSignatureHtml: m.senderSignatureHtml,
@@ -102,7 +145,8 @@ export async function loadClientWorkspaceBundle(
     senderSignatureSource: m.senderSignatureSource,
     senderSignatureSyncedAt: m.senderSignatureSyncedAt?.toISOString() ?? null,
     senderSignatureSyncError: m.senderSignatureSyncError,
-  }));
+    };
+  });
 
   const graphInboxRows = graphInbox.map((m) => ({
     id: m.id,
@@ -133,13 +177,13 @@ export async function loadClientWorkspaceBundle(
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
     senderIdentityStatus: client.senderIdentityStatus,
-    outreachMailboxes: client.mailboxIdentities.map((m) => ({
+    outreachMailboxes: mailboxRows.map((m) => ({
       email: m.email,
       isActive: m.isActive,
       connectionStatus: m.connectionStatus,
       canSend: m.canSend,
       isSendingEnabled: m.isSendingEnabled,
-      workspaceRemovedAt: m.workspaceRemovedAt,
+      workspaceRemovedAt: m.workspaceRemovedAt ? new Date(m.workspaceRemovedAt) : null,
     })),
   });
 
