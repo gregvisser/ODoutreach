@@ -89,7 +89,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
         <CardContent>
           <ClientActivityTimelinePanel
             timeline={timeline}
-            mode={mode === "all" ? "full" : "outreach"}
+            variant={mode === "all" ? "full" : "outreach"}
           />
         </CardContent>
       </Card>
