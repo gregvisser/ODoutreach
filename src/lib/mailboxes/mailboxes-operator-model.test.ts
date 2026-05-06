@@ -89,6 +89,18 @@ describe("mailboxRowOperatorStatus", () => {
     );
   });
 
+  it("maps observed AAD5TS0276 typo/variant to reconnect guidance", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      connectionStatus: "CONNECTION_ERROR",
+      lastError:
+        "Microsoft token refresh failed, invalid_grant — AAD5TS0276: You must use multi-factor authentication",
+    });
+    expect(s.sublabel).toBe(
+      "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA.",
+    );
+  });
+
   it("keeps Google CONNECTION_ERROR copy generic", () => {
     const s = mailboxRowOperatorStatus({
       ...base(),

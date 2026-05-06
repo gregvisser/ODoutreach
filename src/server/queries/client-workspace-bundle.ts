@@ -31,7 +31,7 @@ import type { StaffUser } from "@/generated/prisma/client";
 export type ClientWorkspaceBundle = Awaited<ReturnType<typeof loadClientWorkspaceBundle>>;
 
 const MAILBOX_REAUTH_FAILURE_RE =
-  /invalid_grant|AADSTS50076|multi-factor authentication|refresh token missing|requires this mailbox to re-authenticate/i;
+  /invalid_grant|AADSTS50076|AAD5TS0276|multi-factor authentication|refresh token missing|requires this mailbox to re-authenticate/i;
 
 async function getRecentMailboxAuthFailuresForClient(clientId: string) {
   const rows = await prisma.outboundEmail.findMany({

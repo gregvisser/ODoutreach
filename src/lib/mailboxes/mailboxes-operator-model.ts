@@ -78,6 +78,7 @@ export function microsoftConnectionErrorSublabel(
   if (
     /invalid_grant/i.test(err) ||
     /AADSTS50076/i.test(err) ||
+    /AAD5TS0276/i.test(err) ||
     /multi-factor authentication/i.test(err)
   ) {
     return "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA.";
