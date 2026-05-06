@@ -2,6 +2,7 @@ import "server-only";
 
 import { CONTROLLED_PILOT_METADATA_KIND } from "@/lib/controlled-pilot-constants";
 import { shortenIdempotencyKey } from "@/lib/governed-send-display";
+import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
 import { prisma } from "@/lib/db";
 
 export type GovernedSendLedgerRow = {
@@ -20,7 +21,7 @@ export type GovernedSendLedgerRow = {
 
 const GOVERNED_TEST_KIND = "governedTestSend" as const;
 /**
- * Recent governed / pilot sends for a client (metadata.kind = governed test or controlled pilot), newest first.
+ * Recent governed proof / pilot sends for a client, newest first.
  * Read-only; joins mailbox and reservation when present.
  */
 export async function getRecentGovernedSendsForClient(
@@ -32,6 +33,7 @@ export async function getRecentGovernedSendsForClient(
       clientId,
       OR: [
         { metadata: { path: ["kind"], equals: GOVERNED_TEST_KIND } },
+        { metadata: { path: ["kind"], equals: INTERNAL_PROOF_METADATA_KIND } },
         { metadata: { path: ["kind"], equals: CONTROLLED_PILOT_METADATA_KIND } },
       ],
     },

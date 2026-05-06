@@ -16,6 +16,7 @@ import {
   SEQUENCE_INTRO_SEND_METADATA_KIND,
 } from "@/lib/email-sequences/sequence-send-execution-constants";
 import { maskEmailForDisplay } from "@/lib/unsubscribe/unsubscribe-token";
+import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
 
 /**
  * PR H — unified activity timeline loader.
@@ -222,7 +223,10 @@ export async function loadClientActivityTimeline(
       metaKind === SEQUENCE_INTRO_SEND_METADATA_KIND;
     const isSequenceFollowUp =
       metaKind === SEQUENCE_FOLLOWUP_SEND_METADATA_KIND;
-    const title = isSequenceIntro
+    const isInternalProof = metaKind === INTERNAL_PROOF_METADATA_KIND;
+    const title = isInternalProof
+      ? severityToInternalProofTitle(row.status, toEmail)
+      : isSequenceIntro
       ? severityToSequenceStepTitle(row.status, toEmail, "INTRODUCTION")
       : isSequenceFollowUp
         ? severityToSequenceStepTitle(
@@ -516,6 +520,28 @@ function severityToOutboundTitle(status: string, toEmail: string): string {
     case "QUEUED":
     default:
       return `Email queued — ${toEmail}`;
+  }
+}
+
+function severityToInternalProofTitle(status: string, toEmail: string): string {
+  switch (status) {
+    case "SENT":
+      return `Internal proof sent to ${toEmail}`;
+    case "DELIVERED":
+      return `Internal proof delivered to ${toEmail}`;
+    case "BOUNCED":
+      return `Internal proof bounced — ${toEmail}`;
+    case "FAILED":
+      return `Internal proof failed — ${toEmail}`;
+    case "BLOCKED_SUPPRESSION":
+      return `Internal proof blocked by suppression — ${toEmail}`;
+    case "PROCESSING":
+      return `Internal proof sending — ${toEmail}`;
+    case "PREPARING":
+    case "REQUESTED":
+    case "QUEUED":
+    default:
+      return `Internal proof queued — ${toEmail}`;
   }
 }
 

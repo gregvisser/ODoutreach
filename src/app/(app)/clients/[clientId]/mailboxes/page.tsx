@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { MAILBOXES_PAGE_INTRO } from "@/lib/mailboxes/mailbox-workspace-model";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -41,6 +42,15 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           {MAILBOXES_PAGE_INTRO}
         </p>
       </div>
+
+      <InternalProofSendCard
+        clientId={client.id}
+        rows={bundle.mailboxRows}
+        sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
+        canMutate={bundle.canMutateMailboxes}
+        oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
+        oauthGoogleConfigured={bundle.oauthGoogleReady}
+      />
 
       <Card className="border-border/80 shadow-sm">
         <CardContent className="pt-6">
