@@ -69,10 +69,10 @@ export default async function SuppressionPage({ searchParams }: Props) {
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Suppression monitor</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Do-not-contact monitor</h1>
           <p className="mt-1 text-muted-foreground">
-            Google Sheets are the source of truth. Each source syncs only into its own
-            client workspace — never cross-tenant.
+            Email addresses and domains that must never receive outreach. Each source
+            applies only to its own client workspace.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -108,7 +108,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
         <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
           Sync finished — wrote{" "}
           <span className="font-medium">{syncBanner.rows ?? "0"}</span> row(s). Contact
-          suppression flags were refreshed.
+          do-not-contact flags were refreshed.
         </p>
       ) : null}
       {syncBanner?.kind === "error" ? (
@@ -117,39 +117,44 @@ export default async function SuppressionPage({ searchParams }: Props) {
         </p>
       ) : null}
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Integration status</CardTitle>
-          <CardDescription>
-            One-time admin setup: set{" "}
-            <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in
-            Azure App Service. Operators paste Sheet URLs per workspace on the client page — no per-Sheet
-            Azure settings. Use the exact service account email below to share each Sheet (Viewer). Env:{" "}
-            <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> or{" "}
-            <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code>.
-            {googleReady ? (
-              <span className="text-foreground"> Credentials detected.</span>
-            ) : (
-              <span className="text-amber-700 dark:text-amber-400">
-                {" "}
-                Not configured — sync will fail until set.
-              </span>
-            )}
-          </CardDescription>
-        </CardHeader>
-        {googleReady && googleSaDisplay.clientEmail ? (
-          <CardContent className="pt-0">
-            <GoogleSheetsSharingCallout
-              serviceAccountEmail={googleSaDisplay.clientEmail}
-              idPrefix="suppression-integration"
-            />
-          </CardContent>
-        ) : null}
-      </Card>
+      <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold text-foreground">
+          Advanced Google Sheets connection
+        </summary>
+        <Card className="mt-3 border-border/80 shadow-sm">
+          <CardHeader>
+            <CardTitle>Integration status</CardTitle>
+            <CardDescription>
+              One-time admin setup: set{" "}
+              <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in
+              Azure App Service. Operators paste Sheet URLs per workspace on the client page — no per-Sheet
+              Azure settings. Use the exact service account email below to share each Sheet (Viewer). Env:{" "}
+              <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> or{" "}
+              <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code>.
+              {googleReady ? (
+                <span className="text-foreground"> Credentials detected.</span>
+              ) : (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {" "}
+                  Not configured — sync will fail until set.
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          {googleReady && googleSaDisplay.clientEmail ? (
+            <CardContent className="pt-0">
+              <GoogleSheetsSharingCallout
+                serviceAccountEmail={googleSaDisplay.clientEmail}
+                idPrefix="suppression-integration"
+              />
+            </CardContent>
+          ) : null}
+        </Card>
+      </details>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Sheet connections</CardTitle>
+          <CardTitle>Do-not-contact sheet connections</CardTitle>
           <CardDescription>
             Email vs domain lists — trigger a pull from Google (read-only scope).
           </CardDescription>
@@ -218,7 +223,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Suppressed emails</CardTitle>
+          <CardTitle>Do-not-contact emails</CardTitle>
             <CardDescription>Last sync replaces rows for that sheet source</CardDescription>
           </CardHeader>
           <CardContent>
@@ -242,7 +247,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
         </Card>
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Suppressed domains</CardTitle>
+          <CardTitle>Do-not-contact domains</CardTitle>
             <CardDescription>Normalized domains from the domain sheet</CardDescription>
           </CardHeader>
           <CardContent>

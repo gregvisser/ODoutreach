@@ -1152,3 +1152,25 @@ export const TRAINING_FINAL_OUTCOMES: readonly string[] = [
   "Read and manage replies from inside ODoutreach without switching to Outlook.",
   "Know what to do next on each portal page without needing Greg to train you in person.",
 ];
+
+export const DAILY_OUTREACH_WORKFLOW: readonly string[] = [
+  "Check Mailboxes: every sending inbox should be connected, have a signature, and show daily capacity. Reconnect any mailbox that asks for Microsoft MFA.",
+  "Import contacts: use RocketReach or CSV, then confirm the finished list appears on Contacts.",
+  "Check Do-not-contact: make sure excluded emails and domains are active before outreach.",
+  "Build a simple Outreach sequence: one Introduction email is enough; add follow-ups only if needed.",
+  "Choose the sending mailbox: use auto-pick for the ready pool, or select a specific connected mailbox.",
+  "Preview and review: check the subject, body, sender signature, and recipient list before sending.",
+  "Send or schedule from Outreach only when the list, mailbox, and message are ready.",
+  "Check Activity: use Check replies to pull the latest replies from connected mailboxes.",
+];
+
+export const DAILY_OUTREACH_WORKFLOW_STEPS: readonly string[] = [
+  "Check Mailboxes",
+  "Import contacts",
+  "Check Do-not-contact",
+  "Build a simple intro sequence",
+  "Choose mailbox",
+  "Preview",
+  "Send or schedule",
+  "Check Activity replies",
+];

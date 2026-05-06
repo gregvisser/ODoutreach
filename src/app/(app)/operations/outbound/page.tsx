@@ -71,10 +71,10 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Operations</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Admin operations</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
-          Reliability view: stuck queue, stale processing, safe operator retry (only when no provider
-          message id exists — avoids duplicate ESP sends), and recent provider events.
+          Admin/support view for delivery troubleshooting. Normal staff should use
+          Overview, Contacts, Outreach, and Activity for day-to-day work.
         </p>
       </div>
 

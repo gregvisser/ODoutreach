@@ -44,7 +44,7 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
         (pathname === "/contacts" && clientFromQuery === clientId),
     },
     {
-      label: "Suppression",
+      label: "Do-not-contact",
       href: `${base}/suppression`,
       isActive: () =>
         pathname === `${base}/suppression` ||

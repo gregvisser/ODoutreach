@@ -24,12 +24,13 @@ export default async function ClientSuppressionPage({ params }: Props) {
     <div className="space-y-8">
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Suppression
+          Do-not-contact
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Connect a Google Sheet of do-not-contact addresses so sends to those
-          people are blocked automatically.
+          Email addresses and domains listed here are never contacted. Connect
+          Google Sheets, check the last sync, and keep this list current before
+          launching outreach.
         </p>
       </div>
 

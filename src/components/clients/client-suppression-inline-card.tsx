@@ -66,7 +66,7 @@ export function ClientSuppressionInlineCard({
       });
       if (r.ok) {
         setMsg(
-          `${kind === "EMAIL" ? "Email" : "Domain"} suppression Sheet saved. Share as Viewer with the email below, then click Sync again.`,
+          `${kind === "EMAIL" ? "Email" : "Domain"} do-not-contact Sheet saved. Share as Viewer, then click Sync again.`,
         );
         setEmailUrl("");
         setDomainUrl("");
@@ -82,7 +82,7 @@ export function ClientSuppressionInlineCard({
     startTransition(async () => {
       const r = await syncClientEmailSuppressionSourceAction(clientId);
       if (r.ok) {
-        let text = `Sync complete — ${String(r.rowsWritten)} row(s) loaded from Google Sheets. Contact flags were refreshed.`;
+        let text = `Sync complete — ${String(r.rowsWritten)} do-not-contact row(s) loaded from Google Sheets. Contact flags were refreshed.`;
         if (r.warning) {
           text += ` Note: ${r.warning}`;
         }
@@ -99,7 +99,7 @@ export function ClientSuppressionInlineCard({
     startTransition(async () => {
       const r = await syncClientDomainSuppressionSourceAction(clientId);
       if (r.ok) {
-        let text = `Sync complete — ${String(r.rowsWritten)} row(s) loaded from Google Sheets. Contact flags were refreshed.`;
+        let text = `Sync complete — ${String(r.rowsWritten)} do-not-contact row(s) loaded from Google Sheets. Contact flags were refreshed.`;
         if (r.warning) {
           text += ` Note: ${r.warning}`;
         }
@@ -119,25 +119,31 @@ export function ClientSuppressionInlineCard({
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Suppression (Google Sheets)</CardTitle>
+        <CardTitle>Do-not-contact lists</CardTitle>
         <CardDescription>
-          Workspace: <span className="font-medium text-foreground">{clientName}</span>. Each client
-          uses their own Sheet — paste the Sheet URL here. One shared{" "}
-          <span className="font-medium text-foreground">Google service account</span> in Azure reads
-          every Sheet after you share it; operators do not add anything in Azure per Sheet.{" "}
+          Workspace: <span className="font-medium text-foreground">{clientName}</span>. Add email
+          addresses and domains that must never receive outreach. Each list is kept in its own
+          Google Sheet and checked before sending.{" "}
           <Link href={`/suppression?client=${clientId}`} className="underline underline-offset-2">
-            Open suppression admin view
+            Open admin view
           </Link>
           .
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {googleServiceAccountConfigured && googleServiceAccountClientEmail ? (
-          <GoogleSheetsSharingCallout
-            serviceAccountEmail={googleServiceAccountClientEmail}
-            idPrefix={`client-${clientId}-suppression`}
-            copyDisabled={pending}
-          />
+          <details className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+            <summary className="cursor-pointer font-medium text-foreground">
+              Advanced Google Sheet sharing
+            </summary>
+            <div className="mt-3">
+              <GoogleSheetsSharingCallout
+                serviceAccountEmail={googleServiceAccountClientEmail}
+                idPrefix={`client-${clientId}-suppression`}
+                copyDisabled={pending}
+              />
+            </div>
+          </details>
         ) : (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
             <p className="font-medium text-foreground">Google Sheets sync is not configured yet</p>
@@ -152,7 +158,7 @@ export function ClientSuppressionInlineCard({
 
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-2">
-            <p className="text-sm font-medium">Email suppression</p>
+            <p className="text-sm font-medium">Email addresses never to contact</p>
             {emailSrc ? (
               <p className="font-mono text-xs text-muted-foreground break-all">
                 Spreadsheet id: {emailSrc.spreadsheetId ?? "—"}
@@ -195,7 +201,7 @@ export function ClientSuppressionInlineCard({
             </div>
           </div>
           <div className="space-y-2">
-            <p className="text-sm font-medium">Domain suppression</p>
+            <p className="text-sm font-medium">Domains never to contact</p>
             {domainSrc ? (
               <p className="font-mono text-xs text-muted-foreground break-all">
                 Spreadsheet id: {domainSrc.spreadsheetId ?? "—"}

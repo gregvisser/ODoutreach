@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  DAILY_OUTREACH_WORKFLOW,
   OPENSDOORS_TRAINING_EXAMPLE,
   TRAINING_FINAL_OUTCOMES,
   TRAINING_MODULES,
@@ -60,6 +61,37 @@ export default async function TrainingIndexPage() {
       </header>
 
       {/* How this training is organised */}
+      <Card className="border-primary/30 bg-primary/5 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Daily outreach workflow</CardTitle>
+          <CardDescription>
+            The everyday OpensDoors path for running a client workspace without
+            touching admin operations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+            {[
+              "Check Mailboxes for connected senders and reconnect any mailbox needing MFA.",
+              "Import contacts from RocketReach or CSV, then confirm the finished list.",
+              "Check Do-not-contact so excluded emails and domains are active.",
+              "Build a simple introduction sequence in Outreach.",
+              "Choose auto-pick or a specific ready mailbox.",
+              "Preview the message and optional follow-ups.",
+              "Send or schedule only when the list, mailbox, and copy are ready.",
+              "Use Activity > Check replies to fetch the latest mailbox replies.",
+            ].map((step, i) => (
+              <li key={step} className="rounded-md border border-border/70 bg-background/80 px-3 py-2">
+                <span className="mr-2 font-semibold text-foreground">
+                  {String(i + 1)}.
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
+
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle className="text-lg">How this training is organised</CardTitle>
@@ -146,6 +178,31 @@ export default async function TrainingIndexPage() {
           })}
         </ol>
       </section>
+
+      <Card className="border-primary/30 bg-primary/5 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Daily outreach workflow</CardTitle>
+          <CardDescription>
+            The handover checklist for normal OpensDoors staff. Use these steps
+            every day; Admin operations is only for support troubleshooting.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="grid gap-2 text-sm sm:grid-cols-2">
+            {DAILY_OUTREACH_WORKFLOW.map((step, i) => (
+              <li
+                key={step}
+                className="rounded-md border border-border/70 bg-background/80 px-3 py-2"
+              >
+                <span className="mr-2 font-semibold text-foreground">
+                  {String(i + 1)}.
+                </span>
+                <span className="text-muted-foreground">{step}</span>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
 
       {/* Final outcomes */}
       <Card className="border-border/80 shadow-sm">
