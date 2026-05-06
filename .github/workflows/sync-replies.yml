@@ -1,0 +1,33 @@
+# Poll connected mailbox inboxes so replies appear in Activity.
+name: Sync replies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 7-18 * * 1-5"
+
+permissions:
+  contents: read
+
+jobs:
+  sync-replies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call reply sync endpoint
+        env:
+          REPLY_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/replies/sync
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; skipping reply sync."
+            exit 0
+          fi
+          status=$(curl -sS -o /tmp/reply-sync-response.json -w "%{http_code}" \
+            -X POST "$REPLY_SYNC_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{"perMailboxTop":25,"maxMailboxes":50}')
+          echo "Reply sync HTTP status: ${status}"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            exit 1
+          fi

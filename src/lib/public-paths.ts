@@ -10,6 +10,7 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/api/dev/simulate-webhook-replay")) return true;
   if (pathname.startsWith("/api/webhooks/resend")) return true;
   if (pathname.startsWith("/api/internal/outbound")) return true;
+  if (pathname.startsWith("/api/internal/replies")) return true;
   // Public one-click unsubscribe endpoints. The token itself is the proof.
   if (pathname.startsWith("/unsubscribe/")) return true;
   if (pathname.startsWith("/api/unsubscribe/")) return true;

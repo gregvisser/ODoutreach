@@ -21,7 +21,7 @@ export type InboxSyncResult = {
 export async function syncMailboxInboxForMailbox(input: {
   clientId: string;
   mailboxIdentityId: string;
-  staffUserId: string;
+  staffUserId: string | null;
   top?: number;
 }): Promise<InboxSyncResult> {
   const mailbox = await prisma.clientMailboxIdentity.findFirst({
@@ -49,7 +49,7 @@ export async function syncMailboxInboxForMailbox(input: {
 export async function syncMicrosoftInboxForMailbox(input: {
   clientId: string;
   mailboxIdentityId: string;
-  staffUserId: string;
+  staffUserId: string | null;
   top?: number;
 }): Promise<InboxSyncResult> {
   const { clientId, mailboxIdentityId, staffUserId } = input;
@@ -184,7 +184,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
 export async function syncGoogleInboxForMailbox(input: {
   clientId: string;
   mailboxIdentityId: string;
-  staffUserId: string;
+  staffUserId: string | null;
   top?: number;
 }): Promise<InboxSyncResult> {
   const { clientId, mailboxIdentityId, staffUserId } = input;
@@ -296,3 +296,66 @@ export async function syncGoogleInboxForMailbox(input: {
 
   return { ok: true, ingested: n, totalSeen: rows.length };
 }
+
+export type ReplySyncBatchResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  ingested: number;
+  totalSeen: number;
+  skipped: number;
+};
+
+export async function syncActiveMailboxRepliesBatch(input: {
+  perMailboxTop?: number;
+  maxMailboxes?: number;
+  syncOne?: typeof syncMailboxInboxForMailbox;
+} = {}): Promise<ReplySyncBatchResult> {
+  const perMailboxTop = Math.max(1, Math.min(input.perMailboxTop ?? DEFAULT_TOP, 50));
+  const maxMailboxes = Math.max(1, Math.min(input.maxMailboxes ?? 50, 200));
+  const syncOne = input.syncOne ?? syncMailboxInboxForMailbox;
+  const mailboxes = await prisma.clientMailboxIdentity.findMany({
+    where: {
+      workspaceRemovedAt: null,
+      isActive: true,
+      canReceive: true,
+      connectionStatus: "CONNECTED",
+      provider: { in: ["MICROSOFT", "GOOGLE"] },
+      client: { status: "ACTIVE" },
+    },
+    orderBy: [{ lastSyncAt: "asc" }, { updatedAt: "asc" }],
+    take: maxMailboxes,
+    select: { id: true, clientId: true },
+  });
+
+  let succeeded = 0;
+  let failed = 0;
+  let ingested = 0;
+  let totalSeen = 0;
+  for (const mailbox of mailboxes) {
+    const result = await syncOne({
+      clientId: mailbox.clientId,
+      mailboxIdentityId: mailbox.id,
+      staffUserId: null,
+      top: perMailboxTop,
+    });
+    if (result.ok) {
+      succeeded += 1;
+      ingested += result.ingested;
+      totalSeen += result.totalSeen;
+    } else {
+      failed += 1;
+    }
+  }
+
+  return {
+    processed: mailboxes.length,
+    succeeded,
+    failed,
+    ingested,
+    totalSeen,
+    skipped: Math.max(0, maxMailboxes - mailboxes.length),
+  };
+}
+
+export const syncActiveClientMailboxInboxes = syncActiveMailboxRepliesBatch;

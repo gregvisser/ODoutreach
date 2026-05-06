@@ -5,6 +5,10 @@ import { z } from "zod";
 
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
+  ROCKETREACH_IMPORT_CONFIRMATION_PHRASE,
+  isRocketReachImportConfirmationValid,
+} from "@/lib/clients/rocketreach-import-safety";
+import {
   resolveImportListForClient,
   resolveImportListTarget,
 } from "@/server/contacts/contact-lists";
@@ -16,6 +20,7 @@ import { requireClientAccess } from "@/server/tenant/access";
 const listTargetSchema = z.object({
   existingListId: z.string().optional(),
   newListName: z.string().optional(),
+  confirmationPhrase: z.string().optional(),
 });
 
 const manualSchema = listTargetSchema.extend({
@@ -69,6 +74,12 @@ export async function runRocketReachImportAction(
   input: z.infer<typeof manualSchema> | z.infer<typeof rawSchema>,
 ): Promise<RocketReachImportActionResult> {
   const staff = await requireOpensDoorsStaff();
+  if (!isRocketReachImportConfirmationValid(input.confirmationPhrase ?? "")) {
+    return {
+      ok: false,
+      error: `Type ${ROCKETREACH_IMPORT_CONFIRMATION_PHRASE} before searching RocketReach. This uses live RocketReach credits and may write contacts.`,
+    };
+  }
 
   if (input.mode === "raw") {
     const parsed = rawSchema.safeParse(input);

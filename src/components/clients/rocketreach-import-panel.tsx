@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ROCKETREACH_IMPORT_CONFIRMATION_PHRASE } from "@/lib/clients/rocketreach-import-safety";
 import {
   Card,
   CardContent,
@@ -43,12 +44,15 @@ export function RocketReachImportPanel({
   const [location, setLocation] = useState("");
   const [existingListId, setExistingListId] = useState("");
   const [newListName, setNewListName] = useState("");
+  const [confirmationPhrase, setConfirmationPhrase] = useState("");
   const [rawJson, setRawJson] = useState(
     '{\n  "query": { "keyword": ["Example Co"] },\n  "page_size": 5,\n  "start": 1,\n  "order_by": "relevance"\n}',
   );
 
   const hasListTarget =
     existingListId.trim().length > 0 || newListName.trim().length > 0;
+  const confirmationOk =
+    confirmationPhrase.trim() === ROCKETREACH_IMPORT_CONFIRMATION_PHRASE;
 
   function showResult(text: string) {
     setMessage(text);
@@ -59,10 +63,8 @@ export function RocketReachImportPanel({
       <CardHeader>
         <CardTitle>RocketReach import</CardTitle>
         <CardDescription>
-          Server-side import via RocketReach People Search + Person Lookup (
-          <code className="text-xs">api.rocketreach.co/api/v2</code>
-          ). Uses <code className="text-xs">ROCKETREACH_API_KEY</code> — lookup consumes export
-          credits per their billing. Imports at most 10 contacts per run; does not send mail.
+          Search RocketReach and add matching contacts to a client list. Searching uses
+          live RocketReach credits and imports at most 10 contacts per run; it never sends mail.
           <br />
           <strong>
             Imports must be saved to a named email list. Lists are used later
@@ -70,10 +72,9 @@ export function RocketReachImportPanel({
           </strong>
           <br />
           <span className="text-xs text-muted-foreground">
-            Preview for RocketReach is deferred — a dry-run would still
-            consume search/lookup credits against the live API, so this panel
-            writes immediately up to the cap. CSV imports run through the
-            Preview → Confirm flow on the global Contacts page.
+            RocketReach does not have a free preview in this workflow: search and lookup use credits.
+            Type the confirmation phrase before searching, then review the result message.
+            Do-not-contact checks are applied after import.
           </span>
         </CardDescription>
       </CardHeader>
@@ -130,6 +131,25 @@ export function RocketReachImportPanel({
           </p>
         ) : null}
 
+        <div className="mt-4 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
+          <p className="font-medium">Credit warning</p>
+          <p className="mt-1 text-xs">
+            This search calls RocketReach People Search and Person Lookup. It may consume credits and
+            write contacts immediately after the server validates results. Type{" "}
+            <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
+          </p>
+          <div className="mt-2 max-w-md space-y-1">
+            <Label htmlFor="rr-confirm">Confirmation phrase</Label>
+            <Input
+              id="rr-confirm"
+              value={confirmationPhrase}
+              onChange={(e) => setConfirmationPhrase(e.target.value)}
+              placeholder={ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}
+              autoComplete="off"
+            />
+          </div>
+        </div>
+
         <Tabs defaultValue="builder" className="mt-4 w-full">
           <TabsList>
             <TabsTrigger value="builder">Simple search</TabsTrigger>
@@ -169,7 +189,7 @@ export function RocketReachImportPanel({
             </div>
             <Button
               type="button"
-              disabled={pending || !apiKeyConfigured || !hasListTarget}
+              disabled={pending || !apiKeyConfigured || !hasListTarget || !confirmationOk}
               onClick={() => {
                 setMessage(null);
                 startTransition(async () => {
@@ -183,6 +203,7 @@ export function RocketReachImportPanel({
                     pageSize: 10,
                     existingListId: existingListId || undefined,
                     newListName: newListName || undefined,
+                    confirmationPhrase,
                   });
                   if (r.ok) {
                     showResult(
@@ -209,7 +230,7 @@ export function RocketReachImportPanel({
             />
             <Button
               type="button"
-              disabled={pending || !apiKeyConfigured || !hasListTarget}
+              disabled={pending || !apiKeyConfigured || !hasListTarget || !confirmationOk}
               onClick={() => {
                 setMessage(null);
                 startTransition(async () => {
@@ -219,6 +240,7 @@ export function RocketReachImportPanel({
                     rawJson,
                     existingListId: existingListId || undefined,
                     newListName: newListName || undefined,
+                    confirmationPhrase,
                   });
                   if (r.ok) {
                     showResult(
