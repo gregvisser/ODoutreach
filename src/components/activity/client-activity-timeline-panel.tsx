@@ -81,8 +81,10 @@ function SummaryTile({
 
 export function ClientActivityTimelinePanel({
   timeline,
+  variant = "full",
 }: {
   timeline: BuildTimelineResult;
+  variant?: "outreach" | "full";
 }) {
   const { events, summary, capped } = timeline;
 
@@ -102,14 +104,26 @@ export function ClientActivityTimelinePanel({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <SummaryTile label="Total events" value={summary.totalEvents} />
+        <SummaryTile
+          label={variant === "outreach" ? "Outreach events" : "Total events"}
+          value={summary.totalEvents}
+        />
         <SummaryTile label="Sends" value={sendCount} />
         <SummaryTile label="Replies" value={replyCount + inboundCount} />
-        <SummaryTile label="Imports" value={importCount} />
-        <SummaryTile
-          label="Templates / sequences"
-          value={templateCount + sequenceCount}
-        />
+        {variant === "outreach" ? (
+          <SummaryTile
+            label="Sequence activity"
+            value={enrollmentCount + (byType.step_send ?? 0)}
+          />
+        ) : (
+          <>
+            <SummaryTile label="Imports" value={importCount} />
+            <SummaryTile
+              label="Templates / sequences"
+              value={templateCount + sequenceCount}
+            />
+          </>
+        )}
         <SummaryTile
           label="Warnings / errors"
           value={summary.warnings + summary.errors}
@@ -131,14 +145,18 @@ export function ClientActivityTimelinePanel({
           Enrollments:{" "}
           <span className="font-medium text-foreground">{enrollmentCount}</span>
         </span>
-        <span>
-          Contact lists:{" "}
-          <span className="font-medium text-foreground">{listCount}</span>
-        </span>
-        <span>
-          Mailbox events:{" "}
-          <span className="font-medium text-foreground">{mailboxCount}</span>
-        </span>
+        {variant === "full" ? (
+          <>
+            <span>
+              Contact lists:{" "}
+              <span className="font-medium text-foreground">{listCount}</span>
+            </span>
+            <span>
+              Mailbox events:{" "}
+              <span className="font-medium text-foreground">{mailboxCount}</span>
+            </span>
+          </>
+        ) : null}
         <span>
           Unsubscribes:{" "}
           <span className="font-medium text-foreground">{unsubscribeCount}</span>
@@ -147,7 +165,9 @@ export function ClientActivityTimelinePanel({
 
       {events.length === 0 ? (
         <div className="rounded-md border border-dashed border-border/80 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-          No activity yet for this client.
+          {variant === "outreach"
+            ? "No outreach sends, replies, or unsubscribe events yet for this client."
+            : "No activity yet for this client."}
         </div>
       ) : (
         <ol className="space-y-0 divide-y divide-border/70 rounded-md border border-border/80 bg-card">
@@ -164,11 +184,13 @@ export function ClientActivityTimelinePanel({
         </p>
       ) : null}
 
-      <p className="rounded-md border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        Some operational events may appear here only after their feature starts
-        writing audit records. Not yet tracked as discrete events:{" "}
-        {UNTRACKED_EVENT_TYPES.map((t) => eventTypeLabel(t)).join(", ")}.
-      </p>
+      {variant === "full" ? (
+        <p className="rounded-md border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          Some operational events may appear here only after their feature starts
+          writing audit records. Not yet tracked as discrete events:{" "}
+          {UNTRACKED_EVENT_TYPES.map((t) => eventTypeLabel(t)).join(", ")}.
+        </p>
+      ) : null}
     </div>
   );
 }

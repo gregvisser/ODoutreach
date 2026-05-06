@@ -69,6 +69,21 @@ export const UNTRACKED_EVENT_TYPES: readonly TimelineEventType[] = [
   "list_membership",
 ] as const;
 
+export const OUTREACH_TIMELINE_EVENT_TYPES: readonly TimelineEventType[] = [
+  "send",
+  "reply",
+  "bounce",
+  "error",
+  "inbound_message",
+  "enrollment",
+  "step_send",
+  "unsubscribe",
+] as const;
+
+export function isOutreachTimelineEvent(type: TimelineEventType): boolean {
+  return OUTREACH_TIMELINE_EVENT_TYPES.includes(type);
+}
+
 export type TimelineEventCounts = Partial<Record<TimelineEventType, number>>;
 
 export type TimelineSummary = {

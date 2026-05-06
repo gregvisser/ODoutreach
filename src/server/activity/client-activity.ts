@@ -7,6 +7,7 @@ import {
   classifyOutboundStatus,
   classifyStepSendStatus,
   DEFAULT_TIMELINE_LIMIT,
+  isOutreachTimelineEvent,
   type BuildTimelineResult,
   type TimelineEvent,
 } from "@/lib/activity/client-activity-timeline";
@@ -34,6 +35,7 @@ const PER_SOURCE_LIMIT = 40;
 type LoadOptions = {
   /** Overall cap on the merged timeline; defaults to 100. */
   limit?: number;
+  mode?: "outreach" | "all";
 };
 
 export async function loadClientActivityTimeline(
@@ -485,7 +487,12 @@ export async function loadClientActivityTimeline(
     });
   }
 
-  return buildClientTimeline(events, limit);
+  const visibleEvents =
+    opts.mode === "all"
+      ? events
+      : events.filter((event) => isOutreachTimelineEvent(event.type));
+
+  return buildClientTimeline(visibleEvents, limit);
 }
 
 function severityToOutboundTitle(status: string, toEmail: string): string {

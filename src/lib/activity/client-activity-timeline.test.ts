@@ -7,6 +7,7 @@ import {
   classifyStepSendStatus,
   DEFAULT_TIMELINE_LIMIT,
   eventTypeLabel,
+  isOutreachTimelineEvent,
   severityLabel,
   UNTRACKED_EVENT_TYPES,
   type TimelineEvent,
@@ -159,6 +160,36 @@ describe("eventTypeLabel and severityLabel", () => {
   it("returns a non-empty label for every severity", () => {
     for (const s of ["info", "success", "warning", "error"] as const) {
       expect(severityLabel(s).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("isOutreachTimelineEvent", () => {
+  it("keeps email lifecycle, replies, sequence activity, and unsubscribes in the primary activity view", () => {
+    for (const type of [
+      "send",
+      "reply",
+      "bounce",
+      "error",
+      "inbound_message",
+      "enrollment",
+      "step_send",
+      "unsubscribe",
+    ] as const) {
+      expect(isOutreachTimelineEvent(type)).toBe(true);
+    }
+  });
+
+  it("moves setup, mailbox connection, and generic audit events to full workspace history", () => {
+    for (const type of [
+      "csv_import",
+      "contact_list",
+      "mailbox_oauth",
+      "template",
+      "sequence",
+      "audit",
+    ] as const) {
+      expect(isOutreachTimelineEvent(type)).toBe(false);
     }
   });
 });

@@ -125,7 +125,7 @@ describe("loadClientActivityTimeline — unsubscribe audit mapping (PR O)", () =
     auditFindMany.mockResolvedValue([
       unsubscribeAuditRow({ metadata: null }),
     ]);
-    const result = await loadClientActivityTimeline("client-1");
+    const result = await loadClientActivityTimeline("client-1", { mode: "all" });
     expect(result.events).toHaveLength(1);
     expect(result.events[0]!.type).toBe("audit");
   });
@@ -136,7 +136,7 @@ describe("loadClientActivityTimeline — unsubscribe audit mapping (PR O)", () =
         metadata: { email: "a@b.co", purpose: "outreach_unsubscribe" },
       }),
     ]);
-    const result = await loadClientActivityTimeline("client-1");
+    const result = await loadClientActivityTimeline("client-1", { mode: "all" });
     expect(result.events[0]!.type).toBe("audit");
   });
 
@@ -152,7 +152,7 @@ describe("loadClientActivityTimeline — unsubscribe audit mapping (PR O)", () =
         staffUser: { displayName: "Ada", email: "ada@example.com" },
       },
     ]);
-    const result = await loadClientActivityTimeline("client-1");
+    const result = await loadClientActivityTimeline("client-1", { mode: "all" });
     expect(result.events[0]!.type).toBe("audit");
     expect(result.events[0]!.title).toBe("UPDATE · Client");
   });
@@ -185,6 +185,54 @@ describe("loadClientActivityTimeline — unsubscribe audit mapping (PR O)", () =
       "audit:audit-u2",
       "outbound:out-x",
     ]);
+  });
+
+  it("keeps generic audit and mailbox setup events out of the default outreach timeline", async () => {
+    outboundFindMany.mockResolvedValue([
+      {
+        id: "out-x",
+        status: "SENT",
+        subject: "hi",
+        toEmail: "x@y.co",
+        fromAddress: "f@z.co",
+        lastErrorMessage: null,
+        sentAt: new Date("2026-04-22T10:00:00Z"),
+        bouncedAt: null,
+        queuedAt: null,
+        createdAt: new Date("2026-04-22T09:59:00Z"),
+        failureReason: null,
+        metadata: null,
+      },
+    ]);
+    auditFindMany.mockResolvedValue([
+      unsubscribeAuditRow({ id: "audit-unsub" }),
+      {
+        id: "audit-mailbox",
+        action: "UPDATE",
+        entityType: "ClientMailboxIdentity",
+        entityId: "mbx-1",
+        createdAt: new Date("2026-04-22T11:00:00Z"),
+        metadata: {},
+        staffUser: { displayName: "Ada", email: "ada@example.com" },
+      },
+      {
+        id: "audit-other",
+        action: "UPDATE",
+        entityType: "Client",
+        entityId: "c1",
+        createdAt: new Date("2026-04-22T10:30:00Z"),
+        metadata: {},
+        staffUser: { displayName: "Ada", email: "ada@example.com" },
+      },
+    ]);
+
+    const result = await loadClientActivityTimeline("client-1");
+
+    expect(result.events.map((e) => e.id)).toEqual([
+      "audit:audit-unsub",
+      "outbound:out-x",
+    ]);
+    expect(result.events.map((e) => e.type)).toEqual(["unsubscribe", "send"]);
   });
 
   it("scopes the audit query by clientId (regression guard against cross-client leak)", async () => {
