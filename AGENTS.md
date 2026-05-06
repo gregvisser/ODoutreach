@@ -16,6 +16,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ### Key commands
 
 See `package.json` scripts. Highlights:
+- **Cursor Cloud update script:** `bash scripts/cloud-agent-update.sh`
 - **Lint:** `npm run lint`
 - **Test:** `npm test` (vitest, no DB needed — all tests are unit/pure)
 - **Dev server:** `npm run dev`
