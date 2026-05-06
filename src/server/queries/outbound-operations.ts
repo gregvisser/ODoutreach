@@ -49,6 +49,7 @@ export async function getOutboundOperationsSnapshot(
         include: {
           client: { select: { name: true } },
           contact: { select: { email: true } },
+          mailbox: { select: { email: true } },
         },
       }),
       prisma.outboundEmail.findMany({
@@ -63,6 +64,7 @@ export async function getOutboundOperationsSnapshot(
         include: {
           client: { select: { name: true } },
           contact: { select: { email: true } },
+          mailbox: { select: { email: true, connectionStatus: true, lastError: true } },
         },
       }),
       prisma.outboundEmail.findMany({
@@ -76,6 +78,7 @@ export async function getOutboundOperationsSnapshot(
         include: {
           client: { select: { name: true } },
           contact: { select: { email: true } },
+          mailbox: { select: { email: true } },
         },
       }),
       prisma.outboundEmail.findMany({

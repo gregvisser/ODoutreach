@@ -12,6 +12,7 @@ import {
 } from "@/server/mailbox/gmail-sendmail";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import { sendMicrosoftGraphSendMail } from "@/server/mailbox/microsoft-graph-sendmail";
+import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
 import { getOutboundEmailProvider } from "../providers";
 import {
   humanizeGovernanceRejection,
@@ -59,6 +60,41 @@ function readListUnsubscribeHeadersFromMetadata(
 function extractHostedListUnsubscribeUrl(listUnsubscribe: string): string | null {
   const m = listUnsubscribe.match(/^<(https?:\/\/[^>]+)>$/);
   return m ? m[1] : null;
+}
+
+function isMailboxReauthRequiredError(provider: "MICROSOFT" | "GOOGLE", error: string): boolean {
+  const e = error.toLowerCase();
+  if (provider === "MICROSOFT") {
+    return (
+      e.includes("invalid_grant") ||
+      e.includes("aadsts50076") ||
+      e.includes("multi-factor authentication") ||
+      e.includes("use multi-factor authentication")
+    );
+  }
+  return e.includes("invalid_grant") || e.includes("refresh token");
+}
+
+function reauthMessage(provider: "MICROSOFT" | "GOOGLE", error: string): string {
+  const detail = error.slice(0, 1500);
+  if (provider === "MICROSOFT") {
+    return `Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. ${detail}`;
+  }
+  return `Google requires this mailbox to re-authenticate. Reconnect this mailbox and approve access. ${detail}`;
+}
+
+async function markMailboxReauthRequired(
+  mailboxIdentityId: string,
+  provider: "MICROSOFT" | "GOOGLE",
+  error: string,
+) {
+  await prisma.clientMailboxIdentity.updateMany({
+    where: { id: mailboxIdentityId },
+    data: {
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: reauthMessage(provider, error).slice(0, 4000),
+    },
+  });
 }
 
 /**
@@ -155,6 +191,10 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
         { name: "List-Unsubscribe-Post", value: listUnsub.listUnsubscribePost },
       ]
     : undefined;
+  const providerBody = buildEmailBodyParts({
+    bodyText: row.bodySnapshot,
+    unsubscribeUrl: listUnsub ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe) : null,
+  });
 
   try {
     const provider = getOutboundEmailProvider();
@@ -163,7 +203,8 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
       from: row.fromAddress?.trim() ? row.fromAddress : resolvedFrom,
       to,
       subject: row.subject,
-      bodyText: row.bodySnapshot,
+      bodyText: providerBody.text,
+      bodyHtml: providerBody.html,
       tag: row.clientId,
       idempotencyKey,
       extraHeaders: providerExtraHeaders,
@@ -331,6 +372,10 @@ async function sendViaConnectedMailboxOrFail(
       return { ok: false, error: "Invalid payload" };
     }
     const listUnsub = readListUnsubscribeHeadersFromMetadata(row.metadata);
+    const bodyParts = buildEmailBodyParts({
+      bodyText: body,
+      unsubscribeUrl: listUnsub ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe) : null,
+    });
     const gmailExtraHeaders = listUnsub
       ? [
           { name: "List-Unsubscribe", value: listUnsub.listUnsubscribe },
@@ -343,7 +388,8 @@ async function sendViaConnectedMailboxOrFail(
         from: fromForLog,
         to,
         subject,
-        bodyText: body,
+        bodyText: bodyParts.text,
+        bodyHtml: bodyParts.html,
         extraHeaders: gmailExtraHeaders,
       });
       const result = await sendGmailUsersMessagesSend({
@@ -351,6 +397,9 @@ async function sendViaConnectedMailboxOrFail(
         rfc5322Message: rfc,
       });
       if (result.ok === false) {
+        if (row.mailboxIdentityId && isMailboxReauthRequiredError("GOOGLE", result.error)) {
+          await markMailboxReauthRequired(row.mailboxIdentityId, "GOOGLE", result.error);
+        }
         return await handleSendFailure(
           row.id,
           row.retryCount,
@@ -383,6 +432,9 @@ async function sendViaConnectedMailboxOrFail(
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (row.mailboxIdentityId && isMailboxReauthRequiredError("GOOGLE", msg)) {
+        await markMailboxReauthRequired(row.mailboxIdentityId, "GOOGLE", msg);
+      }
       return await handleSendFailure(
         row.id,
         row.retryCount,
@@ -414,6 +466,10 @@ async function sendViaConnectedMailboxOrFail(
   const graphListUnsubscribeUrl = listUnsub
     ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe)
     : null;
+  const bodyParts = buildEmailBodyParts({
+    bodyText: body,
+    unsubscribeUrl: graphListUnsubscribeUrl,
+  });
 
   try {
     const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
@@ -422,13 +478,19 @@ async function sendViaConnectedMailboxOrFail(
       mailboxUserPrincipalName: mailbox.emailNormalized,
       to,
       subject,
-      bodyText: body,
+      bodyText: bodyParts.text,
       correlationId: row.correlationId,
-      options: graphListUnsubscribeUrl
-        ? { listUnsubscribeUrl: graphListUnsubscribeUrl }
-        : undefined,
+      options: {
+        bodyHtml: bodyParts.html,
+        ...(graphListUnsubscribeUrl
+          ? { listUnsubscribeUrl: graphListUnsubscribeUrl }
+          : {}),
+      },
     });
     if (result.ok === false) {
+      if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", result.error)) {
+        await markMailboxReauthRequired(row.mailboxIdentityId, "MICROSOFT", result.error);
+      }
       return await handleSendFailure(
         row.id,
         row.retryCount,
@@ -461,6 +523,9 @@ async function sendViaConnectedMailboxOrFail(
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", msg)) {
+      await markMailboxReauthRequired(row.mailboxIdentityId, "MICROSOFT", msg);
+    }
     return await handleSendFailure(
       row.id,
       row.retryCount,

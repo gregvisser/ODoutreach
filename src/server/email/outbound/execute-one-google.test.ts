@@ -141,6 +141,7 @@ describe("executeOutboundSend — Google governed path", () => {
     expect(rfcCalls.length).toBeGreaterThan(0);
     const firstArg = rfcCalls[0]![0] as {
       extraHeaders?: Array<{ name: string; value: string }>;
+      bodyHtml?: string;
     };
     expect(firstArg.extraHeaders).toEqual([
       {
@@ -152,6 +153,8 @@ describe("executeOutboundSend — Google governed path", () => {
         value: "List-Unsubscribe=One-Click",
       },
     ]);
+    expect(firstArg.bodyHtml).toContain('<a href="https://app.example.com/unsubscribe/raw-g">Unsubscribe</a>');
+    expect(firstArg.bodyHtml).not.toContain("Unsubscribe: https://app.example.com/unsubscribe/raw-g");
   });
 
   it("PR N — passes no extraHeaders when metadata lacks unsubscribe header shape", async () => {

@@ -17,6 +17,21 @@ describe("buildRfc5322PlainTextEmail", () => {
     expect(rfc.startsWith("From: a@x.com\r\n")).toBe(true);
   });
 
+  it("builds multipart alternative when HTML body is supplied", () => {
+    const rfc = buildRfc5322PlainTextEmail({
+      from: "a@x.com",
+      to: "b@y.com",
+      subject: "Hi",
+      bodyText: "Plain\n\n---\nUnsubscribe: https://example.com/u/raw\n",
+      bodyHtml: '<p>Plain</p><p><a href="https://example.com/u/raw">Unsubscribe</a></p>',
+    });
+    expect(rfc).toContain("Content-Type: multipart/alternative;");
+    expect(rfc).toContain("Content-Type: text/plain; charset=UTF-8");
+    expect(rfc).toContain("Unsubscribe: https://example.com/u/raw");
+    expect(rfc).toContain("Content-Type: text/html; charset=UTF-8");
+    expect(rfc).toContain('href="https://example.com/u/raw">Unsubscribe</a>');
+  });
+
   it("omits extra headers when none are supplied (PR N regression guard)", () => {
     const rfc = buildRfc5322PlainTextEmail({
       from: "a@x.com",

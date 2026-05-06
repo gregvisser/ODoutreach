@@ -9,6 +9,7 @@ export type SendEmailInput = {
   to: string;
   subject: string;
   bodyText: string;
+  bodyHtml?: string;
   /** Optional tags for provider dashboards — never include other tenants’ clientIds in unsafe ways */
   tag?: string;
   /** Per-attempt key — Resend `Idempotency-Key`; mock uses deterministic ids */

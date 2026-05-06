@@ -3,7 +3,6 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client";
-import { chooseSignatureForSend } from "@/lib/mailboxes/sender-signature";
 import {
   APPROVED_INTERNAL_PROOF_RECIPIENTS,
   INTERNAL_PROOF_CONFIRMATION_PHRASE,
@@ -27,6 +26,7 @@ import {
   mailboxIneligibleForGovernedSendExecution,
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
+import { appendMailboxSignature } from "@/server/mailbox/mailbox-send-composition";
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
 
 export type InternalProofSendResult =
@@ -45,19 +45,6 @@ export type InternalProofSendResult =
 
 const SUBJECT_MAX = 300;
 const BODY_MAX = 50_000;
-
-function appendSignature(bodyText: string, mailbox: ClientMailboxIdentity): string | null {
-  const selection = chooseSignatureForSend({
-    mailbox,
-    clientBrief: {
-      senderDisplayNameFallback: null,
-      emailSignatureFallback: null,
-    },
-  });
-  const signature = selection.emailSignatureText?.trim();
-  if (!signature) return null;
-  return `${bodyText.replace(/\s+$/u, "")}\n\n${signature}`;
-}
 
 export async function queueSelectedMailboxInternalProofSend(input: {
   staff: StaffUser;
@@ -117,7 +104,7 @@ export async function queueSelectedMailboxInternalProofSend(input: {
     };
   }
 
-  const bodyWithSignature = appendSignature(bodyText, mailbox);
+  const bodyWithSignature = appendMailboxSignature({ bodyText, mailbox });
   if (!bodyWithSignature) {
     return {
       ok: false,

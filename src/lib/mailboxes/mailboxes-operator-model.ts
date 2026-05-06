@@ -75,6 +75,13 @@ export function microsoftConnectionErrorSublabel(
   if (err.includes("HTTP 403")) {
     return "Microsoft Graph denied access. Grant delegated Full Access and Send As/Send on behalf, then reconnect.";
   }
+  if (
+    /invalid_grant/i.test(err) ||
+    /AADSTS50076/i.test(err) ||
+    /multi-factor authentication/i.test(err)
+  ) {
+    return "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA.";
+  }
   if (/access_denied/i.test(err)) {
     return "Microsoft sign-in was declined or cancelled. Use Connect again and approve access, or ask your admin if consent is blocked.";
   }

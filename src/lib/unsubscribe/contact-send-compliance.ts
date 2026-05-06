@@ -5,6 +5,10 @@ import {
   generateRawUnsubscribeToken,
 } from "@/lib/unsubscribe/unsubscribe-token";
 import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-unsubscribe-in-body";
+import {
+  buildEmailBodyParts,
+  type EmailBodyParts,
+} from "@/lib/unsubscribe/email-body-parts";
 
 /**
  * When one-click is not configured, use the same mailto shape as
@@ -24,6 +28,7 @@ export type ContactSendComplianceResult =
   | {
       kind: "hosted";
       finalBody: string;
+      bodyParts: EmailBodyParts;
       rawToken: string;
       listUnsubscribe: string;
       listUnsubscribePost: string;
@@ -31,6 +36,7 @@ export type ContactSendComplianceResult =
   | {
       kind: "mailto";
       finalBody: string;
+      bodyParts: EmailBodyParts;
     };
 
 /**
@@ -50,11 +56,16 @@ export function prepareContactSendCompliance(input: {
     const url = buildUnsubscribeUrl({ baseUrl: publicBase, rawToken });
     const headers = buildListUnsubscribeHeaders(url);
     const finalBody = ensureUnsubscribeLinkInPlainTextBody(input.bodyText, url);
+    const bodyParts = buildEmailBodyParts({
+      bodyText: finalBody,
+      unsubscribeUrl: url,
+    });
     if (!headers) {
-      return { kind: "mailto", finalBody };
+      return { kind: "mailto", finalBody, bodyParts };
     }
     return {
       kind: "hosted",
+      bodyParts,
       rawToken,
       listUnsubscribe: headers.listUnsubscribe,
       listUnsubscribePost: headers.listUnsubscribePost,
@@ -63,12 +74,14 @@ export function prepareContactSendCompliance(input: {
   }
 
   const link = mailto;
+  const finalBody = ensureUnsubscribeLinkInPlainTextBody(input.bodyText, link);
   return {
     kind: "mailto",
-    finalBody: ensureUnsubscribeLinkInPlainTextBody(
-      input.bodyText,
-      link,
-    ),
+    finalBody,
+    bodyParts: buildEmailBodyParts({
+      bodyText: finalBody,
+      unsubscribeUrl: link,
+    }),
   };
 }
 

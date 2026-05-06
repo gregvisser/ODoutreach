@@ -77,6 +77,18 @@ describe("mailboxRowOperatorStatus", () => {
     expect(s.sublabel).toContain("Microsoft Graph could not find");
   });
 
+  it("maps Microsoft MFA-required refresh errors to reconnect guidance", () => {
+    const s = mailboxRowOperatorStatus({
+      ...base(),
+      connectionStatus: "CONNECTION_ERROR",
+      lastError:
+        "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. Microsoft token refresh failed: invalid_grant — AADSTS50076",
+    });
+    expect(s.sublabel).toBe(
+      "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA.",
+    );
+  });
+
   it("keeps Google CONNECTION_ERROR copy generic", () => {
     const s = mailboxRowOperatorStatus({
       ...base(),

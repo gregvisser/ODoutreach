@@ -4,36 +4,60 @@ import type { SendEmailResult } from "@/server/email/providers/types";
 
 const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
+function safeHeaderLines(extraHeaders?: ReadonlyArray<{ name: string; value: string }>): string[] {
+  const safeExtra: string[] = [];
+  if (!extraHeaders) return safeExtra;
+  for (const h of extraHeaders) {
+    if (typeof h?.name !== "string" || typeof h?.value !== "string") continue;
+    const name = h.name.trim();
+    const value = h.value.trim();
+    if (!name || !value) continue;
+    if (/[\r\n:]/.test(name)) continue;
+    if (/[\r\n]/.test(value)) continue;
+    safeExtra.push(`${name}: ${value}`);
+  }
+  return safeExtra;
+}
+
 /**
- * Build a minimal RFC 5322 plain-text message (UTF-8 body). For governed test / operator sends.
- *
- * Optional `extraHeaders` are injected before the standard headers so
- * compliance headers (e.g. `List-Unsubscribe`,
- * `List-Unsubscribe-Post`) travel with the provider send. Each entry
- * must be `{ name, value }` — names and values are validated for CR
- * or LF injection and silently dropped if unsafe. The caller is
- * responsible for supplying canonical values (see
- * `buildListUnsubscribeHeaders`).
+ * Build a minimal RFC 5322 message. When HTML is supplied, send multipart/alternative:
+ * text/plain keeps the raw unsubscribe URL fallback, while text/html can render a
+ * clean "Unsubscribe" anchor.
  */
 export function buildRfc5322PlainTextEmail(input: {
   from: string;
   to: string;
   subject: string;
   bodyText: string;
+  bodyHtml?: string;
   extraHeaders?: ReadonlyArray<{ name: string; value: string }>;
 }): string {
-  const { from, to, subject, bodyText, extraHeaders } = input;
-  const safeExtra: string[] = [];
-  if (extraHeaders) {
-    for (const h of extraHeaders) {
-      if (typeof h?.name !== "string" || typeof h?.value !== "string") continue;
-      const name = h.name.trim();
-      const value = h.value.trim();
-      if (!name || !value) continue;
-      if (/[\r\n:]/.test(name)) continue;
-      if (/[\r\n]/.test(value)) continue;
-      safeExtra.push(`${name}: ${value}`);
-    }
+  const { from, to, subject, bodyText, bodyHtml, extraHeaders } = input;
+  const safeExtra = safeHeaderLines(extraHeaders);
+  const html = bodyHtml?.trim();
+  if (html) {
+    const boundary = "odoutreach_alt_9f3f5d0d4e7a";
+    return [
+      ...safeExtra,
+      `From: ${from}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      bodyText,
+      `--${boundary}`,
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      html,
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
   }
   const lines = [
     ...safeExtra,

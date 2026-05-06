@@ -13,7 +13,9 @@ describe("ensureUnsubscribeLinkInPlainTextBody", () => {
   it("does not duplicate when the body already includes the URL", () => {
     const u = "https://app.example.com/unsubscribe/abc";
     const body = `Hi\n\n${u}`;
-    expect(ensureUnsubscribeLinkInPlainTextBody(body, u)).toBe(body);
+    const out = ensureUnsubscribeLinkInPlainTextBody(body, u);
+    expect(out.match(/https:\/\/app\.example\.com\/unsubscribe\/abc/g)).toHaveLength(1);
+    expect(out).toBe(`Hi\n\n---\nUnsubscribe: ${u}\n`);
   });
 
   it("keeps the unsubscribe line after a multi-line signature block", () => {

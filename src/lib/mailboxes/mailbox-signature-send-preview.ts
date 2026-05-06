@@ -1,3 +1,6 @@
+import {
+  buildCleanUnsubscribeHtmlBody,
+} from "@/lib/unsubscribe/email-body-parts";
 import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-unsubscribe-in-body";
 
 import {
@@ -26,6 +29,7 @@ export type MailboxSignatureSendPreview = {
    * (`ensureUnsubscribeLinkInPlainTextBody`); only the URL is a sample here.
    */
   bodyPlain: string;
+  bodyHtml: string;
   sampleUnsubscribeUrl: typeof MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL;
   isPreview: true;
   /**
@@ -54,6 +58,10 @@ export function buildMailboxSignatureSendPreview(input: {
     base,
     MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
   );
+  const html = buildCleanUnsubscribeHtmlBody({
+    bodyText: withFooter,
+    unsubscribeUrl: MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
+  });
 
   const baseFootnote =
     "This preview does not send email, create tokens, or change data. " +
@@ -64,6 +72,7 @@ export function buildMailboxSignatureSendPreview(input: {
     selection,
     signatureTextUsed: hasSig ? text : null,
     bodyPlain: withFooter,
+    bodyHtml: html,
     sampleUnsubscribeUrl: MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
     isPreview: true,
     footnote: hasSig

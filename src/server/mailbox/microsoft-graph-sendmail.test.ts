@@ -88,6 +88,33 @@ describe("sendMicrosoftGraphSendMail", () => {
     ]);
   });
 
+  it("sends HTML body with clean unsubscribe anchor when supplied", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendMicrosoftGraphSendMail({
+      accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
+      to: "a@b.co",
+      subject: "s",
+      bodyText: "Body\n\n---\nUnsubscribe: https://example.com/u/raw",
+      bodyHtml: '<p>Body</p><p><a href="https://example.com/u/raw">Unsubscribe</a></p>',
+      correlationId: "corr-html",
+      options: {
+        listUnsubscribeUrl: "https://example.com/u/raw",
+      },
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as {
+      message: { body: { contentType: string; content: string } };
+    };
+    expect(body.message.body.contentType).toBe("HTML");
+    expect(body.message.body.content).toContain(">Unsubscribe</a>");
+    expect(body.message.body.content).not.toContain("Unsubscribe: https://example.com/u/raw");
+  });
+
   it("ignores malformed list-unsubscribe URLs (mailto / CRLF / empty)", async () => {
     const fetchMock = vi
       .fn()

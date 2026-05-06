@@ -893,6 +893,15 @@ export function ClientMailboxIdentitiesPanel({
                 added (no email is sent in preview).                 Production sends use per-mailbox signatures only — a client
                 brief does not fill in a missing mailbox signature.
               </p>
+              <p>
+                If Microsoft 365 or Google Workspace appends an additional
+                provider-side signature or legal disclaimer after send,
+                ODoutreach cannot place its unsubscribe footer below that
+                injected content. Store the full official signature/disclaimer
+                in ODoutreach for each mailbox, or disable provider-side
+                injection, so the ODoutreach-controlled signature appears before
+                the unsubscribe footer.
+              </p>
             </div>
           </details>
           <Sheet
@@ -943,6 +952,22 @@ export function ClientMailboxIdentitiesPanel({
                         </p>
                         <div>
                           <p className="text-xs font-medium text-foreground">
+                            HTML unsubscribe preview
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Production HTML uses the word{" "}
+                            <strong>Unsubscribe</strong> as the link text; the
+                            raw token URL is only in the plain-text fallback.
+                          </p>
+                          <div
+                            className="mt-1 rounded-md border border-border/60 bg-muted/30 p-2 text-xs leading-relaxed text-foreground"
+                            dangerouslySetInnerHTML={{
+                              __html: preview.bodyHtml,
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-foreground">
                             Signature block + compliance footer (plain text)
                           </p>
                           <p className="text-[11px] text-muted-foreground">
@@ -954,6 +979,13 @@ export function ClientMailboxIdentitiesPanel({
                             {preview.bodyPlain}
                           </pre>
                         </div>
+                        <p className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
+                          Provider-injected signatures or legal disclaimers can
+                          still appear after ODoutreach sends the message. For
+                          final production ordering, keep the full official
+                          signature/disclaimer in ODoutreach per mailbox, or
+                          disable provider-side injection.
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {pstate.recommendedAction}
                         </p>

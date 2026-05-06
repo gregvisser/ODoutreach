@@ -302,6 +302,10 @@ function OpsTable({
     clientId: string;
     toEmail: string;
     status: string;
+    mailbox?: { email: string } | null;
+    lastErrorCode?: string | null;
+    lastErrorMessage?: string | null;
+    failureReason?: string | null;
     client: { name: string };
   }[];
   empty: string;
@@ -326,7 +330,19 @@ function OpsTable({
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="font-medium">{row.toEmail}</TableCell>
+                <TableCell className="font-medium">
+                  <div>{row.toEmail}</div>
+                  {row.mailbox?.email ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Sending mailbox: {row.mailbox.email}
+                    </div>
+                  ) : null}
+                  {row.lastErrorMessage || row.failureReason ? (
+                    <div className="mt-1 max-w-sm text-xs leading-snug text-destructive">
+                      {row.lastErrorMessage ?? row.failureReason}
+                    </div>
+                  ) : null}
+                </TableCell>
                 <TableCell>{row.client.name}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{row.status}</Badge>

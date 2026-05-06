@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findUnique, updateMany, findFirstMbox } = vi.hoisted(() => ({
+const { findUnique, updateMany, findFirstMbox, updateManyMbox } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   updateMany: vi.fn(),
   findFirstMbox: vi.fn(),
+  updateManyMbox: vi.fn(),
 }));
 const { markConsumed, markReleased, getToken, sendGraph, evalSupp } = vi.hoisted(() => ({
   markConsumed: vi.fn(),
@@ -16,7 +17,7 @@ const { markConsumed, markReleased, getToken, sendGraph, evalSupp } = vi.hoisted
 vi.mock("@/lib/db", () => ({
   prisma: {
     outboundEmail: { findUnique, updateMany },
-    clientMailboxIdentity: { findFirst: findFirstMbox },
+    clientMailboxIdentity: { findFirst: findFirstMbox, updateMany: updateManyMbox },
   },
 }));
 vi.mock("@/server/mailbox/sending-policy", () => ({
@@ -84,6 +85,7 @@ describe("executeOutboundSend — Microsoft governed path", () => {
       },
     );
     updateMany.mockResolvedValue({ count: 1 });
+    updateManyMbox.mockResolvedValue({ count: 1 });
     findFirstMbox.mockResolvedValue(connectedMbox());
     evalSupp.mockResolvedValue({ suppressed: false });
     getToken.mockResolvedValue("access");
@@ -145,9 +147,32 @@ describe("executeOutboundSend — Microsoft governed path", () => {
     );
   });
 
-  it("PR N — omits Graph options entirely when metadata has no unsubscribe headers", async () => {
+  it("passes clean HTML body even when metadata has no unsubscribe headers", async () => {
     await executeOutboundSend("out1");
-    const call = sendGraph.mock.calls[0][0] as { options?: unknown };
-    expect(call.options).toBeUndefined();
+    const call = sendGraph.mock.calls[0][0] as { options?: { bodyHtml?: string } };
+    expect(call.options?.bodyHtml).toBe("<p>x</p>");
+  });
+
+  it("marks Microsoft MFA refresh failures as mailbox reconnect needed and releases capacity", async () => {
+    getToken.mockRejectedValue(
+      new Error(
+        "Microsoft token refresh failed: invalid_grant — AADSTS50076: Due to a configuration change, use multi-factor authentication",
+      ),
+    );
+
+    const r = await executeOutboundSend("out1");
+
+    expect(r.ok).toBe(false);
+    expect(updateManyMbox).toHaveBeenCalledWith({
+      where: { id: "m1" },
+      data: {
+        connectionStatus: "CONNECTION_ERROR",
+        lastError: expect.stringContaining(
+          "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA.",
+        ),
+      },
+    });
+    expect(markReleased).toHaveBeenCalledWith("out1");
+    expect(markConsumed).not.toHaveBeenCalled();
   });
 });

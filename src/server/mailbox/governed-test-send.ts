@@ -10,6 +10,11 @@ import { requireClientAccess } from "@/server/tenant/access";
 import type { StaffUser } from "@/generated/prisma/client";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import {
+  mailboxComplianceMetadata,
+  prepareMailboxSendCompliance,
+} from "@/server/mailbox/mailbox-send-composition";
+import { hashUnsubscribeToken } from "@/lib/unsubscribe/unsubscribe-token";
+import {
   humanizeGovernanceRejection,
   linkReservationToOutboundInTransaction,
   loadGovernedSendingMailbox,
@@ -89,6 +94,10 @@ export async function queueMicrosoftGovernedTestSend(input: {
   }
 
   const idempotencyKey = `governedTest:${clientId}:${randomUUID()}`;
+  const client = await prisma.client.findFirst({
+    where: { id: clientId },
+    select: { defaultSenderEmail: true },
+  });
 
   const txResult = await prisma.$transaction(async (tx) => {
     const m = await tx.clientMailboxIdentity.findFirstOrThrow({
@@ -120,6 +129,18 @@ export async function queueMicrosoftGovernedTestSend(input: {
     }
 
     const fromAddress = normalizeEmail(m.email);
+    const compliance = prepareMailboxSendCompliance({
+      bodyText: GOVERNED_TEST_BODY,
+      mailbox: m,
+      clientDefaultSenderEmail: client?.defaultSenderEmail ?? m.email,
+    });
+    if (!compliance) {
+      return {
+        kind: "reserve_fail" as const,
+        error: `Selected mailbox ${m.email} needs a sender signature before proof send.`,
+      };
+    }
+    const meta = mailboxComplianceMetadata(compliance);
     const newOutboundData = {
       clientId,
       contactId: null as string | null,
@@ -127,17 +148,30 @@ export async function queueMicrosoftGovernedTestSend(input: {
       toEmail: to,
       toDomain,
       subject: GOVERNED_TEST_SUBJECT,
-      bodySnapshot: GOVERNED_TEST_BODY,
+      bodySnapshot: compliance.finalBody,
       status: "QUEUED" as const,
       fromAddress,
       mailboxIdentityId: m.id,
       queuedAt: new Date(),
-      metadata: { kind: "governedTestSend" } as object,
+      metadata: { kind: "governedTestSend", ...(meta ?? {}) } as object,
     };
 
     if (reserve.duplicate) {
       if (reserve.outboundEmailId === null) {
         const created = await tx.outboundEmail.create({ data: newOutboundData });
+        if (compliance.kind === "hosted") {
+          await tx.unsubscribeToken.create({
+            data: {
+              tokenHash: hashUnsubscribeToken(compliance.rawToken),
+              clientId,
+              contactId: null,
+              outboundEmailId: created.id,
+              email: to,
+              emailDomain: toDomain,
+              purpose: "outreach_unsubscribe",
+            },
+          });
+        }
         await linkReservationToOutboundInTransaction(tx, reserve.reservationId, created.id);
         return {
           kind: "created" as const,
@@ -152,6 +186,19 @@ export async function queueMicrosoftGovernedTestSend(input: {
     }
 
     const created = await tx.outboundEmail.create({ data: newOutboundData });
+    if (compliance.kind === "hosted") {
+      await tx.unsubscribeToken.create({
+        data: {
+          tokenHash: hashUnsubscribeToken(compliance.rawToken),
+          clientId,
+          contactId: null,
+          outboundEmailId: created.id,
+          email: to,
+          emailDomain: toDomain,
+          purpose: "outreach_unsubscribe",
+        },
+      });
+    }
     await linkReservationToOutboundInTransaction(tx, reserve.reservationId, created.id);
     return {
       kind: "created" as const,

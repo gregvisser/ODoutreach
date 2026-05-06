@@ -20,6 +20,7 @@ const LIST_UNSUBSCRIBE_MAPI_ID = "String 0x1045";
 export type GraphSendMailOptions = {
   /** Hosted `List-Unsubscribe` URL (not wrapped in angle brackets). */
   listUnsubscribeUrl?: string | null;
+  bodyHtml?: string | null;
 };
 
 type GraphMessagePayload = {
@@ -46,6 +47,7 @@ export async function sendMicrosoftGraphSendMail(input: {
   to: string;
   subject: string;
   bodyText: string;
+  bodyHtml?: string | null;
   correlationId: string;
   options?: GraphSendMailOptions;
 }): Promise<SendEmailResult> {
@@ -55,13 +57,17 @@ export async function sendMicrosoftGraphSendMail(input: {
     to,
     subject,
     bodyText,
+    bodyHtml,
     correlationId,
     options,
   } = input;
   const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
+  const html = bodyHtml?.trim() || options?.bodyHtml?.trim();
   const message: GraphMessagePayload = {
     subject,
-    body: { contentType: "Text", content: bodyText },
+    body: html
+      ? { contentType: "HTML", content: html }
+      : { contentType: "Text", content: bodyText },
     toRecipients: [{ emailAddress: { address: to } }],
   };
 

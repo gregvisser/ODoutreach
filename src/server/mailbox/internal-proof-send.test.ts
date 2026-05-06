@@ -214,6 +214,22 @@ describe("queueSelectedMailboxInternalProofSend", () => {
     );
   });
 
+  it("stores hosted footer metadata so provider HTML can render a clean unsubscribe anchor", async () => {
+    process.env.AUTH_URL = "https://opensdoors.bidlow.co.uk";
+    setupHappyPath();
+
+    await queueSelectedMailboxInternalProofSend(validInput());
+
+    const created = prismaMock.outboundEmail.create.mock.calls[0]![0] as {
+      data: { bodySnapshot: string; metadata: { headers?: { listUnsubscribe?: string } } };
+    };
+    const body = created.data.bodySnapshot;
+    expect(body.indexOf("Adam OpensDoors")).toBeLessThan(body.indexOf("Unsubscribe:"));
+    expect(created.data.metadata.headers?.listUnsubscribe).toMatch(
+      /^<https:\/\/opensdoors\.bidlow\.co\.uk\/unsubscribe\/.+>$/,
+    );
+  });
+
   it("creates audit and activity-visible outbound metadata", async () => {
     setupHappyPath();
 

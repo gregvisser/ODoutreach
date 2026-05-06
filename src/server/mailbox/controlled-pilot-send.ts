@@ -14,6 +14,11 @@ import { prisma } from "@/lib/db";
 import { requireClientAccess } from "@/server/tenant/access";
 import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
+import { hashUnsubscribeToken } from "@/lib/unsubscribe/unsubscribe-token";
+import {
+  mailboxComplianceMetadata,
+  prepareMailboxSendCompliance,
+} from "@/server/mailbox/mailbox-send-composition";
 import {
   countBookedSendSlotsInUtcWindow,
   eligibleWorkspaceMailboxPool,
@@ -241,6 +246,23 @@ export async function queueControlledPilotBatch(input: {
             }
 
             const fromAddress = normalizeEmail(m.email);
+            const compliance = prepareMailboxSendCompliance({
+              bodyText,
+              mailbox: m,
+              clientDefaultSenderEmail: m.email,
+            });
+            if (!compliance) {
+              extraBlocked.push({
+                email: t.to,
+                reason: "selected_mailbox_signature_missing",
+              });
+              await tx.mailboxSendReservation.update({
+                where: { id: reserve.reservationId },
+                data: { status: "RELEASED" },
+              });
+              continue;
+            }
+            const headers = mailboxComplianceMetadata(compliance);
             const created = await tx.outboundEmail.create({
               data: {
                 clientId,
@@ -249,7 +271,7 @@ export async function queueControlledPilotBatch(input: {
                 toEmail: t.to,
                 toDomain: t.toDomain,
                 subject,
-                bodySnapshot: bodyText,
+                bodySnapshot: compliance.finalBody,
                 status: "QUEUED",
                 fromAddress,
                 mailboxIdentityId: m.id,
@@ -258,9 +280,23 @@ export async function queueControlledPilotBatch(input: {
                   kind: CONTROLLED_PILOT_METADATA_KIND,
                   pilotRunId: runId,
                   pilotIndex,
+                  ...(headers ?? {}),
                 } as object,
               },
             });
+            if (compliance.kind === "hosted") {
+              await tx.unsubscribeToken.create({
+                data: {
+                  tokenHash: hashUnsubscribeToken(compliance.rawToken),
+                  clientId,
+                  contactId: null,
+                  outboundEmailId: created.id,
+                  email: t.to,
+                  emailDomain: t.toDomain,
+                  purpose: "outreach_unsubscribe",
+                },
+              });
+            }
 
             await linkReservationToOutboundInTransaction(tx, reserve.reservationId, created.id);
             ids.push(created.id);

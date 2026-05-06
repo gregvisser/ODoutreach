@@ -40,6 +40,7 @@ export class ResendEmailProvider implements OutboundEmailProvider {
         to: [input.to],
         subject: input.subject,
         text: input.bodyText,
+        html: input.bodyHtml,
         headers: outboundHeaders,
       }),
     });
