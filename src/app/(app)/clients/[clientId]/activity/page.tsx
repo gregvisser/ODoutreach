@@ -112,10 +112,9 @@ export default async function ClientActivityPage({ params, searchParams }: Props
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Inbox preview</CardTitle>
+          <CardTitle>Check replies</CardTitle>
           <CardDescription>
-            Recent messages from connected Microsoft 365 and Google Workspace
-            mailboxes.
+            Pull recent inbox messages from connected mailboxes and review any replies.
           </CardDescription>
         </CardHeader>
         <CardContent>
