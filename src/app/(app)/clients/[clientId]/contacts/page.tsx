@@ -15,6 +15,10 @@ import {
   MISSING_EMAIL_KPI_DISPLAY,
   MISSING_IDENTIFIER_KPI_DISPLAY,
 } from "@/lib/contacts/contact-status-display";
+import {
+  rocketReachConnectionStatus,
+  rocketReachStatusBadgeTone,
+} from "@/lib/clients/rocketreach-status";
 import { cn } from "@/lib/utils";
 import { requireStaffUser } from "@/server/auth/staff";
 import { loadClientListsOverview } from "@/server/contacts/contact-lists-view";
@@ -92,6 +96,7 @@ export default async function ClientContactsPage({ params }: Props) {
   const { lists, totals } = overview;
 
   const base = `/clients/${client.id}`;
+  const rocketReachStatus = rocketReachConnectionStatus(!!process.env.ROCKETREACH_API_KEY?.trim());
 
   const kpis: KpiTile[] = [
     {
@@ -197,6 +202,46 @@ export default async function ClientContactsPage({ params }: Props) {
           </div>
         ))}
       </section>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Import contacts</CardTitle>
+              <CardDescription>
+                Bring contacts into this workspace from RocketReach or CSV, then
+                choose the finished list when you build an outreach sequence.
+              </CardDescription>
+            </div>
+            <Badge variant={rocketReachStatusBadgeTone(rocketReachStatus.status)}>
+              RocketReach {rocketReachStatus.label}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {rocketReachStatus.description}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`${base}/sources#rocketreach-import`}
+              className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+            >
+              Import from RocketReach
+            </Link>
+            <Link
+              href={`/contacts?client=${client.id}`}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            >
+              Import CSV
+            </Link>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            CSV import has a preview step before saving. RocketReach writes only
+            after an operator submits the import form on Sources.
+          </p>
+        </CardContent>
+      </Card>
 
       {lists.length === 0 ? (
         <Card className="border-dashed border-border/80 bg-muted/30 shadow-sm">

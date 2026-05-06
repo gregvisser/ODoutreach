@@ -31,6 +31,8 @@ export async function syncMailboxInboxForMailboxAction(
     staffUserId: staff.id,
   });
   revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}/activity`);
+  revalidatePath(`/clients/${clientId}/mailboxes`);
   if (!r.ok) {
     return { ok: false, error: r.error };
   }

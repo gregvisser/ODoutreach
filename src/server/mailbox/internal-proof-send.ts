@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client";
+import type { StaffUser } from "@/generated/prisma/client";
 import {
   APPROVED_INTERNAL_PROOF_RECIPIENTS,
   INTERNAL_PROOF_CONFIRMATION_PHRASE,

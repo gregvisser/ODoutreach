@@ -54,8 +54,14 @@ type Props = {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
   };
-  /** Mailboxes that may send in this workspace (for sequence mailbox picker). */
-  launchMailboxOptions: Array<{ id: string; email: string; label: string }>;
+  /** Mailboxes shown in the sequence mailbox picker, including disabled reasons. */
+  launchMailboxOptions: Array<{
+    id: string;
+    email: string;
+    label: string;
+    disabled?: boolean;
+    disabledReason?: string;
+  }>;
 };
 
 function formatDate(iso: string | null): string {
@@ -110,22 +116,17 @@ export function ClientEmailSequencesPanel(props: Props) {
 
   const statusTiles: Array<{ label: string; value: number; hint: string }> = [
     {
-      label: "Total",
+      label: "Saved sequences",
       value: counts.total,
-      hint: "All sequences for this client",
+      hint: "Intro-only or follow-up sequences for this client",
     },
     {
-      label: SEQUENCE_STATUS_LABELS.APPROVED,
-      value: counts.byStatus.APPROVED,
-      hint: "Optional sign-off (internal)",
+      label: "Ready to send",
+      value: launchReadyCount,
+      hint: "Checks pass in the send section below",
     },
     {
-      label: SEQUENCE_STATUS_LABELS.READY_FOR_REVIEW,
-      value: counts.byStatus.READY_FOR_REVIEW,
-      hint: "In review (optional workflow)",
-    },
-    {
-      label: SEQUENCE_STATUS_LABELS.DRAFT,
+      label: "Drafts",
       value: counts.byStatus.DRAFT,
       hint: "Work in progress",
     },
@@ -133,11 +134,6 @@ export function ClientEmailSequencesPanel(props: Props) {
       label: SEQUENCE_STATUS_LABELS.ARCHIVED,
       value: counts.byStatus.ARCHIVED,
       hint: "Kept for history — not usable",
-    },
-    {
-      label: "Ready to review send",
-      value: launchReadyCount,
-      hint: "Checks pass in the list below (send from next section)",
     },
   ];
 
@@ -147,10 +143,10 @@ export function ClientEmailSequencesPanel(props: Props) {
       className="scroll-mt-20 border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Email sequences</CardTitle>
+        <CardTitle>Create outreach sequence</CardTitle>
         <CardDescription>
-          Build a production sequence: introduction plus optional follow-ups, a
-          target list, and a preferred mailbox. Saving does not send email.
+          Choose a contact list, pick a sending mailbox, attach one introduction
+          email, and add follow-ups only if you need them. Saving does not send.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

@@ -13,6 +13,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import {
+  OUTREACH_INTERNAL_TOOLS_COPY,
+  OUTREACH_NEXT_STEPS,
+} from "@/lib/clients/outreach-operator-copy";
 import { OUTREACH_HERO_ADDENDUM } from "@/lib/mailboxes/mailbox-workspace-model";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
@@ -29,6 +33,7 @@ import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
+import { mailboxRowOperatorStatus } from "@/lib/mailboxes/mailboxes-operator-model";
 
 export const dynamic = "force-dynamic";
 
@@ -87,8 +92,9 @@ export default async function ClientOutreachPage({
   };
 
   const launchMailboxOptions = bundle.mailboxRows
-    .filter((m) =>
-      isMailboxExecutionEligible({
+    .filter((m) => !m.workspaceRemovedAt && m.isActive)
+    .map((m) => {
+      const eligible = isMailboxExecutionEligible({
         isActive: m.isActive,
         connectionStatus: m.connectionStatus,
         canSend: m.canSend,
@@ -96,13 +102,22 @@ export default async function ClientOutreachPage({
         workspaceRemovedAt: m.workspaceRemovedAt
           ? new Date(m.workspaceRemovedAt)
           : null,
-      }),
-    )
-    .map((m) => ({
-      id: m.id,
-      email: m.email,
-      label: m.displayName?.trim() ? m.displayName : m.email,
-    }));
+      });
+      const status = mailboxRowOperatorStatus(m);
+      const readiness = bundle.sendingReadinessByMailboxId[m.id];
+      const capBlocked = readiness?.atLedgerCap === true;
+      return {
+        id: m.id,
+        email: m.email,
+        label: m.displayName?.trim() ? m.displayName : m.email,
+        disabled: !eligible || capBlocked,
+        disabledReason: capBlocked
+          ? "Daily limit reached for this mailbox."
+          : eligible
+            ? undefined
+            : status.sublabel ?? status.label,
+      };
+    });
 
   const launchReadinessBySequenceId = buildSequenceLaunchReadinessMap({
     sequences: sequencesOverview.sequences,
@@ -121,10 +136,30 @@ export default async function ClientOutreachPage({
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Build templates and production sequences, review launch checks, and
-          send from connected client mailboxes. {OUTREACH_HERO_ADDENDUM}
+          Create an introduction email, choose contacts, choose a sending
+          mailbox, preview the message, then send when ready. {OUTREACH_HERO_ADDENDUM}
         </p>
       </div>
+
+      <Card className="border-primary/20 bg-primary/5 shadow-sm">
+        <CardHeader>
+          <CardTitle>How to launch outreach</CardTitle>
+          <CardDescription>
+            One introduction email is enough. Follow-ups are optional and can be
+            added later.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
+            {OUTREACH_NEXT_STEPS.map((step, idx) => (
+              <li key={step} className="rounded-md border border-border/70 bg-background/80 px-3 py-2">
+                <span className="mr-2 font-semibold text-foreground">{idx + 1}.</span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
 
       <ClientEmailTemplatesPanel
         clientId={client.id}
@@ -156,49 +191,56 @@ export default async function ClientOutreachPage({
         stepSendAllowlist={stepSendBundle.allowlist}
       />
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Send an internal verification email</CardTitle>
-          <CardDescription>
-            Queue a single message to an allowlisted internal address to confirm
-            layout, signature, and personalisation before wider sending.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <GovernedTestSendPanel
-            clientId={client.id}
-            canMutate={bundle.canMutateMailboxes}
-            hasGovernedMailbox={bundle.hasGovernedMailbox}
-            oauthReadyForGovernedTest={bundle.oauthReadyForGovernedTest}
-          />
-        </CardContent>
-      </Card>
+      <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold text-foreground">
+          {OUTREACH_INTERNAL_TOOLS_COPY.title}
+        </summary>
+        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+          {OUTREACH_INTERNAL_TOOLS_COPY.description}
+        </p>
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle>Send an internal verification email</CardTitle>
+              <CardDescription>
+                Queue a single message to an allowlisted internal address to confirm
+                layout, signature, and personalisation before wider sending.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GovernedTestSendPanel
+                clientId={client.id}
+                canMutate={bundle.canMutateMailboxes}
+                hasGovernedMailbox={bundle.hasGovernedMailbox}
+                oauthReadyForGovernedTest={bundle.oauthReadyForGovernedTest}
+              />
+            </CardContent>
+          </Card>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Limited first batch (optional)</CardTitle>
-          <CardDescription>
-            Optional safety cap: send a first small batch to up to{" "}
-            {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} real recipients, spread
-            across your connected mailboxes. The panel requires an exact
-            confirmation phrase in the field below. Each
-            mailbox can send up to {String(OUTREACH_MAILBOX_DAILY_CAP)} emails
-            per day. Production sequences use the form and Send preparation
-            above; this is an additional optional path.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ControlledPilotSendPanel
-            key={`pilot-${client.id}-${bundle.brief.pilotSubjectTemplate ?? ""}-${bundle.brief.pilotBodyTemplate ?? ""}`}
-            clientId={client.id}
-            canMutate={bundle.canMutateMailboxes}
-            prerequisites={bundle.pilotPrerequisites}
-            initialSubject={bundle.brief.pilotSubjectTemplate}
-            initialBody={bundle.brief.pilotBodyTemplate}
-            contactSummary={bundle.pilotContactSummary}
-          />
-        </CardContent>
-      </Card>
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle>Limited first batch (optional)</CardTitle>
+              <CardDescription>
+                Optional safety cap: send a first small batch to up to{" "}
+                {CONTROLLED_PILOT_HARD_MAX_RECIPIENTS} real recipients. Each
+                mailbox can send up to {String(OUTREACH_MAILBOX_DAILY_CAP)} emails
+                per day. The main sequence flow above is the normal launch path.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ControlledPilotSendPanel
+                key={`pilot-${client.id}-${bundle.brief.pilotSubjectTemplate ?? ""}-${bundle.brief.pilotBodyTemplate ?? ""}`}
+                clientId={client.id}
+                canMutate={bundle.canMutateMailboxes}
+                prerequisites={bundle.pilotPrerequisites}
+                initialSubject={bundle.brief.pilotSubjectTemplate}
+                initialBody={bundle.brief.pilotBodyTemplate}
+                contactSummary={bundle.pilotContactSummary}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </details>
     </div>
   );
 }

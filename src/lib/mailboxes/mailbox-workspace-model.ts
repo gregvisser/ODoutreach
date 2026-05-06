@@ -18,7 +18,7 @@ export const MAILBOXES_PAGE_INTRO =
   "Any authorised operator on this client can use connected mailboxes in the shared sending pool.";
 
 export const OUTREACH_HERO_ADDENDUM =
-  "Template and sequence sends use the shared client mailbox pool. Capacity, governance, and sender identity are all configured in Mailboxes.";
+  "Outreach sends use the shared client mailbox pool. Capacity and sender identity are configured in Mailboxes.";
 
 /**
  * Unsubscribe: the composed plain-text body must already include the

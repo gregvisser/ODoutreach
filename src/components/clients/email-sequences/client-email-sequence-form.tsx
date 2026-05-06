@@ -33,8 +33,14 @@ type Props = {
     ClientEmailTemplateCategory,
     SequenceTemplateOption[]
   >;
-  /** Eligible send mailboxes; empty = none connected. */
-  launchMailboxOptions: Array<{ id: string; email: string; label: string }>;
+  /** Send mailboxes shown in the picker; ineligible rows are disabled with a reason. */
+  launchMailboxOptions: Array<{
+    id: string;
+    email: string;
+    label: string;
+    disabled?: boolean;
+    disabledReason?: string | null;
+  }>;
 };
 
 type FormMode = { kind: "new" } | { kind: "edit"; sequenceId: string };
@@ -227,8 +233,8 @@ export function ClientEmailSequenceForm({
             {mode.kind === "edit" ? "Edit sequence" : "New sequence"}
           </h3>
           <p className="text-xs text-muted-foreground">
-            For {clientName}. Configure steps here; sending runs from
-            the Send section after you review.
+            For {clientName}. Choose a list, a sending mailbox, one introduction email,
+            and optional follow-ups. Sending happens only from the Send section.
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
@@ -367,14 +373,16 @@ export function ClientEmailSequenceForm({
               Auto-pick from eligible connected mailboxes
             </option>
             {launchMailboxOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label} ({m.email})
+              <option key={m.id} value={m.id} disabled={m.disabled}>
+                {m.disabled
+                  ? `${m.email} — ${m.disabledReason ?? "not available"}`
+                  : `${m.label} (${m.email})`}
               </option>
             ))}
           </select>
           <p className="text-[11px] text-muted-foreground">
-            Respects daily limits and the shared workspace mailbox pool. Choose a
-            specific mailbox, or leave as auto-pick.
+            Choose a specific mailbox, or leave as auto-pick. Unavailable
+            mailboxes show why they cannot send.
           </p>
         </div>
 
@@ -480,7 +488,7 @@ export function ClientEmailSequenceForm({
                     </option>
                     {options.map((opt) => (
                       <option key={opt.id} value={opt.id}>
-                        {opt.name} ({opt.status})
+                        {opt.name}
                       </option>
                     ))}
                   </select>

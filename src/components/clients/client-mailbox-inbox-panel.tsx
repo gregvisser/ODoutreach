@@ -8,6 +8,10 @@ import { format } from "date-fns";
 import { syncMailboxInboxForMailboxAction } from "@/app/(app)/clients/mailbox-inbox-actions";
 import { Button } from "@/components/ui/button";
 import {
+  formatMailboxLastChecked,
+  replySyncButtonLabel,
+} from "@/lib/inbox/reply-sync-copy";
+import {
   Table,
   TableBody,
   TableCell,
@@ -28,7 +32,13 @@ type Row = {
   mailbox: { id: string; email: string; displayName: string | null };
 };
 
-type Mbox = { id: string; email: string; label: string; provider: "MICROSOFT" | "GOOGLE" };
+type Mbox = {
+  id: string;
+  email: string;
+  label: string;
+  provider: "MICROSOFT" | "GOOGLE";
+  lastSyncAt: string | null;
+};
 
 type Props = {
   clientId: string;
@@ -66,7 +76,7 @@ export function ClientMailboxInboxPanel({
       if (r.ok) {
         setMessage({
           type: "ok",
-          text: `Fetched and stored ${r.ingested} of ${r.totalSeen} message(s).`,
+          text: `Checked replies and stored ${r.ingested} of ${r.totalSeen} recent message(s).`,
         });
         router.refresh();
       } else {
@@ -86,11 +96,10 @@ export function ClientMailboxInboxPanel({
     }
     return (
       <p className="text-sm text-muted-foreground">
-        Inbox is read with delegated OAuth on the connected mailbox (
+        Replies are checked by reading each connected mailbox (
         <span className="text-foreground">Microsoft Mail.Read</span> or{" "}
-        <span className="text-foreground">Gmail readonly</span>). Run <strong>Fetch recent</strong>{" "}
-        to pull the latest (tokens stay on the server). New scopes require reconnecting the mailbox
-        once to consent.
+        <span className="text-foreground">Gmail readonly</span>). Click{" "}
+        <strong>Check for replies</strong> to pull the latest messages into Activity.
       </p>
     );
   };
@@ -112,7 +121,7 @@ export function ClientMailboxInboxPanel({
             const oauthOk = m.provider === "GOOGLE" ? oauthGoogleReady : oauthMicrosoftReady;
             return (
               <div key={m.id} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground sm:hidden">Fetch</span>
+                <span className="text-xs text-muted-foreground sm:hidden">Check</span>
                 <Button
                   type="button"
                   size="sm"
@@ -121,8 +130,11 @@ export function ClientMailboxInboxPanel({
                   onClick={() => onSync(m.id, m.provider)}
                   title={m.label}
                 >
-                  Fetch recent — {m.provider === "GOOGLE" ? "Google" : "Microsoft"} · {m.label}
+                  {replySyncButtonLabel(m)}
                 </Button>
+                <span className="text-xs text-muted-foreground">
+                  Last checked: {formatMailboxLastChecked(m.lastSyncAt)}
+                </span>
               </div>
             );
           })}
@@ -143,7 +155,7 @@ export function ClientMailboxInboxPanel({
 
       {messages.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No ingested messages yet. Fetch recent from a connected mailbox to populate this list.
+          No replies received yet. Click Check for replies to sync connected mailboxes.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-md border">

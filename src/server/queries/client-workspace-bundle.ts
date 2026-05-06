@@ -172,6 +172,7 @@ export async function loadClientWorkspaceBundle(
       email: m.email,
       label: m.displayName?.trim() ? m.displayName : m.email,
       provider: m.provider,
+      lastSyncAt: m.lastSyncAt?.toISOString() ?? null,
     }));
 
   const senderReport = describeSenderReadiness({
