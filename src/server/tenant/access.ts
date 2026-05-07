@@ -11,6 +11,11 @@ export type StaffIdentity = {
   role: StaffRole;
 };
 
+/** ADMIN/MANAGER may assign OPERATOR/VIEWER staff to client workspaces via `ClientMembership`. */
+export function canAssignClientWorkspaceMembership(staff: StaffIdentity): boolean {
+  return GLOBAL_CLIENT_ACCESS_ROLES.includes(staff.role);
+}
+
 /**
  * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
  * from the client without intersecting with this list.
