@@ -5,6 +5,7 @@ import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { buildMicrosoftMailboxAuthorizeUrl } from "@/server/mailbox/microsoft-mailbox-oauth";
+import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 
 export async function GET(req: Request) {
@@ -55,21 +56,27 @@ export async function GET(req: Request) {
     !mailbox.oauthStateExpiresAt ||
     mailbox.oauthStateExpiresAt.getTime() <= now
   ) {
-    await prisma.clientMailboxIdentity.updateMany({
-      where: { id: mailboxId, clientId },
-      data: {
-        connectionStatus: "CONNECTION_ERROR",
-        lastError:
-          "OAuth session expired or missing — click Connect again from the client page.",
-        oauthState: null,
-        oauthStateExpiresAt: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.clientMailboxIdentity.updateMany({
+        where: { id: mailboxId, clientId },
+        data: {
+          connectionStatus: "CONNECTION_ERROR",
+          lastError:
+            "OAuth session expired or missing — click Connect again from the client page.",
+          oauthState: null,
+          oauthStateExpiresAt: null,
+        },
+      });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
     });
     return fail("oauth_state_invalid");
   }
 
   try {
-    const authorizeUrl = buildMicrosoftMailboxAuthorizeUrl(mailbox.oauthState);
+    const authorizeUrl = buildMicrosoftMailboxAuthorizeUrl(mailbox.oauthState, {
+      loginHint: mailbox.emailNormalized,
+      prompt: "select_account",
+    });
     return NextResponse.redirect(authorizeUrl);
   } catch {
     return fail("oauth_not_configured");

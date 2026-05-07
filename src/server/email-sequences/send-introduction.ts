@@ -33,6 +33,7 @@ import {
   isRecipientAllowedForGovernedTest,
 } from "@/lib/governed-test-recipient";
 import { prisma } from "@/lib/db";
+import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -211,7 +212,9 @@ function sortMailboxesForPoolPick(
     const ra = localRemaining.get(a.id) ?? 0;
     const rb = localRemaining.get(b.id) ?? 0;
     if (rb !== ra) return rb - ra;
-    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    const pa = isEffectivePrimaryMailbox(a);
+    const pb = isEffectivePrimaryMailbox(b);
+    if (pa !== pb) return pa ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
 }

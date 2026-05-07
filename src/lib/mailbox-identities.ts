@@ -76,3 +76,23 @@ export function assertPrimaryRequiresActive(isPrimary: boolean, isActive: boolea
     throw new Error("Primary mailbox must be active.");
   }
 }
+
+/** Primary may only be set on an identity that is actively connected to the provider. */
+export function assertPrimaryRequiresConnected(
+  isPrimary: boolean,
+  connectionStatus: MailboxConnectionStatus,
+): void {
+  if (isPrimary && connectionStatus !== "CONNECTED") {
+    throw new Error(
+      "Primary mailbox must be connected. Connect the mailbox first, then set it as primary.",
+    );
+  }
+}
+
+/** Tie-break / badge logic: DB may still say “primary” while disconnected until reconciliation runs. */
+export function isEffectivePrimaryMailbox(mailbox: {
+  isPrimary: boolean;
+  connectionStatus: MailboxConnectionStatus;
+}): boolean {
+  return mailbox.isPrimary && mailbox.connectionStatus === "CONNECTED";
+}

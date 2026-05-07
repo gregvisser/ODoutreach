@@ -6,6 +6,7 @@ import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connectio
 import { mailboxOAuthRedirectToClient } from "@/server/mailbox/mailbox-oauth-callback-shared";
 import { resolveMicrosoftMailboxOAuthConnection } from "@/server/mailbox/mailbox-oauth-microsoft-resolve";
 import { encryptMailboxCredentialJson } from "@/server/mailbox/oauth-crypto";
+import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -42,14 +43,17 @@ export async function GET(req: Request) {
 
   if (err) {
     const desc = url.searchParams.get("error_description") ?? err;
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: {
-        connectionStatus: "CONNECTION_ERROR",
-        lastError: `Microsoft OAuth: ${desc}`.slice(0, 4000),
-        oauthState: null,
-        oauthStateExpiresAt: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.clientMailboxIdentity.update({
+        where: { id: mailbox.id },
+        data: {
+          connectionStatus: "CONNECTION_ERROR",
+          lastError: `Microsoft OAuth: ${desc}`.slice(0, 4000),
+          oauthState: null,
+          oauthStateExpiresAt: null,
+        },
+      });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
     });
     const staff = await tryGetOpensDoorsStaff();
     const staffId = staff?.id ?? null;
@@ -131,6 +135,7 @@ export async function GET(req: Request) {
           lastError: null,
         },
       });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
     });
 
     await auditMailboxConnectionChange({
@@ -149,14 +154,17 @@ export async function GET(req: Request) {
     return mailboxOAuthRedirectToClient(clientId, { mailbox_oauth: "connected" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "OAuth failed";
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: {
-        connectionStatus: "CONNECTION_ERROR",
-        lastError: msg.slice(0, 4000),
-        oauthState: null,
-        oauthStateExpiresAt: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.clientMailboxIdentity.update({
+        where: { id: mailbox.id },
+        data: {
+          connectionStatus: "CONNECTION_ERROR",
+          lastError: msg.slice(0, 4000),
+          oauthState: null,
+          oauthStateExpiresAt: null,
+        },
+      });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
     });
     await auditMailboxConnectionChange({
       staffUserId: staffId,

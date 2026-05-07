@@ -66,6 +66,7 @@ import {
   DEFAULT_MAILBOX_DAILY_SEND_CAP,
   isMailboxSendingEligible,
 } from "@/lib/mailbox-identities";
+import { MAILBOX_PRIMARY_DISCONNECTED_WARNING } from "@/lib/mailboxes/mailbox-primary-operator-copy";
 import type { SenderSignatureMailbox } from "@/lib/mailboxes/sender-signature";
 
 function toSenderMailbox(row: MailboxIdentityRow): SenderSignatureMailbox {
@@ -167,7 +168,9 @@ function providerConnectionHint(
         ? `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`
         : "Connected.";
     case "CONNECTION_ERROR":
-      return "Sign-in didn't complete. Check the last error below and reconnect.";
+      return row.provider === "MICROSOFT"
+        ? `Microsoft requires a fresh sign-in for this mailbox (often MFA). Sign into Microsoft as ${row.email}. Check the last error below if it persists.`
+        : "Sign-in didn't complete. Check the last error below and reconnect.";
     case "DISCONNECTED":
       return "Disconnected — use Connect to run provider sign-in again (Microsoft delegate or the Gmail user for this row).";
     default:
@@ -592,6 +595,16 @@ export function ClientMailboxIdentitiesPanel({
                       {row.displayName ? (
                         <div className="text-xs text-muted-foreground break-words">{row.displayName}</div>
                       ) : null}
+                      {row.isPrimary &&
+                      row.connectionStatus !== "CONNECTED" &&
+                      !row.workspaceRemovedAt ? (
+                        <div
+                          role="alert"
+                          className="mt-2 rounded-md border border-amber-500/40 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-50"
+                        >
+                          {MAILBOX_PRIMARY_DISCONNECTED_WARNING}
+                        </div>
+                      ) : null}
                       {row.isActive ? null : (
                         <div className="mt-1 text-xs text-muted-foreground">Paused from pool</div>
                       )}
@@ -637,7 +650,17 @@ export function ClientMailboxIdentitiesPanel({
                             <Button
                               size="xs"
                               variant="outline"
-                              disabled={pending || !row.isActive || row.isPrimary}
+                              disabled={
+                                pending ||
+                                !row.isActive ||
+                                row.isPrimary ||
+                                row.connectionStatus !== "CONNECTED"
+                              }
+                              title={
+                                row.connectionStatus !== "CONNECTED"
+                                  ? "Connect this mailbox before setting it as primary."
+                                  : undefined
+                              }
                               onClick={() =>
                                 run(async () => setClientMailboxPrimary(clientId, row.id))
                               }
@@ -1182,6 +1205,8 @@ function MailboxForm(props: MailboxFormProps) {
   const [lastError, setLastError] = useState(initial?.lastError ?? "");
 
   const isEdit = props.variant === "edit";
+  const primaryToggleAllowed =
+    isEdit && props.editRow.connectionStatus === "CONNECTED";
 
   return (
     <>
@@ -1315,10 +1340,16 @@ function MailboxForm(props: MailboxFormProps) {
             <input
               type="checkbox"
               checked={isPrimary}
+              disabled={disabled || !primaryToggleAllowed}
               onChange={(e) => setIsPrimary(e.target.checked)}
             />
-            Primary mailbox (must be active)
+            Primary mailbox (must be connected)
           </label>
+          {!primaryToggleAllowed && isEdit ? (
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Connect this mailbox before marking it primary.
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">

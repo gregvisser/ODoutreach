@@ -13,6 +13,7 @@ import {
   isMicrosoftMailboxOAuthConfigured,
 } from "@/server/mailbox/oauth-env";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
+import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 
 export type MailboxConnectionPrepareResult =
@@ -69,14 +70,17 @@ export async function prepareMailboxOAuthConnection(
       row.provider === "MICROSOFT"
         ? "Microsoft mailbox OAuth is not configured (set MAILBOX_MICROSOFT_OAUTH_CLIENT_ID and MAILBOX_MICROSOFT_OAUTH_CLIENT_SECRET, and register the redirect URI)."
         : "Google mailbox OAuth is not configured (set MAILBOX_GOOGLE_OAUTH_CLIENT_ID and MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET, and register the redirect URI).";
-    await prisma.clientMailboxIdentity.update({
-      where: { id: row.id },
-      data: {
-        connectionStatus: "CONNECTION_ERROR",
-        lastError: msg,
-        oauthState: null,
-        oauthStateExpiresAt: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.clientMailboxIdentity.update({
+        where: { id: row.id },
+        data: {
+          connectionStatus: "CONNECTION_ERROR",
+          lastError: msg,
+          oauthState: null,
+          oauthStateExpiresAt: null,
+        },
+      });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
     });
     await auditMailboxConnectionChange({
       staffUserId: staff.id,
@@ -110,6 +114,7 @@ export async function prepareMailboxOAuthConnection(
         connectedAt: null,
       },
     });
+    await reconcilePrimaryMailboxForClient(tx, clientId);
   });
 
   await auditMailboxConnectionChange({
@@ -166,6 +171,7 @@ export async function disconnectMailboxIdentity(
         lastSyncAt: null,
       },
     });
+    await reconcilePrimaryMailboxForClient(tx, clientId);
   });
 
   await auditMailboxConnectionChange({

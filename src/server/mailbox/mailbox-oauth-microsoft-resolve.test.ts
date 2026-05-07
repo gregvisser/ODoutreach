@@ -4,6 +4,8 @@ vi.mock("@/server/mailbox/microsoft-mailbox-oauth", () => ({
   fetchMicrosoftGraphPrimaryEmail: vi.fn(),
 }));
 
+import { formatMicrosoftMailboxOAuthAccountMismatch } from "@/lib/mailboxes/microsoft-oauth-account-mismatch";
+
 import { resolveMicrosoftMailboxOAuthConnection } from "./mailbox-oauth-microsoft-resolve";
 import { fetchMicrosoftGraphPrimaryEmail } from "./microsoft-mailbox-oauth";
 
@@ -65,7 +67,7 @@ describe("resolveMicrosoftMailboxOAuthConnection", () => {
     expect(r.oauthPrimaryEmail).toBe("admin@b.co");
   });
 
-  it("throws when the delegate cannot open the target inbox", async () => {
+  it("throws a clear wrong-account message when delegate inbox returns 403", async () => {
     vi.mocked(fetchMicrosoftGraphPrimaryEmail).mockResolvedValue({
       id: "admin-graph",
       primaryEmail: "admin@b.co",
@@ -77,6 +79,8 @@ describe("resolveMicrosoftMailboxOAuthConnection", () => {
         accessToken: "t",
         mailboxEmailNormalized: "joe@b.co",
       }),
-    ).rejects.toThrow(/cannot open joe@b.co/i);
+    ).rejects.toThrow(
+      formatMicrosoftMailboxOAuthAccountMismatch("admin@b.co", "joe@b.co"),
+    );
   });
 });

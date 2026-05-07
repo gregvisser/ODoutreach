@@ -26,6 +26,7 @@ import {
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
+import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 
 export type ControlledPilotBatchResult =
@@ -68,7 +69,9 @@ function sortMailboxesForPilotPick(
     const ra = localRemaining.get(a.id) ?? 0;
     const rb = localRemaining.get(b.id) ?? 0;
     if (rb !== ra) return rb - ra;
-    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    const pa = isEffectivePrimaryMailbox(a);
+    const pb = isEffectivePrimaryMailbox(b);
+    if (pa !== pb) return pa ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
 }
