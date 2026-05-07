@@ -28,10 +28,59 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         : undefined;
   const mailboxOAuthReason =
     typeof sp.reason === "string" ? sp.reason : Array.isArray(sp.reason) ? sp.reason[0] : undefined;
+  const oauthMailboxIdRaw =
+    typeof sp.oauth_mailbox_id === "string"
+      ? sp.oauth_mailbox_id
+      : Array.isArray(sp.oauth_mailbox_id)
+        ? sp.oauth_mailbox_id[0]
+        : undefined;
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+
+  const oauthMailboxVerifiedConnected =
+    oauthMailboxIdRaw &&
+    bundle.mailboxRows.some(
+      (m) =>
+        m.id === oauthMailboxIdRaw && m.connectionStatus === "CONNECTED",
+    );
+
+  const mailboxOAuthErrorMessage = (() => {
+    if (mailboxOAuthResult !== "error") return null;
+    switch (mailboxOAuthReason) {
+      case "oauth_state_invalid":
+        return "Mailbox sign-in link expired or was skipped. Click Connect again.";
+      case "oauth_not_configured":
+        return "Microsoft mailbox OAuth is not configured for this deployment. Ask an administrator.";
+      case "missing_params":
+        return "Could not start Microsoft sign-in (missing parameters). Try Connect again.";
+      case "invalid_mailbox":
+        return "That mailbox row is invalid or does not belong to this workspace.";
+      case "mailbox_removed":
+        return "That mailbox was removed from this workspace. Restore it first.";
+      case "provider_denied":
+        return "Microsoft sign-in was cancelled or denied in the provider window.";
+      case "callback_failed":
+        return "Microsoft sign-in did not finish. Check the mailbox row for details and try Connect again.";
+      default:
+        return "Mailbox sign-in did not complete. Open the row below and try Connect again, or sign in from a browser where you can reach Microsoft or Google.";
+    }
+  })();
+
+  const mailboxOAuthSuccessBanner = (() => {
+    if (mailboxOAuthResult !== "connected") return null;
+    if (oauthMailboxIdRaw && !oauthMailboxVerifiedConnected) {
+      return {
+        type: "err" as const,
+        text: "Microsoft returned, but this mailbox is still not connected. Check the row below or click Connect again.",
+      };
+    }
+    return {
+      type: "ok" as const,
+      text: "Mailbox connected. Connection status was updated.",
+    };
+  })();
 
   return (
     <div className="space-y-6">
@@ -72,20 +121,13 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
                   : null,
             }}
             mailboxOAuthBanner={
-              mailboxOAuthResult === "connected"
+              mailboxOAuthSuccessBanner ??
+              (mailboxOAuthResult === "error"
                 ? {
-                    type: "ok" as const,
-                    text: "Mailbox connected. Connection status was updated.",
+                    type: "err" as const,
+                    text: mailboxOAuthErrorMessage ?? "Mailbox sign-in failed.",
                   }
-                : mailboxOAuthResult === "error"
-                  ? {
-                      type: "err" as const,
-                      text:
-                        mailboxOAuthReason === "mailbox_removed"
-                          ? "That mailbox is removed from this workspace. Restore it first, then connect again."
-                          : "Mailbox sign-in did not complete. Open the row below and try again, or have the mailbox owner open Connect on a browser where they can sign in to Microsoft or Google.",
-                    }
-                  : null
+                : null)
             }
           />
         </CardContent>

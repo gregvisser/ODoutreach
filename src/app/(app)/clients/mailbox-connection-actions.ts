@@ -4,7 +4,6 @@ import { randomBytes } from "crypto";
 
 import { revalidatePath } from "next/cache";
 
-import type { MailboxProvider } from "@/generated/prisma/enums";
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -13,6 +12,7 @@ import {
   isMicrosoftMailboxOAuthConfigured,
 } from "@/server/mailbox/oauth-env";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
+import { buildMailboxOAuthAuthorizeUrlForPreparedState } from "@/server/mailbox/mailbox-oauth-authorize-url";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 
@@ -21,16 +21,6 @@ export type MailboxConnectionPrepareResult =
   | { ok: false; error: string };
 
 const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
-
-function startPathForProvider(
-  provider: MailboxProvider,
-  clientId: string,
-  mailboxId: string,
-): string {
-  const p = provider === "MICROSOFT" ? "microsoft" : "google";
-  const q = new URLSearchParams({ clientId, mailboxId });
-  return `/api/mailbox-oauth/${p}/start?${q.toString()}`;
-}
 
 /**
  * Begins OAuth: sets pending state, clears prior secret on reconnect, returns URL for browser navigation.
@@ -99,23 +89,58 @@ export async function prepareMailboxOAuthConnection(
   const state = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.mailboxIdentitySecret.deleteMany({
-      where: { mailboxIdentityId: row.id },
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.mailboxIdentitySecret.deleteMany({
+        where: { mailboxIdentityId: row.id },
+      });
+      await tx.clientMailboxIdentity.update({
+        where: { id: row.id },
+        data: {
+          oauthState: state,
+          oauthStateExpiresAt: expiresAt,
+          connectionStatus: "PENDING_CONNECTION",
+          lastError: null,
+          providerLinkedUserId: null,
+          connectedAt: null,
+        },
+      });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
     });
-    await tx.clientMailboxIdentity.update({
-      where: { id: row.id },
-      data: {
-        oauthState: state,
-        oauthStateExpiresAt: expiresAt,
-        connectionStatus: "PENDING_CONNECTION",
-        lastError: null,
-        providerLinkedUserId: null,
-        connectedAt: null,
-      },
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Save failed";
+    return { ok: false, error: msg };
+  }
+
+  let startUrl: string;
+  try {
+    startUrl = buildMailboxOAuthAuthorizeUrlForPreparedState({
+      provider: row.provider,
+      oauthState: state,
+      mailboxEmailNormalized: row.emailNormalized,
     });
-    await reconcilePrimaryMailboxForClient(tx, clientId);
-  });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    await prisma.$transaction(async (tx) => {
+      await tx.clientMailboxIdentity.update({
+        where: { id: row.id },
+        data: {
+          connectionStatus: "CONNECTION_ERROR",
+          lastError:
+            `Could not build provider sign-in URL: ${detail}`.slice(0, 4000),
+          oauthState: null,
+          oauthStateExpiresAt: null,
+        },
+      });
+      await reconcilePrimaryMailboxForClient(tx, clientId);
+    });
+    revalidatePath(`/clients/${clientId}`);
+    return {
+      ok: false,
+      error:
+        "Could not start Microsoft or Google sign-in. Ask an administrator to verify mailbox OAuth environment variables and redirect URIs.",
+    };
+  }
 
   await auditMailboxConnectionChange({
     staffUserId: staff.id,
@@ -129,7 +154,7 @@ export async function prepareMailboxOAuthConnection(
   });
 
   revalidatePath(`/clients/${clientId}`);
-  return { ok: true, startUrl: startPathForProvider(row.provider, clientId, mailboxId) };
+  return { ok: true, startUrl };
 }
 
 export type MailboxDisconnectResult = { ok: true } | { ok: false; error: string };
