@@ -49,7 +49,7 @@ describe("buildMailboxSignatureSendPreview", () => {
     });
     expect(p.signatureTextUsed).toBeNull();
     expect(p.bodyPlain).toContain("No mailbox signature configured");
-    expect(p.footnote).toMatch(/unsubscribe footer will be added after the mailbox signature/i);
+    expect(p.footnote).toMatch(/No mailbox signature configured/i);
     expect(p.bodyPlain).toContain(MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL);
   });
 

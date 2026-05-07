@@ -20,7 +20,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     title: "Daily workflow checklist",
     bullets: [
       "Open the client workspace and check the Overview.",
-      "Check Mailboxes for reconnect warnings and daily capacity.",
+      "Check Mailboxes for reconnect warnings and daily capacity — the page shows connection status only; full signatures are configured by administrators.",
       "Import contacts from CSV or RocketReach only when you are ready to save them to a list.",
       "Check Do-not-contact before any outreach.",
       "Build one introduction email; add follow-ups only if needed.",
@@ -34,7 +34,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     bullets: [
       "Create a client from Clients -> New client.",
       "Complete the Brief with business profile, target audience, offer, exclusions, and compliance notes.",
-      "Use Mailboxes to check sender names, signatures, capacity, and reconnect prompts.",
+      "Administrators configure connected mailboxes, full branded signatures/disclaimers, and proof sends from Mailboxes (advanced); operators review connection status and capacity.",
     ],
   },
   {

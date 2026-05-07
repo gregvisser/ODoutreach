@@ -4,7 +4,9 @@ import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbo
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { MAILBOXES_PAGE_INTRO } from "@/lib/mailboxes/mailbox-workspace-model";
+import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
 import { prisma } from "@/lib/db";
+import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -39,6 +41,8 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+  const showMailboxSetupTools = canAccessMailboxSetupTools(staff.role);
+  const publicSiteOrigin = resolvePublicBaseUrl();
 
   /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
   let oauthMailboxVerifiedConnected = false;
@@ -97,16 +101,25 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
           {MAILBOXES_PAGE_INTRO}
         </p>
+        {!showMailboxSetupTools ? (
+          <p className="mt-3 max-w-3xl rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+            This page shows which sending inboxes are connected and how much capacity is left today.
+            Signature setup and internal proof sends are administrator tools — ask a manager if something
+            needs changing.
+          </p>
+        ) : null}
       </div>
 
-      <InternalProofSendCard
-        clientId={client.id}
-        rows={bundle.mailboxRows}
-        sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
-        canMutate={bundle.canMutateMailboxes}
-        oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
-        oauthGoogleConfigured={bundle.oauthGoogleReady}
-      />
+      {showMailboxSetupTools ? (
+        <InternalProofSendCard
+          clientId={client.id}
+          rows={bundle.mailboxRows}
+          sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
+          canMutate={bundle.canMutateMailboxes}
+          oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
+          oauthGoogleConfigured={bundle.oauthGoogleReady}
+        />
+      ) : null}
 
       <Card className="border-border/80 shadow-sm">
         <CardContent className="pt-6">
@@ -119,6 +132,9 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
             senderReport={bundle.senderReport}
             aggregateRemaining={bundle.aggregateRemaining}
+            showMailboxSetupTools={showMailboxSetupTools}
+            workspaceDisplayName={client.name}
+            publicSiteOrigin={publicSiteOrigin}
             clientBriefFallback={{
               senderDisplayNameFallback: client.name,
               emailSignatureFallback:

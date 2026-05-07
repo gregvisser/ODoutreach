@@ -4,6 +4,7 @@ import {
   buildSenderSignatureViewModel,
   chooseSignatureForSend,
   htmlSignatureToText,
+  isMailboxFullBrandedSignature,
   normaliseSignatureHtml,
   SENDER_SIGNATURE_STATUS,
   type SenderSignatureMailbox,
@@ -226,5 +227,35 @@ describe("chooseSignatureForSend", () => {
     });
     expect(sel.emailSignatureText).toBeNull();
     expect(sel.source).toBe("missing");
+  });
+});
+
+describe("isMailboxFullBrandedSignature", () => {
+  it("is true for substantial HTML signature", () => {
+    expect(
+      isMailboxFullBrandedSignature({
+        senderSignatureHtml: "<div>" + "word ".repeat(30) + "</div>",
+        senderSignatureText: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for very short text-only signatures", () => {
+    expect(
+      isMailboxFullBrandedSignature({
+        senderSignatureHtml: null,
+        senderSignatureText: "Hi\nTeam",
+      }),
+    ).toBe(false);
+  });
+
+  it("is true for long plain-text disclaimer blocks", () => {
+    const long = "Line\n".repeat(40) + "Disclaimer ends.";
+    expect(
+      isMailboxFullBrandedSignature({
+        senderSignatureHtml: null,
+        senderSignatureText: long,
+      }),
+    ).toBe(true);
   });
 });

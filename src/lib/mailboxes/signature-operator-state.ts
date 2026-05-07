@@ -2,13 +2,20 @@
  * Operator-facing signature readiness (pure). For the Mailboxes “proof / readiness” flow.
  */
 
-import type { SenderSignatureSelection, SenderSignatureSource, SenderSignatureViewModel } from "./sender-signature";
+import {
+  isMailboxFullBrandedSignature,
+  type SenderSignatureMailbox,
+  type SenderSignatureSelection,
+  type SenderSignatureSource,
+  type SenderSignatureViewModel,
+} from "./sender-signature";
 
 import type { OperatorMailboxRow } from "./mailboxes-operator-model";
 
 export type OperatorSignatureStateKind =
   | "not_connected"
   | "error_sync"
+  | "minimal_signature"
   | "ready_gmail"
   | "ready_od"
   | "missing";
@@ -36,15 +43,26 @@ const TEMPLATES: Record<OperatorSignatureStateKind, Omit<OperatorSignatureState,
     shortDescription: "Gmail send-as could not be read or stored on the last try.",
     recommendedAction: "Retry “Sync from Gmail” or set the signature manually in ODoutreach.",
   },
+  minimal_signature: {
+    label: "Minimal signature saved",
+    shortDescription:
+      "Only a short signature block is stored. Add the full branded signature and legal disclaimer before live outreach.",
+    recommendedAction:
+      "Use Set signature (HTML recommended) or Insert OpensDoors branded template. ODoutreach composes message → full signature → unsubscribe.",
+  },
   ready_gmail: {
-    label: "Ready — Synced from Gmail",
-    shortDescription: "The send-as signature is stored on this mailbox from Google Workspace.",
-    recommendedAction: "Use “Preview signature” to verify the footer, or re-sync if you change it in Google Admin.",
+    label: "Ready — Full signature from Gmail",
+    shortDescription:
+      "A full send-as signature is stored from Google Workspace. ODoutreach composes message → signature → unsubscribe.",
+    recommendedAction:
+      "Use Preview signature to verify ordering. If Google Workspace appends another footer after send, disable that injection to avoid duplicates.",
   },
   ready_od: {
-    label: "Ready — Set in ODoutreach",
-    shortDescription: "A signature is saved on this mailbox in ODoutreach (required for Microsoft 365).",
-    recommendedAction: "Use “Preview” before go-live, or edit if the footer should change.",
+    label: "Ready — Full branded signature in ODoutreach",
+    shortDescription:
+      "A full branded signature/disclaimer is stored for this mailbox. Outreach emails are composed as message body, signature, then unsubscribe.",
+    recommendedAction:
+      "Confirm Preview signature. Disable Microsoft/Exchange signature injection for this sender if duplicate footers appear after send.",
   },
   missing: {
     label: "No mailbox signature configured",
@@ -79,10 +97,21 @@ export function humanizeSignatureSource(source: SenderSignatureSource): string {
  * `selection` must be `chooseSignatureForSend({ mailbox, clientBrief })` for
  * the same row as `vm` / `row`.
  */
+function withMicrosoftInjectionHint(
+  row: Pick<OperatorMailboxRow, "provider">,
+  base: Omit<OperatorSignatureState, "kind" | "sendReadyFromSignature">,
+): Omit<OperatorSignatureState, "kind" | "sendReadyFromSignature"> {
+  if (row.provider !== "MICROSOFT") return base;
+  const hint =
+    " If Microsoft/Exchange still appends another disclaimer after send, disable provider-side signature injection for this mailbox.";
+  return { ...base, recommendedAction: `${base.recommendedAction}${hint}` };
+}
+
 export function getOperatorSignatureState(
   row: Pick<OperatorMailboxRow, "connectionStatus" | "provider" | "email" | "id">,
   vm: SenderSignatureViewModel,
   selection: SenderSignatureSelection,
+  mailbox: Pick<SenderSignatureMailbox, "senderSignatureHtml" | "senderSignatureText">,
 ): OperatorSignatureState {
   if (row.connectionStatus !== "CONNECTED") {
     return { kind: "not_connected", sendReadyFromSignature: false, ...TEMPLATES.not_connected };
@@ -92,13 +121,26 @@ export function getOperatorSignatureState(
   }
   const text = selection.emailSignatureText?.trim() ?? "";
   if (text.length > 0) {
+    const full = isMailboxFullBrandedSignature(mailbox);
+    if (!full) {
+      return {
+        kind: "minimal_signature",
+        sendReadyFromSignature: true,
+        ...withMicrosoftInjectionHint(row, TEMPLATES.minimal_signature),
+      };
+    }
     if (selection.source === "gmail_send_as") {
-      return { kind: "ready_gmail", sendReadyFromSignature: true, ...TEMPLATES.ready_gmail };
+      return {
+        kind: "ready_gmail",
+        sendReadyFromSignature: true,
+        ...withMicrosoftInjectionHint(row, TEMPLATES.ready_gmail),
+      };
     }
-    if (selection.source === "manual") {
-      return { kind: "ready_od", sendReadyFromSignature: true, ...TEMPLATES.ready_od };
-    }
-    return { kind: "ready_od", sendReadyFromSignature: true, ...TEMPLATES.ready_od };
+    return {
+      kind: "ready_od",
+      sendReadyFromSignature: true,
+      ...withMicrosoftInjectionHint(row, TEMPLATES.ready_od),
+    };
   }
   if (selection.source === "missing" || selection.source === "unsupported_provider") {
     return { kind: "missing", sendReadyFromSignature: false, ...TEMPLATES.missing };

@@ -47,7 +47,7 @@ describe("getOperatorSignatureState", () => {
     const mb = mbox();
     const vm = buildSenderSignatureViewModel(mb, brief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
-    const s = getOperatorSignatureState(r, vm, sel);
+    const s = getOperatorSignatureState(r, vm, sel, mb);
     expect(s.kind).toBe("not_connected");
     expect(s.sendReadyFromSignature).toBe(false);
   });
@@ -62,26 +62,27 @@ describe("getOperatorSignatureState", () => {
     });
     const vm = buildSenderSignatureViewModel(mb, brief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
-    const s = getOperatorSignatureState(r, vm, sel);
+    const s = getOperatorSignatureState(r, vm, sel, mb);
     expect(s.kind).toBe("error_sync");
     expect(s.sendReadyFromSignature).toBe(false);
   });
 
-  it("Gmail: ready_gmail with send-as text and no error", () => {
+  it("Gmail: ready_gmail when stored signature is full branded (long text)", () => {
     const r = row({ provider: "GOOGLE" });
+    const longPlain = `${"Gmail branded line.\n".repeat(12)}Disclaimer applies.`;
     const mb = mbox({
       provider: "GOOGLE",
-      senderSignatureText: "G\nSig",
+      senderSignatureText: longPlain,
       senderSignatureSource: "gmail_send_as",
     });
     const vm = buildSenderSignatureViewModel(mb, brief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
-    const s = getOperatorSignatureState(r, vm, sel);
+    const s = getOperatorSignatureState(r, vm, sel, mb);
     expect(s.kind).toBe("ready_gmail");
     expect(s.sendReadyFromSignature).toBe(true);
   });
 
-  it("Microsoft: ready_od for manual text", () => {
+  it("Microsoft: minimal_signature when only a short manual block exists", () => {
     const r = row();
     const mb = mbox({
       senderSignatureText: "MS",
@@ -89,7 +90,22 @@ describe("getOperatorSignatureState", () => {
     });
     const vm = buildSenderSignatureViewModel(mb, brief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
-    const s = getOperatorSignatureState(r, vm, sel);
+    const s = getOperatorSignatureState(r, vm, sel, mb);
+    expect(s.kind).toBe("minimal_signature");
+    expect(s.sendReadyFromSignature).toBe(true);
+  });
+
+  it("Microsoft: ready_od when HTML signature is substantial", () => {
+    const r = row();
+    const mb = mbox({
+      senderSignatureHtml:
+        "<div>OpensDoors</div><p>Regards</p><p>Legal disclaimer text for outreach compliance.</p>",
+      senderSignatureText: "Plain fallback",
+      senderSignatureSource: "manual",
+    });
+    const vm = buildSenderSignatureViewModel(mb, brief);
+    const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
+    const s = getOperatorSignatureState(r, vm, sel, mb);
     expect(s.kind).toBe("ready_od");
     expect(s.sendReadyFromSignature).toBe(true);
   });
@@ -99,7 +115,7 @@ describe("getOperatorSignatureState", () => {
     const mb = mbox();
     const vm = buildSenderSignatureViewModel(mb, brief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: brief });
-    const s = getOperatorSignatureState(r, vm, sel);
+    const s = getOperatorSignatureState(r, vm, sel, mb);
     expect(sel.source).toBe("unsupported_provider");
     expect(s.kind).toBe("missing");
     expect(s.sendReadyFromSignature).toBe(false);
@@ -111,7 +127,7 @@ describe("getOperatorSignatureState", () => {
     const noBrief = { senderDisplayNameFallback: null, emailSignatureFallback: null };
     const vm = buildSenderSignatureViewModel(mb, noBrief);
     const sel = chooseSignatureForSend({ mailbox: mb, clientBrief: noBrief });
-    const s = getOperatorSignatureState(r, vm, sel);
+    const s = getOperatorSignatureState(r, vm, sel, mb);
     expect(s.kind).toBe("missing");
     expect(s.sendReadyFromSignature).toBe(false);
   });

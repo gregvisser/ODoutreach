@@ -80,6 +80,14 @@ function connectedMbox(over: Record<string, unknown> = {}) {
     isActive: true,
     canSend: true,
     isSendingEnabled: true,
+    displayName: null,
+    senderDisplayName: null,
+    senderSignatureHtml: null,
+    senderSignatureText: null,
+    senderSignatureSource: null,
+    senderSignatureSyncedAt: null,
+    senderSignatureSyncError: null,
+    workspaceRemovedAt: null,
     ...over,
   };
 }

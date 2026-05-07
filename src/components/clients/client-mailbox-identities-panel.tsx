@@ -40,6 +40,10 @@ import {
   mailboxRowOperatorStatus,
   MAX_CONNECTED_MAILBOXES,
 } from "@/lib/mailboxes/mailboxes-operator-model";
+import {
+  buildOpensDoorsBrandedSignatureHtml,
+  buildOpensDoorsBrandedSignaturePlain,
+} from "@/lib/mailboxes/opensdoors-branded-signature-template";
 import type { SenderReadinessReport } from "@/lib/sender-readiness";
 import { Textarea } from "@/components/ui/textarea";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -251,6 +255,9 @@ export function ClientMailboxIdentitiesPanel({
   clientBriefFallback,
   senderReport,
   aggregateRemaining,
+  showMailboxSetupTools,
+  workspaceDisplayName,
+  publicSiteOrigin,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
@@ -264,6 +271,11 @@ export function ClientMailboxIdentitiesPanel({
   senderReport: SenderReadinessReport;
   /** Sum of remaining send slots (UTC day) across ledgers — from workspace bundle. */
   aggregateRemaining: number;
+  /** Admin/Manager: signature editor, proof send, advanced diagnostics. */
+  showMailboxSetupTools: boolean;
+  workspaceDisplayName: string;
+  /** Public app origin for branded template image URLs (server-resolved). */
+  publicSiteOrigin: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -788,7 +800,7 @@ export function ClientMailboxIdentitiesPanel({
         </div>
       ) : null}
 
-      {activeRows.length > 0 ? (
+      {showMailboxSetupTools && activeRows.length > 0 ? (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">Sender signatures</h3>
           <div className="overflow-x-auto rounded-lg border border-border/80 -mx-1 px-1 sm:mx-0 sm:px-0">
@@ -808,7 +820,12 @@ export function ClientMailboxIdentitiesPanel({
                     mailbox: toSenderMailbox(row),
                     clientBrief: clientBriefFallback,
                   });
-                  const opState = getOperatorSignatureState(row, vm, selection);
+                  const opState = getOperatorSignatureState(
+                    row,
+                    vm,
+                    selection,
+                    toSenderMailbox(row),
+                  );
                   return (
                     <TableRow key={`sig-${row.id}`}>
                       <TableCell className="align-top text-sm break-all max-w-[14rem] min-w-[8rem]">
@@ -949,6 +966,7 @@ export function ClientMailboxIdentitiesPanel({
                     previewRow,
                     pvm,
                     preview.selection,
+                    toSenderMailbox(previewRow),
                   );
                     return (
                     <>
@@ -1032,6 +1050,7 @@ export function ClientMailboxIdentitiesPanel({
         </div>
       ) : null}
 
+      {showMailboxSetupTools ? (
       <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-3 py-2 text-sm">
         <summary className="cursor-pointer font-medium text-foreground">
           Advanced details
@@ -1094,8 +1113,9 @@ export function ClientMailboxIdentitiesPanel({
           })}
         </div>
       </details>
+      ) : null}
 
-      {canMutate ? (
+      {canMutate && showMailboxSetupTools ? (
         <Sheet
           open={signatureEditRow !== null}
           onOpenChange={(o) => {
@@ -1109,6 +1129,8 @@ export function ClientMailboxIdentitiesPanel({
                 clientId={clientId}
                 row={signatureEditRow}
                 disabled={pending}
+                workspaceDisplayName={workspaceDisplayName}
+                publicSiteOrigin={publicSiteOrigin}
                 onSubmit={(payload) => {
                   runSignature(async () => {
                     const r = await updateMailboxSignatureAction(payload);
@@ -1398,9 +1420,11 @@ function MailboxSignatureForm(props: {
   clientId: string;
   row: MailboxIdentityRow;
   disabled: boolean;
+  workspaceDisplayName: string;
+  publicSiteOrigin: string | null;
   onSubmit: (payload: Parameters<typeof updateMailboxSignatureAction>[0]) => void;
 }) {
-  const { clientId, row, disabled } = props;
+  const { clientId, row, disabled, workspaceDisplayName, publicSiteOrigin } = props;
   const [senderDisplayName, setSenderDisplayName] = useState(
     row.senderDisplayName ?? row.displayName ?? "",
   );
@@ -1408,15 +1432,44 @@ function MailboxSignatureForm(props: {
   const [signatureHtml, setSignatureHtml] = useState(row.senderSignatureHtml ?? "");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  const applyBrandedTemplate = () => {
+    const display =
+      senderDisplayName.trim() || row.displayName?.trim() || row.email;
+    const html = buildOpensDoorsBrandedSignatureHtml({
+      displayName: display,
+      jobTitle: "",
+      phone: "",
+      email: row.email,
+      website: "https://opensdoors.co.uk",
+      legalDisclaimer:
+        "This email and any attachments may be confidential. If you are not the intended recipient, notify the sender and delete this message.",
+      logoBaseUrl: publicSiteOrigin,
+    });
+    const plain = buildOpensDoorsBrandedSignaturePlain({
+      displayName: display,
+      jobTitle: "",
+      phone: "",
+      email: row.email,
+      website: "https://opensdoors.co.uk",
+      legalDisclaimer:
+        "This email and any attachments may be confidential. If you are not the intended recipient, notify the sender and delete this message.",
+      logoBaseUrl: publicSiteOrigin,
+    });
+    setSignatureHtml(html);
+    setSignatureText(plain);
+    setShowAdvanced(true);
+  };
+
   return (
     <>
       <SheetHeader>
-        <SheetTitle>Manual sender signature</SheetTitle>
+        <SheetTitle>Mailbox signature &amp; disclaimer</SheetTitle>
         <SheetDescription>
-          Used when composing sends from <strong>{row.email}</strong>. This
-          overrides any legacy client-level signature still on file. Plain
-          text is used for send bodies today; HTML is stored for future rich
-          sends.
+          ODoutreach should store the <strong>full official branded signature and disclaimer</strong>{" "}
+          for <strong>{row.email}</strong>. Outreach emails are composed as: message body, full
+          signature/disclaimer, then a compliant unsubscribe link. Disable Microsoft/Exchange or
+          Google workspace signature injection for this sender if a second branded block still
+          appears after delivery.
         </SheetDescription>
       </SheetHeader>
       <form
@@ -1451,7 +1504,7 @@ function MailboxSignatureForm(props: {
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium" htmlFor="sig-text">
-            Signature (plain text)
+            Signature &amp; disclaimer (plain text)
           </label>
           <textarea
             id="sig-text"
@@ -1461,6 +1514,25 @@ function MailboxSignatureForm(props: {
             onChange={(e) => setSignatureText(e.target.value)}
             placeholder={"e.g.\n--\nGreg Visser\nOpensDoors Outreach\n+44 ..."}
           />
+          <p className="text-xs text-muted-foreground">
+            Plain-text fallback for recipients without HTML. Should mirror the branded disclaimer.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="text-xs"
+            disabled={disabled}
+            onClick={applyBrandedTemplate}
+          >
+            Use OpensDoors branded template
+          </Button>
+          <span className="text-xs text-muted-foreground self-center">
+            Pre-fills HTML + plain from workspace “{workspaceDisplayName}” — edit before saving.
+          </span>
         </div>
 
         <button
@@ -1473,7 +1545,7 @@ function MailboxSignatureForm(props: {
         {showAdvanced ? (
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="sig-html">
-              Signature (HTML)
+              Full branded signature &amp; disclaimer (HTML)
             </label>
             <textarea
               id="sig-html"
@@ -1484,9 +1556,8 @@ function MailboxSignatureForm(props: {
               placeholder="<div>Greg Visser</div><div>OpensDoors</div>"
             />
             <p className="text-xs text-muted-foreground">
-              Stored for future HTML send path. Current sends use the plain
-              text rendering derived from this value when the plain text
-              field above is empty.
+              Production HTML sends place this block after the message body and before the
+              unsubscribe link. Confirm official logo and disclaimer copy with leadership.
             </p>
           </div>
         ) : null}

@@ -13,6 +13,7 @@ import {
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import { sendMicrosoftGraphSendMail } from "@/server/mailbox/microsoft-graph-sendmail";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
+import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 import { getOutboundEmailProvider } from "../providers";
 import {
   humanizeGovernanceRejection,
@@ -377,9 +378,11 @@ async function sendViaConnectedMailboxOrFail(
       return { ok: false, error: "Invalid payload" };
     }
     const listUnsub = readListUnsubscribeHeadersFromMetadata(row.metadata);
-    const bodyParts = buildEmailBodyParts({
-      bodyText: body,
-      unsubscribeUrl: listUnsub ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe) : null,
+    const hostedU = listUnsub ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe) : null;
+    const bodyParts = buildMailboxGovernedEmailBodies({
+      bodySnapshotPlain: body,
+      mailbox,
+      hostedUnsubscribeUrl: hostedU,
     });
     const gmailExtraHeaders = listUnsub
       ? [
@@ -476,9 +479,10 @@ async function sendViaConnectedMailboxOrFail(
   const graphListUnsubscribeUrl = listUnsub
     ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe)
     : null;
-  const bodyParts = buildEmailBodyParts({
-    bodyText: body,
-    unsubscribeUrl: graphListUnsubscribeUrl,
+  const bodyParts = buildMailboxGovernedEmailBodies({
+    bodySnapshotPlain: body,
+    mailbox,
+    hostedUnsubscribeUrl: graphListUnsubscribeUrl,
   });
 
   try {
