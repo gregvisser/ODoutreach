@@ -23,6 +23,11 @@ function escapeAttr(value: string): string {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
+/** For composing HTML attributes on unsubscribe links and similar. */
+export function escapeHtmlAttr(value: string): string {
+  return escapeAttr(value);
+}
+
 export function extractUnsubscribeUrlFromPlainTextBody(bodyText: string): string | null {
   const match = bodyText.match(FOOTER_RE);
   return match?.[1]?.trim() ?? null;
@@ -30,6 +35,16 @@ export function extractUnsubscribeUrlFromPlainTextBody(bodyText: string): string
 
 export function stripPlainTextUnsubscribeFooter(bodyText: string): string {
   return bodyText.replace(FOOTER_RE, "").replace(/\s+$/u, "");
+}
+
+/**
+ * Converts plain text (no compliance footer) into simple HTML paragraphs.
+ * Used when assembling outreach HTML so the message, branded signature,
+ * and unsubscribe footer stay in a fixed order.
+ */
+export function plainTextToHtmlParagraphs(bodyText: string): string {
+  const trimmed = typeof bodyText === "string" ? bodyText.replace(/\s+$/u, "") : "";
+  return textBlocksToHtml(trimmed, null);
 }
 
 function textBlocksToHtml(bodyText: string, unsubscribeUrl: string | null): string {

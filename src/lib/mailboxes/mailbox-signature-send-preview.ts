@@ -1,7 +1,5 @@
-import {
-  buildCleanUnsubscribeHtmlBody,
-} from "@/lib/unsubscribe/email-body-parts";
 import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-unsubscribe-in-body";
+import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 
 import {
   chooseSignatureForSend,
@@ -18,33 +16,26 @@ import {
 export const MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL =
   "https://opensdoors.bidlow.co.uk/unsubscribe/preview" as const;
 
+const SAMPLE_INTRO =
+  "Your introduction text appears here (sequence content sits above the signature).";
+
 export type MailboxSignatureSendPreview = {
   /** Resolution used for the signature block, same as outbound composition. */
   selection: SenderSignatureSelection;
   /** When non-empty, the signature text the send pipeline would use. */
   signatureTextUsed: string | null;
-  /**
-   * Plain text: effective signature (or a clear placeholder) plus the standard
-   * unsubscribe line appended **after** the block. Same function as live sends
-   * (`ensureUnsubscribeLinkInPlainTextBody`); only the URL is a sample here.
-   */
   bodyPlain: string;
   bodyHtml: string;
   sampleUnsubscribeUrl: typeof MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL;
   isPreview: true;
-  /**
-   * Explains to operators that the footer is order-only; does not create tokens.
-   */
   footnote: string;
 };
 
 const PLACEHOLDER_NO_SIG =
-  "No mailbox signature configured. This mailbox does not have its own signature yet. Add a per-mailbox signature so outreach sent from this mailbox matches the sender identity.";
+  "No mailbox signature configured. Add the full branded signature/disclaimer before live outreach.";
 
 /**
- * Pure, no-send, no-IO: build the final plain-text “signature + unsubscribe
- * footer” block exactly as the compliance layer would, using a **sample**
- * unsubscribe link so nothing secret is required or written.
+ * Pure, no-send, no-IO: mirrors governed mailbox HTML/plain assembly using a sample intro line.
  */
 export function buildMailboxSignatureSendPreview(input: {
   mailbox: SenderSignatureMailbox;
@@ -53,31 +44,31 @@ export function buildMailboxSignatureSendPreview(input: {
   const selection = chooseSignatureForSend(input);
   const text = selection.emailSignatureText?.trim() ?? "";
   const hasSig = text.length > 0;
-  const base = hasSig ? text : PLACEHOLDER_NO_SIG;
+  const coreBody = hasSig
+    ? `${SAMPLE_INTRO}\n\n${text}`
+    : `${SAMPLE_INTRO}\n\n${PLACEHOLDER_NO_SIG}`;
   const withFooter = ensureUnsubscribeLinkInPlainTextBody(
-    base,
+    coreBody,
     MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
   );
-  const html = buildCleanUnsubscribeHtmlBody({
-    bodyText: withFooter,
-    unsubscribeUrl: MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
+  const bodies = buildMailboxGovernedEmailBodies({
+    bodySnapshotPlain: withFooter,
+    mailbox: input.mailbox,
+    hostedUnsubscribeUrl: MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
   });
 
   const baseFootnote =
     "This preview does not send email, create tokens, or change data. " +
-    "In production, the line after your signature includes a real unsubscribe link per message (unique URL, not the sample above). " +
-    "The unsubscribe line is always added after the signature in the same way shown here.";
+    "The real unsubscribe URL is minted per recipient on send. " +
+    "Order is always: message → full signature/disclaimer → unsubscribe.";
 
   return {
     selection,
     signatureTextUsed: hasSig ? text : null,
-    bodyPlain: withFooter,
-    bodyHtml: html,
+    bodyPlain: bodies.text,
+    bodyHtml: bodies.html,
     sampleUnsubscribeUrl: MAILBOX_SIGNATURE_PREVIEW_UNSUBSCRIBE_URL,
     isPreview: true,
-    footnote: hasSig
-      ? baseFootnote
-      : "The unsubscribe footer will be added after the mailbox signature once one is configured. " +
-        baseFootnote,
+    footnote: hasSig ? baseFootnote : PLACEHOLDER_NO_SIG + " " + baseFootnote,
   };
 }

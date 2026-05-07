@@ -255,6 +255,22 @@ export type SenderSignatureSelection = {
  * Uses mailbox-owned text/HTML only. Client-brief `emailSignature` is never
  * used as a body fallback (avoids the wrong person’s name on a mailbox).
  */
+/**
+ * True when the mailbox stores a substantial branded block (HTML preferred).
+ * Used for readiness warnings — short “Kind regards / Name / OpensDoors” rows stay “minimal”.
+ */
+export function isMailboxFullBrandedSignature(mailbox: {
+  senderSignatureHtml: string | null;
+  senderSignatureText: string | null;
+}): boolean {
+  const nh = normaliseSignatureHtml(mailbox.senderSignatureHtml);
+  if (nh.length > 0) {
+    return htmlSignatureToText(nh).length >= 64;
+  }
+  const t = mailbox.senderSignatureText?.trim() ?? "";
+  return t.length >= 160;
+}
+
 export function chooseSignatureForSend(params: {
   mailbox: SenderSignatureMailbox;
   clientBrief: SenderSignatureClientBriefFallback;

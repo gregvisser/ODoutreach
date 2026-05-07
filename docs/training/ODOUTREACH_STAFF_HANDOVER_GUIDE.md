@@ -6,7 +6,7 @@ ODoutreach helps OpensDoors create a client workspace, connect sending inboxes, 
 
 ## Daily workflow checklist
 
-1. Check Mailboxes.
+1. Check Mailboxes (connection status and capacity — signature setup is admin-only).
 2. Import contacts.
 3. Check Do-not-contact.
 4. Build a simple intro sequence.
@@ -61,7 +61,7 @@ ODoutreach helps OpensDoors create a client workspace, connect sending inboxes, 
 ## 10-minute handover script
 
 1. Open the client Overview and explain the workspace status.
-2. Open Mailboxes and check connected inboxes, signatures, and capacity.
+2. Open Mailboxes and check connected inboxes and capacity (full branded signatures are stored in ODoutreach by administrators).
 3. Open Contacts and show RocketReach/CSV import entry points.
 4. Open Do-not-contact and explain emails/domains never to contact.
 5. Open Outreach and show list, mailbox, introduction, optional follow-up, preview, send.
