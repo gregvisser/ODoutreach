@@ -14,8 +14,19 @@ const { markConsumed, markReleased, getToken, sendGraph, evalSupp } = vi.hoisted
   evalSupp: vi.fn(),
 }));
 
+vi.mock("@/server/mailbox/mailbox-primary-consistency", () => ({
+  reconcilePrimaryMailboxForClient: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        clientMailboxIdentity: {
+          updateMany: updateManyMbox,
+        },
+      }),
+    ),
     outboundEmail: { findUnique, updateMany },
     clientMailboxIdentity: { findFirst: findFirstMbox, updateMany: updateManyMbox },
   },

@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   assertActiveMailboxLimit,
   assertPrimaryRequiresActive,
+  assertPrimaryRequiresConnected,
   DEFAULT_MAILBOX_DAILY_SEND_CAP,
+  isEffectivePrimaryMailbox,
   isMailboxSendingEligible,
   isUnderDailySendCap,
   MAX_ACTIVE_MAILBOXES_PER_CLIENT,
@@ -24,6 +26,31 @@ describe("assertActiveMailboxLimit", () => {
 describe("assertPrimaryRequiresActive", () => {
   it("throws when primary but inactive", () => {
     expect(() => assertPrimaryRequiresActive(true, false)).toThrow(/primary mailbox must be active/i);
+  });
+});
+
+describe("assertPrimaryRequiresConnected", () => {
+  it("throws when primary but not connected", () => {
+    expect(() =>
+      assertPrimaryRequiresConnected(true, "CONNECTION_ERROR"),
+    ).toThrow(/connect the mailbox first/i);
+  });
+});
+
+describe("isEffectivePrimaryMailbox", () => {
+  it("requires connected status", () => {
+    expect(
+      isEffectivePrimaryMailbox({
+        isPrimary: true,
+        connectionStatus: "CONNECTED",
+      }),
+    ).toBe(true);
+    expect(
+      isEffectivePrimaryMailbox({
+        isPrimary: true,
+        connectionStatus: "CONNECTION_ERROR",
+      }),
+    ).toBe(false);
   });
 });
 

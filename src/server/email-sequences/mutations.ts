@@ -18,6 +18,7 @@ import {
   type SequenceStepsValidationResult,
 } from "@/lib/email-sequences/sequence-policy";
 import { prisma } from "@/lib/db";
+import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
 
 /**
  * Server-side mutations for `ClientEmailSequence` (PR D4b).
@@ -166,12 +167,18 @@ export async function createSequence(
   if (mb) {
     const mailbox = await prisma.clientMailboxIdentity.findFirst({
       where: { id: mb, clientId: input.clientId },
-      select: { id: true },
     });
     if (!mailbox) {
       throw new SequenceMutationFailure({
         code: "NOT_FOUND",
         message: "Selected sending mailbox was not found for this client.",
+      });
+    }
+    if (!isMailboxExecutionEligible(mailbox)) {
+      throw new SequenceMutationFailure({
+        code: "INVALID_INPUT",
+        message:
+          "Choose a connected mailbox that is allowed to send, or leave sending mailbox as auto-pick.",
       });
     }
   }
@@ -241,12 +248,18 @@ export async function updateSequenceMetadata(
   if (mb) {
     const mailbox = await prisma.clientMailboxIdentity.findFirst({
       where: { id: mb, clientId: input.clientId },
-      select: { id: true },
     });
     if (!mailbox) {
       throw new SequenceMutationFailure({
         code: "NOT_FOUND",
         message: "Selected sending mailbox was not found for this client.",
+      });
+    }
+    if (!isMailboxExecutionEligible(mailbox)) {
+      throw new SequenceMutationFailure({
+        code: "INVALID_INPUT",
+        message:
+          "Choose a connected mailbox that is allowed to send, or leave sending mailbox as auto-pick.",
       });
     }
   }

@@ -6,7 +6,20 @@ import {
   microsoftMailboxOAuthTenant,
 } from "@/server/mailbox/oauth-env";
 
-export function buildMicrosoftMailboxAuthorizeUrl(oauthState: string): string {
+export type MicrosoftMailboxAuthorizeOptions = {
+  /** Hints the Microsoft sign-in screen (safe for scoped mailbox rows). */
+  loginHint?: string;
+  /**
+   * Default `select_account` so operators can pick the correct work account and MFA
+   * instead of silently reusing a cached personal session.
+   */
+  prompt?: "select_account" | "login" | "consent" | "none";
+};
+
+export function buildMicrosoftMailboxAuthorizeUrl(
+  oauthState: string,
+  options?: MicrosoftMailboxAuthorizeOptions,
+): string {
   const clientId = process.env.MAILBOX_MICROSOFT_OAUTH_CLIENT_ID?.trim();
   if (!clientId) {
     throw new Error("MAILBOX_MICROSOFT_OAUTH_CLIENT_ID is not set");
@@ -20,7 +33,12 @@ export function buildMicrosoftMailboxAuthorizeUrl(oauthState: string): string {
     response_mode: "query",
     scope: microsoftMailboxOAuthScopes(),
     state: oauthState,
+    prompt: options?.prompt ?? "select_account",
   });
+  const hint = options?.loginHint?.trim();
+  if (hint) {
+    params.set("login_hint", hint);
+  }
   return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
 }
 

@@ -216,6 +216,23 @@ describe("eligibleWorkspaceMailboxPool (shared workspace mailbox access rule)", 
     ]);
   });
 
+  it("excludes a disconnected mailbox even when it is still flagged primary", () => {
+    const pool = eligibleWorkspaceMailboxPool([
+      baseMailbox({
+        id: "broken-primary",
+        isPrimary: true,
+        connectionStatus: "CONNECTION_ERROR",
+      }),
+      baseMailbox({
+        id: "ok-send",
+        email: "ok@b.co",
+        emailNormalized: "ok@b.co",
+        isPrimary: false,
+      }),
+    ]);
+    expect(pool.map((m) => m.id)).toEqual(["ok-send"]);
+  });
+
   it("excludes a mailbox that is not connected", () => {
     const pool = eligibleWorkspaceMailboxPool([
       baseMailbox({ id: "ok" }),

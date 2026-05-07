@@ -11,9 +11,11 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   assertActiveMailboxLimit,
   assertPrimaryRequiresActive,
+  assertPrimaryRequiresConnected,
   startOfNextUtcDay,
 } from "@/lib/mailbox-identities";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
+import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 
 const providerSchema = z.enum(["MICROSOFT", "GOOGLE"]);
 
@@ -100,12 +102,15 @@ export async function createClientMailboxIdentity(
   }
 
   assertPrimaryRequiresActive(data.data.isPrimary, data.data.isActive);
+  assertPrimaryRequiresConnected(data.data.isPrimary, "DRAFT");
 
   const now = new Date();
   const windowEnd = startOfNextUtcDay(now);
 
   try {
     await prisma.$transaction(async (tx) => {
+      await reconcilePrimaryMailboxForClient(tx, data.data.clientId);
+
       const activeCount = await tx.clientMailboxIdentity.count({
         where: {
           clientId: data.data.clientId,
@@ -189,6 +194,8 @@ export async function updateClientMailboxIdentity(
 
   try {
     await prisma.$transaction(async (tx) => {
+      await reconcilePrimaryMailboxForClient(tx, data.data.clientId);
+
       const existing = await tx.clientMailboxIdentity.findFirst({
         where: { id: data.data.mailboxId, clientId: data.data.clientId },
       });
@@ -198,6 +205,11 @@ export async function updateClientMailboxIdentity(
       if (isMailboxRemovedFromWorkspace(existing)) {
         throw new Error("This mailbox was removed from the workspace. Restore it before editing.");
       }
+
+      assertPrimaryRequiresConnected(
+        data.data.isPrimary,
+        existing.connectionStatus,
+      );
 
       const activeCount = await tx.clientMailboxIdentity.count({
         where: {
@@ -276,6 +288,8 @@ export async function setClientMailboxPrimary(
 
   try {
     await prisma.$transaction(async (tx) => {
+      await reconcilePrimaryMailboxForClient(tx, clientId);
+
       const row = await tx.clientMailboxIdentity.findFirst({
         where: { id: mailboxId, clientId },
       });
@@ -284,6 +298,11 @@ export async function setClientMailboxPrimary(
         throw new Error("Removed mailboxes cannot be primary. Restore the mailbox first.");
       }
       if (!row.isActive) throw new Error("Primary mailbox must be active.");
+      if (row.connectionStatus !== "CONNECTED") {
+        throw new Error(
+          "Connect this mailbox before setting it as primary.",
+        );
+      }
 
       await tx.clientMailboxIdentity.updateMany({
         where: { clientId, isPrimary: true },

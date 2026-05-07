@@ -20,6 +20,7 @@ import {
   markReservationConsumedForOutbound,
   markReservationReleasedForOutbound,
 } from "@/server/mailbox/sending-policy";
+import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 import {
   computeNextRetryAt,
   isRetryableSendFailure,
@@ -85,15 +86,19 @@ function reauthMessage(provider: "MICROSOFT" | "GOOGLE", error: string): string 
 
 async function markMailboxReauthRequired(
   mailboxIdentityId: string,
+  clientId: string,
   provider: "MICROSOFT" | "GOOGLE",
   error: string,
 ) {
-  await prisma.clientMailboxIdentity.updateMany({
-    where: { id: mailboxIdentityId },
-    data: {
-      connectionStatus: "CONNECTION_ERROR",
-      lastError: reauthMessage(provider, error).slice(0, 4000),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.clientMailboxIdentity.updateMany({
+      where: { id: mailboxIdentityId },
+      data: {
+        connectionStatus: "CONNECTION_ERROR",
+        lastError: reauthMessage(provider, error).slice(0, 4000),
+      },
+    });
+    await reconcilePrimaryMailboxForClient(tx, clientId);
   });
 }
 
@@ -398,7 +403,12 @@ async function sendViaConnectedMailboxOrFail(
       });
       if (result.ok === false) {
         if (row.mailboxIdentityId && isMailboxReauthRequiredError("GOOGLE", result.error)) {
-          await markMailboxReauthRequired(row.mailboxIdentityId, "GOOGLE", result.error);
+          await markMailboxReauthRequired(
+            row.mailboxIdentityId,
+            row.clientId,
+            "GOOGLE",
+            result.error,
+          );
         }
         return await handleSendFailure(
           row.id,
@@ -433,7 +443,7 @@ async function sendViaConnectedMailboxOrFail(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (row.mailboxIdentityId && isMailboxReauthRequiredError("GOOGLE", msg)) {
-        await markMailboxReauthRequired(row.mailboxIdentityId, "GOOGLE", msg);
+        await markMailboxReauthRequired(row.mailboxIdentityId, row.clientId, "GOOGLE", msg);
       }
       return await handleSendFailure(
         row.id,
@@ -489,7 +499,12 @@ async function sendViaConnectedMailboxOrFail(
     });
     if (result.ok === false) {
       if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", result.error)) {
-        await markMailboxReauthRequired(row.mailboxIdentityId, "MICROSOFT", result.error);
+        await markMailboxReauthRequired(
+          row.mailboxIdentityId,
+          row.clientId,
+          "MICROSOFT",
+          result.error,
+        );
       }
       return await handleSendFailure(
         row.id,
@@ -524,7 +539,7 @@ async function sendViaConnectedMailboxOrFail(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", msg)) {
-      await markMailboxReauthRequired(row.mailboxIdentityId, "MICROSOFT", msg);
+      await markMailboxReauthRequired(row.mailboxIdentityId, row.clientId, "MICROSOFT", msg);
     }
     return await handleSendFailure(
       row.id,
