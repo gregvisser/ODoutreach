@@ -151,7 +151,10 @@ export async function GET(req: Request) {
       },
     });
 
-    return mailboxOAuthRedirectToClient(clientId, { mailbox_oauth: "connected" });
+    return mailboxOAuthRedirectToClient(clientId, {
+      mailbox_oauth: "connected",
+      oauth_mailbox_id: mailbox.id,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "OAuth failed";
     await prisma.$transaction(async (tx) => {
