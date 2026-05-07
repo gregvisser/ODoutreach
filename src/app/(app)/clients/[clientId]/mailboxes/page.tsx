@@ -4,6 +4,7 @@ import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbo
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { MAILBOXES_PAGE_INTRO } from "@/lib/mailboxes/mailbox-workspace-model";
+import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -39,12 +40,18 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   if (!bundle.client) notFound();
   const client = bundle.client;
 
-  const oauthMailboxVerifiedConnected =
+  /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
+  let oauthMailboxVerifiedConnected = false;
+  if (
     oauthMailboxIdRaw &&
-    bundle.mailboxRows.some(
-      (m) =>
-        m.id === oauthMailboxIdRaw && m.connectionStatus === "CONNECTED",
-    );
+    mailboxOAuthResult === "connected"
+  ) {
+    const persisted = await prisma.clientMailboxIdentity.findFirst({
+      where: { id: oauthMailboxIdRaw, clientId },
+      select: { connectionStatus: true },
+    });
+    oauthMailboxVerifiedConnected = persisted?.connectionStatus === "CONNECTED";
+  }
 
   const mailboxOAuthErrorMessage = (() => {
     if (mailboxOAuthResult !== "error") return null;

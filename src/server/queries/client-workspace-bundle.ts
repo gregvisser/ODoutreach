@@ -27,6 +27,8 @@ import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-se
 import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-ledger";
 import { getPilotContactSummaryForClient } from "@/server/queries/pilot-contact-summary";
 import type { StaffUser } from "@/generated/prisma/client";
+import type { MailboxAuthFailureSignal } from "@/lib/mailboxes/mailbox-auth-failure-overlay";
+import { shouldApplyMailboxAuthFailureOverlay } from "@/lib/mailboxes/mailbox-auth-failure-overlay";
 
 export type ClientWorkspaceBundle = Awaited<ReturnType<typeof loadClientWorkspaceBundle>>;
 
@@ -42,20 +44,24 @@ async function getRecentMailboxAuthFailuresForClient(clientId: string) {
       mailboxIdentityId: { not: null },
     },
     orderBy: { updatedAt: "desc" },
-    take: 50,
+    take: 100,
     select: {
       mailboxIdentityId: true,
       lastErrorMessage: true,
       failureReason: true,
+      updatedAt: true,
     },
   });
-  const failures = new Map<string, string>();
+  const failures = new Map<string, MailboxAuthFailureSignal>();
   for (const row of rows) {
     const mailboxId = row.mailboxIdentityId;
     const message = row.lastErrorMessage ?? row.failureReason ?? "";
     if (!mailboxId || !MAILBOX_REAUTH_FAILURE_RE.test(message)) continue;
     if (!failures.has(mailboxId)) {
-      failures.set(mailboxId, message);
+      failures.set(mailboxId, {
+        message,
+        failedAt: row.updatedAt,
+      });
     }
   }
   return failures;
@@ -111,14 +117,21 @@ export async function loadClientWorkspaceBundle(
   );
 
   const mailboxRows = client.mailboxIdentities.map((m) => {
-    const authFailure = recentMailboxAuthFailures.get(m.id);
-    const connectionStatus = authFailure ? "CONNECTION_ERROR" : m.connectionStatus;
-    const lastError = authFailure
-      ? `Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. ${authFailure}`.slice(
-          0,
-          4000,
-        )
-      : m.lastError;
+    const authFailure = recentMailboxAuthFailures.get(m.id) ?? null;
+    const applyAuthOverlay = shouldApplyMailboxAuthFailureOverlay({
+      dbConnectionStatus: m.connectionStatus,
+      connectedAt: m.connectedAt,
+      mailboxUpdatedAt: m.updatedAt,
+      failure: authFailure,
+    });
+    const connectionStatus = applyAuthOverlay ? "CONNECTION_ERROR" : m.connectionStatus;
+    const lastError =
+      applyAuthOverlay && authFailure
+        ? `Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. ${authFailure.message}`.slice(
+            0,
+            4000,
+          )
+        : m.lastError;
     return {
     id: m.id,
     email: m.email,
