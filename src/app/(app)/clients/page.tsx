@@ -20,16 +20,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { requireStaffUser } from "@/server/auth/staff";
+import { resolveClientsPageEmptyCopy } from "@/lib/clients/clients-page-empty-state";
+import { prisma } from "@/lib/db";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientsPage() {
-  const staff = await requireStaffUser();
+  const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
   const clients = await listClientsForStaff(accessible);
+  const totalClientsInDatabase = await prisma.client.count();
+  const emptyCopy = resolveClientsPageEmptyCopy({
+    staffRole: staff.role,
+    listedClientCount: clients.length,
+    totalClientsInDatabase,
+  });
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -99,17 +107,37 @@ export default async function ClientsPage() {
           </Table>
           {clients.length === 0 ? (
             <div className="space-y-2 py-10 text-center text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">No clients yet</p>
-              <p>
-                Add your first client to start onboarding mailboxes, contacts,
-                and outreach.
-              </p>
-              <Link
-                href="/clients/new"
-                className={cn(buttonVariants(), "mt-2 inline-flex")}
-              >
-                Add client
-              </Link>
+              {emptyCopy?.variant === "no_workspace_assigned" ? (
+                <>
+                  <p className="font-medium text-foreground">No client workspace assigned</p>
+                  <p>
+                    You are signed in, but no client workspace has been assigned to you yet. Ask
+                    an administrator or manager to add you to a client on Overview → Team access.
+                  </p>
+                </>
+              ) : emptyCopy?.variant === "no_clients_in_system" ? (
+                <>
+                  <p className="font-medium text-foreground">No clients yet</p>
+                  <p>
+                    Add your first client to start onboarding mailboxes, contacts,
+                    and outreach.
+                  </p>
+                  <Link
+                    href="/clients/new"
+                    className={cn(buttonVariants(), "mt-2 inline-flex")}
+                  >
+                    Add client
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium text-foreground">Unable to load client workspaces</p>
+                  <p className="text-balance">
+                    Your account should see at least one workspace, but nothing was returned.
+                    Please refresh the page or contact support if this keeps happening.
+                  </p>
+                </>
+              )}
             </div>
           ) : null}
         </CardContent>

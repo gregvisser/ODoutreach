@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchApprovalCard } from "@/components/clients/client-launch-approval-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
+import { ClientTeamAccessPanel } from "@/components/clients/client-team-access-panel";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
 import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
@@ -37,8 +38,12 @@ import {
 } from "@/server/clients/launch-approval";
 import { getClientHasProductionLaunchableSequence } from "@/server/email-sequences/queries";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
+import { loadClientTeamAccessView } from "@/server/queries/client-team-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
-import { getAccessibleClientIds } from "@/server/tenant/access";
+import {
+  canAssignClientWorkspaceMembership,
+  getAccessibleClientIds,
+} from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +68,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   if (!bundle.client) notFound();
 
   const client = bundle.client;
+  const teamAccess = await loadClientTeamAccessView(client.id);
+  const canManageTeam = canAssignClientWorkspaceMembership(staff);
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
 
   const [hasProductionLaunchableSequence, enrolledContactsCount] = await Promise.all([
@@ -324,6 +331,28 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         viewModel={gettingStarted}
         clientStatus={client.status}
       />
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Team access</CardTitle>
+          <CardDescription>
+            Staff accounts that may open this client workspace. Operators and viewers only see
+            clients they are explicitly assigned to (unless they are a manager or administrator).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClientTeamAccessPanel
+            clientId={client.id}
+            memberships={teamAccess.memberships.map((m) => ({
+              id: m.id,
+              role: m.role,
+              staffUser: m.staffUser,
+            }))}
+            staffEligibleToAdd={teamAccess.staffEligibleToAdd}
+            canManageTeam={canManageTeam}
+          />
+        </CardContent>
+      </Card>
 
       <ClientLaunchApprovalCard
         clientId={client.id}
