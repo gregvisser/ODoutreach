@@ -41,7 +41,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
-  const showMailboxSetupTools = canAccessMailboxSetupTools(staff.role);
+  const showMailboxSetupTools = canAccessMailboxSetupTools(staff);
   const publicSiteOrigin = resolvePublicBaseUrl();
 
   /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */

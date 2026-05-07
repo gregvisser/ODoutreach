@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { format } from "date-fns";
 
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import type { MailboxOutreachRowInput } from "@/lib/outreach-mailbox-transport";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
+import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import { cn } from "@/lib/utils";
 import { requireStaffUser } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
@@ -41,6 +43,9 @@ type Props = { searchParams?: Promise<{ client?: string }> };
 
 export default async function OutboundOperationsPage({ searchParams }: Props) {
   const staff = await requireStaffUser();
+  if (!isOpensDoorsSuperadminStaff(staff)) {
+    notFound();
+  }
   const accessible = await getAccessibleClientIds(staff);
   const sp = (await searchParams) ?? {};
   const clientFilter =

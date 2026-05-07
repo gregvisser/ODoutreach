@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-import { mainNav } from "./nav-config";
+import { mainNav, type NavItem } from "./nav-config";
 
 type BrandProp = {
   markUrl: string;
@@ -17,9 +17,11 @@ type BrandProp = {
 export function AppSidebar({
   className,
   brand,
+  navItems = mainNav,
 }: {
   className?: string;
   brand: BrandProp;
+  navItems?: NavItem[];
 }) {
   const pathname = usePathname();
 
@@ -53,7 +55,7 @@ export function AppSidebar({
         </div>
       </Link>
       <nav className="flex-1 space-y-0.5 p-3">
-        {mainNav.map((item) => {
+        {navItems.map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));

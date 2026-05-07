@@ -23,7 +23,17 @@ import {
   type LaunchApprovalSnapshot,
 } from "./launch-approval";
 
-const staff = { id: "staff-1", role: "OPERATOR" } as StaffUser;
+const staff = {
+  id: "staff-1",
+  role: "OPERATOR",
+  email: "greg@opensdoors.co.uk",
+} as StaffUser;
+
+const nonGregStaff = {
+  id: "staff-2",
+  role: "ADMIN",
+  email: "joe@opensdoors.co.uk",
+} as StaffUser;
 
 function snapshotWithPolicy(overrides: {
   canApprove: boolean;
@@ -73,6 +83,20 @@ beforeEach(() => {
 });
 
 describe("approveClientLaunch", () => {
+  it("rejects when the acting user is not the platform super-administrator", async () => {
+    const result = await approveClientLaunch({
+      staff: nonGregStaff,
+      clientId: "c1",
+      mode: "CONTROLLED_INTERNAL",
+      confirmationPhrase: "APPROVE LAUNCH",
+      snapshotLoader: () =>
+        Promise.resolve(snapshotWithPolicy({ canApprove: true })),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("FORBIDDEN");
+    expect(prismaMock.client.update).not.toHaveBeenCalled();
+  });
+
   it("rejects when the confirmation phrase is missing or wrong case", async () => {
     const result = await approveClientLaunch({
       staff,

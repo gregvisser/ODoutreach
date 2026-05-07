@@ -1,6 +1,6 @@
-import type { StaffRole } from "@/generated/prisma/enums";
+import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 
-/** Internal proof send, signature editors, and advanced diagnostics. */
-export function canAccessMailboxSetupTools(role: StaffRole): boolean {
-  return role === "ADMIN" || role === "MANAGER";
+/** Internal proof send, signature editors, and advanced diagnostics — platform super-admin only. */
+export function canAccessMailboxSetupTools(staff: { email: string }): boolean {
+  return isOpensDoorsSuperadminStaff(staff);
 }

@@ -18,6 +18,7 @@ import { getAccessibleClientIds } from "@/server/tenant/access";
 import { getClientHasProductionLaunchableSequence } from "@/server/email-sequences/queries";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
+import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import type { StaffUser } from "@/generated/prisma/client";
 import type { ClientLifecycleStatus } from "@/generated/prisma/enums";
 
@@ -61,7 +62,7 @@ export type LaunchApprovalSnapshot = {
  */
 export async function loadClientLaunchApprovalSnapshot(
   clientId: string,
-  staff: Pick<StaffUser, "id" | "role">,
+  staff: Pick<StaffUser, "id" | "role" | "email">,
   mode: ClientLaunchApprovalMode = "CONTROLLED_INTERNAL",
 ): Promise<LaunchApprovalSnapshot | null> {
   const accessible = await getAccessibleClientIds(staff);
@@ -234,7 +235,7 @@ export async function approveClientLaunch(params: {
    */
   snapshotLoader?: (
     clientId: string,
-    staff: Pick<StaffUser, "id" | "role">,
+    staff: Pick<StaffUser, "id" | "role" | "email">,
     mode: ClientLaunchApprovalMode,
   ) => Promise<LaunchApprovalSnapshot | null>;
 }): Promise<ApproveClientLaunchResult> {
@@ -245,6 +246,14 @@ export async function approveClientLaunch(params: {
       ok: false,
       code: "NOTES_TOO_LONG",
       message: `Notes must be ${String(LAUNCH_APPROVAL_NOTES_MAX)} characters or fewer.`,
+    };
+  }
+
+  if (!isOpensDoorsSuperadminStaff(staff)) {
+    return {
+      ok: false,
+      code: "FORBIDDEN",
+      message: "Only the OpensDoors platform administrator may approve client launch.",
     };
   }
 
