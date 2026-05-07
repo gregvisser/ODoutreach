@@ -20,7 +20,7 @@ import { getAccessibleClientIds } from "@/server/tenant/access";
  * constraint can land in PR D4b without a migration.
  */
 export async function getClientEmailTemplateMutationAllowed(
-  staff: Pick<StaffUser, "id" | "role">,
+  staff: Pick<StaffUser, "id" | "role" | "email">,
   clientId: string,
 ): Promise<boolean> {
   const allowed = await getAccessibleClientIds(staff);
@@ -35,7 +35,7 @@ export async function getClientEmailTemplateMutationAllowed(
 }
 
 export async function requireClientEmailTemplateMutator(
-  staff: Pick<StaffUser, "id" | "role">,
+  staff: Pick<StaffUser, "id" | "role" | "email">,
   clientId: string,
 ): Promise<void> {
   const ok = await getClientEmailTemplateMutationAllowed(staff, clientId);

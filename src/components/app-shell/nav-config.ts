@@ -1,3 +1,4 @@
+import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -31,3 +32,11 @@ export const mainNav: NavItem[] = [
   { title: "Training", href: "/training", icon: GraduationCap },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
+
+/** Hides queue/provider admin nav for day-to-day operators. */
+export function getMainNavForStaff(staff: { email: string }): NavItem[] {
+  if (isOpensDoorsSuperadminStaff(staff)) {
+    return mainNav;
+  }
+  return mainNav.filter((item) => item.href !== "/operations/outbound");
+}

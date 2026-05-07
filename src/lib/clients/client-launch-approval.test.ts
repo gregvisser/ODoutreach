@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   clientMustBeLaunchApprovedForRealProspectSend,
   evaluateClientLaunchApproval,
+  humanizeClientLaunchApprovalMode,
   isLaunchApprovalConfirmationValid,
   LAUNCH_APPROVAL_CONFIRMATION_PHRASE,
   type LaunchApprovalPolicyInput,
@@ -255,6 +256,16 @@ describe("isLaunchApprovalConfirmationValid", () => {
     expect(isLaunchApprovalConfirmationValid("APPROVE")).toBe(false);
     expect(isLaunchApprovalConfirmationValid("APPROVE LAUNCH!")).toBe(false);
     expect(isLaunchApprovalConfirmationValid("")).toBe(false);
+  });
+});
+
+describe("humanizeClientLaunchApprovalMode", () => {
+  it("maps stored enums to operator-friendly labels", () => {
+    expect(humanizeClientLaunchApprovalMode("CONTROLLED_INTERNAL")).toBe(
+      "Controlled internal rollout",
+    );
+    expect(humanizeClientLaunchApprovalMode("LIVE_PROSPECT")).toBe("Live prospect sending");
+    expect(humanizeClientLaunchApprovalMode(null)).toBe("—");
   });
 });
 

@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   getGlobalBrand,
@@ -22,7 +23,7 @@ export const metadata = {
 
 export default async function SettingsBrandingPage() {
   const staff = await requireOpensDoorsStaff();
-  const isAdmin = staff.role === "ADMIN";
+  const isAdmin = isOpensDoorsSuperadminStaff(staff);
   const [effective, storedRow] = await Promise.all([
     getGlobalBrand(),
     loadStoredBrand(),

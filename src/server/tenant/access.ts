@@ -1,29 +1,30 @@
 import "server-only";
 
-import type { StaffRole } from "@/generated/prisma/enums";
+import type { StaffUser } from "@/generated/prisma/client";
+import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import { prisma } from "@/lib/db";
 
-/** Roles that may see all client workspaces (internal ops). */
-const GLOBAL_CLIENT_ACCESS_ROLES: StaffRole[] = ["ADMIN", "MANAGER"];
+/** Tenant-scoped access checks — requires `email` (all `StaffUser` rows have it). */
+export type StaffForTenantAccess = Pick<StaffUser, "id" | "role" | "email">;
 
-export type StaffIdentity = {
-  id: string;
-  role: StaffRole;
-};
+/** @deprecated Use {@link StaffForTenantAccess} */
+export type StaffIdentity = StaffForTenantAccess;
 
-/** ADMIN/MANAGER may assign OPERATOR/VIEWER staff to client workspaces via `ClientMembership`. */
-export function canAssignClientWorkspaceMembership(staff: StaffIdentity): boolean {
-  return GLOBAL_CLIENT_ACCESS_ROLES.includes(staff.role);
+/**
+ * Only greg@opensdoors.co.uk may assign staff to client workspaces (not all MANAGER roles).
+ */
+export function canAssignClientWorkspaceMembership(staff: StaffForTenantAccess): boolean {
+  return isOpensDoorsSuperadminStaff(staff);
 }
 
 /**
- * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
- * from the client without intersecting with this list.
+ * Returns client IDs this staff member may load or mutate.
+ * Platform super-admin sees all workspaces; everyone else uses {@link prisma.clientMembership} only.
  */
 export async function getAccessibleClientIds(
-  staff: StaffIdentity,
+  staff: StaffForTenantAccess,
 ): Promise<string[]> {
-  if (GLOBAL_CLIENT_ACCESS_ROLES.includes(staff.role)) {
+  if (isOpensDoorsSuperadminStaff(staff)) {
     const rows = await prisma.client.findMany({ select: { id: true } });
     return rows.map((r) => r.id);
   }
@@ -39,7 +40,7 @@ export async function getAccessibleClientIds(
  * Throws if staff cannot access the workspace. Use in server actions and mutations.
  */
 export async function requireClientAccess(
-  staff: StaffIdentity,
+  staff: StaffForTenantAccess,
   clientId: string,
 ): Promise<void> {
   const allowed = await getAccessibleClientIds(staff);
