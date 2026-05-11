@@ -8,6 +8,7 @@ describe("staff handover copy", () => {
   it("uses Do-not-contact in operator navigation", () => {
     expect(mainNav.map((item) => item.title)).toContain("Do-not-contact");
     expect(mainNav.map((item) => item.title)).toContain("Admin operations");
+    expect(mainNav.map((item) => item.title)).toContain("Universe");
   });
 
   it("documents the daily outreach workflow", () => {

@@ -85,6 +85,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
       fileName: file.name || "upload.csv",
       csvText: text,
       contactListId: resolvedList.id,
+      targetListName: resolvedList.name,
       addedByStaffUserId: staff.id,
     });
   } catch (e) {
@@ -100,6 +101,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
   }
 
   revalidatePath("/contacts");
+  revalidatePath("/universe");
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${clientId}`);
   revalidatePath(`/clients/${clientId}/sources`);
@@ -112,6 +114,8 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
       result.summary.skippedInvalid + result.summary.skippedDuplicate,
     ),
     list: resolvedList.name,
+    uNew: String(result.summary.universeCreated),
+    uMatch: String(result.summary.universeMatched),
   });
   redirect(`/contacts?${q.toString()}`);
 }

@@ -345,6 +345,11 @@ export function ClientEmailSequenceForm({
                 </option>
               ))}
             </select>
+            <p className="text-[11px] text-muted-foreground">
+              Use a list created from the{" "}
+              <span className="font-medium text-foreground">Universe</span> tab, or one built directly from
+              Sources imports for this client. Do-not-contact rules still apply before sends.
+            </p>
             {selectedList && selectedList.emailSendableCount === 0 && (
               <p className="text-[11px] text-amber-700 dark:text-amber-300">
                 This list has 0 email-sendable contacts — add contacts before
