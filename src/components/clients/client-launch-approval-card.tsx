@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  humanizeClientLaunchApprovalMode,
   LAUNCH_APPROVAL_CONFIRMATION_PHRASE,
   LAUNCH_APPROVAL_NOTES_MAX,
   type ClientLaunchApprovalMode,
@@ -160,7 +159,7 @@ export function ClientLaunchApprovalCard(props: ClientLaunchApprovalCardProps) {
       return (
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Admin launch governance</CardTitle>
+            <CardTitle>Launch approval</CardTitle>
             <CardDescription>
               Active — approved for live outreach. Modules remain editable.
             </CardDescription>
@@ -181,7 +180,7 @@ export function ClientLaunchApprovalCard(props: ClientLaunchApprovalCardProps) {
     return (
       <Card className="border-emerald-400/40 shadow-sm dark:border-emerald-500/20">
         <CardHeader>
-          <CardTitle>Admin launch governance</CardTitle>
+          <CardTitle>Launch approval</CardTitle>
           <CardDescription>
             Active — approved for live outreach. Modules remain editable.
           </CardDescription>
@@ -201,9 +200,9 @@ export function ClientLaunchApprovalCard(props: ClientLaunchApprovalCardProps) {
               <dd className="font-medium">{approverLabel ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase text-muted-foreground">Approval mode</dt>
+              <dt className="text-xs uppercase text-muted-foreground">Mode</dt>
               <dd className="font-medium">
-                {humanizeClientLaunchApprovalMode(props.launchApprovalMode)}
+                {props.launchApprovalMode ?? "—"}
               </dd>
             </div>
           </dl>
@@ -239,7 +238,7 @@ export function ClientLaunchApprovalCard(props: ClientLaunchApprovalCardProps) {
     return (
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Admin launch governance</CardTitle>
+          <CardTitle>Launch approval</CardTitle>
           <CardDescription>
             Approval is only available for ONBOARDING or PAUSED clients.
             Current status: {props.clientStatus}.
@@ -252,10 +251,11 @@ export function ClientLaunchApprovalCard(props: ClientLaunchApprovalCardProps) {
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Admin launch governance</CardTitle>
+        <CardTitle>Launch approval</CardTitle>
         <CardDescription>
-          Explicit administrator sign-off required before this client is marked ACTIVE. Approving
-          launch does not send email. It only marks the client ready for live outreach operations.
+          Explicit operator sign-off required before this client is marked
+          ACTIVE. Approving launch does not send email. It only marks the
+          client ready for live outreach operations.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

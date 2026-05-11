@@ -37,16 +37,6 @@ import type { GettingStartedViewModel } from "@/lib/clients/getting-started-view
  */
 export type ClientLaunchApprovalMode = "CONTROLLED_INTERNAL" | "LIVE_PROSPECT";
 
-/** Admin UI label for stored enum values (never show raw `CONTROLLED_INTERNAL` to operators). */
-export function humanizeClientLaunchApprovalMode(
-  mode: string | null | undefined,
-): string {
-  if (mode === "CONTROLLED_INTERNAL") return "Controlled internal rollout";
-  if (mode === "LIVE_PROSPECT") return "Live prospect sending";
-  if (mode == null || String(mode).trim() === "") return "—";
-  return String(mode);
-}
-
 /** Confirmation phrase the operator must type verbatim. */
 export const LAUNCH_APPROVAL_CONFIRMATION_PHRASE = "APPROVE LAUNCH";
 

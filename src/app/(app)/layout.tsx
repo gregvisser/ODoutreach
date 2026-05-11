@@ -1,6 +1,5 @@
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
-import { getMainNavForStaff } from "@/components/app-shell/nav-config";
 import { StaffEmailBlocked } from "@/components/staff/staff-email-blocked";
 import { StaffInactive } from "@/components/staff/staff-inactive";
 import { StaffNotRegistered } from "@/components/staff/staff-not-registered";
@@ -23,8 +22,6 @@ export default async function AppLayout({
     return <StaffEmailBlocked email={gate.staff.email} />;
   }
 
-  const navItems = getMainNavForStaff(gate.staff);
-
   const effective = await getGlobalBrand();
   const brand = {
     logoUrl: effective.logoUrl,
@@ -36,7 +33,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen">
-      <AppSidebar className="hidden md:flex" brand={brand} navItems={navItems} />
+      <AppSidebar className="hidden md:flex" brand={brand} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader brand={brand} />
         <main className="flex-1 bg-gradient-to-b from-muted/30 to-background px-4 py-8 md:px-8">

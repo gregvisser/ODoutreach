@@ -14,7 +14,7 @@ export { mailboxMutatorAllowedFromRoles } from "@/lib/mailbox-mutator-policy";
  * Client-level VIEWER membership cannot mutate; staff VIEWER cannot mutate.
  */
 export async function getClientMailboxMutationAllowed(
-  staff: Pick<StaffUser, "id" | "role" | "email">,
+  staff: Pick<StaffUser, "id" | "role">,
   clientId: string,
 ): Promise<boolean> {
   const allowedClients = await getAccessibleClientIds(staff);
@@ -34,7 +34,7 @@ export async function getClientMailboxMutationAllowed(
 }
 
 export async function requireClientMailboxMutator(
-  staff: Pick<StaffUser, "id" | "role" | "email">,
+  staff: Pick<StaffUser, "id" | "role">,
   clientId: string,
 ): Promise<void> {
   const ok = await getClientMailboxMutationAllowed(staff, clientId);

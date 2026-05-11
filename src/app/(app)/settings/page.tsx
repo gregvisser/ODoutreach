@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import { staffRoleLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
@@ -17,7 +16,6 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const staff = await requireOpensDoorsStaff();
-  const showStaffManagement = isOpensDoorsSuperadminStaff(staff);
   const googleWorkspaceSuppressionConfigured = hasGoogleServiceAccountConfig();
   const rocketReachConfigured = Boolean(process.env.ROCKETREACH_API_KEY?.trim());
   const staffDomainAllowlist = process.env.STAFF_EMAIL_DOMAINS?.trim();
@@ -69,7 +67,7 @@ export default async function SettingsPage() {
           description="Who can sign in to OpensDoors Outreach and what they can do."
         />
 
-        {showStaffManagement ? (
+        {staff.role === "ADMIN" ? (
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg">Staff and roles</CardTitle>

@@ -1,6 +1,5 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 
-import { auth } from "@/auth";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchApprovalCard } from "@/components/clients/client-launch-approval-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
@@ -25,7 +24,6 @@ import {
   type LaunchApprovalChecklistItem,
 } from "@/lib/clients/client-launch-approval";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
-import { buildClientOverviewCallbackPath } from "@/lib/clients/client-overview-callback-url";
 import { prisma } from "@/lib/db";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
@@ -42,8 +40,10 @@ import { getClientHasProductionLaunchableSequence } from "@/server/email-sequenc
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { loadClientTeamAccessView } from "@/server/queries/client-team-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
-import { canAccessWorkspaceAdminControls } from "@/lib/staff/opensdoors-superadmin";
-import { getAccessibleClientIds } from "@/server/tenant/access";
+import {
+  canAssignClientWorkspaceMembership,
+  getAccessibleClientIds,
+} from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -53,17 +53,10 @@ type Props = {
 };
 
 export default async function ClientDetailPage({ params, searchParams }: Props) {
-  const { clientId } = await params;
-  const sp = searchParams ? await searchParams : {};
-
-  const session = await auth();
-  if (!session?.user?.id) {
-    const returnPath = buildClientOverviewCallbackPath(clientId, sp);
-    redirect(`/sign-in?callbackUrl=${encodeURIComponent(returnPath)}`);
-  }
-
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
+  const { clientId } = await params;
+  const sp = searchParams ? await searchParams : {};
   const justCreated =
     typeof sp.created === "string"
       ? sp.created === "1"
@@ -75,20 +68,14 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   if (!bundle.client) notFound();
 
   const client = bundle.client;
-  const showWorkspaceAdmin = canAccessWorkspaceAdminControls(staff);
-  const teamAccess = showWorkspaceAdmin
-    ? await loadClientTeamAccessView(client.id)
-    : { memberships: [], staffEligibleToAdd: [] };
-  const canManageTeam = showWorkspaceAdmin;
+  const teamAccess = await loadClientTeamAccessView(client.id);
+  const canManageTeam = canAssignClientWorkspaceMembership(staff);
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
 
   const [hasProductionLaunchableSequence, enrolledContactsCount] = await Promise.all([
     getClientHasProductionLaunchableSequence(client.id, {
       connectedSendingCount: bundle.connectedSendingCount,
       aggregateRemainingToday: bundle.aggregateRemaining,
-    }).catch((error: unknown) => {
-      console.warn("[client-overview] production sequence probe failed", error);
-      return false;
     }),
     prisma.clientEmailSequenceEnrollment.count({
       where: { clientId: client.id },
@@ -99,6 +86,14 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     bundle.hasGovernedMailbox &&
     bundle.oauthReadyForGovernedTest &&
     bundle.poolCanSendPilot;
+
+  const suppressionLatestSyncAt = (() => {
+    const dates = client.suppressionSources
+      .map((s) => s.lastSyncedAt)
+      .filter((d): d is NonNullable<typeof d> => d != null);
+    if (dates.length === 0) return null;
+    return dates.reduce((a, b) => (a > b ? a : b));
+  })();
 
   const snapshot = {
     clientId: client.id,
@@ -121,6 +116,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   const steps = buildClientWorkflowSteps(snapshot);
   const launchStage = deriveLaunchStageLabel(snapshot);
 
+  const readinessRows = buildLaunchReadinessRows({
+    ...snapshot,
+    suppressionLatestSyncAt,
+  });
+
   const gettingStarted = buildGettingStartedViewModel({
     clientId: client.id,
     clientStatus: client.status,
@@ -133,169 +133,50 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     outreachPilotRunnable,
   });
 
-  const workspaceAdminPanels = showWorkspaceAdmin
-    ? await (async () => {
-        const suppressionLatestSyncAt = (() => {
-          const dates = client.suppressionSources
-            .map((s) => s.lastSyncedAt)
-            .filter((d): d is NonNullable<typeof d> => d != null);
-          if (dates.length === 0) return null;
-          return dates.reduce((a, b) => (a > b ? a : b));
-        })();
-
-        const readinessRows = buildLaunchReadinessRows({
-          ...snapshot,
-          suppressionLatestSyncAt,
+  const hasSenderSignature = client.mailboxIdentities.some(
+    (m) =>
+      (m.senderSignatureText && m.senderSignatureText.trim().length > 0) ||
+      (m.senderSignatureHtml && m.senderSignatureHtml.trim().length > 0),
+  );
+  const launchApprovalEvaluation = evaluateClientLaunchApproval({
+    clientStatus: client.status,
+    gettingStarted,
+    readinessRows,
+    hasProductionLaunchableSequence,
+    enrolledContactsCount,
+    hasSenderSignature,
+    oneClickUnsubscribeReady: ONE_CLICK_UNSUBSCRIBE_READY,
+    mode: "CONTROLLED_INTERNAL",
+  });
+  const canMutateClient = await getClientMailboxMutationAllowed(staff, client.id);
+  const storedChecklist: LaunchApprovalChecklistItem[] | null = (() => {
+    const raw = client.launchApprovalChecklist;
+    if (!Array.isArray(raw)) return null;
+    const items: LaunchApprovalChecklistItem[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      if (
+        typeof e.id === "string" &&
+        typeof e.label === "string" &&
+        typeof e.ok === "boolean" &&
+        typeof e.detail === "string"
+      ) {
+        items.push({
+          id: e.id as LaunchApprovalChecklistItem["id"],
+          label: e.label,
+          ok: e.ok,
+          detail: e.detail,
         });
-
-        const hasSenderSignature = client.mailboxIdentities.some(
-          (m) =>
-            (m.senderSignatureText && m.senderSignatureText.trim().length > 0) ||
-            (m.senderSignatureHtml && m.senderSignatureHtml.trim().length > 0),
-        );
-
-        const launchApprovalEvaluation = evaluateClientLaunchApproval({
-          clientStatus: client.status,
-          gettingStarted,
-          readinessRows,
-          hasProductionLaunchableSequence,
-          enrolledContactsCount,
-          hasSenderSignature,
-          oneClickUnsubscribeReady: ONE_CLICK_UNSUBSCRIBE_READY,
-          mode: "CONTROLLED_INTERNAL",
-        });
-
-        const [canMutateClient, approvedByStaff] = await Promise.all([
-          getClientMailboxMutationAllowed(staff, client.id),
-          client.launchApprovedByStaffUserId
-            ? prisma.staffUser.findUnique({
-                where: { id: client.launchApprovedByStaffUserId },
-                select: { id: true, email: true, displayName: true },
-              })
-            : Promise.resolve(null),
-        ]);
-
-        const storedChecklist: LaunchApprovalChecklistItem[] | null = (() => {
-          const raw = client.launchApprovalChecklist;
-          if (!Array.isArray(raw)) return null;
-          const items: LaunchApprovalChecklistItem[] = [];
-          for (const entry of raw) {
-            if (!entry || typeof entry !== "object") continue;
-            const e = entry as Record<string, unknown>;
-            if (
-              typeof e.id === "string" &&
-              typeof e.label === "string" &&
-              typeof e.ok === "boolean" &&
-              typeof e.detail === "string"
-            ) {
-              items.push({
-                id: e.id as LaunchApprovalChecklistItem["id"],
-                label: e.label,
-                ok: e.ok,
-                detail: e.detail,
-              });
-            }
-          }
-          return items.length > 0 ? items : null;
-        })();
-
-        const checklistItems = [
-          { label: "Staff sign-in", ok: true, detail: "You're signed in to OpensDoors" },
-          {
-            label: "Client workspace active",
-            ok: client.status === "ACTIVE",
-            detail: clientStatusLabel(client.status),
-          },
-          {
-            label: "Operating brief",
-            ok: briefChecklistReady,
-            detail: briefChecklistReady
-              ? "All required fields complete"
-              : "Open the brief and complete the required fields",
-          },
-          {
-            label: "Suppression sources",
-            ok: bundle.suppressionSheetRows.length > 0,
-            detail:
-              bundle.suppressionSheetRows.length > 0
-                ? `${String(bundle.suppressionSheetRows.length)} Google Sheet${bundle.suppressionSheetRows.length === 1 ? "" : "s"} attached`
-                : "Attach at least one suppression sheet",
-          },
-          {
-            label: "Google Sheets integration",
-            ok: bundle.googleSheetsEnvReady,
-            detail: bundle.googleSheetsEnvReady
-              ? "Connected"
-              : "Ask an administrator to connect Google Workspace in Settings",
-          },
-          {
-            label: "RocketReach (optional)",
-            ok: bundle.rocketReachEnvReady,
-            detail: bundle.rocketReachEnvReady
-              ? "Connected"
-              : "Not connected — CSV upload still works without this",
-          },
-          {
-            label: "Contacts",
-            ok: client._count.contacts > 0,
-            detail: `${String(client._count.contacts)} contact${client._count.contacts === 1 ? "" : "s"} in workspace`,
-          },
-          {
-            label: "Microsoft 365 mailbox",
-            ok: client.mailboxIdentities.some(
-              (m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED",
-            ),
-            detail: "At least one connected Microsoft mailbox",
-          },
-          {
-            label: "Google Workspace mailbox",
-            ok: client.mailboxIdentities.some(
-              (m) => m.provider === "GOOGLE" && m.connectionStatus === "CONNECTED",
-            ),
-            detail: "At least one connected Google Workspace mailbox",
-          },
-          {
-            label: "Test sender ready",
-            ok: bundle.hasGovernedMailbox && bundle.oauthReadyForGovernedTest,
-            detail: bundle.hasGovernedMailbox
-              ? "A connected mailbox can send proof emails"
-              : "Connect a mailbox to enable test sends",
-          },
-          {
-            label: "Outreach mailbox capacity",
-            ok: bundle.connectedSendingCount >= 1,
-            detail: formatOutreachMailboxCapacityChecklistDetail(bundle.connectedSendingCount),
-          },
-          {
-            label: "Inbound reply fetch",
-            ok: client.mailboxIdentities.some(
-              (m) =>
-                m.connectionStatus === "CONNECTED" &&
-                (m.provider === "MICROSOFT" || m.provider === "GOOGLE"),
-            ),
-            detail: "Check Activity → inbox preview to confirm replies are coming in",
-          },
-          {
-            label: "Daily send capacity",
-            ok: bundle.aggregateRemaining >= 1,
-            detail: `${String(bundle.aggregateRemaining)} send${bundle.aggregateRemaining === 1 ? "" : "s"} remaining today (max ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day with ${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} mailboxes at ${String(OUTREACH_MAILBOX_DAILY_CAP)} each)`,
-          },
-          {
-            label: "Pilot send ready",
-            ok: outreachPilotRunnable,
-            detail: "Uses the full mailbox pool",
-          },
-        ];
-
-        return {
-          readinessRows,
-          launchApprovalEvaluation,
-          canMutateClient,
-          storedChecklist,
-          approvedByStaff,
-          checklistItems,
-        };
-      })()
+      }
+    }
+    return items.length > 0 ? items : null;
+  })();
+  const approvedByStaff = client.launchApprovedByStaffUserId
+    ? await prisma.staffUser.findUnique({
+        where: { id: client.launchApprovedByStaffUserId },
+        select: { id: true, email: true, displayName: true },
+      })
     : null;
 
   const statusCopy =
@@ -331,6 +212,94 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     },
   ];
 
+  const checklistItems = [
+    { label: "Staff sign-in", ok: true, detail: "You're signed in to OpensDoors" },
+    {
+      label: "Client workspace active",
+      ok: client.status === "ACTIVE",
+      detail: clientStatusLabel(client.status),
+    },
+    {
+      label: "Operating brief",
+      ok: briefChecklistReady,
+      detail: briefChecklistReady
+        ? "All required fields complete"
+        : "Open the brief and complete the required fields",
+    },
+    {
+      label: "Suppression sources",
+      ok: bundle.suppressionSheetRows.length > 0,
+      detail:
+        bundle.suppressionSheetRows.length > 0
+          ? `${String(bundle.suppressionSheetRows.length)} Google Sheet${bundle.suppressionSheetRows.length === 1 ? "" : "s"} attached`
+          : "Attach at least one suppression sheet",
+    },
+    {
+      label: "Google Sheets integration",
+      ok: bundle.googleSheetsEnvReady,
+      detail: bundle.googleSheetsEnvReady
+        ? "Connected"
+        : "Ask an administrator to connect Google Workspace in Settings",
+    },
+    {
+      label: "RocketReach (optional)",
+      ok: bundle.rocketReachEnvReady,
+      detail: bundle.rocketReachEnvReady
+        ? "Connected"
+        : "Not connected — CSV upload still works without this",
+    },
+    {
+      label: "Contacts",
+      ok: client._count.contacts > 0,
+      detail: `${String(client._count.contacts)} contact${client._count.contacts === 1 ? "" : "s"} in workspace`,
+    },
+    {
+      label: "Microsoft 365 mailbox",
+      ok: client.mailboxIdentities.some(
+        (m) => m.provider === "MICROSOFT" && m.connectionStatus === "CONNECTED",
+      ),
+      detail: "At least one connected Microsoft mailbox",
+    },
+    {
+      label: "Google Workspace mailbox",
+      ok: client.mailboxIdentities.some(
+        (m) => m.provider === "GOOGLE" && m.connectionStatus === "CONNECTED",
+      ),
+      detail: "At least one connected Google Workspace mailbox",
+    },
+    {
+      label: "Test sender ready",
+      ok: bundle.hasGovernedMailbox && bundle.oauthReadyForGovernedTest,
+      detail: bundle.hasGovernedMailbox
+        ? "A connected mailbox can send proof emails"
+        : "Connect a mailbox to enable test sends",
+    },
+    {
+      label: "Outreach mailbox capacity",
+      ok: bundle.connectedSendingCount >= 1,
+      detail: formatOutreachMailboxCapacityChecklistDetail(bundle.connectedSendingCount),
+    },
+    {
+      label: "Inbound reply fetch",
+      ok: client.mailboxIdentities.some(
+        (m) =>
+          m.connectionStatus === "CONNECTED" &&
+          (m.provider === "MICROSOFT" || m.provider === "GOOGLE"),
+      ),
+      detail: "Check Activity → inbox preview to confirm replies are coming in",
+    },
+    {
+      label: "Daily send capacity",
+      ok: bundle.aggregateRemaining >= 1,
+      detail: `${String(bundle.aggregateRemaining)} send${bundle.aggregateRemaining === 1 ? "" : "s"} remaining today (max ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day with ${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} mailboxes at ${String(OUTREACH_MAILBOX_DAILY_CAP)} each)`,
+    },
+    {
+      label: "Pilot send ready",
+      ok: outreachPilotRunnable,
+      detail: "Uses the full mailbox pool",
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <ClientWorkspaceCommandCenter
@@ -356,91 +325,66 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </div>
       ) : null}
 
-      {showWorkspaceAdmin ? (
-        <p className="text-sm text-muted-foreground">{statusCopy}</p>
-      ) : null}
+      <p className="text-sm text-muted-foreground">{statusCopy}</p>
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}
         clientStatus={client.status}
       />
 
-      {showWorkspaceAdmin && workspaceAdminPanels ? (
-        <>
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader>
-              <CardTitle>Team access</CardTitle>
-              <CardDescription>
-                Staff accounts that may open this client workspace. Operators only see clients they
-                are explicitly assigned to.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ClientTeamAccessPanel
-                clientId={client.id}
-                memberships={teamAccess.memberships.map((m) => ({
-                  id: m.id,
-                  role: m.role,
-                  staffUser: m.staffUser,
-                }))}
-                staffEligibleToAdd={teamAccess.staffEligibleToAdd}
-                canManageTeam={canManageTeam}
-              />
-            </CardContent>
-          </Card>
-
-          <ClientLaunchApprovalCard
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Team access</CardTitle>
+          <CardDescription>
+            Staff accounts that may open this client workspace. Operators and viewers only see
+            clients they are explicitly assigned to (unless they are a manager or administrator).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClientTeamAccessPanel
             clientId={client.id}
-            clientStatus={client.status}
-            canMutate={workspaceAdminPanels.canMutateClient}
-            canApprove={workspaceAdminPanels.launchApprovalEvaluation.canApprove}
-            blockers={workspaceAdminPanels.launchApprovalEvaluation.blockers}
-            warnings={workspaceAdminPanels.launchApprovalEvaluation.warnings}
-            checklist={workspaceAdminPanels.launchApprovalEvaluation.checklist}
-            evaluatedMode="CONTROLLED_INTERNAL"
-            launchApprovedAt={client.launchApprovedAt?.toISOString() ?? null}
-            approvedByStaff={workspaceAdminPanels.approvedByStaff}
-            launchApprovalMode={client.launchApprovalMode}
-            launchApprovalNotes={client.launchApprovalNotes}
-            storedChecklist={workspaceAdminPanels.storedChecklist}
+            memberships={teamAccess.memberships.map((m) => ({
+              id: m.id,
+              role: m.role,
+              staffUser: m.staffUser,
+            }))}
+            staffEligibleToAdd={teamAccess.staffEligibleToAdd}
+            canManageTeam={canManageTeam}
           />
+        </CardContent>
+      </Card>
 
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader>
-              <CardTitle>Launch readiness</CardTitle>
-              <CardDescription>
-                A section-by-section view of what&apos;s ready and what still needs attention before
-                this client goes live.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LaunchReadinessPanel
-                rows={workspaceAdminPanels.readinessRows}
-                technicalChecks={
-                  <TonightLaunchChecklist items={workspaceAdminPanels.checklistItems} />
-                }
-              />
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle>Workspace status</CardTitle>
-            <CardDescription>
-              Use Contacts, Outreach, and Activity for day-to-day work. Ask the OpensDoors platform
-              administrator if this workspace needs activation changes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <p>
-              {client.status === "ACTIVE"
-                ? "Workspace is active and ready for outreach."
-                : "This workspace still needs admin activation before live outreach."}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      <ClientLaunchApprovalCard
+        clientId={client.id}
+        clientStatus={client.status}
+        canMutate={canMutateClient}
+        canApprove={launchApprovalEvaluation.canApprove}
+        blockers={launchApprovalEvaluation.blockers}
+        warnings={launchApprovalEvaluation.warnings}
+        checklist={launchApprovalEvaluation.checklist}
+        evaluatedMode="CONTROLLED_INTERNAL"
+        launchApprovedAt={client.launchApprovedAt?.toISOString() ?? null}
+        approvedByStaff={approvedByStaff}
+        launchApprovalMode={client.launchApprovalMode}
+        launchApprovalNotes={client.launchApprovalNotes}
+        storedChecklist={storedChecklist}
+      />
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Launch readiness</CardTitle>
+          <CardDescription>
+            A section-by-section view of what&apos;s ready and what still needs
+            attention before this client goes live.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LaunchReadinessPanel
+            rows={readinessRows}
+            technicalChecks={<TonightLaunchChecklist items={checklistItems} />}
+          />
+        </CardContent>
+      </Card>
 
       <ClientOperationalSnapshot items={snapshotItems} />
     </div>

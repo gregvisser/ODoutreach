@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
 import type { StaffRole } from "@/generated/prisma/enums";
 import type { StaffUser } from "@/generated/prisma/client";
-import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 
 /**
  * Loads the StaffUser for the current Entra session: match by `entraObjectId` (oid), or by
@@ -153,10 +152,10 @@ export async function tryGetOpensDoorsStaff(): Promise<StaffUser | null> {
   }
 }
 
-/** Platform super-admin only (greg@opensdoors.co.uk), not legacy ADMIN role alone. */
+/** Admin-only operations (staff management). Does not bypass Entra or StaffUser checks. */
 export async function requireStaffAdmin(): Promise<StaffUser> {
   const staff = await requireOpensDoorsStaff();
-  if (!isOpensDoorsSuperadminStaff(staff)) {
+  if (staff.role !== "ADMIN") {
     throw new Error("ADMIN_ONLY");
   }
   return staff;
