@@ -3,7 +3,6 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 import { StaffAccessPanel, type StaffRow } from "./staff-access-panel";
@@ -14,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function StaffAccessPage() {
   const staff = await requireOpensDoorsStaff();
 
-  if (!isOpensDoorsSuperadminStaff(staff)) {
+  if (staff.role !== "ADMIN") {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <h1 className="text-2xl font-semibold">Staff access</h1>

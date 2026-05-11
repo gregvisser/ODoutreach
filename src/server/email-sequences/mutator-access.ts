@@ -22,7 +22,7 @@ import { getAccessibleClientIds } from "@/server/tenant/access";
  * migration.
  */
 export async function getClientEmailSequenceMutationAllowed(
-  staff: Pick<StaffUser, "id" | "role" | "email">,
+  staff: Pick<StaffUser, "id" | "role">,
   clientId: string,
 ): Promise<boolean> {
   const allowed = await getAccessibleClientIds(staff);
@@ -37,7 +37,7 @@ export async function getClientEmailSequenceMutationAllowed(
 }
 
 export async function requireClientEmailSequenceMutator(
-  staff: Pick<StaffUser, "id" | "role" | "email">,
+  staff: Pick<StaffUser, "id" | "role">,
   clientId: string,
 ): Promise<void> {
   const ok = await getClientEmailSequenceMutationAllowed(staff, clientId);

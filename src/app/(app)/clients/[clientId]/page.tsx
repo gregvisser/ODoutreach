@@ -40,8 +40,10 @@ import { getClientHasProductionLaunchableSequence } from "@/server/email-sequenc
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import { loadClientTeamAccessView } from "@/server/queries/client-team-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
-import { canAccessWorkspaceAdminControls } from "@/lib/staff/opensdoors-superadmin";
-import { getAccessibleClientIds } from "@/server/tenant/access";
+import {
+  canAssignClientWorkspaceMembership,
+  getAccessibleClientIds,
+} from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -66,11 +68,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   if (!bundle.client) notFound();
 
   const client = bundle.client;
-  const showWorkspaceAdmin = canAccessWorkspaceAdminControls(staff);
-  const teamAccess = showWorkspaceAdmin
-    ? await loadClientTeamAccessView(client.id)
-    : { memberships: [], staffEligibleToAdd: [] };
-  const canManageTeam = showWorkspaceAdmin;
+  const teamAccess = await loadClientTeamAccessView(client.id);
+  const canManageTeam = canAssignClientWorkspaceMembership(staff);
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
 
   const [hasProductionLaunchableSequence, enrolledContactsCount] = await Promise.all([
@@ -326,89 +325,66 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </div>
       ) : null}
 
-      {showWorkspaceAdmin ? (
-        <p className="text-sm text-muted-foreground">{statusCopy}</p>
-      ) : null}
+      <p className="text-sm text-muted-foreground">{statusCopy}</p>
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}
         clientStatus={client.status}
       />
 
-      {showWorkspaceAdmin ? (
-        <>
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader>
-              <CardTitle>Team access</CardTitle>
-              <CardDescription>
-                Staff accounts that may open this client workspace. Operators only see clients they
-                are explicitly assigned to.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ClientTeamAccessPanel
-                clientId={client.id}
-                memberships={teamAccess.memberships.map((m) => ({
-                  id: m.id,
-                  role: m.role,
-                  staffUser: m.staffUser,
-                }))}
-                staffEligibleToAdd={teamAccess.staffEligibleToAdd}
-                canManageTeam={canManageTeam}
-              />
-            </CardContent>
-          </Card>
-
-          <ClientLaunchApprovalCard
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Team access</CardTitle>
+          <CardDescription>
+            Staff accounts that may open this client workspace. Operators and viewers only see
+            clients they are explicitly assigned to (unless they are a manager or administrator).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClientTeamAccessPanel
             clientId={client.id}
-            clientStatus={client.status}
-            canMutate={canMutateClient}
-            canApprove={launchApprovalEvaluation.canApprove}
-            blockers={launchApprovalEvaluation.blockers}
-            warnings={launchApprovalEvaluation.warnings}
-            checklist={launchApprovalEvaluation.checklist}
-            evaluatedMode="CONTROLLED_INTERNAL"
-            launchApprovedAt={client.launchApprovedAt?.toISOString() ?? null}
-            approvedByStaff={approvedByStaff}
-            launchApprovalMode={client.launchApprovalMode}
-            launchApprovalNotes={client.launchApprovalNotes}
-            storedChecklist={storedChecklist}
+            memberships={teamAccess.memberships.map((m) => ({
+              id: m.id,
+              role: m.role,
+              staffUser: m.staffUser,
+            }))}
+            staffEligibleToAdd={teamAccess.staffEligibleToAdd}
+            canManageTeam={canManageTeam}
           />
+        </CardContent>
+      </Card>
 
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader>
-              <CardTitle>Launch readiness</CardTitle>
-              <CardDescription>
-                A section-by-section view of what&apos;s ready and what still needs attention before
-                this client goes live.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LaunchReadinessPanel
-                rows={readinessRows}
-                technicalChecks={<TonightLaunchChecklist items={checklistItems} />}
-              />
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle>Workspace status</CardTitle>
-            <CardDescription>
-              Use Contacts, Outreach, and Activity for day-to-day work. Ask the OpensDoors platform
-              administrator if this workspace needs activation changes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <p>
-              {client.status === "ACTIVE"
-                ? "Workspace is active and ready for outreach."
-                : "This workspace still needs admin activation before live outreach."}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      <ClientLaunchApprovalCard
+        clientId={client.id}
+        clientStatus={client.status}
+        canMutate={canMutateClient}
+        canApprove={launchApprovalEvaluation.canApprove}
+        blockers={launchApprovalEvaluation.blockers}
+        warnings={launchApprovalEvaluation.warnings}
+        checklist={launchApprovalEvaluation.checklist}
+        evaluatedMode="CONTROLLED_INTERNAL"
+        launchApprovedAt={client.launchApprovedAt?.toISOString() ?? null}
+        approvedByStaff={approvedByStaff}
+        launchApprovalMode={client.launchApprovalMode}
+        launchApprovalNotes={client.launchApprovalNotes}
+        storedChecklist={storedChecklist}
+      />
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Launch readiness</CardTitle>
+          <CardDescription>
+            A section-by-section view of what&apos;s ready and what still needs
+            attention before this client goes live.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LaunchReadinessPanel
+            rows={readinessRows}
+            technicalChecks={<TonightLaunchChecklist items={checklistItems} />}
+          />
+        </CardContent>
+      </Card>
 
       <ClientOperationalSnapshot items={snapshotItems} />
     </div>

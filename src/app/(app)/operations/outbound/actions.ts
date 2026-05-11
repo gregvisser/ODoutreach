@@ -6,16 +6,12 @@ import {
   operatorRequeueFailedSend,
   releaseStaleProcessingClaimsForScope,
 } from "@/server/email/outbound/operator-recovery";
-import { isOpensDoorsSuperadminStaff } from "@/lib/staff/opensdoors-superadmin";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { prisma } from "@/lib/db";
 import { getAccessibleClientIds, requireClientAccess } from "@/server/tenant/access";
 
 export async function releaseStaleProcessingAction(): Promise<{ released: number }> {
   const staff = await requireOpensDoorsStaff();
-  if (!isOpensDoorsSuperadminStaff(staff)) {
-    throw new Error("Admin operations are restricted to the platform administrator.");
-  }
   const accessible = await getAccessibleClientIds(staff);
   const r = await releaseStaleProcessingClaimsForScope(accessible);
   revalidatePath("/operations/outbound");
@@ -28,9 +24,6 @@ export async function operatorRequeueFailedAction(input: {
   clientId: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const staff = await requireOpensDoorsStaff();
-  if (!isOpensDoorsSuperadminStaff(staff)) {
-    throw new Error("Admin operations are restricted to the platform administrator.");
-  }
   await requireClientAccess(staff, input.clientId);
 
   const r = await operatorRequeueFailedSend(input.outboundEmailId, input.clientId);
@@ -50,9 +43,6 @@ export async function operatorRequeueFailedAction(input: {
 
 export async function verifySenderIdentityReadyAction(clientId: string): Promise<void> {
   const staff = await requireOpensDoorsStaff();
-  if (!isOpensDoorsSuperadminStaff(staff)) {
-    throw new Error("Admin operations are restricted to the platform administrator.");
-  }
   await requireClientAccess(staff, clientId);
 
   await prisma.client.update({
