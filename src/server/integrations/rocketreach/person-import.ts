@@ -8,6 +8,7 @@ import {
   normalizeEmail,
 } from "@/lib/normalize";
 import { attachContactsToClientList } from "@/server/contacts/contact-lists";
+import { upsertContactUniverseAndRecordSource } from "@/server/contacts/contact-universe";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
 /** Documented RocketReach API v2 bases (see https://docs.rocketreach.co/reference/people-search-api). */
@@ -24,6 +25,8 @@ export type RocketReachImportInput = {
   searchBody: Record<string, unknown>;
   /** PR D2: every import must attach imported contacts to a named list. */
   contactListId: string;
+  /** List display name for Universe attribution. */
+  targetListName: string;
   addedByStaffUserId?: string | null;
 };
 
@@ -38,6 +41,8 @@ export type RocketReachImportResult =
       contactListId: string;
       listAttachedAdded: number;
       listAttachedSkipped: number;
+      universeCreated: number;
+      universeMatched: number;
     }
   | { ok: false; error: string };
 
@@ -145,7 +150,7 @@ export async function importRocketReachPeopleForClient(
     };
   }
 
-  const { clientId, searchBody, contactListId, addedByStaffUserId } = input;
+  const { clientId, searchBody, contactListId, targetListName, addedByStaffUserId } = input;
   const headers = {
     "Content-Type": "application/json",
     "Api-Key": apiKey,
@@ -200,6 +205,8 @@ export async function importRocketReachPeopleForClient(
   let skippedNoEmail = 0;
   let skippedInvalid = 0;
   let skippedDuplicate = 0;
+  let universeCreated = 0;
+  let universeMatched = 0;
   const errors: string[] = [];
   const touchedContactIds: string[] = [];
 
@@ -238,18 +245,6 @@ export async function importRocketReachPeopleForClient(
     const norm = normalizeEmail(email);
     if (!norm || !isValidEmailFormat(norm)) {
       skippedInvalid++;
-      continue;
-    }
-
-    const existing = await prisma.contact.findUnique({
-      where: { clientId_email: { clientId, email: norm } },
-      select: { id: true },
-    });
-    if (existing) {
-      skippedDuplicate++;
-      // PR D2: operator routed this import to a named list, so ensure the
-      // already-existing contact is (still) a member of that list.
-      touchedContactIds.push(existing.id);
       continue;
     }
 
@@ -292,6 +287,43 @@ export async function importRocketReachPeopleForClient(
         ? profile.name.trim()
         : [first, last].filter(Boolean).join(" ") || null;
 
+    const existing = await prisma.contact.findUnique({
+      where: { clientId_email: { clientId, email: norm } },
+      select: { id: true },
+    });
+
+    const u = await upsertContactUniverseAndRecordSource(prisma, {
+      emailNormalized: norm,
+      linkedInRaw: linkedin,
+      mobilePhoneRaw: mobilePhone,
+      officePhoneRaw: officePhone,
+      firstName: first ?? null,
+      lastName: last ?? null,
+      fullName,
+      companyName: company,
+      jobTitle: title,
+      location: loc,
+      city,
+      country,
+      firstSeenClientId: clientId,
+      firstSeenSourceType: "ROCKETREACH",
+      sourceLabel: `RocketReach → ${targetListName}`,
+      rocketReachPersonId: String(id),
+      rawSourceMetadata: { rocketReachProfileId: id },
+    });
+    if (u.created) universeCreated++;
+    else universeMatched++;
+
+    if (existing) {
+      skippedDuplicate++;
+      await prisma.contact.updateMany({
+        where: { id: existing.id, universeContactId: null },
+        data: { universeContactId: u.universeId },
+      });
+      touchedContactIds.push(existing.id);
+      continue;
+    }
+
     const source: ContactSource = "ROCKETREACH";
 
     const contact = await prisma.contact.create({
@@ -311,6 +343,7 @@ export async function importRocketReachPeopleForClient(
         city,
         country,
         source,
+        universeContactId: u.universeId,
       },
     });
 
@@ -363,5 +396,7 @@ export async function importRocketReachPeopleForClient(
     contactListId,
     listAttachedAdded,
     listAttachedSkipped,
+    universeCreated,
+    universeMatched,
   };
 }

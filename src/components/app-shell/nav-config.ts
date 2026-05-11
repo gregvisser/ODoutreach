@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  Globe2,
   GraduationCap,
   LayoutDashboard,
   ListFilter,
@@ -25,6 +26,7 @@ export const mainNav: NavItem[] = [
   { title: "New client", href: "/clients/new", icon: Sparkles },
   { title: "Admin operations", href: "/operations/outbound", icon: Wrench },
   { title: "Contacts", href: "/contacts", icon: Mail },
+  { title: "Universe", href: "/universe", icon: Globe2 },
   { title: "Do-not-contact", href: "/suppression", icon: ListFilter },
   { title: "Activity", href: "/activity", icon: Activity },
   { title: "Reports", href: "/reporting", icon: PieChart },

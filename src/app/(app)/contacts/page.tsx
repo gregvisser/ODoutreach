@@ -43,6 +43,8 @@ type Props = {
     batch?: string;
     imported?: string;
     skipped?: string;
+    uNew?: string;
+    uMatch?: string;
     message?: string;
     send?: string;
     id?: string;
@@ -66,6 +68,8 @@ export default async function ContactsPage({ searchParams }: Props) {
           skipped: sp.skipped,
           batch: sp.batch,
           list: sp.list,
+          uNew: sp.uNew,
+          uMatch: sp.uMatch,
         }
       : sp.import === "error"
         ? { kind: "error" as const, message: sp.message }
@@ -142,6 +146,28 @@ export default async function ContactsPage({ searchParams }: Props) {
         </div>
       </div>
 
+      <section className="rounded-lg border border-border/80 bg-card p-6 shadow-sm space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Sources
+        </p>
+        <h2 className="text-xl font-semibold tracking-tight">Import contacts</h2>
+        <p className="text-sm text-muted-foreground max-w-3xl">
+          Import contacts from CSV or RocketReach. Every saved import is added to the Universe automatically,
+          deduplicated, and can be reused to build client-specific outreach lists.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">Flow:</span> Import → Universe → Select contacts →
+          Create list → Use list in an Outreach sequence.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Open the{" "}
+          <Link href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
+            Universe
+          </Link>{" "}
+          tab to review the global warehouse, filter, and create lists for any client workspace you can access.
+        </p>
+      </section>
+
       <CsvImportForm
         clients={clients.map((c) => ({ id: c.id, name: c.name }))}
         listsByClientId={listsByClientId}
@@ -166,6 +192,14 @@ export default async function ContactsPage({ searchParams }: Props) {
             </>
           ) : null}
           .
+          {importBanner.uNew != null || importBanner.uMatch != null ? (
+            <>
+              {" "}
+              Universe:{" "}
+              <span className="font-medium">{importBanner.uNew ?? "0"}</span> new,{" "}
+              <span className="font-medium">{importBanner.uMatch ?? "0"}</span> matched existing.
+            </>
+          ) : null}
         </p>
       ) : null}
       {importBanner?.kind === "error" ? (
