@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
-import { ClientLaunchApprovalCard } from "@/components/clients/client-launch-approval-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
-import { ClientTeamAccessPanel } from "@/components/clients/client-team-access-panel";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
 import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
@@ -19,10 +17,6 @@ import {
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
-import {
-  evaluateClientLaunchApproval,
-  type LaunchApprovalChecklistItem,
-} from "@/lib/clients/client-launch-approval";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
 import { prisma } from "@/lib/db";
 import {
@@ -33,17 +27,9 @@ import {
 } from "@/lib/outreach-mailbox-model";
 import { clientStatusLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import {
-  ONE_CLICK_UNSUBSCRIBE_READY,
-} from "@/server/clients/launch-approval";
 import { getClientHasProductionLaunchableSequence } from "@/server/email-sequences/queries";
-import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
-import { loadClientTeamAccessView } from "@/server/queries/client-team-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
-import {
-  canAssignClientWorkspaceMembership,
-  getAccessibleClientIds,
-} from "@/server/tenant/access";
+import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -68,8 +54,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   if (!bundle.client) notFound();
 
   const client = bundle.client;
-  const teamAccess = await loadClientTeamAccessView(client.id);
-  const canManageTeam = canAssignClientWorkspaceMembership(staff);
   const briefChecklistReady = bundle.onboardingCompletion.status === "ready";
 
   const [hasProductionLaunchableSequence, enrolledContactsCount] = await Promise.all([
@@ -132,61 +116,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     hasProductionLaunchableSequence,
     outreachPilotRunnable,
   });
-
-  const hasSenderSignature = client.mailboxIdentities.some(
-    (m) =>
-      (m.senderSignatureText && m.senderSignatureText.trim().length > 0) ||
-      (m.senderSignatureHtml && m.senderSignatureHtml.trim().length > 0),
-  );
-  const launchApprovalEvaluation = evaluateClientLaunchApproval({
-    clientStatus: client.status,
-    gettingStarted,
-    readinessRows,
-    hasProductionLaunchableSequence,
-    enrolledContactsCount,
-    hasSenderSignature,
-    oneClickUnsubscribeReady: ONE_CLICK_UNSUBSCRIBE_READY,
-    mode: "CONTROLLED_INTERNAL",
-  });
-  const canMutateClient = await getClientMailboxMutationAllowed(staff, client.id);
-  const storedChecklist: LaunchApprovalChecklistItem[] | null = (() => {
-    const raw = client.launchApprovalChecklist;
-    if (!Array.isArray(raw)) return null;
-    const items: LaunchApprovalChecklistItem[] = [];
-    for (const entry of raw) {
-      if (!entry || typeof entry !== "object") continue;
-      const e = entry as Record<string, unknown>;
-      if (
-        typeof e.id === "string" &&
-        typeof e.label === "string" &&
-        typeof e.ok === "boolean" &&
-        typeof e.detail === "string"
-      ) {
-        items.push({
-          id: e.id as LaunchApprovalChecklistItem["id"],
-          label: e.label,
-          ok: e.ok,
-          detail: e.detail,
-        });
-      }
-    }
-    return items.length > 0 ? items : null;
-  })();
-  const approvedByStaff = client.launchApprovedByStaffUserId
-    ? await prisma.staffUser.findUnique({
-        where: { id: client.launchApprovedByStaffUserId },
-        select: { id: true, email: true, displayName: true },
-      })
-    : null;
-
-  const statusCopy =
-    client.status === "ACTIVE"
-      ? "Active — approved for live outreach. Modules remain editable."
-      : client.status === "PAUSED"
-        ? "Paused — outreach suspended. Review suppression, mailboxes, and sequences before resuming."
-        : client.status === "ARCHIVED"
-          ? "Archived — read-only. No new outreach will be sent from this workspace."
-          : "Onboarding — not approved for live outreach. Complete the workspace modules before launch.";
 
   const dailyCapacity = bundle.connectedSendingCount * OUTREACH_MAILBOX_DAILY_CAP;
   const snapshotItems = [
@@ -300,6 +229,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     },
   ];
 
+  const workspaceStatusBody =
+    client.status === "ACTIVE"
+      ? "Workspace is active. Staff can manage contacts, do-not-contact checks, connected mailboxes, outreach, and replies."
+      : "This workspace is still being prepared. Complete the setup checklist before live outreach.";
+
   return (
     <div className="space-y-8">
       <ClientWorkspaceCommandCenter
@@ -325,49 +259,22 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         </div>
       ) : null}
 
-      <p className="text-sm text-muted-foreground">{statusCopy}</p>
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Workspace status</CardTitle>
+          <CardDescription>
+            Day-to-day outreach work happens in Brief, Mailboxes, Contacts, Do-not-contact,
+            Outreach, and Activity.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          <p>{workspaceStatusBody}</p>
+        </CardContent>
+      </Card>
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}
         clientStatus={client.status}
-      />
-
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Team access</CardTitle>
-          <CardDescription>
-            Staff accounts that may open this client workspace. Operators and viewers only see
-            clients they are explicitly assigned to (unless they are a manager or administrator).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ClientTeamAccessPanel
-            clientId={client.id}
-            memberships={teamAccess.memberships.map((m) => ({
-              id: m.id,
-              role: m.role,
-              staffUser: m.staffUser,
-            }))}
-            staffEligibleToAdd={teamAccess.staffEligibleToAdd}
-            canManageTeam={canManageTeam}
-          />
-        </CardContent>
-      </Card>
-
-      <ClientLaunchApprovalCard
-        clientId={client.id}
-        clientStatus={client.status}
-        canMutate={canMutateClient}
-        canApprove={launchApprovalEvaluation.canApprove}
-        blockers={launchApprovalEvaluation.blockers}
-        warnings={launchApprovalEvaluation.warnings}
-        checklist={launchApprovalEvaluation.checklist}
-        evaluatedMode="CONTROLLED_INTERNAL"
-        launchApprovedAt={client.launchApprovedAt?.toISOString() ?? null}
-        approvedByStaff={approvedByStaff}
-        launchApprovalMode={client.launchApprovalMode}
-        launchApprovalNotes={client.launchApprovalNotes}
-        storedChecklist={storedChecklist}
       />
 
       <Card className="border-border/80 shadow-sm">

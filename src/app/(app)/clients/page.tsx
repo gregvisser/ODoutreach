@@ -112,7 +112,8 @@ export default async function ClientsPage() {
                   <p className="font-medium text-foreground">No client workspace assigned</p>
                   <p>
                     You are signed in, but no client workspace has been assigned to you yet. Ask
-                    an administrator or manager to add you to a client on Overview → Team access.
+                    an administrator or manager to add you to a client workspace (Settings → Staff
+                    access, or your operating lead).
                   </p>
                 </>
               ) : emptyCopy?.variant === "no_clients_in_system" ? (
