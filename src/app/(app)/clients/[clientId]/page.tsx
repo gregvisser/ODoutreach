@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
+import { auth } from "@/auth";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchApprovalCard } from "@/components/clients/client-launch-approval-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
@@ -24,6 +25,7 @@ import {
   type LaunchApprovalChecklistItem,
 } from "@/lib/clients/client-launch-approval";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
+import { buildClientOverviewCallbackPath } from "@/lib/clients/client-overview-callback-url";
 import { prisma } from "@/lib/db";
 import {
   formatOutreachMailboxCapacityChecklistDetail,
@@ -51,10 +53,17 @@ type Props = {
 };
 
 export default async function ClientDetailPage({ params, searchParams }: Props) {
-  const staff = await requireOpensDoorsStaff();
-  const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
   const sp = searchParams ? await searchParams : {};
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    const returnPath = buildClientOverviewCallbackPath(clientId, sp);
+    redirect(`/sign-in?callbackUrl=${encodeURIComponent(returnPath)}`);
+  }
+
+  const staff = await requireOpensDoorsStaff();
+  const accessible = await getAccessibleClientIds(staff);
   const justCreated =
     typeof sp.created === "string"
       ? sp.created === "1"
@@ -77,6 +86,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     getClientHasProductionLaunchableSequence(client.id, {
       connectedSendingCount: bundle.connectedSendingCount,
       aggregateRemainingToday: bundle.aggregateRemaining,
+    }).catch((error: unknown) => {
+      console.warn("[client-overview] production sequence probe failed", error);
+      return false;
     }),
     prisma.clientEmailSequenceEnrollment.count({
       where: { clientId: client.id },
