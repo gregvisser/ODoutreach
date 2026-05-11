@@ -3,16 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   canAccessWorkspaceAdminControls,
   isOpensDoorsSuperadminStaff,
-  normalizeStaffEmailForPolicy,
   OPENS_DOORS_PLATFORM_SUPERADMIN_EMAIL,
 } from "./opensdoors-superadmin";
-
-describe("normalizeStaffEmailForPolicy", () => {
-  it("never throws on missing email", () => {
-    expect(normalizeStaffEmailForPolicy(undefined)).toBe("");
-    expect(normalizeStaffEmailForPolicy(null)).toBe("");
-  });
-});
 
 describe("isOpensDoorsSuperadminStaff", () => {
   it("is true only for greg@opensdoors.co.uk (case-insensitive)", () => {

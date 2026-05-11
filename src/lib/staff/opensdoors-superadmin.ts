@@ -5,12 +5,11 @@
 
 export const OPENS_DOORS_PLATFORM_SUPERADMIN_EMAIL = "greg@opensdoors.co.uk" as const;
 
-export function normalizeStaffEmailForPolicy(email: string | null | undefined): string {
-  if (typeof email !== "string") return "";
+export function normalizeStaffEmailForPolicy(email: string): string {
   return email.trim().toLowerCase();
 }
 
-export function isOpensDoorsSuperadminStaff(staff: { email?: string | null }): boolean {
+export function isOpensDoorsSuperadminStaff(staff: { email: string }): boolean {
   return (
     normalizeStaffEmailForPolicy(staff.email) ===
     normalizeStaffEmailForPolicy(OPENS_DOORS_PLATFORM_SUPERADMIN_EMAIL)
@@ -18,6 +17,6 @@ export function isOpensDoorsSuperadminStaff(staff: { email?: string | null }): b
 }
 
 /** Team access, launch governance, mailbox proof/signature tools, global client list. */
-export function canAccessWorkspaceAdminControls(staff: { email?: string | null }): boolean {
+export function canAccessWorkspaceAdminControls(staff: { email: string }): boolean {
   return isOpensDoorsSuperadminStaff(staff);
 }
