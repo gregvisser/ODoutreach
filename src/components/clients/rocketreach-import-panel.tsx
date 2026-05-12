@@ -207,7 +207,7 @@ export function RocketReachImportPanel({
                   });
                   if (r.ok) {
                     showResult(
-                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}. Universe: ${String(r.universeCreated)} new, ${String(r.universeMatched)} matched existing.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
                     );
                     router.refresh();
                   } else {
@@ -244,7 +244,7 @@ export function RocketReachImportPanel({
                   });
                   if (r.ok) {
                     showResult(
-                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}. Universe: ${String(r.universeCreated)} new, ${String(r.universeMatched)} matched existing.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
                     );
                     router.refresh();
                   } else {

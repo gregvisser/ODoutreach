@@ -510,7 +510,7 @@ const sourcesModule: TrainingModule = {
   title: "Sources — importing contacts",
   tagline: "Bring contacts into the OpensDoors workspace via RocketReach or CSV.",
   purpose:
-    "Sources (CSV on the Contacts page, RocketReach inside each client workspace) is how you bring prospects in. Every saved import is copied into the global Universe automatically — deduplicated — and also attached to the named client list you choose. Build new client lists from the Universe when you want to reuse the same people across workspaces. Sequences always target exactly one client-specific list.",
+    "Sources is the only supported way to bring contacts into a client workspace. Every import is saved to a named email list (for example \"Manchester FDs — April 2026\"), and sequences later send to exactly one list you choose. You either run a RocketReach search or upload a CSV of contacts — nothing else touches the contact store.",
   details: [
     "Imports don't bypass suppression. Suppression is applied at enrollment time, so safe-to-import and safe-to-email are two different things.",
     "Contact rows are valid if they have at least one of: email, LinkedIn, mobile phone, or office phone. They are ready-to-email only if they also have an email address — only ready-to-email contacts are included in sends.",
@@ -527,14 +527,9 @@ const sourcesModule: TrainingModule = {
   ],
   steps: [
     {
-      title: "Understand Universe vs client lists",
-      detail:
-        "Universe is the shared OpensDoors warehouse (sidebar → Universe). Client lists belong to one workspace and are what sequences send to. Flow: Import → Universe → select contacts → create client list → pick that list in Outreach.",
-    },
-    {
       title: "Pick or create the target email list",
       detail:
-        'Either select an existing list or type a new list name in "Or create a new list" (for example "OpensDoors — UK CFOs April 2026"). The import is saved against that list and mirrored into Universe.',
+        'Either select an existing list or type a new list name in "Or create a new list" (for example "OpensDoors — UK CFOs April 2026"). The import is saved against that list.',
     },
     {
       title: "Choose your import source",
@@ -554,7 +549,7 @@ const sourcesModule: TrainingModule = {
     {
       title: "Send the list to Contacts",
       detail:
-        "Once the import completes, open Contacts to see workspace rows, or open Universe to see the deduplicated global view with filters.",
+        "Once the import completes, open the Contacts tab to see the list, its unique contacts, and how many are ready-to-email after suppression is applied.",
     },
   ],
   whatGoodLooksLike: [
@@ -594,7 +589,6 @@ const sourcesModule: TrainingModule = {
   },
   outcomes: [
     "You can run a small RocketReach or CSV import into a named list.",
-    "You know imports also land in Universe for deduped reuse across clients.",
     "You know the difference between Valid and Ready-to-email.",
     "You always run Sources after Suppression is configured, not before.",
   ],
@@ -1161,7 +1155,7 @@ export const TRAINING_FINAL_OUTCOMES: readonly string[] = [
 
 export const DAILY_OUTREACH_WORKFLOW: readonly string[] = [
   "Check Mailboxes: every sending inbox should be connected, have a signature, and show daily capacity. Reconnect any mailbox that asks for Microsoft MFA.",
-  "Import contacts: use RocketReach or CSV (Sources). Every import is added to Universe and your chosen client list — confirm rows in Contacts or review globally in Universe.",
+  "Import contacts: use RocketReach or CSV, then confirm the finished list appears on Contacts.",
   "Check Do-not-contact: make sure excluded emails and domains are active before outreach.",
   "Build a simple Outreach sequence: one Introduction email is enough; add follow-ups only if needed.",
   "Choose the sending mailbox: use auto-pick for the ready pool, or select a specific connected mailbox.",
