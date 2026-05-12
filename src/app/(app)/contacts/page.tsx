@@ -152,19 +152,14 @@ export default async function ContactsPage({ searchParams }: Props) {
         </p>
         <h2 className="text-xl font-semibold tracking-tight">Import contacts</h2>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          Import contacts from CSV or RocketReach. Every saved import is added to the Universe automatically,
-          deduplicated, and can be reused to build client-specific outreach lists.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Flow:</span> Import → Universe → Select contacts →
-          Create list → Use list in an Outreach sequence.
+          Upload a CSV for any workspace you can access, or open a client&apos;s Sources tab for RocketReach.
         </p>
         <p className="text-xs text-muted-foreground">
-          Open the{" "}
+          Cross-client directory and send tools are below.{" "}
           <Link href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
             Universe
           </Link>{" "}
-          tab to review the global warehouse, filter, and create lists for any client workspace you can access.
+          lists every imported person you can filter and attach to client lists.
         </p>
       </section>
 

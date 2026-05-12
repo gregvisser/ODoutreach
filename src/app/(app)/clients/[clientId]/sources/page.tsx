@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CsvImportForm, type ClientListOption } from "@/app/(app)/contacts/csv-import-form";
-import { ContactImportContractPanel } from "@/components/clients/contact-import-contract-panel";
 import { ClientWorkspaceContactLists } from "@/components/clients/client-workspace-contact-lists";
 import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import { buttonVariants } from "@/components/ui/button";
@@ -59,13 +58,7 @@ export default async function ClientSourcesPage({ params }: Props) {
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sources</p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
-          Upload a CSV or run a RocketReach search here. Each import saves people to{" "}
-          <span className="font-medium text-foreground">Universe</span> (shared across clients) and adds
-          them to a list in this workspace. Use{" "}
-          <Link href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
-            Universe
-          </Link>{" "}
-          to pick individuals and build lists for any client.
+          Import contacts into a named list for this client. Upload a CSV or use RocketReach below.
         </p>
       </div>
 
@@ -73,7 +66,7 @@ export default async function ClientSourcesPage({ params }: Props) {
         <CardHeader>
           <CardTitle>Lists for this client</CardTitle>
           <CardDescription>
-            Lists belong to this workspace only. Deleting a list does not remove contacts from Universe.
+            Lists belong to this workspace only. Deleting a list only removes that list from this client.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -95,12 +88,11 @@ export default async function ClientSourcesPage({ params }: Props) {
         </p>
       </section>
 
-      <ContactImportContractPanel />
-
       <RocketReachImportPanel
         clientId={client.id}
         apiKeyConfigured={bundle.rocketReachEnvReady}
         existingLists={listOptions}
+        allowAdvancedRocketReachJson={staff.role === "ADMIN"}
       />
     </div>
   );

@@ -49,6 +49,30 @@ type PreviewState =
       fileName: string;
     };
 
+function StaffImportHeadingChips() {
+  return (
+    <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-3 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Column headings your file can use
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Cells can be empty where you do not have data. At least one of email, Linkedin URL, mobile number, or
+        office number identifies the person. Email is required to save today.
+      </p>
+      <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Accepted column headings">
+        {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.map((heading) => (
+          <li
+            key={heading}
+            className="rounded-md border border-border/80 bg-muted/60 px-2 py-0.5 font-mono text-xs text-foreground"
+          >
+            {heading}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * PR G — CSV import form with an explicit preview / confirm flow.
  *
@@ -120,26 +144,21 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
         <CardTitle>{lockedClientId ? "Upload CSV" : "CSV import"}</CardTitle>
         <CardDescription>
           {lockedClientId ? (
-            <>
-              Choose a list name, upload a file, then <span className="font-medium">Preview</span>. When the
-              preview looks right, press <span className="font-medium">Confirm import</span> — nothing is
-              saved until you confirm.
-            </>
+            <span>
+              Choose a list, upload your CSV, then <span className="font-medium">Preview</span>. Use{" "}
+              <span className="font-medium">Confirm import</span> only when the preview looks right — nothing
+              is saved until then.
+            </span>
           ) : (
-            <>
-              <span className="font-medium text-foreground">Preview does not create contacts.</span> Pick a
-              client, list target, and CSV file, then press <span className="font-medium">Preview</span>.
-              Press <span className="font-medium">Confirm import</span> only when the preview looks right.
-            </>
-          )}{" "}
-          Accepted headings (exact labels):{" "}
-          <span className="font-mono text-xs text-foreground">
-            {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.join(", ")}
-          </span>
-          . Legacy column names still map in the parser.
+            <span>
+              Pick a client and list, upload a CSV, then <span className="font-medium">Preview</span>. Use{" "}
+              <span className="font-medium">Confirm import</span> only when the preview looks right.
+            </span>
+          )}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <StaffImportHeadingChips />
         <form
           ref={formRef}
           action={importContactsCsvAction}
@@ -329,8 +348,8 @@ function PreviewPanel({
           </p>
           <p className="text-xs text-muted-foreground">
             Target list:{" "}
-            <span className="font-medium text-foreground">{listLabel}</span>.
-            Confirm import writes contacts and attaches them to this list.
+            <span className="font-medium text-foreground">{listLabel}</span>. Confirm import saves contacts and
+            adds them to this list.
           </p>
         </div>
       </div>
@@ -426,9 +445,8 @@ function PreviewPanel({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Contacts without email can be valid, but are not email-sendable. Rows
-        marked <em>skipped</em> will not be written; attach-only rows add an
-        existing contact to this list without mutating the contact.
+        Contacts without email can be valid, but are not email-sendable. Rows marked <em>skipped</em> are not
+        saved. Rows marked <em>attach only</em> add someone who already exists without changing their details.
       </p>
     </div>
   );

@@ -32,4 +32,9 @@ describe("Universe page copy (operator)", () => {
     expect(clientSource).not.toMatch(/<TableHead>Name<\/TableHead>/);
     expect(universeHeadsSource).toContain("STAFF_VISIBLE_CONTACT_IMPORT_HEADERS");
   });
+
+  it("shows client display name in the workspace selector trigger", () => {
+    expect(clientSource).toContain("formatClientWorkspaceSelectLabel");
+    expect(clientSource).toContain("{formatClientWorkspaceSelectLabel(clients, clientId)}");
+  });
 });
