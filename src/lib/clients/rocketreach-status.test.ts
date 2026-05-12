@@ -7,7 +7,7 @@ describe("rocketReachConnectionStatus", () => {
     const status = rocketReachConnectionStatus(true);
 
     expect(status.label).toBe("Connected");
-    expect(status.description).toContain("Universe");
+    expect(status.description).toContain("Use it to find and add contacts");
   });
 
   it("shows administrator guidance when RocketReach is not configured", () => {

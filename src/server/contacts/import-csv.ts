@@ -14,7 +14,6 @@ import {
   normalizeEmail,
 } from "@/lib/normalize";
 import { attachContactsToClientList } from "@/server/contacts/contact-lists";
-import { upsertContactUniverseAndRecordSource } from "@/server/contacts/contact-universe";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
 export type CsvImportSummary = {
@@ -25,8 +24,6 @@ export type CsvImportSummary = {
   errors: string[];
   listAttachedAdded?: number;
   listAttachedSkipped?: number;
-  universeCreated: number;
-  universeMatched: number;
 };
 
 function normHeader(h: string): string {
@@ -68,15 +65,13 @@ export async function runContactCsvImport(args: {
   csvText: string;
   /** PR D2: every import must attach to an existing client-scoped list. */
   contactListId: string;
-  /** Display name for Universe source attribution (list the import targeted). */
-  targetListName: string;
   addedByStaffUserId?: string | null;
 }): Promise<{
   batchId: string;
   summary: CsvImportSummary;
   contactListId: string;
 }> {
-  const { clientId, fileName, csvText, contactListId, targetListName, addedByStaffUserId } =
+  const { clientId, fileName, csvText, contactListId, addedByStaffUserId } =
     args;
 
   const parsed = Papa.parse<Record<string, string>>(csvText, {
@@ -95,8 +90,6 @@ export async function runContactCsvImport(args: {
     skippedInvalid: 0,
     skippedDuplicate: 0,
     errors: [],
-    universeCreated: 0,
-    universeMatched: 0,
   };
 
   const batch = await prisma.contactImportBatch.create({
@@ -176,6 +169,16 @@ export async function runContactCsvImport(args: {
       }
       seenInFile.add(email);
 
+      if (existing.has(email)) {
+        summary.skippedDuplicate++;
+        // PR D2: the contact already exists for this client but the operator
+        // explicitly routed this import to a named list, so make sure the
+        // existing row is a member of that list (idempotent).
+        const existingId = existingIdByEmail.get(email);
+        if (existingId) touchedContactIds.push(existingId);
+        continue;
+      }
+
       if (!first && !last && fullName) {
         const parts = fullName.trim().split(/\s+/);
         if (parts.length >= 2) {
@@ -188,42 +191,6 @@ export async function runContactCsvImport(args: {
 
       const emailDomain =
         domainCol.trim() || extractDomainFromEmail(email) || null;
-
-      const sourceLabel = `${fileName} → ${targetListName}`;
-
-      const u = await upsertContactUniverseAndRecordSource(prisma, {
-        emailNormalized: email,
-        linkedInRaw: linkedIn,
-        mobilePhoneRaw: mobilePhone,
-        officePhoneRaw: officePhone,
-        firstName: first || null,
-        lastName: last || null,
-        fullName: fullName || null,
-        companyName: company || null,
-        jobTitle: title || null,
-        location: location || null,
-        city: city || null,
-        country: country || null,
-        firstSeenClientId: clientId,
-        firstSeenSourceType: "CSV_IMPORT",
-        sourceLabel,
-        importBatchId: batch.id,
-      });
-      if (u.created) summary.universeCreated++;
-      else summary.universeMatched++;
-
-      if (existing.has(email)) {
-        summary.skippedDuplicate++;
-        const existingId = existingIdByEmail.get(email);
-        if (existingId) {
-          await prisma.contact.updateMany({
-            where: { id: existingId, universeContactId: null },
-            data: { universeContactId: u.universeId },
-          });
-          touchedContactIds.push(existingId);
-        }
-        continue;
-      }
 
       const created = await prisma.contact.create({
         data: {
@@ -243,7 +210,6 @@ export async function runContactCsvImport(args: {
           country: country || null,
           source: parseContactSource(sourceRaw),
           importBatchId: batch.id,
-          universeContactId: u.universeId,
         },
         select: { id: true },
       });

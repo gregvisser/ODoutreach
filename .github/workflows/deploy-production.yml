@@ -42,6 +42,17 @@ jobs:
       - name: Prisma validate
         run: npx prisma validate
 
+      # Production schema: GitHub Actions does not have DATABASE_URL by default.
+      # After merging Prisma migrations, either run `npx prisma migrate deploy` once
+      # against production (operator session / Kudu) or enable this gated step:
+      #   Repository variable: PRODUCTION_PRISMA_MIGRATE = true
+      #   Repository secret:    PRODUCTION_DATABASE_URL = (production Postgres URL, never log)
+      - name: Prisma migrate deploy (production database)
+        if: ${{ vars.PRODUCTION_PRISMA_MIGRATE == 'true' }}
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npx prisma migrate deploy
+
       - name: Build (webpack — avoids Turbopack workspace-root issue on CI)
         run: npm run build
 

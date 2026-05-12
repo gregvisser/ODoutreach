@@ -14,7 +14,7 @@ export function rocketReachStatusText(input: { configured: boolean }): RocketRea
       label: "Connected",
       tone: "ready",
       description:
-        "RocketReach is connected. Use it from each client’s Sources tab; imports also populate the global Universe for reuse.",
+        "RocketReach is connected. Use it to find and add contacts to a client list from the Sources tab.",
       actionLabel: "Import from RocketReach",
     };
   }

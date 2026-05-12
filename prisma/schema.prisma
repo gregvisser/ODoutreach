@@ -56,14 +56,6 @@ enum ContactSource {
   MANUAL
 }
 
-/// Global contact warehouse source attribution (CSV / RocketReach / manual).
-enum UniverseSourceType {
-  CSV_IMPORT
-  ROCKETREACH
-  MANUAL
-  OTHER
-}
-
 enum ImportBatchStatus {
   PENDING
   PROCESSING
@@ -361,8 +353,6 @@ model Client {
   briefTaxonomyLinks       ClientBriefTermLink[]
   complianceAttachments    ClientComplianceAttachment[]
   briefTaxonomyFirstUses   BriefTaxonomyTerm[]        @relation("BriefTermFirstClient")
-  universesFirstSeen       ContactUniverse[]          @relation("UniverseFirstSeenClient")
-  contactUniverseSources   ContactUniverseSource[]
 
   @@index([status])
   @@index([launchApprovedByStaffUserId])
@@ -598,7 +588,6 @@ model ContactImportBatch {
   createdAt    DateTime          @default(now())
   client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   contacts     Contact[]
-  universeSources ContactUniverseSource[]
 
   @@index([clientId, createdAt])
 }
@@ -638,13 +627,11 @@ model Contact {
   /// Cached flag after suppression check (refresh on sync)
   isSuppressed           Boolean       @default(false)
   lastSuppressionCheckAt DateTime?
-  universeContactId      String?
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
   client              Client                          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   importBatch         ContactImportBatch?             @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  universeContact     ContactUniverse?                @relation(fields: [universeContactId], references: [id], onDelete: SetNull)
   rocketReach         RocketReachEnrichment?
   outboundEmails      OutboundEmail[]
   inboundReplies      InboundReply[]
@@ -656,68 +643,6 @@ model Contact {
   @@unique([clientId, email])
   @@index([clientId])
   @@index([importBatchId])
-  @@index([universeContactId])
-}
-
-/// OpensDoors global contact warehouse — deduplicated across imports and clients.
-model ContactUniverse {
-  id                      String             @id @default(cuid())
-  /// Lowercase trimmed email; unique when present (Postgres allows many NULLs).
-  emailNormalized         String?            @unique
-  linkedinUrlNormalized   String?
-  mobilePhoneNormalized   String?
-  officePhoneNormalized   String?
-  firstName               String?
-  lastName                String?
-  fullName                String?
-  jobTitle                String?
-  companyName             String?
-  location                String?
-  city                    String?
-  country                 String?
-  /// Human-readable rollup for the Sources / Universe table (not raw JSON).
-  sourceSummary           String?
-  firstSeenClientId       String?
-  firstSeenSourceType     UniverseSourceType @default(OTHER)
-  firstSeenAt             DateTime           @default(now())
-  lastSeenAt              DateTime           @default(now())
-  /// Optional weak dedupe key (company + name + title hash) when no strong identifiers.
-  weakMatchKey            String?            @unique
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
-
-  firstSeenClient Client?                 @relation("UniverseFirstSeenClient", fields: [firstSeenClientId], references: [id], onDelete: SetNull)
-  sources         ContactUniverseSource[]
-  clientContacts  Contact[]
-
-  @@index([linkedinUrlNormalized])
-  @@index([mobilePhoneNormalized])
-  @@index([lastSeenAt])
-  @@index([firstSeenClientId])
-  @@index([companyName])
-  @@index([country])
-}
-
-model ContactUniverseSource {
-  id                  String             @id @default(cuid())
-  universeContactId   String
-  clientId            String?
-  sourceType          UniverseSourceType
-  /// Import file name, list name, or operator label.
-  sourceLabel         String?
-  importBatchId       String?
-  rocketReachPersonId String?
-  rawSourceMetadata   Json?
-  createdAt           DateTime           @default(now())
-
-  universe    ContactUniverse       @relation(fields: [universeContactId], references: [id], onDelete: Cascade)
-  client      Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  importBatch ContactImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-
-  @@index([universeContactId])
-  @@index([clientId])
-  @@index([importBatchId])
-  @@index([sourceType])
 }
 
 /// Named reusable list of contacts (universal-contact bridge, PR D1).

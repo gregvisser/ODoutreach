@@ -48,13 +48,9 @@ export default async function ClientSourcesPage({ params }: Props) {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
         <p className="mt-1 text-muted-foreground">
-          Import contacts from CSV or RocketReach. Every saved import is added to the Universe automatically,
-          deduplicated, and can be reused to build client-specific outreach lists for{" "}
-          <span className="font-medium text-foreground">{client.name}</span>.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Flow:</span> Import → Universe → Select contacts →
-          Create list → Use list in an Outreach sequence.
+          Bring contacts into this client by importing from RocketReach or
+          uploading a CSV. Every import is saved to a named list you can use
+          later when launching a sequence.
         </p>
       </div>
 

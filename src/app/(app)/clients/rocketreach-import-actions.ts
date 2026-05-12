@@ -52,8 +52,6 @@ export type RocketReachImportActionResult =
       contactListName: string;
       listAttachedAdded: number;
       listAttachedSkipped: number;
-      universeCreated: number;
-      universeMatched: number;
     }
   | { ok: false; error: string };
 
@@ -129,14 +127,12 @@ export async function runRocketReachImportAction(
       clientId: parsed.data.clientId,
       searchBody: body,
       contactListId: list.id,
-      targetListName: list.name,
       addedByStaffUserId: staff.id,
     });
     if (!result.ok) return result;
     revalidatePath(`/clients/${parsed.data.clientId}`);
     revalidatePath(`/clients/${parsed.data.clientId}/sources`);
     revalidatePath("/contacts");
-    revalidatePath("/universe");
     return {
       ok: true,
       imported: result.imported,
@@ -148,8 +144,6 @@ export async function runRocketReachImportAction(
       contactListName: list.name,
       listAttachedAdded: result.listAttachedAdded,
       listAttachedSkipped: result.listAttachedSkipped,
-      universeCreated: result.universeCreated,
-      universeMatched: result.universeMatched,
     };
   }
 
@@ -212,14 +206,12 @@ export async function runRocketReachImportAction(
     clientId: parsed.data.clientId,
     searchBody,
     contactListId: list.id,
-    targetListName: list.name,
     addedByStaffUserId: staff.id,
   });
   if (!result.ok) return result;
   revalidatePath(`/clients/${parsed.data.clientId}`);
   revalidatePath(`/clients/${parsed.data.clientId}/sources`);
   revalidatePath("/contacts");
-  revalidatePath("/universe");
   return {
     ok: true,
     imported: result.imported,
@@ -231,7 +223,5 @@ export async function runRocketReachImportAction(
     contactListName: list.name,
     listAttachedAdded: result.listAttachedAdded,
     listAttachedSkipped: result.listAttachedSkipped,
-    universeCreated: result.universeCreated,
-    universeMatched: result.universeMatched,
   };
 }

@@ -21,7 +21,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     bullets: [
       "Open the client workspace and check the Overview.",
       "Check Mailboxes for reconnect warnings and daily capacity — the page shows connection status only; full signatures are configured by administrators.",
-      "Import contacts from CSV or RocketReach only when you are ready to save them to a list; each import is also deduplicated into the global Universe.",
+      "Import contacts from CSV or RocketReach only when you are ready to save them to a list.",
       "Check Do-not-contact before any outreach.",
       "Build one introduction email; add follow-ups only if needed.",
       "Choose Auto-pick or a specific connected mailbox.",
@@ -38,13 +38,11 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     ],
   },
   {
-    title: "Contacts, Universe, and RocketReach",
+    title: "Contacts and RocketReach",
     bullets: [
       "CSV import has a preview step before saving.",
       "RocketReach searches use live credits and require the confirmation phrase before the API is called.",
-      "Imported contacts appear in the selected client list and in the global Universe for reuse.",
-      "Create additional client lists from Universe when the same people should be used in another workspace.",
-      "Do-not-contact rules apply before outreach sends.",
+      "Imported contacts appear in the selected client list, and do-not-contact rules apply after import.",
     ],
   },
   {
@@ -100,8 +98,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     title: "Glossary",
     bullets: [
       "Client: one customer workspace.",
-      "Universe: shared OpensDoors contact warehouse — imports land here deduplicated.",
-      "Contact: a person or company record in a client list (often linked from Universe).",
+      "Contact: a person or company record in a client list.",
       "Sending inbox/mailbox: a connected Microsoft or Google mailbox used for outreach.",
       "Sequence: an introduction email plus optional follow-ups.",
       "Do-not-contact: emails and domains excluded from outreach.",
@@ -113,7 +110,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     bullets: [
       "Open OpensDoors, show Overview and the client tabs.",
       "Show Mailboxes, capacity, signatures, and reconnect warning states.",
-      "Show Contacts / Sources import choices, Universe, and explain RocketReach credits.",
+      "Show Contacts import choices and explain RocketReach credits.",
       "Show Do-not-contact and explain why it is a hard safety check.",
       "Show Outreach: choose list, mailbox, introduction, optional follow-up, preview, send/schedule.",
       "Show Activity: click Check replies and read inbound messages.",
