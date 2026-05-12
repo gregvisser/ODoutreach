@@ -23,17 +23,18 @@
 export const CANONICAL_IMPORT_HEADINGS = [
   "Name",
   "Employer",
-  "Title",
+  "Industry",
   "First Name",
   "Last Name",
-  "Location",
   "City",
   "Country",
   "LinkedIn",
   "Job1 Title",
   "A Emails",
-  "Mobile Phone Number",
+  "Mobile Number",
   "Office Number",
+  /** Optional combined locality — still accepted on older CSVs. */
+  "Location",
 ] as const;
 
 export type CanonicalImportHeading = (typeof CANONICAL_IMPORT_HEADINGS)[number];
@@ -47,6 +48,7 @@ export const EMAIL_REQUIRED_FOR_PERSISTENCE = true as const;
 export type ContactImportField =
   | "fullName"
   | "company"
+  | "industry"
   | "title"
   | "firstName"
   | "lastName"
@@ -83,9 +85,9 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["Employer", "Company", "Organization", "Org", "Account"],
   },
   {
-    heading: "Title",
-    field: "title",
-    aliases: ["Title", "Job Title", "Role"],
+    heading: "Industry",
+    field: "industry",
+    aliases: ["Industry", "Sector", "Company Industry"],
   },
   {
     heading: "First Name",
@@ -96,11 +98,6 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     heading: "Last Name",
     field: "lastName",
     aliases: ["Last Name", "Last", "LastName", "lname"],
-  },
-  {
-    heading: "Location",
-    field: "location",
-    aliases: ["Location"],
   },
   {
     heading: "City",
@@ -115,13 +112,18 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
   {
     heading: "LinkedIn",
     field: "linkedIn",
-    aliases: ["LinkedIn", "LinkedIn URL", "LinkedIn Profile", "linkedin_url"],
+    aliases: [
+      "LinkedIn",
+      "Linkedin",
+      "LinkedIn URL",
+      "LinkedIn Profile",
+      "linkedin_url",
+    ],
   },
   {
     heading: "Job1 Title",
     field: "title",
-    aliases: ["Job1 Title", "Job 1 Title"],
-    fallbackOnly: true,
+    aliases: ["Job1 Title", "Job 1 Title", "Title", "Job Title", "Role"],
   },
   {
     heading: "A Emails",
@@ -129,9 +131,15 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["A Emails", "Email", "E-mail", "Work Email", "Email Address"],
   },
   {
-    heading: "Mobile Phone Number",
+    heading: "Mobile Number",
     field: "mobilePhone",
-    aliases: ["Mobile Phone Number", "Mobile", "Mobile Number", "Cell"],
+    aliases: [
+      "Mobile Number",
+      "Mobile Phone Number",
+      "Mobile",
+      "Cell",
+      "Mobile Phone",
+    ],
   },
   {
     heading: "Office Number",
@@ -143,6 +151,11 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
       "Landline",
       "Work Phone",
     ],
+  },
+  {
+    heading: "Location",
+    field: "location",
+    aliases: ["Location"],
   },
 ];
 

@@ -41,10 +41,18 @@ type Props = {
     company: string;
     jobTitle: string;
     country: string;
+    city: string;
     sourceType: string;
     sort: string;
   };
 };
+
+function rowDisplayName(r: UniverseTableRow): string {
+  const full = r.fullName?.trim();
+  if (full) return full;
+  const joined = [r.firstName, r.lastName].filter((s) => (s ?? "").trim()).join(" ");
+  return joined || "—";
+}
 
 export function UniversePageClient({
   rows,
@@ -91,7 +99,16 @@ export function UniversePageClient({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const q = new URLSearchParams();
-    const fields = ["q", "hasEmail", "company", "jobTitle", "country", "sourceType", "sort"] as const;
+    const fields = [
+      "q",
+      "hasEmail",
+      "company",
+      "jobTitle",
+      "country",
+      "city",
+      "sourceType",
+      "sort",
+    ] as const;
     for (const f of fields) {
       const v = String(fd.get(f) ?? "").trim();
       if (v) q.set(f, v);
@@ -106,6 +123,10 @@ export function UniversePageClient({
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-muted-foreground max-w-3xl">
+        Filter contacts, select the ones you need, then create a client list.
+      </p>
+
       <form
         onSubmit={applyFilters}
         className="rounded-lg border border-border/80 bg-card p-4 shadow-sm space-y-3"
@@ -117,7 +138,7 @@ export function UniversePageClient({
               id="q"
               name="q"
               defaultValue={filters.q}
-              placeholder="Name, email, company, or title"
+              placeholder="Name, email, employer, title, city, or country"
               disabled={pending}
             />
           </div>
@@ -136,7 +157,7 @@ export function UniversePageClient({
             </select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="sourceType">Source type</Label>
+            <Label htmlFor="sourceType">Source</Label>
             <select
               id="sourceType"
               name="sourceType"
@@ -152,16 +173,20 @@ export function UniversePageClient({
             </select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="company">Company contains</Label>
+            <Label htmlFor="company">Employer contains</Label>
             <Input id="company" name="company" defaultValue={filters.company} disabled={pending} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="jobTitle">Job title contains</Label>
+            <Label htmlFor="jobTitle">Job1 Title contains</Label>
             <Input id="jobTitle" name="jobTitle" defaultValue={filters.jobTitle} disabled={pending} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="country">Country contains</Label>
             <Input id="country" name="country" defaultValue={filters.country} disabled={pending} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="city">City contains</Label>
+            <Input id="city" name="city" defaultValue={filters.city} disabled={pending} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sort">Sort</Label>
@@ -173,8 +198,8 @@ export function UniversePageClient({
               className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
             >
               <option value="lastSeen">Last seen</option>
-              <option value="company">Company</option>
-              <option value="email">Email</option>
+              <option value="company">Employer</option>
+              <option value="email">A Emails</option>
             </select>
           </div>
         </div>
@@ -194,14 +219,13 @@ export function UniversePageClient({
       <div className="rounded-lg border border-border/80 bg-card p-4 shadow-sm space-y-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-sm font-medium">Create client list from selection</h2>
+            <h2 className="text-sm font-medium">Create list from selected contacts</h2>
             <p className="text-xs text-muted-foreground">
-              Materializes workspace contacts (when needed) and attaches them to the list you name.
-              Suppression is still enforced before any outreach sends.
+              Adds workspace contacts to the list you name. Contacts stay in Universe for reuse.
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            {selected.size} selected · {total.toLocaleString()} total in Universe
+            {selected.size} selected · {total.toLocaleString()} contacts
           </p>
         </div>
         {actionMessage ? (
@@ -220,7 +244,7 @@ export function UniversePageClient({
             }
             const r = res.result;
             setActionMessage(
-              `List “${r.listName}” ready — added ${String(r.addedToList)} to list (${String(r.materializedNewContacts)} new contacts, ${String(r.reusedExistingContacts)} already in workspace). Skipped duplicates in list: ${String(r.listSkippedDuplicates)}. No email: ${String(r.skippedNoEmail)}.`,
+              `Created list “${r.listName}” with ${String(r.addedToList)} contacts (${String(r.materializedNewContacts)} new in this workspace, ${String(r.reusedExistingContacts)} already there). Rows skipped in the list: ${String(r.listSkippedDuplicates)}; skipped with no email: ${String(r.skippedNoEmail)}.`,
             );
             setSelected(new Set());
           }}
@@ -281,14 +305,17 @@ export function UniversePageClient({
                 />
               </TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Company</TableHead>
-              <TableHead>Job title</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Mobile</TableHead>
-              <TableHead>Office</TableHead>
-              <TableHead>LinkedIn</TableHead>
-              <TableHead>Location</TableHead>
+              <TableHead>Employer</TableHead>
+              <TableHead>Industry</TableHead>
+              <TableHead>First Name</TableHead>
+              <TableHead>Last Name</TableHead>
+              <TableHead>City</TableHead>
               <TableHead>Country</TableHead>
+              <TableHead>LinkedIn</TableHead>
+              <TableHead>Job1 Title</TableHead>
+              <TableHead>A Emails</TableHead>
+              <TableHead>Mobile Number</TableHead>
+              <TableHead>Office Number</TableHead>
               <TableHead>Source</TableHead>
               <TableHead>Last seen</TableHead>
               <TableHead className="text-right">Refs</TableHead>
@@ -302,16 +329,19 @@ export function UniversePageClient({
                     type="checkbox"
                     checked={selected.has(r.id)}
                     onChange={() => toggleRow(r.id)}
-                    aria-label={`Select ${r.fullName ?? r.emailNormalized ?? r.id}`}
+                    aria-label={`Select ${rowDisplayName(r)}`}
                   />
                 </TableCell>
-                <TableCell className="font-medium">{r.fullName ?? "—"}</TableCell>
-                <TableCell>{r.companyName ?? "—"}</TableCell>
-                <TableCell>{r.jobTitle ?? "—"}</TableCell>
-                <TableCell className="font-mono text-xs">{r.emailNormalized ?? "—"}</TableCell>
-                <TableCell className="text-xs">{r.mobilePhoneNormalized ?? "—"}</TableCell>
-                <TableCell className="text-xs">{r.officePhoneNormalized ?? "—"}</TableCell>
-                <TableCell className="max-w-[140px] truncate text-xs">
+                <TableCell className="max-w-[120px] truncate text-sm font-medium">
+                  {rowDisplayName(r)}
+                </TableCell>
+                <TableCell className="max-w-[120px] truncate text-xs">{r.companyName ?? "—"}</TableCell>
+                <TableCell className="max-w-[100px] truncate text-xs">{r.industry ?? "—"}</TableCell>
+                <TableCell className="max-w-[90px] truncate text-xs">{r.firstName ?? "—"}</TableCell>
+                <TableCell className="max-w-[90px] truncate text-xs">{r.lastName ?? "—"}</TableCell>
+                <TableCell className="max-w-[90px] truncate text-xs">{r.city ?? "—"}</TableCell>
+                <TableCell className="max-w-[90px] truncate text-xs">{r.country ?? "—"}</TableCell>
+                <TableCell className="max-w-[100px] truncate text-xs">
                   {r.linkedinUrlNormalized ? (
                     <a
                       className="text-primary underline-offset-2 hover:underline"
@@ -329,14 +359,24 @@ export function UniversePageClient({
                     "—"
                   )}
                 </TableCell>
-                <TableCell>{r.location ?? "—"}</TableCell>
-                <TableCell>{r.country ?? "—"}</TableCell>
-                <TableCell className="text-xs">{r.sourceSummary ?? r.firstSeenSourceType}</TableCell>
+                <TableCell className="max-w-[120px] truncate text-xs">{r.jobTitle ?? "—"}</TableCell>
+                <TableCell className="max-w-[140px] truncate font-mono text-xs">
+                  {r.emailNormalized ?? "—"}
+                </TableCell>
+                <TableCell className="max-w-[100px] truncate text-xs">
+                  {r.mobilePhoneNormalized ?? "—"}
+                </TableCell>
+                <TableCell className="max-w-[100px] truncate text-xs">
+                  {r.officePhoneNormalized ?? "—"}
+                </TableCell>
+                <TableCell className="max-w-[120px] truncate text-xs">
+                  {r.sourceSummary ?? r.firstSeenSourceType}
+                </TableCell>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {r.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")}
                 </TableCell>
                 <TableCell className="text-right text-xs text-muted-foreground">
-                  {r.clientContactCount} contacts · {r.sourceCount} sources
+                  {r.clientContactCount} in lists · {r.sourceCount} touches
                 </TableCell>
               </TableRow>
             ))}
@@ -344,11 +384,13 @@ export function UniversePageClient({
         </Table>
         {rows.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            No Universe contacts match these filters yet. Run a CSV or RocketReach import from{" "}
-            <Link href="/contacts" className="font-medium text-primary underline-offset-2 hover:underline">
+            No contacts match these filters yet. If you expected rows here, confirm a recent import ran for
+            this environment — older workspace contacts are not auto-copied into Universe. Import from a
+            client workspace{" "}
+            <Link href="/clients" className="font-medium text-primary underline-offset-2 hover:underline">
               Sources
-            </Link>
-            .
+            </Link>{" "}
+            tab, or use the main Contacts page.
           </p>
         ) : null}
       </div>

@@ -263,6 +263,12 @@ export async function importRocketReachPeopleForClient(
       typeof profile.country === "string" && profile.country.trim()
         ? profile.country.trim()
         : null;
+    const industry =
+      typeof profile.company_industry === "string" && profile.company_industry.trim()
+        ? profile.company_industry.trim()
+        : typeof profile.industry === "string" && profile.industry.trim()
+          ? profile.industry.trim()
+          : null;
     const loc =
       typeof profile.location === "string" && profile.location.trim()
         ? profile.location.trim()
@@ -305,6 +311,7 @@ export async function importRocketReachPeopleForClient(
       location: loc,
       city,
       country,
+      industry,
       firstSeenClientId: clientId,
       firstSeenSourceType: "ROCKETREACH",
       sourceLabel: `RocketReach → ${targetListName}`,
@@ -342,6 +349,7 @@ export async function importRocketReachPeopleForClient(
         location: loc,
         city,
         country,
+        industry,
         source,
         universeContactId: u.universeId,
       },

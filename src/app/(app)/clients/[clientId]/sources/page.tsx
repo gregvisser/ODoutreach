@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CsvImportForm, type ClientListOption } from "@/app/(app)/contacts/csv-import-form";
 import { ContactImportContractPanel } from "@/components/clients/contact-import-contract-panel";
+import { ClientWorkspaceContactLists } from "@/components/clients/client-workspace-contact-lists";
 import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -39,101 +41,66 @@ export default async function ClientSourcesPage({ params }: Props) {
   const client = bundle.client;
 
   const lists = await listContactListsForClient(client.id);
+  const listOptions: ClientListOption[] = lists.map((l) => ({
+    id: l.id,
+    name: l.name,
+    memberCount: l.memberCount,
+  }));
+  const listsForPanel = lists.map((l) => ({
+    id: l.id,
+    name: l.name,
+    memberCount: l.memberCount,
+    updatedAt: DATE_FORMATTER.format(l.updatedAt),
+  }));
 
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Sources
-        </p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Sources</p>
         <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-        <p className="mt-1 text-muted-foreground">
-          Import contacts from CSV or RocketReach. Every saved import is added to the Universe automatically,
-          deduplicated, and can be reused to build client-specific outreach lists for{" "}
-          <span className="font-medium text-foreground">{client.name}</span>.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Flow:</span> Import → Universe → Select contacts →
-          Create list → Use list in an Outreach sequence.
+        <p className="mt-1 max-w-3xl text-muted-foreground">
+          Upload a CSV or run a RocketReach search here. Each import saves people to{" "}
+          <span className="font-medium text-foreground">Universe</span> (shared across clients) and adds
+          them to a list in this workspace. Use{" "}
+          <Link href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
+            Universe
+          </Link>{" "}
+          to pick individuals and build lists for any client.
         </p>
       </div>
-
-      <ContactImportContractPanel />
-
-      <Card className="border-dashed border-primary/30 bg-primary/5 shadow-sm">
-        <CardHeader>
-          <CardTitle>CSV upload</CardTitle>
-          <CardDescription>
-            Run CSV imports from the main{" "}
-            <span className="font-medium">Contacts</span> page. You&rsquo;ll
-            see a Preview of exactly which rows will be added, updated, or
-            skipped before anything is saved —{" "}
-            <span className="font-medium">
-              Preview never creates contacts on its own.
-            </span>{" "}
-            Press Confirm import when the preview looks right.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Link
-            href={`/contacts?client=${client.id}`}
-            className={cn(buttonVariants({ variant: "default", size: "sm" }))}
-          >
-            Open CSV import for {client.name}
-          </Link>
-          <p className="text-xs text-muted-foreground">
-            The Contacts page filters automatically to this client. Choose a
-            target list, upload the file, and press Preview.
-          </p>
-        </CardContent>
-      </Card>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle>Lists for this client</CardTitle>
           <CardDescription>
-            Contact lists belong to{" "}
-            <span className="font-medium">{client.name}</span>. Create a new
-            list during import, or reuse an existing list when topping up.
+            Lists belong to this workspace only. Deleting a list does not remove contacts from Universe.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {lists.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border/80 bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
-              No lists yet. Run an import below to create the first one.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border/60 rounded-md border border-border/80">
-              {lists.map((l) => (
-                <li
-                  key={l.id}
-                  className="flex items-center justify-between gap-4 px-4 py-2 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{l.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Updated {DATE_FORMATTER.format(l.updatedAt)}
-                    </p>
-                  </div>
-                  <span className="whitespace-nowrap text-xs text-muted-foreground">
-                    {l.memberCount}{" "}
-                    {l.memberCount === 1 ? "member" : "members"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ClientWorkspaceContactLists clientId={client.id} lists={listsForPanel} />
         </CardContent>
       </Card>
+
+      <section className="space-y-3">
+        <CsvImportForm
+          clients={[{ id: client.id, name: client.name }]}
+          listsByClientId={{ [client.id]: listOptions }}
+          lockedClientId={client.id}
+        />
+        <p className="text-xs text-muted-foreground">
+          Cross-client tools and history:{" "}
+          <Link href="/contacts" className={cn(buttonVariants({ variant: "link", size: "sm" }), "h-auto p-0")}>
+            Contacts
+          </Link>
+        </p>
+      </section>
+
+      <ContactImportContractPanel />
 
       <RocketReachImportPanel
         clientId={client.id}
         apiKeyConfigured={bundle.rocketReachEnvReady}
-        existingLists={lists.map((l) => ({
-          id: l.id,
-          name: l.name,
-          memberCount: l.memberCount,
-        }))}
+        existingLists={listOptions}
       />
     </div>
   );

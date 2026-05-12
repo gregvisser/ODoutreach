@@ -10,6 +10,7 @@ export type UniverseTableQuery = {
   company?: string;
   jobTitle?: string;
   country?: string;
+  city?: string;
   sourceType?: UniverseSourceType | "" | "ALL";
   sort?: "lastSeen" | "company" | "email";
   page?: number;
@@ -19,13 +20,17 @@ export type UniverseTableQuery = {
 export type UniverseTableRow = {
   id: string;
   fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
   companyName: string | null;
+  industry: string | null;
   jobTitle: string | null;
   emailNormalized: string | null;
   mobilePhoneNormalized: string | null;
   officePhoneNormalized: string | null;
   linkedinUrlNormalized: string | null;
   location: string | null;
+  city: string | null;
   country: string | null;
   sourceSummary: string | null;
   firstSeenSourceType: UniverseSourceType;
@@ -58,6 +63,11 @@ function buildWhere(input: UniverseTableQuery): Prisma.ContactUniverseWhereInput
     where.country = { contains: country, mode: "insensitive" };
   }
 
+  const city = input.city?.trim();
+  if (city) {
+    where.city = { contains: city, mode: "insensitive" };
+  }
+
   const st = input.sourceType;
   if (st && st !== "ALL") {
     where.sources = { some: { sourceType: st } };
@@ -68,8 +78,12 @@ function buildWhere(input: UniverseTableQuery): Prisma.ContactUniverseWhereInput
     where.OR = [
       { emailNormalized: { contains: q, mode: "insensitive" } },
       { fullName: { contains: q, mode: "insensitive" } },
+      { firstName: { contains: q, mode: "insensitive" } },
+      { lastName: { contains: q, mode: "insensitive" } },
       { companyName: { contains: q, mode: "insensitive" } },
       { jobTitle: { contains: q, mode: "insensitive" } },
+      { city: { contains: q, mode: "insensitive" } },
+      { country: { contains: q, mode: "insensitive" } },
     ];
   }
 
@@ -116,13 +130,17 @@ export async function listContactUniversesForTable(
   const rows: UniverseTableRow[] = raw.map((r) => ({
     id: r.id,
     fullName: r.fullName,
+    firstName: r.firstName,
+    lastName: r.lastName,
     companyName: r.companyName,
+    industry: r.industry,
     jobTitle: r.jobTitle,
     emailNormalized: r.emailNormalized,
     mobilePhoneNormalized: r.mobilePhoneNormalized,
     officePhoneNormalized: r.officePhoneNormalized,
     linkedinUrlNormalized: r.linkedinUrlNormalized,
     location: r.location,
+    city: r.city,
     country: r.country,
     sourceSummary: r.sourceSummary,
     firstSeenSourceType: r.firstSeenSourceType,

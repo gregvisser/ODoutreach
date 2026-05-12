@@ -55,6 +55,7 @@ describe("upsertContactUniverseAndRecordSource", () => {
       location: null,
       city: null,
       country: null,
+      industry: null,
       sourceSummary: "prior",
       emailNormalized: "dup@example.com",
     });

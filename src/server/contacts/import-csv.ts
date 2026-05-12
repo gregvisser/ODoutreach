@@ -147,6 +147,7 @@ export async function runContactCsvImport(args: {
       const location = pickMapped(mapped, "location");
       const city = pickMapped(mapped, "city");
       const country = pickMapped(mapped, "country");
+      const industry = pickMapped(mapped, "industry");
       // `domain` and `source` columns are operator-only hints; they are not
       // part of the canonical import contract but remain supported for
       // backwards compatibility with existing operator CSVs.
@@ -204,6 +205,7 @@ export async function runContactCsvImport(args: {
         location: location || null,
         city: city || null,
         country: country || null,
+        industry: industry || null,
         firstSeenClientId: clientId,
         firstSeenSourceType: "CSV_IMPORT",
         sourceLabel,
@@ -241,6 +243,7 @@ export async function runContactCsvImport(args: {
           location: location || null,
           city: city || null,
           country: country || null,
+          industry: industry || null,
           source: parseContactSource(sourceRaw),
           importBatchId: batch.id,
           universeContactId: u.universeId,

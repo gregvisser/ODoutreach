@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ImportPreviewResult } from "@/lib/contacts/import-preview";
+import { CANONICAL_IMPORT_HEADINGS } from "@/lib/contact-import-contract";
 
 export type ClientListOption = {
   id: string;
@@ -34,6 +35,8 @@ export type ClientListOption = {
 type Props = {
   clients: { id: string; name: string }[];
   listsByClientId?: Record<string, ClientListOption[]>;
+  /** When set, client workspace is fixed (Sources tab). */
+  lockedClientId?: string;
 };
 
 type PreviewState =
@@ -60,8 +63,8 @@ type PreviewState =
  *      using the existing importer — we never trust the client-held preview
  *      result as the source of truth for the write.
  */
-export function CsvImportForm({ clients, listsByClientId = {} }: Props) {
-  const [selectedClientId, setSelectedClientId] = useState<string>("");
+export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }: Props) {
+  const [selectedClientId, setSelectedClientId] = useState<string>(lockedClientId ?? "");
   const [existingListId, setExistingListId] = useState<string>("");
   const [newListName, setNewListName] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
@@ -114,29 +117,26 @@ export function CsvImportForm({ clients, listsByClientId = {} }: Props) {
   return (
     <Card className="border-dashed border-primary/30 bg-primary/5 shadow-sm">
       <CardHeader>
-        <CardTitle>CSV import</CardTitle>
+        <CardTitle>{lockedClientId ? "Upload CSV" : "CSV import"}</CardTitle>
         <CardDescription>
-          <span className="font-medium text-foreground">
-            Preview does not create contacts.
-          </span>{" "}
-          Pick a client, list target, and CSV file, then press{" "}
-          <span className="font-medium">Preview</span> to see exactly what will
-          happen. Press <span className="font-medium">Confirm import</span> only
-          when the preview looks right —{" "}
-          <span className="font-medium">
-            Confirm import writes contacts and attaches them to the selected
-            list.
-          </span>{" "}
-          Contacts without an email can still be valid, but they are not
-          email-sendable and are skipped by this importer today. Accepted
-          headings (fields may be empty):{" "}
-          <span className="font-mono text-foreground">
-            Name, Employer, Title, First Name, Last Name, Location, City,
-            Country, LinkedIn, Job1 Title, A Emails, Mobile Phone Number,
-            Office Number
+          {lockedClientId ? (
+            <>
+              Choose a list name, upload a file, then <span className="font-medium">Preview</span>. When the
+              preview looks right, press <span className="font-medium">Confirm import</span> — nothing is
+              saved until you confirm.
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-foreground">Preview does not create contacts.</span> Pick a
+              client, list target, and CSV file, then press <span className="font-medium">Preview</span>.
+              Press <span className="font-medium">Confirm import</span> only when the preview looks right.
+            </>
+          )}{" "}
+          Expected column headings include:{" "}
+          <span className="font-mono text-xs text-foreground">
+            {CANONICAL_IMPORT_HEADINGS.join(", ")}
           </span>
-          . Legacy aliases (email, full_name, first_name, last_name, company,
-          title, domain, source) remain supported.
+          . Legacy aliases (email, full_name, company, …) still work.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -147,25 +147,34 @@ export function CsvImportForm({ clients, listsByClientId = {} }: Props) {
         >
           <div className="grid gap-2 sm:max-w-md">
             <Label htmlFor="clientId">Client workspace</Label>
-            <select
-              id="clientId"
-              name="clientId"
-              required
-              value={selectedClientId}
-              onChange={(e) => {
-                setSelectedClientId(e.target.value);
-                setExistingListId("");
-                resetPreview();
-              }}
-              className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              <option value="">Select client…</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            {lockedClientId ? (
+              <>
+                <input type="hidden" name="clientId" value={lockedClientId} />
+                <p className="rounded-md border border-border/80 bg-muted/40 px-3 py-2 text-sm">
+                  {clients.find((c) => c.id === lockedClientId)?.name ?? "This client"}
+                </p>
+              </>
+            ) : (
+              <select
+                id="clientId"
+                name="clientId"
+                required
+                value={selectedClientId}
+                onChange={(e) => {
+                  setSelectedClientId(e.target.value);
+                  setExistingListId("");
+                  resetPreview();
+                }}
+                className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                <option value="">Select client…</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="grid gap-2 sm:max-w-md">
             <Label htmlFor="existingListId">Use existing list (optional)</Label>
@@ -352,17 +361,26 @@ function PreviewPanel({
           No rows detected in this file.
         </p>
       ) : (
-        <div className="max-h-96 overflow-auto rounded-md border border-border/70">
+      <div className="max-h-[28rem] overflow-auto rounded-md border border-border/70">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12">#</TableHead>
+                <TableHead className="w-10">#</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>Employer</TableHead>
+                <TableHead>Industry</TableHead>
+                <TableHead>First Name</TableHead>
+                <TableHead>Last Name</TableHead>
+                <TableHead>City</TableHead>
+                <TableHead>Country</TableHead>
+                <TableHead>LinkedIn</TableHead>
+                <TableHead>Job1 Title</TableHead>
+                <TableHead>A Emails</TableHead>
+                <TableHead>Mobile Number</TableHead>
+                <TableHead>Office Number</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Readiness</TableHead>
-                <TableHead>Reason</TableHead>
+                <TableHead className="min-w-[140px]">Reason</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -371,33 +389,35 @@ function PreviewPanel({
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {row.rowNumber}
                   </TableCell>
-                  <TableCell className="font-medium">
-                    {row.displayName || (
-                      <span className="text-xs text-muted-foreground">—</span>
+                  <TableCell className="max-w-[120px] truncate text-sm font-medium">
+                    {row.displayName || "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[120px] truncate text-xs">{row.employer || "—"}</TableCell>
+                  <TableCell className="max-w-[100px] truncate text-xs">{row.industry || "—"}</TableCell>
+                  <TableCell className="max-w-[90px] truncate text-xs">{row.firstName || "—"}</TableCell>
+                  <TableCell className="max-w-[90px] truncate text-xs">{row.lastName || "—"}</TableCell>
+                  <TableCell className="max-w-[90px] truncate text-xs">{row.city || "—"}</TableCell>
+                  <TableCell className="max-w-[90px] truncate text-xs">{row.country || "—"}</TableCell>
+                  <TableCell className="max-w-[100px] truncate text-xs">
+                    {row.linkedIn ? (
+                      <span title={row.linkedIn}>Yes</span>
+                    ) : (
+                      "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.company || "—"}
+                  <TableCell className="max-w-[120px] truncate text-xs">{row.jobTitle || "—"}</TableCell>
+                  <TableCell className="max-w-[140px] truncate font-mono text-xs">
+                    {row.email ?? "—"}
                   </TableCell>
-                  <TableCell>
-                    {row.email ?? (
-                      <span
-                        className="text-xs text-muted-foreground"
-                        title="No valid email on this row."
-                      >
-                        No email
-                      </span>
-                    )}
-                  </TableCell>
+                  <TableCell className="max-w-[100px] truncate text-xs">{row.mobilePhone || "—"}</TableCell>
+                  <TableCell className="max-w-[100px] truncate text-xs">{row.officePhone || "—"}</TableCell>
                   <TableCell>
                     <PreviewStatusBadge status={row.status} />
                   </TableCell>
                   <TableCell>
                     <PreviewReadinessBadge readiness={row.readiness} />
                   </TableCell>
-                  <TableCell className="max-w-xs text-xs text-muted-foreground">
-                    {row.reason}
-                  </TableCell>
+                  <TableCell className="max-w-xs text-xs text-muted-foreground">{row.reason}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

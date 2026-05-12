@@ -10,21 +10,21 @@ import {
 } from "./contact-import-contract";
 
 describe("contact import contract — canonical headings", () => {
-  it("exposes the exact heading list Greg approved", () => {
+  it("exposes the staff-facing heading list (optional Location last)", () => {
     expect([...CANONICAL_IMPORT_HEADINGS]).toEqual([
       "Name",
       "Employer",
-      "Title",
+      "Industry",
       "First Name",
       "Last Name",
-      "Location",
       "City",
       "Country",
       "LinkedIn",
       "Job1 Title",
       "A Emails",
-      "Mobile Phone Number",
+      "Mobile Number",
       "Office Number",
+      "Location",
     ]);
   });
 
@@ -34,10 +34,9 @@ describe("contact import contract — canonical headings", () => {
 
   it("normalizes headings case-insensitively and collapses whitespace", () => {
     expect(normalizeHeading("  LinkedIn  ")).toBe("linkedin");
-    expect(normalizeHeading("Mobile Phone Number")).toBe(
-      "mobile phone number",
-    );
+    expect(normalizeHeading("Mobile Number")).toBe("mobile number");
     expect(normalizeHeading("A\tEmails")).toBe("a emails");
+    expect(normalizeHeading("Linkedin")).toBe("linkedin");
   });
 });
 
@@ -46,6 +45,7 @@ describe("contact import contract — row mapping", () => {
     const mapped = mapContactRow({
       Name: "Ada Lovelace",
       Employer: "Analytical Engine Co",
+      Industry: "Software",
       Title: "Chief Algorithmist",
       "First Name": "Ada",
       "Last Name": "Lovelace",
@@ -55,13 +55,14 @@ describe("contact import contract — row mapping", () => {
       LinkedIn: "https://linkedin.com/in/ada",
       "Job1 Title": "Mathematician",
       "A Emails": "ada@example.com",
-      "Mobile Phone Number": "+44 7000 000000",
+      "Mobile Number": "+44 7000 000000",
       "Office Number": "+44 20 0000 0000",
     });
 
     expect(mapped).toEqual({
       fullName: "Ada Lovelace",
       company: "Analytical Engine Co",
+      industry: "Software",
       title: "Chief Algorithmist",
       firstName: "Ada",
       lastName: "Lovelace",
@@ -84,7 +85,7 @@ describe("contact import contract — row mapping", () => {
     expect(mapped.email).toBe("op@example.com");
   });
 
-  it("uses `Job1 Title` only as a fallback when Title is empty", () => {
+  it("uses the first non-empty title value when both Title and Job1 Title are present", () => {
     const both = mapContactRow({ Title: "CTO", "Job1 Title": "Engineer" });
     expect(both.title).toBe("CTO");
 
@@ -99,7 +100,7 @@ describe("contact import contract — row mapping", () => {
     const mapped = mapContactRow({
       "A Emails": "",
       LinkedIn: "",
-      "Mobile Phone Number": "",
+      "Mobile Number": "",
       "Office Number": "",
       City: "",
       Country: "",
@@ -129,6 +130,13 @@ describe("contact import contract — row mapping", () => {
     expect(mapped.lastName).toBe("Erator");
     expect(mapped.fullName).toBe("Op Erator");
   });
+
+  it("still accepts legacy Mobile Phone Number heading", () => {
+    const mapped = mapContactRow({
+      "Mobile Phone Number": "+1 415 555 0100",
+    });
+    expect(mapped.mobilePhone).toBe("+1 415 555 0100");
+  });
 });
 
 describe("contact import contract — validity rules", () => {
@@ -145,7 +153,7 @@ describe("contact import contract — validity rules", () => {
   });
 
   it("treats a mobile-phone-only row as a valid (non-email-sendable) contact intake", () => {
-    const mapped = mapContactRow({ "Mobile Phone Number": "+44 7000 000000" });
+    const mapped = mapContactRow({ "Mobile Number": "+44 7000 000000" });
     expect(rowHasOutreachIdentifier(mapped)).toBe(true);
     expect(rowIsEmailSendable(mapped)).toBe(false);
   });

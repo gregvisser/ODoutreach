@@ -510,7 +510,7 @@ const sourcesModule: TrainingModule = {
   title: "Sources — importing contacts",
   tagline: "Bring contacts into the OpensDoors workspace via RocketReach or CSV.",
   purpose:
-    "Sources (CSV on the Contacts page, RocketReach inside each client workspace) is how you bring prospects in. Every saved import is copied into the global Universe automatically — deduplicated — and also attached to the named client list you choose. Build new client lists from the Universe when you want to reuse the same people across workspaces. Sequences always target exactly one client-specific list.",
+    "Each client workspace has a Sources tab for CSV upload and RocketReach search. Upload → Preview → Confirm saves people to Universe (shared, one row per person) and to the list you name in that workspace. Open Universe to filter individual contacts and create another list for any client. Deleting a client list does not remove people from Universe. Sequences always target one client list.",
   details: [
     "Imports don't bypass suppression. Suppression is applied at enrollment time, so safe-to-import and safe-to-email are two different things.",
     "Contact rows are valid if they have at least one of: email, LinkedIn, mobile phone, or office phone. They are ready-to-email only if they also have an email address — only ready-to-email contacts are included in sends.",
@@ -529,17 +529,17 @@ const sourcesModule: TrainingModule = {
     {
       title: "Understand Universe vs client lists",
       detail:
-        "Universe is the shared OpensDoors warehouse (sidebar → Universe). Client lists belong to one workspace and are what sequences send to. Flow: Import → Universe → select contacts → create client list → pick that list in Outreach.",
+        "Universe (sidebar) lists individual people you can filter and reuse. Client lists belong to one workspace and are what sequences send to. Flow: import in Sources → Universe → pick people → create list → choose that list in Outreach.",
     },
     {
       title: "Pick or create the target email list",
       detail:
-        'Either select an existing list or type a new list name in "Or create a new list" (for example "OpensDoors — UK CFOs April 2026"). The import is saved against that list and mirrored into Universe.',
+        'Either select an existing list or type a new list name in "Or create a new list" (for example "OpensDoors — UK CFOs April 2026"). The import attaches rows to that list and updates Universe.',
     },
     {
       title: "Choose your import source",
       detail:
-        "Simple search (RocketReach) for prospecting or Raw JSON for already-shaped payloads. For CSV imports click Open CSV import; the Contacts page filters automatically to this client.",
+        "CSV: upload in Sources, preview, then confirm. RocketReach: run a search in Sources (credits may apply when the search runs). Advanced JSON is optional and tucked away under Advanced.",
     },
     {
       title: "Run the import (max 10 per run)",
@@ -567,7 +567,7 @@ const sourcesModule: TrainingModule = {
   commonMistakes: [
     "Importing into a list you'll never name again — future sequences won't know which list to target.",
     "Running imports before suppression is attached — suppression blocks at enrollment, so you get false positives on 'eligible'.",
-    "Uploading CSVs with custom headings — stick to the accepted headings (Name, Employer, Title, First/Last Name, Emails, Phone, etc).",
+    "Uploading CSVs with random column names — use the headings shown in Sources (Name, Employer, Industry, First Name, Last Name, City, Country, LinkedIn, Job1 Title, A Emails, Mobile Number, Office Number, optional Location).",
     "Running giant imports to save time — max 10 per run exists to keep data quality honest.",
   ],
   nextSteps: [
@@ -594,7 +594,7 @@ const sourcesModule: TrainingModule = {
   },
   outcomes: [
     "You can run a small RocketReach or CSV import into a named list.",
-    "You know imports also land in Universe for deduped reuse across clients.",
+    "You know CSV and RocketReach imports run from the client Sources tab and also update Universe.",
     "You know the difference between Valid and Ready-to-email.",
     "You always run Sources after Suppression is configured, not before.",
   ],

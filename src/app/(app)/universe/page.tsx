@@ -28,6 +28,7 @@ export default async function UniversePage({ searchParams }: Props) {
   const company = one(sp.company) ?? "";
   const jobTitle = one(sp.jobTitle) ?? "";
   const country = one(sp.country) ?? "";
+  const city = one(sp.city) ?? "";
   const sourceType = one(sp.sourceType) ?? "ALL";
   const sort = one(sp.sort) ?? "lastSeen";
   const page = Math.max(1, Number(one(sp.page) ?? "1") || 1);
@@ -40,6 +41,7 @@ export default async function UniversePage({ searchParams }: Props) {
     company,
     jobTitle,
     country,
+    city,
     sourceType: stRaw === "ALL" ? "ALL" : (stRaw as UniverseTableQuery["sourceType"]),
     sort: sort as UniverseTableQuery["sort"],
     page,
@@ -56,12 +58,7 @@ export default async function UniversePage({ searchParams }: Props) {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Universe</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
-          Global OpensDoors contact warehouse — every CSV and RocketReach import lands here first,
-          deduplicated, with full attribution. Pick contacts and create a{" "}
-          <strong>client-specific</strong> list, then use that list when building an outreach sequence.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Universe is shared across operators. Outreach lists and sequences stay inside each client workspace.
+          All imported contacts are stored here for reuse across client workspaces.
         </p>
       </div>
 
@@ -80,6 +77,7 @@ export default async function UniversePage({ searchParams }: Props) {
             company,
             jobTitle,
             country,
+            city,
             sourceType,
             sort,
           }}

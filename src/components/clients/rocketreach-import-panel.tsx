@@ -8,7 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ROCKETREACH_IMPORT_CONFIRMATION_PHRASE } from "@/lib/clients/rocketreach-import-safety";
+import {
+  ROCKETREACH_IMPORT_CONFIRMATION_PHRASE,
+  isRocketReachImportConfirmationValid,
+} from "@/lib/clients/rocketreach-import-safety";
 import {
   Card,
   CardContent,
@@ -16,7 +19,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type ExistingList = {
   id: string;
@@ -42,6 +44,7 @@ export function RocketReachImportPanel({
   const [companyName, setCompanyName] = useState("");
   const [currentTitle, setCurrentTitle] = useState("");
   const [location, setLocation] = useState("");
+  const [maxResults, setMaxResults] = useState(10);
   const [existingListId, setExistingListId] = useState("");
   const [newListName, setNewListName] = useState("");
   const [confirmationPhrase, setConfirmationPhrase] = useState("");
@@ -51,38 +54,22 @@ export function RocketReachImportPanel({
 
   const hasListTarget =
     existingListId.trim().length > 0 || newListName.trim().length > 0;
-  const confirmationOk =
-    confirmationPhrase.trim() === ROCKETREACH_IMPORT_CONFIRMATION_PHRASE;
-
-  function showResult(text: string) {
-    setMessage(text);
-  }
+  const confirmationOk = isRocketReachImportConfirmationValid(confirmationPhrase);
 
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>RocketReach import</CardTitle>
+        <CardTitle>RocketReach search</CardTitle>
         <CardDescription>
-          Search RocketReach and add matching contacts to a client list. Searching uses
-          live RocketReach credits and imports at most 10 contacts per run; it never sends mail.
-          <br />
-          <strong>
-            Imports must be saved to a named email list. Lists are used later
-            by sequences.
-          </strong>
-          <br />
-          <span className="text-xs text-muted-foreground">
-            RocketReach does not have a free preview in this workflow: search and lookup use credits.
-            Type the confirmation phrase before searching, then review the result message.
-            Do-not-contact checks are applied after import.
-          </span>
+          Search RocketReach, then import up to 10 matching people into a named list in this workspace.
+          Contacts are also saved to Universe. This never sends email. RocketReach charges may apply when
+          the search runs — there is no separate free preview step in this workflow.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {!apiKeyConfigured ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-            <strong>Not configured:</strong> set <code className="text-xs">ROCKETREACH_API_KEY</code>{" "}
-            on the server to enable imports. No secrets are shown here.
+            <strong>Not configured:</strong> RocketReach is not enabled on this server yet.
           </p>
         ) : null}
 
@@ -101,7 +88,7 @@ export function RocketReachImportPanel({
             >
               <option value="">
                 {existingLists.length === 0
-                  ? "No existing lists yet — type a new name →"
+                  ? "No lists yet — type a new name below"
                   : "None (create a new list)"}
               </option>
               {existingLists.map((l) => (
@@ -127,16 +114,14 @@ export function RocketReachImportPanel({
         </div>
         {!hasListTarget ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Pick an existing list or type a new list name to enable import.
+            Pick an existing list or type a new list name before running a search.
           </p>
         ) : null}
 
         <div className="mt-4 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
-          <p className="font-medium">Credit warning</p>
+          <p className="font-medium">RocketReach may use credits</p>
           <p className="mt-1 text-xs">
-            This search calls RocketReach People Search and Person Lookup. It may consume credits and
-            write contacts immediately after the server validates results. Type{" "}
-            <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
+            Type <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
           </p>
           <div className="mt-2 max-w-md space-y-1">
             <Label htmlFor="rr-confirm">Confirmation phrase</Label>
@@ -150,113 +135,136 @@ export function RocketReachImportPanel({
           </div>
         </div>
 
-        <Tabs defaultValue="builder" className="mt-4 w-full">
-          <TabsList>
-            <TabsTrigger value="builder">Simple search</TabsTrigger>
-            <TabsTrigger value="raw">Raw JSON</TabsTrigger>
-          </TabsList>
-          <TabsContent value="builder" className="space-y-3 pt-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="rr-keyword">Keyword</Label>
-                <Input
-                  id="rr-keyword"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rr-company">Company name</Label>
-                <Input
-                  id="rr-company"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rr-title">Current title</Label>
-                <Input
-                  id="rr-title"
-                  value={currentTitle}
-                  onChange={(e) => setCurrentTitle(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rr-loc">Location</Label>
-                <Input id="rr-loc" value={location} onChange={(e) => setLocation(e.target.value)} />
-              </div>
+        <div className="mt-6 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="rr-keyword">Keyword</Label>
+              <Input
+                id="rr-keyword"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="Optional"
+              />
             </div>
-            <Button
-              type="button"
-              disabled={pending || !apiKeyConfigured || !hasListTarget || !confirmationOk}
-              onClick={() => {
-                setMessage(null);
-                startTransition(async () => {
-                  const r = await runRocketReachImportAction({
-                    clientId,
-                    mode: "builder",
-                    keyword: keyword || undefined,
-                    companyName: companyName || undefined,
-                    currentTitle: currentTitle || undefined,
-                    location: location || undefined,
-                    pageSize: 10,
-                    existingListId: existingListId || undefined,
-                    newListName: newListName || undefined,
-                    confirmationPhrase,
-                  });
-                  if (r.ok) {
-                    showResult(
-                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}. Universe: ${String(r.universeCreated)} new, ${String(r.universeMatched)} matched existing.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
-                    );
-                    router.refresh();
-                  } else {
-                    showResult(r.error);
-                  }
+            <div className="space-y-1.5">
+              <Label htmlFor="rr-company">Employer</Label>
+              <Input
+                id="rr-company"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Company name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rr-title">Job1 Title</Label>
+              <Input
+                id="rr-title"
+                value={currentTitle}
+                onChange={(e) => setCurrentTitle(e.target.value)}
+                placeholder="Role or title"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rr-loc">Location</Label>
+              <Input
+                id="rr-loc"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="City, region, or country"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rr-max">Max results</Label>
+              <Input
+                id="rr-max"
+                type="number"
+                min={1}
+                max={10}
+                value={maxResults}
+                onChange={(e) => setMaxResults(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+              />
+            </div>
+          </div>
+          <Button
+            type="button"
+            disabled={pending || !apiKeyConfigured || !hasListTarget || !confirmationOk}
+            onClick={() => {
+              setMessage(null);
+              startTransition(async () => {
+                const r = await runRocketReachImportAction({
+                  clientId,
+                  mode: "builder",
+                  keyword: keyword || undefined,
+                  companyName: companyName || undefined,
+                  currentTitle: currentTitle || undefined,
+                  location: location || undefined,
+                  pageSize: maxResults,
+                  existingListId: existingListId || undefined,
+                  newListName: newListName || undefined,
+                  confirmationPhrase,
                 });
-              }}
-            >
-              {pending ? "Importing…" : "Run import (max 10)"}
-            </Button>
-          </TabsContent>
-          <TabsContent value="raw" className="space-y-3 pt-4">
-            <Label htmlFor="rr-raw">POST body for /api/v2/person/search</Label>
-            <Textarea
-              id="rr-raw"
-              rows={10}
-              value={rawJson}
-              onChange={(e) => setRawJson(e.target.value)}
-              className="font-mono text-xs"
-            />
-            <Button
-              type="button"
-              disabled={pending || !apiKeyConfigured || !hasListTarget || !confirmationOk}
-              onClick={() => {
-                setMessage(null);
-                startTransition(async () => {
-                  const r = await runRocketReachImportAction({
-                    clientId,
-                    mode: "raw",
-                    rawJson,
-                    existingListId: existingListId || undefined,
-                    newListName: newListName || undefined,
-                    confirmationPhrase,
-                  });
-                  if (r.ok) {
-                    showResult(
-                      `Imported ${String(r.imported)} into list "${r.contactListName}" (attached ${String(r.listAttachedAdded)} / skipped ${String(r.listAttachedSkipped)}). Skipped — no email: ${String(r.skippedNoEmail)}, invalid: ${String(r.skippedInvalid)}, duplicate: ${String(r.skippedDuplicate)}. Universe: ${String(r.universeCreated)} new, ${String(r.universeMatched)} matched existing.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
-                    );
-                    router.refresh();
-                  } else {
-                    showResult(r.error);
-                  }
+                if (r.ok) {
+                  setMessage(
+                    `Done — saved ${String(r.imported)} people to list “${r.contactListName}” and Universe (${String(r.universeCreated)} new, ${String(r.universeMatched)} matched). Skipped: no email ${String(r.skippedNoEmail)}, invalid ${String(r.skippedInvalid)}, duplicate ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                  );
+                  router.refresh();
+                } else {
+                  setMessage(r.error);
+                }
+              });
+            }}
+          >
+            {pending ? "Working…" : "Search and import"}
+          </Button>
+        </div>
+
+        <details className="mt-6 rounded-md border border-border/80 bg-muted/30 p-3 text-sm">
+          <summary className="cursor-pointer font-medium text-foreground">Advanced (optional)</summary>
+          <p className="mt-2 text-xs text-muted-foreground">
+            For operators who already have a RocketReach People Search JSON body. Same credit rules apply.
+          </p>
+          <Label htmlFor="rr-raw" className="mt-3 block">
+            Custom search JSON
+          </Label>
+          <Textarea
+            id="rr-raw"
+            rows={8}
+            value={rawJson}
+            onChange={(e) => setRawJson(e.target.value)}
+            className="mt-1 font-mono text-xs"
+          />
+          <Button
+            type="button"
+            className="mt-2"
+            variant="secondary"
+            size="sm"
+            disabled={pending || !apiKeyConfigured || !hasListTarget || !confirmationOk}
+            onClick={() => {
+              setMessage(null);
+              startTransition(async () => {
+                const r = await runRocketReachImportAction({
+                  clientId,
+                  mode: "raw",
+                  rawJson,
+                  existingListId: existingListId || undefined,
+                  newListName: newListName || undefined,
+                  confirmationPhrase,
                 });
-              }}
-            >
-              {pending ? "Importing…" : "Run import from JSON"}
-            </Button>
-          </TabsContent>
-        </Tabs>
+                if (r.ok) {
+                  setMessage(
+                    `Done — saved ${String(r.imported)} people to list “${r.contactListName}”. Universe: ${String(r.universeCreated)} new, ${String(r.universeMatched)} matched.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                  );
+                  router.refresh();
+                } else {
+                  setMessage(r.error);
+                }
+              });
+            }}
+          >
+            {pending ? "Working…" : "Import from custom JSON"}
+          </Button>
+        </details>
 
         {message ? (
           <p className="mt-4 whitespace-pre-wrap text-sm text-foreground">{message}</p>
