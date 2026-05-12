@@ -29,9 +29,9 @@ import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
 
 export const SEQUENCE_STATUS_LABELS: Record<ClientEmailSequenceStatus, string> =
   {
-    DRAFT: "Draft",
-    READY_FOR_REVIEW: "Ready for review",
-    APPROVED: "Approved",
+    DRAFT: "Editing",
+    READY_FOR_REVIEW: "Ready to activate",
+    APPROVED: "Active",
     ARCHIVED: "Archived",
   };
 

@@ -17,15 +17,8 @@ import { requireClientEmailTemplateMutator } from "@/server/email-templates/muta
 import { requireClientAccess } from "@/server/tenant/access";
 
 /**
- * Server actions used by the Outreach page "Client email templates"
- * section (PR D4a). Every action:
- *   1. re-verifies OpensDoors staff auth
- *   2. re-verifies client access + mutator permission
- *   3. delegates to a pure-ish server helper in
- *      `src/server/email-templates/mutations.ts`
- *   4. revalidates the outreach path and redirects back with a flash
- *
- * None of these actions send email or change mailbox/OAuth state.
+ * Server actions for client email templates (create/update/archive).
+ * Redirects return to the Templates tab with flash query params.
  */
 
 type ActionFlash =
@@ -41,7 +34,7 @@ function redirectBack(clientId: string, flash: ActionFlash, focus?: string): nev
   if (focus) params.set("templateId", focus);
   const search = params.toString();
   redirect(
-    `/clients/${clientId}/outreach${search ? `?${search}` : ""}#client-email-templates`,
+    `/clients/${clientId}/templates${search ? `?${search}` : ""}#client-email-templates`,
   );
 }
 
@@ -79,10 +72,17 @@ export async function createClientEmailTemplateAction(
       subject,
       content,
     });
+    revalidatePath(`/clients/${clientId}/templates`);
     revalidatePath(`/clients/${clientId}/outreach`);
     redirectBack(
       clientId,
-      { kind: "ok", message: `Saved draft — ${created.name}` },
+      {
+        kind: "ok",
+        message:
+          created.status === "APPROVED"
+            ? `Saved template — ${created.name}`
+            : `Saved draft — ${created.name} (fix unknown placeholders to use in sequences)`,
+      },
       created.id,
     );
   } catch (e) {
@@ -116,11 +116,13 @@ export async function updateClientEmailTemplateAction(
     const updated = await updateEmailTemplate({
       templateId,
       clientId,
+      staffUserId: staff.id,
       name,
       category,
       subject,
       content,
     });
+    revalidatePath(`/clients/${clientId}/templates`);
     revalidatePath(`/clients/${clientId}/outreach`);
     redirectBack(
       clientId,
@@ -173,7 +175,7 @@ async function runStatusAction(
           clientId,
           staffUserId: staff.id,
         });
-        okMessage = `Approved — ${row.name}`;
+        okMessage = `Saved — ${row.name}`;
         break;
       }
       case "archive": {
@@ -191,10 +193,11 @@ async function runStatusAction(
           clientId,
           staffUserId: staff.id,
         });
-        okMessage = `Returned to draft — ${row.name}`;
+        okMessage = `Restored as draft — ${row.name}`;
         break;
       }
     }
+    revalidatePath(`/clients/${clientId}/templates`);
     revalidatePath(`/clients/${clientId}/outreach`);
     redirectBack(clientId, { kind: "ok", message: okMessage }, templateId);
   } catch (e) {

@@ -25,6 +25,9 @@ import {
   SEQUENCE_STATUS_LABELS,
   SEQUENCE_STEP_LABELS,
 } from "@/lib/email-sequences/sequence-policy";
+import {
+  TEMPLATE_STATUS_LABELS,
+} from "@/lib/email-templates/template-policy";
 import type {
   ClientEmailSequencesOverview,
   SequenceSummary,
@@ -194,8 +197,8 @@ export function ClientEmailSequencesPanel(props: Props) {
           <h3 className="text-sm font-semibold">Sequences</h3>
           {sequences.length === 0 ? (
             <p className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center text-xs text-muted-foreground">
-              No sequences yet. Create one above to save a draft — sending stays
-              disabled.
+              No sequences yet. Create one above — live sends run from Schedule send preparation
+              below once a sequence is active and recipients are enrolled.
             </p>
           ) : (
             <ul className="space-y-3">
@@ -218,8 +221,9 @@ export function ClientEmailSequencesPanel(props: Props) {
         </div>
 
         <p className="rounded-md border border-dashed border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-          <strong>Safety:</strong> Saving or approving a sequence does not send
-          email. Sending remains disabled in this step.
+          <strong>Note:</strong> Saving a sequence does not send mail. Use{" "}
+          <span className="font-medium text-foreground">Schedule send preparation</span>{" "}
+          below to prepare rows and queue sends when checks pass.
         </p>
       </CardContent>
     </Card>
@@ -318,7 +322,7 @@ function SequenceCard({
                       : "outline"
                   }
                 >
-                  {step.template.status}
+                  {TEMPLATE_STATUS_LABELS[step.template.status]}
                 </Badge>
               </span>
             </li>
@@ -328,7 +332,7 @@ function SequenceCard({
 
       {sequence.status === "APPROVED" && sequence.approvedBy && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Approved by{" "}
+          Activated by{" "}
           <span className="font-medium">
             {sequence.approvedBy.name ?? sequence.approvedBy.email}
           </span>{" "}
@@ -346,14 +350,14 @@ function SequenceCard({
       {!canApprove && sequence.status !== "ARCHIVED" && (
         <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
           {!readiness.hasIntroduction
-            ? "Add an introduction step with a non-archived template before this sequence can be approved."
+            ? "Add an introduction step with a non-archived template before you can activate this sequence."
             : readiness.unusableStepCount > 0
               ? "A step uses an archived template — fix or replace it first."
               : readiness.emailSendableCount === 0
                 ? "Target list has 0 email-sendable contacts."
                 : readiness.mismatchedStepCount > 0
                   ? "A step's category does not match its template."
-                  : "Approval checks not yet satisfied."}
+                  : "Activation checks not yet satisfied."}
         </p>
       )}
 
@@ -370,7 +374,7 @@ function SequenceCard({
                 variant="outline"
                 disabled={!canReady}
               >
-                Mark ready for review
+                Mark ready to activate
               </Button>
             </form>
           )}
@@ -380,14 +384,14 @@ function SequenceCard({
                 <input type="hidden" name="clientId" value={clientId} />
                 <input type="hidden" name="sequenceId" value={sequence.id} />
                 <Button type="submit" size="sm" disabled={!canApprove}>
-                  Approve
+                  Activate sequence
                 </Button>
               </form>
               <form action={returnClientEmailSequenceToDraftAction}>
                 <input type="hidden" name="clientId" value={clientId} />
                 <input type="hidden" name="sequenceId" value={sequence.id} />
                 <Button type="submit" size="sm" variant="outline">
-                  Return to draft
+                  Back to editing
                 </Button>
               </form>
             </>
@@ -397,7 +401,7 @@ function SequenceCard({
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="sequenceId" value={sequence.id} />
               <Button type="submit" size="sm" variant="outline">
-                Pull back to draft
+                Back to editing
               </Button>
             </form>
           )}
@@ -406,7 +410,7 @@ function SequenceCard({
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="sequenceId" value={sequence.id} />
               <Button type="submit" size="sm" variant="outline">
-                Restore to draft
+                Back to editing
               </Button>
             </form>
           )}
@@ -537,7 +541,7 @@ function EnrollmentBlock({
             </Button>
           </form>
           <span className="text-[11px] text-muted-foreground">
-            Sending remains disabled.
+            Live sends use Schedule send preparation below.
           </span>
         </div>
       )}

@@ -44,8 +44,8 @@ export const TEMPLATE_STATUS_LABELS: Record<
   string
 > = {
   DRAFT: "Draft",
-  READY_FOR_REVIEW: "Ready for review",
-  APPROVED: "Approved",
+  READY_FOR_REVIEW: "In review",
+  APPROVED: "Saved",
   ARCHIVED: "Archived",
 };
 

@@ -1,7 +1,5 @@
 import {
-  approveClientEmailTemplateAction,
   archiveClientEmailTemplateAction,
-  markClientEmailTemplateReadyAction,
   returnClientEmailTemplateToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/template-actions";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +34,8 @@ import type {
 import { ClientEmailTemplateForm } from "./client-email-template-form";
 
 /**
- * Outreach-page section for per-client approved email templates
- * (PR D4a). Server component — renders counts, placeholder helper,
- * the create/edit form, and the per-category list of existing rows.
- *
- * Sending is not wired. Every action is explicit about that in copy.
+ * Templates workspace — create/edit reusable content for sequences.
+ * Server component: counts, form, category lists. No sends.
  */
 
 type Props = {
@@ -106,17 +101,17 @@ export function ClientEmailTemplatesPanel(props: Props) {
     {
       label: TEMPLATE_STATUS_LABELS.APPROVED,
       value: counts.byStatus.APPROVED,
-      hint: "Eligible for future sequences",
+      hint: "Ready to pick in Outreach sequences",
     },
     {
       label: TEMPLATE_STATUS_LABELS.READY_FOR_REVIEW,
       value: counts.byStatus.READY_FOR_REVIEW,
-      hint: "Awaiting OpensDoors approval",
+      hint: "Legacy status — open and save to refresh",
     },
     {
       label: TEMPLATE_STATUS_LABELS.DRAFT,
       value: counts.byStatus.DRAFT,
-      hint: "Work in progress",
+      hint: "Fix placeholders or required fields, then save",
     },
     {
       label: TEMPLATE_STATUS_LABELS.ARCHIVED,
@@ -131,11 +126,10 @@ export function ClientEmailTemplatesPanel(props: Props) {
       className="scroll-mt-20 border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Client email templates</CardTitle>
+        <CardTitle>Saved templates</CardTitle>
         <CardDescription>
-          Templates are approved per client before they can be used in a sequence.
-          Saving or approving a template does not send email — sequences and sending
-          are not enabled in this step.
+          Create and edit reusable emails. Saving does not send mail. Unknown placeholders keep a
+          row in Draft until you fix them — then Save moves it to Saved for use in sequences.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -179,8 +173,8 @@ export function ClientEmailTemplatesPanel(props: Props) {
           <aside className="rounded-lg border border-border/70 bg-muted/20 p-4">
             <h3 className="text-sm font-semibold">Supported placeholders</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Use <code>{"{{ key }}"}</code> in subject or content. Unknown
-              placeholders block approval. Snake_case is canonical.
+              Use <code>{"{{ key }}"}</code> in subject or content. Unknown placeholders must be
+              fixed before a template becomes Saved. Snake_case is canonical.
             </p>
             <PlaceholderGroupList
               title="Target recipient / company"
@@ -213,7 +207,7 @@ export function ClientEmailTemplatesPanel(props: Props) {
                       {TEMPLATE_CATEGORY_LABELS[cat]}
                     </p>
                     <span className="text-xs text-muted-foreground tabular-nums">
-                      {rows.length} total · {counts.approvedByCategory[cat]} approved
+                      {rows.length} total · {counts.approvedByCategory[cat]} sequence-ready
                     </span>
                   </div>
                   {rows.length === 0 ? (
@@ -315,68 +309,22 @@ function TemplateRow({
       <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
         <dt className="font-medium">Updated</dt>
         <dd className="tabular-nums">{formatDate(template.updatedAtIso)}</dd>
-        {template.status === "APPROVED" && template.approvedBy && (
-          <>
-            <dt className="font-medium">Approved by</dt>
-            <dd className="truncate">
-              {template.approvedBy.name ?? template.approvedBy.email}
-            </dd>
-            <dt className="font-medium">Approved</dt>
-            <dd className="tabular-nums">{formatDate(template.approvedAtIso)}</dd>
-          </>
-        )}
       </dl>
       {hasUnknown && (
         <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
           Unknown placeholders:{" "}
-          {placeholders.unknown.map((k) => `{{${k}}}`).join(", ")} — approval
-          blocked.
+          {placeholders.unknown.map((k) => `{{${k}}}`).join(", ")} — fix before the
+          template can be used in sequences.
         </p>
       )}
       {canMutate && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {template.status === "DRAFT" && (
-            <form action={markClientEmailTemplateReadyAction}>
-              <input type="hidden" name="clientId" value={clientId} />
-              <input type="hidden" name="templateId" value={template.id} />
-              <Button type="submit" size="sm" variant="outline">
-                Mark ready for review
-              </Button>
-            </form>
-          )}
-          {template.status === "READY_FOR_REVIEW" && (
-            <>
-              <form action={approveClientEmailTemplateAction}>
-                <input type="hidden" name="clientId" value={clientId} />
-                <input type="hidden" name="templateId" value={template.id} />
-                <Button type="submit" size="sm">
-                  Approve
-                </Button>
-              </form>
-              <form action={returnClientEmailTemplateToDraftAction}>
-                <input type="hidden" name="clientId" value={clientId} />
-                <input type="hidden" name="templateId" value={template.id} />
-                <Button type="submit" size="sm" variant="outline">
-                  Return to draft
-                </Button>
-              </form>
-            </>
-          )}
-          {template.status === "APPROVED" && (
-            <form action={returnClientEmailTemplateToDraftAction}>
-              <input type="hidden" name="clientId" value={clientId} />
-              <input type="hidden" name="templateId" value={template.id} />
-              <Button type="submit" size="sm" variant="outline">
-                Pull back to draft
-              </Button>
-            </form>
-          )}
           {template.status === "ARCHIVED" && (
             <form action={returnClientEmailTemplateToDraftAction}>
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="templateId" value={template.id} />
               <Button type="submit" size="sm" variant="outline">
-                Restore to draft
+                Restore as draft
               </Button>
             </form>
           )}

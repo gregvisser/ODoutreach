@@ -58,17 +58,14 @@ export function ClientEmailTemplateForm({
   templates,
 }: Props) {
   const editableTemplates = useMemo(
-    () =>
-      templates.filter(
-        (t) => t.status === "DRAFT" || t.status === "READY_FOR_REVIEW",
-      ),
+    () => templates.filter((t) => t.status !== "ARCHIVED"),
     [templates],
   );
 
   const [mode, setMode] = useState<FormMode>(() => {
     if (focusTemplateId) {
       const hit = templates.find((t) => t.id === focusTemplateId);
-      if (hit && (hit.status === "DRAFT" || hit.status === "READY_FOR_REVIEW")) {
+      if (hit && hit.status !== "ARCHIVED") {
         return { kind: "edit", templateId: hit.id };
       }
     }
@@ -127,7 +124,7 @@ export function ClientEmailTemplateForm({
             {mode.kind === "edit" ? "Edit template" : "New template"}
           </h3>
           <p className="text-xs text-muted-foreground">
-            For {clientName}. Saving or approving a template does not send email.
+            For {clientName}. Saving a template does not send email.
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
@@ -260,7 +257,7 @@ export function ClientEmailTemplateForm({
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={disabled}>
-            {mode.kind === "edit" ? "Save changes" : "Save draft"}
+            Save template
           </Button>
           {mode.kind === "edit" && (
             <Button

@@ -95,16 +95,31 @@ export async function createEmailTemplate(
   if (!validation.ok) {
     throw toValidationError(validation);
   }
+
+  const trimmed = {
+    name: input.name.trim(),
+    category: input.category as ClientEmailTemplateCategory,
+    subject: input.subject.trim(),
+    content: input.content.trim(),
+  };
+  const decision = canApproveTemplate(trimmed);
+  const status: ClientEmailTemplateStatus = decision.ok ? "APPROVED" : "DRAFT";
+
   return prisma.clientEmailTemplate.create({
     data: {
       clientId: input.clientId,
-      name: input.name.trim(),
-      category: input.category as ClientEmailTemplateCategory,
-      subject: input.subject.trim(),
-      content: input.content.trim(),
+      name: trimmed.name,
+      category: trimmed.category,
+      subject: trimmed.subject,
+      content: trimmed.content,
       createdByStaffUserId: input.staffUserId,
-      // Always start in DRAFT so the review/approval ledger stays clean.
-      status: "DRAFT",
+      status,
+      ...(decision.ok
+        ? {
+            approvedByStaffUserId: input.staffUserId,
+            approvedAt: new Date(),
+          }
+        : {}),
     },
   });
 }
@@ -112,6 +127,7 @@ export async function createEmailTemplate(
 export type UpdateTemplateInput = {
   templateId: string;
   clientId: string;
+  staffUserId: string;
   name: string;
   category: ClientEmailTemplateCategory | string;
   subject: string;
@@ -119,9 +135,9 @@ export type UpdateTemplateInput = {
 };
 
 /**
- * Update editable fields. Edits are only allowed when the template is
- * in DRAFT or READY_FOR_REVIEW; APPROVED / ARCHIVED require pulling the
- * template back to DRAFT first (separate status transition).
+ * Update editable fields for non-archived templates. When content passes
+ * placeholder + structural checks, the row is marked APPROVED so it can be
+ * picked in sequences without a separate approval step.
  */
 export async function updateEmailTemplate(
   input: UpdateTemplateInput,
@@ -138,11 +154,15 @@ export async function updateEmailTemplate(
   }
   ensureClientMatch(existing, input.clientId);
 
-  if (existing.status !== "DRAFT" && existing.status !== "READY_FOR_REVIEW") {
+  if (
+    existing.status !== "DRAFT" &&
+    existing.status !== "READY_FOR_REVIEW" &&
+    existing.status !== "APPROVED"
+  ) {
     throw new TemplateMutationError({
       code: "INVALID_STATUS_TRANSITION",
       message:
-        "Only draft or ready-for-review templates can be edited — move the template back to draft first.",
+        "Archived templates cannot be edited — restore from archive first.",
       currentStatus: existing.status,
     });
   }
@@ -157,13 +177,34 @@ export async function updateEmailTemplate(
     throw toValidationError(validation);
   }
 
+  const trimmed = {
+    name: input.name.trim(),
+    category: input.category as ClientEmailTemplateCategory,
+    subject: input.subject.trim(),
+    content: input.content.trim(),
+  };
+  const decision = canApproveTemplate(trimmed);
+  const nextStatus: ClientEmailTemplateStatus = decision.ok
+    ? "APPROVED"
+    : "DRAFT";
+
   return prisma.clientEmailTemplate.update({
     where: { id: input.templateId },
     data: {
-      name: input.name.trim(),
-      category: input.category as ClientEmailTemplateCategory,
-      subject: input.subject.trim(),
-      content: input.content.trim(),
+      name: trimmed.name,
+      category: trimmed.category,
+      subject: trimmed.subject,
+      content: trimmed.content,
+      status: nextStatus,
+      ...(decision.ok
+        ? {
+            approvedByStaffUserId: input.staffUserId,
+            approvedAt: new Date(),
+          }
+        : {
+            approvedByStaffUserId: null,
+            approvedAt: null,
+          }),
     },
   });
 }

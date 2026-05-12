@@ -275,12 +275,12 @@ export function ClientEmailSequenceForm({
         <p className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
           No <strong>Introduction</strong> email template yet.{" "}
           <a
-            href="#client-email-templates"
+            href={`/clients/${clientId}/templates`}
             className="font-medium underline underline-offset-2"
           >
             Create a template
           </a>{" "}
-          in the section above, then return here to attach it to the
+          on the Templates tab, then return here to attach it to the
           sequence.
         </p>
       )}
