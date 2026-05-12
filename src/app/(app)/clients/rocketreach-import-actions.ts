@@ -177,7 +177,7 @@ export async function runRocketReachImportAction(
     return {
       ok: false,
       error:
-        "Enter at least one of keyword, company, title, or location — or use raw JSON mode.",
+        "Enter at least one of keyword, company, title, or location — or use the admin advanced JSON import.",
     };
   }
 

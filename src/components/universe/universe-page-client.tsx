@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { UniverseContactFieldTableHeads } from "@/components/universe/universe-contact-field-table-heads";
+import { formatClientWorkspaceSelectLabel } from "@/lib/clients/client-workspace-select-label";
 import { cn } from "@/lib/utils";
 import type { UniverseTableRow } from "@/server/queries/contact-universe-list";
 
@@ -222,7 +223,7 @@ export function UniversePageClient({
           <div>
             <h2 className="text-sm font-medium">Create list from selected contacts</h2>
             <p className="text-xs text-muted-foreground">
-              Adds workspace contacts to the list you name. Contacts stay in Universe for reuse.
+              Adds workspace contacts to the list you name.
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -245,7 +246,7 @@ export function UniversePageClient({
             }
             const r = res.result;
             setActionMessage(
-              `Created list “${r.listName}” with ${String(r.addedToList)} contacts (${String(r.materializedNewContacts)} new in this workspace, ${String(r.reusedExistingContacts)} already there). Rows skipped in the list: ${String(r.listSkippedDuplicates)}; skipped with no email: ${String(r.skippedNoEmail)}.`,
+              `Created list “${r.listName}” with ${String(r.addedToList)} contacts (${String(r.materializedNewContacts)} new in this workspace, ${String(r.reusedExistingContacts)} already in this workspace). Rows skipped in the list: ${String(r.listSkippedDuplicates)}; skipped with no email: ${String(r.skippedNoEmail)}.`,
             );
             setSelected(new Set());
           }}
@@ -259,7 +260,9 @@ export function UniversePageClient({
               disabled={clients.length === 0}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Choose client" />
+                <SelectValue placeholder="Choose client">
+                  {formatClientWorkspaceSelectLabel(clients, clientId)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {clients.map((c) => (

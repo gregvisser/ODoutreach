@@ -264,6 +264,6 @@ export const CONTACT_IMPORT_CONTRACT_SUMMARY = {
     "Fields may be empty — only the twelve headings above are needed.",
     "Valid contact: not suppressed and has email, Linkedin URL, mobile number, or office number. Ready to email: valid and has email.",
     "Email is required to save a row today; Linkedin-only / phone-only persistence is a follow-up.",
-    "The parser still accepts older column spellings (e.g. Location, Title, LinkedIn, Mobile Phone Number); they are not shown in the list above.",
+    "Older spreadsheet column names (for example Location, Title, or LinkedIn) are still accepted when they clearly mean the same field.",
   ],
 } as const;
