@@ -82,6 +82,7 @@ export async function createClientContactListFromUniverseContacts(args: {
         location: u.location,
         city: u.city,
         country: u.country,
+        industry: u.industry,
         source: "MANUAL",
         universeContactId: u.id,
       },

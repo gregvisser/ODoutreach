@@ -16,27 +16,37 @@
  */
 
 /**
- * Canonical headings — exact names Greg specified. CSV importers must
- * accept these (they are matched case-insensitively with whitespace
- * collapsed via {@link normalizeHeading}). Fields may be empty.
+ * Greg’s twelve staff-visible CSV column labels (exact spelling for UI).
+ * Importers accept these case-insensitively via {@link normalizeHeading}.
+ * Fields may be empty.
  */
-export const CANONICAL_IMPORT_HEADINGS = [
+export const STAFF_VISIBLE_CONTACT_IMPORT_HEADERS = [
   "Name",
   "Employer",
-  "Title",
+  "Industry",
   "First Name",
   "Last Name",
-  "Location",
   "City",
   "Country",
-  "LinkedIn",
+  "Linkedin",
   "Job1 Title",
   "A Emails",
-  "Mobile Phone Number",
+  "Mobile Number",
   "Office Number",
 ] as const;
 
-export type CanonicalImportHeading = (typeof CANONICAL_IMPORT_HEADINGS)[number];
+export type StaffVisibleContactImportHeader =
+  (typeof STAFF_VISIBLE_CONTACT_IMPORT_HEADERS)[number];
+
+/** @deprecated Prefer {@link STAFF_VISIBLE_CONTACT_IMPORT_HEADERS} in new UI. */
+export const CANONICAL_IMPORT_HEADINGS = STAFF_VISIBLE_CONTACT_IMPORT_HEADERS;
+
+export type CanonicalImportHeading = StaffVisibleContactImportHeader;
+
+/** Parser-only legacy column — not shown in the 12-header staff contract. */
+export type InternalOnlyImportHeading = "Location";
+
+export type ImportMappingHeading = StaffVisibleContactImportHeader | InternalOnlyImportHeading;
 
 /**
  * Until the email-optional follow-up lands, the CSV/RocketReach importers
@@ -47,6 +57,7 @@ export const EMAIL_REQUIRED_FOR_PERSISTENCE = true as const;
 export type ContactImportField =
   | "fullName"
   | "company"
+  | "industry"
   | "title"
   | "firstName"
   | "lastName"
@@ -59,7 +70,7 @@ export type ContactImportField =
   | "officePhone";
 
 type MappingEntry = {
-  heading: CanonicalImportHeading;
+  heading: ImportMappingHeading;
   field: ContactImportField;
   aliases: readonly string[];
   /** A lower-priority heading that feeds the same field only when the primary is empty. */
@@ -83,9 +94,9 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["Employer", "Company", "Organization", "Org", "Account"],
   },
   {
-    heading: "Title",
-    field: "title",
-    aliases: ["Title", "Job Title", "Role"],
+    heading: "Industry",
+    field: "industry",
+    aliases: ["Industry", "Sector", "Company Industry"],
   },
   {
     heading: "First Name",
@@ -98,11 +109,6 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["Last Name", "Last", "LastName", "lname"],
   },
   {
-    heading: "Location",
-    field: "location",
-    aliases: ["Location"],
-  },
-  {
     heading: "City",
     field: "city",
     aliases: ["City"],
@@ -113,15 +119,20 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["Country"],
   },
   {
-    heading: "LinkedIn",
+    heading: "Linkedin",
     field: "linkedIn",
-    aliases: ["LinkedIn", "LinkedIn URL", "LinkedIn Profile", "linkedin_url"],
+    aliases: [
+      "Linkedin",
+      "LinkedIn",
+      "LinkedIn URL",
+      "LinkedIn Profile",
+      "linkedin_url",
+    ],
   },
   {
     heading: "Job1 Title",
     field: "title",
-    aliases: ["Job1 Title", "Job 1 Title"],
-    fallbackOnly: true,
+    aliases: ["Job1 Title", "Job 1 Title", "Title", "Job Title", "Role"],
   },
   {
     heading: "A Emails",
@@ -129,9 +140,15 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["A Emails", "Email", "E-mail", "Work Email", "Email Address"],
   },
   {
-    heading: "Mobile Phone Number",
+    heading: "Mobile Number",
     field: "mobilePhone",
-    aliases: ["Mobile Phone Number", "Mobile", "Mobile Number", "Cell"],
+    aliases: [
+      "Mobile Number",
+      "Mobile Phone Number",
+      "Mobile",
+      "Cell",
+      "Mobile Phone",
+    ],
   },
   {
     heading: "Office Number",
@@ -143,6 +160,11 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
       "Landline",
       "Work Phone",
     ],
+  },
+  {
+    heading: "Location",
+    field: "location",
+    aliases: ["Location"],
   },
 ];
 
@@ -238,11 +260,12 @@ function hasNonEmpty(value: string | undefined): boolean {
  * in the Sources / Contacts UI panels.
  */
 export const CONTACT_IMPORT_CONTRACT_SUMMARY = {
-  headings: CANONICAL_IMPORT_HEADINGS,
+  headings: STAFF_VISIBLE_CONTACT_IMPORT_HEADERS,
   rules: [
     "Fields may be empty — only the headings above are needed.",
-    "A contact is valid if it is not suppressed and has at least one of: email, LinkedIn, mobile phone, or office phone.",
+    "A contact is valid if it is not suppressed and has at least one of: email, Linkedin profile URL, mobile number, or office number.",
     "A contact is email-sendable only if it is valid and has an email address.",
-    "Email is currently required for persistence; LinkedIn-only and phone-only contacts will be supported once email-optional persistence lands (follow-up).",
+    "Email is currently required for persistence; Linkedin-only and phone-only contacts will be supported once email-optional persistence lands (follow-up).",
+    "Older files may include a Location column (combined locality); it is still read when present but is not part of the twelve visible headers.",
   ],
 } as const;

@@ -45,7 +45,7 @@ export async function listContactListsForClient(
 ): Promise<ContactListSummary[]> {
   if (!clientId) return [];
   const rows = await prisma.contactList.findMany({
-    where: { clientId },
+    where: { clientId, archivedAt: null },
     orderBy: { updatedAt: "desc" },
     select: {
       id: true,
@@ -87,6 +87,7 @@ export async function findOrCreateClientContactListByName(args: {
   const existing = await prisma.contactList.findFirst({
     where: {
       clientId,
+      archivedAt: null,
       name: { equals: normalized, mode: "insensitive" },
     },
     select: { id: true, name: true, clientId: true },
@@ -122,8 +123,8 @@ export async function resolveImportListForClient(args: {
       createdByStaffUserId: createdByStaffUserId ?? null,
     });
   }
-  const list = await prisma.contactList.findUnique({
-    where: { id: target.listId },
+  const list = await prisma.contactList.findFirst({
+    where: { id: target.listId, archivedAt: null },
     select: { id: true, name: true, clientId: true },
   });
   if (!list) {
@@ -157,8 +158,8 @@ export async function attachContactsToClientList(args: {
 
   const uniqueIds = Array.from(new Set(contactIds));
 
-  const list = await prisma.contactList.findUnique({
-    where: { id: contactListId },
+  const list = await prisma.contactList.findFirst({
+    where: { id: contactListId, archivedAt: null },
     select: { id: true, clientId: true },
   });
   if (!list) throw new Error("CONTACT_LIST_NOT_FOUND");
@@ -191,4 +192,52 @@ export async function attachContactsToClientList(args: {
     added: result.count,
     skipped: uniqueIds.length - result.count,
   };
+}
+
+/**
+ * Deletes a client-scoped list when it is not referenced by sequences or
+ * send history; otherwise soft-archives it so FK rows stay valid. Never
+ * deletes Universe contacts.
+ */
+export async function deleteOrArchiveClientContactList(args: {
+  clientId: string;
+  listId: string;
+}): Promise<
+  | { ok: true; mode: "deleted" }
+  | { ok: true; mode: "archived"; message: string }
+  | { ok: false; error: string }
+> {
+  const { clientId, listId } = args;
+  const list = await prisma.contactList.findFirst({
+    where: { id: listId, clientId },
+    select: { id: true, archivedAt: true },
+  });
+  if (!list) {
+    return { ok: false, error: "List not found." };
+  }
+  if (list.archivedAt) {
+    return { ok: false, error: "This list is already archived." };
+  }
+
+  const [sequences, enrollments, stepSends] = await Promise.all([
+    prisma.clientEmailSequence.count({ where: { contactListId: listId } }),
+    prisma.clientEmailSequenceEnrollment.count({ where: { contactListId: listId } }),
+    prisma.clientEmailSequenceStepSend.count({ where: { contactListId: listId } }),
+  ]);
+
+  if (sequences + enrollments + stepSends > 0) {
+    await prisma.contactList.update({
+      where: { id: listId },
+      data: { archivedAt: new Date() },
+    });
+    return {
+      ok: true,
+      mode: "archived",
+      message:
+        "This list is used by outreach history, so it was archived instead of permanently deleted.",
+    };
+  }
+
+  await prisma.contactList.delete({ where: { id: listId } });
+  return { ok: true, mode: "deleted" };
 }

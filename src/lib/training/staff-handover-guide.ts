@@ -40,10 +40,11 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "Contacts, Universe, and RocketReach",
     bullets: [
-      "CSV import has a preview step before saving.",
-      "RocketReach searches use live credits and require the confirmation phrase before the API is called.",
-      "Imported contacts appear in the selected client list and in the global Universe for reuse.",
-      "Create additional client lists from Universe when the same people should be used in another workspace.",
+      "CSV import runs from the client workspace Sources tab (preview, then confirm).",
+      "RocketReach searches use live credits and require typing SEARCH ROCKETREACH before the search runs.",
+      "Imported contacts appear in the client list you chose and as individual people in Universe for reuse.",
+      "Use Universe to filter people and create another client list without re-importing the file.",
+      "Deleting a client list does not delete Universe contacts.",
       "Do-not-contact rules apply before outreach sends.",
     ],
   },
@@ -100,7 +101,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     title: "Glossary",
     bullets: [
       "Client: one customer workspace.",
-      "Universe: shared OpensDoors contact warehouse — imports land here deduplicated.",
+      "Universe: shared list of individual people from imports; reuse them to build client lists.",
       "Contact: a person or company record in a client list (often linked from Universe).",
       "Sending inbox/mailbox: a connected Microsoft or Google mailbox used for outreach.",
       "Sequence: an introduction email plus optional follow-ups.",

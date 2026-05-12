@@ -42,6 +42,10 @@ export function ContactImportContractPanel() {
               </li>
             ))}
           </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Optional legacy column (parser only, not part of the twelve above):{" "}
+            <span className="font-mono">Location</span>
+          </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -52,9 +56,9 @@ export function ContactImportContractPanel() {
             <p className="mt-1 text-sm">
               Not suppressed and has at least one of:{" "}
               <span className="font-medium">email</span>,{" "}
-              <span className="font-medium">LinkedIn</span>,{" "}
-              <span className="font-medium">mobile phone</span>, or{" "}
-              <span className="font-medium">office phone</span>.
+              <span className="font-medium">Linkedin</span>,{" "}
+              <span className="font-medium">mobile number</span>, or{" "}
+              <span className="font-medium">office number</span>.
             </p>
           </div>
           <div className="rounded-md border border-border/80 bg-muted/40 px-3 py-2">
@@ -77,7 +81,7 @@ export function ContactImportContractPanel() {
         {EMAIL_REQUIRED_FOR_PERSISTENCE ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
             <strong>Heads up:</strong> today an email address is required to
-            save a contact. Support for LinkedIn-only and phone-only contacts
+            save a contact. Support for Linkedin-only and phone-only contacts
             is coming.
           </p>
         ) : null}

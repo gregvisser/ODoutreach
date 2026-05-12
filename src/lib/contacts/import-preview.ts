@@ -92,8 +92,14 @@ export type ImportPreviewRow = {
    */
   rowNumber: number;
   displayName: string;
+  firstName: string;
+  lastName: string;
+  employer: string;
+  industry: string;
+  city: string;
+  country: string;
+  jobTitle: string;
   company: string;
-  /** Normalized (lowercased/trimmed) email, or null when absent/unparseable. */
   email: string | null;
   linkedIn: string;
   mobilePhone: string;
@@ -194,7 +200,8 @@ export function buildCsvImportPreview(
       cell(mapped, "firstName") !== "" ||
       cell(mapped, "lastName") !== "" ||
       company !== "" ||
-      cell(mapped, "title") !== "";
+      cell(mapped, "title") !== "" ||
+      cell(mapped, "industry") !== "";
 
     if (anyField) mappedRows += 1;
 
@@ -207,6 +214,13 @@ export function buildCsvImportPreview(
       linkedIn !== "" || mobilePhone !== "" || officePhone !== "";
 
     const displayName = computeDisplayName(mapped);
+    const firstName = cell(mapped, "firstName");
+    const lastName = cell(mapped, "lastName");
+    const employer = company;
+    const industry = cell(mapped, "industry");
+    const cityCell = cell(mapped, "city");
+    const countryCell = cell(mapped, "country");
+    const jobTitle = cell(mapped, "title");
 
     // Classify by status (create/update/attachOnly/skipped) then readiness.
     let status: ImportPreviewRowStatus;
@@ -288,6 +302,13 @@ export function buildCsvImportPreview(
     rows.push({
       rowNumber,
       displayName,
+      firstName,
+      lastName,
+      employer,
+      industry,
+      city: cityCell,
+      country: countryCell,
+      jobTitle,
       company,
       email,
       linkedIn,

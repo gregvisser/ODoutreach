@@ -633,6 +633,7 @@ model Contact {
   location               String?
   city                   String?
   country                String?
+  industry               String?
   source                 ContactSource @default(MANUAL)
   importBatchId          String?
   /// Cached flag after suppression check (refresh on sync)
@@ -675,6 +676,7 @@ model ContactUniverse {
   location                String?
   city                    String?
   country                 String?
+  industry                String?
   /// Human-readable rollup for the Sources / Universe table (not raw JSON).
   sourceSummary           String?
   firstSeenClientId       String?
@@ -733,6 +735,8 @@ model ContactList {
   description          String?
   clientId             String?
   createdByStaffUserId String?
+  /// When set, list is hidden from operators but kept for sequence/history FK integrity.
+  archivedAt           DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -746,6 +750,7 @@ model ContactList {
   @@index([clientId])
   @@index([name])
   @@index([createdByStaffUserId])
+  @@index([clientId, archivedAt])
 }
 
 /// Join table for ContactList ↔ Contact (PR D1). Idempotent per pair via

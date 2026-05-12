@@ -40,6 +40,7 @@ export type UpsertUniverseInput = {
   location?: string | null;
   city?: string | null;
   country?: string | null;
+  industry?: string | null;
   firstSeenClientId: string;
   firstSeenSourceType: UniverseSourceType;
   sourceLabel?: string | null;
@@ -127,6 +128,7 @@ export async function upsertContactUniverseAndRecordSource(
         location: input.location?.trim() || null,
         city: input.city?.trim() || null,
         country: input.country?.trim() || null,
+        industry: input.industry?.trim() || null,
         sourceSummary: summaryChunk,
         firstSeenClientId: input.firstSeenClientId,
         firstSeenSourceType: input.firstSeenSourceType,
@@ -169,6 +171,7 @@ export async function upsertContactUniverseAndRecordSource(
       location: preferText(existing.location, input.location),
       city: preferText(existing.city, input.city),
       country: preferText(existing.country, input.country),
+      industry: preferText(existing.industry, input.industry),
       sourceSummary: mergedSummary ?? existing.sourceSummary,
     },
   });
