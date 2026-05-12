@@ -92,7 +92,10 @@ export default async function ClientSourcesPage({ params }: Props) {
         clientId={client.id}
         apiKeyConfigured={bundle.rocketReachEnvReady}
         existingLists={listOptions}
-        allowAdvancedRocketReachJson={staff.role === "ADMIN"}
+        allowAdvancedRocketReachJson={
+          process.env.ROCKETREACH_IMPORT_JSON_DEBUG === "1" ||
+          process.env.ROCKETREACH_IMPORT_JSON_DEBUG === "true"
+        }
       />
     </div>
   );

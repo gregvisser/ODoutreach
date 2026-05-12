@@ -35,7 +35,10 @@ type Props = {
   clientId: string;
   apiKeyConfigured: boolean;
   existingLists: ExistingList[];
-  /** Raw JSON import is for platform admins only — not normal staff. */
+  /**
+   * Raw JSON import — server should set this only when `ROCKETREACH_IMPORT_JSON_DEBUG`
+   * is enabled; never for normal staff.
+   */
   allowAdvancedRocketReachJson?: boolean;
 };
 
@@ -68,10 +71,7 @@ export function RocketReachImportPanel({
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
         <CardTitle>RocketReach</CardTitle>
-        <CardDescription>
-          Importing may use RocketReach credits depending on your RocketReach plan. This path never sends email
-          from OpensDoors.
-        </CardDescription>
+        <CardDescription>This card never sends email from OpensDoors.</CardDescription>
       </CardHeader>
       <CardContent>
         {!apiKeyConfigured ? (
@@ -134,26 +134,9 @@ export function RocketReachImportPanel({
         </div>
         {!hasListTarget ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Pick an existing list or type a new list name before running a search.
+            Pick an existing list or type a new list name before using optional in-app search.
           </p>
         ) : null}
-
-        <div className="mt-4 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
-          <p className="font-medium">RocketReach may use credits</p>
-          <p className="mt-1 text-xs">
-            Type <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
-          </p>
-          <div className="mt-2 max-w-md space-y-1">
-            <Label htmlFor="rr-confirm">Confirmation phrase</Label>
-            <Input
-              id="rr-confirm"
-              value={confirmationPhrase}
-              onChange={(e) => setConfirmationPhrase(e.target.value)}
-              placeholder={ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}
-              autoComplete="off"
-            />
-          </div>
-        </div>
 
         <details className="mt-6 rounded-md border border-border/80 bg-muted/30 p-3 text-sm">
           <summary className="cursor-pointer font-medium text-foreground">
@@ -163,6 +146,27 @@ export function RocketReachImportPanel({
             Prefer building your list in RocketReach, then using CSV import above. This shortcut runs a small
             RocketReach search from OpensDoors when you need it.
           </p>
+
+          <div className="mt-4 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
+            <p className="font-medium">RocketReach may use credits</p>
+            <p className="mt-1 text-xs text-muted-foreground dark:text-amber-100/90">
+              Charges depend on your RocketReach plan.
+            </p>
+            <p className="mt-2 text-xs">
+              Type <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
+            </p>
+            <div className="mt-2 max-w-md space-y-1">
+              <Label htmlFor="rr-confirm">Confirmation phrase</Label>
+              <Input
+                id="rr-confirm"
+                value={confirmationPhrase}
+                onChange={(e) => setConfirmationPhrase(e.target.value)}
+                placeholder={ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
           <div className="mt-4 space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -251,7 +255,9 @@ export function RocketReachImportPanel({
 
         {allowAdvancedRocketReachJson ? (
           <details className="mt-4 rounded-md border border-border/80 bg-muted/30 p-3 text-sm">
-            <summary className="cursor-pointer font-medium text-foreground">Advanced JSON (admin only)</summary>
+            <summary className="cursor-pointer font-medium text-foreground">
+              Advanced JSON (debug only)
+            </summary>
             <p className="mt-2 text-xs text-muted-foreground">
               For operators who already have a RocketReach People Search JSON body. Same credit rules apply.
             </p>

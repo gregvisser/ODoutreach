@@ -56,8 +56,8 @@ function StaffImportHeadingChips() {
         Column headings your file can use
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Cells can be empty where you do not have data. At least one of email, Linkedin URL, mobile number, or
-        office number identifies the person. Email is required to save today.
+        Empty cells are fine. Use at least one of email, Linkedin URL, mobile number, or office number. Email is
+        required to save today.
       </p>
       <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Accepted column headings">
         {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.map((heading) => (
