@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { UniverseContactFieldTableHeads } from "@/components/universe/universe-contact-field-table-heads";
 import { cn } from "@/lib/utils";
 import type { UniverseTableRow } from "@/server/queries/contact-universe-list";
 
@@ -138,7 +139,7 @@ export function UniversePageClient({
               id="q"
               name="q"
               defaultValue={filters.q}
-              placeholder="Name, email, employer, title, city, or country"
+              placeholder="Name, A Emails, Employer, Job1 Title, City, Country…"
               disabled={pending}
             />
           </div>
@@ -304,18 +305,7 @@ export function UniversePageClient({
                   aria-label="Select all on this page"
                 />
               </TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Employer</TableHead>
-              <TableHead>Industry</TableHead>
-              <TableHead>First Name</TableHead>
-              <TableHead>Last Name</TableHead>
-              <TableHead>City</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>Linkedin</TableHead>
-              <TableHead>Job1 Title</TableHead>
-              <TableHead>A Emails</TableHead>
-              <TableHead>Mobile Number</TableHead>
-              <TableHead>Office Number</TableHead>
+              <UniverseContactFieldTableHeads />
               <TableHead>Source</TableHead>
               <TableHead>Last seen</TableHead>
               <TableHead className="text-right">Refs</TableHead>
