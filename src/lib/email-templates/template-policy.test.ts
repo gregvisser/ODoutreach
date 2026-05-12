@@ -148,6 +148,6 @@ describe("label / order exports", () => {
       "APPROVED",
       "ARCHIVED",
     ]);
-    expect(TEMPLATE_STATUS_LABELS.READY_FOR_REVIEW).toBe("Ready for review");
+    expect(TEMPLATE_STATUS_LABELS.READY_FOR_REVIEW).toBe("In review");
   });
 });

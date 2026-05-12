@@ -1,8 +1,8 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
 import { SequenceSendPreparationPanel } from "@/components/clients/email-sequences/sequence-send-preparation-panel";
-import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import {
@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import {
   OUTREACH_INTERNAL_TOOLS_COPY,
@@ -28,8 +29,6 @@ import {
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadSequenceStepSendUiSnapshots } from "@/server/email-sequences/send-introduction";
 import { loadClientSequencePrepSnapshots } from "@/server/email-sequences/step-sends";
-import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
-import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
@@ -63,27 +62,13 @@ export default async function ClientOutreachPage({
   if (!bundle.client) notFound();
   const client = bundle.client;
 
-  const [
-    templatesOverview,
-    canMutateTemplates,
-    sequencesOverview,
-    canMutateSequences,
-    sequencePrepSnapshots,
-    stepSendBundle,
-  ] = await Promise.all([
-    loadClientEmailTemplatesOverview(client.id),
-    getClientEmailTemplateMutationAllowed(staff, client.id),
-    loadClientEmailSequencesOverview(client.id),
-    getClientEmailSequenceMutationAllowed(staff, client.id),
-    loadClientSequencePrepSnapshots(client.id),
-    loadSequenceStepSendUiSnapshots(client.id),
-  ]);
-
-  const templatesFlash = {
-    ok: firstParam(sp.template),
-    error: firstParam(sp.templateError),
-    focusTemplateId: firstParam(sp.templateId),
-  };
+  const [sequencesOverview, canMutateSequences, sequencePrepSnapshots, stepSendBundle] =
+    await Promise.all([
+      loadClientEmailSequencesOverview(client.id),
+      getClientEmailSequenceMutationAllowed(staff, client.id),
+      loadClientSequencePrepSnapshots(client.id),
+      loadSequenceStepSendUiSnapshots(client.id),
+    ]);
 
   const sequencesFlash = {
     ok: firstParam(sp.sequence),
@@ -161,13 +146,23 @@ export default async function ClientOutreachPage({
         </CardContent>
       </Card>
 
-      <ClientEmailTemplatesPanel
-        clientId={client.id}
-        clientName={client.name}
-        canMutate={canMutateTemplates}
-        overview={templatesOverview}
-        flash={templatesFlash}
-      />
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Templates</CardTitle>
+          <CardDescription>
+            Reusable message content lives on the Templates tab. Save templates there, then return
+            here to attach them to sequence steps.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link
+            href={`/clients/${client.id}/templates`}
+            className={buttonVariants({ variant: "secondary" })}
+          >
+            Manage templates
+          </Link>
+        </CardContent>
+      </Card>
 
       <ClientEmailSequencesPanel
         clientId={client.id}

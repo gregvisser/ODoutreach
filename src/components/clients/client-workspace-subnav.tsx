@@ -52,6 +52,11 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
           clientFromQuery === clientId),
     },
     {
+      label: "Templates",
+      href: `${base}/templates`,
+      isActive: () => pathname === `${base}/templates`,
+    },
+    {
       label: "Outreach",
       href: `${base}/outreach`,
       isActive: () => pathname === `${base}/outreach`,
