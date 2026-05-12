@@ -12,6 +12,10 @@ const clientSource = readFileSync(
   join(__dirname, "../../../components/universe/universe-page-client.tsx"),
   "utf8",
 );
+const universeHeadsSource = readFileSync(
+  join(__dirname, "../../../components/universe/universe-contact-field-table-heads.tsx"),
+  "utf8",
+);
 
 describe("Universe page copy (operator)", () => {
   it("avoids developer-style jargon in the server page shell", () => {
@@ -23,12 +27,9 @@ describe("Universe page copy (operator)", () => {
     expect(pageSource).toContain("All imported contacts are stored here for reuse");
   });
 
-  it("keeps the client table using standard column labels", () => {
-    expect(clientSource).toContain("TableHead>Employer<");
-    expect(clientSource).toContain("TableHead>Linkedin<");
-    expect(clientSource).toContain("TableHead>Job1 Title<");
-    expect(clientSource).toContain("TableHead>A Emails<");
-    expect(clientSource).toContain("TableHead>Mobile Number<");
-    expect(clientSource).toContain("TableHead>Office Number<");
+  it("renders contact table heads from the shared twelve-label contract", () => {
+    expect(clientSource).toContain("UniverseContactFieldTableHeads");
+    expect(clientSource).not.toMatch(/<TableHead>Name<\/TableHead>/);
+    expect(universeHeadsSource).toContain("STAFF_VISIBLE_CONTACT_IMPORT_HEADERS");
   });
 });

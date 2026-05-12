@@ -12,6 +12,7 @@ import {
   ROCKETREACH_IMPORT_CONFIRMATION_PHRASE,
   isRocketReachImportConfirmationValid,
 } from "@/lib/clients/rocketreach-import-safety";
+import { ROCKETREACH_SIMPLE_SEARCH_LABELS } from "@/lib/clients/rocketreach-simple-search-labels";
 import {
   Card,
   CardContent,
@@ -139,7 +140,7 @@ export function RocketReachImportPanel({
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="rr-keyword">Keyword</Label>
+              <Label htmlFor="rr-keyword">{ROCKETREACH_SIMPLE_SEARCH_LABELS.keyword}</Label>
               <Input
                 id="rr-keyword"
                 value={keyword}
@@ -148,7 +149,7 @@ export function RocketReachImportPanel({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rr-company">Employer</Label>
+              <Label htmlFor="rr-company">{ROCKETREACH_SIMPLE_SEARCH_LABELS.employer}</Label>
               <Input
                 id="rr-company"
                 value={companyName}
@@ -157,7 +158,7 @@ export function RocketReachImportPanel({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rr-title">Job1 Title</Label>
+              <Label htmlFor="rr-title">{ROCKETREACH_SIMPLE_SEARCH_LABELS.job1Title}</Label>
               <Input
                 id="rr-title"
                 value={currentTitle}
@@ -166,7 +167,7 @@ export function RocketReachImportPanel({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rr-loc">Location</Label>
+              <Label htmlFor="rr-loc">{ROCKETREACH_SIMPLE_SEARCH_LABELS.locality}</Label>
               <Input
                 id="rr-loc"
                 value={location}
@@ -175,7 +176,7 @@ export function RocketReachImportPanel({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rr-max">Max results</Label>
+              <Label htmlFor="rr-max">{ROCKETREACH_SIMPLE_SEARCH_LABELS.maxResults}</Label>
               <Input
                 id="rr-max"
                 type="number"
