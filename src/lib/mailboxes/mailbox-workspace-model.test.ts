@@ -9,7 +9,7 @@ import {
 
 describe("mailbox-workspace-model", () => {
   it("states shared-pool semantics in the mailboxes hero", () => {
-    expect(WORKSPACE_MAILBOXES_HERO).toContain("authorised operator");
+    expect(WORKSPACE_MAILBOXES_HERO).toContain("Staff on this workspace");
     expect(WORKSPACE_MAILBOXES_HERO).toContain("workspace");
   });
 
@@ -19,9 +19,9 @@ describe("mailbox-workspace-model", () => {
   });
 
   it("uses a short mailboxes page intro for operators", () => {
-    expect(MAILBOXES_PAGE_INTRO).toContain("ODoutreach");
     expect(MAILBOXES_PAGE_INTRO).toContain("Connect");
-    expect(MAILBOXES_PAGE_INTRO).toContain("Clients do not need");
+    expect(MAILBOXES_PAGE_INTRO).toContain("outreach");
+    expect(MAILBOXES_PAGE_INTRO.length).toBeLessThan(120);
   });
 
   it("documents unsubscribe ordering as signature-then-footer", () => {

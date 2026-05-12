@@ -6,16 +6,13 @@
  */
 
 export const WORKSPACE_MAILBOXES_HERO =
-  "Shared client mailboxes: connected sender accounts, daily capacity, and per-mailbox sender identity. " +
-  "Any authorised operator on this workspace can send and reply from any connected, eligible mailbox; " +
+  "Shared client mailboxes: connected senders, daily limits, and per-mailbox identity. " +
+  "Staff on this workspace can send and reply from any connected, eligible mailbox; " +
   "replies stay on the mailbox and thread that received the message.";
 
 /** Short intro on the Mailboxes page (operator-facing). */
 export const MAILBOXES_PAGE_INTRO =
-  "Clients do not need ODoutreach sign-in. Staff use Connect to start the mailbox connection; the mailbox owner " +
-  "or their Microsoft/Google admin completes provider sign-in and MFA in the browser. " +
-  "Tokens are stored for this client workspace, not the staff user personally. " +
-  "Any authorised operator on this client can use connected mailboxes in the shared sending pool.";
+  "Connect and manage the mailboxes used for this client's outreach.";
 
 export const OUTREACH_HERO_ADDENDUM =
   "Outreach sends use the shared client mailbox pool. Capacity and sender identity are configured in Mailboxes.";

@@ -103,9 +103,8 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         </p>
         {!showMailboxSetupTools ? (
           <p className="mt-3 max-w-3xl rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            This page shows which sending inboxes are connected and how much capacity is left today.
-            Signature setup and internal proof sends are administrator tools — ask a manager if something
-            needs changing.
+            Connected senders and today’s remaining send capacity. Signature setup and proof sends are
+            admin-only — ask a manager if you need changes.
           </p>
         ) : null}
       </div>
