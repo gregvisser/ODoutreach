@@ -14,6 +14,7 @@ import {
 } from "@/lib/clients/rocketreach-import-safety";
 import {
   ROCKETREACH_LIST_IMPORT_STAFF_FALLBACK,
+  ROCKETREACH_SAVED_LIST_GREG_NOTE,
   ROCKETREACH_SAVED_LIST_IMPORT_SUPPORTED,
 } from "@/lib/clients/rocketreach-list-import-capability";
 import { ROCKETREACH_SIMPLE_SEARCH_LABELS } from "@/lib/clients/rocketreach-simple-search-labels";
@@ -81,15 +82,13 @@ export function RocketReachImportPanel({
         ) : null}
 
         <div className="mt-4 space-y-2 rounded-md border border-border/80 bg-muted/30 px-3 py-3">
-          <h3 className="text-sm font-semibold text-foreground">RocketReach list import</h3>
+          <h3 className="text-sm font-semibold text-foreground">Lists you build in RocketReach</h3>
           <p className="text-sm text-muted-foreground">
-            Create a list in RocketReach, then bring those contacts into OpensDoors.
+            OpensDoors does not read RocketReach saved lists over the API today.{" "}
+            <span className="text-foreground">{ROCKETREACH_LIST_IMPORT_STAFF_FALLBACK}</span>
           </p>
           {ROCKETREACH_SAVED_LIST_IMPORT_SUPPORTED ? null : (
-            <p className="text-sm text-muted-foreground">
-              Direct import of a saved RocketReach list is not available in this app yet.{" "}
-              <span className="text-foreground">{ROCKETREACH_LIST_IMPORT_STAFF_FALLBACK}</span>
-            </p>
+            <p className="text-xs text-muted-foreground">{ROCKETREACH_SAVED_LIST_GREG_NOTE}</p>
           )}
         </div>
 

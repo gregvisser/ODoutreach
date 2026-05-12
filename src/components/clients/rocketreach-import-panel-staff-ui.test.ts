@@ -19,8 +19,8 @@ describe("RocketReachImportPanel — staff vs admin UI", () => {
     expect(src).toContain("allowAdvancedRocketReachJson = false");
   });
 
-  it("surfaces list-import guidance for staff", () => {
-    expect(src).toContain("RocketReach list import");
+  it("surfaces RocketReach list guidance for staff", () => {
+    expect(src).toContain("Lists you build in RocketReach");
     expect(src).toContain("ROCKETREACH_LIST_IMPORT_STAFF_FALLBACK");
   });
 });
