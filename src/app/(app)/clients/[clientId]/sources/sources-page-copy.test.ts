@@ -11,4 +11,11 @@ describe("Client Sources page copy", () => {
     expect(src).not.toContain("shared across clients");
     expect(src).not.toContain("to pick individuals and build lists for any client");
   });
+
+  it("gates RocketReach advanced JSON on ROCKETREACH_IMPORT_JSON_DEBUG, not staff role", () => {
+    const path = join(process.cwd(), "src/app/(app)/clients/[clientId]/sources/page.tsx");
+    const src = readFileSync(path, "utf8");
+    expect(src).toContain("ROCKETREACH_IMPORT_JSON_DEBUG");
+    expect(src).not.toMatch(/allowAdvancedRocketReachJson=\{[^}]*staff\.role/);
+  });
 });
