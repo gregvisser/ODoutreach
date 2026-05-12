@@ -25,6 +25,7 @@ describe("Universe page copy (operator)", () => {
 
   it("keeps the client table using standard column labels", () => {
     expect(clientSource).toContain("TableHead>Employer<");
+    expect(clientSource).toContain("TableHead>Linkedin<");
     expect(clientSource).toContain("TableHead>Job1 Title<");
     expect(clientSource).toContain("TableHead>A Emails<");
     expect(clientSource).toContain("TableHead>Mobile Number<");

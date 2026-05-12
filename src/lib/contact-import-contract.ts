@@ -16,11 +16,11 @@
  */
 
 /**
- * Canonical headings — exact names Greg specified. CSV importers must
- * accept these (they are matched case-insensitively with whitespace
- * collapsed via {@link normalizeHeading}). Fields may be empty.
+ * Greg’s twelve staff-visible CSV column labels (exact spelling for UI).
+ * Importers accept these case-insensitively via {@link normalizeHeading}.
+ * Fields may be empty.
  */
-export const CANONICAL_IMPORT_HEADINGS = [
+export const STAFF_VISIBLE_CONTACT_IMPORT_HEADERS = [
   "Name",
   "Employer",
   "Industry",
@@ -28,16 +28,25 @@ export const CANONICAL_IMPORT_HEADINGS = [
   "Last Name",
   "City",
   "Country",
-  "LinkedIn",
+  "Linkedin",
   "Job1 Title",
   "A Emails",
   "Mobile Number",
   "Office Number",
-  /** Optional combined locality — still accepted on older CSVs. */
-  "Location",
 ] as const;
 
-export type CanonicalImportHeading = (typeof CANONICAL_IMPORT_HEADINGS)[number];
+export type StaffVisibleContactImportHeader =
+  (typeof STAFF_VISIBLE_CONTACT_IMPORT_HEADERS)[number];
+
+/** @deprecated Prefer {@link STAFF_VISIBLE_CONTACT_IMPORT_HEADERS} in new UI. */
+export const CANONICAL_IMPORT_HEADINGS = STAFF_VISIBLE_CONTACT_IMPORT_HEADERS;
+
+export type CanonicalImportHeading = StaffVisibleContactImportHeader;
+
+/** Parser-only legacy column — not shown in the 12-header staff contract. */
+export type InternalOnlyImportHeading = "Location";
+
+export type ImportMappingHeading = StaffVisibleContactImportHeader | InternalOnlyImportHeading;
 
 /**
  * Until the email-optional follow-up lands, the CSV/RocketReach importers
@@ -61,7 +70,7 @@ export type ContactImportField =
   | "officePhone";
 
 type MappingEntry = {
-  heading: CanonicalImportHeading;
+  heading: ImportMappingHeading;
   field: ContactImportField;
   aliases: readonly string[];
   /** A lower-priority heading that feeds the same field only when the primary is empty. */
@@ -110,11 +119,11 @@ export const CONTACT_IMPORT_MAPPING: readonly MappingEntry[] = [
     aliases: ["Country"],
   },
   {
-    heading: "LinkedIn",
+    heading: "Linkedin",
     field: "linkedIn",
     aliases: [
-      "LinkedIn",
       "Linkedin",
+      "LinkedIn",
       "LinkedIn URL",
       "LinkedIn Profile",
       "linkedin_url",
@@ -251,11 +260,12 @@ function hasNonEmpty(value: string | undefined): boolean {
  * in the Sources / Contacts UI panels.
  */
 export const CONTACT_IMPORT_CONTRACT_SUMMARY = {
-  headings: CANONICAL_IMPORT_HEADINGS,
+  headings: STAFF_VISIBLE_CONTACT_IMPORT_HEADERS,
   rules: [
     "Fields may be empty — only the headings above are needed.",
-    "A contact is valid if it is not suppressed and has at least one of: email, LinkedIn, mobile phone, or office phone.",
+    "A contact is valid if it is not suppressed and has at least one of: email, Linkedin profile URL, mobile number, or office number.",
     "A contact is email-sendable only if it is valid and has an email address.",
-    "Email is currently required for persistence; LinkedIn-only and phone-only contacts will be supported once email-optional persistence lands (follow-up).",
+    "Email is currently required for persistence; Linkedin-only and phone-only contacts will be supported once email-optional persistence lands (follow-up).",
+    "Older files may include a Location column (combined locality); it is still read when present but is not part of the twelve visible headers.",
   ],
 } as const;

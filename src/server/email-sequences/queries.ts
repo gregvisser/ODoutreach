@@ -258,6 +258,7 @@ export async function loadClientEmailSequencesOverview(
       select: {
         id: true,
         name: true,
+        archivedAt: true,
         members: {
           select: {
             contact: {
@@ -293,7 +294,14 @@ export async function loadClientEmailSequencesOverview(
     }),
   ]);
 
-  const contactLists: SequenceListOption[] = allListRows.map((l) => {
+  const sequenceListIdSet = new Set(
+    sequenceRows.map((s) => s.contactListId).filter(Boolean),
+  );
+  const listRowsForPicker = allListRows.filter(
+    (l) => l.archivedAt == null || sequenceListIdSet.has(l.id),
+  );
+
+  const contactLists: SequenceListOption[] = listRowsForPicker.map((l) => {
     const summary = summarizeContactReadiness(
       l.members.map((m) => m.contact),
     );

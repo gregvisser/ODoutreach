@@ -54,7 +54,7 @@ export function ClientWorkspaceContactLists({ clientId, lists }: Props) {
                 disabled={pending}
                 onClick={() => {
                   const ok = window.confirm(
-                    "Delete this client list?\n\nContacts stay in Universe and can still be reused.",
+                    "Delete this client list?\n\nContacts will stay in Universe and can still be reused.",
                   );
                   if (!ok) return;
                   setMessage(null);

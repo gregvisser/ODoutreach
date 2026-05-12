@@ -3,15 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   CANONICAL_IMPORT_HEADINGS,
   EMAIL_REQUIRED_FOR_PERSISTENCE,
+  STAFF_VISIBLE_CONTACT_IMPORT_HEADERS,
   mapContactRow,
   normalizeHeading,
   rowHasOutreachIdentifier,
   rowIsEmailSendable,
 } from "./contact-import-contract";
 
-describe("contact import contract — canonical headings", () => {
-  it("exposes the staff-facing heading list (optional Location last)", () => {
-    expect([...CANONICAL_IMPORT_HEADINGS]).toEqual([
+describe("contact import contract — staff-visible headings", () => {
+  it("exposes exactly twelve Greg-specified labels (Linkedin spelling)", () => {
+    expect([...STAFF_VISIBLE_CONTACT_IMPORT_HEADERS]).toEqual([
       "Name",
       "Employer",
       "Industry",
@@ -19,13 +20,13 @@ describe("contact import contract — canonical headings", () => {
       "Last Name",
       "City",
       "Country",
-      "LinkedIn",
+      "Linkedin",
       "Job1 Title",
       "A Emails",
       "Mobile Number",
       "Office Number",
-      "Location",
     ]);
+    expect(CANONICAL_IMPORT_HEADINGS).toBe(STAFF_VISIBLE_CONTACT_IMPORT_HEADERS);
   });
 
   it("keeps email-required-for-persistence flag true until the follow-up lands", () => {
@@ -34,9 +35,9 @@ describe("contact import contract — canonical headings", () => {
 
   it("normalizes headings case-insensitively and collapses whitespace", () => {
     expect(normalizeHeading("  LinkedIn  ")).toBe("linkedin");
+    expect(normalizeHeading("  Linkedin  ")).toBe("linkedin");
     expect(normalizeHeading("Mobile Number")).toBe("mobile number");
     expect(normalizeHeading("A\tEmails")).toBe("a emails");
-    expect(normalizeHeading("Linkedin")).toBe("linkedin");
   });
 });
 
@@ -52,7 +53,7 @@ describe("contact import contract — row mapping", () => {
       Location: "London, UK",
       City: "London",
       Country: "UK",
-      LinkedIn: "https://linkedin.com/in/ada",
+      Linkedin: "https://linkedin.com/in/ada",
       "Job1 Title": "Mathematician",
       "A Emails": "ada@example.com",
       "Mobile Number": "+44 7000 000000",
@@ -136,6 +137,22 @@ describe("contact import contract — row mapping", () => {
       "Mobile Phone Number": "+1 415 555 0100",
     });
     expect(mapped.mobilePhone).toBe("+1 415 555 0100");
+  });
+
+  it("maps legacy Location without listing it in the twelve visible headers", () => {
+    const mapped = mapContactRow({
+      Location: "Somewhere, UK",
+      "A Emails": "x@example.com",
+    });
+    expect(mapped.location).toBe("Somewhere, UK");
+  });
+
+  it("accepts Greg spelling Linkedin column", () => {
+    const mapped = mapContactRow({
+      Linkedin: "https://linkedin.com/in/op",
+      "A Emails": "op@example.com",
+    });
+    expect(mapped.linkedIn).toContain("linkedin.com");
   });
 });
 

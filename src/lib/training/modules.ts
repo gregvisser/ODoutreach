@@ -513,7 +513,7 @@ const sourcesModule: TrainingModule = {
     "Each client workspace has a Sources tab for CSV upload and RocketReach search. Upload → Preview → Confirm saves people to Universe (shared, one row per person) and to the list you name in that workspace. Open Universe to filter individual contacts and create another list for any client. Deleting a client list does not remove people from Universe. Sequences always target one client list.",
   details: [
     "Imports don't bypass suppression. Suppression is applied at enrollment time, so safe-to-import and safe-to-email are two different things.",
-    "Contact rows are valid if they have at least one of: email, LinkedIn, mobile phone, or office phone. They are ready-to-email only if they also have an email address — only ready-to-email contacts are included in sends.",
+    "Contact rows are valid if they have at least one of: email, Linkedin profile URL, mobile number, or office number. They are ready-to-email only if they also have an email address — only ready-to-email contacts are included in sends.",
   ],
   screenshots: [
     {
@@ -549,7 +549,7 @@ const sourcesModule: TrainingModule = {
     {
       title: "Confirm every row is valid",
       detail:
-        "A valid row needs at least one contactable channel (email, LinkedIn, mobile, office). Rows without any channel are surfaced as invalid and excluded.",
+        "A valid row needs at least one contactable channel (email, Linkedin URL, mobile number, office number). Rows without any channel are surfaced as invalid and excluded.",
     },
     {
       title: "Send the list to Contacts",
@@ -567,7 +567,7 @@ const sourcesModule: TrainingModule = {
   commonMistakes: [
     "Importing into a list you'll never name again — future sequences won't know which list to target.",
     "Running imports before suppression is attached — suppression blocks at enrollment, so you get false positives on 'eligible'.",
-    "Uploading CSVs with random column names — use the headings shown in Sources (Name, Employer, Industry, First Name, Last Name, City, Country, LinkedIn, Job1 Title, A Emails, Mobile Number, Office Number, optional Location).",
+    "Uploading CSVs with random column names — use the twelve headings shown in Sources (Name, Employer, Industry, First Name, Last Name, City, Country, Linkedin, Job1 Title, A Emails, Mobile Number, Office Number). Optional legacy Location is still read when present.",
     "Running giant imports to save time — max 10 per run exists to keep data quality honest.",
   ],
   nextSteps: [

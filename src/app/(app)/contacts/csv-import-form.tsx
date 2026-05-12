@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ImportPreviewResult } from "@/lib/contacts/import-preview";
-import { CANONICAL_IMPORT_HEADINGS } from "@/lib/contact-import-contract";
+import { STAFF_VISIBLE_CONTACT_IMPORT_HEADERS } from "@/lib/contact-import-contract";
 
 export type ClientListOption = {
   id: string;
@@ -132,11 +132,13 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
               Press <span className="font-medium">Confirm import</span> only when the preview looks right.
             </>
           )}{" "}
-          Expected column headings include:{" "}
+          Expected columns (exact labels):{" "}
           <span className="font-mono text-xs text-foreground">
-            {CANONICAL_IMPORT_HEADINGS.join(", ")}
+            {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.join(", ")}
           </span>
-          . Legacy aliases (email, full_name, company, …) still work.
+          . Older files may include a <span className="font-mono">Location</span> column; it is read when
+          present. Other legacy spellings (e.g. <span className="font-mono">LinkedIn</span>,{" "}
+          <span className="font-mono">email</span>) still map correctly.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -373,7 +375,7 @@ function PreviewPanel({
                 <TableHead>Last Name</TableHead>
                 <TableHead>City</TableHead>
                 <TableHead>Country</TableHead>
-                <TableHead>LinkedIn</TableHead>
+                <TableHead>Linkedin</TableHead>
                 <TableHead>Job1 Title</TableHead>
                 <TableHead>A Emails</TableHead>
                 <TableHead>Mobile Number</TableHead>

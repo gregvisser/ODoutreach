@@ -311,7 +311,7 @@ export function UniversePageClient({
               <TableHead>Last Name</TableHead>
               <TableHead>City</TableHead>
               <TableHead>Country</TableHead>
-              <TableHead>LinkedIn</TableHead>
+              <TableHead>Linkedin</TableHead>
               <TableHead>Job1 Title</TableHead>
               <TableHead>A Emails</TableHead>
               <TableHead>Mobile Number</TableHead>

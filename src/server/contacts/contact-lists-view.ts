@@ -44,7 +44,7 @@ export async function loadClientListsOverview(
   }
 
   const listRows = await prisma.contactList.findMany({
-    where: { clientId },
+    where: { clientId, archivedAt: null },
     orderBy: { updatedAt: "desc" },
     select: {
       id: true,
