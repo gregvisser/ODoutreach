@@ -132,13 +132,11 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
               Press <span className="font-medium">Confirm import</span> only when the preview looks right.
             </>
           )}{" "}
-          Expected columns (exact labels):{" "}
+          Accepted headings (exact labels):{" "}
           <span className="font-mono text-xs text-foreground">
             {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.join(", ")}
           </span>
-          . Older files may include a <span className="font-mono">Location</span> column; it is read when
-          present. Other legacy spellings (e.g. <span className="font-mono">LinkedIn</span>,{" "}
-          <span className="font-mono">email</span>) still map correctly.
+          . Legacy column names still map in the parser.
         </CardDescription>
       </CardHeader>
       <CardContent>

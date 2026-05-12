@@ -6,9 +6,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  CANONICAL_IMPORT_HEADINGS,
   CONTACT_IMPORT_CONTRACT_SUMMARY,
   EMAIL_REQUIRED_FOR_PERSISTENCE,
+  STAFF_VISIBLE_CONTACT_IMPORT_HEADERS,
 } from "@/lib/contact-import-contract";
 
 /**
@@ -22,9 +22,9 @@ export function ContactImportContractPanel() {
       <CardHeader>
         <CardTitle>What your file needs</CardTitle>
         <CardDescription>
-          CSV files and RocketReach imports accept the headings below. Empty
-          cells are fine. A row just needs one way to reach the contact to
-          count as valid.
+          Use the twelve headings below (empty cells are fine). One valid
+          identifier (email, Linkedin URL, mobile, or office number) is
+          enough for intake.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -33,7 +33,7 @@ export function ContactImportContractPanel() {
             Accepted headings
           </p>
           <ul className="mt-2 flex flex-wrap gap-1.5">
-            {CANONICAL_IMPORT_HEADINGS.map((heading) => (
+            {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.map((heading) => (
               <li
                 key={heading}
                 className="rounded-md border border-border/80 bg-muted/60 px-2 py-0.5 font-mono text-xs text-foreground"
@@ -42,10 +42,6 @@ export function ContactImportContractPanel() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Optional legacy column (parser only, not part of the twelve above):{" "}
-            <span className="font-mono">Location</span>
-          </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

@@ -11,22 +11,36 @@ import {
 } from "./contact-import-contract";
 
 describe("contact import contract — staff-visible headings", () => {
+  const GREG_TWELVE = [
+    "Name",
+    "Employer",
+    "Industry",
+    "First Name",
+    "Last Name",
+    "City",
+    "Country",
+    "Linkedin",
+    "Job1 Title",
+    "A Emails",
+    "Mobile Number",
+    "Office Number",
+  ] as const;
+
   it("exposes exactly twelve Greg-specified labels (Linkedin spelling)", () => {
-    expect([...STAFF_VISIBLE_CONTACT_IMPORT_HEADERS]).toEqual([
-      "Name",
-      "Employer",
-      "Industry",
-      "First Name",
-      "Last Name",
-      "City",
-      "Country",
-      "Linkedin",
-      "Job1 Title",
-      "A Emails",
-      "Mobile Number",
-      "Office Number",
-    ]);
+    expect([...STAFF_VISIBLE_CONTACT_IMPORT_HEADERS]).toEqual([...GREG_TWELVE]);
     expect(CANONICAL_IMPORT_HEADINGS).toBe(STAFF_VISIBLE_CONTACT_IMPORT_HEADERS);
+  });
+
+  it("does not use legacy alias spellings as standalone staff-visible headers", () => {
+    const forbiddenExact = [
+      "Title",
+      "Location",
+      "Mobile Phone Number",
+      "LinkedIn",
+    ] as const;
+    for (const label of forbiddenExact) {
+      expect(STAFF_VISIBLE_CONTACT_IMPORT_HEADERS).not.toContain(label);
+    }
   });
 
   it("keeps email-required-for-persistence flag true until the follow-up lands", () => {

@@ -9,10 +9,9 @@
  *   - alias → Contact-field mapping,
  *   - "valid" and "email-sendable" contact rules.
  *
- * Persistence note: the current `Contact` schema still requires `email`.
- * LinkedIn / mobile / office / location / city / country are first-class
- * columns as of the PR C migration, but email-optional persistence is a
- * deferred follow-up. See `EMAIL_REQUIRED_FOR_PERSISTENCE` below.
+ * Persistence note: this importer still requires a usable email to persist
+ * rows (`EMAIL_REQUIRED_FOR_PERSISTENCE`). Linkedin / mobile / office /
+ * location / city / country / industry / title are first-class columns.
  */
 
 /**
@@ -262,10 +261,9 @@ function hasNonEmpty(value: string | undefined): boolean {
 export const CONTACT_IMPORT_CONTRACT_SUMMARY = {
   headings: STAFF_VISIBLE_CONTACT_IMPORT_HEADERS,
   rules: [
-    "Fields may be empty — only the headings above are needed.",
-    "A contact is valid if it is not suppressed and has at least one of: email, Linkedin profile URL, mobile number, or office number.",
-    "A contact is email-sendable only if it is valid and has an email address.",
-    "Email is currently required for persistence; Linkedin-only and phone-only contacts will be supported once email-optional persistence lands (follow-up).",
-    "Older files may include a Location column (combined locality); it is still read when present but is not part of the twelve visible headers.",
+    "Fields may be empty — only the twelve headings above are needed.",
+    "Valid contact: not suppressed and has email, Linkedin URL, mobile number, or office number. Ready to email: valid and has email.",
+    "Email is required to save a row today; Linkedin-only / phone-only persistence is a follow-up.",
+    "The parser still accepts older column spellings (e.g. Location, Title, LinkedIn, Mobile Phone Number); they are not shown in the list above.",
   ],
 } as const;
