@@ -64,7 +64,8 @@ describe("Outreach live sequence flow (PR #119–#121)", () => {
     expect(src).toContain("Ready to launch");
     expect(src).toContain("Cannot launch yet");
     expect(src).toContain("Review and launch");
-    expect(src).toContain("Go live");
+    expect(src).not.toContain("Mark ready");
+    expect(src).not.toContain("Go live");
     expect(src).not.toContain("Launch readiness:");
     expect(src).not.toContain("Schedule send preparation");
   });
@@ -108,6 +109,7 @@ describe("Outreach live sequence flow (PR #119–#121)", () => {
     expect(combined).not.toMatch(/no send materials currently built/i);
     expect(combined).not.toMatch(/\bSend section\b/i);
     expect(combined).not.toMatch(/\bLaunch section\b/i);
+    expect(combined).not.toMatch(/\bBatch cap\b/i);
   });
 
   it("admin diagnostics wrapper is opt-in for admins only", () => {

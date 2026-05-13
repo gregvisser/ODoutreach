@@ -165,13 +165,13 @@ describe("checkEnrollmentReadiness", () => {
     missingEmail: 0,
     missingIdentifier: 0,
   };
-  it("blocks DRAFT sequences", () => {
+  it("allows DRAFT sequences when the list has enrollable contacts", () => {
     expect(
       checkEnrollmentReadiness({
         sequenceStatus: "DRAFT",
         preview: { ...zero, total: 5, enrollable: 5 },
-      }).reason,
-    ).toBe("sequence_not_approval_ready");
+      }),
+    ).toEqual({ ok: true, reason: "ready" });
   });
   it("blocks ARCHIVED sequences", () => {
     expect(

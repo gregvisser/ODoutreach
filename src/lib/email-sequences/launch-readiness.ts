@@ -326,7 +326,7 @@ export function evaluateSequenceLaunchReadiness(
       fail(
         "enrollment_records_exist",
         "Enrollment records exist (or can be created)",
-        "No enrollments and no email-sendable contacts to enroll.",
+        "No recipients on this sequence yet — pick a list with email-sendable contacts.",
         "blocker",
       ),
     );
@@ -353,7 +353,7 @@ export function evaluateSequenceLaunchReadiness(
       fail(
         "pending_email_sendable_recipients",
         "Pending email-sendable recipient(s)",
-        "No PENDING enrollments yet — create enrollment records first.",
+        "Review recipients to prepare this sequence before launching.",
         "blocker",
       ),
     );
@@ -365,8 +365,8 @@ export function evaluateSequenceLaunchReadiness(
     const missingEmailCount = input.contactList?.missingEmailCount ?? 0;
     const detail =
       missingEmailCount > 0
-        ? `No PENDING enrollments; list has no email-sendable contacts (${String(missingEmailCount)} with no email on file).`
-        : "No PENDING enrollments and no email-sendable contacts left to enroll.";
+        ? `No prepared recipients yet — ${String(missingEmailCount)} list members have no email on file.`
+        : "No prepared recipients yet — every list member is blocked, suppressed, or missing email.";
     checks.push(
       fail(
         "pending_email_sendable_recipients",

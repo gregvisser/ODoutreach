@@ -25,6 +25,7 @@ import {
   normaliseSequenceIntroConfirmation,
   normaliseSequenceStepSendConfirmation,
 } from "@/lib/email-sequences/sequence-send-execution-constants";
+import { autoPrepareSequenceForLaunch } from "@/server/email-sequences/auto-prepare-sequence-for-launch";
 import {
   approveSequence,
   archiveSequence,
@@ -47,7 +48,9 @@ import { requireClientAccess } from "@/server/tenant/access";
  *      `src/server/email-sequences/mutations.ts`
  *   4. revalidates the outreach path and redirects back with a flash
  *
- * None of these actions send email or enroll contacts.
+ * Dispatch actions (`sendClientEmailSequence*`) send or queue mail and
+ * are never invoked from the save/update path. `createClientEmailSequenceEnrollmentsAction`
+ * remains available for manual refresh; save/update also triggers automatic preparation.
  */
 
 type ActionFlash =
@@ -175,10 +178,22 @@ export async function createClientEmailSequenceAction(
       });
     }
 
+    let autoNote = "";
+    if (steps.some((s) => s.category === "INTRODUCTION")) {
+      const auto = await autoPrepareSequenceForLaunch({
+        clientId,
+        sequenceId: created.id,
+        staffUserId: staff.id,
+      });
+      if (auto.parts.length > 0) {
+        autoNote = ` · ${auto.parts.join(" · ")}`;
+      }
+    }
+
     revalidatePath(`/clients/${clientId}/outreach`);
     redirectBack(
       clientId,
-      { kind: "ok", message: `Saved draft — ${created.name}` },
+      { kind: "ok", message: `Saved — ${created.name}${autoNote}` },
       created.id,
     );
   } catch (e) {
@@ -221,10 +236,22 @@ export async function updateClientEmailSequenceAction(
       targetStatus: "DRAFT",
     });
 
+    let autoNote = "";
+    if (steps.some((s) => s.category === "INTRODUCTION")) {
+      const auto = await autoPrepareSequenceForLaunch({
+        clientId,
+        sequenceId,
+        staffUserId: staff.id,
+      });
+      if (auto.parts.length > 0) {
+        autoNote = ` · ${auto.parts.join(" · ")}`;
+      }
+    }
+
     revalidatePath(`/clients/${clientId}/outreach`);
     redirectBack(
       clientId,
-      { kind: "ok", message: `Updated — ${updated.name}` },
+      { kind: "ok", message: `Updated — ${updated.name}${autoNote}` },
       updated.id,
     );
   } catch (e) {
@@ -432,8 +459,8 @@ export async function prepareClientEmailSequenceStepSendsAction(
     });
     revalidatePath(`/clients/${clientId}/outreach`);
     const parts: string[] = [];
-    parts.push(`${String(plan.counts.total)} record(s) prepared`);
-    parts.push(`${String(plan.counts.ready)} ready`);
+    parts.push(`${String(plan.counts.total)} recipient rows refreshed`);
+    parts.push(`${String(plan.counts.ready)} ready to send`);
     if (plan.counts.blocked > 0)
       parts.push(`${String(plan.counts.blocked)} blocked`);
     if (plan.counts.suppressed > 0)
@@ -444,7 +471,7 @@ export async function prepareClientEmailSequenceStepSendsAction(
       clientId,
       {
         kind: "ok",
-        message: `${parts.join(" · ")} — no email sent (records only)`,
+        message: `${parts.join(" · ")} — no email sent`,
       },
       sequenceId,
     );

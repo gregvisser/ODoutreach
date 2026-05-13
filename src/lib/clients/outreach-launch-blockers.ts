@@ -29,10 +29,10 @@ export function staffLaunchBlockerLines(
         lines.push("Unsubscribe link is missing from the introduction.");
         break;
       case "enrollment_records_exist":
-        lines.push("Add eligible recipients (create enrollment records).");
+        lines.push("Add eligible recipients — save the sequence or tap Review recipients.");
         break;
       case "pending_email_sendable_recipients":
-        lines.push("No eligible recipients are ready to send.");
+        lines.push("No eligible recipients are ready to send yet.");
         break;
       case "connected_sending_mailbox":
         lines.push("Connect a sending mailbox or pick an eligible mailbox.");
