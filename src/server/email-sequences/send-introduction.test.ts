@@ -342,6 +342,45 @@ describe("sendSequenceStepBatch — governance gate", () => {
       prismaMock.clientEmailSequenceStepSend.update,
     ).not.toHaveBeenCalled();
   });
+
+  it("reaches the send transaction when defaultSenderEmail is null (placeholder fallbacks)", async () => {
+    mountSequence();
+    mountMailboxPool();
+    prismaMock.client.findUniqueOrThrow.mockResolvedValue({
+      id: "c1",
+      name: "Acme Corp",
+      status: "ACTIVE",
+      defaultSenderEmail: null,
+      launchApprovedAt: null,
+      launchApprovalMode: null,
+      onboarding: {
+        formData: {
+          senderCompanyName: "Acme",
+          emailSignature: "Regards,\nAcme",
+        },
+      },
+    } as never);
+    mountReadyRow("prospect@example.com", "ss-null-sender");
+
+    prismaMock.$transaction.mockImplementation(async () => {
+      throw new Error("reached-transaction");
+    });
+
+    await expect(
+      sendSequenceStepBatch({
+        staff,
+        clientId: "c1",
+        sequenceId: "seq-1",
+        category: "INTRODUCTION",
+        confirmationPhrase: "SEND INTRODUCTION",
+      }),
+    ).rejects.toThrow(/reached-transaction/);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(
+      prismaMock.clientEmailSequenceStepSend.update,
+    ).not.toHaveBeenCalled();
+  });
 });
 
 function afterEachRestoreEnv(): void {
