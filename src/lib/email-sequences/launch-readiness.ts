@@ -106,6 +106,16 @@ export type SequenceLaunchReadinessSnapshotInput = {
    * be generated at send time (see `isOneClickUnsubscribeReady`).
    */
   outboundUnsubscribeReady: boolean;
+  /**
+   * Step-send eligible batch count for the INTRODUCTION step (from
+   * `loadSequenceStepSendUiSnapshots`). When provided, check #8 uses
+   * this to verify that READY step-send rows actually exist — so the
+   * readiness rail and the dispatch block agree. When `null` (caller
+   * has no snapshot yet), the check falls back to enrollment counts.
+   */
+  stepSend?: {
+    introductionEligibleBatchCount: number;
+  } | null;
 };
 
 export type SequenceLaunchReadiness = {
@@ -332,19 +342,61 @@ export function evaluateSequenceLaunchReadiness(
     );
   }
 
-  // 8. At least 1 PENDING email-sendable recipient
+  // 8. At least 1 eligible recipient in the launch batch.
   //
-  // Approximation for records-only: a PENDING enrollment implies the
-  // recipient was email-sendable at enrollment time. Suppression is
-  // re-checked at execution time (PR D4e). If there are zero PENDING
-  // rows but there ARE newly-enrollable contacts, the rail surfaces it
-  // as a warning so the operator enrolls before launching.
+  // When the caller provides step-send snapshot data, we use
+  // `introductionEligibleBatchCount` (READY step-send rows with an
+  // email that can be sent NOW) so the readiness rail agrees with the
+  // dispatch block. Without a snapshot we fall back to enrollment
+  // PENDING counts (backward compat).
   const pending = input.enrollment.counts.PENDING;
-  if (pending > 0) {
+  const batchCount = input.stepSend?.introductionEligibleBatchCount ?? null;
+
+  if (batchCount !== null && batchCount > 0) {
     checks.push(
       pass(
         "pending_email_sendable_recipients",
-        "Pending email-sendable recipient(s)",
+        "Eligible recipients in launch batch",
+        `${String(batchCount)} recipient(s) ready to send now.`,
+      ),
+    );
+  } else if (batchCount !== null && batchCount === 0 && pending > 0) {
+    checks.push(
+      fail(
+        "pending_email_sendable_recipients",
+        "Eligible recipients in launch batch",
+        "Review recipients to refresh the launch batch.",
+        "blocker",
+      ),
+    );
+  } else if (batchCount !== null && batchCount === 0 && canEnrollMore) {
+    checks.push(
+      fail(
+        "pending_email_sendable_recipients",
+        "Eligible recipients in launch batch",
+        "Review recipients to prepare this sequence before launching.",
+        "blocker",
+      ),
+    );
+  } else if (batchCount !== null && batchCount === 0) {
+    const missingEmailCount = input.contactList?.missingEmailCount ?? 0;
+    const detail =
+      missingEmailCount > 0
+        ? `No eligible recipients — ${String(missingEmailCount)} list members have no email on file.`
+        : "No eligible recipients. Check suppressed or missing-email contacts.";
+    checks.push(
+      fail(
+        "pending_email_sendable_recipients",
+        "Eligible recipients in launch batch",
+        detail,
+        "blocker",
+      ),
+    );
+  } else if (pending > 0) {
+    checks.push(
+      pass(
+        "pending_email_sendable_recipients",
+        "Eligible recipients in launch batch",
         `${String(pending)} PENDING enrollment row(s).`,
       ),
     );
@@ -352,25 +404,21 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Pending email-sendable recipient(s)",
+        "Eligible recipients in launch batch",
         "Review recipients to prepare this sequence before launching.",
         "blocker",
       ),
     );
   } else {
-    // PR F2: when the attached list exists but every member is either
-    // suppressed / missing email / missing identifier, be explicit so the
-    // operator knows a "0 pending" rail is not a records bug — it's a
-    // pipeline-shape issue (valid-no-email contacts cannot launch a send).
     const missingEmailCount = input.contactList?.missingEmailCount ?? 0;
     const detail =
       missingEmailCount > 0
-        ? `No prepared recipients yet — ${String(missingEmailCount)} list members have no email on file.`
-        : "No prepared recipients yet — every list member is blocked, suppressed, or missing email.";
+        ? `No eligible recipients — ${String(missingEmailCount)} list members have no email on file.`
+        : "No eligible recipients. Check suppressed or missing-email contacts.";
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Pending email-sendable recipient(s)",
+        "Eligible recipients in launch batch",
         detail,
         "blocker",
       ),

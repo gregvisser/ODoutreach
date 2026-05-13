@@ -125,6 +125,7 @@ export default async function ClientOutreachPage({
       aggregateRemainingToday: bundle.aggregateRemaining,
     },
     outboundUnsubscribeReady: isOneClickUnsubscribeReady(),
+    stepSendSnapshots: stepSendBundle.snapshots,
   });
 
   const isAdmin = staff.role === "ADMIN";

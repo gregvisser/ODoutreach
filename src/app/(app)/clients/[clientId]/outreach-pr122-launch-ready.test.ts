@@ -31,11 +31,11 @@ describe("Outreach PR #122 launch-ready flow", () => {
     expect(src).not.toContain("Back to editing");
   });
 
-  it("offers Remove sequence with a confirm wrapper and preserved contacts copy", () => {
+  it("offers Delete sequence with a confirm wrapper and preserved contacts copy", () => {
     const panel = readFileSync(sequencesPanel, "utf8");
     const confirm = readFileSync(archiveConfirm, "utf8");
-    expect(panel).toContain("Remove sequence");
-    expect(panel).toContain("Contacts and lists stay available");
+    expect(panel).toContain("Delete sequence");
+    expect(panel).toContain("Contacts and lists will stay available");
     expect(panel).toContain("ArchiveSequenceConfirmForm");
     expect(confirm).toContain("confirm(");
   });

@@ -93,7 +93,6 @@ export function SequenceSendPreparationPanel({
   snapshots,
   stepSendSnapshots = [],
   variant = "standalone",
-  enrollmentPendingCount = 0,
 }: Props) {
   const embedded = variant === "embedded";
   const visibleSnapshots =
@@ -178,47 +177,20 @@ export function SequenceSendPreparationPanel({
             ) : null}
 
             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-              {embedded ? (
+              <span>
+                <span className="font-medium text-foreground">Ready</span>:{" "}
+                {String(s.counts.ready)}
+              </span>
+              <span>
+                <span className="font-medium text-foreground">Blocked</span>:{" "}
+                {String(s.counts.blocked + s.counts.suppressed)}
+              </span>
+              <span>
+                <span className="font-medium text-foreground">Sent</span>:{" "}
+                {String(s.counts.sent)}
+              </span>
+              {!embedded && (
                 <>
-                  <span>
-                    <span className="font-medium text-foreground">Eligible recipients</span>:{" "}
-                    {String(s.counts.ready)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Blocked recipients</span>:{" "}
-                    {String(s.counts.blocked)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Suppressed</span>:{" "}
-                    {String(s.counts.suppressed)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Sent</span>:{" "}
-                    {String(s.counts.sent)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Pending</span>:{" "}
-                    {String(enrollmentPendingCount)}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span>
-                    <span className="font-medium text-foreground">Eligible</span>:{" "}
-                    {String(s.counts.ready)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Blocked</span>:{" "}
-                    {String(s.counts.blocked)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Suppressed</span>:{" "}
-                    {String(s.counts.suppressed)}
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground">Sent</span>:{" "}
-                    {String(s.counts.sent)}
-                  </span>
                   <span>
                     <span className="font-medium text-foreground">Failed</span>:{" "}
                     {String(s.counts.failed)}
@@ -361,7 +333,13 @@ function IntroSendDispatchBlock({
     );
   }
 
-  const introModalBody = `This queues real introduction emails for up to ${String(introSend.eligibleInLaunchBatchNowCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(introSend.hardCap)} Follow-ups are launched separately.`;
+  const readyNow = introSend.eligibleInLaunchBatchNowCount;
+  const cap = introSend.hardCap;
+  const sendNow = Math.min(readyNow, cap);
+  const waiting = Math.max(0, readyNow - sendNow);
+  const blocked = introSend.blockedCount + introSend.suppressedCount;
+
+  const introModalBody = `This queues real introduction emails for up to ${String(sendNow)} contacts now. ${waiting > 0 ? `${String(waiting)} remaining recipients stay queued for later batches. ` : ""}Follow-ups are launched separately.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
@@ -371,12 +349,21 @@ function IntroSendDispatchBlock({
       <p className="mt-1 text-muted-foreground">{LIVE_SEQUENCE_LAUNCH_INTRO_HELP}</p>
 
       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-        <p>
-          <span className="font-medium text-foreground">This batch</span>:{" "}
-          {String(introSend.eligibleInLaunchBatchNowCount)} eligible now ·{" "}
-          <span className="font-medium text-foreground">Sent</span>: {String(introSend.sentCount)}
-        </p>
-        <p>{sequenceIntroductionBatchLimitCopy(introSend.hardCap)}</p>
+        <div className="flex flex-wrap gap-4">
+          <span><span className="font-medium text-foreground">Ready now</span>: {String(sendNow)}</span>
+          {waiting > 0 && (
+            <span><span className="font-medium text-foreground">Waiting for later batch</span>: {String(waiting)}</span>
+          )}
+          {blocked > 0 && (
+            <span><span className="font-medium text-foreground">Blocked</span>: {String(blocked)}</span>
+          )}
+          {introSend.sentCount > 0 && (
+            <span><span className="font-medium text-foreground">Sent</span>: {String(introSend.sentCount)}</span>
+          )}
+        </div>
+        {sendNow > 0 && (
+          <p>{sequenceIntroductionBatchLimitCopy(cap)}</p>
+        )}
       </div>
 
       {disabledReasons.length > 0 ? (

@@ -23,14 +23,22 @@ describe("humanizeSequenceLaunchDisabledReason", () => {
   it("maps no-eligible-recipients phrasing without test-domain list language", () => {
     expect(
       humanizeSequenceLaunchDisabledReason(
-        "No eligible recipients are in this launch batch yet — review recipients or check safety rules.",
+        "No eligible recipients yet — review recipients, suppression, or mailbox capacity.",
       ),
     ).toMatch(/review recipients, suppression, or mailbox capacity/i);
     expect(
       humanizeSequenceLaunchDisabledReason(
-        "No eligible recipients are in this launch batch yet — review recipients or check safety rules.",
+        "No eligible recipients yet — review recipients, suppression, or mailbox capacity.",
       )!.toLowerCase(),
     ).not.toMatch(/test-domain/);
+  });
+
+  it("maps 'Review recipients to refresh' reason", () => {
+    expect(
+      humanizeSequenceLaunchDisabledReason(
+        "Review recipients to refresh the launch batch.",
+      ),
+    ).toMatch(/Review recipients to refresh/i);
   });
 });
 

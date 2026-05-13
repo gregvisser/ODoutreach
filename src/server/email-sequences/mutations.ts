@@ -585,6 +585,89 @@ export async function returnSequenceToDraft(
   });
 }
 
+export type DeleteOrArchiveResult = {
+  action: "deleted" | "archived";
+  sequenceName: string;
+  message: string;
+};
+
+/**
+ * Hard-delete a sequence and its owned records (steps, enrollments,
+ * step-sends) if no real send history exists. If the sequence has any
+ * SENT/FAILED step-send rows or linked OutboundEmail records, archive
+ * instead and return an explanation.
+ *
+ * NEVER deletes contacts, ContactUniverse, ContactList, or mailboxes.
+ */
+export async function deleteOrArchiveSequence(
+  input: StatusMutationInput,
+): Promise<DeleteOrArchiveResult> {
+  const seq = await prisma.clientEmailSequence.findUnique({
+    where: { id: input.sequenceId },
+    select: { id: true, clientId: true, name: true, status: true },
+  });
+  if (!seq) {
+    throw new SequenceMutationFailure({
+      code: "NOT_FOUND",
+      message: "Sequence not found.",
+    });
+  }
+  if (seq.clientId !== input.clientId) {
+    throw new SequenceMutationFailure({
+      code: "WRONG_CLIENT",
+      message: "Sequence belongs to a different client.",
+    });
+  }
+
+  const hasSendHistory = await prisma.clientEmailSequenceStepSend.findFirst({
+    where: {
+      sequenceId: seq.id,
+      OR: [
+        { status: "SENT" },
+        { status: "FAILED" },
+        { outboundEmailId: { not: null } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (hasSendHistory) {
+    if (seq.status !== "ARCHIVED") {
+      await prisma.clientEmailSequence.update({
+        where: { id: seq.id },
+        data: { status: "ARCHIVED", archivedAt: new Date() },
+      });
+    }
+    return {
+      action: "archived",
+      sequenceName: seq.name,
+      message:
+        "This sequence has send history, so it was archived instead. Contacts and lists were not removed.",
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.clientEmailSequenceStepSend.deleteMany({
+      where: { sequenceId: seq.id, clientId: input.clientId },
+    });
+    await tx.clientEmailSequenceEnrollment.deleteMany({
+      where: { sequenceId: seq.id, clientId: input.clientId },
+    });
+    await tx.clientEmailSequenceStep.deleteMany({
+      where: { sequenceId: seq.id },
+    });
+    await tx.clientEmailSequence.delete({
+      where: { id: seq.id },
+    });
+  });
+
+  return {
+    action: "deleted",
+    sequenceName: seq.name,
+    message: `Deleted sequence "${seq.name}". Contacts and lists were not removed.`,
+  };
+}
+
 function approvalBlockedMessage(
   reason:
     | "no_contact_list"
