@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   approveClientEmailSequenceAction,
   archiveClientEmailSequenceAction,
@@ -17,12 +19,11 @@ import {
 import type { ClientEmailSequenceStatus } from "@/generated/prisma/enums";
 import { ENROLLMENT_STATUS_LABELS } from "@/lib/email-sequences/enrollment-policy";
 import type {
-  SequenceLaunchCheckResult,
   SequenceLaunchReadiness,
 } from "@/lib/email-sequences/launch-readiness";
-import { LAUNCH_CHECK_DISPLAY_ORDER } from "@/lib/email-sequences/launch-readiness";
+import { staffLaunchBlockerLines } from "@/lib/clients/outreach-launch-blockers";
+import { outreachSequenceStatusLabel } from "@/lib/clients/outreach-staff-copy";
 import {
-  SEQUENCE_STATUS_LABELS,
   SEQUENCE_STEP_LABELS,
 } from "@/lib/email-sequences/sequence-policy";
 import {
@@ -117,39 +118,16 @@ export function ClientEmailSequencesPanel(props: Props) {
     (s) => launchReadinessBySequenceId[s.id]?.canLaunch === true,
   ).length;
 
-  const statusTiles: Array<{ label: string; value: number; hint: string }> = [
-    {
-      label: "Saved sequences",
-      value: counts.total,
-      hint: "Intro-only or follow-up sequences for this client",
-    },
-    {
-      label: "Ready to send",
-      value: launchReadyCount,
-      hint: "Checks pass in the send section below",
-    },
-    {
-      label: "Drafts",
-      value: counts.byStatus.DRAFT,
-      hint: "Work in progress",
-    },
-    {
-      label: SEQUENCE_STATUS_LABELS.ARCHIVED,
-      value: counts.byStatus.ARCHIVED,
-      hint: "Kept for history — not usable",
-    },
-  ];
-
   return (
     <Card
       id="client-email-sequences"
       className="scroll-mt-20 border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Create outreach sequence</CardTitle>
+        <CardTitle>Create sequence</CardTitle>
         <CardDescription>
-          Choose a contact list, pick a sending mailbox, attach one introduction
-          email, and add follow-ups only if you need them. Saving does not send.
+          Pick a contact list, a sending mailbox, and one or more email steps. Saving a sequence
+          does not send emails.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -165,22 +143,17 @@ export function ClientEmailSequencesPanel(props: Props) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {statusTiles.map((tile) => (
-            <div
-              key={tile.label}
-              className="rounded-lg border border-border/70 bg-muted/30 p-3"
-            >
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {tile.label}
-              </p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">
-                {tile.value}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">{tile.hint}</p>
-            </div>
-          ))}
-        </div>
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{String(counts.total)}</span> saved
+          sequence{counts.total === 1 ? "" : "s"} for this client.
+          {launchReadyCount > 0 ? (
+            <>
+              {" "}
+              <span className="font-medium text-foreground">{String(launchReadyCount)}</span>{" "}
+              {launchReadyCount === 1 ? "is" : "are"} ready to launch from the section below.
+            </>
+          ) : null}
+        </p>
 
         <ClientEmailSequenceForm
           clientId={clientId}
@@ -197,8 +170,7 @@ export function ClientEmailSequencesPanel(props: Props) {
           <h3 className="text-sm font-semibold">Sequences</h3>
           {sequences.length === 0 ? (
             <p className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center text-xs text-muted-foreground">
-              No sequences yet. Create one above — live sends run from Schedule send preparation
-              below once a sequence is active and recipients are enrolled.
+              No sequences yet. Create one above, then review recipients and launch below.
             </p>
           ) : (
             <ul className="space-y-3">
@@ -221,9 +193,14 @@ export function ClientEmailSequencesPanel(props: Props) {
         </div>
 
         <p className="rounded-md border border-dashed border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-          <strong>Note:</strong> Saving a sequence does not send mail. Use{" "}
-          <span className="font-medium text-foreground">Schedule send preparation</span>{" "}
-          below to prepare rows and queue sends when checks pass.
+          Saving a sequence does not send email. Use{" "}
+          <Link
+            href="#sequence-send-preparation"
+            className="font-medium text-primary underline underline-offset-2"
+          >
+            Launch sequence
+          </Link>{" "}
+          below after recipients are enrolled.
         </p>
       </CardContent>
     </Card>
@@ -269,7 +246,7 @@ function SequenceCard({
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold">{sequence.name}</p>
             <Badge variant={statusBadgeVariant(sequence.status)}>
-              {SEQUENCE_STATUS_LABELS[sequence.status]}
+              {outreachSequenceStatusLabel(sequence.status)}
             </Badge>
           </div>
           {sequence.description && (
@@ -277,14 +254,14 @@ function SequenceCard({
               {sequence.description}
             </p>
           )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Target list:{" "}
-            <span className="font-medium text-foreground">
-              {sequence.contactList.name}
-            </span>{" "}
-            · {String(sequence.contactList.emailSendableCount)} email-sendable
-            / {String(sequence.contactList.memberCount)} members
-          </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Contact list:{" "}
+          <span className="font-medium text-foreground">
+            {sequence.contactList.name}
+          </span>{" "}
+          · {String(sequence.contactList.emailSendableCount)} eligible /{" "}
+          {String(sequence.contactList.memberCount)} members
+        </p>
         </div>
         <div className="text-right text-[11px] text-muted-foreground">
           <p>{String(sequence.steps.length)} step(s)</p>
@@ -332,13 +309,22 @@ function SequenceCard({
 
       {sequence.status === "APPROVED" && sequence.approvedBy && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Activated by{" "}
+          Went live with{" "}
           <span className="font-medium">
             {sequence.approvedBy.name ?? sequence.approvedBy.email}
           </span>{" "}
           on {formatDate(sequence.approvedAtIso)}
         </p>
       )}
+
+      <div className="mt-2">
+        <Link
+          href="#sequence-send-preparation"
+          className="text-xs font-medium text-primary underline underline-offset-2"
+        >
+          Review and launch
+        </Link>
+      </div>
 
       <EnrollmentBlock clientId={clientId} sequence={sequence} canMutate={canMutate} />
 
@@ -374,7 +360,7 @@ function SequenceCard({
                 variant="outline"
                 disabled={!canReady}
               >
-                Mark ready to activate
+                Mark ready
               </Button>
             </form>
           )}
@@ -384,7 +370,7 @@ function SequenceCard({
                 <input type="hidden" name="clientId" value={clientId} />
                 <input type="hidden" name="sequenceId" value={sequence.id} />
                 <Button type="submit" size="sm" disabled={!canApprove}>
-                  Activate sequence
+                  Go live
                 </Button>
               </form>
               <form action={returnClientEmailSequenceToDraftAction}>
@@ -483,9 +469,10 @@ function EnrollmentBlock({
     <div className="mt-3 rounded-md border border-border/60 bg-muted/20 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold">Recipient preview</p>
+          <p className="text-xs font-semibold">Review recipients</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Enrollment records do not send email. Records-only scope.
+            Adding people here does not send email — it only prepares who would receive a live
+            sequence.
           </p>
         </div>
         <div className="text-[11px] text-muted-foreground">
@@ -541,7 +528,7 @@ function EnrollmentBlock({
             </Button>
           </form>
           <span className="text-[11px] text-muted-foreground">
-            Live sends use Schedule send preparation below.
+            Launch live sends from the section below when checks pass.
           </span>
         </div>
       )}
@@ -577,89 +564,55 @@ function LaunchReadinessBlock({
   if (!readiness) {
     return (
       <div className="mt-3 rounded-md border border-dashed border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground">
-        Launch readiness unavailable — refresh the page.
+        Launch status unavailable — refresh the page.
       </div>
     );
   }
 
-  const orderedChecks = orderReadinessChecks(readiness.checks);
+  const blockers = staffLaunchBlockerLines(readiness.checks);
   const headerTone = readiness.canLaunch
     ? "border-emerald-400/40 bg-emerald-50/60 dark:bg-emerald-500/10"
     : "border-amber-400/40 bg-amber-50/60 dark:bg-amber-500/10";
-  const headerLabel = readiness.canLaunch
-    ? `Launch readiness: all checks green — ${String(readiness.totalWarnings)} warning${readiness.totalWarnings === 1 ? "" : "s"}`
-    : `Launch readiness: ${String(readiness.totalBlockers)} blocker${readiness.totalBlockers === 1 ? "" : "s"}`;
 
   return (
     <div className={`mt-3 rounded-md border ${headerTone} p-3`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold">{headerLabel}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Pool snapshot: {String(mailboxSnapshot.connectedSendingCount)}{" "}
-            mailbox(es) · {String(mailboxSnapshot.aggregateRemainingToday)}{" "}
-            slot(s) remaining today. Prepare and dispatch runs from
-            the Send preparation section on this page.
+      {readiness.canLaunch ? (
+        <>
+          <p className="text-sm font-semibold text-foreground">Ready to launch</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Sending mailboxes: {String(mailboxSnapshot.connectedSendingCount)} connected ·{" "}
+            {String(mailboxSnapshot.aggregateRemainingToday)} sends remaining today across the pool
+            (UTC day).
           </p>
-        </div>
-      </div>
-
-      <ul className="mt-2 grid gap-1 text-[11px]">
-        {orderedChecks.map((check) => (
-          <li
-            key={check.id}
-            className="flex flex-wrap items-start justify-between gap-2 rounded border border-border/50 bg-background/60 px-2 py-1"
-          >
-            <span className="flex items-start gap-2">
-              <CheckDot status={check.status} severity={check.severity} />
-              <span>
-                <span className="font-medium text-foreground">{check.label}</span>
-                <span className="ml-1 text-muted-foreground">{check.detail}</span>
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
+          {readiness.totalWarnings > 0 ? (
+            <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-200">
+              {String(readiness.totalWarnings)} notice
+              {readiness.totalWarnings === 1 ? "" : "s"} — you can still launch, but review the
+              launch section below.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-foreground">Cannot launch yet</p>
+          {blockers.length > 0 ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-muted-foreground">
+              {blockers.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Fix the items above, then check again.
+            </p>
+          )}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Mailboxes: {String(mailboxSnapshot.connectedSendingCount)} connected · pool capacity{" "}
+            {String(mailboxSnapshot.aggregateRemainingToday)} remaining today.
+          </p>
+        </>
+      )}
     </div>
-  );
-}
-
-function orderReadinessChecks(
-  checks: readonly SequenceLaunchCheckResult[],
-): SequenceLaunchCheckResult[] {
-  const byId = new Map(checks.map((c) => [c.id, c]));
-  const ordered: SequenceLaunchCheckResult[] = [];
-  for (const id of LAUNCH_CHECK_DISPLAY_ORDER) {
-    const match = byId.get(id);
-    if (match) {
-      ordered.push(match);
-      byId.delete(id);
-    }
-  }
-  for (const rest of byId.values()) ordered.push(rest);
-  return ordered;
-}
-
-function CheckDot({
-  status,
-  severity,
-}: {
-  status: "pass" | "fail";
-  severity: "blocker" | "warning" | "ok";
-}) {
-  const cls =
-    status === "pass"
-      ? "bg-emerald-500"
-      : severity === "warning"
-        ? "bg-amber-500"
-        : "bg-destructive";
-  const label = status === "pass" ? "pass" : severity;
-  return (
-    <span
-      aria-label={label}
-      title={label}
-      className={`mt-[3px] inline-block h-2 w-2 shrink-0 rounded-full ${cls}`}
-    />
   );
 }
 
