@@ -554,3 +554,58 @@ describe("aggregate counters (SequenceStepSendPlanCounts)", () => {
     });
   });
 });
+
+describe("classifySequenceStepSendExecution — live launch skips GOVERNED_TEST_EMAIL_DOMAINS", () => {
+  it("allows a non-allowlisted domain when skipDomainAllowlist is true", () => {
+    const decision = classifySequenceStepSendExecution(
+      baseInput({
+        category: "INTRODUCTION",
+        stepCategory: "INTRODUCTION",
+        previousStepSend: null,
+        delayDays: 0,
+        delayHours: 0,
+        allowlist: { configured: false, domains: [] },
+        skipDomainAllowlist: true,
+        candidate: baseCandidate({
+          contact: {
+            id: "ct-1",
+            clientId: "client-1",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            fullName: "Ada Lovelace",
+            company: "Analytical",
+            role: null,
+            website: null,
+            email: "ceo@real-prospect.io",
+            mobilePhone: null,
+            officePhone: null,
+            isSuppressed: false,
+          },
+        }),
+        enrollmentCurrentStepPosition: 0,
+        stepPosition: 1,
+      }),
+    );
+    expect(decision.sendable).toBe(true);
+  });
+
+  it("still blocks when skipDomainAllowlist is false and allowlist is not configured", () => {
+    const decision = classifySequenceStepSendExecution(
+      baseInput({
+        category: "INTRODUCTION",
+        stepCategory: "INTRODUCTION",
+        previousStepSend: null,
+        delayDays: 0,
+        delayHours: 0,
+        allowlist: { configured: false, domains: [] },
+        skipDomainAllowlist: false,
+        enrollmentCurrentStepPosition: 0,
+        stepPosition: 1,
+      }),
+    );
+    expect(decision).toMatchObject({
+      sendable: false,
+      reason: "blocked_allowlist_not_configured",
+    });
+  });
+});

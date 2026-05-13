@@ -173,7 +173,6 @@ export default async function ClientOutreachPage({
         launchMailboxOptions={launchMailboxOptions}
         sequencePrepSnapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}
-        stepSendAllowlist={stepSendBundle.allowlist}
       />
 
       <AdminOutreachDiagnosticsPanel isAdmin={isAdmin}>

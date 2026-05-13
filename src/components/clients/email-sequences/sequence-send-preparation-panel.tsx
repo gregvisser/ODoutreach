@@ -6,6 +6,8 @@ import {
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import {
   humanizeSequenceLaunchDisabledReason,
+  LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
+  LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
   sequenceIntroductionBatchLimitCopy,
 } from "@/lib/clients/outreach-sequence-send-staff-copy";
 import { SequencePhraseConfirmLaunch } from "@/components/clients/email-sequences/sequence-phrase-confirm-launch";
@@ -23,10 +25,7 @@ import {
   getSequenceStepSendConfirmationPhrase,
   SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
 } from "@/lib/email-sequences/sequence-send-execution-constants";
-import type {
-  SequenceStepSendUiAllowlist,
-  SequenceStepSendUiSnapshot,
-} from "@/server/email-sequences/send-introduction";
+import type { SequenceStepSendUiSnapshot } from "@/server/email-sequences/send-introduction";
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 
 /**
@@ -38,8 +37,8 @@ import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
  *            only; no cron / worker / background scheduler.
  *
  * Records-only preparation remains the safe entry point. Dispatch
- * blocks only ever send to allowlisted recipients and require a
- * typed confirmation phrase specific to that category.
+ * blocks send real email and require a typed confirmation phrase
+ * specific to that category.
  */
 
 type Props = {
@@ -54,8 +53,6 @@ type Props = {
    * groups them by sequence and category.
    */
   stepSendSnapshots?: SequenceStepSendUiSnapshot[];
-  /** Allowlist snapshot for every dispatch block on the panel. */
-  stepSendAllowlist?: SequenceStepSendUiAllowlist;
   /**
    * `standalone` — full-width card (legacy page placement).
    * `embedded` — inside the selected-sequence panel (no outer card).
@@ -95,7 +92,6 @@ export function SequenceSendPreparationPanel({
   onlySequenceId,
   snapshots,
   stepSendSnapshots = [],
-  stepSendAllowlist,
   variant = "standalone",
   enrollmentPendingCount = 0,
 }: Props) {
@@ -279,7 +275,6 @@ export function SequenceSendPreparationPanel({
               canMutate={canMutate}
               sequenceId={s.sequenceId}
               introSend={introSnapshot}
-              allowlist={stepSendAllowlist}
             />
 
             <FollowUpDispatchBlocks
@@ -287,7 +282,6 @@ export function SequenceSendPreparationPanel({
               canMutate={canMutate}
               sequenceId={s.sequenceId}
               snapshotsByCategory={snapshotsBySequenceAndCategory}
-              allowlist={stepSendAllowlist}
             />
           </div>
         );
@@ -338,24 +332,19 @@ export function SequenceSendPreparationPanel({
 /**
  * PR D4e.2 — per-sequence INTRODUCTION dispatch block.
  *
- * Sends real email via the outbound worker. Gated by the governed
- * test allowlist (`GOVERNED_TEST_EMAIL_DOMAINS`) and the typed
- * confirmation phrase (`SEND INTRODUCTION`). The button is disabled
- * unless every safety precondition is met server-side and at least
- * one READY record has an allowlisted recipient domain.
+ * Sends real email via the outbound worker. Gated by the typed
+ * confirmation phrase (`SEND INTRODUCTION`) and server-side readiness.
  */
 function IntroSendDispatchBlock({
   clientId,
   canMutate,
   sequenceId,
   introSend,
-  allowlist,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   introSend: SequenceStepSendUiSnapshot | undefined;
-  allowlist: SequenceStepSendUiAllowlist | undefined;
 }) {
   if (!introSend) {
     return null;
@@ -372,64 +361,32 @@ function IntroSendDispatchBlock({
     );
   }
 
-  const allowlistConfigured = allowlist?.configured === true;
-  const allowlistDomains = allowlist?.domains ?? [];
-
-  const introModalBody = `This queues real introduction emails for up to ${String(introSend.allowlistedReadyCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(introSend.hardCap)} Follow-ups are launched separately.`;
+  const introModalBody = `This queues real introduction emails for up to ${String(introSend.eligibleInLaunchBatchNowCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(introSend.hardCap)} Follow-ups are launched separately.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-medium text-foreground">Introduction email</div>
       </div>
-      <p className="mt-1 text-muted-foreground">
-        Sends use your connected mailboxes, daily limits, and suppression rules. Only eligible,
-        allowlisted recipients receive mail in each batch.
-      </p>
+      <p className="mt-1 text-muted-foreground">{LIVE_SEQUENCE_LAUNCH_INTRO_HELP}</p>
 
       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
         <p>
           <span className="font-medium text-foreground">This batch</span>:{" "}
-          {String(introSend.allowlistedReadyCount)} eligible now ·{" "}
+          {String(introSend.eligibleInLaunchBatchNowCount)} eligible now ·{" "}
           <span className="font-medium text-foreground">Sent</span>: {String(introSend.sentCount)}
         </p>
         <p>{sequenceIntroductionBatchLimitCopy(introSend.hardCap)}</p>
       </div>
 
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        {allowlistConfigured ? (
-          <>
-            Allowlisted domains:{" "}
-            <span className="font-mono">
-              {allowlistDomains.length > 0 ? allowlistDomains.join(", ") : "(none configured)"}
-            </span>
-          </>
-        ) : (
-          <span className="text-amber-700 dark:text-amber-300">
-            Recipient allowlist is not configured — launches are disabled until it is set in the
-            environment.
-          </span>
-        )}
-      </div>
-
       {disabledReasons.length > 0 ? (
         <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
-          <p className="font-medium text-foreground">Cannot launch yet</p>
+          <p className="font-medium text-foreground">Cannot launch</p>
           <ul className="mt-1 list-disc pl-5 text-muted-foreground">
             {disabledReasons.map((r) => (
               <li key={r}>{r}</li>
             ))}
           </ul>
-        </div>
-      ) : null}
-
-      {introSend.allowlistBlockedReadyCount > 0 ? (
-        <div
-          className="mt-2 rounded border border-amber-400/60 bg-amber-100/60 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-200"
-          data-testid="real-prospect-send-gate"
-        >
-          Some recipients cannot receive live sends until the client is cleared for full live
-          outreach and unsubscribe is configured.
         </div>
       ) : null}
 
@@ -464,13 +421,11 @@ function FollowUpDispatchBlocks({
   canMutate,
   sequenceId,
   snapshotsByCategory,
-  allowlist,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   snapshotsByCategory: Map<string, SequenceStepSendUiSnapshot>;
-  allowlist: SequenceStepSendUiAllowlist | undefined;
 }) {
   const blocks = FOLLOW_UP_CATEGORIES.map((category) => {
     const snap = snapshotsByCategory.get(`${sequenceId}:${category}`);
@@ -494,7 +449,6 @@ function FollowUpDispatchBlocks({
           sequenceId={sequenceId}
           category={category}
           stepSnapshot={snap}
-          allowlist={allowlist}
         />
       ))}
     </div>
@@ -515,14 +469,12 @@ function StepSendDispatchBlock({
   sequenceId,
   category,
   stepSnapshot,
-  allowlist,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   category: ClientEmailTemplateCategory;
   stepSnapshot: SequenceStepSendUiSnapshot;
-  allowlist: SequenceStepSendUiAllowlist | undefined;
 }) {
   const phrase = getSequenceStepSendConfirmationPhrase(category);
   const label = categoryLabel(category);
@@ -539,15 +491,12 @@ function StepSendDispatchBlock({
     );
   }
 
-  const allowlistConfigured = allowlist?.configured === true;
-  const allowlistDomains = allowlist?.domains ?? [];
-
   const delayDescription =
     stepSnapshot.delayDays > 0
       ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was sent`
       : "after the previous step is sent";
 
-  const followModalBody = `This queues real emails for ${label}, up to ${String(stepSnapshot.allowlistedReadyCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} Each person must have received the previous step, with ${delayDescription}.`;
+  const followModalBody = `This queues real emails for ${label}, up to ${String(stepSnapshot.eligibleInLaunchBatchNowCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} Each person must have received the previous step, with ${delayDescription}.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/15 p-3 text-xs">
@@ -556,15 +505,12 @@ function StepSendDispatchBlock({
           {label} — live send
         </div>
       </div>
-      <p className="mt-1 text-muted-foreground">
-        Sends one step at a time. Eligibility, delays, and suppression are re-checked when you
-        launch.
-      </p>
+      <p className="mt-1 text-muted-foreground">{LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP}</p>
 
       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
         <p>
           <span className="font-medium text-foreground">This batch</span>:{" "}
-          {String(stepSnapshot.allowlistedReadyCount)} eligible now ·{" "}
+          {String(stepSnapshot.eligibleInLaunchBatchNowCount)} eligible now ·{" "}
           <span className="font-medium text-foreground">Sent</span>: {String(stepSnapshot.sentCount)}
         </p>
         <p>{sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)}</p>
@@ -575,40 +521,14 @@ function StepSendDispatchBlock({
         </p>
       </div>
 
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        {allowlistConfigured ? (
-          <>
-            Allowlisted domains:{" "}
-            <span className="font-mono">
-              {allowlistDomains.length > 0 ? allowlistDomains.join(", ") : "(none configured)"}
-            </span>
-          </>
-        ) : (
-          <span className="text-amber-700 dark:text-amber-300">
-            Recipient allowlist is not configured — launches are disabled until it is set in the
-            environment.
-          </span>
-        )}
-      </div>
-
       {disabledReasons.length > 0 ? (
         <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
-          <p className="font-medium text-foreground">Cannot launch yet</p>
+          <p className="font-medium text-foreground">Cannot launch</p>
           <ul className="mt-1 list-disc pl-5 text-muted-foreground">
             {disabledReasons.map((r) => (
               <li key={r}>{r}</li>
             ))}
           </ul>
-        </div>
-      ) : null}
-
-      {stepSnapshot.allowlistBlockedReadyCount > 0 ? (
-        <div
-          className="mt-2 rounded border border-amber-400/60 bg-amber-100/60 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-200"
-          data-testid="real-prospect-send-gate"
-        >
-          Some recipients cannot receive live sends until the client is cleared for full live
-          outreach and unsubscribe is configured.
         </div>
       ) : null}
 

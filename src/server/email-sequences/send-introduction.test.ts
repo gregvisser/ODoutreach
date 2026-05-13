@@ -355,6 +355,35 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     );
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
+
+  it("reaches the send transaction for ACTIVE + LIVE_PROSPECT non-allowlisted recipient when AUTH_URL is configured (no domain allowlist)", async () => {
+    mountSequence();
+    mountMailboxPool();
+    mountClient({
+      status: "ACTIVE",
+      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+      launchApprovalMode: "LIVE_PROSPECT",
+    });
+    mountReadyRow("prospect@real-prospect.io", "ss-real-domain");
+
+    process.env.AUTH_URL = "https://outreach.example.com";
+
+    prismaMock.$transaction.mockImplementation(async () => {
+      throw new Error("reached-transaction");
+    });
+
+    await expect(
+      sendSequenceStepBatch({
+        staff,
+        clientId: "c1",
+        sequenceId: "seq-1",
+        category: "INTRODUCTION",
+        confirmationPhrase: "SEND INTRODUCTION",
+      }),
+    ).rejects.toThrow(/reached-transaction/);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
 });
 
 function afterEachRestoreEnv(): void {
