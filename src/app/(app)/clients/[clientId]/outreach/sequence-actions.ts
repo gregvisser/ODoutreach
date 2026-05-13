@@ -462,8 +462,21 @@ export async function prepareClientEmailSequenceStepSendsAction(
     const parts: string[] = [];
     parts.push(`${String(plan.counts.total)} recipient rows refreshed`);
     parts.push(`${String(plan.counts.ready)} ready to send`);
-    if (plan.counts.blocked > 0)
+    if (plan.counts.blocked > 0) {
       parts.push(`${String(plan.counts.blocked)} blocked`);
+      const topBlockedReason = plan.previews
+        .filter((p) => p.status === "BLOCKED" && p.reasonDetail)
+        .reduce<Map<string, number>>((acc, p) => {
+          const key = p.reasonDetail ?? "unknown";
+          acc.set(key, (acc.get(key) ?? 0) + 1);
+          return acc;
+        }, new Map());
+      const topEntry = Array.from(topBlockedReason.entries())
+        .sort((a, b) => b[1] - a[1])[0];
+      if (topEntry) {
+        parts.push(`reason: ${topEntry[0]}`);
+      }
+    }
     if (plan.counts.suppressed > 0)
       parts.push(`${String(plan.counts.suppressed)} suppressed`);
     if (plan.counts.skipped > 0)
@@ -471,7 +484,7 @@ export async function prepareClientEmailSequenceStepSendsAction(
     redirectBack(
       clientId,
       {
-        kind: "ok",
+        kind: plan.counts.ready > 0 ? "ok" : "error",
         message: `${parts.join(" · ")} — no email sent`,
       },
       sequenceId,

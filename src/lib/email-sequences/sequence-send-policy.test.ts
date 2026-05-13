@@ -311,6 +311,39 @@ describe("classifySequenceStepSendCandidate", () => {
     expect(result.status).toBe("BLOCKED");
     expect(result.reason).toBe("blocked_template_not_approved");
   });
+
+  it("READY when sender_email comes from a mailbox fallback (not defaultSenderEmail)", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        sender: {
+          senderName: "OpensDoors",
+          senderEmail: "adam@opensdoors.test",
+          senderCompanyName: "OpensDoors",
+          emailSignature: "—Adam",
+          unsubscribeLink: "[unsubscribe link — provided at dispatch]",
+        },
+      }),
+    );
+    expect(result.status).toBe("READY");
+    expect(result.reason).toBe("ready");
+    expect(result.composition.sendReady).toBe(true);
+  });
+
+  it("blocks when both sender_email and unsubscribe_link are null", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        sender: {
+          senderName: "OpensDoors",
+          senderEmail: null,
+          senderCompanyName: "OpensDoors",
+          emailSignature: "—Adam",
+          unsubscribeLink: null,
+        },
+      }),
+    );
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason).toBe("blocked_missing_unsubscribe_link");
+  });
 });
 
 describe("step send counts", () => {

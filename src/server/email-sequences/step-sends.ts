@@ -111,16 +111,24 @@ function buildSenderRow(
   brief: ClientSenderProfile,
   /** Placeholder unsubscribe link for plan-time composition. */
   unsubscribePlaceholder: string,
+  /**
+   * At plan time, the actual sender email comes from the mailbox pool
+   * at dispatch time — not from `client.defaultSenderEmail`. Provide a
+   * realistic fallback so the composition check doesn't block on
+   * infrastructure fields the dispatcher guarantees.
+   */
+  mailboxEmailFallback?: string | null,
 ) {
+  const effectiveSenderEmail =
+    client.defaultSenderEmail ??
+    mailboxEmailFallback ??
+    null;
   return {
     senderName: client.name,
-    senderEmail: client.defaultSenderEmail,
+    senderEmail: effectiveSenderEmail,
     senderCompanyName: brief.senderCompanyName,
     emailSignature: brief.emailSignature,
-    unsubscribeLink:
-      client.defaultSenderEmail && client.defaultSenderEmail.length > 0
-        ? unsubscribePlaceholder
-        : null,
+    unsubscribeLink: unsubscribePlaceholder,
   };
 }
 
@@ -223,33 +231,62 @@ async function loadPlanningBundle(params: {
     );
   }
 
-  const enrollments = await prisma.clientEmailSequenceEnrollment.findMany({
-    where: { sequenceId, clientId },
-    select: {
-      id: true,
-      clientId: true,
-      sequenceId: true,
-      contactId: true,
-      status: true,
-      contact: {
-        select: {
-          id: true,
-          clientId: true,
-          email: true,
-          fullName: true,
-          firstName: true,
-          lastName: true,
-          company: true,
-          title: true,
-          mobilePhone: true,
-          officePhone: true,
-          isSuppressed: true,
+  const [enrollments, sequenceWithMailbox] = await Promise.all([
+    prisma.clientEmailSequenceEnrollment.findMany({
+      where: { sequenceId, clientId },
+      select: {
+        id: true,
+        clientId: true,
+        sequenceId: true,
+        contactId: true,
+        status: true,
+        contact: {
+          select: {
+            id: true,
+            clientId: true,
+            email: true,
+            fullName: true,
+            firstName: true,
+            lastName: true,
+            company: true,
+            title: true,
+            mobilePhone: true,
+            officePhone: true,
+            isSuppressed: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.clientEmailSequence.findUnique({
+      where: { id: sequenceId },
+      select: { launchPreferredMailboxId: true },
+    }),
+  ]);
 
-  return { client, sequence, step, template, enrollments };
+  let mailboxEmailFallback: string | null = null;
+  const preferredId = sequenceWithMailbox?.launchPreferredMailboxId ?? null;
+  if (preferredId) {
+    const mb = await prisma.clientMailboxIdentity.findUnique({
+      where: { id: preferredId },
+      select: { email: true },
+    });
+    if (mb) mailboxEmailFallback = mb.email;
+  }
+  if (!mailboxEmailFallback) {
+    const anyMb = await prisma.clientMailboxIdentity.findFirst({
+      where: {
+        clientId,
+        connectionStatus: "CONNECTED",
+        isActive: true,
+        isSendingEnabled: true,
+        canSend: true,
+      },
+      select: { email: true },
+    });
+    if (anyMb) mailboxEmailFallback = anyMb.email;
+  }
+
+  return { client, sequence, step, template, enrollments, mailboxEmailFallback };
 }
 
 export async function planSequenceStepSends(params: {
@@ -259,7 +296,7 @@ export async function planSequenceStepSends(params: {
   staffUserId: string;
 }): Promise<SequenceStepSendPlanResult> {
   const bundle = await loadPlanningBundle(params);
-  const { client, sequence, step, template, enrollments } = bundle;
+  const { client, sequence, step, template, enrollments, mailboxEmailFallback } = bundle;
 
   if (enrollments.length === 0) {
     throw new SequenceStepSendPlanFailure(
@@ -273,13 +310,12 @@ export async function planSequenceStepSends(params: {
     formData: client.onboarding?.formData ?? null,
   });
   // The real unsubscribe URL is minted by the D4e.2 dispatcher per
-  // contact. At plan time we substitute a deterministic placeholder
-  // so the composition helper can verify the token renders; this
-  // string is NEVER sent to a recipient in D4e.1.
-  const unsubscribePlaceholder = client.defaultSenderEmail
-    ? "[D4e.2 unsubscribe link]"
-    : "";
-  const senderRow = buildSenderRow(client, brief, unsubscribePlaceholder);
+  // contact. At plan time we always provide a non-null placeholder so
+  // the composition helper's SEND_REQUIRED_FIELDS check doesn't block
+  // on infrastructure the dispatcher guarantees. Similarly, sender_email
+  // comes from the mailbox pool at dispatch — not defaultSenderEmail.
+  const unsubscribePlaceholder = "[unsubscribe link — provided at dispatch]";
+  const senderRow = buildSenderRow(client, brief, unsubscribePlaceholder, mailboxEmailFallback);
 
   const nowIso = new Date().toISOString();
   const counts: SequenceStepSendClassificationCounts = zeroStepSendCounts();

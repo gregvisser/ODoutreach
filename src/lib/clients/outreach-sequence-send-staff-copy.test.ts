@@ -23,14 +23,19 @@ describe("humanizeSequenceLaunchDisabledReason", () => {
   it("maps no-eligible-recipients phrasing without test-domain list language", () => {
     expect(
       humanizeSequenceLaunchDisabledReason(
-        "No eligible recipients yet — review recipients, suppression, or mailbox capacity.",
+        "No eligible recipients yet — review recipients to prepare send rows.",
       ),
-    ).toMatch(/review recipients, suppression, or mailbox capacity/i);
+    ).toMatch(/review recipients/i);
     expect(
       humanizeSequenceLaunchDisabledReason(
-        "No eligible recipients yet — review recipients, suppression, or mailbox capacity.",
+        "No eligible recipients yet — review recipients to prepare send rows.",
       )!.toLowerCase(),
     ).not.toMatch(/test-domain/);
+  });
+
+  it("passes through blocked-with-reason messages plainly", () => {
+    const msg = '18 recipients blocked: Missing required sender field(s): {{sender_email}}.';
+    expect(humanizeSequenceLaunchDisabledReason(msg)).toBe(msg);
   });
 
   it("maps 'Review recipients to refresh' reason", () => {

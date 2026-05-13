@@ -86,6 +86,27 @@ function categoryLabel(category: ClientEmailTemplateCategory): string {
   return `follow-up ${n ?? ""}`.trim();
 }
 
+function humanizeBlockedReason(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("template") && lower.includes("not approved"))
+    return "Template is not yet approved";
+  if (lower.includes("missing") && lower.includes("sender"))
+    return raw;
+  if (lower.includes("suppressed"))
+    return "Recipient suppressed";
+  if (lower.includes("missing email") || lower.includes("no email"))
+    return "Recipient has no email address";
+  if (lower.includes("unsubscribe"))
+    return "Missing unsubscribe link";
+  if (lower.includes("unknown placeholder"))
+    return raw;
+  if (lower.includes("allowlist") || lower.includes("governed_test"))
+    return "Blocked by domain allowlist";
+  if (lower.includes("launch") && lower.includes("approval"))
+    return "Blocked by launch approval gate";
+  return raw;
+}
+
 export function SequenceSendPreparationPanel({
   clientId,
   canMutate,
@@ -363,6 +384,20 @@ function IntroSendDispatchBlock({
         </div>
         {sendNow > 0 && (
           <p>{sequenceIntroductionBatchLimitCopy(cap)}</p>
+        )}
+        {introSend.blockedReasonCounts.length > 0 && (
+          <details className="mt-1">
+            <summary className="cursor-pointer font-medium text-foreground">
+              Why blocked ({String(blocked)})
+            </summary>
+            <ul className="mt-1 list-disc pl-5">
+              {introSend.blockedReasonCounts.map((r) => (
+                <li key={r.reason}>
+                  {humanizeBlockedReason(r.reason)} ({String(r.count)})
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </div>
 
