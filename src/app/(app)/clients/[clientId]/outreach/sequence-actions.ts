@@ -30,6 +30,7 @@ import {
   approveSequence,
   archiveSequence,
   createSequence,
+  deleteOrArchiveSequence,
   markSequenceReadyForReview,
   returnSequenceToDraft,
   SequenceMutationFailure,
@@ -691,6 +692,48 @@ export async function sendClientEmailSequenceStepAction(
         kind: "error",
         message: `${flashForError(e)} (expected phrase: ${getSequenceStepSendConfirmationPhrase(category)})`,
       },
+      sequenceId,
+    );
+  }
+}
+
+/**
+ * Hard-delete a sequence if safe (no send history), otherwise archive.
+ * Contacts, lists, and mailboxes are never removed.
+ */
+export async function deleteOrArchiveClientEmailSequenceAction(
+  formData: FormData,
+): Promise<void> {
+  const staff = await requireOpensDoorsStaff();
+  const clientId = getClientIdFromForm(formData);
+  const sequenceId = String(formData.get("sequenceId") ?? "").trim();
+  if (!sequenceId) {
+    redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
+  }
+  await requireClientAccess(staff, clientId);
+  await requireClientEmailSequenceMutator(staff, clientId);
+
+  try {
+    const result = await deleteOrArchiveSequence({
+      sequenceId,
+      clientId,
+      staffUserId: staff.id,
+    });
+    revalidatePath(`/clients/${clientId}/outreach`);
+    if (result.action === "deleted") {
+      redirectBack(clientId, { kind: "ok", message: result.message });
+    } else {
+      redirectBack(
+        clientId,
+        { kind: "ok", message: result.message },
+        sequenceId,
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
+    redirectBack(
+      clientId,
+      { kind: "error", message: flashForError(e) },
       sequenceId,
     );
   }

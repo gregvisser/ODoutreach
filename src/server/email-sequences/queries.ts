@@ -465,9 +465,24 @@ export function buildSequenceLaunchReadinessMap(params: {
     aggregateRemainingToday: number;
   };
   outboundUnsubscribeReady: boolean;
+  stepSendSnapshots?: ReadonlyArray<{
+    sequenceId: string;
+    category: string;
+    eligibleInLaunchBatchNowCount: number;
+  }>;
 }): Record<string, SequenceLaunchReadiness> {
+  const introBySeqId = new Map<string, number>();
+  if (params.stepSendSnapshots) {
+    for (const snap of params.stepSendSnapshots) {
+      if (snap.category === "INTRODUCTION") {
+        introBySeqId.set(snap.sequenceId, snap.eligibleInLaunchBatchNowCount);
+      }
+    }
+  }
+
   const out: Record<string, SequenceLaunchReadiness> = {};
   for (const seq of params.sequences) {
+    const introBatch = introBySeqId.get(seq.id);
     const readiness = evaluateSequenceLaunchReadiness({
       sequence: {
         id: seq.id,
@@ -497,6 +512,10 @@ export function buildSequenceLaunchReadinessMap(params: {
       },
       mailbox: params.mailbox,
       outboundUnsubscribeReady: params.outboundUnsubscribeReady,
+      stepSend:
+        introBatch !== undefined
+          ? { introductionEligibleBatchCount: introBatch }
+          : null,
     });
     out[seq.id] = readiness;
   }

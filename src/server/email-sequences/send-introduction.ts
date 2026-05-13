@@ -1428,7 +1428,7 @@ export async function loadSequenceStepSendUiSnapshots(
             "No eligible recipients — some prepared rows are missing an email address.";
         } else {
           disabledReason =
-            "No eligible recipients are in this launch batch yet — review recipients or check safety rules.";
+            "No eligible recipients yet — review recipients, suppression, or mailbox capacity.";
         }
       }
 

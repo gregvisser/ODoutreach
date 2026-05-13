@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import {
-  archiveClientEmailSequenceAction,
   createClientEmailSequenceEnrollmentsAction,
+  deleteOrArchiveClientEmailSequenceAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -151,6 +151,9 @@ export function ClientEmailSequencesPanel(props: Props) {
   const { sequences, counts, contactLists, sequenceTemplatesByCategory } =
     overview;
 
+  const activeSequences = sequences.filter((s) => s.status !== "ARCHIVED");
+  const archivedCount = sequences.length - activeSequences.length;
+
   const prepBySequenceId = new Map(
     sequencePrepSnapshots.map((p) => [p.sequenceId, p] as const),
   );
@@ -161,7 +164,7 @@ export function ClientEmailSequencesPanel(props: Props) {
       ? sequences.find((s) => s.id === selectedSequenceId)!
       : null;
 
-  const launchReadyCount = sequences.filter(
+  const launchReadyCount = activeSequences.filter(
     (s) => launchReadinessBySequenceId[s.id]?.canLaunch === true,
   ).length;
 
@@ -240,10 +243,11 @@ export function ClientEmailSequencesPanel(props: Props) {
 
         <div className="space-y-3">
           <h3 className="text-sm font-semibold">All sequences</h3>
-          {sequences.length === 0 ? (
+          {activeSequences.length === 0 ? (
             <p className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center text-xs text-muted-foreground">
-              No sequences yet. Expand &quot;New sequence&quot; above, then open your draft here to
-              review recipients and launch.
+              {archivedCount > 0
+                ? `No active sequences. ${String(archivedCount)} archived sequence${archivedCount === 1 ? "" : "s"} hidden.`
+                : "No sequences yet. Expand \"New sequence\" above, then open your draft here to review recipients and launch."}
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border/70">
@@ -259,7 +263,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {sequences.map((seq) => {
+                  {activeSequences.map((seq) => {
                     const lr = launchReadinessBySequenceId[seq.id] ?? null;
                     const isSel = selectedSequenceId === seq.id;
                     const prepSnap = prepBySequenceId.get(seq.id);
@@ -339,6 +343,13 @@ export function ClientEmailSequencesPanel(props: Props) {
             </div>
           )}
         </div>
+
+        {archivedCount > 0 && activeSequences.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {String(archivedCount)} archived sequence{archivedCount === 1 ? "" : "s"} hidden from
+            this table.
+          </p>
+        ) : null}
 
         {selected ? (
           <div
@@ -457,13 +468,13 @@ export function ClientEmailSequencesPanel(props: Props) {
             {canMutate && selected.status !== "ARCHIVED" && (
               <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
                 <ArchiveSequenceConfirmForm
-                  action={archiveClientEmailSequenceAction}
+                  action={deleteOrArchiveClientEmailSequenceAction}
                   clientId={clientId}
                   sequenceId={selected.id}
-                  confirmMessage="Remove this sequence? Contacts and lists stay available."
+                  confirmMessage="Delete this sequence? Contacts and lists will stay available."
                 >
-                  <Button type="submit" size="sm" variant="outline">
-                    Remove sequence
+                  <Button type="submit" size="sm" variant="destructive">
+                    Delete sequence
                   </Button>
                 </ArchiveSequenceConfirmForm>
               </div>
@@ -495,7 +506,7 @@ export function ClientEmailSequencesPanel(props: Props) {
               </details>
             ) : null}
           </div>
-        ) : sequences.length > 0 ? (
+        ) : activeSequences.length > 0 ? (
           <p className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-3 text-sm text-muted-foreground">
             Select a sequence from the table to see recipients, readiness, and launch.
           </p>
@@ -693,7 +704,7 @@ function LaunchReadinessBlock({
         </>
       ) : (
         <>
-          <p className="text-sm font-semibold text-foreground">Cannot launch yet</p>
+          <p className="text-sm font-semibold text-foreground">Cannot launch</p>
           {blockers.length > 0 ? (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-muted-foreground">
               {blockers.map((line) => (

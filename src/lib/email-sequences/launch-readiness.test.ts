@@ -220,8 +220,6 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
   });
 
   it("PR F2: blocks launch when the list has ONLY valid-no-email members", () => {
-    // List has 4 members, 0 email-sendable, 4 missing email.
-    // No PENDING enrollments, no new enrollable.
     const r = evaluateSequenceLaunchReadiness(
       snapshot({
         contactList: {
@@ -242,7 +240,7 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
       (c) => c.id === "pending_email_sendable_recipients",
     );
     expect(pendingCheck?.status).toBe("fail");
-    expect(pendingCheck?.detail).toContain("4 list members have no email on file");
+    expect(pendingCheck?.detail).toContain("no email on file");
     const enrollCheck = r.checks.find(
       (c) => c.id === "enrollment_records_exist",
     );
@@ -266,5 +264,91 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
     expect(r.canLaunch).toBe(true);
     const listCheck = r.checks.find((c) => c.id === "contact_list_attached");
     expect(listCheck?.detail).toContain("3 with no email on file");
+  });
+});
+
+describe("evaluateSequenceLaunchReadiness — step-send aware", () => {
+  it("canLaunch true when stepSend.introductionEligibleBatchCount > 0", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        stepSend: { introductionEligibleBatchCount: 10 },
+      }),
+    );
+    expect(r.canLaunch).toBe(true);
+    const check = r.checks.find(
+      (c) => c.id === "pending_email_sendable_recipients",
+    );
+    expect(check?.status).toBe("pass");
+    expect(check?.detail).toContain("10 recipient(s) ready");
+  });
+
+  it("blocks when stepSend batch is 0 but PENDING enrollments exist", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        stepSend: { introductionEligibleBatchCount: 0 },
+      }),
+    );
+    expect(r.canLaunch).toBe(false);
+    const check = r.checks.find(
+      (c) => c.id === "pending_email_sendable_recipients",
+    );
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("Review recipients");
+  });
+
+  it("never shows Ready to launch and Cannot launch for same sequence", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        stepSend: { introductionEligibleBatchCount: 0 },
+      }),
+    );
+    expect(r.canLaunch).toBe(false);
+    expect(r.totalBlockers).toBeGreaterThan(0);
+  });
+
+  it("passes when stepSend is null (legacy compat with enrollment-only check)", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: null }),
+    );
+    expect(r.canLaunch).toBe(true);
+    const check = r.checks.find(
+      (c) => c.id === "pending_email_sendable_recipients",
+    );
+    expect(check?.status).toBe("pass");
+  });
+
+  it("check detail does not contain 'launch batch yet' wording", () => {
+    const rOk = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: { introductionEligibleBatchCount: 19 } }),
+    );
+    for (const check of rOk.checks) {
+      expect(check.detail).not.toMatch(/launch batch yet/);
+    }
+    const rFail = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: { introductionEligibleBatchCount: 0 } }),
+    );
+    const pending = rFail.checks.find(
+      (c) => c.id === "pending_email_sendable_recipients",
+    );
+    expect(pending?.detail).not.toMatch(/launch batch yet/);
+  });
+
+  it("no internal READY_FOR_REVIEW / APPROVED status strings in staff-facing detail", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: { introductionEligibleBatchCount: 19 } }),
+    );
+    for (const check of r.checks) {
+      expect(check.detail).not.toMatch(/READY_FOR_REVIEW/);
+    }
+  });
+
+  it("allowlist language absent from all check labels/detail", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: { introductionEligibleBatchCount: 10 } }),
+    );
+    for (const check of r.checks) {
+      expect(check.detail.toLowerCase()).not.toMatch(/allowlist/);
+      expect(check.label.toLowerCase()).not.toMatch(/allowlist/);
+    }
   });
 });

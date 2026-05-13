@@ -15,8 +15,11 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
   if (/missing an email address/i.test(s)) {
     return "No eligible recipients — some prepared rows are missing an email address.";
   }
-  if (/No eligible recipients are in this launch batch yet/i.test(s)) {
-    return "No eligible recipients are in this launch batch yet — review recipients, suppression, or mailbox capacity.";
+  if (/No eligible recipients/i.test(s) && /launch batch/i.test(s)) {
+    return "No eligible recipients yet — review recipients, suppression, or mailbox capacity.";
+  }
+  if (/Review recipients to refresh/i.test(s)) {
+    return "Review recipients to refresh the launch batch.";
   }
   if (/Previous step/i.test(s) && /SENT/i.test(s)) {
     return "The previous step must finish sending before this step can go out.";

@@ -62,7 +62,7 @@ describe("Outreach live sequence flow (PR #119–#121)", () => {
   it("keeps staff-facing sequence panel copy oriented to live launch", () => {
     const src = readFileSync(sequencesPanel, "utf8");
     expect(src).toContain("Ready to launch");
-    expect(src).toContain("Cannot launch yet");
+    expect(src).toContain("Cannot launch");
     expect(src).toContain("Review and launch");
     expect(src).not.toContain("Mark ready");
     expect(src).not.toContain("Go live");
