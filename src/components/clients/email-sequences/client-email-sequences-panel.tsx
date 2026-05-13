@@ -113,6 +113,7 @@ function badgeVariantForDashboardStatus(
 ): "default" | "secondary" | "outline" | "destructive" {
   if (label === "Blocked") return "destructive";
   if (label === "Sending") return "default";
+  if (label === "Sent") return "secondary";
   if (label === "Completed") return "secondary";
   if (label === "Ready") return "secondary";
   if (label === "Draft") return "outline";
@@ -436,6 +437,7 @@ export function ClientEmailSequencesPanel(props: Props) {
             <LaunchReadinessBlock
               readiness={launchReadinessBySequenceId[selected.id] ?? null}
               mailboxSnapshot={mailboxSnapshot}
+              prepCounts={prepCountsForStatus(selectedPrep)}
             />
 
             <EnrollmentBlock
@@ -665,17 +667,35 @@ function PreviewStat({ label, value }: { label: string; value: number }) {
 function LaunchReadinessBlock({
   readiness,
   mailboxSnapshot,
+  prepCounts,
 }: {
   readiness: SequenceLaunchReadiness | null;
   mailboxSnapshot: {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
   };
+  prepCounts: PrepCountsSlice | null;
 }) {
   if (!readiness) {
     return (
       <div className="rounded-md border border-dashed border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground">
         Launch status unavailable — refresh the page.
+      </div>
+    );
+  }
+
+  const sent = prepCounts?.sent ?? 0;
+  const ready = prepCounts?.ready ?? 0;
+  const blocked = prepCounts?.blocked ?? 0;
+  const isFullySent = sent > 0 && ready === 0 && blocked === 0;
+
+  if (isFullySent) {
+    return (
+      <div className="rounded-md border border-emerald-400/40 bg-emerald-50/60 p-3 dark:bg-emerald-500/10">
+        <p className="text-sm font-semibold text-foreground">Introductions sent</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {String(sent)} introduction{sent === 1 ? "" : "s"} sent. No remaining recipients for this step.
+        </p>
       </div>
     );
   }

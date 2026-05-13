@@ -401,7 +401,14 @@ function IntroSendDispatchBlock({
         )}
       </div>
 
-      {disabledReasons.length > 0 ? (
+      {introSend.sentCount > 0 && readyNow === 0 && blocked === 0 && disabledReasons.length === 0 ? (
+        <div className="mt-2 rounded border border-green-400/50 bg-green-50/50 px-2 py-2 text-[11px] dark:bg-green-950/30">
+          <p className="font-medium text-foreground">Introductions sent</p>
+          <p className="mt-0.5 text-muted-foreground">
+            {String(introSend.sentCount)} introduction{introSend.sentCount === 1 ? "" : "s"} sent. No remaining recipients for this step.
+          </p>
+        </div>
+      ) : disabledReasons.length > 0 ? (
         <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
           <p className="font-medium text-foreground">Cannot launch</p>
           <ul className="mt-1 list-disc pl-5 text-muted-foreground">

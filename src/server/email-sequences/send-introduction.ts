@@ -1443,7 +1443,10 @@ export async function loadSequenceStepSendUiSnapshots(
         disabledReason =
           "Finish the introduction template on the Templates tab before launching.";
       } else if (eligibleInLaunchBatchNowCount === 0) {
-        if (previousStepMissingCount > 0 && prevCategory !== null) {
+        if (sentCount > 0 && readyCount === 0 && blockedCount === 0) {
+          // All recipients for this step have been sent — not a blocker.
+          disabledReason = null;
+        } else if (previousStepMissingCount > 0 && prevCategory !== null) {
           disabledReason = `The previous email step has not finished for eligible recipients yet.`;
         } else if (delayPendingCount > 0) {
           disabledReason = `The wait between steps (${String(step.delayDays)} days) has not finished yet for eligible recipients.`;

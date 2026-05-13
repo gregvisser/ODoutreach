@@ -21,21 +21,21 @@ export function deriveOutreachDashboardStatusLabel(args: {
   /** Sum of PENDING enrollments on the sequence (from enrollment summary). */
   enrollmentPending: number;
 }): string {
-  const { status, launchReadiness, prepCounts, enrollmentPending } = args;
+  const { status, launchReadiness, prepCounts } = args;
 
   if (status === "ARCHIVED") return "Archived";
   if (status === "DRAFT") return "Draft";
   if (status === "READY_FOR_REVIEW") return "Ready";
 
   if (status === "APPROVED") {
-    if (launchReadiness && !launchReadiness.canLaunch) return "Blocked";
-
     const sent = prepCounts?.sent ?? 0;
     const ready = prepCounts?.ready ?? 0;
+    const blocked = prepCounts?.blocked ?? 0;
 
+    if (sent > 0 && ready === 0 && blocked === 0) return "Sent";
     if (sent > 0 && ready > 0) return "Sending";
-    if (sent > 0 && ready === 0 && enrollmentPending === 0) return "Completed";
-    if (sent > 0 && ready === 0) return "Sending";
+
+    if (launchReadiness && !launchReadiness.canLaunch) return "Blocked";
 
     return "Ready";
   }
