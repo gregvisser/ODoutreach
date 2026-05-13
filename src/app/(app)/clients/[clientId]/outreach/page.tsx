@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 
 import { AdminOutreachDiagnosticsPanel } from "@/components/clients/admin-outreach-diagnostics-panel";
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
-import { SequenceSendPreparationPanel } from "@/components/clients/email-sequences/sequence-send-preparation-panel";
 import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
 import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import {
@@ -172,13 +171,7 @@ export default async function ClientOutreachPage({
           aggregateRemainingToday: bundle.aggregateRemaining,
         }}
         launchMailboxOptions={launchMailboxOptions}
-      />
-
-      <SequenceSendPreparationPanel
-        clientId={client.id}
-        canMutate={canMutateSequences}
-        onlySequenceId={selectedSequenceId}
-        snapshots={sequencePrepSnapshots}
+        sequencePrepSnapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}
         stepSendAllowlist={stepSendBundle.allowlist}
       />

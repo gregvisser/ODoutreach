@@ -17,7 +17,7 @@ const sendPrepPanel = join(
 );
 const adminPanel = join(root, "src/components/clients/admin-outreach-diagnostics-panel.tsx");
 
-describe("Outreach live sequence flow (PR #119 + #120)", () => {
+describe("Outreach live sequence flow (PR #119–#121)", () => {
   it("does not embed the templates panel on the Outreach page", () => {
     const src = readFileSync(outreachPage, "utf8");
     expect(src).not.toContain("ClientEmailTemplatesPanel");
@@ -38,6 +38,18 @@ describe("Outreach live sequence flow (PR #119 + #120)", () => {
     expect(src).toContain("OUTREACH_PAGE_SUBTITLE");
     expect(src).toContain("selectedSequenceId");
     expect(src).not.toContain("OUTREACH_WORKFLOW_STEPS");
+  });
+
+  it("does not render a separate full-width send-prep card on the Outreach page", () => {
+    const src = readFileSync(outreachPage, "utf8");
+    expect(src).not.toContain("SequenceSendPreparationPanel");
+  });
+
+  it("embeds send preparation inside the sequences panel for the selected sequence", () => {
+    const src = readFileSync(sequencesPanel, "utf8");
+    expect(src).toContain("SequenceSendPreparationPanel");
+    expect(src).toContain('variant="embedded"');
+    expect(src).toContain("onlySequenceId={selected.id}");
   });
 
   it("does not expose internal tools copy to all staff in the Outreach page source", () => {
@@ -82,7 +94,7 @@ describe("Outreach live sequence flow (PR #119 + #120)", () => {
     expect(src).toContain("SequencePhraseConfirmLaunch");
     expect(src).not.toContain('name="confirmationPhrase"');
     expect(src).not.toContain("Type <code");
-    expect(src).toContain("Launch introduction");
+    expect(src).toContain("Launch sequence");
   });
 
   it("removes legacy technical staff strings from visible sequence and prep UI", () => {
@@ -94,6 +106,8 @@ describe("Outreach live sequence flow (PR #119 + #120)", () => {
     expect(combined).not.toMatch(/Prepare eligible recipients/);
     expect(combined).not.toMatch(/launch preparation/i);
     expect(combined).not.toMatch(/no send materials currently built/i);
+    expect(combined).not.toMatch(/\bSend section\b/i);
+    expect(combined).not.toMatch(/\bLaunch section\b/i);
   });
 
   it("admin diagnostics wrapper is opt-in for admins only", () => {

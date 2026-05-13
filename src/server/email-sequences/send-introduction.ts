@@ -1402,7 +1402,7 @@ export async function loadSequenceStepSendUiSnapshots(
           disabledReason = `Delay (${String(step.delayDays)} days) has not elapsed for any allowlisted recipient yet.`;
         } else {
           disabledReason =
-            "No READY records whose recipient domain passes GOVERNED_TEST_EMAIL_DOMAINS.";
+            "No eligible recipients pass the governed domain allowlist yet.";
         }
       }
 
