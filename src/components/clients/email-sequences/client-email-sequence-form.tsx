@@ -41,6 +41,10 @@ type Props = {
     disabled?: boolean;
     disabledReason?: string | null;
   }>;
+  /**
+   * When true, hides the in-form “Edit …” sequence chips (dashboard uses the list + query param).
+   */
+  hideSequencePicker?: boolean;
 };
 
 type FormMode = { kind: "new" } | { kind: "edit"; sequenceId: string };
@@ -124,6 +128,7 @@ export function ClientEmailSequenceForm({
   contactLists,
   sequenceTemplatesByCategory,
   launchMailboxOptions,
+  hideSequencePicker = false,
 }: Props) {
   const editableSequences = useMemo(
     () =>
@@ -234,7 +239,7 @@ export function ClientEmailSequenceForm({
           </h3>
           <p className="text-xs text-muted-foreground">
             For {clientName}. Choose a list, a sending mailbox, one introduction email,
-            and optional follow-ups. Sending happens only from the Send section.
+            and optional follow-ups. Sending happens only from the Launch section.
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
@@ -246,21 +251,23 @@ export function ClientEmailSequenceForm({
           >
             New
           </Button>
-          {editableSequences.slice(0, 3).map((s) => (
-            <Button
-              key={s.id}
-              type="button"
-              size="sm"
-              variant={
-                mode.kind === "edit" && mode.sequenceId === s.id
-                  ? "default"
-                  : "outline"
-              }
-              onClick={() => switchToEdit(s)}
-            >
-              Edit “{s.name.length > 18 ? `${s.name.slice(0, 17)}…` : s.name}”
-            </Button>
-          ))}
+          {!hideSequencePicker
+            ? editableSequences.slice(0, 3).map((s) => (
+                <Button
+                  key={s.id}
+                  type="button"
+                  size="sm"
+                  variant={
+                    mode.kind === "edit" && mode.sequenceId === s.id
+                      ? "default"
+                      : "outline"
+                  }
+                  onClick={() => switchToEdit(s)}
+                >
+                  Edit “{s.name.length > 18 ? `${s.name.slice(0, 17)}…` : s.name}”
+                </Button>
+              ))
+            : null}
         </div>
       </div>
 
@@ -591,8 +598,7 @@ export function ClientEmailSequenceForm({
             </Button>
           )}
           <span className="text-xs text-muted-foreground">
-            Saving does not send email — use the Send section when you are
-            ready to queue messages.
+            Saving does not send email — use Launch when you are ready to send.
           </span>
         </div>
       </form>

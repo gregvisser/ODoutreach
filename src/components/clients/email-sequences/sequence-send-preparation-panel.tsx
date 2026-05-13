@@ -41,6 +41,8 @@ import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 type Props = {
   clientId: string;
   canMutate: boolean;
+  /** When set, only this sequence is shown (dashboard selection). */
+  onlySequenceId: string | null;
   snapshots: SequencePrepSnapshot[];
   /**
    * All per-category send readiness snapshots (INTRODUCTION +
@@ -79,12 +81,17 @@ function categoryLabel(category: ClientEmailTemplateCategory): string {
 export function SequenceSendPreparationPanel({
   clientId,
   canMutate,
+  onlySequenceId,
   snapshots,
   stepSendSnapshots = [],
   stepSendAllowlist,
 }: Props) {
-  const hasSnapshots = snapshots.length > 0;
-  const hasAnyEnrollment = snapshots.some((s) => s.enrollmentCount > 0);
+  const visibleSnapshots =
+    onlySequenceId === null
+      ? []
+      : snapshots.filter((s) => s.sequenceId === onlySequenceId);
+  const hasSnapshots = visibleSnapshots.length > 0;
+  const hasAnyEnrollment = visibleSnapshots.some((s) => s.enrollmentCount > 0);
 
   // Index snapshots by (sequenceId, category) so every dispatch
   // block can look up its own readiness quickly without re-scanning.
@@ -102,22 +109,31 @@ export function SequenceSendPreparationPanel({
       className="border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Launch sequence</CardTitle>
+        <CardTitle>Launch</CardTitle>
         <CardDescription>
-          Prepare builds recipient rows (no email sent). Launch sends the introduction or follow-up
-          step you choose, up to each batch limit, using your connected mailboxes and the same
-          safety checks as production.
+          Review recipients before launching. Preparing updates who can receive the next live send
+          (no email sent). Launch sends the introduction or follow-up you choose, within batch
+          limits and the same safety checks as production.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {!hasSnapshots ? (
+        {snapshots.length === 0 ? (
           <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
-            No sequences yet for this client. Create a sequence and add enrollments
-            before preparing send records.
+            No sequences yet for this client. Create a sequence, then open it here to launch.
+          </div>
+        ) : onlySequenceId === null ? (
+          <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
+            Select a sequence in the table above to review recipients and launch sends for that
+            sequence only.
+          </div>
+        ) : !hasSnapshots ? (
+          <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
+            Review recipients before launching — this sequence has no launch data yet. Add steps and
+            recipients, then return here.
           </div>
         ) : null}
 
-        {snapshots.map((s) => {
+        {visibleSnapshots.map((s) => {
           const canPrepare =
             canMutate &&
             s.introductionStepId !== null &&
@@ -133,7 +149,9 @@ export function SequenceSendPreparationPanel({
             );
           }
           if (s.enrollmentCount === 0) {
-            blockReasons.push("No enrollments yet — enroll contacts first.");
+            blockReasons.push(
+              "No recipients on this sequence yet — include list members first.",
+            );
           }
 
           const introSnapshot = snapshotsBySequenceAndCategory.get(
@@ -152,8 +170,8 @@ export function SequenceSendPreparationPanel({
                 </Badge>
                 <span className="text-xs text-muted-foreground">
                   {s.enrollmentCount === 1
-                    ? "1 enrollment"
-                    : `${String(s.enrollmentCount)} enrollments`}
+                    ? "1 recipient"
+                    : `${String(s.enrollmentCount)} recipients`}
                 </span>
               </div>
 
@@ -213,9 +231,9 @@ export function SequenceSendPreparationPanel({
                     size="sm"
                     variant="outline"
                     disabled={!canPrepare}
-                    title="Updates recipient rows only — does not send email."
+                    title="Updates who can receive the next live send — does not send email."
                   >
-                    Prepare eligible recipients
+                    Review recipients
                   </Button>
                 </form>
                 <span className="text-xs text-muted-foreground">
@@ -242,10 +260,10 @@ export function SequenceSendPreparationPanel({
           );
         })}
 
-        {hasSnapshots && !hasAnyEnrollment ? (
+        {onlySequenceId !== null && hasSnapshots && !hasAnyEnrollment ? (
           <p className="text-xs text-muted-foreground">
-            Tip: enroll contacts into a sequence first, then prepare send records
-            to see per-contact readiness classified.
+            Tip: include recipients on this sequence first, then review recipients here to see
+            per-person readiness.
           </p>
         ) : null}
       </CardContent>
