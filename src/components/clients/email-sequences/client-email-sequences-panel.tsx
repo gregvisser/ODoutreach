@@ -555,7 +555,7 @@ function EnrollmentBlock({
   const gateHint = (() => {
     if (status === "DRAFT") {
       if (preview.enrollable > 0) {
-        return `Your list has ${String(preview.enrollable)} email-sendable contacts. Save the sequence again to prepare them, or tap Review recipients below.`;
+        return `Your list has ${String(preview.enrollable)} new contacts with email ready to add. Save the sequence again to prepare them, or tap Review recipients below.`;
       }
       return "Save the sequence to prepare recipients from your list.";
     }
@@ -578,9 +578,9 @@ function EnrollmentBlock({
         reasons.push(`${String(preview.suppressed)} suppressed`);
       }
       if (reasons.length === 0) {
-        return "No email-sendable contacts left to add.";
+        return "No new contacts to add from this list.";
       }
-      return `No email-sendable contacts left to add — ${reasons.join(", ")}.`;
+      return `No new contacts to add — ${reasons.join(", ")}.`;
     }
     return null;
   })();
@@ -625,8 +625,8 @@ function EnrollmentBlock({
         </summary>
         <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-6">
           <PreviewStat label="List members" value={preview.total} />
-          <PreviewStat label="Email-sendable" value={preview.enrollable} />
-          <PreviewStat label="Already included" value={preview.alreadyEnrolled} />
+          <PreviewStat label="New to add" value={preview.enrollable} />
+          <PreviewStat label="Already in sequence" value={preview.alreadyEnrolled} />
           <PreviewStat label="Suppressed" value={preview.suppressed} />
           <PreviewStat label="Missing email" value={preview.missingEmail} />
           <PreviewStat label="Missing identifier" value={preview.missingIdentifier} />
@@ -643,7 +643,7 @@ function EnrollmentBlock({
             </Button>
           </form>
           <span className="text-[11px] text-muted-foreground">
-            Tap Review recipients after list changes. No email is sent.
+            Tap after list changes to add new contacts. No email is sent.
           </span>
         </div>
       )}

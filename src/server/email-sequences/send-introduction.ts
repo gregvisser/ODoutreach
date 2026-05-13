@@ -1209,6 +1209,12 @@ export type SequenceStepSendUiSnapshot = {
   hardCap: number;
   sendable: boolean;
   disabledReason: string | null;
+  /**
+   * Aggregated blocked/suppressed reason strings with their counts.
+   * Ordered by count descending. Used by the UI to show WHY rows are
+   * blocked instead of a generic "review recipients" message.
+   */
+  blockedReasonCounts: Array<{ reason: string; count: number }>;
 };
 
 export type SequenceStepSendUiAllowlist = {
@@ -1282,6 +1288,7 @@ export async function loadSequenceStepSendUiSnapshots(
       stepId: true,
       enrollmentId: true,
       status: true,
+      blockedReason: true,
       updatedAt: true,
       contact: { select: { email: true } },
     },
@@ -1338,6 +1345,8 @@ export async function loadSequenceStepSendUiSnapshots(
           : (sentByStepByEnrollment.get(`${s.id}:${prevStep.id}`) ??
               new Map<string, string>());
 
+      const reasonBuckets = new Map<string, number>();
+
       for (const r of rows) {
         switch (r.status as ClientEmailSequenceStepSendStatus) {
           case "READY": {
@@ -1379,12 +1388,18 @@ export async function loadSequenceStepSendUiSnapshots(
             }
             break;
           }
-          case "BLOCKED":
+          case "BLOCKED": {
             blockedCount += 1;
+            const reason = (r.blockedReason ?? "Blocked").trim();
+            reasonBuckets.set(reason, (reasonBuckets.get(reason) ?? 0) + 1);
             break;
-          case "SUPPRESSED":
+          }
+          case "SUPPRESSED": {
             suppressedCount += 1;
+            const reason = (r.blockedReason ?? "Suppressed").trim();
+            reasonBuckets.set(reason, (reasonBuckets.get(reason) ?? 0) + 1);
             break;
+          }
           case "SENT":
             sentCount += 1;
             break;
@@ -1426,11 +1441,21 @@ export async function loadSequenceStepSendUiSnapshots(
         } else if (readyCount > 0 && readyWithEmailCount === 0) {
           disabledReason =
             "No eligible recipients — some prepared rows are missing an email address.";
+        } else if (blockedCount > 0 && reasonBuckets.size > 0) {
+          const topReason = Array.from(reasonBuckets.entries())
+            .sort((a, b) => b[1] - a[1])[0];
+          disabledReason = topReason
+            ? `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked: ${topReason[0]}`
+            : `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked — review recipients for details.`;
         } else {
           disabledReason =
-            "No eligible recipients yet — review recipients, suppression, or mailbox capacity.";
+            "No eligible recipients yet — review recipients to prepare send rows.";
         }
       }
+
+      const blockedReasonCounts = Array.from(reasonBuckets.entries())
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count);
 
       snapshots.push({
         sequenceId: s.id,
@@ -1459,6 +1484,7 @@ export async function loadSequenceStepSendUiSnapshots(
         hardCap: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
         sendable: disabledReason === null,
         disabledReason,
+        blockedReasonCounts,
       });
     }
   }
