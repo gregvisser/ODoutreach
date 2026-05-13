@@ -1,5 +1,5 @@
 /**
- * PR L — Client send governance (real-prospect launch-approval gate).
+ * Client send governance.
  *
  * Pure helper that decides whether a single outbound send may proceed
  * given the client's current approval state, the recipient's allowlist
@@ -9,29 +9,19 @@
  * This lets the sequence dispatcher, UI snapshot loaders and unit
  * tests reach the same decision from the same inputs.
  *
- * Policy intent (PR L):
+ * Policy:
  *
- *   * GOVERNED_TEST / REPLY paths remain unaffected. They are
- *     operator-driven proof / manual reply paths; we document and
- *     return an explicit `allowlisted_test` mode for them.
- *   * SEQUENCE_INTRODUCTION / SEQUENCE_FOLLOW_UP / CONTROLLED_PILOT:
- *     - allowlisted recipients — always allowed (existing D4e
- *       governed-test allowlist path). Mode: `allowlisted_test`.
- *     - non-allowlisted recipients — require:
- *         * client.status === ACTIVE
- *         * client.launchApprovedAt present
- *         * client.launchApprovalMode === LIVE_PROSPECT
- *         * one-click unsubscribe readiness = true
- *       If any of those fail, the send is blocked with a specific
- *       reason code the server helper can persist on the step-send
- *       row and surface in the UI. Because one-click unsubscribe is
- *       not implemented yet, real prospect sequence sends remain
- *       blocked end-to-end until a future PR wires it up.
- *
- * This helper never opens real-prospect sending on its own. A caller
- * would have to supply `oneClickUnsubscribeReady: true` AND a client
- * with LIVE_PROSPECT approval + ACTIVE status for the `live_prospect`
- * mode to return `allowed: true`. None of that is wired today.
+ *   * GOVERNED_TEST / REPLY — unchanged. GOVERNED_TEST requires an
+ *     allowlisted recipient; REPLY is always allowed.
+ *   * SEQUENCE_INTRODUCTION / SEQUENCE_FOLLOW_UP — live outreach path.
+ *     Allowlisted recipients pass as `allowlisted_test`. Non-allowlisted
+ *     recipients require client.status === ACTIVE; no hidden
+ *     LIVE_PROSPECT mode or one-click unsubscribe gate. Suppression,
+ *     mailbox capacity, batch caps and the typed confirmation phrase
+ *     remain enforced by the dispatcher.
+ *   * CONTROLLED_PILOT — retains strict gates: ACTIVE + approved +
+ *     LIVE_PROSPECT mode + one-click unsubscribe. This preserves pilot
+ *     safety while live sequence sends operate freely.
  */
 import type { ClientLifecycleStatus } from "@/generated/prisma/enums";
 
@@ -95,7 +85,7 @@ export type SendGovernanceInput = {
  * server-side block reason.
  */
 export const REAL_PROSPECT_SEND_GATE_COPY =
-  "Blocked from live sending until client is approved for LIVE_PROSPECT and one-click unsubscribe is configured.";
+  "Blocked from live sending — check client status and dispatch requirements.";
 
 /**
  * Short-form blocker codes persisted on `ClientEmailSequenceStepSend.blockedReason`
@@ -146,12 +136,17 @@ function hasLaunchApproval(input: SendGovernanceInput["client"]): boolean {
 }
 
 /**
- * Decide whether a single send may proceed under PR L governance.
+ * Decide whether a single send may proceed under governance.
  *
- * The helper is intentionally shape-preserving — allowlisted sequence
- * sends continue to pass today exactly as they did before PR L, but
- * every non-allowlisted attempt now carries a specific, auditable
- * blocker code.
+ * Allowlisted recipients on any send kind (except GOVERNED_TEST
+ * without an allowlisted address) pass as `allowlisted_test`.
+ *
+ * Non-allowlisted recipients:
+ *   * SEQUENCE_INTRODUCTION / SEQUENCE_FOLLOW_UP — require only
+ *     client.status === ACTIVE. Suppression, mailbox capacity, batch
+ *     caps and the typed confirmation phrase enforce safety.
+ *   * CONTROLLED_PILOT — retains strict ACTIVE + approved +
+ *     LIVE_PROSPECT + one-click unsubscribe gates.
  */
 export function evaluateSendGovernance(
   input: SendGovernanceInput,
@@ -186,8 +181,7 @@ export function evaluateSendGovernance(
   }
 
   // REPLY — operator-driven reply path. Not governed by launch
-  // approval today; suppression + mailbox readiness continue to apply
-  // in their own helpers.
+  // approval; suppression + mailbox readiness apply in their own helpers.
   if (sendKind === "REPLY") {
     return {
       allowed: true,
@@ -197,7 +191,7 @@ export function evaluateSendGovernance(
     };
   }
 
-  // Sequence and controlled-pilot sends share the real-prospect gate.
+  // Allowlisted recipients pass on any remaining send kind.
   if (recipientAllowlisted) {
     return {
       allowed: true,
@@ -207,11 +201,36 @@ export function evaluateSendGovernance(
     };
   }
 
+  // --- Non-allowlisted recipients below this line. ---
+
+  // Live sequence sends: ACTIVE client status is the only governance
+  // requirement. The confirmation phrase, suppression, mailbox capacity
+  // and batch caps enforce safety at dispatch time.
+  if (
+    sendKind === "SEQUENCE_INTRODUCTION" ||
+    sendKind === "SEQUENCE_FOLLOW_UP"
+  ) {
+    if (status !== "ACTIVE") {
+      return {
+        allowed: false,
+        mode: "blocked_client_inactive",
+        reason: `Client is ${status}, not ACTIVE — activate the client before launching live sequences.`,
+      };
+    }
+    return {
+      allowed: true,
+      mode: "live_prospect",
+      reason:
+        "Client is ACTIVE — live sequence sends proceed with dispatcher safety checks.",
+    };
+  }
+
+  // CONTROLLED_PILOT — strict gates preserved for pilot safety.
   if (status !== "ACTIVE") {
     return {
       allowed: false,
       mode: "blocked_client_inactive",
-      reason: `Client is ${status}, not ACTIVE — real prospect sends require launch approval.`,
+      reason: `Client is ${status}, not ACTIVE — controlled pilot requires an active client.`,
     };
   }
 
@@ -220,7 +239,7 @@ export function evaluateSendGovernance(
       allowed: false,
       mode: "blocked_not_approved",
       reason:
-        "Client has no recorded launch approval — real prospect sends are blocked.",
+        "Client has no recorded launch approval — controlled pilot sends are blocked.",
     };
   }
 
@@ -229,7 +248,7 @@ export function evaluateSendGovernance(
       allowed: false,
       mode: "blocked_not_live_mode",
       reason:
-        "Client launch approval is not LIVE_PROSPECT — only allowlisted sends are allowed.",
+        "Client launch approval is not LIVE_PROSPECT — controlled pilot requires LIVE_PROSPECT mode.",
     };
   }
 
@@ -238,7 +257,7 @@ export function evaluateSendGovernance(
       allowed: false,
       mode: "blocked_unsubscribe_missing",
       reason:
-        "One-click unsubscribe is not wired — real prospect sends are blocked until it is implemented.",
+        "One-click unsubscribe is not wired — controlled pilot sends are blocked until it is implemented.",
     };
   }
 

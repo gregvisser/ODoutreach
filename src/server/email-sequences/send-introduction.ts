@@ -463,7 +463,6 @@ export async function sendSequenceStepBatch(input: {
         name: true,
         status: true,
         defaultSenderEmail: true,
-        // PR L — launch approval trail drives the real-prospect gate.
         launchApprovedAt: true,
         launchApprovalMode: true,
         onboarding: { select: { formData: true } },
@@ -511,6 +510,13 @@ export async function sendSequenceStepBatch(input: {
     brief,
     fallbackUnsubscribeLink,
   );
+  // The real sender email is set per-mailbox inside the dispatch
+  // transaction. For the plan-time classifier re-check here we need a
+  // non-null sender_email so the composition check passes — mirror the
+  // planner fallback from PR #125.
+  if (!placeholderSenderRow.senderEmail && pool.length > 0) {
+    placeholderSenderRow.senderEmail = pool[0].email;
+  }
 
   // 4. Live allowlist snapshot (env read once per run).
   const allowlist = {
@@ -559,11 +565,11 @@ export async function sendSequenceStepBatch(input: {
     category === "INTRODUCTION"
       ? "SEQUENCE_INTRODUCTION"
       : "SEQUENCE_FOLLOW_UP";
-  // PR M — one-click unsubscribe is wired when the public base URL is
-  // configured. `isOneClickUnsubscribeReady()` only reports whether
-  // the rail is available; LIVE_PROSPECT launch approval + operator
-  // confirmation + suppression/capacity checks remain required for
-  // real prospect sends.
+  // One-click unsubscribe is wired when the public base URL is
+  // configured. For live sequence sends the governance helper no
+  // longer gates on this — the dispatcher's suppression + capacity
+  // checks provide safety. The flag is still passed so CONTROLLED_PILOT
+  // paths retain their stricter gate.
   const oneClickUnsubscribeReady = oneClickReady;
   const allowlistDomainSet = new Set(
     allowlist.domains.map((d) => d.toLowerCase()),
@@ -630,11 +636,10 @@ export async function sendSequenceStepBatch(input: {
             return hit ? { status: "SENT", sentAtIso: hit.sentAtIso } : null;
           })();
 
-    // PR L — run the real-prospect gate BEFORE the plan-time classifier
-    // so every non-allowlisted recipient carries an explicit launch-
-    // approval blocker reason on its step-send row, independent of the
-    // D4e allowlist detail. Allowlisted recipients are passed through
-    // to the existing classifier unchanged.
+    // Run the governance gate before the plan-time classifier.
+    // For live sequence sends on ACTIVE clients, non-allowlisted
+    // recipients pass through as live_prospect. Allowlisted recipients
+    // pass as allowlisted_test.
     const contactDomain =
       extractDomainFromEmail(row.contact.email ?? "")?.toLowerCase() ?? null;
     const recipientAllowlisted =
