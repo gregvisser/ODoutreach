@@ -567,8 +567,12 @@ export async function sendClientEmailSequenceIntroductionAction(
       );
     }
     if (result.counts.blockedPlanClassifier > 0) {
+      const topReason = result.blocked.find(
+        (b) => b.decisionReason === "blocked_plan_classifier",
+      )?.reason;
+      const suffix = topReason ? ` — ${topReason}` : "";
       parts.push(
-        `${String(result.counts.blockedPlanClassifier)} blocked by dispatch check`,
+        `${String(result.counts.blockedPlanClassifier)} blocked by dispatch safety check${suffix}`,
       );
     }
     if (result.counts.blockedAlreadySent > 0) {
@@ -677,8 +681,12 @@ export async function sendClientEmailSequenceStepAction(
       );
     }
     if (result.counts.blockedPlanClassifier > 0) {
+      const topReason = result.blocked.find(
+        (b) => b.decisionReason === "blocked_plan_classifier",
+      )?.reason;
+      const suffix = topReason ? ` — ${topReason}` : "";
       parts.push(
-        `${String(result.counts.blockedPlanClassifier)} blocked by dispatch check`,
+        `${String(result.counts.blockedPlanClassifier)} blocked by dispatch safety check${suffix}`,
       );
     }
     if (result.counts.blockedAlreadySent > 0) {

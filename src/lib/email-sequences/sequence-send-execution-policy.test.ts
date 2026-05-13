@@ -333,6 +333,29 @@ describe("classifySequenceIntroSendExecution", () => {
       reason: "blocked_plan_classifier",
     });
   });
+
+  it("blocks when sender unsubscribeLink is null (dispatch must provide fallback)", () => {
+    const decision = classifySequenceIntroSendExecution(
+      baseInput({
+        candidate: baseCandidate({
+          sender: {
+            senderName: "Charles",
+            senderEmail: "charles@opensdoors.example",
+            senderCompanyName: "Babbage Outreach",
+            emailSignature: "—Charles",
+            unsubscribeLink: null,
+          },
+        }),
+      }),
+    );
+    expect(decision).toMatchObject({
+      sendable: false,
+      reason: "blocked_plan_classifier",
+    });
+    if (!decision.sendable) {
+      expect(decision.detail).toContain("unsubscribe");
+    }
+  });
 });
 
 describe("aggregate counters", () => {

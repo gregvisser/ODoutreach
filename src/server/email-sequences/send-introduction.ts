@@ -510,12 +510,16 @@ export async function sendSequenceStepBatch(input: {
     brief,
     fallbackUnsubscribeLink,
   );
-  // The real sender email is set per-mailbox inside the dispatch
-  // transaction. For the plan-time classifier re-check here we need a
-  // non-null sender_email so the composition check passes — mirror the
-  // planner fallback from PR #125.
+  // The real sender email and unsubscribe URL are set per-recipient
+  // inside the dispatch transaction. For the plan-time classifier
+  // re-check here we need non-null values so the composition check
+  // passes — mirror the planner fallbacks from PR #125.
   if (!placeholderSenderRow.senderEmail && pool.length > 0) {
     placeholderSenderRow.senderEmail = pool[0].email;
+  }
+  if (!placeholderSenderRow.unsubscribeLink) {
+    placeholderSenderRow.unsubscribeLink =
+      "[unsubscribe link — provided at dispatch]";
   }
 
   // 4. Live allowlist snapshot (env read once per run).
