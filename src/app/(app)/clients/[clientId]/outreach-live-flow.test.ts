@@ -17,7 +17,7 @@ const sendPrepPanel = join(
 );
 const adminPanel = join(root, "src/components/clients/admin-outreach-diagnostics-panel.tsx");
 
-describe("Outreach live sequence flow (PR #119)", () => {
+describe("Outreach live sequence flow (PR #119 + #120)", () => {
   it("does not embed the templates panel on the Outreach page", () => {
     const src = readFileSync(outreachPage, "utf8");
     expect(src).not.toContain("ClientEmailTemplatesPanel");
@@ -32,11 +32,12 @@ describe("Outreach live sequence flow (PR #119)", () => {
     expect(page).not.toMatch(/<details[\s\S]*GovernedTestSendPanel/);
   });
 
-  it("uses live workflow wording on the Outreach page", () => {
+  it("uses dashboard-oriented wording on the Outreach page", () => {
     const src = readFileSync(outreachPage, "utf8");
-    expect(src).toContain("OUTREACH_WORKFLOW_STEPS");
     expect(src).toContain("OUTREACH_PAGE_TITLE");
     expect(src).toContain("OUTREACH_PAGE_SUBTITLE");
+    expect(src).toContain("selectedSequenceId");
+    expect(src).not.toContain("OUTREACH_WORKFLOW_STEPS");
   });
 
   it("does not expose internal tools copy to all staff in the Outreach page source", () => {
@@ -56,12 +57,43 @@ describe("Outreach live sequence flow (PR #119)", () => {
     expect(src).not.toContain("Schedule send preparation");
   });
 
+  it("collapses the create-sequence form in a details element by default", () => {
+    const src = readFileSync(sequencesPanel, "utf8");
+    expect(src).toContain("<details");
+    expect(src).toContain("New sequence");
+    expect(src).toContain("hideSequencePicker");
+  });
+
+  it("lists sequences in a compact table, not one expanded card per sequence", () => {
+    const src = readFileSync(sequencesPanel, "utf8");
+    expect(src).toContain("<table");
+    expect(src).not.toContain("SequenceCard");
+  });
+
+  it("does not repeat send-prep blocks for every sequence in the panel source", () => {
+    const src = readFileSync(sendPrepPanel, "utf8");
+    expect(src).toContain("onlySequenceId");
+    expect(src).toContain("visibleSnapshots");
+    expect(src).not.toContain("snapshots.map((s)");
+  });
+
   it("uses modal-based launch confirmation in send prep (no visible phrase field)", () => {
     const src = readFileSync(sendPrepPanel, "utf8");
     expect(src).toContain("SequencePhraseConfirmLaunch");
     expect(src).not.toContain('name="confirmationPhrase"');
     expect(src).not.toContain("Type <code");
     expect(src).toContain("Launch introduction");
+  });
+
+  it("removes legacy technical staff strings from visible sequence and prep UI", () => {
+    const combined =
+      readFileSync(sequencesPanel, "utf8") + readFileSync(sendPrepPanel, "utf8");
+    expect(combined).not.toMatch(/prepare eligible recipients/i);
+    expect(combined).not.toMatch(/create enrollment records/i);
+    expect(combined).not.toMatch(/step sends/i);
+    expect(combined).not.toMatch(/Prepare eligible recipients/);
+    expect(combined).not.toMatch(/launch preparation/i);
+    expect(combined).not.toMatch(/no send materials currently built/i);
   });
 
   it("admin diagnostics wrapper is opt-in for admins only", () => {

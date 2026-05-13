@@ -15,11 +15,7 @@ import {
 } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
-import {
-  OUTREACH_PAGE_SUBTITLE,
-  OUTREACH_PAGE_TITLE,
-  OUTREACH_WORKFLOW_STEPS,
-} from "@/lib/clients/outreach-staff-copy";
+import { OUTREACH_PAGE_SUBTITLE, OUTREACH_PAGE_TITLE } from "@/lib/clients/outreach-staff-copy";
 import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -71,10 +67,28 @@ export default async function ClientOutreachPage({
       loadSequenceStepSendUiSnapshots(client.id),
     ]);
 
+  const sequenceFlashRaw = firstParam(sp.sequence);
+  const sequenceIdFromQuery = firstParam(sp.sequenceId);
+  const idFromSequenceParam =
+    sequenceFlashRaw &&
+    sequencesOverview.sequences.some((s) => s.id === sequenceFlashRaw)
+      ? sequenceFlashRaw
+      : null;
+  const flashOk =
+    sequenceFlashRaw && !idFromSequenceParam ? sequenceFlashRaw : null;
+
+  const selectedSequenceId =
+    sequenceIdFromQuery &&
+    sequencesOverview.sequences.some((s) => s.id === sequenceIdFromQuery)
+      ? sequenceIdFromQuery
+      : idFromSequenceParam;
+
+  const showSequenceEditForm = firstParam(sp.edit) === "1";
+
   const sequencesFlash = {
-    ok: firstParam(sp.sequence),
+    ok: flashOk,
     error: firstParam(sp.sequenceError),
-    focusSequenceId: firstParam(sp.sequenceId),
+    focusSequenceId: sequenceIdFromQuery,
   };
 
   const launchMailboxOptions = bundle.mailboxRows
@@ -128,35 +142,13 @@ export default async function ClientOutreachPage({
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Steps</CardTitle>
+          <CardTitle className="text-base">Actions</CardTitle>
           <CardDescription>
-            Work top to bottom. Templates are edited on the Templates tab.
+            Create a sequence here, edit templates on the Templates tab, then open one sequence at a
+            time to review recipients and launch.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ol className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-            {OUTREACH_WORKFLOW_STEPS.map((step, idx) => (
-              <li
-                key={step}
-                className="rounded-md border border-border/70 bg-muted/30 px-3 py-2"
-              >
-                <span className="mr-2 font-semibold text-foreground">{idx + 1}.</span>
-                {step}
-              </li>
-            ))}
-          </ol>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Templates</CardTitle>
-          <CardDescription>
-            Write and save reusable emails on the Templates tab, then attach them to sequence steps
-            here.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-wrap gap-3">
           <Link
             href={`/clients/${client.id}/templates`}
             className={buttonVariants({ variant: "secondary" })}
@@ -172,6 +164,8 @@ export default async function ClientOutreachPage({
         canMutate={canMutateSequences}
         overview={sequencesOverview}
         flash={sequencesFlash}
+        selectedSequenceId={selectedSequenceId}
+        showSequenceEditForm={showSequenceEditForm}
         launchReadinessBySequenceId={launchReadinessBySequenceId}
         mailboxSnapshot={{
           connectedSendingCount: bundle.connectedSendingCount,
@@ -183,6 +177,7 @@ export default async function ClientOutreachPage({
       <SequenceSendPreparationPanel
         clientId={client.id}
         canMutate={canMutateSequences}
+        onlySequenceId={selectedSequenceId}
         snapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}
         stepSendAllowlist={stepSendBundle.allowlist}

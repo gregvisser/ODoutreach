@@ -67,7 +67,7 @@ function redirectBack(
   if (focus) params.set("sequenceId", focus);
   const search = params.toString();
   redirect(
-    `/clients/${clientId}/outreach${search ? `?${search}` : ""}#client-email-sequences`,
+    `/clients/${clientId}/outreach${search ? `?${search}` : ""}#outreach-selected-sequence`,
   );
 }
 
