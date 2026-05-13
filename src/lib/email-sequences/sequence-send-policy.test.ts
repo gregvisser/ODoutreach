@@ -7,6 +7,10 @@ import {
   zeroStepSendCounts,
   type SequenceStepSendCandidate,
 } from "./sequence-send-policy";
+import {
+  CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+  SEQUENCE_INTRODUCTION_BATCH_CAP,
+} from "@/lib/controlled-pilot-constants";
 
 function candidate(
   overrides: Partial<SequenceStepSendCandidate> = {},
@@ -378,5 +382,29 @@ describe("step send counts", () => {
       sent: 1,
       failed: 1,
     });
+  });
+
+  it("return value must be captured — discarding it loses the increment", () => {
+    const counts = zeroStepSendCounts();
+    incrementStepSendCount(counts, "READY");
+    expect(counts.ready).toBe(0);
+    const updated = incrementStepSendCount(counts, "READY");
+    expect(updated.ready).toBe(1);
+  });
+});
+
+describe("batch cap constants", () => {
+  it("live sequence batch cap is 30", () => {
+    expect(SEQUENCE_INTRODUCTION_BATCH_CAP).toBe(30);
+  });
+
+  it("controlled pilot hard cap remains 10", () => {
+    expect(CONTROLLED_PILOT_HARD_MAX_RECIPIENTS).toBe(10);
+  });
+
+  it("live cap is higher than pilot cap", () => {
+    expect(SEQUENCE_INTRODUCTION_BATCH_CAP).toBeGreaterThan(
+      CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+    );
   });
 });

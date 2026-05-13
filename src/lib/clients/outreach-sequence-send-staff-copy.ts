@@ -1,4 +1,4 @@
-import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import { SEQUENCE_INTRODUCTION_BATCH_CAP } from "@/lib/controlled-pilot-constants";
 
 /**
  * Maps internal / server snapshot reasons to short staff-facing copy for Outreach.
@@ -31,7 +31,7 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
 }
 
 export function sequenceIntroductionBatchLimitCopy(hardCap: number): string {
-  const cap = hardCap > 0 ? hardCap : CONTROLLED_PILOT_HARD_MAX_RECIPIENTS;
+  const cap = hardCap > 0 ? hardCap : SEQUENCE_INTRODUCTION_BATCH_CAP;
   return `This launch sends up to ${String(cap)} emails now. Remaining eligible recipients stay queued for later batches within daily mailbox limits.`;
 }
 

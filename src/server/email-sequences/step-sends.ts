@@ -318,7 +318,7 @@ export async function planSequenceStepSends(params: {
   const senderRow = buildSenderRow(client, brief, unsubscribePlaceholder, mailboxEmailFallback);
 
   const nowIso = new Date().toISOString();
-  const counts: SequenceStepSendClassificationCounts = zeroStepSendCounts();
+  let counts: SequenceStepSendClassificationCounts = zeroStepSendCounts();
   const previews: SequenceStepSendPreview[] = [];
 
   // Write each plan row via upsert so re-running the planner is
@@ -439,7 +439,7 @@ export async function planSequenceStepSends(params: {
       }
     });
 
-    incrementStepSendCount(counts, persistedStatus);
+    counts = incrementStepSendCount(counts, persistedStatus);
     previews.push({
       id: idempotencyKey,
       enrollmentId: enrollment.id,
