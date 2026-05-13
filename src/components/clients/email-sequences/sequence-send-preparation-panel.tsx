@@ -4,6 +4,7 @@ import {
   sendClientEmailSequenceIntroductionAction,
   sendClientEmailSequenceStepAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
+import { SequencePhraseConfirmLaunch } from "@/components/clients/email-sequences/sequence-phrase-confirm-launch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { REAL_PROSPECT_SEND_GATE_COPY } from "@/lib/clients/client-send-governance";
+import { outreachSequenceStatusLabel } from "@/lib/clients/outreach-staff-copy";
 import {
   getSequenceStepSendConfirmationPhrase,
   SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
@@ -101,16 +102,11 @@ export function SequenceSendPreparationPanel({
       className="border-border/80 shadow-sm"
     >
       <CardHeader>
-        <CardTitle>Send preparation</CardTitle>
+        <CardTitle>Launch sequence</CardTitle>
         <CardDescription>
-          <strong>Prepare</strong> builds or refreshes per-recipient send rows (no
-          email sent). <strong>Launch / Send</strong> below queues real
-          messages through your connected mailboxes, subject to suppression,
-          caps, and the checks shown on each block. Real campaigns to
-          live-prospect campaigns require a client in{" "}
-          <strong>LIVE_PROSPECT</strong> launch mode, a public app URL for
-          unsubscribe, and a typed confirmation on each send. No background
-          worker auto-sends these; only the actions below do.
+          Prepare builds recipient rows (no email sent). Launch sends the introduction or follow-up
+          step you choose, up to each batch limit, using your connected mailboxes and the same
+          safety checks as production.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -152,7 +148,7 @@ export function SequenceSendPreparationPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <div className="text-sm font-medium">{s.sequenceName}</div>
                 <Badge variant="outline" className="text-xs">
-                  {s.sequenceStatus}
+                  {outreachSequenceStatusLabel(s.sequenceStatus)}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
                   {s.enrollmentCount === 1
@@ -161,50 +157,37 @@ export function SequenceSendPreparationPanel({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                <Stat label="Records" value={s.counts.total} />
-                <Stat label="Ready" value={s.counts.ready} tone="success" />
-                <Stat
-                  label="Blocked"
-                  value={s.counts.blocked}
-                  tone={s.counts.blocked > 0 ? "warning" : "muted"}
-                />
-                <Stat
-                  label="Suppressed"
-                  value={s.counts.suppressed}
-                  tone={s.counts.suppressed > 0 ? "warning" : "muted"}
-                />
-                <Stat
-                  label="Skipped"
-                  value={s.counts.skipped}
-                  tone="muted"
-                />
-                <Stat
-                  label="Sent"
-                  value={s.counts.sent}
-                  tone="muted"
-                />
-                <Stat
-                  label="Failed"
-                  value={s.counts.failed}
-                  tone={s.counts.failed > 0 ? "error" : "muted"}
-                />
-                <Stat
-                  label="Last prepared"
-                  value={formatRelative(s.latestPreparedAtIso)}
-                  tone="muted"
-                  isString
-                />
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <span>
+                  <span className="font-medium text-foreground">Eligible</span>:{" "}
+                  {String(s.counts.ready)}
+                </span>
+                <span>
+                  <span className="font-medium text-foreground">Blocked</span>:{" "}
+                  {String(s.counts.blocked)}
+                </span>
+                <span>
+                  <span className="font-medium text-foreground">Suppressed</span>:{" "}
+                  {String(s.counts.suppressed)}
+                </span>
+                <span>
+                  <span className="font-medium text-foreground">Sent</span>:{" "}
+                  {String(s.counts.sent)}
+                </span>
+                <span>
+                  <span className="font-medium text-foreground">Failed</span>:{" "}
+                  {String(s.counts.failed)}
+                </span>
+                <span>
+                  <span className="font-medium text-foreground">Last prepared</span>:{" "}
+                  {formatRelative(s.latestPreparedAtIso)}
+                </span>
               </div>
 
               {s.latestSubjectPreview ? (
                 <div className="rounded-md bg-muted/30 p-3 text-xs">
-                  <div className="font-medium text-muted-foreground">
-                    Latest subject preview
-                  </div>
-                  <div className="mt-1 font-mono break-all">
-                    {s.latestSubjectPreview}
-                  </div>
+                  <div className="font-medium text-muted-foreground">Subject preview</div>
+                  <div className="mt-1 font-mono break-all">{s.latestSubjectPreview}</div>
                 </div>
               ) : null}
 
@@ -230,14 +213,13 @@ export function SequenceSendPreparationPanel({
                     size="sm"
                     variant="outline"
                     disabled={!canPrepare}
-                    title="This does not send email."
+                    title="Updates recipient rows only — does not send email."
                   >
-                    Prepare introduction send records
+                    Prepare eligible recipients
                   </Button>
                 </form>
                 <span className="text-xs text-muted-foreground">
-                  This does not send email. Use the dispatch sections below
-                  to send per category to allowlisted recipients.
+                  Refreshes who can receive the next live send. No email is sent by this step.
                 </span>
               </div>
 
@@ -300,9 +282,7 @@ function IntroSendDispatchBlock({
   const canSend = canMutate && introSend.sendable;
   const disabledReasons: string[] = [];
   if (!canMutate) {
-    disabledReasons.push(
-      "You do not have sequence mutator permission for this client.",
-    );
+    disabledReasons.push("You do not have permission to launch sends for this client.");
   }
   if (introSend.disabledReason) {
     disabledReasons.push(introSend.disabledReason);
@@ -311,64 +291,51 @@ function IntroSendDispatchBlock({
   const allowlistConfigured = allowlist?.configured === true;
   const allowlistDomains = allowlist?.domains ?? [];
 
+  const introModalBody = `This will send real emails for the introduction step, up to ${String(introSend.allowlistedReadyCount)} eligible contacts in this batch (allowlisted domains). Follow-ups are launched separately.`;
+
   return (
-    <div className="rounded-md border border-amber-300/60 bg-amber-50/40 p-3 text-xs dark:border-amber-500/40 dark:bg-amber-950/20">
+    <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-medium text-amber-900 dark:text-amber-200">
-          Send introduction to allowlisted recipients
-        </div>
-        <Badge
-          variant="outline"
-          className="text-[10px] uppercase tracking-wider"
-        >
-          D4e.2 · intro only
-        </Badge>
+        <div className="font-medium text-foreground">Introduction — live send</div>
       </div>
       <p className="mt-1 text-muted-foreground">
-        This <strong>sends real email</strong> through the outbound worker to
-        allowlisted recipients only. Follow-ups are not sent by this action. A
-        typed confirmation (
-        <code className="font-mono">{SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}</code>
-        ) is required. Hard cap: {String(introSend.hardCap)} recipients per run.
+        Sends use your connected mailboxes, daily limits, and suppression rules. Only eligible,
+        allowlisted recipients receive mail in each batch.
       </p>
 
-      <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-4">
-        <MiniStat label="Ready" value={introSend.readyCount} tone="info" />
-        <MiniStat
-          label="Allowlisted"
-          value={introSend.allowlistedReadyCount}
-          tone={introSend.allowlistedReadyCount > 0 ? "success" : "muted"}
-        />
-        <MiniStat
-          label="Allowlist-blocked"
-          value={introSend.allowlistBlockedReadyCount}
-          tone={
-            introSend.allowlistBlockedReadyCount > 0 ? "warning" : "muted"
-          }
-        />
-        <MiniStat label="Sent" value={introSend.sentCount} tone="muted" />
+      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        <span>
+          <span className="font-medium text-foreground">Eligible in batch</span>:{" "}
+          {String(introSend.allowlistedReadyCount)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Batch cap</span>:{" "}
+          {String(introSend.hardCap)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Sent</span>:{" "}
+          {String(introSend.sentCount)}
+        </span>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
         {allowlistConfigured ? (
           <>
-            Allowlist:{" "}
+            Allowlisted domains:{" "}
             <span className="font-mono">
-              {allowlistDomains.length > 0
-                ? allowlistDomains.join(", ")
-                : "(empty)"}
+              {allowlistDomains.length > 0 ? allowlistDomains.join(", ") : "(none configured)"}
             </span>
           </>
         ) : (
           <span className="text-amber-700 dark:text-amber-300">
-            GOVERNED_TEST_EMAIL_DOMAINS is not configured — dispatch is
-            disabled.
+            Recipient allowlist is not configured — launches are disabled until it is set in the
+            environment.
           </span>
         )}
       </div>
 
       {disabledReasons.length > 0 ? (
-        <ul className="mt-2 list-disc pl-5 text-[11px] text-amber-800 dark:text-amber-200">
+        <ul className="mt-2 list-disc pl-5 text-[11px] text-muted-foreground">
           {disabledReasons.map((r) => (
             <li key={r}>{r}</li>
           ))}
@@ -380,49 +347,28 @@ function IntroSendDispatchBlock({
           className="mt-2 rounded border border-amber-400/60 bg-amber-100/60 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-200"
           data-testid="real-prospect-send-gate"
         >
-          {REAL_PROSPECT_SEND_GATE_COPY}
+          Some recipients cannot receive live sends until the client is cleared for full live
+          outreach and unsubscribe is configured.
         </div>
       ) : null}
 
-      <form
-        action={sendClientEmailSequenceIntroductionAction}
-        className="mt-3 flex flex-wrap items-center gap-2"
-      >
-        <input type="hidden" name="clientId" value={clientId} />
-        <input type="hidden" name="sequenceId" value={sequenceId} />
-        <label className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
-            Type <code className="font-mono">{SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}</code>
-          </span>
-          <input
-            type="text"
-            name="confirmationPhrase"
-            autoComplete="off"
-            spellCheck={false}
-            required
-            disabled={!canSend}
-            placeholder={SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}
-            className="h-8 w-52 rounded-md border border-border/80 bg-background px-2 font-mono text-[11px] disabled:opacity-50"
-          />
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          variant="destructive"
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <SequencePhraseConfirmLaunch
+          formAction={sendClientEmailSequenceIntroductionAction}
+          confirmationPhrase={SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}
+          modalTitle="Launch introduction sends?"
+          modalBody={introModalBody}
+          triggerLabel="Launch introduction"
           disabled={!canSend}
-          title={
-            canSend
-              ? `Sends up to ${String(introSend.allowlistedReadyCount)} real email(s).`
-              : "Dispatch is not available yet."
-          }
+          variant="default"
         >
-          Send introduction
-        </Button>
+          <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="sequenceId" value={sequenceId} />
+        </SequencePhraseConfirmLaunch>
         <span className="text-[11px] text-muted-foreground">
-          Only allowlisted recipients will receive email. Suppressed rows are
-          re-checked at dispatch.
+          You will confirm in a dialog before anything is queued.
         </span>
-      </form>
+      </div>
     </div>
   );
 }
@@ -503,9 +449,7 @@ function StepSendDispatchBlock({
 
   const disabledReasons: string[] = [];
   if (!canMutate) {
-    disabledReasons.push(
-      "You do not have sequence mutator permission for this client.",
-    );
+    disabledReasons.push("You do not have permission to launch sends for this client.");
   }
   if (stepSnapshot.disabledReason) {
     disabledReasons.push(stepSnapshot.disabledReason);
@@ -516,91 +460,68 @@ function StepSendDispatchBlock({
 
   const delayDescription =
     stepSnapshot.delayDays > 0
-      ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was SENT`
-      : "no delay configured (must still follow the previous step)";
+      ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was sent`
+      : "after the previous step is sent";
+
+  const followModalBody = `This will send real emails for ${label}, up to ${String(stepSnapshot.allowlistedReadyCount)} eligible contacts in this batch. Each person must have received the previous step, with ${delayDescription}.`;
 
   return (
-    <div className="rounded-md border border-sky-300/60 bg-sky-50/40 p-3 text-xs dark:border-sky-500/40 dark:bg-sky-950/20">
+    <div className="rounded-md border border-border/80 bg-muted/15 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-medium capitalize text-sky-900 dark:text-sky-200">
-          Send {label} to allowlisted recipients
+        <div className="font-medium capitalize text-foreground">
+          {label} — live send
         </div>
-        <Badge
-          variant="outline"
-          className="text-[10px] uppercase tracking-wider"
-        >
-          D4e.3 · {category.toLowerCase().replace(/_/g, " ")}
-        </Badge>
       </div>
       <p className="mt-1 text-muted-foreground">
-        This <strong>sends real email</strong> through the outbound worker,
-        one category at a time. Each recipient must have already received
-        the previous step and {delayDescription}. A typed confirmation (
-        <code className="font-mono">{phrase}</code>) is required. Hard cap:{" "}
-        {String(stepSnapshot.hardCap)} recipients per run. No cron or
-        background worker will dispatch this — only this button.
+        Sends one step at a time. Eligibility, delays, and suppression are re-checked when you
+        launch.
       </p>
 
-      <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-4">
-        <MiniStat label="Ready" value={stepSnapshot.readyCount} tone="info" />
-        <MiniStat
-          label="Allowlisted"
-          value={stepSnapshot.allowlistedReadyCount}
-          tone={stepSnapshot.allowlistedReadyCount > 0 ? "success" : "muted"}
-        />
-        <MiniStat
-          label="Allowlist-blocked"
-          value={stepSnapshot.allowlistBlockedReadyCount}
-          tone={
-            stepSnapshot.allowlistBlockedReadyCount > 0 ? "warning" : "muted"
-          }
-        />
-        <MiniStat label="Sent" value={stepSnapshot.sentCount} tone="muted" />
-        <MiniStat
-          label="Prev-step missing"
-          value={stepSnapshot.previousStepMissingCount}
-          tone={
-            stepSnapshot.previousStepMissingCount > 0 ? "warning" : "muted"
-          }
-        />
-        <MiniStat
-          label="Delay pending"
-          value={stepSnapshot.delayPendingCount}
-          tone={stepSnapshot.delayPendingCount > 0 ? "warning" : "muted"}
-        />
-        <MiniStat
-          label="Failed"
-          value={stepSnapshot.failedCount}
-          tone={stepSnapshot.failedCount > 0 ? "error" : "muted"}
-        />
-        <MiniStat
-          label="Earliest eligible"
-          value={formatRelative(stepSnapshot.earliestEligibleAtIso)}
-          tone="muted"
-          isString
-        />
+      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        <span>
+          <span className="font-medium text-foreground">Eligible in batch</span>:{" "}
+          {String(stepSnapshot.allowlistedReadyCount)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Batch cap</span>:{" "}
+          {String(stepSnapshot.hardCap)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Sent</span>:{" "}
+          {String(stepSnapshot.sentCount)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Waiting on prior step</span>:{" "}
+          {String(stepSnapshot.previousStepMissingCount)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Waiting on delay</span>:{" "}
+          {String(stepSnapshot.delayPendingCount)}
+        </span>
+        <span>
+          <span className="font-medium text-foreground">Earliest next send</span>:{" "}
+          {formatRelative(stepSnapshot.earliestEligibleAtIso)}
+        </span>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
         {allowlistConfigured ? (
           <>
-            Allowlist:{" "}
+            Allowlisted domains:{" "}
             <span className="font-mono">
-              {allowlistDomains.length > 0
-                ? allowlistDomains.join(", ")
-                : "(empty)"}
+              {allowlistDomains.length > 0 ? allowlistDomains.join(", ") : "(none configured)"}
             </span>
           </>
         ) : (
           <span className="text-amber-700 dark:text-amber-300">
-            GOVERNED_TEST_EMAIL_DOMAINS is not configured — dispatch is
-            disabled.
+            Recipient allowlist is not configured — launches are disabled until it is set in the
+            environment.
           </span>
         )}
       </div>
 
       {disabledReasons.length > 0 ? (
-        <ul className="mt-2 list-disc pl-5 text-[11px] text-amber-800 dark:text-amber-200">
+        <ul className="mt-2 list-disc pl-5 text-[11px] text-muted-foreground">
           {disabledReasons.map((r) => (
             <li key={r}>{r}</li>
           ))}
@@ -612,113 +533,28 @@ function StepSendDispatchBlock({
           className="mt-2 rounded border border-amber-400/60 bg-amber-100/60 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-500/50 dark:bg-amber-950/40 dark:text-amber-200"
           data-testid="real-prospect-send-gate"
         >
-          {REAL_PROSPECT_SEND_GATE_COPY}
+          Some recipients cannot receive live sends until the client is cleared for full live
+          outreach and unsubscribe is configured.
         </div>
       ) : null}
 
-      <form
-        action={sendClientEmailSequenceStepAction}
-        className="mt-3 flex flex-wrap items-center gap-2"
-      >
-        <input type="hidden" name="clientId" value={clientId} />
-        <input type="hidden" name="sequenceId" value={sequenceId} />
-        <input type="hidden" name="category" value={category} />
-        <label className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
-            Type <code className="font-mono">{phrase}</code>
-          </span>
-          <input
-            type="text"
-            name="confirmationPhrase"
-            autoComplete="off"
-            spellCheck={false}
-            required
-            disabled={!canSend}
-            placeholder={phrase}
-            className="h-8 w-56 rounded-md border border-border/80 bg-background px-2 font-mono text-[11px] disabled:opacity-50"
-          />
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          variant="destructive"
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <SequencePhraseConfirmLaunch
+          formAction={sendClientEmailSequenceStepAction}
+          confirmationPhrase={phrase}
+          modalTitle={`Launch ${label}?`}
+          modalBody={followModalBody}
+          triggerLabel={`Launch ${label}`}
           disabled={!canSend}
-          title={
-            canSend
-              ? `Sends up to ${String(stepSnapshot.allowlistedReadyCount)} real email(s) for ${label}.`
-              : "Dispatch is not available yet."
-          }
+          variant="default"
         >
-          Send {label}
-        </Button>
+          <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="sequenceId" value={sequenceId} />
+          <input type="hidden" name="category" value={category} />
+        </SequencePhraseConfirmLaunch>
         <span className="text-[11px] text-muted-foreground">
-          Only allowlisted recipients will receive email. Suppression,
-          previous-step status, and delay are all re-checked at dispatch.
+          You will confirm in a dialog before anything is queued.
         </span>
-      </form>
-    </div>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  tone = "muted",
-  isString = false,
-}: {
-  label: string;
-  value: number | string;
-  tone?: "success" | "warning" | "error" | "info" | "muted";
-  isString?: boolean;
-}) {
-  const toneClass =
-    tone === "success"
-      ? "text-emerald-700 dark:text-emerald-300"
-      : tone === "warning"
-        ? "text-amber-700 dark:text-amber-300"
-        : tone === "error"
-          ? "text-red-700 dark:text-red-300"
-          : tone === "info"
-            ? "text-sky-700 dark:text-sky-300"
-            : "text-muted-foreground";
-  return (
-    <div className="rounded-md border border-border/60 bg-background px-2 py-1">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className={`text-sm font-medium ${toneClass}`}>
-        {isString ? String(value) : String(value)}
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = "muted",
-  isString = false,
-}: {
-  label: string;
-  value: number | string;
-  tone?: "success" | "warning" | "error" | "muted";
-  isString?: boolean;
-}) {
-  const toneClass =
-    tone === "success"
-      ? "text-emerald-700 dark:text-emerald-300"
-      : tone === "warning"
-        ? "text-amber-700 dark:text-amber-300"
-        : tone === "error"
-          ? "text-red-700 dark:text-red-300"
-          : "text-muted-foreground";
-  return (
-    <div className="rounded-md border border-border/60 bg-background px-2 py-1">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className={`text-sm font-medium ${toneClass}`}>
-        {isString ? String(value) : String(value)}
       </div>
     </div>
   );
