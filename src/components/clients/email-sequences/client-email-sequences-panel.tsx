@@ -16,11 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { ClientEmailSequenceStatus } from "@/generated/prisma/enums";
 import { ENROLLMENT_STATUS_LABELS } from "@/lib/email-sequences/enrollment-policy";
 import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readiness";
+import {
+  deriveOutreachDashboardStatusLabel,
+  type PrepCountsSlice,
+} from "@/lib/clients/outreach-sequence-dashboard-status";
 import { staffLaunchBlockerLines } from "@/lib/clients/outreach-launch-blockers";
-import { outreachSequenceStatusLabel } from "@/lib/clients/outreach-staff-copy";
 import { SEQUENCE_STEP_LABELS } from "@/lib/email-sequences/sequence-policy";
 import { TEMPLATE_STATUS_LABELS } from "@/lib/email-templates/template-policy";
 import type {
@@ -28,7 +30,14 @@ import type {
   SequenceSummary,
 } from "@/server/email-sequences/queries";
 
+import type {
+  SequenceStepSendUiAllowlist,
+  SequenceStepSendUiSnapshot,
+} from "@/server/email-sequences/send-introduction";
+import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
+
 import { ClientEmailSequenceForm } from "./client-email-sequence-form";
+import { SequenceSendPreparationPanel } from "./sequence-send-preparation-panel";
 
 /**
  * Outreach-page section for per-client email sequences.
@@ -61,6 +70,9 @@ type Props = {
     disabled?: boolean;
     disabledReason?: string;
   }>;
+  sequencePrepSnapshots: SequencePrepSnapshot[];
+  stepSendSnapshots: SequenceStepSendUiSnapshot[];
+  stepSendAllowlist: SequenceStepSendUiAllowlist;
 };
 
 function outreachListHref(clientId: string): string {
@@ -91,33 +103,27 @@ function formatDate(iso: string | null): string {
   });
 }
 
-function statusBadgeVariant(
-  status: ClientEmailSequenceStatus,
-): "default" | "secondary" | "outline" | "destructive" {
-  switch (status) {
-    case "APPROVED":
-      return "default";
-    case "READY_FOR_REVIEW":
-      return "secondary";
-    case "DRAFT":
-      return "outline";
-    case "ARCHIVED":
-      return "outline";
-  }
+function prepCountsForStatus(prep: SequencePrepSnapshot | undefined): PrepCountsSlice | null {
+  if (!prep) return null;
+  return {
+    ready: prep.counts.ready,
+    blocked: prep.counts.blocked,
+    suppressed: prep.counts.suppressed,
+    sent: prep.counts.sent,
+    failed: prep.counts.failed,
+  };
 }
 
-function dashboardStatusLabel(
-  sequence: SequenceSummary,
-  launchReadiness: SequenceLaunchReadiness | null,
-): string {
-  if (sequence.status === "ARCHIVED") return "Archived";
-  if (sequence.status === "DRAFT") return "Draft";
-  if (sequence.status === "READY_FOR_REVIEW") return "Ready";
-  if (sequence.status === "APPROVED") {
-    if (launchReadiness && !launchReadiness.canLaunch) return "Blocked";
-    return "Live";
-  }
-  return outreachSequenceStatusLabel(sequence.status);
+function badgeVariantForDashboardStatus(
+  label: string,
+): "default" | "secondary" | "outline" | "destructive" {
+  if (label === "Blocked") return "destructive";
+  if (label === "Sending") return "default";
+  if (label === "Completed") return "secondary";
+  if (label === "Ready") return "secondary";
+  if (label === "Draft") return "outline";
+  if (label === "Archived") return "outline";
+  return "outline";
 }
 
 function mailboxLabelForSequence(
@@ -145,9 +151,16 @@ export function ClientEmailSequencesPanel(props: Props) {
     launchReadinessBySequenceId,
     mailboxSnapshot,
     launchMailboxOptions,
+    sequencePrepSnapshots,
+    stepSendSnapshots,
+    stepSendAllowlist,
   } = props;
   const { sequences, counts, contactLists, sequenceTemplatesByCategory } =
     overview;
+
+  const prepBySequenceId = new Map(
+    sequencePrepSnapshots.map((p) => [p.sequenceId, p] as const),
+  );
 
   const selected =
     selectedSequenceId &&
@@ -158,6 +171,16 @@ export function ClientEmailSequencesPanel(props: Props) {
   const launchReadyCount = sequences.filter(
     (s) => launchReadinessBySequenceId[s.id]?.canLaunch === true,
   ).length;
+
+  const selectedPrep = selected ? prepBySequenceId.get(selected.id) : undefined;
+  const selectedDashLabel = selected
+    ? deriveOutreachDashboardStatusLabel({
+        status: selected.status,
+        launchReadiness: launchReadinessBySequenceId[selected.id] ?? null,
+        prepCounts: prepCountsForStatus(selectedPrep),
+        enrollmentPending: selected.enrollment.counts.PENDING,
+      })
+    : "";
 
   return (
     <Card
@@ -246,7 +269,13 @@ export function ClientEmailSequencesPanel(props: Props) {
                   {sequences.map((seq) => {
                     const lr = launchReadinessBySequenceId[seq.id] ?? null;
                     const isSel = selectedSequenceId === seq.id;
-                    const dashLabel = dashboardStatusLabel(seq, lr);
+                    const prepSnap = prepBySequenceId.get(seq.id);
+                    const dashLabel = deriveOutreachDashboardStatusLabel({
+                      status: seq.status,
+                      launchReadiness: lr,
+                      prepCounts: prepCountsForStatus(prepSnap),
+                      enrollmentPending: seq.enrollment.counts.PENDING,
+                    });
                     return (
                       <tr
                         key={seq.id}
@@ -274,7 +303,10 @@ export function ClientEmailSequencesPanel(props: Props) {
                           {String(seq.enrollment.total)}
                         </td>
                         <td className="px-3 py-2">
-                          <Badge variant={statusBadgeVariant(seq.status)} className="text-[10px]">
+                          <Badge
+                            variant={badgeVariantForDashboardStatus(dashLabel)}
+                            className="text-[10px]"
+                          >
                             {dashLabel}
                           </Badge>
                         </td>
@@ -299,7 +331,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                               </Link>
                             ) : null}
                             <Link
-                              href={`${outreachSequenceHref(clientId, seq.id)}#sequence-send-preparation`}
+                              href={outreachSequenceHref(clientId, seq.id)}
                               className={buttonVariants({ size: "sm", variant: "ghost" })}
                             >
                               Review and launch
@@ -343,11 +375,8 @@ export function ClientEmailSequencesPanel(props: Props) {
                   </span>
                 </div>
               </div>
-              <Badge variant={statusBadgeVariant(selected.status)}>
-                {dashboardStatusLabel(
-                  selected,
-                  launchReadinessBySequenceId[selected.id] ?? null,
-                )}
+              <Badge variant={badgeVariantForDashboardStatus(selectedDashLabel)}>
+                {selectedDashLabel}
               </Badge>
             </div>
 
@@ -400,26 +429,31 @@ export function ClientEmailSequencesPanel(props: Props) {
               </p>
             )}
 
+            <LaunchReadinessBlock
+              readiness={launchReadinessBySequenceId[selected.id] ?? null}
+              mailboxSnapshot={mailboxSnapshot}
+            />
+
             <EnrollmentBlock
               clientId={clientId}
               sequence={selected}
               canMutate={canMutate}
             />
 
-            <LaunchReadinessBlock
-              readiness={launchReadinessBySequenceId[selected.id] ?? null}
-              mailboxSnapshot={mailboxSnapshot}
+            <SequenceSendPreparationPanel
+              clientId={clientId}
+              canMutate={canMutate}
+              onlySequenceId={selected.id}
+              snapshots={sequencePrepSnapshots}
+              stepSendSnapshots={stepSendSnapshots}
+              stepSendAllowlist={stepSendAllowlist}
+              variant="embedded"
+              enrollmentPendingCount={selected.enrollment.counts.PENDING}
             />
 
             <ActivationHint sequence={selected} />
 
             <div className="flex flex-wrap gap-2">
-              <Link
-                href={`${outreachSequenceHref(clientId, selected.id)}#sequence-send-preparation`}
-                className={buttonVariants({ size: "sm", variant: "outline" })}
-              >
-                Launch sequence
-              </Link>
               <Link
                 href={outreachListHref(clientId)}
                 className={buttonVariants({ size: "sm", variant: "ghost" })}
@@ -628,15 +662,6 @@ function EnrollmentBlock({
         </div>
       </div>
 
-      <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-6">
-        <PreviewStat label="List members" value={preview.total} />
-        <PreviewStat label="Email-sendable" value={preview.enrollable} />
-        <PreviewStat label="Already included" value={preview.alreadyEnrolled} />
-        <PreviewStat label="Suppressed" value={preview.suppressed} />
-        <PreviewStat label="Missing email" value={preview.missingEmail} />
-        <PreviewStat label="Missing identifier" value={preview.missingIdentifier} />
-      </dl>
-
       <dl className="mt-2 flex flex-wrap gap-3 text-[11px]">
         <EnrollmentCountTile
           label={ENROLLMENT_STATUS_LABELS.PENDING}
@@ -656,6 +681,20 @@ function EnrollmentBlock({
         />
       </dl>
 
+      <details className="mt-2 rounded-md border border-border/50 bg-background/40 p-2">
+        <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground">
+          Details
+        </summary>
+        <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-6">
+          <PreviewStat label="List members" value={preview.total} />
+          <PreviewStat label="Email-sendable" value={preview.enrollable} />
+          <PreviewStat label="Already included" value={preview.alreadyEnrolled} />
+          <PreviewStat label="Suppressed" value={preview.suppressed} />
+          <PreviewStat label="Missing email" value={preview.missingEmail} />
+          <PreviewStat label="Missing identifier" value={preview.missingIdentifier} />
+        </dl>
+      </details>
+
       {canMutate && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <form action={createClientEmailSequenceEnrollmentsAction}>
@@ -666,7 +705,7 @@ function EnrollmentBlock({
             </Button>
           </form>
           <span className="text-[11px] text-muted-foreground">
-            Launch live sends from the Launch section below when checks pass.
+            Use live send actions below when checks pass.
           </span>
         </div>
       )}
@@ -718,11 +757,10 @@ function LaunchReadinessBlock({
             {String(mailboxSnapshot.aggregateRemainingToday)} sends remaining today across the pool
             (UTC day).
           </p>
-          {readiness.totalWarnings > 0 ? (
+              {readiness.totalWarnings > 0 ? (
             <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-200">
               {String(readiness.totalWarnings)} notice
-              {readiness.totalWarnings === 1 ? "" : "s"} — you can still launch, but review the
-              Launch section below.
+              {readiness.totalWarnings === 1 ? "" : "s"} — you can still launch when ready.
             </p>
           ) : null}
         </>

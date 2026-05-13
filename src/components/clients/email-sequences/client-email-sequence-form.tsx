@@ -239,7 +239,7 @@ export function ClientEmailSequenceForm({
           </h3>
           <p className="text-xs text-muted-foreground">
             For {clientName}. Choose a list, a sending mailbox, one introduction email,
-            and optional follow-ups. Sending happens only from the Launch section.
+            and optional follow-ups. Sending happens only when you launch live sends below.
           </p>
         </div>
         <div className="flex flex-wrap gap-1">

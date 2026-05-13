@@ -52,6 +52,13 @@ type Props = {
   stepSendSnapshots?: SequenceStepSendUiSnapshot[];
   /** Allowlist snapshot for every dispatch block on the panel. */
   stepSendAllowlist?: SequenceStepSendUiAllowlist;
+  /**
+   * `standalone` — full-width card (legacy page placement).
+   * `embedded` — inside the selected-sequence panel (no outer card).
+   */
+  variant?: "standalone" | "embedded";
+  /** PENDING enrollment count — shown in embedded compact metrics as "Pending". */
+  enrollmentPendingCount?: number;
 };
 
 const FOLLOW_UP_CATEGORIES: readonly ClientEmailTemplateCategory[] = [
@@ -85,7 +92,10 @@ export function SequenceSendPreparationPanel({
   snapshots,
   stepSendSnapshots = [],
   stepSendAllowlist,
+  variant = "standalone",
+  enrollmentPendingCount = 0,
 }: Props) {
+  const embedded = variant === "embedded";
   const visibleSnapshots =
     onlySequenceId === null
       ? []
@@ -103,66 +113,57 @@ export function SequenceSendPreparationPanel({
     snapshotsBySequenceAndCategory.set(`${s.sequenceId}:${s.category}`, s);
   }
 
-  return (
-    <Card
-      id="sequence-send-preparation"
-      className="border-border/80 shadow-sm"
-    >
-      <CardHeader>
-        <CardTitle>Launch</CardTitle>
-        <CardDescription>
-          Review recipients before launching. Preparing updates who can receive the next live send
-          (no email sent). Launch sends the introduction or follow-up you choose, within batch
-          limits and the same safety checks as production.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {snapshots.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
-            No sequences yet for this client. Create a sequence, then open it here to launch.
-          </div>
-        ) : onlySequenceId === null ? (
-          <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
-            Select a sequence in the table above to review recipients and launch sends for that
-            sequence only.
-          </div>
-        ) : !hasSnapshots ? (
-          <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
-            Review recipients before launching — this sequence has no launch data yet. Add steps and
-            recipients, then return here.
-          </div>
-        ) : null}
+  const innerContent = (
+    <>
+      {!embedded && snapshots.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
+          No sequences yet for this client. Create a sequence, then open it here to launch.
+        </div>
+      ) : null}
+      {!embedded && snapshots.length > 0 && onlySequenceId === null ? (
+        <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
+          Select a sequence in the table above to review recipients and launch sends for that
+          sequence only.
+        </div>
+      ) : null}
+      {onlySequenceId !== null && !hasSnapshots ? (
+        <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-4 text-sm text-muted-foreground">
+          Review recipients before launching — this sequence has no launch data yet. Add steps and
+          recipients, then return here.
+        </div>
+      ) : null}
 
-        {visibleSnapshots.map((s) => {
-          const canPrepare =
-            canMutate &&
-            s.introductionStepId !== null &&
-            s.introductionApproved &&
-            s.enrollmentCount > 0;
-          const blockReasons: string[] = [];
-          if (s.introductionStepId === null) {
-            blockReasons.push("Sequence has no INTRODUCTION step.");
-          }
-          if (s.introductionStepId !== null && !s.introductionApproved) {
-            blockReasons.push(
-              "Introduction template is missing or archived — pick an active template.",
-            );
-          }
-          if (s.enrollmentCount === 0) {
-            blockReasons.push(
-              "No recipients on this sequence yet — include list members first.",
-            );
-          }
-
-          const introSnapshot = snapshotsBySequenceAndCategory.get(
-            `${s.sequenceId}:INTRODUCTION`,
+      {visibleSnapshots.map((s) => {
+        const canPrepare =
+          canMutate &&
+          s.introductionStepId !== null &&
+          s.introductionApproved &&
+          s.enrollmentCount > 0;
+        const blockReasons: string[] = [];
+        if (s.introductionStepId === null) {
+          blockReasons.push("Sequence has no INTRODUCTION step.");
+        }
+        if (s.introductionStepId !== null && !s.introductionApproved) {
+          blockReasons.push(
+            "Introduction template is missing or archived — pick an active template.",
           );
+        }
+        if (s.enrollmentCount === 0) {
+          blockReasons.push(
+            "No recipients on this sequence yet — include list members first.",
+          );
+        }
 
-          return (
-            <div
-              key={s.sequenceId}
-              className="space-y-3 rounded-md border border-border/80 p-4"
-            >
+        const introSnapshot = snapshotsBySequenceAndCategory.get(
+          `${s.sequenceId}:INTRODUCTION`,
+        );
+
+        return (
+          <div
+            key={s.sequenceId}
+            className="space-y-3 rounded-md border border-border/80 p-4"
+          >
+            {!embedded ? (
               <div className="flex flex-wrap items-center gap-2">
                 <div className="text-sm font-medium">{s.sequenceName}</div>
                 <Badge variant="outline" className="text-xs">
@@ -174,99 +175,158 @@ export function SequenceSendPreparationPanel({
                     : `${String(s.enrollmentCount)} recipients`}
                 </span>
               </div>
+            ) : null}
 
-              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                <span>
-                  <span className="font-medium text-foreground">Eligible</span>:{" "}
-                  {String(s.counts.ready)}
-                </span>
-                <span>
-                  <span className="font-medium text-foreground">Blocked</span>:{" "}
-                  {String(s.counts.blocked)}
-                </span>
-                <span>
-                  <span className="font-medium text-foreground">Suppressed</span>:{" "}
-                  {String(s.counts.suppressed)}
-                </span>
-                <span>
-                  <span className="font-medium text-foreground">Sent</span>:{" "}
-                  {String(s.counts.sent)}
-                </span>
-                <span>
-                  <span className="font-medium text-foreground">Failed</span>:{" "}
-                  {String(s.counts.failed)}
-                </span>
-                <span>
-                  <span className="font-medium text-foreground">Last prepared</span>:{" "}
-                  {formatRelative(s.latestPreparedAtIso)}
-                </span>
-              </div>
-
-              {s.latestSubjectPreview ? (
-                <div className="rounded-md bg-muted/30 p-3 text-xs">
-                  <div className="font-medium text-muted-foreground">Subject preview</div>
-                  <div className="mt-1 font-mono break-all">{s.latestSubjectPreview}</div>
-                </div>
-              ) : null}
-
-              {blockReasons.length > 0 ? (
-                <ul className="list-disc pl-5 text-xs text-muted-foreground">
-                  {blockReasons.map((r) => (
-                    <li key={r}>{r}</li>
-                  ))}
-                </ul>
-              ) : null}
-
-              <div className="flex flex-wrap items-center gap-2">
-                <form action={prepareClientEmailSequenceStepSendsAction}>
-                  <input type="hidden" name="clientId" value={clientId} />
-                  <input type="hidden" name="sequenceId" value={s.sequenceId} />
-                  <input
-                    type="hidden"
-                    name="stepId"
-                    value={s.introductionStepId ?? ""}
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    variant="outline"
-                    disabled={!canPrepare}
-                    title="Updates who can receive the next live send — does not send email."
-                  >
-                    Review recipients
-                  </Button>
-                </form>
-                <span className="text-xs text-muted-foreground">
-                  Refreshes who can receive the next live send. No email is sent by this step.
-                </span>
-              </div>
-
-              <IntroSendDispatchBlock
-                clientId={clientId}
-                canMutate={canMutate}
-                sequenceId={s.sequenceId}
-                introSend={introSnapshot}
-                allowlist={stepSendAllowlist}
-              />
-
-              <FollowUpDispatchBlocks
-                clientId={clientId}
-                canMutate={canMutate}
-                sequenceId={s.sequenceId}
-                snapshotsByCategory={snapshotsBySequenceAndCategory}
-                allowlist={stepSendAllowlist}
-              />
+            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+              {embedded ? (
+                <>
+                  <span>
+                    <span className="font-medium text-foreground">Eligible recipients</span>:{" "}
+                    {String(s.counts.ready)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Blocked recipients</span>:{" "}
+                    {String(s.counts.blocked)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Suppressed</span>:{" "}
+                    {String(s.counts.suppressed)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Sent</span>:{" "}
+                    {String(s.counts.sent)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Pending</span>:{" "}
+                    {String(enrollmentPendingCount)}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    <span className="font-medium text-foreground">Eligible</span>:{" "}
+                    {String(s.counts.ready)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Blocked</span>:{" "}
+                    {String(s.counts.blocked)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Suppressed</span>:{" "}
+                    {String(s.counts.suppressed)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Sent</span>:{" "}
+                    {String(s.counts.sent)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Failed</span>:{" "}
+                    {String(s.counts.failed)}
+                  </span>
+                  <span>
+                    <span className="font-medium text-foreground">Last prepared</span>:{" "}
+                    {formatRelative(s.latestPreparedAtIso)}
+                  </span>
+                </>
+              )}
             </div>
-          );
-        })}
 
-        {onlySequenceId !== null && hasSnapshots && !hasAnyEnrollment ? (
+            {s.latestSubjectPreview ? (
+              <div className="rounded-md bg-muted/30 p-3 text-xs">
+                <div className="font-medium text-muted-foreground">Subject preview</div>
+                <div className="mt-1 font-mono break-all">{s.latestSubjectPreview}</div>
+              </div>
+            ) : null}
+
+            {blockReasons.length > 0 ? (
+              <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                {blockReasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <form action={prepareClientEmailSequenceStepSendsAction}>
+                <input type="hidden" name="clientId" value={clientId} />
+                <input type="hidden" name="sequenceId" value={s.sequenceId} />
+                <input
+                  type="hidden"
+                  name="stepId"
+                  value={s.introductionStepId ?? ""}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={!canPrepare}
+                  title="Updates who can receive the next live send — does not send email."
+                >
+                  Review recipients
+                </Button>
+              </form>
+              <span className="text-xs text-muted-foreground">
+                Refreshes who can receive the next live send. No email is sent by this step.
+              </span>
+            </div>
+
+            <IntroSendDispatchBlock
+              clientId={clientId}
+              canMutate={canMutate}
+              sequenceId={s.sequenceId}
+              introSend={introSnapshot}
+              allowlist={stepSendAllowlist}
+            />
+
+            <FollowUpDispatchBlocks
+              clientId={clientId}
+              canMutate={canMutate}
+              sequenceId={s.sequenceId}
+              snapshotsByCategory={snapshotsBySequenceAndCategory}
+              allowlist={stepSendAllowlist}
+            />
+          </div>
+        );
+      })}
+
+      {onlySequenceId !== null && hasSnapshots && !hasAnyEnrollment ? (
+        <p className="text-xs text-muted-foreground">
+          Tip: include recipients on this sequence first, then review recipients here to see
+          per-person readiness.
+        </p>
+      ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <section id="sequence-send-preparation" className="space-y-4 border-t border-border/60 pt-4">
+        <div className="space-y-1">
+          <h4 className="text-sm font-semibold">Live sends</h4>
           <p className="text-xs text-muted-foreground">
-            Tip: include recipients on this sequence first, then review recipients here to see
-            per-person readiness.
+            Review recipients, then launch when checks pass. Preparing updates who is eligible — it
+            does not send email.
           </p>
-        ) : null}
-      </CardContent>
+        </div>
+        {innerContent}
+      </section>
+    );
+  }
+
+  return (
+    <Card
+      id="sequence-send-preparation"
+      className="border-border/80 shadow-sm"
+    >
+      <CardHeader>
+        <CardTitle>Live sends</CardTitle>
+        <CardDescription>
+          Review recipients before launching. Preparing updates who can receive the next live send
+          (no email sent). Launch sends the introduction or follow-up you choose, within batch limits
+          and the same safety checks as production.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">{innerContent}</CardContent>
     </Card>
   );
 }
@@ -314,7 +374,7 @@ function IntroSendDispatchBlock({
   return (
     <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-medium text-foreground">Introduction — live send</div>
+        <div className="font-medium text-foreground">Introduction email</div>
       </div>
       <p className="mt-1 text-muted-foreground">
         Sends use your connected mailboxes, daily limits, and suppression rules. Only eligible,
@@ -376,7 +436,7 @@ function IntroSendDispatchBlock({
           confirmationPhrase={SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}
           modalTitle="Launch introduction sends?"
           modalBody={introModalBody}
-          triggerLabel="Launch introduction"
+          triggerLabel="Launch sequence"
           disabled={!canSend}
           variant="default"
         >
