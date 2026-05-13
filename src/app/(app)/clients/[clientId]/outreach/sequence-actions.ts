@@ -558,7 +558,7 @@ export async function sendClientEmailSequenceIntroductionAction(
     }
     if (result.counts.blockedLaunchApproval > 0) {
       parts.push(
-        `${String(result.counts.blockedLaunchApproval)} blocked by launch-approval gate`,
+        `${String(result.counts.blockedLaunchApproval)} blocked — client not approved for live sending`,
       );
     }
     if (result.counts.suppressedAtExecutionTime > 0) {
@@ -568,7 +568,7 @@ export async function sendClientEmailSequenceIntroductionAction(
     }
     if (result.counts.blockedPlanClassifier > 0) {
       parts.push(
-        `${String(result.counts.blockedPlanClassifier)} blocked by policy`,
+        `${String(result.counts.blockedPlanClassifier)} blocked by dispatch check`,
       );
     }
     if (result.counts.blockedAlreadySent > 0) {
@@ -663,7 +663,7 @@ export async function sendClientEmailSequenceStepAction(
     }
     if (result.counts.blockedLaunchApproval > 0) {
       parts.push(
-        `${String(result.counts.blockedLaunchApproval)} blocked by launch-approval gate`,
+        `${String(result.counts.blockedLaunchApproval)} blocked — client not approved for live sending`,
       );
     }
     if (result.counts.suppressedAtExecutionTime > 0) {
@@ -678,7 +678,7 @@ export async function sendClientEmailSequenceStepAction(
     }
     if (result.counts.blockedPlanClassifier > 0) {
       parts.push(
-        `${String(result.counts.blockedPlanClassifier)} blocked by policy`,
+        `${String(result.counts.blockedPlanClassifier)} blocked by dispatch check`,
       );
     }
     if (result.counts.blockedAlreadySent > 0) {

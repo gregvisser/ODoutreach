@@ -24,7 +24,7 @@ function baseInput(
   };
 }
 
-describe("evaluateSendGovernance (PR L)", () => {
+describe("evaluateSendGovernance", () => {
   describe("GOVERNED_TEST", () => {
     it("allows an allowlisted recipient regardless of client approval", () => {
       const decision = evaluateSendGovernance(
@@ -117,23 +117,7 @@ describe("evaluateSendGovernance (PR L)", () => {
       }
     });
 
-    it("blocks non-allowlisted recipients when ACTIVE but never approved", () => {
-      const decision = evaluateSendGovernance(
-        baseInput({
-          sendKind: "SEQUENCE_INTRODUCTION",
-          recipientAllowlisted: false,
-          client: {
-            status: "ACTIVE",
-            launchApprovedAt: null,
-            launchApprovalMode: null,
-          },
-        }),
-      );
-      expect(decision.allowed).toBe(false);
-      if (!decision.allowed) expect(decision.mode).toBe("blocked_not_approved");
-    });
-
-    it("blocks non-allowlisted recipients when approval is CONTROLLED_INTERNAL only", () => {
+    it("allows non-allowlisted recipients when client is ACTIVE (CONTROLLED_INTERNAL)", () => {
       const decision = evaluateSendGovernance(
         baseInput({
           sendKind: "SEQUENCE_INTRODUCTION",
@@ -145,11 +129,44 @@ describe("evaluateSendGovernance (PR L)", () => {
           },
         }),
       );
-      expect(decision.allowed).toBe(false);
-      if (!decision.allowed) expect(decision.mode).toBe("blocked_not_live_mode");
+      expect(decision.allowed).toBe(true);
+      if (decision.allowed) expect(decision.mode).toBe("live_prospect");
     });
 
-    it("blocks non-allowlisted recipients when LIVE_PROSPECT but unsubscribe not ready", () => {
+    it("allows non-allowlisted follow-up recipients when client is ACTIVE", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_FOLLOW_UP",
+          recipientAllowlisted: false,
+          client: {
+            status: "ACTIVE",
+            launchApprovedAt: null,
+            launchApprovalMode: null,
+          },
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+      if (decision.allowed) expect(decision.mode).toBe("live_prospect");
+    });
+
+    it("does not require LIVE_PROSPECT mode for sequence sends", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_INTRODUCTION",
+          recipientAllowlisted: false,
+          oneClickUnsubscribeReady: false,
+          client: {
+            status: "ACTIVE",
+            launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+            launchApprovalMode: "CONTROLLED_INTERNAL",
+          },
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+      if (decision.allowed) expect(decision.mode).toBe("live_prospect");
+    });
+
+    it("does not require one-click unsubscribe for sequence sends", () => {
       const decision = evaluateSendGovernance(
         baseInput({
           sendKind: "SEQUENCE_INTRODUCTION",
@@ -162,16 +179,69 @@ describe("evaluateSendGovernance (PR L)", () => {
           },
         }),
       );
-      expect(decision.allowed).toBe(false);
-      if (!decision.allowed) {
-        expect(decision.mode).toBe("blocked_unsubscribe_missing");
-      }
+      expect(decision.allowed).toBe(true);
+      if (decision.allowed) expect(decision.mode).toBe("live_prospect");
+    });
+  });
+
+  describe("CONTROLLED_PILOT", () => {
+    it("allows allowlisted recipients", () => {
+      const allowed = evaluateSendGovernance(
+        baseInput({
+          sendKind: "CONTROLLED_PILOT",
+          recipientAllowlisted: true,
+        }),
+      );
+      expect(allowed.allowed).toBe(true);
     });
 
-    it("allows non-allowlisted recipients only when LIVE_PROSPECT + unsubscribe ready (future state)", () => {
+    it("blocks non-allowlisted recipients on ONBOARDING clients", () => {
+      const blocked = evaluateSendGovernance(
+        baseInput({
+          sendKind: "CONTROLLED_PILOT",
+          recipientAllowlisted: false,
+        }),
+      );
+      expect(blocked.allowed).toBe(false);
+    });
+
+    it("retains strict gates: blocks CONTROLLED_INTERNAL non-allowlisted", () => {
       const decision = evaluateSendGovernance(
         baseInput({
-          sendKind: "SEQUENCE_INTRODUCTION",
+          sendKind: "CONTROLLED_PILOT",
+          recipientAllowlisted: false,
+          client: {
+            status: "ACTIVE",
+            launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+            launchApprovalMode: "CONTROLLED_INTERNAL",
+          },
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) expect(decision.mode).toBe("blocked_not_live_mode");
+    });
+
+    it("retains strict gates: blocks LIVE_PROSPECT without unsubscribe", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "CONTROLLED_PILOT",
+          recipientAllowlisted: false,
+          oneClickUnsubscribeReady: false,
+          client: {
+            status: "ACTIVE",
+            launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+            launchApprovalMode: "LIVE_PROSPECT",
+          },
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) expect(decision.mode).toBe("blocked_unsubscribe_missing");
+    });
+
+    it("allows LIVE_PROSPECT + unsubscribe ready", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "CONTROLLED_PILOT",
           recipientAllowlisted: false,
           oneClickUnsubscribeReady: true,
           client: {
@@ -184,48 +254,13 @@ describe("evaluateSendGovernance (PR L)", () => {
       expect(decision.allowed).toBe(true);
       if (decision.allowed) expect(decision.mode).toBe("live_prospect");
     });
-
-    it("treats string launchApprovedAt as approved when non-empty", () => {
-      const decision = evaluateSendGovernance(
-        baseInput({
-          sendKind: "SEQUENCE_INTRODUCTION",
-          recipientAllowlisted: false,
-          client: {
-            status: "ACTIVE",
-            launchApprovedAt: "2026-04-22T10:00:00Z",
-            launchApprovalMode: "CONTROLLED_INTERNAL",
-          },
-        }),
-      );
-      expect(decision.allowed).toBe(false);
-      if (!decision.allowed) expect(decision.mode).toBe("blocked_not_live_mode");
-    });
-  });
-
-  describe("CONTROLLED_PILOT", () => {
-    it("follows the same real-prospect gate as sequence sends", () => {
-      const allowed = evaluateSendGovernance(
-        baseInput({
-          sendKind: "CONTROLLED_PILOT",
-          recipientAllowlisted: true,
-        }),
-      );
-      expect(allowed.allowed).toBe(true);
-      const blocked = evaluateSendGovernance(
-        baseInput({
-          sendKind: "CONTROLLED_PILOT",
-          recipientAllowlisted: false,
-        }),
-      );
-      expect(blocked.allowed).toBe(false);
-    });
   });
 
   describe("blockedReasonForSequenceStepSend", () => {
-    it("prefixes the blocked code and ends with the canonical gate copy", () => {
+    it("prefixes the blocked code and includes the canonical gate copy", () => {
       const decision = evaluateSendGovernance(
         baseInput({
-          sendKind: "SEQUENCE_INTRODUCTION",
+          sendKind: "CONTROLLED_PILOT",
           recipientAllowlisted: false,
         }),
       );

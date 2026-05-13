@@ -1,13 +1,14 @@
 /**
- * PR L — Launch-approval gate behaviour for `sendSequenceStepBatch`.
+ * Governance gate behaviour for `sendSequenceStepBatch`.
  *
- * These tests focus on the governance path only: allowlisted recipients
- * continue to pass through to the existing D4e pipeline, and
- * non-allowlisted recipients are blocked BEFORE the outbound transaction
- * with a persisted `blocked_*` reason code. We assert that `$transaction`
- * is never invoked when every candidate is governance-blocked, which is
- * the strongest signal that no `OutboundEmail` row or reservation is
- * created for real-prospect sends.
+ * For live sequence sends (SEQUENCE_INTRODUCTION / SEQUENCE_FOLLOW_UP),
+ * non-allowlisted recipients on an ACTIVE client pass governance and
+ * reach the send transaction. Only non-ACTIVE clients are blocked.
+ *
+ * Allowlisted recipients continue to pass through to the existing D4e
+ * pipeline on any client status. We assert `$transaction` is invoked
+ * when governance allows the recipient, confirming the row reaches
+ * the dispatch path.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -168,12 +169,9 @@ function mountReadyRow(contactEmail: string, id = "ss-1") {
   ] as never);
 }
 
-describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
+describe("sendSequenceStepBatch — governance gate", () => {
   beforeEach(() => {
     process.env.GOVERNED_TEST_EMAIL_DOMAINS = "bidlow.co.uk";
-    // PR M: default to "unsubscribe not ready" so pre-existing tests
-    // keep asserting the `blocked_unsubscribe_required` gate. Tests
-    // that want the gate open must set AUTH_URL explicitly.
     delete process.env.AUTH_URL;
     delete process.env.INTERNAL_APP_URL;
     delete process.env.NEXT_PUBLIC_APP_URL;
@@ -196,7 +194,7 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
 
   afterEachRestoreEnv();
 
-  it("blocks a non-allowlisted recipient and never opens the send transaction", async () => {
+  it("blocks a non-allowlisted recipient on an ONBOARDING client", async () => {
     mountSequence();
     mountMailboxPool();
     mountClient({ status: "ONBOARDING" });
@@ -216,9 +214,7 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     expect(result.blocked[0].reason).toMatch(
       /\[blocked_client_inactive\]/,
     );
-    expect(result.blocked[0].reason).toMatch(/LIVE_PROSPECT/);
 
-    // BLOCKED status persisted on the row with the governance reason.
     expect(prismaMock.clientEmailSequenceStepSend.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "ss-blocked" },
@@ -229,9 +225,6 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
       }),
     );
 
-    // Strongest safety assertion: we never entered the send transaction,
-    // which means no OutboundEmail row was created and no mailbox slot
-    // was reserved.
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
@@ -241,12 +234,6 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     mountClient({ status: "ONBOARDING" });
     mountReadyRow("ada@bidlow.co.uk", "ss-ok");
 
-    // We don't exercise the whole outbound pipeline here — we only
-    // assert that governance DID NOT block the row and the code
-    // reached `$transaction` (i.e. the recipient was eligible for
-    // the existing D4e send flow). Throwing a known tag inside the
-    // transaction callback cleanly short-circuits the test without
-    // stubbing every reservation helper.
     prismaMock.$transaction.mockImplementation(async () => {
       throw new Error("reached-transaction");
     });
@@ -262,14 +249,12 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     ).rejects.toThrow(/reached-transaction/);
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    // Governance did not block the row before the transaction, so no
-    // BLOCKED update fired.
     expect(
       prismaMock.clientEmailSequenceStepSend.update,
     ).not.toHaveBeenCalled();
   });
 
-  it("blocks ACTIVE + CONTROLLED_INTERNAL non-allowlisted with live_mode_not_enabled", async () => {
+  it("allows ACTIVE + CONTROLLED_INTERNAL non-allowlisted to reach the send transaction", async () => {
     mountSequence();
     mountMailboxPool();
     mountClient({
@@ -277,24 +262,56 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
       launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
       launchApprovalMode: "CONTROLLED_INTERNAL",
     });
-    mountReadyRow("prospect@example.com", "ss-live-not-enabled");
+    mountReadyRow("prospect@example.com", "ss-live-ok");
 
-    const result = await sendSequenceStepBatch({
-      staff,
-      clientId: "c1",
-      sequenceId: "seq-1",
-      category: "INTRODUCTION",
-      confirmationPhrase: "SEND INTRODUCTION",
+    prismaMock.$transaction.mockImplementation(async () => {
+      throw new Error("reached-transaction");
     });
 
-    expect(result.counts.blockedLaunchApproval).toBe(1);
-    expect(result.blocked[0].reason).toMatch(
-      /\[blocked_live_mode_not_enabled\]/,
-    );
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    await expect(
+      sendSequenceStepBatch({
+        staff,
+        clientId: "c1",
+        sequenceId: "seq-1",
+        category: "INTRODUCTION",
+        confirmationPhrase: "SEND INTRODUCTION",
+      }),
+    ).rejects.toThrow(/reached-transaction/);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(
+      prismaMock.clientEmailSequenceStepSend.update,
+    ).not.toHaveBeenCalled();
   });
 
-  it("reaches the send transaction for ACTIVE + LIVE_PROSPECT allowlisted recipient once AUTH_URL is configured (PR M)", async () => {
+  it("allows ACTIVE non-allowlisted even without launch approval or one-click unsubscribe", async () => {
+    mountSequence();
+    mountMailboxPool();
+    mountClient({
+      status: "ACTIVE",
+      launchApprovedAt: null,
+      launchApprovalMode: null,
+    });
+    mountReadyRow("prospect@example.com", "ss-no-approval");
+
+    prismaMock.$transaction.mockImplementation(async () => {
+      throw new Error("reached-transaction");
+    });
+
+    await expect(
+      sendSequenceStepBatch({
+        staff,
+        clientId: "c1",
+        sequenceId: "seq-1",
+        category: "INTRODUCTION",
+        confirmationPhrase: "SEND INTRODUCTION",
+      }),
+    ).rejects.toThrow(/reached-transaction/);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("reaches the send transaction for allowlisted recipient on ACTIVE + LIVE_PROSPECT client", async () => {
     mountSequence();
     mountMailboxPool();
     mountClient({
@@ -304,11 +321,6 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     });
     mountReadyRow("ada@bidlow.co.uk", "ss-live-prospect-ready");
 
-    // PR M: once a public base URL is configured the
-    // `isOneClickUnsubscribeReady()` helper flips to true, which
-    // unblocks the `blocked_unsubscribe_required` gate. Launch
-    // approval + allowlist still have to pass; this test proves
-    // those stack together.
     process.env.AUTH_URL = "https://outreach.example.com";
 
     prismaMock.$transaction.mockImplementation(async () => {
@@ -329,60 +341,6 @@ describe("sendSequenceStepBatch — PR L launch-approval gate", () => {
     expect(
       prismaMock.clientEmailSequenceStepSend.update,
     ).not.toHaveBeenCalled();
-  });
-
-  it("blocks ACTIVE + LIVE_PROSPECT non-allowlisted with unsubscribe_required (because one-click unsubscribe is not wired)", async () => {
-    mountSequence();
-    mountMailboxPool();
-    mountClient({
-      status: "ACTIVE",
-      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
-      launchApprovalMode: "LIVE_PROSPECT",
-    });
-    mountReadyRow("prospect@example.com", "ss-unsub-missing");
-
-    const result = await sendSequenceStepBatch({
-      staff,
-      clientId: "c1",
-      sequenceId: "seq-1",
-      category: "INTRODUCTION",
-      confirmationPhrase: "SEND INTRODUCTION",
-    });
-
-    expect(result.counts.blockedLaunchApproval).toBe(1);
-    expect(result.blocked[0].reason).toMatch(
-      /\[blocked_unsubscribe_required\]/,
-    );
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
-  });
-
-  it("reaches the send transaction for ACTIVE + LIVE_PROSPECT non-allowlisted recipient when AUTH_URL is configured (no domain allowlist)", async () => {
-    mountSequence();
-    mountMailboxPool();
-    mountClient({
-      status: "ACTIVE",
-      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
-      launchApprovalMode: "LIVE_PROSPECT",
-    });
-    mountReadyRow("prospect@real-prospect.io", "ss-real-domain");
-
-    process.env.AUTH_URL = "https://outreach.example.com";
-
-    prismaMock.$transaction.mockImplementation(async () => {
-      throw new Error("reached-transaction");
-    });
-
-    await expect(
-      sendSequenceStepBatch({
-        staff,
-        clientId: "c1",
-        sequenceId: "seq-1",
-        category: "INTRODUCTION",
-        confirmationPhrase: "SEND INTRODUCTION",
-      }),
-    ).rejects.toThrow(/reached-transaction/);
-
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
   });
 });
 
