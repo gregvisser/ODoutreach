@@ -7,5 +7,12 @@ export const CONTROLLED_PILOT_DEFAULT_MAX_RECIPIENTS = 5;
 /** Hard safety ceiling for this slice — enforced server-side. */
 export const CONTROLLED_PILOT_HARD_MAX_RECIPIENTS = 10;
 
+/**
+ * Per-batch cap for normal live sequence introduction/follow-up sends.
+ * Separate from the controlled-pilot cap so raising it does not weaken
+ * pilot safety limits.
+ */
+export const SEQUENCE_INTRODUCTION_BATCH_CAP = 30;
+
 /** Stored on OutboundEmail.metadata.kind for ledger / Activity joins. */
 export const CONTROLLED_PILOT_METADATA_KIND = "controlledPilotSend";

@@ -10,7 +10,7 @@ import {
   type SendKind,
 } from "@/lib/clients/client-send-governance";
 import {
-  CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+  SEQUENCE_INTRODUCTION_BATCH_CAP,
 } from "@/lib/controlled-pilot-constants";
 import {
   getSequenceStepSendConfirmationPhrase,
@@ -93,7 +93,7 @@ import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-u
  *     dispatch under the internal allowlisted-test governance branch
  *     still re-check `GOVERNED_TEST_EMAIL_DOMAINS` in the send
  *     transaction (same allowlist as governed test / controlled pilot).
- *   * Hard-caps per run at `CONTROLLED_PILOT_HARD_MAX_RECIPIENTS`.
+ *   * Hard-caps per run at `SEQUENCE_INTRODUCTION_BATCH_CAP`.
  *   * Reuses the existing `MailboxSendReservation` ledger + mailbox
  *     pool and the existing outbound queue worker path — no parallel
  *     send system. Each queued `OutboundEmail` transitions through
@@ -402,7 +402,7 @@ export async function sendSequenceStepBatch(input: {
     },
     // Limit to the hard cap + 1 so the caller sees that we rejected
     // overflow rather than silently truncating.
-    take: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS + 1,
+    take: SEQUENCE_INTRODUCTION_BATCH_CAP + 1,
     orderBy: [{ createdAt: "asc" }],
     select: {
       id: true,
@@ -445,10 +445,10 @@ export async function sendSequenceStepBatch(input: {
       category,
     );
   }
-  if (stepSendRows.length > CONTROLLED_PILOT_HARD_MAX_RECIPIENTS) {
+  if (stepSendRows.length > SEQUENCE_INTRODUCTION_BATCH_CAP) {
     throw new SequenceStepSendError(
       "HARD_CAP_EXCEEDED",
-      `More than ${String(CONTROLLED_PILOT_HARD_MAX_RECIPIENTS)} READY records exist — re-plan a smaller batch or raise the cap deliberately.`,
+      `More than ${String(SEQUENCE_INTRODUCTION_BATCH_CAP)} READY records exist — re-plan a smaller batch or raise the cap deliberately.`,
       category,
     );
   }
@@ -775,7 +775,7 @@ export async function sendSequenceStepBatch(input: {
       queued: [],
       blocked,
       allowlistDomains: [...allowlist.domains],
-      hardCap: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+      hardCap: SEQUENCE_INTRODUCTION_BATCH_CAP,
       mailboxPoolSize: pool.length,
       aggregateRemainingAfter: 0,
     };
@@ -1130,7 +1130,7 @@ export async function sendSequenceStepBatch(input: {
     queued,
     blocked,
     allowlistDomains: [...allowlist.domains],
-    hardCap: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+    hardCap: SEQUENCE_INTRODUCTION_BATCH_CAP,
     mailboxPoolSize: pool.length,
     aggregateRemainingAfter,
   };
@@ -1481,7 +1481,7 @@ export async function loadSequenceStepSendUiSnapshots(
           earliestEligibleAtMs === null
             ? null
             : new Date(earliestEligibleAtMs).toISOString(),
-        hardCap: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
+        hardCap: SEQUENCE_INTRODUCTION_BATCH_CAP,
         sendable: disabledReason === null,
         disabledReason,
         blockedReasonCounts,

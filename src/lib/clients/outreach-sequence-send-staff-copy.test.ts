@@ -49,10 +49,15 @@ describe("humanizeSequenceLaunchDisabledReason", () => {
 
 describe("sequenceIntroductionBatchLimitCopy", () => {
   it("describes batch size in plain language without allowlist wording", () => {
-    const s = sequenceIntroductionBatchLimitCopy(10);
-    expect(s).toMatch(/10/);
+    const s = sequenceIntroductionBatchLimitCopy(30);
+    expect(s).toMatch(/30/);
     expect(s.toLowerCase()).toMatch(/this launch sends up to/);
     expect(s.toLowerCase()).not.toMatch(/allowlist/);
+  });
+
+  it("defaults to SEQUENCE_INTRODUCTION_BATCH_CAP (30) when hardCap is 0", () => {
+    const s = sequenceIntroductionBatchLimitCopy(0);
+    expect(s).toMatch(/30/);
   });
 });
 
