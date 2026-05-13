@@ -27,10 +27,7 @@ import type {
   SequenceSummary,
 } from "@/server/email-sequences/queries";
 
-import type {
-  SequenceStepSendUiAllowlist,
-  SequenceStepSendUiSnapshot,
-} from "@/server/email-sequences/send-introduction";
+import type { SequenceStepSendUiSnapshot } from "@/server/email-sequences/send-introduction";
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 
 import { ClientEmailSequenceForm } from "./client-email-sequence-form";
@@ -70,7 +67,6 @@ type Props = {
   }>;
   sequencePrepSnapshots: SequencePrepSnapshot[];
   stepSendSnapshots: SequenceStepSendUiSnapshot[];
-  stepSendAllowlist: SequenceStepSendUiAllowlist;
 };
 
 function outreachListHref(clientId: string): string {
@@ -151,7 +147,6 @@ export function ClientEmailSequencesPanel(props: Props) {
     launchMailboxOptions,
     sequencePrepSnapshots,
     stepSendSnapshots,
-    stepSendAllowlist,
   } = props;
   const { sequences, counts, contactLists, sequenceTemplatesByCategory } =
     overview;
@@ -444,7 +439,6 @@ export function ClientEmailSequencesPanel(props: Props) {
               onlySequenceId={selected.id}
               snapshots={sequencePrepSnapshots}
               stepSendSnapshots={stepSendSnapshots}
-              stepSendAllowlist={stepSendAllowlist}
               variant="embedded"
               enrollmentPendingCount={selected.enrollment.counts.PENDING}
             />

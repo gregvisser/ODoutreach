@@ -87,9 +87,12 @@ import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-u
  *     `delayDays` have elapsed since that SENT timestamp.
  *   * Requires a typed confirmation phrase matching the category
  *     (`SEND INTRODUCTION` / `SEND FOLLOW UP 1..5`).
- *   * Requires `GOVERNED_TEST_EMAIL_DOMAINS` to contain the
- *     recipient's domain — same allowlist the governed test / pilot
- *     paths use.
+ *   * Normal live launch does **not** filter recipients by
+ *     `GOVERNED_TEST_EMAIL_DOMAINS`; real prospect sends use
+ *     `evaluateSendGovernance` + suppression + mailbox caps. Rows that
+ *     dispatch under the internal allowlisted-test governance branch
+ *     still re-check `GOVERNED_TEST_EMAIL_DOMAINS` in the send
+ *     transaction (same allowlist as governed test / controlled pilot).
  *   * Hard-caps per run at `CONTROLLED_PILOT_HARD_MAX_RECIPIENTS`.
  *   * Reuses the existing `MailboxSendReservation` ledger + mailbox
  *     pool and the existing outbound queue worker path — no parallel
@@ -1171,10 +1174,25 @@ export type SequenceStepSendUiSnapshot = {
   suppressedCount: number;
   sentCount: number;
   failedCount: number;
-  /** Number of READY rows whose recipient domain passes the allowlist. */
+  /**
+   * READY rows whose recipient domain is on `GOVERNED_TEST_EMAIL_DOMAINS`
+   * (diagnostics only — live launch eligibility uses
+   * `eligibleInLaunchBatchNowCount`).
+   */
   allowlistedReadyCount: number;
-  /** READY rows whose recipient domain is NOT in the allowlist. */
+  /**
+   * READY rows counted against the internal test-domain list (non-member
+   * or missing email). For live launch UI, use
+   * `eligibleInLaunchBatchNowCount` instead.
+   */
   allowlistBlockedReadyCount: number;
+  /**
+   * READY rows with an email address that can be considered for this
+   * launch batch now, without applying `GOVERNED_TEST_EMAIL_DOMAINS`.
+   * For follow-ups, subtracts previous-step missing + delay-pending
+   * (same shape as the old allowlisted-only `effectiveReadyNow`).
+   */
+  eligibleInLaunchBatchNowCount: number;
   /**
    * READY rows whose previous-step SENT record is missing. Always 0
    * for INTRODUCTION.
@@ -1210,6 +1228,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * that has a step in the sequence. Drives the Outreach "Send
  * preparation" card's INTRODUCTION dispatch block AND the new
  * FOLLOW_UP_N dispatch blocks.
+ *
+ * Live launch gating uses `eligibleInLaunchBatchNowCount` (real READY
+ * rows subject to follow-up delay rules only). Allowlist counts remain
+ * for diagnostics / tests around internal governed domains.
  */
 export async function loadSequenceStepSendUiSnapshots(
   clientId: string,
@@ -1299,6 +1321,7 @@ export async function loadSequenceStepSendUiSnapshots(
       let failedCount = 0;
       let allowlistedReadyCount = 0;
       let allowlistBlockedReadyCount = 0;
+      let readyWithEmailCount = 0;
       let previousStepMissingCount = 0;
       let delayPendingCount = 0;
       let earliestEligibleAtMs: number | null = null;
@@ -1319,6 +1342,10 @@ export async function loadSequenceStepSendUiSnapshots(
         switch (r.status as ClientEmailSequenceStepSendStatus) {
           case "READY": {
             readyCount += 1;
+            const emailTrim = (r.contact?.email ?? "").trim();
+            if (emailTrim.length > 0) {
+              readyWithEmailCount += 1;
+            }
             if (r.contact?.email) {
               const dom =
                 extractDomainFromEmail(r.contact.email)?.toLowerCase() ?? "";
@@ -1370,16 +1397,16 @@ export async function loadSequenceStepSendUiSnapshots(
       }
 
       const templateApproved = step.template.status === "APPROVED";
-      // Effective "ready now" = allowlisted AND not blocked by
-      // previous-step/delay for follow-ups. The dispatcher is the
-      // single source of truth but this snapshot is used to gate the
-      // UI button.
-      const effectiveReadyNow =
+      // Live launch: count READY rows with email, minus follow-up-only
+      // delay / previous-step blockers. Do not apply
+      // GOVERNED_TEST_EMAIL_DOMAINS here — that list is for internal test
+      // / pilot paths only.
+      const eligibleInLaunchBatchNowCount =
         prevCategory === null
-          ? allowlistedReadyCount
+          ? readyWithEmailCount
           : Math.max(
               0,
-              allowlistedReadyCount -
+              readyWithEmailCount -
                 previousStepMissingCount -
                 delayPendingCount,
             );
@@ -1391,17 +1418,14 @@ export async function loadSequenceStepSendUiSnapshots(
       } else if (!templateApproved) {
         disabledReason =
           "Finish the introduction template on the Templates tab before launching.";
-      } else if (!allowlist.configured) {
-        disabledReason =
-          "Test-domain safety settings are not configured — launching is disabled until they are set in the environment.";
-      } else if (allowlist.domains.length === 0) {
-        disabledReason =
-          "Test-domain safety settings resolved to an empty list — launching is disabled.";
-      } else if (effectiveReadyNow === 0) {
+      } else if (eligibleInLaunchBatchNowCount === 0) {
         if (previousStepMissingCount > 0 && prevCategory !== null) {
           disabledReason = `The previous email step has not finished for eligible recipients yet.`;
         } else if (delayPendingCount > 0) {
           disabledReason = `The wait between steps (${String(step.delayDays)} days) has not finished yet for eligible recipients.`;
+        } else if (readyCount > 0 && readyWithEmailCount === 0) {
+          disabledReason =
+            "No eligible recipients — some prepared rows are missing an email address.";
         } else {
           disabledReason =
             "No eligible recipients are in this launch batch yet — review recipients or check safety rules.";
@@ -1425,6 +1449,7 @@ export async function loadSequenceStepSendUiSnapshots(
         failedCount,
         allowlistedReadyCount,
         allowlistBlockedReadyCount,
+        eligibleInLaunchBatchNowCount,
         previousStepMissingCount,
         delayPendingCount,
         earliestEligibleAtIso:

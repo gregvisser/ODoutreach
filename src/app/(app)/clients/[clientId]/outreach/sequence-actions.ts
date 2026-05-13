@@ -427,8 +427,8 @@ export async function createClientEmailSequenceEnrollmentsAction(
  *
  * Writes/refreshes `ClientEmailSequenceStepSend` rows for the given
  * step. RECORDS ONLY — never sends email, never reserves a mailbox
- * slot, never creates an `OutboundEmail`. The dispatcher lands in
- * D4e.2 behind the `GOVERNED_TEST_EMAIL_DOMAINS` allowlist.
+ * slot, never creates an `OutboundEmail`. The live dispatcher applies
+ * suppression, governance, mailbox caps, and batch limits at send time.
  */
 export async function prepareClientEmailSequenceStepSendsAction(
   formData: FormData,
@@ -486,14 +486,19 @@ export async function prepareClientEmailSequenceStepSendsAction(
 }
 
 /**
- * PR D4e.2 — operator-triggered INTRODUCTION dispatch, allowlist-gated.
+ * PR D4e.2 — operator-triggered INTRODUCTION dispatch.
  *
  * Runs `sendSequenceIntroductionBatch` which:
  *   * requires the `SEND INTRODUCTION` confirmation phrase,
  *   * re-validates every READY step-send row at dispatch time,
- *   * enforces `GOVERNED_TEST_EMAIL_DOMAINS` per recipient,
+ *   * applies launch governance, suppression, mailbox pool, and batch caps,
  *   * reuses the existing `MailboxSendReservation` ledger,
  *   * queues OutboundEmail rows that the outbound worker will send.
+ *
+ * Internal governed-test sends to `GOVERNED_TEST_EMAIL_DOMAINS` only
+ * still use the allowlisted governance branch inside the dispatcher;
+ * normal live launch sends to real prospect domains when governance
+ * and readiness checks pass.
  *
  * There is no follow-up advancement, no cron/worker created here, and
  * no new send executor — the existing Graph / Gmail send path handles
@@ -534,7 +539,7 @@ export async function sendClientEmailSequenceIntroductionAction(
     );
     if (result.counts.blockedAllowlist > 0) {
       parts.push(
-        `${String(result.counts.blockedAllowlist)} blocked by allowlist`,
+        `${String(result.counts.blockedAllowlist)} blocked at dispatch (see timeline for reasons)`,
       );
     }
     if (result.counts.blockedLaunchApproval > 0) {
@@ -561,7 +566,7 @@ export async function sendClientEmailSequenceIntroductionAction(
       result.counts.queued > 0 ? "ok" : "error";
     const flashMsg =
       flashKind === "ok"
-        ? `${parts.join(" · ")} (allowlist: ${result.allowlistDomains.join(", ")})`
+        ? parts.join(" · ")
         : `No introductions queued. ${parts.join(" · ")}`;
     redirectBack(
       clientId,
@@ -579,7 +584,7 @@ export async function sendClientEmailSequenceIntroductionAction(
 }
 
 /**
- * PR D4e.3 — operator-triggered per-category dispatch, allowlist-gated.
+ * PR D4e.3 — operator-triggered per-category dispatch.
  *
  * Accepts a `category` form field (`INTRODUCTION` or `FOLLOW_UP_1..5`)
  * and routes to `sendSequenceStepBatch`. For FOLLOW_UP_N categories:
@@ -587,7 +592,7 @@ export async function sendClientEmailSequenceIntroductionAction(
  *     enrollment,
  *   * `delayDays` on the step must have elapsed since that SENT
  *     timestamp,
- *   * same allowlist + hard cap + typed confirmation as INTRODUCTION.
+ *   * same hard cap + typed confirmation as INTRODUCTION.
  *
  * No cron/worker is created here — the existing outbound queue
  * handles the actual dispatch.
@@ -639,7 +644,7 @@ export async function sendClientEmailSequenceStepAction(
     );
     if (result.counts.blockedAllowlist > 0) {
       parts.push(
-        `${String(result.counts.blockedAllowlist)} blocked by allowlist`,
+        `${String(result.counts.blockedAllowlist)} blocked at dispatch (see timeline for reasons)`,
       );
     }
     if (result.counts.blockedLaunchApproval > 0) {
@@ -671,7 +676,7 @@ export async function sendClientEmailSequenceStepAction(
       result.counts.queued > 0 ? "ok" : "error";
     const flashMsg =
       flashKind === "ok"
-        ? `${parts.join(" · ")} (allowlist: ${result.allowlistDomains.join(", ")})`
+        ? parts.join(" · ")
         : `No ${categoryLabel}s queued. ${parts.join(" · ")}`;
     redirectBack(
       clientId,

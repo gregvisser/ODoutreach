@@ -12,11 +12,11 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
   if (/template is .* not APPROVED/i.test(s)) {
     return "Open Templates and finish this email template before launching.";
   }
-  if (/GOVERNED_TEST_EMAIL_DOMAINS/i.test(s) || /governed domain allowlist/i.test(s)) {
-    return "Mailbox and domain safety rules are blocking these recipients for this environment.";
+  if (/missing an email address/i.test(s)) {
+    return "No eligible recipients — some prepared rows are missing an email address.";
   }
-  if (/No eligible recipients pass/i.test(s)) {
-    return "No eligible recipients are in this launch batch yet — review recipients or check the test-domain safety list.";
+  if (/No eligible recipients are in this launch batch yet/i.test(s)) {
+    return "No eligible recipients are in this launch batch yet — review recipients, suppression, or mailbox capacity.";
   }
   if (/Previous step/i.test(s) && /SENT/i.test(s)) {
     return "The previous step must finish sending before this step can go out.";
@@ -29,5 +29,15 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
 
 export function sequenceIntroductionBatchLimitCopy(hardCap: number): string {
   const cap = hardCap > 0 ? hardCap : CONTROLLED_PILOT_HARD_MAX_RECIPIENTS;
-  return `Send limit: each launch sends up to ${String(cap)} emails in one batch. Remaining eligible recipients stay queued for later batches within daily mailbox limits.`;
+  return `This launch sends up to ${String(cap)} emails now. Remaining eligible recipients stay queued for later batches within daily mailbox limits.`;
 }
+
+/**
+ * Short paragraph for the live sequence launch panel. Kept in one place
+ * so unit tests can assert we do not surface internal-domain wording.
+ */
+export const LIVE_SEQUENCE_LAUNCH_INTRO_HELP =
+  "Sends use your connected mailboxes, daily limits, and suppression rules. Eligibility is re-checked when you launch.";
+
+export const LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP =
+  "Sends one step at a time. Eligibility, delays, and suppression are re-checked when you launch.";
