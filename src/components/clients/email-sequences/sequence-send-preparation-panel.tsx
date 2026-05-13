@@ -4,6 +4,10 @@ import {
   sendClientEmailSequenceIntroductionAction,
   sendClientEmailSequenceStepAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
+import {
+  humanizeSequenceLaunchDisabledReason,
+  sequenceIntroductionBatchLimitCopy,
+} from "@/lib/clients/outreach-sequence-send-staff-copy";
 import { SequencePhraseConfirmLaunch } from "@/components/clients/email-sequences/sequence-phrase-confirm-launch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -363,13 +367,15 @@ function IntroSendDispatchBlock({
     disabledReasons.push("You do not have permission to launch sends for this client.");
   }
   if (introSend.disabledReason) {
-    disabledReasons.push(introSend.disabledReason);
+    disabledReasons.push(
+      humanizeSequenceLaunchDisabledReason(introSend.disabledReason) ?? introSend.disabledReason,
+    );
   }
 
   const allowlistConfigured = allowlist?.configured === true;
   const allowlistDomains = allowlist?.domains ?? [];
 
-  const introModalBody = `This will send real emails for the introduction step, up to ${String(introSend.allowlistedReadyCount)} eligible contacts in this batch (allowlisted domains). Follow-ups are launched separately.`;
+  const introModalBody = `This queues real introduction emails for up to ${String(introSend.allowlistedReadyCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(introSend.hardCap)} Follow-ups are launched separately.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
@@ -381,19 +387,13 @@ function IntroSendDispatchBlock({
         allowlisted recipients receive mail in each batch.
       </p>
 
-      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-        <span>
-          <span className="font-medium text-foreground">Eligible in batch</span>:{" "}
-          {String(introSend.allowlistedReadyCount)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Batch cap</span>:{" "}
-          {String(introSend.hardCap)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Sent</span>:{" "}
-          {String(introSend.sentCount)}
-        </span>
+      <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+        <p>
+          <span className="font-medium text-foreground">This batch</span>:{" "}
+          {String(introSend.allowlistedReadyCount)} eligible now ·{" "}
+          <span className="font-medium text-foreground">Sent</span>: {String(introSend.sentCount)}
+        </p>
+        <p>{sequenceIntroductionBatchLimitCopy(introSend.hardCap)}</p>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
@@ -413,11 +413,14 @@ function IntroSendDispatchBlock({
       </div>
 
       {disabledReasons.length > 0 ? (
-        <ul className="mt-2 list-disc pl-5 text-[11px] text-muted-foreground">
-          {disabledReasons.map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
+        <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
+          <p className="font-medium text-foreground">Cannot launch yet</p>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+            {disabledReasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {introSend.allowlistBlockedReadyCount > 0 ? (
@@ -530,7 +533,10 @@ function StepSendDispatchBlock({
     disabledReasons.push("You do not have permission to launch sends for this client.");
   }
   if (stepSnapshot.disabledReason) {
-    disabledReasons.push(stepSnapshot.disabledReason);
+    disabledReasons.push(
+      humanizeSequenceLaunchDisabledReason(stepSnapshot.disabledReason) ??
+        stepSnapshot.disabledReason,
+    );
   }
 
   const allowlistConfigured = allowlist?.configured === true;
@@ -541,7 +547,7 @@ function StepSendDispatchBlock({
       ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was sent`
       : "after the previous step is sent";
 
-  const followModalBody = `This will send real emails for ${label}, up to ${String(stepSnapshot.allowlistedReadyCount)} eligible contacts in this batch. Each person must have received the previous step, with ${delayDescription}.`;
+  const followModalBody = `This queues real emails for ${label}, up to ${String(stepSnapshot.allowlistedReadyCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} Each person must have received the previous step, with ${delayDescription}.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/15 p-3 text-xs">
@@ -555,31 +561,18 @@ function StepSendDispatchBlock({
         launch.
       </p>
 
-      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-        <span>
-          <span className="font-medium text-foreground">Eligible in batch</span>:{" "}
-          {String(stepSnapshot.allowlistedReadyCount)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Batch cap</span>:{" "}
-          {String(stepSnapshot.hardCap)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Sent</span>:{" "}
-          {String(stepSnapshot.sentCount)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Waiting on prior step</span>:{" "}
-          {String(stepSnapshot.previousStepMissingCount)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Waiting on delay</span>:{" "}
-          {String(stepSnapshot.delayPendingCount)}
-        </span>
-        <span>
-          <span className="font-medium text-foreground">Earliest next send</span>:{" "}
+      <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+        <p>
+          <span className="font-medium text-foreground">This batch</span>:{" "}
+          {String(stepSnapshot.allowlistedReadyCount)} eligible now ·{" "}
+          <span className="font-medium text-foreground">Sent</span>: {String(stepSnapshot.sentCount)}
+        </p>
+        <p>{sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)}</p>
+        <p className="text-muted-foreground/90">
+          Prior step: {String(stepSnapshot.previousStepMissingCount)} waiting · Delay:{" "}
+          {String(stepSnapshot.delayPendingCount)} waiting · Next eligible:{" "}
           {formatRelative(stepSnapshot.earliestEligibleAtIso)}
-        </span>
+        </p>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
@@ -599,11 +592,14 @@ function StepSendDispatchBlock({
       </div>
 
       {disabledReasons.length > 0 ? (
-        <ul className="mt-2 list-disc pl-5 text-[11px] text-muted-foreground">
-          {disabledReasons.map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
+        <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
+          <p className="font-medium text-foreground">Cannot launch yet</p>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+            {disabledReasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {stepSnapshot.allowlistBlockedReadyCount > 0 ? (

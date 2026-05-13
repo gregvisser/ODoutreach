@@ -153,11 +153,9 @@ export type EnrollmentReadinessReason =
   | "ready";
 
 /**
- * Whether the operator is allowed to click "Create enrollment records"
- * for a sequence. Records-only: enrollment requires the sequence to
- * be READY_FOR_REVIEW or APPROVED (so staff have committed to a list
- * and a template ladder) and the list to have at least one
- * email-sendable candidate that isn't already enrolled.
+ * Whether the operator is allowed to run recipient preparation for a
+ * sequence. Records-only: enrollments may be created while the sequence
+ * is still a draft so saves and “Review recipients” stay one step.
  *
  * PR F2: distinguishes `all_already_enrolled` from `no_email_sendable`
  * so the UI can tell the operator "nothing new to enroll" vs "the list
@@ -178,9 +176,6 @@ export function checkEnrollmentReadiness(params: {
   const { sequenceStatus, preview } = params;
   if (sequenceStatus === "ARCHIVED") {
     return { ok: false, reason: "sequence_archived" };
-  }
-  if (sequenceStatus === "DRAFT") {
-    return { ok: false, reason: "sequence_not_approval_ready" };
   }
   if (preview.total === 0) {
     return { ok: false, reason: "no_candidates" };

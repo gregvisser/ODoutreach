@@ -1,11 +1,8 @@
 import Link from "next/link";
 
 import {
-  approveClientEmailSequenceAction,
   archiveClientEmailSequenceAction,
   createClientEmailSequenceEnrollmentsAction,
-  markClientEmailSequenceReadyAction,
-  returnClientEmailSequenceToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -37,6 +34,7 @@ import type {
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 
 import { ClientEmailSequenceForm } from "./client-email-sequence-form";
+import { ArchiveSequenceConfirmForm } from "./sequence-archive-confirm-form";
 import { SequenceSendPreparationPanel } from "./sequence-send-preparation-panel";
 
 /**
@@ -462,38 +460,18 @@ export function ClientEmailSequencesPanel(props: Props) {
               </Link>
             </div>
 
-            {canMutate && (
+            {canMutate && selected.status !== "ARCHIVED" && (
               <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
-                {(selected.status === "DRAFT" || selected.status === "READY_FOR_REVIEW") && (
-                  <SequenceLifecycleForms clientId={clientId} sequence={selected} />
-                )}
-                {selected.status === "APPROVED" && (
-                  <form action={returnClientEmailSequenceToDraftAction}>
-                    <input type="hidden" name="clientId" value={clientId} />
-                    <input type="hidden" name="sequenceId" value={selected.id} />
-                    <Button type="submit" size="sm" variant="outline">
-                      Back to editing
-                    </Button>
-                  </form>
-                )}
-                {selected.status === "ARCHIVED" && (
-                  <form action={returnClientEmailSequenceToDraftAction}>
-                    <input type="hidden" name="clientId" value={clientId} />
-                    <input type="hidden" name="sequenceId" value={selected.id} />
-                    <Button type="submit" size="sm" variant="outline">
-                      Back to editing
-                    </Button>
-                  </form>
-                )}
-                {selected.status !== "ARCHIVED" && (
-                  <form action={archiveClientEmailSequenceAction}>
-                    <input type="hidden" name="clientId" value={clientId} />
-                    <input type="hidden" name="sequenceId" value={selected.id} />
-                    <Button type="submit" size="sm" variant="ghost">
-                      Archive
-                    </Button>
-                  </form>
-                )}
+                <ArchiveSequenceConfirmForm
+                  action={archiveClientEmailSequenceAction}
+                  clientId={clientId}
+                  sequenceId={selected.id}
+                  confirmMessage="Remove this sequence? Contacts and lists stay available."
+                >
+                  <Button type="submit" size="sm" variant="outline">
+                    Remove sequence
+                  </Button>
+                </ArchiveSequenceConfirmForm>
               </div>
             )}
 
@@ -542,63 +520,15 @@ function ActivationHint({ sequence }: { sequence: SequenceSummary }) {
   return (
     <p className="text-[11px] text-amber-700 dark:text-amber-300">
       {!readiness.hasIntroduction
-        ? "Add an introduction step with a non-archived template before you can activate this sequence."
+        ? "Add an introduction step with a non-archived template before this sequence can send."
         : readiness.unusableStepCount > 0
           ? "A step uses an archived template — fix or replace it first."
           : readiness.emailSendableCount === 0
             ? "Target list has 0 email-sendable contacts."
             : readiness.mismatchedStepCount > 0
               ? "A step's category does not match its template."
-              : "Activation checks not yet satisfied."}
+              : "Finish required fields, then save the sequence again."}
     </p>
-  );
-}
-
-function SequenceLifecycleForms({
-  clientId,
-  sequence,
-}: {
-  clientId: string;
-  sequence: SequenceSummary;
-}) {
-  const { readiness } = sequence;
-  const canReady =
-    readiness.hasIntroduction &&
-    readiness.unusableStepCount === 0 &&
-    readiness.mismatchedStepCount === 0 &&
-    readiness.hasContactList;
-  const canApprove = readiness.canBeApproved;
-
-  return (
-    <>
-      {sequence.status === "DRAFT" && (
-        <form action={markClientEmailSequenceReadyAction}>
-          <input type="hidden" name="clientId" value={clientId} />
-          <input type="hidden" name="sequenceId" value={sequence.id} />
-          <Button type="submit" size="sm" variant="outline" disabled={!canReady}>
-            Mark ready
-          </Button>
-        </form>
-      )}
-      {sequence.status === "READY_FOR_REVIEW" && (
-        <>
-          <form action={approveClientEmailSequenceAction}>
-            <input type="hidden" name="clientId" value={clientId} />
-            <input type="hidden" name="sequenceId" value={sequence.id} />
-            <Button type="submit" size="sm" disabled={!canApprove}>
-              Go live
-            </Button>
-          </form>
-          <form action={returnClientEmailSequenceToDraftAction}>
-            <input type="hidden" name="clientId" value={clientId} />
-            <input type="hidden" name="sequenceId" value={sequence.id} />
-            <Button type="submit" size="sm" variant="outline">
-              Back to editing
-            </Button>
-          </form>
-        </>
-      )}
-    </>
   );
 }
 
@@ -615,12 +545,15 @@ function EnrollmentBlock({
   const { preview, counts, total } = enrollment;
 
   const canEnroll =
-    canMutate &&
-    (status === "READY_FOR_REVIEW" || status === "APPROVED") &&
-    preview.enrollable > 0;
+    canMutate && status !== "ARCHIVED" && preview.enrollable > 0;
 
   const gateHint = (() => {
-    if (status === "DRAFT") return "Mark the sequence ready before adding recipients.";
+    if (status === "DRAFT") {
+      if (preview.enrollable > 0) {
+        return `Your list has ${String(preview.enrollable)} email-sendable contacts. Save the sequence again to prepare them, or tap Review recipients below.`;
+      }
+      return "Save the sequence to prepare recipients from your list.";
+    }
     if (status === "ARCHIVED") return "Archived sequences cannot include new recipients.";
     if (preview.total === 0) return "Target list has no members yet.";
     if (preview.enrollable === 0 && preview.alreadyEnrolled === preview.total) {
@@ -705,7 +638,7 @@ function EnrollmentBlock({
             </Button>
           </form>
           <span className="text-[11px] text-muted-foreground">
-            Use live send actions below when checks pass.
+            Tap Review recipients after list changes. No email is sent.
           </span>
         </div>
       )}
@@ -757,7 +690,7 @@ function LaunchReadinessBlock({
             {String(mailboxSnapshot.aggregateRemainingToday)} sends remaining today across the pool
             (UTC day).
           </p>
-              {readiness.totalWarnings > 0 ? (
+          {readiness.totalWarnings > 0 ? (
             <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-200">
               {String(readiness.totalWarnings)} notice
               {readiness.totalWarnings === 1 ? "" : "s"} — you can still launch when ready.

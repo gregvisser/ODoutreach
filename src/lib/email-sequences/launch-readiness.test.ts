@@ -242,7 +242,7 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
       (c) => c.id === "pending_email_sendable_recipients",
     );
     expect(pendingCheck?.status).toBe("fail");
-    expect(pendingCheck?.detail).toContain("4 with no email on file");
+    expect(pendingCheck?.detail).toContain("4 list members have no email on file");
     const enrollCheck = r.checks.find(
       (c) => c.id === "enrollment_records_exist",
     );

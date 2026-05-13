@@ -192,7 +192,7 @@ export async function enrollSequenceContacts(input: {
       case "sequence_not_approval_ready":
         throw new EnrollmentFailure(
           "SEQUENCE_NOT_READY",
-          "Only sequences in READY_FOR_REVIEW or APPROVED can be enrolled.",
+          "This sequence cannot include recipients right now — check that it is not archived.",
         );
       case "no_candidates":
         throw new EnrollmentFailure(

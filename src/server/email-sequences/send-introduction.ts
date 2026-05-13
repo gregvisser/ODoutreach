@@ -1386,23 +1386,25 @@ export async function loadSequenceStepSendUiSnapshots(
 
       let disabledReason: string | null = null;
       if (s.status !== "APPROVED") {
-        disabledReason = `Sequence is ${s.status}, not APPROVED.`;
+        disabledReason =
+          "This sequence is not activated for sending yet. Save the sequence again, or review recipients.";
       } else if (!templateApproved) {
-        disabledReason = `${category} template is not APPROVED.`;
+        disabledReason =
+          "Finish the introduction template on the Templates tab before launching.";
       } else if (!allowlist.configured) {
         disabledReason =
-          "GOVERNED_TEST_EMAIL_DOMAINS is not configured — sequence sending is disabled.";
+          "Test-domain safety settings are not configured — launching is disabled until they are set in the environment.";
       } else if (allowlist.domains.length === 0) {
         disabledReason =
-          "GOVERNED_TEST_EMAIL_DOMAINS resolved to an empty list.";
+          "Test-domain safety settings resolved to an empty list — launching is disabled.";
       } else if (effectiveReadyNow === 0) {
         if (previousStepMissingCount > 0 && prevCategory !== null) {
-          disabledReason = `Previous step (${prevCategory}) has not been SENT for any allowlisted recipient yet.`;
+          disabledReason = `The previous email step has not finished for eligible recipients yet.`;
         } else if (delayPendingCount > 0) {
-          disabledReason = `Delay (${String(step.delayDays)} days) has not elapsed for any allowlisted recipient yet.`;
+          disabledReason = `The wait between steps (${String(step.delayDays)} days) has not finished yet for eligible recipients.`;
         } else {
           disabledReason =
-            "No eligible recipients pass the governed domain allowlist yet.";
+            "No eligible recipients are in this launch batch yet — review recipients or check safety rules.";
         }
       }
 
