@@ -67,6 +67,50 @@ describe("loadSequenceStepSendUiSnapshots", () => {
     expect(intro!.sendable).toBe(true);
   });
 
+  it("does not disable when all rows are SENT (step complete)", async () => {
+    prismaMock.clientEmailSequence.findMany.mockResolvedValue([
+      {
+        id: "seq-1",
+        name: "Outreach A",
+        status: "APPROVED",
+        steps: [
+          {
+            id: "step-intro",
+            category: "INTRODUCTION",
+            position: 1,
+            delayDays: 0,
+            templateId: "t1",
+            template: { status: "APPROVED" },
+          },
+        ],
+        _count: { enrollments: 18 },
+      },
+    ] as never);
+
+    const sentRows = Array.from({ length: 18 }, (_, i) => ({
+      sequenceId: "seq-1",
+      stepId: "step-intro",
+      enrollmentId: `enr-${String(i)}`,
+      status: "SENT" as const,
+      updatedAt: new Date("2026-05-01T12:00:00Z"),
+      contact: { email: `p${String(i)}@corp.com` },
+    }));
+    prismaMock.clientEmailSequenceStepSend.findMany.mockResolvedValue(
+      sentRows as never,
+    );
+
+    const { snapshots } = await loadSequenceStepSendUiSnapshots("client-1");
+    const intro = snapshots.find(
+      (s) => s.sequenceId === "seq-1" && s.category === "INTRODUCTION",
+    );
+    expect(intro).toBeDefined();
+    expect(intro!.sentCount).toBe(18);
+    expect(intro!.readyCount).toBe(0);
+    expect(intro!.blockedCount).toBe(0);
+    expect(intro!.sendable).toBe(true);
+    expect(intro!.disabledReason).toBeNull();
+  });
+
   it("disables launch when READY rows have no email", async () => {
     prismaMock.clientEmailSequence.findMany.mockResolvedValue([
       {

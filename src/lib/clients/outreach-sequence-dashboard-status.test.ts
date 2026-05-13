@@ -35,12 +35,45 @@ describe("deriveOutreachDashboardStatusLabel", () => {
     ).toBe("Sending");
   });
 
-  it("labels blocked launch readiness as Blocked", () => {
+  it("labels blocked launch readiness as Blocked when ready > 0", () => {
     expect(
       deriveOutreachDashboardStatusLabel({
         status: "APPROVED",
         launchReadiness: lr(false),
         prepCounts: { ready: 1, blocked: 0, suppressed: 0, sent: 0, failed: 0 },
+        enrollmentPending: 0,
+      }),
+    ).toBe("Blocked");
+  });
+
+  it("labels Sent when all recipients sent, none ready/blocked — even if canLaunch is false", () => {
+    expect(
+      deriveOutreachDashboardStatusLabel({
+        status: "APPROVED",
+        launchReadiness: lr(false),
+        prepCounts: { ready: 0, blocked: 0, suppressed: 0, sent: 18, failed: 0 },
+        enrollmentPending: 0,
+      }),
+    ).toBe("Sent");
+  });
+
+  it("labels Sending when sent > 0 but ready > 0 remain", () => {
+    expect(
+      deriveOutreachDashboardStatusLabel({
+        status: "APPROVED",
+        launchReadiness: lr(false),
+        prepCounts: { ready: 5, blocked: 0, suppressed: 0, sent: 13, failed: 0 },
+        enrollmentPending: 0,
+      }),
+    ).toBe("Sending");
+  });
+
+  it("labels Blocked when blocked > 0 and canLaunch false, even if sent > 0", () => {
+    expect(
+      deriveOutreachDashboardStatusLabel({
+        status: "APPROVED",
+        launchReadiness: lr(false),
+        prepCounts: { ready: 0, blocked: 3, suppressed: 0, sent: 15, failed: 0 },
         enrollmentPending: 0,
       }),
     ).toBe("Blocked");
