@@ -1,16 +1,24 @@
 /**
- * PR #131 — Pure delivery-status derivation for list detail view.
+ * PR #131 → PR #132 — Pure delivery-status derivation for list detail
+ * view and outreach metrics.
  *
  * Given the raw data from the server query, produces a staff-friendly
  * label for each contact's outreach status plus a page-level summary.
  *
  * No DB access — everything is derived from the row shape passed in.
+ *
+ * PR #132 send-proof contract: a row may only show "Sent from mailbox"
+ * when actual outbound/provider proof exists. Step-send SENT alone is
+ * not sufficient — an OutboundEmail with sentAt or providerMessageId
+ * (or a provider-confirmed status) is required.
  */
 
 export type DeliveryStatusLabel =
   | "Not sent"
   | "Queued"
   | "Sent from mailbox"
+  | "Sent — time unavailable"
+  | "Send proof missing"
   | "Failed"
   | "Bounced"
   | "Replied"
@@ -24,6 +32,8 @@ export type DeliveryStatusLabel =
 export type ContactOutreachInput = {
   stepSendStatus: string | null;
   outboundStatus: string | null;
+  hasOutboundEmail: boolean;
+  hasProviderProof: boolean;
   sentAt: Date | null;
   bouncedAt: Date | null;
   openedAt: Date | null;
@@ -32,6 +42,13 @@ export type ContactOutreachInput = {
   isSuppressed: boolean;
   hasLinkedReply: boolean;
 };
+
+const PROVIDER_CONFIRMED_STATUSES = new Set([
+  "SENT",
+  "DELIVERED",
+  "REPLIED",
+  "BOUNCED",
+]);
 
 export function deriveDeliveryStatus(
   input: ContactOutreachInput,
@@ -70,7 +87,20 @@ export function deriveDeliveryStatus(
     input.outboundStatus === "DELIVERED" ||
     input.stepSendStatus === "SENT"
   ) {
-    return "Sent from mailbox";
+    if (input.hasOutboundEmail && input.sentAt) {
+      return "Sent from mailbox";
+    }
+    if (
+      input.hasOutboundEmail &&
+      (input.hasProviderProof ||
+        PROVIDER_CONFIRMED_STATUSES.has(input.outboundStatus ?? ""))
+    ) {
+      return "Sent — time unavailable";
+    }
+    if (!input.hasOutboundEmail) {
+      return "Send proof missing";
+    }
+    return "Send proof missing";
   }
 
   if (
@@ -102,6 +132,7 @@ export type ListDeliverySummary = {
   totalContacts: number;
   emailSendable: number;
   sent: number;
+  sentProofMissing: number;
   failed: number;
   bounced: number;
   replied: number;
@@ -117,6 +148,7 @@ export function summarizeDelivery(
     totalContacts: statuses.length,
     emailSendable: emailSendableCount,
     sent: 0,
+    sentProofMissing: 0,
     failed: 0,
     bounced: 0,
     replied: 0,
@@ -127,7 +159,11 @@ export function summarizeDelivery(
   for (const s of statuses) {
     switch (s) {
       case "Sent from mailbox":
+      case "Sent — time unavailable":
         summary.sent++;
+        break;
+      case "Send proof missing":
+        summary.sentProofMissing++;
         break;
       case "Failed":
         summary.failed++;

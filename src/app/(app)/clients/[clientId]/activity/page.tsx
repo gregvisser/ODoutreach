@@ -12,11 +12,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  formatRate,
+  formatTrackedMetric,
+} from "@/lib/reports/outreach-metrics";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { getStaffRole } from "@/server/auth/staff";
 import { loadClientActivityTimeline } from "@/server/activity/client-activity";
 import { loadClientOutreachReplies } from "@/server/queries/client-outreach-replies";
+import { loadClientOutreachMetrics } from "@/server/queries/outreach-metrics";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -40,9 +45,10 @@ export default async function ClientActivityPage({ params, searchParams }: Props
   const staffRole = await getStaffRole();
   const isAdmin = staffRole === "ADMIN";
 
-  const [timeline, replyGroups] = await Promise.all([
+  const [timeline, replyGroups, metrics] = await Promise.all([
     loadClientActivityTimeline(bundle.client.id, { mode }),
     loadClientOutreachReplies(bundle.client.id),
+    loadClientOutreachMetrics(bundle.client.id, accessible),
   ]);
 
   const totalReplies = replyGroups.reduce((sum, g) => sum + g.replyCount, 0);
@@ -101,6 +107,33 @@ export default async function ClientActivityPage({ params, searchParams }: Props
           }
         />
       </div>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Outreach metrics</CardTitle>
+          <CardDescription>
+            All-time metrics for this client, based on verified send proof only.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
+            <MetricRow label="Total sent (with proof)" value={metrics.sent.toLocaleString()} />
+            <MetricRow label="Send proof missing" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "error" : undefined} />
+            <MetricRow label="Delivery" value={formatTrackedMetric(metrics.delivered, metrics.deliveryTracked)} sub={metrics.deliveryTracked ? `Rate: ${formatRate(metrics.deliveryRate)}` : undefined} />
+            <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
+            <MetricRow label="Replies" value={metrics.replies.toLocaleString()} sub={`Rate: ${formatRate(metrics.replyRate)}`} />
+            <MetricRow label="Opt-outs" value={metrics.unsubscribes.toLocaleString()} sub={`Rate: ${formatRate(metrics.unsubscribeRate)}`} />
+            <MetricRow label="Bounces" value={metrics.bounces.toLocaleString()} sub={`Rate: ${formatRate(metrics.bounceRate)}`} />
+            <MetricRow label="Failed" value={metrics.failed.toLocaleString()} />
+            <MetricRow label="Not reached" value={metrics.notReached.toLocaleString()} />
+            <MetricRow label="Suppressed / skipped" value={metrics.suppressedOrSkipped.toLocaleString()} />
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground/80">
+            &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
+            connected mailbox/provider. It does not guarantee inbox placement.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
@@ -206,6 +239,30 @@ function SummaryCard({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+function MetricRow({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "error";
+}) {
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}: </span>
+      <span className={`font-semibold tabular-nums ${tone === "error" ? "text-destructive" : ""}`}>
+        {value}
+      </span>
+      {sub && (
+        <span className="ml-1 text-xs text-muted-foreground">({sub})</span>
+      )}
     </div>
   );
 }
