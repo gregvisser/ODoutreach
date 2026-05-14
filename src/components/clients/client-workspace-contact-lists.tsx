@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -41,7 +42,12 @@ export function ClientWorkspaceContactLists({ clientId, lists }: Props) {
               className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
-                <p className="truncate font-medium">{l.name}</p>
+                <Link
+                  href={`/clients/${clientId}/lists/${l.id}`}
+                  className="truncate font-medium underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
+                >
+                  {l.name}
+                </Link>
                 <p className="text-xs text-muted-foreground">
                   {l.memberCount} {l.memberCount === 1 ? "member" : "members"} · Updated {l.updatedAt}
                 </p>
