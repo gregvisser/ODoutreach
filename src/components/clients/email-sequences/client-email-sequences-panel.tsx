@@ -292,7 +292,12 @@ export function ClientEmailSequencesPanel(props: Props) {
                           ) : null}
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          <span className="line-clamp-2">{seq.contactList.name}</span>
+                          <Link
+                            href={`/clients/${clientId}/lists/${seq.contactList.id}`}
+                            className="line-clamp-2 underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
+                          >
+                            {seq.contactList.name}
+                          </Link>
                         </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">
                           {mailboxLabelForSequence(seq, launchMailboxOptions)}
@@ -366,7 +371,12 @@ export function ClientEmailSequencesPanel(props: Props) {
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span>
                     <span className="font-medium text-foreground">List</span>:{" "}
-                    {selected.contactList.name}
+                    <Link
+                      href={`/clients/${clientId}/lists/${selected.contactList.id}`}
+                      className="underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
+                    >
+                      {selected.contactList.name}
+                    </Link>
                   </span>
                   <span>·</span>
                   <span>
