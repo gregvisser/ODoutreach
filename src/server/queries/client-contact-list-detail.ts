@@ -36,6 +36,12 @@ export type ContactDeliveryRow = {
   unsubscribedAt: Date | null;
   latestEventLabel: string | null;
   opensLabel: string;
+  hasOutboundEmail: boolean;
+  hasProviderProof: boolean;
+  hasSentTimestamp: boolean;
+  hasBounce: boolean;
+  hasReply: boolean;
+  hasUnsubscribe: boolean;
 };
 
 export type ContactListDetail = {
@@ -120,6 +126,7 @@ export async function loadClientContactListDetail(
         totalContacts: 0,
         emailSendable: 0,
         sent: 0,
+        sentProofMissing: 0,
         failed: 0,
         bounced: 0,
         replied: 0,
@@ -147,6 +154,7 @@ export async function loadClientContactListDetail(
         },
         outboundEmail: {
           select: {
+            id: true,
             status: true,
             sentAt: true,
             bouncedAt: true,
@@ -155,6 +163,7 @@ export async function loadClientContactListDetail(
             failureReason: true,
             bounceCategory: true,
             lastProviderEventType: true,
+            providerMessageId: true,
             mailbox: { select: { email: true, displayName: true } },
           },
         },
@@ -225,6 +234,10 @@ export async function loadClientContactListDetail(
     const deliveryStatus = deriveDeliveryStatus({
       stepSendStatus: ss?.status ?? null,
       outboundStatus: outbound?.status ?? null,
+      hasOutboundEmail: outbound !== null,
+      hasProviderProof:
+        Boolean(outbound?.providerMessageId) ||
+        Boolean(outbound?.lastProviderEventType),
       sentAt: outbound?.sentAt ?? null,
       bouncedAt: outbound?.bouncedAt ?? null,
       openedAt: outbound?.openedAt ?? null,
@@ -272,6 +285,14 @@ export async function loadClientContactListDetail(
       unsubscribedAt: unsubDate,
       latestEventLabel: outbound?.lastProviderEventType ?? null,
       opensLabel: deriveOpensLabel(outbound?.openedAt ?? null),
+      hasOutboundEmail: outbound !== null,
+      hasProviderProof:
+        Boolean(outbound?.providerMessageId) ||
+        Boolean(outbound?.lastProviderEventType),
+      hasSentTimestamp: outbound?.sentAt !== null && outbound?.sentAt !== undefined,
+      hasBounce: Boolean(outbound?.bouncedAt),
+      hasReply: replyDate !== null,
+      hasUnsubscribe: unsubDate !== null,
     };
   });
 

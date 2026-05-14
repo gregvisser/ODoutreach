@@ -11,6 +11,8 @@ function base(): ContactOutreachInput {
   return {
     stepSendStatus: null,
     outboundStatus: null,
+    hasOutboundEmail: false,
+    hasProviderProof: false,
     sentAt: null,
     bouncedAt: null,
     openedAt: null,
@@ -50,34 +52,87 @@ describe("deriveDeliveryStatus", () => {
     ).toBe("Queued");
   });
 
-  it("returns 'Sent from mailbox' when step send is SENT", () => {
+  // --- PR #132 send-proof tests ---
+
+  it("returns 'Send proof missing' when step-send SENT but no OutboundEmail", () => {
     expect(
       deriveDeliveryStatus({
         ...base(),
         stepSendStatus: "SENT",
+        hasOutboundEmail: false,
+      }),
+    ).toBe("Send proof missing");
+  });
+
+  it("returns 'Send proof missing' when step-send SENT with OutboundEmail but no proof", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        stepSendStatus: "SENT",
+        hasOutboundEmail: true,
+        hasProviderProof: false,
+        sentAt: null,
+      }),
+    ).toBe("Send proof missing");
+  });
+
+  it("returns 'Sent — time unavailable' when step-send SENT with providerProof but no sentAt", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        stepSendStatus: "SENT",
+        hasOutboundEmail: true,
+        hasProviderProof: true,
+        sentAt: null,
+      }),
+    ).toBe("Sent — time unavailable");
+  });
+
+  it("returns 'Sent from mailbox' when step-send SENT with sentAt", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        stepSendStatus: "SENT",
+        hasOutboundEmail: true,
+        hasProviderProof: true,
         sentAt: new Date(),
       }),
     ).toBe("Sent from mailbox");
   });
 
-  it("returns 'Sent from mailbox' when outbound is SENT", () => {
+  it("returns 'Sent from mailbox' when outbound SENT with sentAt", () => {
     expect(
       deriveDeliveryStatus({
         ...base(),
         outboundStatus: "SENT",
+        hasOutboundEmail: true,
+        hasProviderProof: true,
         sentAt: new Date(),
       }),
     ).toBe("Sent from mailbox");
   });
 
-  it("returns 'Sent from mailbox' when outbound is DELIVERED", () => {
+  it("returns 'Sent from mailbox' when outbound is DELIVERED with sentAt", () => {
     expect(
       deriveDeliveryStatus({
         ...base(),
         outboundStatus: "DELIVERED",
+        hasOutboundEmail: true,
         sentAt: new Date(),
       }),
     ).toBe("Sent from mailbox");
+  });
+
+  it("returns 'Sent — time unavailable' when outbound is DELIVERED but no sentAt, with proof", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        outboundStatus: "DELIVERED",
+        hasOutboundEmail: true,
+        hasProviderProof: true,
+        sentAt: null,
+      }),
+    ).toBe("Sent — time unavailable");
   });
 
   it("returns 'Failed' when step send FAILED", () => {
@@ -113,6 +168,7 @@ describe("deriveDeliveryStatus", () => {
       deriveDeliveryStatus({
         ...base(),
         outboundStatus: "SENT",
+        hasOutboundEmail: true,
         sentAt: new Date(),
         hasLinkedReply: true,
         repliedAt: new Date(),
@@ -131,6 +187,7 @@ describe("deriveDeliveryStatus", () => {
       deriveDeliveryStatus({
         ...base(),
         outboundStatus: "SENT",
+        hasOutboundEmail: true,
         sentAt: new Date(),
         unsubscribedAt: new Date(),
       }),
@@ -189,6 +246,27 @@ describe("deriveDeliveryStatus", () => {
       }),
     ).toBe("Replied");
   });
+
+  it("stepSendStatus SENT alone never produces 'Sent from mailbox'", () => {
+    const result = deriveDeliveryStatus({
+      ...base(),
+      stepSendStatus: "SENT",
+    });
+    expect(result).not.toBe("Sent from mailbox");
+    expect(result).toBe("Send proof missing");
+  });
+
+  it("outbound SENT with sentAt but no providerProof still shows 'Sent from mailbox' because sentAt is proof", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        outboundStatus: "SENT",
+        hasOutboundEmail: true,
+        hasProviderProof: false,
+        sentAt: new Date(),
+      }),
+    ).toBe("Sent from mailbox");
+  });
 });
 
 describe("deriveOpensLabel", () => {
@@ -205,10 +283,11 @@ describe("deriveOpensLabel", () => {
 });
 
 describe("summarizeDelivery", () => {
-  it("counts all status types correctly", () => {
+  it("counts all status types correctly including new labels", () => {
     const statuses = [
       "Sent from mailbox" as const,
-      "Sent from mailbox" as const,
+      "Sent — time unavailable" as const,
+      "Send proof missing" as const,
       "Failed" as const,
       "Bounced" as const,
       "Replied" as const,
@@ -218,9 +297,10 @@ describe("summarizeDelivery", () => {
       "Queued" as const,
     ];
     const s = summarizeDelivery(statuses, 7);
-    expect(s.totalContacts).toBe(9);
+    expect(s.totalContacts).toBe(10);
     expect(s.emailSendable).toBe(7);
     expect(s.sent).toBe(2);
+    expect(s.sentProofMissing).toBe(1);
     expect(s.failed).toBe(1);
     expect(s.bounced).toBe(1);
     expect(s.replied).toBe(1);
@@ -232,5 +312,6 @@ describe("summarizeDelivery", () => {
     const s = summarizeDelivery([], 0);
     expect(s.totalContacts).toBe(0);
     expect(s.sent).toBe(0);
+    expect(s.sentProofMissing).toBe(0);
   });
 });

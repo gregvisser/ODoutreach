@@ -14,9 +14,14 @@ import {
 } from "@/components/dashboard/dashboard-charts";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  formatRate,
+  formatTrackedMetric,
+} from "@/lib/reports/outreach-metrics";
 import { requireStaffUser } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getLiveSendReplyStats } from "@/server/queries/live-stats";
+import { loadGlobalOutreachMetrics, loadClientOutreachMetrics } from "@/server/queries/outreach-metrics";
 import { getReportingSnapshotsForStaff } from "@/server/queries/reporting";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -36,9 +41,15 @@ export default async function ReportingPage({ searchParams }: Props) {
   const from = new Date();
   from.setDate(from.getDate() - 30);
 
-  const [snapshots, live] = await Promise.all([
+  const [snapshots, live, metricsData] = await Promise.all([
     getReportingSnapshotsForStaff(accessible, clientFilter, from),
     getLiveSendReplyStats(accessible, from, clientFilter),
+    clientFilter
+      ? loadClientOutreachMetrics(clientFilter, accessible).then((m) => ({
+          global: m,
+          byClient: [],
+        }))
+      : loadGlobalOutreachMetrics(accessible),
   ]);
 
   const dayTotals = new Map<string, { sent: number; replies: number }>();
@@ -230,6 +241,81 @@ export default async function ReportingPage({ searchParams }: Props) {
         </Card>
       </div>
 
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">
+            {clientFilter ? "Client outreach metrics" : "Global outreach metrics"}
+          </CardTitle>
+          <CardDescription>
+            All-time metrics based on verified send proof only.
+            {!clientFilter && " Aggregated across all accessible clients."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(() => {
+            const m = metricsData.global;
+            return (
+              <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
+                <MetricItem label="Total sent (with proof)" value={m.sent.toLocaleString()} />
+                <MetricItem label="Send proof missing" value={m.sendProofMissing.toLocaleString()} tone={m.sendProofMissing > 0 ? "error" : undefined} />
+                <MetricItem label="Delivery" value={formatTrackedMetric(m.delivered, m.deliveryTracked)} sub={m.deliveryTracked ? `Rate: ${formatRate(m.deliveryRate)}` : undefined} />
+                <MetricItem label="Opens" value={formatTrackedMetric(m.opens, m.opensTracked)} sub={m.opensTracked ? `Rate: ${formatRate(m.openRate)}` : undefined} />
+                <MetricItem label="Replies" value={m.replies.toLocaleString()} sub={`Rate: ${formatRate(m.replyRate)}`} />
+                <MetricItem label="Opt-outs" value={m.unsubscribes.toLocaleString()} sub={`Rate: ${formatRate(m.unsubscribeRate)}`} />
+                <MetricItem label="Bounces" value={m.bounces.toLocaleString()} sub={`Rate: ${formatRate(m.bounceRate)}`} />
+                <MetricItem label="Failed" value={m.failed.toLocaleString()} />
+                <MetricItem label="Not reached" value={m.notReached.toLocaleString()} />
+                <MetricItem label="Suppressed / skipped" value={m.suppressedOrSkipped.toLocaleString()} />
+              </div>
+            );
+          })()}
+          <p className="mt-3 text-xs text-muted-foreground/80">
+            &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
+            connected mailbox/provider. It does not guarantee inbox placement.
+            If no bounce is recorded, the system has not seen a delivery failure.
+          </p>
+        </CardContent>
+      </Card>
+
+      {!clientFilter && metricsData.byClient.length > 0 && (
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Per-client breakdown</CardTitle>
+            <CardDescription>Outreach metrics by client — all time, send-proof verified.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2">Client</th>
+                  <th className="px-3 py-2 text-right">Sent</th>
+                  <th className="px-3 py-2 text-right">Replies</th>
+                  <th className="px-3 py-2 text-right">Reply rate</th>
+                  <th className="px-3 py-2 text-right">Bounces</th>
+                  <th className="px-3 py-2 text-right">Opt-outs</th>
+                  <th className="px-3 py-2 text-right">Failed</th>
+                  <th className="px-3 py-2 text-right">Not reached</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {metricsData.byClient.map((row) => (
+                  <tr key={row.clientId} className="hover:bg-muted/40">
+                    <td className="px-3 py-2 font-medium">{row.clientName}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.sent.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.replies.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatRate(row.metrics.replyRate)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.bounces.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.unsubscribes.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.failed.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.notReached.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
@@ -258,6 +344,30 @@ export default async function ReportingPage({ searchParams }: Props) {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function MetricItem({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "error";
+}) {
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}: </span>
+      <span className={`font-semibold tabular-nums ${tone === "error" ? "text-destructive" : ""}`}>
+        {value}
+      </span>
+      {sub && (
+        <span className="ml-1 text-xs text-muted-foreground">({sub})</span>
+      )}
     </div>
   );
 }

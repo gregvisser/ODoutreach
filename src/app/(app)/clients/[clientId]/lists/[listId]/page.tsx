@@ -97,10 +97,15 @@ export default async function ListDetailPage({ params }: Props) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-9">
         <SummaryCard label="Total contacts" value={summary.totalContacts} />
         <SummaryCard label="Email-sendable" value={summary.emailSendable} />
         <SummaryCard label="Sent" value={summary.sent} />
+        <SummaryCard
+          label="Proof missing"
+          value={summary.sentProofMissing}
+          tone={summary.sentProofMissing > 0 ? "error" : undefined}
+        />
         <SummaryCard
           label="Failed"
           value={summary.failed}
@@ -131,6 +136,11 @@ export default async function ListDetailPage({ params }: Props) {
               ? " This list is archived — no new sends will be created."
               : ""}
           </CardDescription>
+          <p className="mt-1 text-xs text-muted-foreground/80">
+            &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
+            connected mailbox/provider. It does not guarantee inbox placement.
+            If no bounce is recorded, the system has not seen a delivery failure.
+          </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <ListDetailContactTable contacts={detail.contacts} />

@@ -27,6 +27,10 @@ function statusBadge(status: string) {
   switch (status) {
     case "Sent from mailbox":
       return <span className={`${base} bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300`}>{status}</span>;
+    case "Sent — time unavailable":
+      return <span className={`${base} bg-emerald-50/60 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400`}>{status}</span>;
+    case "Send proof missing":
+      return <span className={`${base} bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300`}>{status}</span>;
     case "Failed":
       return <span className={`${base} bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300`}>{status}</span>;
     case "Bounced":
@@ -42,6 +46,16 @@ function statusBadge(status: string) {
     default:
       return <span className={`${base} bg-gray-50 text-gray-500 dark:bg-gray-900 dark:text-gray-500`}>{status}</span>;
   }
+}
+
+function proofIndicator(present: boolean) {
+  return present
+    ? <span className="text-emerald-600 dark:text-emerald-400">Present</span>
+    : <span className="text-red-600 dark:text-red-400">Missing</span>;
+}
+
+function yesNo(value: boolean) {
+  return value ? "Yes" : "No";
 }
 
 export function ListDetailContactTable({ contacts }: Props) {
@@ -93,6 +107,11 @@ export function ListDetailContactTable({ contacts }: Props) {
             {expanded === c.contactId && (
               <tr key={`${c.contactId}-detail`} className="bg-muted/30">
                 <td colSpan={9} className="px-6 py-3">
+                  {c.sendStatus === "Send proof missing" && (
+                    <p className="mb-2 text-xs font-medium text-red-600 dark:text-red-400">
+                      Marked sent, but no provider send proof was found.
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs sm:grid-cols-4">
                     <Detail label="First name" value={c.firstName} />
                     <Detail label="Last name" value={c.lastName} />
@@ -117,6 +136,37 @@ export function ListDetailContactTable({ contacts }: Props) {
                       label="Suppressed"
                       value={c.isSuppressed ? "Yes" : "No"}
                     />
+                  </div>
+                  <div className="mt-3 border-t border-border/40 pt-2">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Send proof
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-xs sm:grid-cols-3">
+                      <div>
+                        <span className="text-muted-foreground">Outbound email:</span>{" "}
+                        {proofIndicator(c.hasOutboundEmail)}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Provider proof:</span>{" "}
+                        {proofIndicator(c.hasProviderProof)}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Sent timestamp:</span>{" "}
+                        {proofIndicator(c.hasSentTimestamp)}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Bounce:</span>{" "}
+                        <span className="font-medium">{yesNo(c.hasBounce)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Reply:</span>{" "}
+                        <span className="font-medium">{yesNo(c.hasReply)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Unsubscribe:</span>{" "}
+                        <span className="font-medium">{yesNo(c.hasUnsubscribe)}</span>
+                      </div>
+                    </div>
                   </div>
                 </td>
               </tr>

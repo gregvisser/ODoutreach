@@ -76,6 +76,7 @@ function makeStepSend(contactId: string, overrides: Record<string, unknown> = {}
     sequence: { name: "Proof Sequence" },
     step: { template: { name: "Intro", category: "INTRODUCTION" } },
     outboundEmail: {
+      id: `out-${contactId}`,
       status: "SENT",
       sentAt: new Date("2026-05-10T09:00:00Z"),
       bouncedAt: null,
@@ -84,6 +85,7 @@ function makeStepSend(contactId: string, overrides: Record<string, unknown> = {}
       failureReason: null,
       bounceCategory: null,
       lastProviderEventType: "delivered",
+      providerMessageId: "msg-123",
       mailbox: { email: "sender@opensdoors.com", displayName: "Sender" },
     },
     ...overrides,
@@ -125,7 +127,7 @@ describe("loadClientContactListDetail", () => {
     expect(result!.summary.totalContacts).toBe(0);
   });
 
-  it("returns contacts with 'Sent from mailbox' when step send is SENT", async () => {
+  it("returns contacts with 'Sent from mailbox' when step send is SENT with proof", async () => {
     contactListFindFirst.mockResolvedValueOnce(makeList());
     contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
     stepSendFindMany.mockResolvedValueOnce([makeStepSend("c1")]);
@@ -136,6 +138,9 @@ describe("loadClientContactListDetail", () => {
     expect(result!.contacts[0].sendStatus).toBe("Sent from mailbox");
     expect(result!.contacts[0].sequenceName).toBe("Proof Sequence");
     expect(result!.contacts[0].mailboxLabel).toBe("Sender");
+    expect(result!.contacts[0].hasOutboundEmail).toBe(true);
+    expect(result!.contacts[0].hasProviderProof).toBe(true);
+    expect(result!.contacts[0].hasSentTimestamp).toBe(true);
   });
 
   it("returns 'Bounced' when outbound is BOUNCED", async () => {
@@ -144,6 +149,7 @@ describe("loadClientContactListDetail", () => {
     stepSendFindMany.mockResolvedValueOnce([
       makeStepSend("c1", {
         outboundEmail: {
+          id: "out-c1",
           status: "BOUNCED",
           sentAt: new Date(),
           bouncedAt: new Date(),
@@ -152,6 +158,7 @@ describe("loadClientContactListDetail", () => {
           failureReason: null,
           bounceCategory: "hard",
           lastProviderEventType: "bounced",
+          providerMessageId: "msg-c1",
           mailbox: { email: "sender@opensdoors.com", displayName: null },
         },
       }),
@@ -279,6 +286,7 @@ describe("loadClientContactListDetail", () => {
       makeStepSend("c1", {
         status: "FAILED",
         outboundEmail: {
+          id: "out-c1",
           status: "FAILED",
           sentAt: null,
           bouncedAt: null,
@@ -287,6 +295,7 @@ describe("loadClientContactListDetail", () => {
           failureReason: "Provider rejected",
           bounceCategory: null,
           lastProviderEventType: "failed",
+          providerMessageId: null,
           mailbox: { email: "sender@opensdoors.com", displayName: null },
         },
       }),
@@ -308,5 +317,91 @@ describe("loadClientContactListDetail", () => {
     const result = await loadClientContactListDetail(CLIENT, LIST);
     expect(result!.summary.emailSendable).toBe(1);
     expect(result!.summary.totalContacts).toBe(3);
+  });
+
+  // --- PR #132 send-proof tests ---
+
+  it("returns 'Send proof missing' when step-send SENT but no OutboundEmail", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1", {
+        status: "SENT",
+        outboundEmailId: null,
+        outboundEmail: null,
+      }),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    expect(result!.contacts[0].sendStatus).toBe("Send proof missing");
+    expect(result!.contacts[0].hasOutboundEmail).toBe(false);
+    expect(result!.summary.sentProofMissing).toBe(1);
+    expect(result!.summary.sent).toBe(0);
+  });
+
+  it("returns 'Sent — time unavailable' when step-send SENT with providerMessageId but no sentAt", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1", {
+        outboundEmail: {
+          id: "out-c1",
+          status: "SENT",
+          sentAt: null,
+          bouncedAt: null,
+          openedAt: null,
+          deliveredAt: null,
+          failureReason: null,
+          bounceCategory: null,
+          lastProviderEventType: null,
+          providerMessageId: "msg-456",
+          mailbox: { email: "sender@opensdoors.com", displayName: null },
+        },
+      }),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    expect(result!.contacts[0].sendStatus).toBe("Sent — time unavailable");
+    expect(result!.contacts[0].hasOutboundEmail).toBe(true);
+    expect(result!.contacts[0].hasProviderProof).toBe(true);
+    expect(result!.contacts[0].hasSentTimestamp).toBe(false);
+  });
+
+  it("shows send proof details in contact row", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([makeStepSend("c1")]);
+    inboundReplyFindMany.mockResolvedValueOnce([
+      { contactId: "c1", receivedAt: new Date(), linkedOutboundEmailId: "out-c1" },
+    ]);
+    unsubscribeTokenFindMany.mockResolvedValueOnce([
+      { contactId: "c1", usedAt: new Date() },
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    const contact = result!.contacts[0];
+    expect(contact.hasOutboundEmail).toBe(true);
+    expect(contact.hasProviderProof).toBe(true);
+    expect(contact.hasSentTimestamp).toBe(true);
+    expect(contact.hasReply).toBe(true);
+    expect(contact.hasUnsubscribe).toBe(true);
+  });
+
+  it("joins by contactId not name — duplicate names do not steal proof", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([
+      makeMember("c1", { fullName: "Same Name" }),
+      makeMember("c2", { fullName: "Same Name" }),
+    ]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1"),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    const c1 = result!.contacts.find((c) => c.contactId === "c1");
+    const c2 = result!.contacts.find((c) => c.contactId === "c2");
+    expect(c1!.sendStatus).toBe("Sent from mailbox");
+    expect(c2!.sendStatus).toBe("Not sent");
+    expect(c2!.hasOutboundEmail).toBe(false);
   });
 });
