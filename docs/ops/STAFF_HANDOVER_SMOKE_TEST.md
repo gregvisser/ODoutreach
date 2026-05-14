@@ -1,9 +1,9 @@
 # ODoutreach — Staff handover smoke test
 
-> **Status: DRAFT (PR #135).** This document is filled out progressively by
-> the audit programme (#136–#140) as each surface is cleaned. Until then,
-> follow only the steps marked **READY** and ask Greg before running anything
-> marked **GATED**.
+> **Status: DRAFT (last updated PR #136).** This document is filled out
+> progressively by the audit programme as each surface is cleaned. Until
+> then, follow only the steps marked **READY** and ask Greg before running
+> anything marked **GATED**.
 
 The smoke test is written for a non-technical staff member. It is **safe by
 default** — every step that could send email, consume credits, or write to
@@ -118,9 +118,9 @@ If approved:
    Bounced / Failed / Suppressed.
 3. Cross-reference against **Reports** → Live metrics.
 
-(Until PR #136, some delivery rates may show 0% for providers that do not
-emit delivery events — this is a known gap and is fixed by PR #136 by
-showing "Not tracked".)
+From PR #136 onwards: when a client's provider does not emit delivery
+webhooks, the per-row "Delivered" column and the Reports delivery card
+both render **Not tracked** instead of a misleading 0%.
 
 ## 10. View replies (READY)
 
@@ -145,9 +145,24 @@ Until reply handling lands in #137:
 ## 12. Check reports (READY)
 
 1. Open **Reports**.
-2. Use the client filter chips to switch between All-in-scope and a single
-   client.
-3. Verify totals reconcile with what you saw in step 9.
+2. Use the filter chips at the top right to switch between **All accessible
+   clients** and a single client.
+3. Verify the headline four cards (Sent / Queued / Replies / Delivery)
+   reconcile with what you saw in step 9.
+4. Skim the "What these metrics mean" panel before quoting any number to
+   a client.
+
+Notes after PR #136:
+
+- All metrics are **All-time** and labelled as such in the scope strip.
+- **Sent** is provider-proof only — queued and proof-missing rows are
+  counted separately and never inflate the headline number.
+- **Delivery** shows **Not tracked** for clients whose provider does not
+  emit delivery webhooks. The rate column shows `—` in that case.
+- **Opens** always shows **Not tracked**. Reply rate is the engagement
+  signal.
+- The per-client breakdown totals should add up to the headline totals
+  for the All-accessible-clients view.
 
 ## 13. Check do-not-contact (READY)
 

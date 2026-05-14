@@ -7,19 +7,23 @@ import {
   type OutreachMetrics,
   type RawMetricsCounts,
 } from "@/lib/reports/outreach-metrics";
-import {
-  assertClientInAccessibleList,
-  whereInAccessibleClients,
-} from "@/server/tenant/access";
+import { assertClientInAccessibleList } from "@/server/tenant/access";
 
 /**
- * PR #132 — Per-client outreach metrics.
+ * PR #132 / PR #136 — Per-client outreach metrics.
  *
  * Scoped strictly by clientId. Read-only.
  *
  * Counts "sent with proof" as OutboundEmail rows where sentAt OR
  * providerMessageId exists and status is in a provider-confirmed set.
  * Step-send SENT without a linked OutboundEmail is "send proof missing".
+ *
+ * PR #136 — delivery tracking is no longer hardcoded to `true`. We mark a
+ * scope as delivery-tracked only when there is evidence: either an
+ * OutboundEmail with status=DELIVERED, or an OutboundProviderEvent with a
+ * delivery event type. Providers like Microsoft Graph send do not emit
+ * delivery webhooks; for those clients the rate would otherwise sit at 0%
+ * forever and mislead staff. See `docs/ops/SYSTEM_HANDOVER_GAPS.md` G1.
  */
 export async function loadClientOutreachMetrics(
   clientId: string,
@@ -55,6 +59,10 @@ export async function loadGlobalOutreachMetrics(
 
   const perClient: ClientMetricsRow[] = [];
   const totals = emptyRawCounts();
+  // Until at least one client in scope has a delivery event, leave
+  // deliveryTracked=false. As soon as we observe any delivery proof, the
+  // global aggregate flips to true.
+  totals.deliveryTracked = false;
 
   for (const client of clients) {
     const raw = await gatherRawCounts({ clientId: client.id });
@@ -75,9 +83,13 @@ export async function loadGlobalOutreachMetrics(
     totals.suppressedOrSkipped += raw.suppressedOrSkipped;
     totals.totalContacts += raw.totalContacts;
     totals.emailSendable += raw.emailSendable;
+    if (raw.deliveryTracked) {
+      totals.deliveryTracked = true;
+    }
   }
 
-  totals.deliveryTracked = true;
+  // Open tracking is not implemented anywhere in src/. See
+  // docs/ops/SYSTEM_HANDOVER_GAPS.md G2.
   totals.opensTracked = false;
 
   return {
@@ -92,7 +104,7 @@ function emptyRawCounts(): RawMetricsCounts {
     queued: 0,
     sentProofMissing: 0,
     delivered: 0,
-    deliveryTracked: true,
+    deliveryTracked: false,
     opens: 0,
     opensTracked: false,
     replies: 0,
@@ -105,9 +117,18 @@ function emptyRawCounts(): RawMetricsCounts {
   };
 }
 
-async function gatherRawCounts(
-  scope: { clientId: string } | ReturnType<typeof whereInAccessibleClients>,
-): Promise<RawMetricsCounts> {
+/**
+ * Lifecycle event names provider webhooks normalise to "delivered". The
+ * webhook handler in `src/server/email/providers/*` lowercases inbound
+ * event types before storage, so we match case-insensitively. Substring
+ * match keeps us resilient to provider-specific suffixes (e.g.
+ * `delivered.smtp` or `email.delivered`).
+ */
+const DELIVERY_EVENT_TYPE_FRAGMENT = "delivered";
+
+async function gatherRawCounts(scope: {
+  clientId: string;
+}): Promise<RawMetricsCounts> {
   const [
     sentWithProof,
     allStepSendsSent,
@@ -120,6 +141,7 @@ async function gatherRawCounts(
     unsubscribes,
     totalContacts,
     emailSendable,
+    deliveryEventCount,
   ] = await Promise.all([
     prisma.outboundEmail.count({
       where: {
@@ -137,7 +159,9 @@ async function gatherRawCounts(
     prisma.outboundEmail.count({
       where: {
         ...scope,
-        status: { in: ["QUEUED", "PROCESSING"] },
+        // Include the full pre-send lifecycle so staff understand exactly
+        // how much is still waiting on the sender, not just the QUEUED slice.
+        status: { in: ["REQUESTED", "PREPARING", "QUEUED", "PROCESSING"] },
       },
     }),
     prisma.outboundEmail.count({
@@ -186,16 +210,28 @@ async function gatherRawCounts(
         isSuppressed: false,
       },
     }),
+    prisma.outboundProviderEvent.count({
+      where: {
+        ...scope,
+        eventType: { contains: DELIVERY_EVENT_TYPE_FRAGMENT, mode: "insensitive" },
+      },
+    }),
   ]);
 
-  const sentProofMissing = Math.max(0, allStepSendsSent - sentWithProof - queuedOrProcessing);
+  const sentProofMissing = Math.max(
+    0,
+    allStepSendsSent - sentWithProof - queuedOrProcessing,
+  );
+  // Evidence-based tracking: either we successfully transitioned a row to
+  // DELIVERED, or we received any delivery webhook in this scope.
+  const deliveryTracked = delivered > 0 || deliveryEventCount > 0;
 
   return {
     sentWithProof,
     queued: queuedOrProcessing,
     sentProofMissing,
     delivered,
-    deliveryTracked: true,
+    deliveryTracked,
     opens: 0,
     opensTracked: false,
     replies,
