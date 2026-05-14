@@ -5,10 +5,31 @@ import { DAILY_OUTREACH_WORKFLOW_STEPS } from "@/lib/training/modules";
 import { STAFF_HANDOVER_SECTIONS } from "@/lib/training/staff-handover-guide";
 
 describe("staff handover copy", () => {
-  it("uses Do-not-contact in operator navigation", () => {
-    expect(mainNav.map((item) => item.title)).toContain("Do-not-contact");
-    expect(mainNav.map((item) => item.title)).toContain("Admin operations");
-    expect(mainNav.map((item) => item.title)).toContain("Universe");
+  // PR #135 (system handover audit): Dashboard duplicated Reports, and
+  // Admin operations is a delivery diagnostic surface that should not be
+  // advertised in normal staff navigation. Both are removed from the
+  // sidebar; their routes are preserved (Dashboard redirects to Reports).
+  // Reports is the primary staff destination.
+  // See docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md.
+  it("uses Do-not-contact and Universe in operator navigation", () => {
+    const titles = mainNav.map((item) => item.title);
+    expect(titles).toContain("Do-not-contact");
+    expect(titles).toContain("Universe");
+    expect(titles).toContain("Reports");
+  });
+
+  it("does not advertise legacy Dashboard or Admin operations in the sidebar", () => {
+    const titles = mainNav.map((item) => item.title);
+    expect(titles).not.toContain("Dashboard");
+    expect(titles).not.toContain("Admin operations");
+    const hrefs = mainNav.map((item) => item.href);
+    expect(hrefs).not.toContain("/dashboard");
+    expect(hrefs).not.toContain("/operations/outbound");
+  });
+
+  it("makes Reports the first staff destination", () => {
+    expect(mainNav[0]?.href).toBe("/reporting");
+    expect(mainNav[0]?.title).toBe("Reports");
   });
 
   it("documents the daily outreach workflow", () => {

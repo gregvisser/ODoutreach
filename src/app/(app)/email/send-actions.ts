@@ -54,7 +54,6 @@ export async function sendEmailToContactAction(formData: FormData): Promise<void
 
   revalidatePath("/contacts");
   revalidatePath("/activity");
-  revalidatePath("/dashboard");
   revalidatePath("/reporting");
   revalidatePath(`/clients/${clientId}`);
 

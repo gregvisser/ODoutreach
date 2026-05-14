@@ -26,10 +26,23 @@ describe("client Overview UI policy (source)", () => {
   });
 
   it("still includes staff-facing operational sections", () => {
-    expect(overviewPageSource).toContain("Workspace status");
+    // PR #135 (system handover audit) removed the duplicated "Workspace
+    // status" card — the ClientWorkspaceCommandCenter already shows status
+    // + workflow above it. See docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md
+    // section B.1.
     expect(overviewPageSource).toContain("ClientWorkspaceCommandCenter");
     expect(overviewPageSource).toContain("ClientGettingStartedCard");
     expect(overviewPageSource).toContain("Launch readiness");
     expect(overviewPageSource).toContain("ClientOperationalSnapshot");
+  });
+
+  it("does not re-introduce duplicated Workspace status copy", () => {
+    // Lock the audit decision: the standalone "Workspace status" Card
+    // duplicated the status badge + tab list and confused staff.
+    expect(overviewPageSource).not.toContain("<CardTitle>Workspace status</CardTitle>");
+    expect(overviewPageSource).not.toContain("workspaceStatusBody");
+    expect(overviewPageSource).not.toContain(
+      "Day-to-day outreach work happens in Brief",
+    );
   });
 });
