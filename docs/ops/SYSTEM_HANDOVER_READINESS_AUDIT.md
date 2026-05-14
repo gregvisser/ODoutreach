@@ -138,6 +138,29 @@ Current items, in order:
   remove stale snapshot framing where misleading.
 - **PR target:** #136 (metrics correctness). PR #135 only promotes its position
   in the nav.
+- **PR #136 — completed:**
+  - Removed the three snapshot-driven header cards ("Emails sent (window)",
+    "Replies", "Reply rate") that always read 0 because `ReportingDailySnapshot`
+    is never written by any code path in `src/`.
+  - Removed the eight legacy "Live — *" 30-day cards. They duplicated the
+    outreach metrics card below and `getLiveSendReplyStats.sent` undercounted
+    by filtering `status="SENT"` only, missing rows that had progressed to
+    DELIVERED / REPLIED / BOUNCED.
+  - Removed the snapshot-fed "Trend" and "By client" charts. Both were always
+    empty for the same reason as the header cards.
+  - Promoted `loadGlobalOutreachMetrics` / `loadClientOutreachMetrics` to the
+    sole source of truth — one trustworthy live read path per request.
+  - Replaced hardcoded `deliveryTracked: true` with an evidence-based check:
+    `delivered > 0 OR ∃ OutboundProviderEvent.eventType ~ "delivered"` within
+    scope. Microsoft Graph-only clients now correctly read "Not tracked"
+    instead of a misleading 0% rate.
+  - Opens remain "Not tracked" everywhere — confirmed `openedAt` has no
+    writer in `src/` (only `delivery-status.ts` and list detail read it).
+  - Added a "What these metrics mean" contract panel inline on the page so
+    staff have a single in-product source of truth.
+  - All metrics are explicitly labelled **All-time** in the header.
+    Time-windowed (recent) views are deliberately deferred to a later PR
+    with a real date-range selector.
 
 ### A.9 Training
 

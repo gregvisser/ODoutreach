@@ -26,6 +26,11 @@ function emptyRaw(): RawMetricsCounts {
   };
 }
 
+// PR #136 — evidence-based delivery tracking. Tests below mirror the
+// shape that `gatherRawCounts` will produce: deliveryTracked is true only
+// when the server has seen at least one delivery (either an OutboundEmail
+// row in DELIVERED status or a delivery OutboundProviderEvent).
+
 describe("deriveOutreachMetrics", () => {
   it("returns zero metrics for empty input", () => {
     const m = deriveOutreachMetrics(emptyRaw());
@@ -154,6 +159,93 @@ describe("deriveOutreachMetrics", () => {
     const raw = { ...emptyRaw(), suppressedOrSkipped: 11 };
     const m = deriveOutreachMetrics(raw);
     expect(m.suppressedOrSkipped).toBe(11);
+  });
+
+  // PR #136 — additional contract tests for the trustworthy reporting
+  // dashboard. The goal is to lock in the "Sent only with proof" rule, the
+  // evidence-based delivery flag, and the "Opens are not tracked" rule so
+  // future refactors cannot silently regress the staff-facing numbers.
+
+  it("PR #136 — sent excludes queued, suppressed and proof-missing", () => {
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 7,
+      queued: 4,
+      suppressedOrSkipped: 2,
+      sentProofMissing: 3,
+    };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.sent).toBe(7);
+    expect(m.queued).toBe(4);
+    expect(m.suppressedOrSkipped).toBe(2);
+    expect(m.sendProofMissing).toBe(3);
+  });
+
+  it("PR #136 — replyRate uses linked replies over sent with proof", () => {
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 80,
+      replies: 8,
+      // Even if the system has 999 unlinked inbox messages, the metric must
+      // never inflate. The server query already filters to linked rows.
+    };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.replies).toBe(8);
+    expect(m.replyRate).toBe(10);
+  });
+
+  it("PR #136 — bounceRate uses bounces over sent with proof", () => {
+    const raw = { ...emptyRaw(), sentWithProof: 50, bounces: 5 };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.bounceRate).toBe(10);
+  });
+
+  it("PR #136 — unsubscribeRate uses used tokens over sent with proof", () => {
+    const raw = { ...emptyRaw(), sentWithProof: 200, unsubscribes: 4 };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.unsubscribeRate).toBe(2);
+  });
+
+  it("PR #136 — when deliveryTracked=false, delivery and rate are hidden", () => {
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 50,
+      delivered: 0,
+      deliveryTracked: false,
+    };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.deliveryTracked).toBe(false);
+    expect(m.delivered).toBe(0);
+    expect(m.deliveryRate).toBeNull();
+  });
+
+  it("PR #136 — opens are not tracked anywhere; openRate is null", () => {
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 100,
+      delivered: 100,
+      opens: 0,
+      opensTracked: false,
+    };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.opensTracked).toBe(false);
+    expect(m.opens).toBe(0);
+    expect(m.openRate).toBeNull();
+  });
+
+  it("PR #136 — notReached formula = failed + bounces + suppressed + proof missing (no queued)", () => {
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 100,
+      queued: 25,
+      failed: 4,
+      bounces: 3,
+      suppressedOrSkipped: 2,
+      sentProofMissing: 1,
+    };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.notReached).toBe(10);
+    expect(m.queued).toBe(25);
   });
 });
 

@@ -1,35 +1,56 @@
 # ODoutreach — System handover gaps
 
-> **Status: DRAFT (PR #135).** This document tracks what is *not* yet
-> handover-ready. It is updated progressively as #136–#140 close gaps.
+> **Status: DRAFT (last updated PR #136).** This document tracks what is *not*
+> yet handover-ready. It is updated progressively as the remaining handover
+> PRs close gaps.
 
 Each gap has: scope, impact on staff, the safe interim story, and the
 target PR that closes it.
 
 ---
 
-## G1. Provider delivery tracking is not uniform
+## G1. Provider delivery tracking is not uniform — **Addressed (PR #136)**
 
 - **Scope:** Reports/Activity show a delivery column. Not all providers we
   use emit reliable delivery webhooks (e.g. Microsoft Graph send does not).
 - **Impact on staff:** "Delivery rate" can read 0% even when sends are
   succeeding — staff misread this as "nothing is being delivered".
-- **Interim story:** Use the **Live — SENT (30d)** card as the
-  authoritative send count. Do not infer delivery from "Delivery rate" if
-  the provider for that client is not webhook-tracked.
-- **Target PR:** #136 — show **Not tracked** explicitly per provider and
-  hide the rate when the denominator is misleading. Internal flag
-  `deliveryTracked` already exists in `loadGlobalOutreachMetrics`.
+- **PR #136 outcome:** `loadGlobalOutreachMetrics` and
+  `loadClientOutreachMetrics` now compute `deliveryTracked` from real
+  evidence: at least one OutboundEmail in DELIVERED status OR at least one
+  OutboundProviderEvent with a delivery-typed event in scope. When neither
+  exists, the Reports card and the per-client table render **Not tracked**
+  for delivery and `—` for the rate. The misleading 0% has been eliminated.
+- **Residual:** Per-provider drill-down ("which mailboxes emit delivery
+  webhooks?") is still a future enhancement, but is no longer required for
+  trustworthy staff-facing numbers.
 
-## G2. Open tracking is not implemented
+## G2. Open tracking is not implemented — **Addressed (PR #136)**
 
 - **Scope:** No open-pixel injection, no open events ingested.
 - **Impact on staff:** Open metrics show 0% — looks like the system "is
   broken" or "no one is reading".
-- **Interim story:** Treat open metrics as **Not tracked**. Reply rate is
-  the only engagement signal.
-- **Target PR:** #136 — surface **Not tracked** in the Reports card.
-  A future PR (out of programme scope) can add open tracking if needed.
+- **PR #136 outcome:** Verified in code that no `src/` path writes
+  `OutboundEmail.openedAt`. Reports now always renders **Not tracked** for
+  opens, with the contract panel stating: "Open tracking is not implemented.
+  Reply rate is the only engagement signal you can trust."
+- **Residual:** Real open tracking would require provider-side pixel
+  injection + ingestion. Out of programme scope.
+
+## G2a. Reporting daily snapshot rollup is unused
+
+- **Scope:** `ReportingDailySnapshot` exists in the schema but is read-only
+  in `src/` — no code path creates, upserts, or updates it.
+- **Impact on staff before PR #136:** The Reports page mixed snapshot reads
+  with live reads, so the top "Emails sent (window)" / "Replies" / "Reply
+  rate" cards always read 0 while the live cards below showed real numbers.
+  Staff saw "0 sent" next to "Live SENT > 0" and lost trust in Reports.
+- **PR #136 outcome:** Reports no longer reads `ReportingDailySnapshot`.
+  All numbers are live. The table can be repurposed for a future
+  rolling-window view backed by an actual writer, or dropped.
+- **Residual:** Schema cleanup is intentionally deferred (no schema changes
+  in this PR). Either populate the rollup via a scheduled job in a later
+  PR, or drop the model.
 
 ## G3. Replying inside ODoutreach is not implemented
 
