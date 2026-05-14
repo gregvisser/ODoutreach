@@ -74,7 +74,6 @@ export const OUTREACH_TIMELINE_EVENT_TYPES: readonly TimelineEventType[] = [
   "reply",
   "bounce",
   "error",
-  "inbound_message",
   "enrollment",
   "step_send",
   "unsubscribe",

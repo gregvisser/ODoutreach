@@ -247,4 +247,75 @@ describe("loadClientActivityTimeline — unsubscribe audit mapping (PR O)", () =
     expect(result.events).toEqual([]);
     expect(auditFindMany).not.toHaveBeenCalled();
   });
+
+  it("excludes inbound_message events from default outreach timeline (PR #130)", async () => {
+    inboundMessageFindMany.mockResolvedValue([
+      {
+        id: "imsg-1",
+        fromEmail: "random@timetastic.co.uk",
+        subject: "Leave approved",
+        receivedAt: new Date("2026-05-13T09:00:00Z"),
+        mailboxIdentityId: "mbx-1",
+      },
+    ]);
+    outboundFindMany.mockResolvedValue([
+      {
+        id: "out-1",
+        status: "SENT",
+        subject: "Intro email",
+        toEmail: "prospect@corp.com",
+        fromAddress: "adam@client.com",
+        lastErrorMessage: null,
+        sentAt: new Date("2026-05-13T08:00:00Z"),
+        bouncedAt: null,
+        queuedAt: null,
+        createdAt: new Date("2026-05-13T07:59:00Z"),
+        failureReason: null,
+        metadata: null,
+      },
+    ]);
+
+    const outreach = await loadClientActivityTimeline("client-1", { mode: "outreach" });
+    expect(outreach.events.map((e) => e.type)).not.toContain("inbound_message");
+    expect(outreach.events.map((e) => e.type)).toContain("send");
+
+    const all = await loadClientActivityTimeline("client-1", { mode: "all" });
+    expect(all.events.map((e) => e.type)).toContain("inbound_message");
+    expect(all.events.map((e) => e.type)).toContain("send");
+  });
+
+  it("includes linked InboundReply events in outreach timeline (PR #130)", async () => {
+    inboundReplyFindMany.mockResolvedValue([
+      {
+        id: "reply-1",
+        fromEmail: "prospect@corp.com",
+        subject: "Re: Intro",
+        receivedAt: new Date("2026-05-13T10:00:00Z"),
+        matchMethod: "BY_OUTBOUND_PROVIDER_ID",
+        linkedOutboundEmailId: "out-1",
+      },
+    ]);
+
+    const outreach = await loadClientActivityTimeline("client-1", { mode: "outreach" });
+    expect(outreach.events.map((e) => e.type)).toContain("reply");
+    expect(outreach.events).toHaveLength(1);
+  });
+
+  it("excludes unlinked InboundReply from outreach timeline with info severity (PR #130)", async () => {
+    inboundReplyFindMany.mockResolvedValue([
+      {
+        id: "reply-unlinked",
+        fromEmail: "random@somewhere.com",
+        subject: "Something unrelated",
+        receivedAt: new Date("2026-05-13T10:00:00Z"),
+        matchMethod: "UNLINKED",
+        linkedOutboundEmailId: null,
+      },
+    ]);
+
+    const outreach = await loadClientActivityTimeline("client-1", { mode: "outreach" });
+    const replyEvents = outreach.events.filter((e) => e.type === "reply");
+    expect(replyEvents).toHaveLength(1);
+    expect(replyEvents[0]!.severity).toBe("info");
+  });
 });
