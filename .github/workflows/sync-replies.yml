@@ -28,6 +28,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{"perMailboxTop":25,"maxMailboxes":50}')
           echo "Reply sync HTTP status: ${status}"
+          cat /tmp/reply-sync-response.json
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             exit 1
           fi
