@@ -91,7 +91,6 @@ export function ClientActivityTimelinePanel({
   const byType = summary.byType;
   const sendCount = byType.send ?? 0;
   const replyCount = byType.reply ?? 0;
-  const inboundCount = byType.inbound_message ?? 0;
   const bounceCount = byType.bounce ?? 0;
   const importCount = byType.csv_import ?? 0;
   const templateCount = byType.template ?? 0;
@@ -109,7 +108,7 @@ export function ClientActivityTimelinePanel({
           value={summary.totalEvents}
         />
         <SummaryTile label="Sends" value={sendCount} />
-        <SummaryTile label="Replies" value={replyCount + inboundCount} />
+        <SummaryTile label="Replies" value={replyCount} />
         {variant === "outreach" ? (
           <SummaryTile
             label="Sequence activity"

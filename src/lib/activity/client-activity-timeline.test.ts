@@ -171,7 +171,6 @@ describe("isOutreachTimelineEvent", () => {
       "reply",
       "bounce",
       "error",
-      "inbound_message",
       "enrollment",
       "step_send",
       "unsubscribe",
@@ -180,7 +179,7 @@ describe("isOutreachTimelineEvent", () => {
     }
   });
 
-  it("moves setup, mailbox connection, and generic audit events to full workspace history", () => {
+  it("moves setup, mailbox connection, inbound_message, and generic audit events to full workspace history (PR #130)", () => {
     for (const type of [
       "csv_import",
       "contact_list",
@@ -188,6 +187,7 @@ describe("isOutreachTimelineEvent", () => {
       "template",
       "sequence",
       "audit",
+      "inbound_message",
     ] as const) {
       expect(isOutreachTimelineEvent(type)).toBe(false);
     }
