@@ -387,6 +387,63 @@ describe("loadClientContactListDetail", () => {
     expect(contact.hasUnsubscribe).toBe(true);
   });
 
+  // --- PR #133 QUEUED status tests ---
+
+  it("returns 'Queued' when outbound status is QUEUED (not 'Send proof missing')", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1", {
+        status: "SENT",
+        outboundEmail: {
+          id: "out-c1",
+          status: "QUEUED",
+          sentAt: null,
+          bouncedAt: null,
+          openedAt: null,
+          deliveredAt: null,
+          failureReason: null,
+          bounceCategory: null,
+          lastProviderEventType: null,
+          providerMessageId: null,
+          mailbox: { email: "sender@opensdoors.com", displayName: null },
+        },
+      }),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    expect(result!.contacts[0].sendStatus).toBe("Queued");
+    expect(result!.summary.queued).toBe(1);
+    expect(result!.summary.sent).toBe(0);
+    expect(result!.summary.sentProofMissing).toBe(0);
+  });
+
+  it("returns 'Queued' when outbound status is PROCESSING", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1", {
+        status: "SENT",
+        outboundEmail: {
+          id: "out-c1",
+          status: "PROCESSING",
+          sentAt: null,
+          bouncedAt: null,
+          openedAt: null,
+          deliveredAt: null,
+          failureReason: null,
+          bounceCategory: null,
+          lastProviderEventType: null,
+          providerMessageId: null,
+          mailbox: { email: "sender@opensdoors.com", displayName: null },
+        },
+      }),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    expect(result!.contacts[0].sendStatus).toBe("Queued");
+  });
+
   it("joins by contactId not name — duplicate names do not steal proof", async () => {
     contactListFindFirst.mockResolvedValueOnce(makeList());
     contactListMemberFindMany.mockResolvedValueOnce([

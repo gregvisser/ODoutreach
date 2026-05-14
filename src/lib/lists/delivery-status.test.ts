@@ -52,6 +52,28 @@ describe("deriveDeliveryStatus", () => {
     ).toBe("Queued");
   });
 
+  it("returns 'Queued' for QUEUED outbound even when stepSendStatus is SENT", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        stepSendStatus: "SENT",
+        outboundStatus: "QUEUED",
+        hasOutboundEmail: true,
+      }),
+    ).toBe("Queued");
+  });
+
+  it("returns 'Queued' for PROCESSING outbound even when stepSendStatus is SENT", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        stepSendStatus: "SENT",
+        outboundStatus: "PROCESSING",
+        hasOutboundEmail: true,
+      }),
+    ).toBe("Queued");
+  });
+
   // --- PR #132 send-proof tests ---
 
   it("returns 'Send proof missing' when step-send SENT but no OutboundEmail", () => {
@@ -300,6 +322,7 @@ describe("summarizeDelivery", () => {
     expect(s.totalContacts).toBe(10);
     expect(s.emailSendable).toBe(7);
     expect(s.sent).toBe(2);
+    expect(s.queued).toBe(1);
     expect(s.sentProofMissing).toBe(1);
     expect(s.failed).toBe(1);
     expect(s.bounced).toBe(1);
@@ -312,6 +335,7 @@ describe("summarizeDelivery", () => {
     const s = summarizeDelivery([], 0);
     expect(s.totalContacts).toBe(0);
     expect(s.sent).toBe(0);
+    expect(s.queued).toBe(0);
     expect(s.sentProofMissing).toBe(0);
   });
 });

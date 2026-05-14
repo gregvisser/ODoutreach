@@ -83,6 +83,15 @@ export function deriveDeliveryStatus(
   }
 
   if (
+    input.outboundStatus === "QUEUED" ||
+    input.outboundStatus === "PROCESSING" ||
+    input.outboundStatus === "REQUESTED" ||
+    input.outboundStatus === "PREPARING"
+  ) {
+    return "Queued";
+  }
+
+  if (
     input.outboundStatus === "SENT" ||
     input.outboundStatus === "DELIVERED" ||
     input.stepSendStatus === "SENT"
@@ -104,10 +113,6 @@ export function deriveDeliveryStatus(
   }
 
   if (
-    input.outboundStatus === "QUEUED" ||
-    input.outboundStatus === "PROCESSING" ||
-    input.outboundStatus === "REQUESTED" ||
-    input.outboundStatus === "PREPARING" ||
     input.stepSendStatus === "READY" ||
     input.stepSendStatus === "PLANNED"
   ) {
@@ -132,6 +137,7 @@ export type ListDeliverySummary = {
   totalContacts: number;
   emailSendable: number;
   sent: number;
+  queued: number;
   sentProofMissing: number;
   failed: number;
   bounced: number;
@@ -148,6 +154,7 @@ export function summarizeDelivery(
     totalContacts: statuses.length,
     emailSendable: emailSendableCount,
     sent: 0,
+    queued: 0,
     sentProofMissing: 0,
     failed: 0,
     bounced: 0,
@@ -161,6 +168,9 @@ export function summarizeDelivery(
       case "Sent from mailbox":
       case "Sent — time unavailable":
         summary.sent++;
+        break;
+      case "Queued":
+        summary.queued++;
         break;
       case "Send proof missing":
         summary.sentProofMissing++;

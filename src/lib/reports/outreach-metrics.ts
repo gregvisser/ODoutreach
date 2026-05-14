@@ -8,6 +8,7 @@
 
 export type OutreachMetrics = {
   sent: number;
+  queued: number;
   delivered: number;
   deliveryTracked: boolean;
   deliveryRate: number | null;
@@ -30,6 +31,7 @@ export type OutreachMetrics = {
 
 export type RawMetricsCounts = {
   sentWithProof: number;
+  queued: number;
   sentProofMissing: number;
   delivered: number;
   deliveryTracked: boolean;
@@ -59,6 +61,7 @@ export function deriveOutreachMetrics(raw: RawMetricsCounts): OutreachMetrics {
 
   return {
     sent,
+    queued: raw.queued,
     delivered: raw.deliveryTracked ? raw.delivered : 0,
     deliveryTracked: raw.deliveryTracked,
     deliveryRate: raw.deliveryTracked ? safeRate(raw.delivered, sent) : null,
