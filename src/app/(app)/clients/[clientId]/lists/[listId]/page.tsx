@@ -97,10 +97,15 @@ export default async function ListDetailPage({ params }: Props) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-9">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 lg:grid-cols-10">
         <SummaryCard label="Total contacts" value={summary.totalContacts} />
         <SummaryCard label="Email-sendable" value={summary.emailSendable} />
         <SummaryCard label="Sent" value={summary.sent} />
+        <SummaryCard
+          label="Queued"
+          value={summary.queued}
+          tone={summary.queued > 0 ? "warning" : undefined}
+        />
         <SummaryCard
           label="Proof missing"
           value={summary.sentProofMissing}
@@ -140,6 +145,10 @@ export default async function ListDetailPage({ params }: Props) {
             &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
             connected mailbox/provider. It does not guarantee inbox placement.
             If no bounce is recorded, the system has not seen a delivery failure.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground/80">
+            &ldquo;Queued&rdquo; means the email is waiting for the sender to
+            process it. It has not been sent by the mailbox yet.
           </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">

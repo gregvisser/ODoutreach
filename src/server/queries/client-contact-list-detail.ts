@@ -126,6 +126,7 @@ export async function loadClientContactListDetail(
         totalContacts: 0,
         emailSendable: 0,
         sent: 0,
+        queued: 0,
         sentProofMissing: 0,
         failed: 0,
         bounced: 0,

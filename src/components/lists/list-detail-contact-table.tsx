@@ -112,6 +112,11 @@ export function ListDetailContactTable({ contacts }: Props) {
                       Marked sent, but no provider send proof was found.
                     </p>
                   )}
+                  {c.sendStatus === "Queued" && (
+                    <p className="mb-2 text-xs font-medium text-violet-600 dark:text-violet-400">
+                      Queued — waiting for the outbound processor to send via the connected mailbox.
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs sm:grid-cols-4">
                     <Detail label="First name" value={c.firstName} />
                     <Detail label="Last name" value={c.lastName} />

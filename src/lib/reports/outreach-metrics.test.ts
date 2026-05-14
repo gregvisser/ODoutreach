@@ -10,6 +10,7 @@ import {
 function emptyRaw(): RawMetricsCounts {
   return {
     sentWithProof: 0,
+    queued: 0,
     sentProofMissing: 0,
     delivered: 0,
     deliveryTracked: true,
@@ -29,12 +30,32 @@ describe("deriveOutreachMetrics", () => {
   it("returns zero metrics for empty input", () => {
     const m = deriveOutreachMetrics(emptyRaw());
     expect(m.sent).toBe(0);
+    expect(m.queued).toBe(0);
     expect(m.replies).toBe(0);
     expect(m.bounces).toBe(0);
     expect(m.failed).toBe(0);
     expect(m.notReached).toBe(0);
     expect(m.replyRate).toBeNull();
     expect(m.bounceRate).toBeNull();
+  });
+
+  it("queued count is passed through", () => {
+    const raw = { ...emptyRaw(), queued: 18 };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.queued).toBe(18);
+  });
+
+  it("queued rows are not counted as sent", () => {
+    const raw = { ...emptyRaw(), queued: 18, sentWithProof: 0 };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.sent).toBe(0);
+    expect(m.queued).toBe(18);
+  });
+
+  it("queued rows are not included in notReached", () => {
+    const raw = { ...emptyRaw(), queued: 10, failed: 2, bounces: 1, suppressedOrSkipped: 1, sentProofMissing: 0 };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.notReached).toBe(4);
   });
 
   it("counts sent only from sentWithProof, not sentProofMissing", () => {

@@ -257,6 +257,7 @@ export default async function ReportingPage({ searchParams }: Props) {
             return (
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
                 <MetricItem label="Total sent (with proof)" value={m.sent.toLocaleString()} />
+                <MetricItem label="Queued" value={m.queued.toLocaleString()} tone={m.queued > 0 ? "warning" : undefined} />
                 <MetricItem label="Send proof missing" value={m.sendProofMissing.toLocaleString()} tone={m.sendProofMissing > 0 ? "error" : undefined} />
                 <MetricItem label="Delivery" value={formatTrackedMetric(m.delivered, m.deliveryTracked)} sub={m.deliveryTracked ? `Rate: ${formatRate(m.deliveryRate)}` : undefined} />
                 <MetricItem label="Opens" value={formatTrackedMetric(m.opens, m.opensTracked)} sub={m.opensTracked ? `Rate: ${formatRate(m.openRate)}` : undefined} />
@@ -274,6 +275,10 @@ export default async function ReportingPage({ searchParams }: Props) {
             connected mailbox/provider. It does not guarantee inbox placement.
             If no bounce is recorded, the system has not seen a delivery failure.
           </p>
+          <p className="mt-1 text-xs text-muted-foreground/80">
+            &ldquo;Queued&rdquo; means the email is waiting for the sender to
+            process it. It has not been sent by the mailbox yet.
+          </p>
         </CardContent>
       </Card>
 
@@ -289,6 +294,7 @@ export default async function ReportingPage({ searchParams }: Props) {
                 <tr className="border-b text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2">Client</th>
                   <th className="px-3 py-2 text-right">Sent</th>
+                  <th className="px-3 py-2 text-right">Queued</th>
                   <th className="px-3 py-2 text-right">Replies</th>
                   <th className="px-3 py-2 text-right">Reply rate</th>
                   <th className="px-3 py-2 text-right">Bounces</th>
@@ -302,6 +308,7 @@ export default async function ReportingPage({ searchParams }: Props) {
                   <tr key={row.clientId} className="hover:bg-muted/40">
                     <td className="px-3 py-2 font-medium">{row.clientName}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{row.metrics.sent.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{row.metrics.queued.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{row.metrics.replies.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatRate(row.metrics.replyRate)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{row.metrics.bounces.toLocaleString()}</td>
@@ -357,12 +364,12 @@ function MetricItem({
   label: string;
   value: string;
   sub?: string;
-  tone?: "error";
+  tone?: "error" | "warning";
 }) {
   return (
     <div>
       <span className="text-muted-foreground">{label}: </span>
-      <span className={`font-semibold tabular-nums ${tone === "error" ? "text-destructive" : ""}`}>
+      <span className={`font-semibold tabular-nums ${tone === "error" ? "text-destructive" : tone === "warning" ? "text-amber-600" : ""}`}>
         {value}
       </span>
       {sub && (

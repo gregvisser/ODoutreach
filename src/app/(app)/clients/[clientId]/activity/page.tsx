@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ClientActivityTimelinePanel } from "@/components/activity/client-activity-timeline-panel";
 import { ClientOutreachRepliesPanel } from "@/components/activity/client-outreach-replies-panel";
+import { AdminQueueDrainPanel } from "@/components/ops/admin-queue-drain-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -118,6 +119,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
         <CardContent>
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
             <MetricRow label="Total sent (with proof)" value={metrics.sent.toLocaleString()} />
+            <MetricRow label="Queued" value={metrics.queued.toLocaleString()} tone={metrics.queued > 0 ? "warning" : undefined} />
             <MetricRow label="Send proof missing" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "error" : undefined} />
             <MetricRow label="Delivery" value={formatTrackedMetric(metrics.delivered, metrics.deliveryTracked)} sub={metrics.deliveryTracked ? `Rate: ${formatRate(metrics.deliveryRate)}` : undefined} />
             <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
@@ -131,6 +133,10 @@ export default async function ClientActivityPage({ params, searchParams }: Props
           <p className="mt-3 text-xs text-muted-foreground/80">
             &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
             connected mailbox/provider. It does not guarantee inbox placement.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground/80">
+            &ldquo;Queued&rdquo; means the email is waiting for the sender to
+            process it. It has not been sent by the mailbox yet.
           </p>
         </CardContent>
       </Card>
@@ -184,6 +190,18 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             Admin diagnostics
           </summary>
           <div className="space-y-6 px-4 pb-4 pt-2">
+            <Card className="border-border/80 shadow-sm">
+              <CardHeader>
+                <CardTitle>Outbound queue</CardTitle>
+                <CardDescription>
+                  Process queued outbound emails. Admin only — sends real email
+                  for QUEUED rows.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AdminQueueDrainPanel />
+              </CardContent>
+            </Card>
             <Card className="border-border/80 shadow-sm">
               <CardHeader>
                 <CardTitle>Recent controlled sends</CardTitle>
@@ -252,12 +270,12 @@ function MetricRow({
   label: string;
   value: string;
   sub?: string;
-  tone?: "error";
+  tone?: "error" | "warning";
 }) {
   return (
     <div>
       <span className="text-muted-foreground">{label}: </span>
-      <span className={`font-semibold tabular-nums ${tone === "error" ? "text-destructive" : ""}`}>
+      <span className={`font-semibold tabular-nums ${tone === "error" ? "text-destructive" : tone === "warning" ? "text-amber-600" : ""}`}>
         {value}
       </span>
       {sub && (

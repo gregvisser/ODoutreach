@@ -64,6 +64,7 @@ export async function loadGlobalOutreachMetrics(
       metrics: deriveOutreachMetrics(raw),
     });
     totals.sentWithProof += raw.sentWithProof;
+    totals.queued += raw.queued;
     totals.sentProofMissing += raw.sentProofMissing;
     totals.delivered += raw.delivered;
     totals.opens += raw.opens;
@@ -88,6 +89,7 @@ export async function loadGlobalOutreachMetrics(
 function emptyRawCounts(): RawMetricsCounts {
   return {
     sentWithProof: 0,
+    queued: 0,
     sentProofMissing: 0,
     delivered: 0,
     deliveryTracked: true,
@@ -109,6 +111,7 @@ async function gatherRawCounts(
   const [
     sentWithProof,
     allStepSendsSent,
+    queuedOrProcessing,
     delivered,
     bounces,
     failed,
@@ -130,6 +133,12 @@ async function gatherRawCounts(
     }),
     prisma.clientEmailSequenceStepSend.count({
       where: { ...scope, status: "SENT" },
+    }),
+    prisma.outboundEmail.count({
+      where: {
+        ...scope,
+        status: { in: ["QUEUED", "PROCESSING"] },
+      },
     }),
     prisma.outboundEmail.count({
       where: {
@@ -179,10 +188,11 @@ async function gatherRawCounts(
     }),
   ]);
 
-  const sentProofMissing = Math.max(0, allStepSendsSent - sentWithProof);
+  const sentProofMissing = Math.max(0, allStepSendsSent - sentWithProof - queuedOrProcessing);
 
   return {
     sentWithProof,
+    queued: queuedOrProcessing,
     sentProofMissing,
     delivered,
     deliveryTracked: true,
