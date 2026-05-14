@@ -9,6 +9,7 @@ import {
   mapGraphInboxMessageToRow,
 } from "@/server/mailbox/microsoft-graph-inbox";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
+import { processSyncedMessageForReply } from "@/server/mailbox/process-synced-replies";
 
 const DEFAULT_TOP = 25;
 
@@ -16,6 +17,7 @@ export type InboxSyncResult = {
   ok: true;
   ingested: number;
   totalSeen: number;
+  repliesLinked: number;
 } | { ok: false; error: string };
 
 export async function syncMailboxInboxForMailbox(input: {
@@ -105,6 +107,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
   }
 
   let n = 0;
+  let repliesLinked = 0;
   for (const raw of items) {
     const row = mapGraphInboxMessageToRow(raw);
     if (!row) continue;
@@ -157,6 +160,19 @@ export async function syncMicrosoftInboxForMailbox(input: {
           : {}),
       },
     });
+    const replyResult = await processSyncedMessageForReply({
+      clientId,
+      mailboxIdentityId,
+      providerMessageId: row.providerMessageId,
+      fromEmail: row.fromEmail,
+      toEmail: row.toEmail,
+      subject: row.subject,
+      snippet: row.snippet,
+      bodyPreview: row.bodyPreview,
+      receivedAt: row.receivedAt,
+      conversationId: row.conversationId,
+    });
+    if (replyResult.created) repliesLinked += 1;
     n += 1;
   }
 
@@ -175,10 +191,11 @@ export async function syncMicrosoftInboxForMailbox(input: {
       outcome: "ok",
       ingested: n,
       totalSeen: items.length,
+      repliesLinked,
     },
   });
 
-  return { ok: true, ingested: n, totalSeen: items.length };
+  return { ok: true, ingested: n, totalSeen: items.length, repliesLinked };
 }
 
 export async function syncGoogleInboxForMailbox(input: {
@@ -240,6 +257,7 @@ export async function syncGoogleInboxForMailbox(input: {
   }
 
   let n = 0;
+  let repliesLinked = 0;
   for (const row of rows) {
     const meta = row.metadata;
     await prisma.inboundMailboxMessage.upsert({
@@ -273,6 +291,19 @@ export async function syncGoogleInboxForMailbox(input: {
         metadata: meta,
       },
     });
+    const replyResult = await processSyncedMessageForReply({
+      clientId,
+      mailboxIdentityId,
+      providerMessageId: row.providerMessageId,
+      fromEmail: row.fromEmail,
+      toEmail: row.toEmail,
+      subject: row.subject,
+      snippet: row.snippet,
+      bodyPreview: row.bodyPreview,
+      receivedAt: row.receivedAt,
+      conversationId: row.conversationId,
+    });
+    if (replyResult.created) repliesLinked += 1;
     n += 1;
   }
 
@@ -291,10 +322,11 @@ export async function syncGoogleInboxForMailbox(input: {
       outcome: "ok",
       ingested: n,
       totalSeen: rows.length,
+      repliesLinked,
     },
   });
 
-  return { ok: true, ingested: n, totalSeen: rows.length };
+  return { ok: true, ingested: n, totalSeen: rows.length, repliesLinked };
 }
 
 export type ReplySyncBatchResult = {
@@ -303,6 +335,7 @@ export type ReplySyncBatchResult = {
   failed: number;
   ingested: number;
   totalSeen: number;
+  repliesLinked: number;
   skipped: number;
 };
 
@@ -332,6 +365,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
   let failed = 0;
   let ingested = 0;
   let totalSeen = 0;
+  let repliesLinked = 0;
   for (const mailbox of mailboxes) {
     const result = await syncOne({
       clientId: mailbox.clientId,
@@ -343,6 +377,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
       succeeded += 1;
       ingested += result.ingested;
       totalSeen += result.totalSeen;
+      repliesLinked += result.repliesLinked;
     } else {
       failed += 1;
     }
@@ -354,6 +389,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
     failed,
     ingested,
     totalSeen,
+    repliesLinked,
     skipped: Math.max(0, maxMailboxes - mailboxes.length),
   };
 }

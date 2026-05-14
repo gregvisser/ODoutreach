@@ -50,6 +50,7 @@ describe("POST /api/internal/replies/sync", () => {
       failed: 0,
       ingested: 2,
       totalSeen: 2,
+      repliesLinked: 0,
       skipped: 0,
     });
 

@@ -25,7 +25,7 @@ describe("syncActiveClientMailboxInboxes", () => {
       { id: "m2", clientId: "c1" },
     ]);
     syncMailboxInboxForMailboxMock
-      .mockResolvedValueOnce({ ok: true, ingested: 3, totalSeen: 10 })
+      .mockResolvedValueOnce({ ok: true, ingested: 3, totalSeen: 10, repliesLinked: 1 })
       .mockResolvedValueOnce({ ok: false, error: "Reconnect required" });
 
     const result = await syncActiveClientMailboxInboxes({
@@ -56,6 +56,7 @@ describe("syncActiveClientMailboxInboxes", () => {
       failed: 1,
       ingested: 3,
       totalSeen: 10,
+      repliesLinked: 1,
     });
   });
 });
