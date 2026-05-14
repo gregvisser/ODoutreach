@@ -102,7 +102,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
 
   revalidatePath("/contacts");
   revalidatePath("/universe");
-  revalidatePath("/dashboard");
+  revalidatePath("/reporting");
   revalidatePath(`/clients/${clientId}`);
   revalidatePath(`/clients/${clientId}/sources`);
 

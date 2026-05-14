@@ -11,11 +11,11 @@ export default async function SignInPage({
 }) {
   const session = await auth();
   if (session?.user) {
-    redirect("/dashboard");
+    redirect("/reporting");
   }
 
   const sp = (await searchParams) ?? {};
-  const callbackUrl = sp.callbackUrl?.startsWith("/") ? sp.callbackUrl : "/dashboard";
+  const callbackUrl = sp.callbackUrl?.startsWith("/") ? sp.callbackUrl : "/reporting";
   const brand = await getGlobalBrand();
 
   return (

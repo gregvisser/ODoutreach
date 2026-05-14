@@ -83,7 +83,7 @@ export async function createClientFromOnboarding(input: {
   });
 
   revalidatePath("/clients");
-  revalidatePath("/dashboard");
+  revalidatePath("/reporting");
 
   return { ok: true as const, clientId: client.id, slug: client.slug };
 }

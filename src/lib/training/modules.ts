@@ -1004,9 +1004,9 @@ const activityModule: TrainingModule = {
   },
   relatedPortalLinks: [
     {
-      label: "Dashboard",
-      href: "/dashboard",
-      description: "14-day volumes and recent activity at a glance.",
+      label: "Reports",
+      href: "/reporting",
+      description: "Operational metrics — sends, replies, bounces, opt-outs.",
     },
   ],
   callout: {

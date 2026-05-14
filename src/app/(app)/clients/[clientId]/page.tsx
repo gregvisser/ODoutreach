@@ -229,11 +229,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     },
   ];
 
-  const workspaceStatusBody =
-    client.status === "ACTIVE"
-      ? "Workspace is active. Staff can manage contacts, do-not-contact checks, connected mailboxes, outreach, and replies."
-      : "This workspace is still being prepared. Complete the setup checklist before live outreach.";
-
   return (
     <div className="space-y-8">
       <ClientWorkspaceCommandCenter
@@ -258,19 +253,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           </p>
         </div>
       ) : null}
-
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle>Workspace status</CardTitle>
-          <CardDescription>
-            Day-to-day outreach work happens in Brief, Mailboxes, Contacts, Do-not-contact,
-            Outreach, and Activity.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          <p>{workspaceStatusBody}</p>
-        </CardContent>
-      </Card>
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}

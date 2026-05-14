@@ -39,7 +39,7 @@ export async function approveClientLaunchAction(
   if (result.ok) {
     revalidatePath(`/clients/${input.clientId}`);
     revalidatePath("/clients");
-    revalidatePath("/dashboard");
+    revalidatePath("/reporting");
   }
 
   return result;

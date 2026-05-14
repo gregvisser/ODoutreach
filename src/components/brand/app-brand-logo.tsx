@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { BRAND } from "./brand-config";
 
 type Props = {
-  /** Optional destination. Defaults to /dashboard. */
+  /** Optional destination. Defaults to /reporting (the operational dashboard). */
   href?: string;
   /** Extra classes for the outer element (e.g. positioning). */
   className?: string;
@@ -37,7 +37,7 @@ type Props = {
  * dark backgrounds without any theme plumbing.
  */
 export function AppBrandLogo({
-  href = "/dashboard",
+  href = "/reporting",
   className,
   heightClassName = "h-8 md:h-10",
   src,

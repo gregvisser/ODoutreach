@@ -31,7 +31,7 @@ export function AppSidebar({
       )}
     >
       <Link
-        href="/dashboard"
+        href="/reporting"
         className="flex h-20 items-center gap-3 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
         aria-label={`${brand.brandName} ${brand.productName} home`}
       >
@@ -55,8 +55,7 @@ export function AppSidebar({
       <nav className="flex-1 space-y-0.5 p-3">
         {mainNav.map((item) => {
           const active =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
             <Link
