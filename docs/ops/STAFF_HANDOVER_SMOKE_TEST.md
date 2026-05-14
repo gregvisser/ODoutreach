@@ -1,6 +1,6 @@
 # ODoutreach — Staff handover smoke test
 
-> **Status: DRAFT (last updated PR #136).** This document is filled out
+> **Status: DRAFT (last updated PR #137).** This document is filled out
 > progressively by the audit programme as each surface is cleaned. Until
 > then, follow only the steps marked **READY** and ask Greg before running
 > anything marked **GATED**.
@@ -126,21 +126,51 @@ both render **Not tracked** instead of a misleading 0%.
 
 1. Client workspace → **Activity**.
 2. Replies are grouped by mailbox (PR #134).
-3. Click a reply → confirm it links to a sequence outbound (the linked
-   outbound chip).
+3. Each mailbox row shows the linked sequence reply count. Expand the
+   row to see individual replies.
+4. From PR #137: each reply has an **Open reply →** link to a dedicated
+   detail page.
 
-(Until PR #137, the long audit timeline below replies will be visible and
-noisy. After #137 it is hidden behind an "Audit log" expander.)
+The sequence timeline below the replies panel is collapsed by default
+(PR #137). Expand "Recent sequence events" only if you need the raw
+event stream.
 
-## 11. Reply handling (GATED until PR #137)
+## 11. Reply handling (READY — PR #137)
 
-Until reply handling lands in #137:
+After PR #137:
 
-- You can **read** linked replies and the source outbound.
-- You cannot **send a reply** from ODoutreach yet.
-- You cannot **pause/complete** an enrollment from the reply UI — but
-  the send planner already excludes contacts with linked replies from
-  future follow-ups (verified in #137 with tests).
+1. From the replies panel, click **Open reply →** next to any linked
+   reply.
+2. The reply detail page shows:
+   - The reply body / preview.
+   - A staff-friendly status badge for the sequence enrolment
+     ("Active follow-ups" / "Stopped (completed)" / "Paused" /
+     "Excluded (operator)").
+   - The original outbound subject, sent time, and sequence name.
+   - Contact context (suppressed flag if applicable).
+3. **Reply from {mailbox}** — click **Open inbox view to reply →**. You
+   land on the existing inbox message page where you can compose a
+   reply that threads against the original conversation and counts
+   against the mailbox daily send cap. (No email is sent from the
+   reply detail page itself.)
+4. **Stop follow-ups** — clicking this marks the enrolment as
+   `COMPLETED`, which prevents the planner and dispatcher from sending
+   any further follow-up steps for that prospect. It does not send
+   email.
+5. **Pause follow-ups** — clicking this marks the enrolment as
+   `PAUSED`, which has the same skip-on-plan / skip-on-dispatch
+   behaviour but signals "temporary hold". It does not send email.
+
+Automatic behaviour:
+
+- Whenever a linked reply lands (mailbox sync or webhook), the matching
+  enrolment is auto-flipped to `COMPLETED`. You do not have to click
+  "Stop follow-ups" for new replies — staff just need to read and
+  respond.
+- Operator-suppressed (`EXCLUDED`) enrolments are never overwritten.
+- "Resume" is not yet exposed in the UI — by design (resuming an old
+  enrolment whose follow-up delay has elapsed would send immediately on
+  the next plan-and-drain).
 
 ## 12. Check reports (READY)
 

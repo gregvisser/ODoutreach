@@ -1,6 +1,6 @@
 # ODoutreach — System handover gaps
 
-> **Status: DRAFT (last updated PR #136).** This document tracks what is *not*
+> **Status: DRAFT (last updated PR #137).** This document tracks what is *not*
 > yet handover-ready. It is updated progressively as the remaining handover
 > PRs close gaps.
 
@@ -52,30 +52,56 @@ target PR that closes it.
   in this PR). Either populate the rollup via a scheduled job in a later
   PR, or drop the model.
 
-## G3. Replying inside ODoutreach is not implemented
+## G3. Replying inside ODoutreach — **Partly addressed (PR #137)**
 
 - **Scope:** Inbox replies can be read and are linked to outbound sends
-  (PR #134), but there is no "Reply" button that sends from the connected
-  mailbox.
-- **Impact on staff:** Staff still pivot to Outlook/Gmail to reply,
-  defeating the inbox unification goal.
-- **Interim story:** Read replies in ODoutreach Activity (per mailbox).
-  Reply from the actual mailbox in Outlook/Gmail. Mark the reply as
-  handled by archiving in the mailbox.
-- **Target PR:** #137 — reply detail page + reply-from-mailbox + explicit
-  confirmation. Until that ships, **do not** add a reply UI to other PRs.
+  (PR #134), but there was no "Reply" button that sends from the
+  connected mailbox.
+- **PR #137 outcome:**
+  - New linked-reply detail page at
+    `/clients/[clientId]/activity/replies/[replyId]` shows the reply,
+    linked outbound, sequence, contact, and mailbox in a staff-friendly
+    layout with no raw enum labels.
+  - "Reply from {mailbox}" deep-links into the existing inbox message
+    detail page (which already wraps Microsoft Graph / Gmail reply
+    threading via `replyToInboundMailboxMessage`). This reuses the
+    proven send path instead of duplicating provider code.
+- **Residual (deferred to PR #140 handover checklist):**
+  - Webhook-ingested replies (Resend test path) have no corresponding
+    `InboundMailboxMessage` row, so the "Open inbox view to reply" CTA
+    falls back to "Reply from {mailbox} directly". For the current
+    Microsoft 365 / Google Workspace mailbox sync flow, the CTA is wired
+    end-to-end.
+  - Inline reply composer on the InboundReply detail page (skip the
+    deep-link) is a UX polish item — current path already meets the
+    handover contract.
 
-## G4. Stop follow-ups after reply
+## G4. Stop follow-ups after reply — **Addressed (PR #137)**
 
 - **Scope:** When `InboundReply` links to an outbound send, future
-  follow-ups for that contact should be suppressed in the send planner.
-- **Impact on staff:** A naively-built planner could keep chasing a
-  contact after they replied — a serious deliverability and reputation risk.
-- **Current state:** Verified in code review that the live send planner
-  excludes contacts with linked replies via the suppression evaluation,
-  but #137 must add explicit regression tests in
-  `src/server/email-sequences/__tests__` to lock this behaviour.
-- **Target PR:** #137.
+  follow-ups for that contact must be suppressed in the send planner
+  and dispatcher.
+- **PR #137 outcome:**
+  - New helper `stopFollowUpsForLinkedReply` flips the matching
+    `ClientEmailSequenceEnrollment.status` from `PENDING`/`PAUSED` to
+    `COMPLETED` whenever a linked reply lands. Wired into both the
+    mailbox-sync path (`processSyncedMessageForReply`) and the webhook
+    path (`ingestInboundForClient`).
+  - `classifySequenceStepSendCandidate` now also skips `PAUSED`
+    enrolments (previously only `EXCLUDED` and `COMPLETED`), so the
+    manual "Pause follow-ups" staff control actually halts sends. The
+    dispatcher re-runs the same classifier per row, so pre-planned
+    READY rows on a now-stopped enrolment also fail-closed with
+    `blocked_plan_classifier` → `skipped_enrollment_completed` /
+    `skipped_enrollment_paused`.
+  - Idempotent: EXCLUDED enrolments are never overwritten; repeated
+    reply sync is a no-op once the enrolment is COMPLETED.
+  - Tests cover both the helper and the classifier transitions.
+- **Residual:** Manual "Resume" is intentionally NOT implemented in
+  PR #137. Resuming an enrolment whose follow-up delay has elapsed
+  would cause the dispatcher to send immediately on the next
+  plan-and-drain — operator surprise. Tracked for PR #140 handover
+  checklist if/when the team wants explicit resume UX.
 
 ## G5. Hard-delete of sequences with send history
 
@@ -137,9 +163,13 @@ target PR that closes it.
 ## G11. Global Activity vs client Activity
 
 - **Scope:** Sidebar advertises a flat global Activity log; client Activity
-  is the rich surface (replies-by-mailbox, sequence send proof).
-- **Interim story (PR #135):** Both remain in the sidebar.
-- **Target PR:** #137 — demote global Activity (admin-only or redirect).
+  is the rich surface (replies-by-mailbox, sequence send proof, and now
+  a linked reply detail page).
+- **Interim story (PR #135 / PR #137):** Both remain in the sidebar.
+  PR #137 made client Activity the operational surface for replies, so
+  the global Activity duplication is now lower priority.
+- **Target PR:** #140 handover checklist — demote global Activity
+  (admin-only or redirect to per-client Activity).
 
 ## G12. Old `/dashboard` route
 

@@ -11,6 +11,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }));
 
+const stopFollowUpsMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ enrollmentsStopped: 0 }),
+);
+
 vi.mock("@/lib/db", () => ({
   prisma: prismaMock,
 }));
@@ -22,6 +26,10 @@ vi.mock("@/lib/normalize", () => ({
 vi.mock("@/server/email/outbound/lifecycle", () => ({
   canApplyReplyMilestone: (status: string) =>
     !["BLOCKED_SUPPRESSION", "BOUNCED", "FAILED"].includes(status),
+}));
+
+vi.mock("@/server/email-sequences/stop-follow-ups-on-reply", () => ({
+  stopFollowUpsForLinkedReply: stopFollowUpsMock,
 }));
 
 import { processSyncedMessageForReply } from "./process-synced-replies";
@@ -42,6 +50,41 @@ const BASE_INPUT = {
 describe("processSyncedMessageForReply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stopFollowUpsMock.mockResolvedValue({ enrollmentsStopped: 0 });
+  });
+
+  it("calls stopFollowUpsForLinkedReply for the matched outbound (PR #137)", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob-stop",
+      contactId: "ct-stop",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-stop" });
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    expect(stopFollowUpsMock).toHaveBeenCalledWith({
+      clientId: "c1",
+      outboundEmailId: "ob-stop",
+    });
+  });
+
+  it("does not call stopFollowUpsForLinkedReply when no outbound matched", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue(null);
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    expect(stopFollowUpsMock).not.toHaveBeenCalled();
+  });
+
+  it("does not call stopFollowUpsForLinkedReply when reply is a duplicate", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue({ id: "existing" });
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    expect(stopFollowUpsMock).not.toHaveBeenCalled();
   });
 
   it("creates InboundReply linked to outbound when contact email matches", async () => {
