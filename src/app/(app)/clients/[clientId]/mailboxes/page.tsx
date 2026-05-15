@@ -2,8 +2,18 @@ import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
-import { Card, CardContent } from "@/components/ui/card";
-import { MAILBOXES_PAGE_INTRO } from "@/lib/mailboxes/mailbox-workspace-model";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  MAILBOXES_PAGE_INTRO,
+  MAILBOXES_PAGE_SUBTITLE,
+  MAILBOXES_WHAT_HAPPENS_BULLETS,
+} from "@/lib/mailboxes/mailbox-workspace-model";
 import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
 import { prisma } from "@/lib/db";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
@@ -96,19 +106,38 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Mailboxes</h1>
-        <p className="text-sm text-muted-foreground sm:text-base">{client.name}</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Mailboxes
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          {MAILBOXES_PAGE_SUBTITLE} — {client.name}
+        </h1>
         <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
           {MAILBOXES_PAGE_INTRO}
         </p>
         {!showMailboxSetupTools ? (
           <p className="mt-3 max-w-3xl rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            This page shows which sending inboxes are connected and how much capacity is left today.
-            Signature setup and internal proof sends are administrator tools — ask a manager if something
-            needs changing.
+            Connected senders and today&rsquo;s remaining send capacity. Signature setup and
+            proof sends are admin-only — ask a manager if something needs changing.
           </p>
         ) : null}
       </div>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">What happens when you connect a mailbox?</CardTitle>
+          <CardDescription>
+            Plain-English summary. Use this before you click Connect on a row.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            {MAILBOXES_WHAT_HAPPENS_BULLETS.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
 
       {showMailboxSetupTools ? (
         <InternalProofSendCard

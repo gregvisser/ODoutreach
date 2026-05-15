@@ -133,7 +133,7 @@ export function mailboxRowOperatorStatus(
       kind: "needs_approval",
       label: "Needs approval",
       sublabel:
-        "The mailbox owner or their Microsoft/Google admin should finish sign-in in the provider window, or use Connect again.",
+        "Finish sign-in in the Microsoft or Google window, or press Connect again.",
     };
   }
   if (row.connectionStatus === "CONNECTED" && !row.isSendingEnabled) {
