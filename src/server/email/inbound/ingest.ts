@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import type { InboundMatchMethod } from "@/generated/prisma/enums";
 import { normalizeEmail } from "@/lib/normalize";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
+import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
 
 /**
  * Inbound payload from ESP webhook or dev simulator.
@@ -114,6 +115,11 @@ export async function ingestInboundForClient(params: {
         data: { status: "REPLIED" },
       });
     }
+    // PR #137 — stop follow-ups for the matching sequence enrolment.
+    await stopFollowUpsForLinkedReply({
+      clientId,
+      outboundEmailId: linkedOutboundEmailId,
+    });
   }
 
   return { id: row.id, matchMethod };

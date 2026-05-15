@@ -228,6 +228,19 @@ describe("classifySequenceStepSendCandidate", () => {
     expect(result.reason).toBe("skipped_enrollment_completed");
   });
 
+  it("skips PAUSED enrollments (PR #137)", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        enrollment: {
+          ...candidate().enrollment,
+          status: "PAUSED",
+        },
+      }),
+    );
+    expect(result.status).toBe("SKIPPED");
+    expect(result.reason).toBe("skipped_enrollment_paused");
+  });
+
   it("blocks cross-client sequence", () => {
     const result = classifySequenceStepSendCandidate(
       candidate({

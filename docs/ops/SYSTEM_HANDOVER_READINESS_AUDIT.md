@@ -121,14 +121,53 @@ Current items, in order:
 - **Purpose today:** Cross-client outbound and inbound log, with the same
   client filter chips that Reports already has.
 - **Duplication:** The client-scoped Activity (`/clients/[id]/activity`) is now
-  the rich surface (per-mailbox replies, sequence send proof). The global
-  Activity is a flat operator-style log and creates clutter; it has no per-mailbox
-  grouping, no audit-vs-summary split, no reply-handling actions.
-- **Decision (deferred):** Demote global Activity in PR #137. Either redirect to
-  Reports (the "Recent outbound / Recent replies" cards already cover the gist),
-  or hide behind an admin-only "Diagnostic log" entry. Do **not** delete the
-  client-scoped Activity.
-- **PR target:** #137 (Activity/replies cleanup).
+  the rich surface (per-mailbox replies, sequence send proof, **linked reply
+  detail page** as of PR #137). The global Activity is a flat operator-style
+  log and creates clutter; it has no per-mailbox grouping, no audit-vs-summary
+  split, no reply-handling actions.
+- **Decision:** PR #137 focused on the client-scoped Activity surface (the
+  one staff actually use day-to-day). Demoting/redirecting global Activity is
+  now deferred to the PR #140 handover checklist — lower priority because
+  client Activity is the trustworthy operational surface.
+- **PR target:** PR #140 handover checklist.
+
+### A.7a Client Activity & linked replies — PR #137 outcome
+
+- **Decision:** Replies are the headline of the page. Sequence timeline is
+  collapsible and not the headline content.
+- **PR #137 — completed:**
+  - **Replies panel** now appears above the sequence timeline. Each reply
+    has an **Open reply →** link to a new linked reply detail page.
+  - **Sequence timeline** is wrapped in `<details>` (collapsed by default in
+    outreach view). The full-history view stays expandable.
+  - **Linked reply detail** at `/clients/[clientId]/activity/replies/[replyId]`
+    shows reply body / preview, mailbox, sequence, original outbound subject
+    and sent time, contact suppression state, and a staff-friendly enrolment
+    status badge ("Active follow-ups" / "Stopped (completed)" / "Paused" /
+    "Excluded (operator)"). No raw enum labels are rendered.
+  - **Reply send** is delegated to the existing inbox-message reply form
+    (Microsoft Graph + Gmail reply paths, already proven). Staff click
+    **Open inbox view to reply →** which deep-links to
+    `/clients/[clientId]/activity/messages/[messageId]` via a
+    `(providerMessageId, mailboxIdentityId)` correlation. No duplicate
+    provider code was introduced.
+  - **Stop follow-ups after reply**: new helper
+    `stopFollowUpsForLinkedReply` flips the matching enrolment to
+    `COMPLETED` from `PENDING`/`PAUSED` whenever a linked reply lands, in
+    both `processSyncedMessageForReply` (mailbox sync) and
+    `ingestInboundForClient` (webhook). EXCLUDED enrolments are never
+    overwritten. Idempotent on repeated sync.
+  - **Pause / Stop staff actions** on the detail page mark the enrolment as
+    `PAUSED` or `COMPLETED`. The planner classifier
+    `classifySequenceStepSendCandidate` now skips `PAUSED` (previously only
+    `EXCLUDED` and `COMPLETED`), so pausing actually halts sends — and the
+    dispatcher re-runs that classifier per row so pre-planned READY rows on
+    a now-paused enrolment fail closed with `blocked_plan_classifier`.
+  - **"Resume" not implemented** in PR #137 — see G4 in
+    `SYSTEM_HANDOVER_GAPS.md`. Deferred to PR #140 handover checklist
+    pending a safe "skip overdue follow-ups on resume" policy.
+  - **No schema changes**. No new migrations. No production data mutated.
+- **PR target:** PR #137.
 
 ### A.8 Reports
 

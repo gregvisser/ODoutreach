@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
+import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
 
 /**
  * After mailbox inbox sync upserts an InboundMailboxMessage, this function
@@ -81,6 +82,15 @@ export async function processSyncedMessageForReply(input: {
       data: { status: "REPLIED" },
     });
   }
+
+  // PR #137 — stop follow-ups for the matching sequence enrolment. Safe to
+  // call unconditionally: it's a no-op when the outbound has no step-send
+  // record, when the enrolment is already EXCLUDED/COMPLETED, or when the
+  // same reply is re-processed.
+  await stopFollowUpsForLinkedReply({
+    clientId: input.clientId,
+    outboundEmailId: outbound.id,
+  });
 
   return { created: true, replyId: reply.id };
 }

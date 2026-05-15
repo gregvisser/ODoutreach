@@ -48,6 +48,7 @@ export type SequenceStepSendPreview = {
     | "ready"
     | "skipped_enrollment_excluded"
     | "skipped_enrollment_completed"
+    | "skipped_enrollment_paused"
     | "blocked_wrong_client"
     | "blocked_wrong_sequence"
     | "blocked_step_not_in_sequence"

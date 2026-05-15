@@ -45,7 +45,8 @@ export type SequenceStepSendClassificationReason =
   | "blocked_missing_unsubscribe_link"
   | "blocked_missing_required_field"
   | "skipped_enrollment_excluded"
-  | "skipped_enrollment_completed";
+  | "skipped_enrollment_completed"
+  | "skipped_enrollment_paused";
 
 export type SequenceStepSendClassification = {
   status: ClientEmailSequenceStepSendStatus;
@@ -178,9 +179,10 @@ export function classifySequenceStepSendCandidate(
   }
 
   // 1. Enrollment lifecycle — operator intent to hold/exclude.
-  //    PAUSED is NOT skipped here: an operator-triggered plan run
-  //    should still produce a row so the reason is visible, but D4e.2
-  //    will not flip PAUSED → SENT.
+  //    PR #137: PAUSED is now also skipped here. The dispatcher
+  //    re-runs this classifier on every READY plan row, so flipping
+  //    an enrolment to PAUSED reliably halts both new plans and
+  //    pre-planned-but-not-yet-dispatched rows.
   if (input.enrollment.status === "EXCLUDED") {
     return {
       status: "SKIPPED",
@@ -194,6 +196,14 @@ export function classifySequenceStepSendCandidate(
       status: "SKIPPED",
       reason: "skipped_enrollment_completed",
       reasonDetail: "Enrollment already COMPLETED.",
+      composition: emptyComposition,
+    };
+  }
+  if (input.enrollment.status === "PAUSED") {
+    return {
+      status: "SKIPPED",
+      reason: "skipped_enrollment_paused",
+      reasonDetail: "Enrollment is PAUSED — step skipped.",
       composition: emptyComposition,
     };
   }

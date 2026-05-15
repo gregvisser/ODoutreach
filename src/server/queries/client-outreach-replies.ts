@@ -65,6 +65,13 @@ export async function loadClientOutreachReplies(
               displayName: true,
             },
           },
+          sequenceStepSends: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              sequence: { select: { name: true } },
+            },
+          },
         },
       },
     },
@@ -85,7 +92,8 @@ export async function loadClientOutreachReplies(
       matchMethod: r.matchMethod,
       linkedOutboundEmailId: r.linkedOutboundEmailId,
       contactName: r.contact?.fullName ?? null,
-      sequenceName: null,
+      sequenceName:
+        r.linkedOutbound?.sequenceStepSends?.[0]?.sequence?.name ?? null,
       outboundSubject: r.linkedOutbound?.subject ?? null,
     };
 

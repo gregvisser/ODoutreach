@@ -448,6 +448,52 @@ describe("classifySequenceStepSendExecution — shared D4e.2 gates still hold", 
     });
   });
 
+  it("blocks a PAUSED enrolment at dispatch time (PR #137)", () => {
+    const decision = classifySequenceStepSendExecution(
+      baseInput({
+        candidate: baseCandidate({
+          enrollment: {
+            id: "enr-paused",
+            clientId: "client-1",
+            sequenceId: "seq-1",
+            contactId: "ct-1",
+            status: "PAUSED",
+          },
+        }),
+      }),
+    );
+    expect(decision.sendable).toBe(false);
+    if (!decision.sendable) {
+      expect(decision.reason).toBe("blocked_plan_classifier");
+      expect(decision.classification?.reason).toBe(
+        "skipped_enrollment_paused",
+      );
+    }
+  });
+
+  it("blocks a COMPLETED enrolment at dispatch time (PR #137 — stop after reply)", () => {
+    const decision = classifySequenceStepSendExecution(
+      baseInput({
+        candidate: baseCandidate({
+          enrollment: {
+            id: "enr-completed",
+            clientId: "client-1",
+            sequenceId: "seq-1",
+            contactId: "ct-1",
+            status: "COMPLETED",
+          },
+        }),
+      }),
+    );
+    expect(decision.sendable).toBe(false);
+    if (!decision.sendable) {
+      expect(decision.reason).toBe("blocked_plan_classifier");
+      expect(decision.classification?.reason).toBe(
+        "skipped_enrollment_completed",
+      );
+    }
+  });
+
   it("blocks when the stored plan row is BLOCKED/SUPPRESSED/SKIPPED", () => {
     for (const status of ["BLOCKED", "SUPPRESSED", "SKIPPED"] as const) {
       const decision = classifySequenceStepSendExecution(

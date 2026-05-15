@@ -46,6 +46,9 @@ function linkedReply(overrides: Record<string, unknown> = {}) {
         email: "adam@client.com",
         displayName: "Adam",
       },
+      sequenceStepSends: [
+        { sequence: { name: "Q2 outreach" } },
+      ],
     },
     ...overrides,
   };
@@ -80,6 +83,36 @@ describe("loadClientOutreachReplies (PR #130)", () => {
     expect(result[0]!.mailboxEmail).toBe("adam@client.com");
     expect(result[0]!.replyCount).toBe(1);
     expect(result[0]!.replies[0]!.contactName).toBe("Jane Doe");
+  });
+
+  it("populates sequenceName from the linked step-send (PR #137)", async () => {
+    inboundReplyFindMany.mockResolvedValue([linkedReply()]);
+    mailboxFindMany.mockResolvedValue([]);
+
+    const result = await loadClientOutreachReplies("client-1");
+    expect(result[0]!.replies[0]!.sequenceName).toBe("Q2 outreach");
+  });
+
+  it("leaves sequenceName null when the outbound has no step-send", async () => {
+    inboundReplyFindMany.mockResolvedValue([
+      linkedReply({
+        linkedOutbound: {
+          id: "out-1",
+          subject: "Introduction email",
+          mailboxIdentityId: "mbx-adam",
+          mailbox: {
+            id: "mbx-adam",
+            email: "adam@client.com",
+            displayName: "Adam",
+          },
+          sequenceStepSends: [],
+        },
+      }),
+    ]);
+    mailboxFindMany.mockResolvedValue([]);
+
+    const result = await loadClientOutreachReplies("client-1");
+    expect(result[0]!.replies[0]!.sequenceName).toBeNull();
   });
 
   it("groups replies by sending mailbox", async () => {

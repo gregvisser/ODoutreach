@@ -141,22 +141,29 @@ export default async function ClientActivityPage({ params, searchParams }: Props
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle>
-                {mode === "all" ? "Full workspace history" : "Sequence timeline"}
-              </CardTitle>
-              <CardDescription>
-                {mode === "all"
-                  ? "All setup, mailbox, audit, and outreach events, newest first."
-                  : "Sequence sends, replies, bounces, unsubscribes, and enrolment activity — newest first."}
-              </CardDescription>
-            </div>
+      <ClientOutreachRepliesPanel
+        clientId={bundle.client.id}
+        groups={serializedGroups}
+        totalReplies={totalReplies}
+      />
+
+      <details className="rounded-lg border border-border/60 bg-muted/10" open={mode === "all"}>
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
+          {mode === "all" ? "Full workspace history" : "Recent sequence events"}
+          <span className="ml-2 text-xs text-muted-foreground/70">
+            (newest first — collapsed by default)
+          </span>
+        </summary>
+        <div className="space-y-3 px-4 pb-4 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {mode === "all"
+                ? "All setup, mailbox, audit, and outreach events."
+                : "Sequence sends, replies, bounces, unsubscribes, and enrolment activity."}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={mode === "outreach" ? "default" : "outline"}>
-                Outreach view
+                {mode === "all" ? "Full history" : "Outreach view"}
               </Badge>
               <Link
                 href={
@@ -170,19 +177,12 @@ export default async function ClientActivityPage({ params, searchParams }: Props
               </Link>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
           <ClientActivityTimelinePanel
             timeline={timeline}
             variant={mode === "all" ? "full" : "outreach"}
           />
-        </CardContent>
-      </Card>
-
-      <ClientOutreachRepliesPanel
-        groups={serializedGroups}
-        totalReplies={totalReplies}
-      />
+        </div>
+      </details>
 
       {isAdmin && (
         <details className="rounded-lg border border-border/60 bg-muted/20">

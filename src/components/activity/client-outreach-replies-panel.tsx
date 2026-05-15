@@ -36,6 +36,7 @@ type MailboxGroup = {
 };
 
 type Props = {
+  clientId: string;
   groups: MailboxGroup[];
   totalReplies: number;
 };
@@ -49,8 +50,10 @@ function formatTs(iso: string): string {
 }
 
 function MailboxGroupRow({
+  clientId,
   group,
 }: {
+  clientId: string;
   group: MailboxGroup;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -105,6 +108,11 @@ function MailboxGroupRow({
                     {formatTs(r.receivedAt)}
                   </span>
                 </div>
+                {r.sequenceName && (
+                  <p className="text-xs text-muted-foreground">
+                    Sequence: {r.sequenceName}
+                  </p>
+                )}
                 {r.outboundSubject && (
                   <p className="text-xs text-muted-foreground">
                     Replying to: &ldquo;{r.outboundSubject}&rdquo;
@@ -122,22 +130,22 @@ function MailboxGroupRow({
                       : r.bodyPreview}
                   </p>
                 )}
-                {r.linkedOutboundEmailId && (
-                  <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-3 pt-1">
+                  <Link
+                    href={`/clients/${clientId}/activity/replies/${r.id}`}
+                    className="text-xs font-medium underline-offset-4 hover:underline"
+                  >
+                    Open reply →
+                  </Link>
+                  {r.linkedOutboundEmailId && (
                     <Link
                       href={`/activity/outbound/${r.linkedOutboundEmailId}`}
                       className="text-xs text-muted-foreground underline-offset-4 hover:underline"
                     >
-                      View original send →
+                      View original send
                     </Link>
-                    <span
-                      className="cursor-not-allowed text-xs text-muted-foreground/50"
-                      title="Reply from ODoutreach is not yet available for sequence replies. Use the mailbox directly to respond."
-                    >
-                      Reply from ODoutreach — coming next
-                    </span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -148,6 +156,7 @@ function MailboxGroupRow({
 }
 
 export function ClientOutreachRepliesPanel({
+  clientId,
   groups,
   totalReplies,
 }: Props) {
@@ -157,6 +166,7 @@ export function ClientOutreachRepliesPanel({
         <CardTitle>Replies</CardTitle>
         <CardDescription>
           Only replies to this client&apos;s outreach sequence emails are shown.
+          Random inbox mail is intentionally hidden.
           {totalReplies > 0 && (
             <span className="ml-1 font-medium text-foreground">
               {totalReplies} total{" "}
@@ -175,6 +185,7 @@ export function ClientOutreachRepliesPanel({
             {groups.map((g) => (
               <MailboxGroupRow
                 key={g.mailboxId}
+                clientId={clientId}
                 group={g}
               />
             ))}
