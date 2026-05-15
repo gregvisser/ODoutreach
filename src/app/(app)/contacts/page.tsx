@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { ContactReadinessBadge } from "@/components/contacts/contact-readiness-badge";
@@ -28,13 +29,27 @@ import {
   type ClientListOption,
 } from "@/app/(app)/contacts/csv-import-form";
 import { SendToContactForm } from "@/app/(app)/contacts/send-to-contact-form";
-import { requireStaffUser } from "@/server/auth/staff";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listContactListsForClient } from "@/server/contacts/contact-lists";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { listContactsForStaff } from "@/server/queries/contacts";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Global Contacts is a legacy admin-only surface (PR #140 — G10).
+ *
+ * Universe is the canonical cross-client contact warehouse and each
+ * client's Sources tab owns imports. Normal staff don't need a
+ * cross-client CSV import or per-row send sheet — those are admin /
+ * support tools and are routinely confused for the day-to-day flow.
+ *
+ * Non-admin staff are redirected to `/universe`. Admins still reach
+ * the cross-client CSV import + per-row send sheet on this route.
+ * The route is intentionally not in the staff sidebar (removed in
+ * PR #138; see `src/components/app-shell/nav-config.ts`).
+ */
 
 type Props = {
   searchParams?: Promise<{
@@ -54,7 +69,10 @@ type Props = {
 };
 
 export default async function ContactsPage({ searchParams }: Props) {
-  const staff = await requireStaffUser();
+  const staff = await requireOpensDoorsStaff();
+  if (staff.role !== "ADMIN") {
+    redirect("/universe");
+  }
   const accessible = await getAccessibleClientIds(staff);
   const sp = (await searchParams) ?? {};
   const rawFilter = sp.client;
@@ -109,24 +127,25 @@ export default async function ContactsPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">Heads up:</span>{" "}
+      <p className="rounded-lg border border-amber-400/40 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <span className="font-medium">Admin-only legacy tools.</span>{" "}
         The day-to-day contact directory lives on{" "}
         <Link
           href="/universe"
-          className="font-medium text-primary underline-offset-2 hover:underline"
+          className="font-medium underline-offset-2 hover:underline"
         >
           Universe
         </Link>
         , and per-client imports live on each client&rsquo;s{" "}
-        <span className="font-medium text-foreground">Sources</span> tab. This
-        page is kept for cross-client CSV import and per-row send tooling and
-        is no longer in the sidebar.
+        <span className="font-medium">Sources</span> tab. This page is kept
+        only for cross-client CSV import and per-row send tooling that an
+        administrator may occasionally need, and is intentionally not in the
+        staff sidebar.
       </p>
 
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Contacts (cross-client tools)</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Contacts (admin legacy tools)</h1>
           <p className="mt-1 text-muted-foreground">
             Cross-client contact directory — filter to a single workspace when needed.
           </p>

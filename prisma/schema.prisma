@@ -1316,7 +1316,19 @@ model InboundReply {
 }
 
 // ——— Reporting aggregates (placeholder / nightly rollups) ———
-
+//
+// DEPRECATED — no runtime path writes to this model. PR #136 made the
+// Reports page read live counts only; PR #140 (G2a) removed the last
+// query helpers (`getReportingSnapshotsForStaff`,
+// `getDashboardSummaryForStaff`). The Prisma model is intentionally
+// kept in this PR — no migration is added, no `prisma db push` or
+// `migrate reset` is run, and the hard-delete cleanup scripts still
+// reference the model defensively in case any historical rows exist.
+//
+// Schema cleanup (dropping the table) is deferred to a separately
+// approved migration that an admin runs intentionally.
+//
+// See `docs/ops/SYSTEM_HANDOVER_GAPS.md` G2a.
 model ReportingDailySnapshot {
   id              String   @id @default(cuid())
   clientId        String

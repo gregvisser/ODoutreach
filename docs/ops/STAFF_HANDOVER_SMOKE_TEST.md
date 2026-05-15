@@ -1,9 +1,9 @@
 # ODoutreach — Staff handover smoke test
 
-> **Status: DRAFT (last updated PR #139).** This document is filled out
-> progressively by the audit programme as each surface is cleaned. Until
-> then, follow only the steps marked **READY** and ask Greg before running
-> anything marked **GATED**.
+> **Status: HANDOVER-READY (last updated PR #140).** Every step below is
+> marked **READY**. The audit programme treats this document as the
+> standing smoke test a non-technical staff member can run end-to-end
+> without developer presence.
 
 The smoke test is written for a non-technical staff member. It is **safe by
 default** — every step that could send email, consume credits, or write to
@@ -243,16 +243,29 @@ Notes after PR #136:
    during this smoke unless explicitly approved — it triggers a live
    Google Sheets read.
 
-## 14. Archive / remove sequence (GATED until PR #140)
+## 14. Archive / remove sequence (READY — PR #140)
 
-Until PR #140:
+1. Open a client workspace and click **Outreach**.
+2. Locate any sequence with send history. The action button reads
+   **"Delete or archive sequence"** (not just "Delete").
+3. Click it. The confirmation message says: *"Sequences with send
+   history are kept for audit (archived); only draft sequences that
+   have never sent can be hard-deleted."* — confirm or cancel as
+   appropriate during the smoke. For the smoke walkthrough, cancel.
+4. Below the active list, expand the **"Archived sequences (N)"**
+   `<details>` disclosure. Each archived row exposes a
+   **Restore to draft** button.
+5. Spot-check that clicking Restore to draft on a known archived
+   sequence returns it to DRAFT — no send history is lost.
 
-- Active sequences are visible.
-- Hard-delete is risky for any sequence with send history. PR #140 makes
-  delete safe by blocking it for sequences with send history and
-  surfacing Archive instead. (Originally scheduled for PR #139; PR #139
-  focused on Mailboxes / Settings / Training copy + the PR #117 decision,
-  and the safe-delete behaviour change moved to PR #140.)
+Notes after PR #140:
+
+- Hard delete is only possible for sequences that have never sent a
+  step. Any sequence with `SENT` / `FAILED` / linked outbound rows
+  is routed through archive, not delete, on the server.
+- Restore is reversible — it flips the status back to DRAFT and the
+  sequence reappears in the active list. It does not re-launch or
+  re-send anything.
 
 ## 15. Settings audit (READY — PR #139)
 
@@ -293,28 +306,80 @@ Until PR #140:
 5. Training pages are **read-only**. Nothing on `/training` sends
    email, runs imports, syncs mailboxes, or changes settings.
 
-## 17. Sidebar / nav final check (READY — PR #139)
+## 17. Sidebar / nav final check (READY — PR #140)
 
 The main sidebar **must** show exactly these entries, in order:
 
 `Reports`, `Clients`, `New client`, `Universe`, `Do-not-contact`,
-`Activity`, `Training`, `Settings`.
+`Training`, `Settings`.
 
-Confirm `Dashboard`, `Admin operations`, and a global `Contacts` entry
-are **not** present. (Each was intentionally removed: Dashboard and
-Admin Operations in PR #135, Contacts in PR #138.) The legacy URLs
-(`/dashboard`, `/operations/outbound`, `/contacts`) still resolve, but
-are not advertised.
+Confirm `Dashboard`, `Admin operations`, a global `Contacts` entry,
+**and** a global `Activity` entry are **not** present. Each was
+intentionally removed: Dashboard and Admin Operations in PR #135,
+Contacts in PR #138, global Activity in PR #140.
+
+The legacy URLs (`/dashboard`, `/operations/outbound`, `/contacts`,
+`/activity`) still resolve for admins; non-admin staff are redirected
+away. `/dashboard` redirects to `/reporting` for everyone.
 
 Inside any client workspace, the subnav **must** show exactly:
 
 `Overview`, `Brief`, `Mailboxes`, `Sources`, `Lists`, `Do-not-contact`,
 `Templates`, `Outreach`, `Activity`.
 
-`Lists` is the post-PR-138 label for the old `Contacts` tab. `Do-not-contact`
-is the post-PR-138 label for the old `Suppression` tab.
+`Lists` is the post-PR-138 label for the old `Contacts` tab.
+`Do-not-contact` is the post-PR-138 label for the old `Suppression` tab.
 
-## 18. Troubleshooting
+## 18. Final handover checklist (READY — PR #140)
+
+The audit programme commits to the following end-to-end checklist for
+the first staff-led campaign run without developer presence.
+
+1. **Create or check the client.** Open Clients, open the target
+   workspace, confirm the workflow strip shows the right status pill
+   (ONBOARDING vs ACTIVE).
+2. **Connect mailboxes.** Mailboxes tab. Confirm at least one
+   mailbox is **Connected**; do not touch Connect / Reconnect /
+   Remove during the smoke unless approved.
+3. **Import contacts.** Sources tab. Either upload a CSV (and click
+   Preview only — Confirm is the write step) or use the existing
+   per-client list.
+4. **Check Universe.** `/universe`. Confirm imported contacts are
+   visible in the cross-client directory; use search / filter /
+   column toggles to spot-check.
+5. **Check Lists.** Lists tab. Open the target list (`/clients/[id]/lists/[listId]`),
+   use the new search / status filter / sort controls (PR #140) to
+   review who is in scope.
+6. **Check Do-not-contact.** Per-client Do-not-contact tab (and the
+   global `People blocked from outreach` page). Confirm any
+   suppression rows that should apply are present. Do **not** click
+   **Sync** during the smoke.
+7. **Create a template.** Templates tab. Save a draft introduction.
+8. **Create a sequence.** Outreach tab. Pick a list, mailbox, and
+   template. Save (does not send).
+9. **Review recipients.** Open the sequence's recipient panel and
+   skim the eligibility breakdown.
+10. **Launch sequence.** Type the confirmation phrase only when ready
+    to actually launch. For the smoke, stop here.
+11. **Process the queue if needed.** ONLY when admin approves.
+12. **Check Reports.** `/reporting`. Confirm Sent / Replies / Delivery
+    cards move as expected. All numbers are live database counts.
+13. **Check Activity replies.** Per-client Activity tab. Confirm the
+    replies-by-mailbox panel surfaces any new replies; the global
+    `/activity` route is **admin-only** (PR #140) and is not the
+    operational view.
+14. **Open a reply.** Click into a reply event to land on the linked
+    reply detail page. Read it.
+15. **Stop follow-ups.** If a contact has clearly opted out of
+    further sending, click **Stop follow-ups for this contact** on
+    the reply detail page. The enrolment flips to COMPLETED; no
+    queued steps will fire.
+16. **Verify no unsafe admin routes in staff nav.** Re-run step 17
+    above. The sidebar must NOT advertise Dashboard, Admin operations,
+    global Contacts, or global Activity. Per-client Activity is the
+    operational surface for replies.
+
+## 19. Troubleshooting
 
 If something looks wrong:
 

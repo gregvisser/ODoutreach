@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   Globe2,
   GraduationCap,
   ListFilter,
@@ -34,7 +33,16 @@ export type NavItem = {
  * imports. The `/contacts` route itself is preserved (it still owns the
  * cross-client CSV import + per-row send sheet) but is no longer advertised
  * here — staff reach contact directory via Universe, and per-client imports
- * via Sources. See `docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md`.
+ * via Sources.
+ *
+ * PR #140 (G11): the global Activity route (`/activity`) is removed from
+ * the sidebar because per-client Activity is the trusted operational view
+ * (it groups replies by mailbox, links into reply detail, and stops random
+ * inbox mail from leaking in). The `/activity` route itself is preserved
+ * as an admin-only legacy debug surface — non-admin staff are redirected
+ * to `/clients` to pick a workspace.
+ *
+ * See `docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md`.
  */
 export const mainNav: NavItem[] = [
   { title: "Reports", href: "/reporting", icon: PieChart },
@@ -42,7 +50,6 @@ export const mainNav: NavItem[] = [
   { title: "New client", href: "/clients/new", icon: Sparkles },
   { title: "Universe", href: "/universe", icon: Globe2 },
   { title: "Do-not-contact", href: "/suppression", icon: ListFilter },
-  { title: "Activity", href: "/activity", icon: Activity },
   { title: "Training", href: "/training", icon: GraduationCap },
   { title: "Settings", href: "/settings", icon: Settings },
 ];

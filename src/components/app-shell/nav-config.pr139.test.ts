@@ -18,26 +18,35 @@ import { mainNav } from "@/components/app-shell/nav-config";
 const SUBNAV_PATH = join(process.cwd(), "src/components/clients/client-workspace-subnav.tsx");
 const SUBNAV_SOURCE = readFileSync(SUBNAV_PATH, "utf8");
 
-describe("Main sidebar (PR #139 final audit)", () => {
-  it("contains exactly the post-PR-138 main entries, in the documented order", () => {
+describe("Main sidebar (PR #139 final audit, updated PR #140)", () => {
+  it("contains exactly the post-PR-140 main entries, in the documented order", () => {
+    // PR #140 (G11): global Activity is demoted to admin-only and
+    // removed from the sidebar. Per-client Activity lives inside each
+    // client workspace, where it is the trusted operational view.
     expect(mainNav.map((n) => n.title)).toEqual([
       "Reports",
       "Clients",
       "New client",
       "Universe",
       "Do-not-contact",
-      "Activity",
       "Training",
       "Settings",
     ]);
   });
 
-  it("does NOT advertise Dashboard, Admin Operations or global Contacts", () => {
+  it("does NOT advertise Dashboard, Admin Operations, global Contacts, or global Activity", () => {
     const titles = mainNav.map((n) => n.title);
     expect(titles).not.toContain("Dashboard");
     expect(titles).not.toContain("Admin Operations");
     expect(titles).not.toContain("Operations");
     expect(titles).not.toContain("Contacts");
+    // PR #140: global Activity is removed from the sidebar — per-client
+    // Activity is the trusted view.
+    expect(titles).not.toContain("Activity");
+    const hrefs = mainNav.map((n) => n.href);
+    expect(hrefs).not.toContain("/activity");
+    expect(hrefs).not.toContain("/operations/outbound");
+    expect(hrefs).not.toContain("/contacts");
   });
 
   it("every main nav entry has a real href starting with /", () => {

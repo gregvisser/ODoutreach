@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { requireStaffUser } from "@/server/auth/staff";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listInboundForStaff, listOutboundForStaff } from "@/server/queries/activity";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -28,8 +29,24 @@ export const dynamic = "force-dynamic";
 
 type Props = { searchParams?: Promise<{ client?: string }> };
 
+/**
+ * Global Activity is an admin-only legacy debug surface (PR #140 — G11).
+ *
+ * Per-client Activity (`/clients/[id]/activity`) is the trusted
+ * operational view: it groups replies by mailbox, links into the
+ * reply-detail page, surfaces stop-follow-ups, and filters out random
+ * mailbox inbox mail. The cross-client tables here are not part of the
+ * day-to-day staff flow and have routinely confused operators.
+ *
+ * Non-admin staff land on `/clients` so they can pick a workspace and
+ * use the per-client Activity tab. The route is intentionally not in
+ * the staff sidebar (removed in PR #140).
+ */
 export default async function ActivityPage({ searchParams }: Props) {
-  const staff = await requireStaffUser();
+  const staff = await requireOpensDoorsStaff();
+  if (staff.role !== "ADMIN") {
+    redirect("/clients");
+  }
   const accessible = await getAccessibleClientIds(staff);
   const sp = (await searchParams) ?? {};
   const rawFilter = sp.client;
@@ -43,9 +60,24 @@ export default async function ActivityPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
+      <p className="rounded-lg border border-amber-400/40 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <span className="font-medium">Admin-only legacy view.</span>{" "}
+        The day-to-day Activity surface lives inside each client workspace —
+        open a client from{" "}
+        <Link
+          href="/clients"
+          className="font-medium underline-offset-2 hover:underline"
+        >
+          Clients
+        </Link>{" "}
+        and use the Activity tab there. Per-client Activity groups replies
+        by mailbox, links into reply detail, and hides unrelated mailbox
+        inbox mail. This page is kept as a cross-client debug view and is
+        not in the staff sidebar.
+      </p>
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Activity</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Activity (admin legacy view)</h1>
           <p className="mt-1 text-muted-foreground">
             Cross-client sends and inbound replies — filter by workspace when needed.
           </p>

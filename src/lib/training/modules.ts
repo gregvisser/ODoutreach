@@ -1253,3 +1253,256 @@ export const DAILY_OUTREACH_WORKFLOW_STEPS: readonly string[] = [
   "Send or schedule",
   "Check Activity replies",
 ];
+
+/**
+ * Recording scripts for the staff handover videos (PR #140 — G8).
+ *
+ * No video assets exist in the repo yet (only screenshots — `/public/training/*.png`).
+ * Rather than fake an embedded player, we publish the scripts so an
+ * admin can record each clip later, and so a new operator can read
+ * the same narration even before the recording exists.
+ *
+ * Every entry is explicitly labelled "to record" and surfaces the
+ * exact portal route to capture, the script in plain English, and a
+ * checklist the recorder follows so every clip stays consistent.
+ *
+ * IMPORTANT: do not change `status` to "recorded" until the matching
+ * file is actually committed (`public/training/<id>.mp4` or similar)
+ * AND the rendering code is updated to embed it. The
+ * `modules-staff-readiness.test.ts` lock-down test asserts no "watch
+ * the video" copy is rendered today.
+ */
+export type StaffVideoScript = {
+  /** Stable id used as a key and as the expected filename slug. */
+  id: string;
+  /** Short human title. */
+  title: string;
+  /** Plain-English subtitle describing what the clip covers. */
+  subtitle: string;
+  /**
+   * Always "to record" today. When a video file is actually committed,
+   * change this constant AND wire the player in the training page in
+   * the same PR.
+   */
+  status: "to record";
+  /** Portal route the recorder should screen-share. */
+  portalHref: string;
+  /** Suggested duration so recordings stay short and re-watchable. */
+  durationGuidance: string;
+  /** Reference script the recorder reads or paraphrases. */
+  script: string[];
+  /** Filming checklist the recorder ticks before publishing the clip. */
+  checklist: string[];
+};
+
+export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
+  {
+    id: "reports-dashboard",
+    title: "Reports dashboard",
+    subtitle: "How staff read the live operational view.",
+    status: "to record",
+    portalHref: "/reporting",
+    durationGuidance: "2–3 minutes",
+    script: [
+      "Open Reports — this is your default landing page.",
+      "Walk through the KPI strip: Sent, Delivered, Replies, Bounces, Opt-outs.",
+      "Switch from All accessible clients to a single client using the filter pills.",
+      "Point out that all numbers are live from the database — there are no rollup tables.",
+      "Show the per-client breakdown table at the bottom and explain Reply rate and Not reached.",
+      "Close by saying: if Reports looks wrong, look at Activity for that client next, not at Admin operations.",
+    ],
+    checklist: [
+      "You are signed in as an OpensDoors staff member (not as an admin) for the first half.",
+      "Window is at 1440×900 so screenshots match those in `/public/training`.",
+      "No PII (contact names, emails) is in the recording — use the test client.",
+      "Voiceover does NOT claim Reports replaces Activity; it complements it.",
+    ],
+  },
+  {
+    id: "client-overview",
+    title: "Client overview",
+    subtitle: "Workflow strip, Getting started checklist, and where to go from here.",
+    status: "to record",
+    portalHref: "/clients",
+    durationGuidance: "2 minutes",
+    script: [
+      "Open Clients, then open the OpensDoors test client.",
+      "Show the 7-step workflow strip: Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity.",
+      "Explain that the status pill (ONBOARDING / ACTIVE) tells you whether the client is launchable.",
+      "Click one tab (Brief) and explain that each tab is a self-contained module.",
+      "Return to Overview and bookmark it as the control centre.",
+    ],
+    checklist: [
+      "Use a test client — no production data on screen.",
+      "Do not click Save / Approve / Launch on any tab.",
+      "Mention internal notes briefly but do not read them aloud.",
+    ],
+  },
+  {
+    id: "mailboxes",
+    title: "Mailboxes",
+    subtitle: "Connection state, daily caps, and signatures.",
+    status: "to record",
+    portalHref: "/clients",
+    durationGuidance: "3 minutes",
+    script: [
+      "Open the OpensDoors test client and click Mailboxes.",
+      'Read the "What happens when you connect a mailbox?" explainer card aloud.',
+      "Walk the table: each row is one connected mailbox, with provider, status pill, daily cap and signature.",
+      "Show the workspace pool total at the top — emphasise it is the sum of every connected mailbox.",
+      "Emphasise that Connect / Reconnect / Disconnect / Remove are admin-only and never happen during normal staff work.",
+      "Close with: a mailbox flagged Connection error silently contributes zero capacity — fix or remove it.",
+    ],
+    checklist: [
+      "Do NOT press Connect, Reconnect, Disconnect or Remove on camera.",
+      "Do NOT show real OAuth tokens or provider ids that look sensitive.",
+      "Use the test client's mailboxes only.",
+    ],
+  },
+  {
+    id: "sources-imports-rocketreach",
+    title: "Sources — imports and RocketReach",
+    subtitle: "CSV upload, list naming, RocketReach search — without spending credits.",
+    status: "to record",
+    portalHref: "/clients",
+    durationGuidance: "3 minutes",
+    script: [
+      "Open the OpensDoors test client and click Sources.",
+      "Show the 12 accepted CSV headings at the top of the page and the Valid vs Ready-to-email definitions.",
+      'Walk the CSV upload form: pick or type a list name like "Test — UK CFOs April 2026", upload a small sample CSV (10 rows max), then point at Preview.',
+      "Do NOT click Confirm — explain that Preview is read-only and Confirm is the write step.",
+      "Scroll to the RocketReach Simple Search section. Show the form but do NOT click Search (it consumes credits).",
+      "Close by saying every import lands on Universe and on the named client list.",
+    ],
+    checklist: [
+      "Test CSV uses obviously fake contacts (no real PII).",
+      "Do NOT click Confirm on the CSV preview.",
+      "Do NOT click Search in RocketReach during the recording.",
+    ],
+  },
+  {
+    id: "universe",
+    title: "Universe",
+    subtitle: "Cross-client contact directory.",
+    status: "to record",
+    portalHref: "/universe",
+    durationGuidance: "2 minutes",
+    script: [
+      "Open Universe from the sidebar.",
+      "Show the filters and the visible columns toggles.",
+      "Apply a simple filter (e.g. country) and demonstrate the URL preserves the cols= choice.",
+      "Select a handful of rows and demonstrate the Create list flow — but cancel without creating.",
+      "Close: Universe is the directory; client lists are how sequences target contacts.",
+    ],
+    checklist: [
+      "Use a test client only — no real contact emails visible on screen.",
+      "Do NOT create a new list with the Create list flow — cancel the action.",
+      "Voiceover does NOT promise that Universe edits propagate to client lists in real time — they don't.",
+    ],
+  },
+  {
+    id: "lists-and-delivery-proof",
+    title: "Lists and delivery proof",
+    subtitle: "List-detail page, status badges, send proof column.",
+    status: "to record",
+    portalHref: "/clients",
+    durationGuidance: "3 minutes",
+    script: [
+      "Open the OpensDoors test client and click Lists.",
+      "Read the KPI strip aloud: Total contacts, Email-sendable, Sent, Queued, Proof missing, Failed, Bounced, Replies, Unsubscribed, Suppressed.",
+      "Open one list (Open list button).",
+      "Walk the table: name, employer, job title, status badge, sequence, mailbox, sent time, opens, latest event.",
+      'Use the new search/filter/sort controls (PR #140): filter by "Sent from mailbox" and sort by Name A→Z.',
+      "Expand one row to show the send proof block. Explain what Send proof missing means.",
+    ],
+    checklist: [
+      "Use a test client — no real contact emails or company names on camera.",
+      "Do NOT click any Send / Requeue / Mark as bounced row action.",
+      "Show the search / filter / sort controls so staff know they exist.",
+    ],
+  },
+  {
+    id: "do-not-contact",
+    title: "Do-not-contact",
+    subtitle: "Email + domain sheets, service-account sharing, sync status.",
+    status: "to record",
+    portalHref: "/suppression",
+    durationGuidance: "3 minutes",
+    script: [
+      'Open "People blocked from outreach" from the sidebar (this is the global Do-not-contact view).',
+      "Show the Integration status and the Google service-account email staff share their sheets with.",
+      "Walk the Connected sheets table — read the connection badge labels (no raw enums).",
+      'Demonstrate the new PR #140 search / kind filter / sort controls — but do NOT click Sync on camera.',
+      "Open the per-client Do-not-contact tab for the test client and explain the per-client emails/domains split.",
+      "Close: every send checks this list first; anyone on it is silently skipped.",
+    ],
+    checklist: [
+      "Do NOT click Sync on camera.",
+      "Do NOT show a real client's spreadsheet IDs without redacting if they are sensitive.",
+      "Use the test client's Do-not-contact tab where possible.",
+    ],
+  },
+  {
+    id: "outreach-sequence-launch",
+    title: "Outreach sequence launch",
+    subtitle: "Build a sequence, review recipients, schedule — without launching.",
+    status: "to record",
+    portalHref: "/clients",
+    durationGuidance: "4 minutes",
+    script: [
+      "Open the OpensDoors test client and click Outreach.",
+      "Expand New sequence. Pick a list, choose a connected test mailbox, attach an Introduction template, set intro time = +1 minute (do NOT use Now).",
+      "Save the sequence — emphasise that Save does not send.",
+      "Walk Launch readiness panel — connected mailboxes, eligible recipients, unsubscribe link, suppression evaluated.",
+      "Show the typed confirmation phrase requirement — but do NOT type it.",
+      "Close: production launches go through this path; the small-batch confirmation tool is optional and not the main flow.",
+    ],
+    checklist: [
+      "Use the test client and a test-only mailbox / list.",
+      "Do NOT type the confirmation phrase — leave the launch un-launched.",
+      "Do NOT click any Send / Queue / Process queue button.",
+    ],
+  },
+  {
+    id: "activity-replies-and-stop-followups",
+    title: "Activity replies and Stop follow-ups",
+    subtitle: "Open a reply, read the inbound body, stop follow-ups for that contact.",
+    status: "to record",
+    portalHref: "/clients",
+    durationGuidance: "3 minutes",
+    script: [
+      "Open the OpensDoors test client and click Activity.",
+      "Show the per-client KPI strip and the Replies-grouped-by-mailbox panel (PR #137).",
+      "Click a reply event to open the reply-detail page. Read the inbound body aloud (no PII).",
+      "Demonstrate Stop follow-ups for that contact — explain it cancels queued steps but never deletes history.",
+      "Return to the parent Activity page and show how the timeline collapses by default.",
+      'Mention global /activity is admin-only as of PR #140 — staff should always use per-client Activity.',
+    ],
+    checklist: [
+      "Use a test reply — no production PII in the inbound body.",
+      "Do NOT type a reply or click Send.",
+      "Do NOT click Sync replies on production data.",
+    ],
+  },
+  {
+    id: "settings",
+    title: "Settings",
+    subtitle: "Platform-level toggles, where to change what, what NOT to touch.",
+    status: "to record",
+    portalHref: "/settings",
+    durationGuidance: "2 minutes",
+    script: [
+      "Open Settings from the sidebar.",
+      'Read the "Where to change what" card aloud (PR #139).',
+      "Walk Team access, Sign-in and security, Sending and compliance, Integrations.",
+      "Emphasise per-client items (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity) live inside each client workspace, NOT here.",
+      "Mention staff should never rotate credentials during a campaign window.",
+      "Close: when in doubt, ask an admin — Settings affects every client at once.",
+    ],
+    checklist: [
+      "Sign in as an admin briefly to show the panel exists, then redact admin-only sub-pages.",
+      "Do NOT change any setting on camera.",
+      "Do NOT show secret values (Google service account JSON, tenant ids, signing keys).",
+    ],
+  },
+] as const;

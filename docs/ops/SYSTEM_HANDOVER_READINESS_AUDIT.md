@@ -1,8 +1,10 @@
 # ODoutreach — System handover readiness audit
 
 Audit date: 2026-05-14
-Auditor: programme PR #135 (handover audit + navigation cleanup)
+Auditor: programme PR #135 (handover audit + navigation cleanup); finalised
+in PR #140.
 Production main at audit start: `c7482e8365cf212c68cea4af1ef6c55b1ac7e154`
+Production main at PR #140 branch-cut: `efdb986183177c1ca10919432a5e45d890cb2558`
 
 This audit walks every staff/admin surface in ODoutreach and grades it for
 handover-readiness — i.e. *can a non-Greg staff member operate this without
@@ -509,3 +511,73 @@ PR #135 does **not**:
 | Settings dead-control audit                   | `/settings`                                             | #140  |
 | Handover smoke test + gaps doc                | `docs/ops/STAFF_HANDOVER_SMOKE_TEST.md`, `…_GAPS.md`    | #140 (drafted in #135) |
 | PR #117 resolution                            | Mailboxes copy                                          | dedicated rebase or fold-in |
+
+---
+
+## F. PR #140 — Final handover hardening (outcome)
+
+PR #140 is the final bounded handover-hardening PR in the programme.
+
+What landed:
+
+1. **G5 — Safe-delete on Outreach.** Sequences with send history are
+   archived, not deleted, and archived sequences are visible in an
+   explicit `<details>` disclosure with a "Restore to draft" button.
+   The button copy and confirmation message say so plainly. Tests:
+   `src/components/clients/email-sequences/client-email-sequences-panel-safe-delete.test.ts`.
+2. **G9 — `/operations/outbound` admin-gated.** The page redirects
+   non-admins to `/reporting`, and the three mutation server actions
+   re-check the role and throw `Forbidden` for non-admins. Tests:
+   `src/app/(app)/operations/outbound/admin-gate.test.ts`.
+3. **G10 — `/contacts` admin-only legacy surface.** Non-admin staff
+   are redirected to `/universe`. Title and banner are rewritten to
+   "Contacts (admin legacy tools)" so an admin who arrives knows the
+   surface. Tests: `src/app/(app)/contacts/contacts-page-copy.test.ts`.
+4. **G11 — Global `/activity` admin-only.** Removed from the main
+   sidebar. Non-admin staff are redirected to `/clients`. Per-client
+   Activity (`/clients/[id]/activity`) is untouched and remains the
+   trusted view. Tests: `src/app/(app)/activity/activity-demotion.test.ts`,
+   `src/components/app-shell/nav-config.pr139.test.ts`.
+5. **G7 — Search/sort/filter controls.** New client-side interactive
+   tables on the list-detail page and on both Do-not-contact pages.
+   No raw enum labels surface to staff. Tests:
+   `src/components/lists/list-detail-contact-table.test.ts`,
+   `src/components/suppression/suppression-inspectable-tables.test.ts`.
+6. **G2a — Reporting snapshot runtime cleanup.** Deleted the two
+   remaining unused query helpers
+   (`src/server/queries/reporting.ts`, `src/server/queries/dashboard.ts`),
+   added a `// DEPRECATED — unused at runtime as of PR #140` block
+   comment to the Prisma model. No schema change, no migration. Test:
+   `src/app/(app)/reporting/snapshot-cleanup.test.ts`.
+7. **G8 — Training scripts and recording checklist.** Ten recording
+   scripts in `STAFF_VIDEO_SCRIPTS` covering the ten audit-committed
+   workflows, surfaced in a "Video scripts and recording checklist"
+   card on `/training`. Every script is explicitly `"to record"`. No
+   fake `<video>` tag, no YouTube/Vimeo embed. A trip-wire test
+   forces scripts to come off "to record" status if a real video
+   file ever lands in `public/training`. Tests:
+   `src/lib/training/modules-video-scripts.test.ts`.
+
+PR #140 does **not**:
+
+- send, queue, or process any outbound email,
+- send replies, sync replies, or process inbound mail,
+- run RocketReach live searches, import production data, or reconnect
+  OAuth,
+- remove mailboxes or change mailbox credentials,
+- delete contacts, lists, sequences, suppression rows, or any
+  send/reply/outbound/inbound history,
+- modify the Prisma schema or run any migration
+  (`prisma db push`, `migrate reset`, `migrate dev`, `migrate deploy`),
+- touch the open PR #82,
+- touch the already-closed PR #117 (superseded by PR #139),
+- print secrets, recipient emails, or any PII in code or docs.
+
+PR-#140-outstanding items (intentional deferrals only):
+
+- **G2a schema cleanup** — drop `ReportingDailySnapshot` and ship a
+  migration in a separate PR.
+- **G8 recorded assets** — record the ten MP4/WebM clips per the
+  committed scripts in a separate PR; wire the player and flip
+  `STAFF_VIDEO_SCRIPTS[i].status` from `"to record"` to the recorded
+  state in the same PR.

@@ -21,10 +21,27 @@ const clientCardPath = join(
   process.cwd(),
   "src/components/clients/client-suppression-inline-card.tsx",
 );
+// PR #140 (G7): the staff-label rendering moved into the new inspectable-table
+// components. We assert the policy across the page + the components it uses.
+const sourcesTablePath = join(
+  process.cwd(),
+  "src/components/suppression/suppression-sources-inspectable-table.tsx",
+);
+const rowsTablePath = join(
+  process.cwd(),
+  "src/components/suppression/suppression-rows-inspectable-table.tsx",
+);
 
 const globalPageSource = readFileSync(globalPagePath, "utf8");
 const clientPageSource = readFileSync(clientPagePath, "utf8");
 const clientCardSource = readFileSync(clientCardPath, "utf8");
+const sourcesTableSource = readFileSync(sourcesTablePath, "utf8");
+const rowsTableSource = readFileSync(rowsTablePath, "utf8");
+const globalSurfaceSource = [
+  globalPageSource,
+  sourcesTableSource,
+  rowsTableSource,
+].join("\n");
 
 describe("Do-not-contact pages — staff-friendly copy", () => {
   it("uses 'People blocked from outreach' as the global page heading", () => {
@@ -45,8 +62,10 @@ describe("Do-not-contact pages — staff-friendly copy", () => {
   });
 
   it("renders kind + sync-status through the staff label helpers", () => {
-    expect(globalPageSource).toContain("suppressionKindLabel");
-    expect(globalPageSource).toContain("suppressionSyncStatusLabel");
+    // After PR #140 the helpers live in the inspectable-table components used
+    // by the global page; the policy is "raw enums never reach staff JSX".
+    expect(globalSurfaceSource).toContain("suppressionKindLabel");
+    expect(globalSurfaceSource).toContain("suppressionSyncStatusLabel");
     expect(clientCardSource).toContain("suppressionKindShortLabel");
     expect(clientCardSource).toContain("suppressionSyncStatusLabel");
   });
@@ -54,14 +73,16 @@ describe("Do-not-contact pages — staff-friendly copy", () => {
   it("does not dump raw Prisma enum values into the JSX of staff pages", () => {
     // Raw enum chips like `{s.syncStatus}` or `{s.kind}` shipped to staff are
     // the regression we're guarding against.
-    expect(globalPageSource).not.toContain("{s.syncStatus}");
-    expect(globalPageSource).not.toContain(">EMAIL<");
-    expect(globalPageSource).not.toContain(">DOMAIN<");
+    expect(globalSurfaceSource).not.toContain("{s.syncStatus}");
+    expect(globalSurfaceSource).not.toContain(">EMAIL<");
+    expect(globalSurfaceSource).not.toContain(">DOMAIN<");
     expect(clientCardSource).not.toContain("{s.kind} · {s.syncStatus}");
   });
 
   it("shows staff-friendly empty states (no random dev copy)", () => {
-    expect(globalPageSource).toContain(
+    // The empty state moved into the sources inspectable-table component in
+    // PR #140 — assert across the page surface.
+    expect(globalSurfaceSource).toContain(
       "No do-not-contact sheets connected yet",
     );
   });

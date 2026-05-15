@@ -1,8 +1,10 @@
 # ODoutreach — System handover gaps
 
-> **Status: DRAFT (last updated PR #139).** This document tracks what is *not*
-> yet handover-ready. It is updated progressively as the remaining handover
-> PRs close gaps.
+> **Status: DRAFT (last updated PR #140 — final handover hardening).** This
+> document tracks what is *not* yet handover-ready. It is updated
+> progressively as the remaining handover PRs close gaps. After PR #140 the
+> remaining gaps are intentional scope deferrals (real video recordings,
+> `ReportingDailySnapshot` schema cleanup) and do not block staff handover.
 
 Each gap has: scope, impact on staff, the safe interim story, and the
 target PR that closes it.
@@ -37,20 +39,35 @@ target PR that closes it.
 - **Residual:** Real open tracking would require provider-side pixel
   injection + ingestion. Out of programme scope.
 
-## G2a. Reporting daily snapshot rollup is unused
+## G2a. Reporting daily snapshot rollup is unused — **Runtime closed (PR #140), schema cleanup deferred**
 
-- **Scope:** `ReportingDailySnapshot` exists in the schema but is read-only
-  in `src/` — no code path creates, upserts, or updates it.
+- **Scope:** `ReportingDailySnapshot` exists in the schema but no code path
+  creates, upserts, or updates it.
 - **Impact on staff before PR #136:** The Reports page mixed snapshot reads
   with live reads, so the top "Emails sent (window)" / "Replies" / "Reply
   rate" cards always read 0 while the live cards below showed real numbers.
   Staff saw "0 sent" next to "Live SENT > 0" and lost trust in Reports.
 - **PR #136 outcome:** Reports no longer reads `ReportingDailySnapshot`.
-  All numbers are live. The table can be repurposed for a future
-  rolling-window view backed by an actual writer, or dropped.
-- **Residual:** Schema cleanup is intentionally deferred (no schema changes
-  in this PR). Either populate the rollup via a scheduled job in a later
-  PR, or drop the model.
+  All numbers are live.
+- **PR #140 outcome:**
+  - The last two unused query helpers that depended on
+    `ReportingDailySnapshot` (`src/server/queries/reporting.ts` and
+    `src/server/queries/dashboard.ts`) are deleted — they were not
+    imported from any `src/` path.
+  - The Prisma model is preserved (no schema changes in this PR) but
+    now carries a `// DEPRECATED — unused at runtime as of PR #140`
+    block comment explaining that all consumers were removed and that a
+    future migration may drop the table.
+  - New `src/app/(app)/reporting/snapshot-cleanup.test.ts` locks the
+    no-runtime-dependency state: it asserts the two helper files no
+    longer exist, the `/reporting` page does not reference snapshots,
+    and the deprecation comment is present in `prisma/schema.prisma`.
+- **Residual (intentional deferral):** Schema cleanup — i.e. removing the
+  `ReportingDailySnapshot` model and emitting the corresponding
+  migration — is intentionally deferred. The runtime is already detached;
+  the table is harmless to leave in place while the team decides whether
+  to repurpose it for a future scheduled rollup or drop it. This deferral
+  is approved and does not block staff handover.
 
 ## G3. Replying inside ODoutreach — **Partly addressed (PR #137)**
 
@@ -103,18 +120,37 @@ target PR that closes it.
   plan-and-drain — operator surprise. Tracked for PR #140 handover
   checklist if/when the team wants explicit resume UX.
 
-## G5. Hard-delete of sequences with send history
+## G5. Hard-delete of sequences with send history — **Addressed (PR #140)**
 
-- **Scope:** Outreach UI exposes hard-delete. Sequences with sends are
-  audit-relevant — deleting them removes proof and metrics history.
-- **Impact on staff:** Easy to accidentally destroy reporting integrity.
-- **Interim story:** Do not click delete on any sequence that has been
-  launched.
-- **Target PR:** Deferred from #139 to **PR #140** — the PR #139 audit
-  programme focuses on Mailboxes / Settings / Training copy + the PR #117
-  decision. Disabling hard-delete on sequences with send history is a
-  behaviour change and is scheduled separately so the change is reviewed
-  on its own merits.
+- **Scope:** Outreach UI exposes a delete action. Sequences with sends are
+  audit-relevant — hard-deleting them would remove proof and metrics
+  history.
+- **Server-side situation (pre-PR-140):** Server-side,
+  `deleteOrArchiveSequence` already routed sequences with send history
+  through archive (not delete). The gap was UI-only — the button still
+  said "Delete sequence" and archived sequences were silently hidden,
+  so staff had no way to discover the audit-preserving archive existed.
+- **PR #140 outcome:**
+  - The button copy in `client-email-sequences-panel.tsx` now says
+    "Delete or archive sequence" and the confirmation message
+    explicitly states: *"Sequences with send history are kept for
+    audit (archived); only draft sequences that have never sent can be
+    hard-deleted."*
+  - The panel filters archived sequences into a separate
+    `<details>` disclosure ("Archived sequences (N)") so staff can see
+    they exist and intentionally review them.
+  - Each archived row exposes a **Restore to draft** button wired to
+    the existing `returnClientEmailSequenceToDraftAction` server
+    action, so an accidental archive is reversible without touching
+    the database.
+  - The active sequence table no longer silently elides the
+    archived-count badge.
+  - Lock-down test:
+    `src/components/clients/email-sequences/client-email-sequences-panel-safe-delete.test.ts`.
+- **Residual:** None for staff handover. Underlying server actions
+  (`deleteOrArchiveClientEmailSequenceAction`,
+  `returnClientEmailSequenceToDraftAction`) remain unchanged — the safe
+  archive routing is older than this PR.
 
 ## G6. RocketReach UX & 12 contact fields — **Addressed (PR #138)**
 
@@ -139,11 +175,11 @@ target PR that closes it.
   brand block is the contract until/if an SVG is contributed.
 - **Target PR:** Closed by #138.
 
-## G7. Reusable table controls — **Partly addressed (PR #138)**
+## G7. Reusable table controls — **Addressed (PR #138 + PR #140)**
 
 - **Scope:** Universe, list detail, Sources, Do-not-contact tables lacked
   search / sort / column toggle / filter reset / visible-row count.
-- **PR #138 outcome:**
+- **PR #138 outcome (Universe):**
   - Universe gained a URL-backed column-visibility panel
     (`?cols=name,employer,emails`) that lets staff toggle which of the
     twelve contact-field columns are shown. Selection is shareable via
@@ -152,34 +188,99 @@ target PR that closes it.
     Country, City, A Emails).
   - Universe filter form already had search + per-field filters — kept
     and now preserves the `cols=` param across filter applies.
-- **Residual (deferred to PR #140 handover checklist):**
-  - List detail and Sources lists table do not yet have search / sort
-    controls.
-  - Do-not-contact tables (per-client + global) do not yet have search
-    / sort. Their staff-friendliness was instead improved via the
-    PR #138 copy / label cleanup.
-- **Target PR:** Universe done in #138; remaining surfaces tracked for
-  PR #140.
+- **PR #140 outcome (list detail + Do-not-contact):**
+  - **List detail** (`/clients/[id]/lists/[listId]`): new client-side
+    interactive table at
+    `src/components/lists/list-detail-contact-table.tsx`. Staff get
+    text search (name / employer / email / city / country / title),
+    a status filter using the 10 staff-friendly delivery labels
+    (Sent from mailbox, Queued, Send proof missing, Failed, Bounced,
+    Replied, Unsubscribed, Suppressed / skipped, Not sent, All), and
+    A→Z / Z→A sort by Name / Employer / Country / Status / Sent time.
+    Raw enum labels are never rendered — the panel reads the
+    pre-computed `sendStatus` `DeliveryStatusLabel` from the server
+    page. No data mutation; no PII printed in tests. Tests:
+    `src/components/lists/list-detail-contact-table.test.ts`.
+  - **Do-not-contact** (global `/suppression` and per-client
+    `/clients/[id]/suppression`): two new client components,
+    `src/components/suppression/suppression-sources-inspectable-table.tsx`
+    (Connected sheets — search + Email/Domain kind filter + sort by
+    client / kind / rows / last sync; **Sync** server action passed
+    in as a prop so it remains gated by the form, never invoked at
+    page load) and
+    `src/components/suppression/suppression-rows-inspectable-table.tsx`
+    (Individual addresses / Whole domains — search by value /
+    source / detail + A→Z / Z→A sort by value / source / added).
+    Empty states say `No matching rows yet.` rather than dev-style
+    "no rows".
+    Tests:
+    `src/components/suppression/suppression-inspectable-tables.test.ts`.
+- **Residual:** None for staff handover. Sources list table reuses the
+  existing per-list cards which already deep-link to the new
+  list-detail table.
 
-## G8. Training videos / voiceover
+## G8. Training videos / voiceover — **Scripts and recording checklist added (PR #140); recorded assets still external**
 
 - **Scope:** Training pages exist, but there are no real MP4/WebM
   walkthroughs or voiceover assets in the repo today.
-- **Decision:** **Do not fabricate video assets.** Until real recording
-  tooling is wired (Playwright + TTS), training pages use written scripts
-  + storyboards under `docs/training/`.
-- **Target PR:** #140 — script + storyboard files committed, and clearly
-  labelled "Training video script ready" placeholders in the UI.
+- **PR #140 outcome:**
+  - No fake video player is shipped. The lock-down test
+    `src/lib/training/modules-staff-readiness.test.ts` already
+    forbids "watch the video" / "embedded video" / YouTube / Vimeo
+    copy on training modules, and a new test
+    `src/lib/training/modules-video-scripts.test.ts` extends that
+    coverage to the new section.
+  - A new `STAFF_VIDEO_SCRIPTS` constant in `src/lib/training/modules.ts`
+    publishes ten recording scripts, one per workflow the audit
+    programme committed to:
+    Reports dashboard, Client overview, Mailboxes,
+    Sources/imports/RocketReach, Universe, Lists and delivery proof,
+    Do-not-contact, Outreach sequence launch, Activity replies and
+    Stop follow-ups, Settings.
+    Every entry is explicitly marked `"to record"` and ships with
+    a portal route to screen-share, a duration guidance, the script
+    itself, and a filming checklist (do not click Send / Launch /
+    Sync / Connect on camera; use the test client; no PII; etc.).
+  - The `/training` index page renders the ten scripts inside a
+    "Video scripts and recording checklist" card. Each entry is a
+    plain `<details>` disclosure containing the script and the
+    checklist — no `<video>` tag, no embedded player, no claim that
+    voiceover exists.
+  - A trip-wire test asserts that if any video file ever lands in
+    `public/training`, at least one script must drop its
+    `"to record"` status in the same PR. This prevents the scripts
+    and the assets from drifting.
+- **Residual (intentional deferral):** Real recorded MP4/WebM walkthroughs
+  + voiceover are external to this PR. They are produced by an admin
+  using the scripts above, then committed in a separate PR that also
+  wires the player and updates the script `status` field. Not a staff
+  handover blocker — the scripts are sufficient self-serve training.
 
-## G9. Admin operations is not yet role-gated
+## G9. Admin operations is now role-gated — **Addressed (PR #140)**
 
-- **Scope:** `/operations/outbound` is reachable by any staff user; PR #135
-  only removes it from the sidebar.
-- **Interim story:** No advertisement of the route in normal UX.
-- **Target PR:** A small follow-up adds an `isAdmin` gate around the page
-  once role policy is settled (likely folded into #137 or #140).
+- **Scope:** `/operations/outbound` was reachable by any staff user; PR #135
+  only removed it from the sidebar.
+- **PR #140 outcome:**
+  - `src/app/(app)/operations/outbound/page.tsx` now checks
+    `staff.role === "ADMIN"`; non-admin staff are redirected to
+    `/reporting` before the page renders. The page heading is
+    rewritten to make the admin-only nature explicit (`Admin-only
+    delivery and queue troubleshooting. Not in the staff sidebar.`).
+  - The three mutation server actions in
+    `src/app/(app)/operations/outbound/actions.ts`
+    (`releaseStaleProcessingAction`, `operatorRequeueFailedAction`,
+    `verifySenderIdentityReadyAction`) each re-check the admin role
+    and throw `"Forbidden"` for non-admins — defence in depth so a
+    crafted POST cannot bypass the page-level redirect.
+  - Lock-down test:
+    `src/app/(app)/operations/outbound/admin-gate.test.ts` asserts the
+    page-level guard, the per-action guards, the absence from the
+    main sidebar, and the staff-safe admin-only copy.
+- **Residual:** None for staff handover. The route remains fully
+  functional for admins and continues to be reachable from internal
+  links / tests.
 
-## G10. Global Contacts vs Universe duplication — **Addressed (PR #138)**
+## G10. Global Contacts vs Universe duplication — **Addressed (PR #138 + PR #140)**
 
 - **Scope:** Both `/contacts` and `/universe` were advertised in the sidebar.
   `/contacts` owns CSV import and a per-row send form; `/universe` is the
@@ -194,11 +295,22 @@ target PR that closes it.
   - Page heading renamed to "Contacts (cross-client tools)" so staff who
     do land here from a deep link know they&rsquo;re on a tooling
     surface, not the day-to-day directory.
-  - Decision is locked by `src/lib/clients/staff-handover-copy.test.ts`
-    and `src/app/(app)/contacts/contacts-page-copy.test.ts`.
-- **Target PR:** Closed by #138. A future PR may fully redirect
-  `/contacts` → `/universe` after a deprecation window for the per-row
-  send sheet.
+- **PR #140 outcome:**
+  - `/contacts` is now ADMIN-only. Non-admin staff who land on it
+    (via stale bookmarks or deep links) are redirected to `/universe`.
+  - Page heading is rewritten to **"Contacts (admin legacy tools)"** so
+    an admin who arrives knows the page is a tooling surface, not a
+    day-to-day directory. The banner explicitly states the route is
+    admin-only and points to Universe and per-client Sources.
+  - The cross-client per-row send form is therefore no longer reachable
+    by normal staff. Underlying send action is untouched; only the
+    surface it lives on is admin-gated.
+  - Lock-down tests:
+    `src/app/(app)/contacts/contacts-page-copy.test.ts` updated to
+    assert the admin-only redirect, banner, and title.
+- **Residual:** A future PR may fully redirect `/contacts` →
+  `/universe` for admins too once the per-row send sheet is confirmed
+  unused. Not a staff handover blocker — staff cannot reach the route.
 
 ## G10a. Client Contacts subnav duplicated Sources — **Addressed (PR #138)**
 
@@ -239,16 +351,34 @@ target PR that closes it.
 - **Residual:** Do-not-contact tables still lack search / sort
   controls — tracked under G7 as deferred to PR #140.
 
-## G11. Global Activity vs client Activity
+## G11. Global Activity vs client Activity — **Addressed (PR #140)**
 
-- **Scope:** Sidebar advertises a flat global Activity log; client Activity
-  is the rich surface (replies-by-mailbox, sequence send proof, and now
-  a linked reply detail page).
-- **Interim story (PR #135 / PR #137):** Both remain in the sidebar.
-  PR #137 made client Activity the operational surface for replies, so
-  the global Activity duplication is now lower priority.
-- **Target PR:** #140 handover checklist — demote global Activity
-  (admin-only or redirect to per-client Activity).
+- **Scope:** Sidebar advertised a flat global Activity log; client Activity
+  is the rich surface (replies-by-mailbox, sequence send proof, and
+  linked reply detail).
+- **PR #140 outcome:**
+  - `Activity` is removed from `mainNav` in
+    `src/components/app-shell/nav-config.ts`. Staff cannot reach the
+    global view from normal navigation.
+  - `src/app/(app)/activity/page.tsx` now requires ADMIN role; non-admin
+    staff are redirected to `/clients` to pick a workspace and use the
+    per-client Activity tab. An admin-only banner is added to the top
+    of the page so an admin lands on it knows it is a legacy debug
+    surface, not the operational view.
+  - The per-client Activity route (`/clients/[id]/activity`) is
+    untouched — it remains the trusted operational view with metrics,
+    replies-grouped-by-mailbox, reply detail links, the collapsed
+    sequence timeline, and the existing `mode: "outreach"` default
+    that hides unrelated inbox mail.
+  - Lock-down tests:
+    `src/app/(app)/activity/activity-demotion.test.ts` (sidebar absence,
+    non-admin redirect, admin-only labels, per-client route still
+    intact, outreach-only default preserved),
+    `src/components/app-shell/nav-config.pr139.test.ts` (sidebar shape
+    updated to the post-PR-140 list),
+    `src/lib/clients/staff-handover-copy.test.ts` (handover copy
+    updated).
+- **Residual:** None for staff handover.
 
 ## G13. Mailboxes copy + connect-mailbox explainer — **Addressed (PR #139)**
 
@@ -367,3 +497,44 @@ target PR that closes it.
 - **Target PR:** Closed by #135. The page file remains as a thin redirect
   to keep old URLs working; it can be removed once analytics confirm zero
   hits (out of programme scope).
+
+---
+
+## Programme status after PR #140
+
+PR #140 is the final bounded handover-hardening PR. After it merges:
+
+| Gap  | Status                                                                            |
+| :--- | :-------------------------------------------------------------------------------- |
+| G1   | Closed by PR #136 (delivery-tracked detection).                                   |
+| G2   | Closed by PR #136 (open tracking marked "Not tracked").                           |
+| G2a  | Runtime closed by PR #140; schema cleanup deferred (no migration in this PR).     |
+| G3   | Mostly closed by PR #137; inline reply composer remains optional polish.          |
+| G4   | Closed by PR #137 (stop follow-ups + classifier).                                 |
+| G5   | Closed by PR #140 (safe-delete UI + archived sequence panel).                     |
+| G6   | Closed by PR #138 (RocketReach UX + 12-field card).                               |
+| G7   | Closed by PR #138 (Universe) + PR #140 (list detail + Do-not-contact controls).   |
+| G8   | Scripts + recording checklist landed in PR #140; recorded MP4/WebM still external.|
+| G9   | Closed by PR #140 (admin role gate on `/operations/outbound` + actions).          |
+| G10  | Closed by PR #138 + PR #140 (`/contacts` admin-only legacy surface).              |
+| G10a | Closed by PR #138 (Lists subnav).                                                 |
+| G10b | Closed by PR #138 (Do-not-contact staff labels).                                  |
+| G11  | Closed by PR #140 (global `/activity` demoted to admin-only).                     |
+| G12  | Closed by PR #135 (`/dashboard` → `/reporting` redirect).                         |
+| G13  | Closed by PR #139 (Mailboxes copy + connect explainer).                           |
+| G14  | Closed by PR #139 (Settings "Where to change what" card).                         |
+| G15  | Closed by PR #139 (training modules + handover checklist).                        |
+| G16  | Closed by PR #139 + PR #140 (sidebar shape locked).                               |
+
+Outstanding items are intentional scope deferrals only:
+
+- **G2a schema cleanup** — remove the `ReportingDailySnapshot` model and
+  ship the corresponding migration in a future PR. Safe to defer because
+  no `src/` path reads or writes the table.
+- **G8 recorded video assets** — record the ten MP4/WebM clips per the
+  committed scripts in a follow-up PR, wire the player at the same time.
+  Safe to defer because the scripts themselves are sufficient training
+  for a non-technical operator.
+
+PR #82 is intentionally untouched. PR #117 is already closed as superseded
+by PR #139.

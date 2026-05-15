@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
 import {
@@ -30,7 +31,7 @@ import {
 import type { MailboxOutreachRowInput } from "@/lib/outreach-mailbox-transport";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { cn } from "@/lib/utils";
-import { requireStaffUser } from "@/server/auth/staff";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getOutboundOperationsSnapshot } from "@/server/queries/outbound-operations";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -39,8 +40,23 @@ export const dynamic = "force-dynamic";
 
 type Props = { searchParams?: Promise<{ client?: string }> };
 
+/**
+ * Admin-only delivery / queue diagnostic surface (PR #140 — G9).
+ *
+ * Non-admin staff are redirected to `/reporting` so they land on the
+ * trustworthy live operational dashboard. Admin support staff can still
+ * reach this page directly. The route is intentionally not advertised
+ * in `mainNav` (see `src/components/app-shell/nav-config.ts`).
+ *
+ * Action handlers in `actions.ts` independently re-check `role === "ADMIN"`
+ * so a non-admin reaching the form path can never trigger mutations even
+ * if they construct the POST by hand.
+ */
 export default async function OutboundOperationsPage({ searchParams }: Props) {
-  const staff = await requireStaffUser();
+  const staff = await requireOpensDoorsStaff();
+  if (staff.role !== "ADMIN") {
+    redirect("/reporting");
+  }
   const accessible = await getAccessibleClientIds(staff);
   const sp = (await searchParams) ?? {};
   const clientFilter =
@@ -73,8 +89,9 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Admin operations</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
-          Admin/support view for delivery troubleshooting. Normal staff should use
-          Overview, Contacts, Outreach, and Activity for day-to-day work.
+          Admin-only delivery and queue troubleshooting. Not in the staff
+          sidebar — normal staff use Reports, Clients, Universe, Do-not-contact,
+          Activity, and Training for day-to-day work.
         </p>
       </div>
 
