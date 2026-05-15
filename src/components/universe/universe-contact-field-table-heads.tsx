@@ -1,15 +1,30 @@
 "use client";
 
 import { TableHead } from "@/components/ui/table";
-import { STAFF_VISIBLE_CONTACT_IMPORT_HEADERS } from "@/lib/contact-import-contract";
+import {
+  UNIVERSE_CONTACT_FIELD_COLUMNS,
+  type UniverseContactFieldKey,
+} from "@/lib/universe/column-config";
 
-/** Contact-field columns — same twelve labels as the CSV / Sources contract. */
-export function UniverseContactFieldTableHeads() {
+/**
+ * Contact-field columns — same twelve labels as the CSV / Sources contract.
+ *
+ * PR #138: takes an optional `visibleKeys` set so the Universe page can hide
+ * individual contact columns via the `cols=` URL parameter. When omitted,
+ * all twelve headers render (legacy default — keeps existing callers and
+ * tests untouched).
+ */
+export function UniverseContactFieldTableHeads({
+  visibleKeys,
+}: {
+  visibleKeys?: ReadonlySet<UniverseContactFieldKey>;
+}) {
   return (
     <>
-      {STAFF_VISIBLE_CONTACT_IMPORT_HEADERS.map((label) => (
-        <TableHead key={label}>{label}</TableHead>
-      ))}
+      {UNIVERSE_CONTACT_FIELD_COLUMNS.map((col) => {
+        if (visibleKeys && !visibleKeys.has(col.key)) return null;
+        return <TableHead key={col.key}>{col.label}</TableHead>;
+      })}
     </>
   );
 }

@@ -20,6 +20,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
+import {
+  suppressionKindShortLabel,
+  suppressionSyncStatusLabel,
+} from "@/lib/suppression/staff-labels";
 
 type SourceRow = {
   id: string;
@@ -248,10 +252,13 @@ export function ClientSuppressionInlineCard({
         <div className="text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Connection status</p>
           <ul className="mt-1 list-inside list-disc space-y-1">
-            {sources.length === 0 ? <li>No suppression sources saved yet.</li> : null}
+            {sources.length === 0 ? (
+              <li>No do-not-contact sheets connected yet.</li>
+            ) : null}
             {sources.map((s) => (
               <li key={s.id}>
-                {s.kind} · {s.syncStatus}
+                {suppressionKindShortLabel(s.kind)} ·{" "}
+                {suppressionSyncStatusLabel(s.syncStatus)}
                 {s.lastSyncedAt ? ` · last sync ${s.lastSyncedAt}` : ""}
                 {s.lastError ? ` · ${s.lastError}` : ""}
               </li>

@@ -37,10 +37,11 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
       isActive: () => pathname === `${base}/sources`,
     },
     {
-      label: "Contacts",
+      label: "Lists",
       href: `${base}/contacts`,
       isActive: () =>
         pathname === `${base}/contacts` ||
+        pathname.startsWith(`${base}/lists/`) ||
         (pathname === "/contacts" && clientFromQuery === clientId),
     },
     {

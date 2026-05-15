@@ -109,9 +109,24 @@ export default async function ContactsPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
+      <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Heads up:</span>{" "}
+        The day-to-day contact directory lives on{" "}
+        <Link
+          href="/universe"
+          className="font-medium text-primary underline-offset-2 hover:underline"
+        >
+          Universe
+        </Link>
+        , and per-client imports live on each client&rsquo;s{" "}
+        <span className="font-medium text-foreground">Sources</span> tab. This
+        page is kept for cross-client CSV import and per-row send tooling and
+        is no longer in the sidebar.
+      </p>
+
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Contacts</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Contacts (cross-client tools)</h1>
           <p className="mt-1 text-muted-foreground">
             Cross-client contact directory — filter to a single workspace when needed.
           </p>

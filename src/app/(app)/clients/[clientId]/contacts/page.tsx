@@ -148,14 +148,22 @@ export default async function ClientContactsPage({ params }: Props) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Contacts
+            Lists
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight">Contact lists</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Lists &amp; readiness</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground">
-            Lists of contacts for{" "}
+            Contact lists for{" "}
             <span className="font-medium text-foreground">{client.name}</span>.
-            Each import is saved to a list, and every sequence sends to one
-            list you choose.
+            Each import creates a list, every sequence sends to one list, and
+            the readiness counts below tell you how many people can actually
+            be reached. To add people use{" "}
+            <Link
+              href={`${base}/sources`}
+              className="font-medium text-primary underline underline-offset-2"
+            >
+              Sources
+            </Link>
+            .
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -418,6 +426,14 @@ export default async function ClientContactsPage({ params }: Props) {
                   </div>
 
                   <div className="mt-auto flex flex-wrap gap-2 pt-2">
+                    <Link
+                      href={`${base}/lists/${list.id}`}
+                      className={cn(
+                        buttonVariants({ variant: "default", size: "sm" }),
+                      )}
+                    >
+                      Open list
+                    </Link>
                     <Link
                       href={`${base}/sources`}
                       className={cn(

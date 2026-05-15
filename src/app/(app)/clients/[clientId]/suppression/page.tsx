@@ -26,11 +26,14 @@ export default async function ClientSuppressionPage({ params }: Props) {
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Do-not-contact
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">{client.name}</h1>
-        <p className="mt-1 text-muted-foreground">
-          Email addresses and domains listed here are never contacted. Connect
-          Google Sheets, check the last sync, and keep this list current before
-          launching outreach.
+        <h1 className="text-3xl font-semibold tracking-tight">
+          People blocked from outreach — {client.name}
+        </h1>
+        <p className="mt-1 max-w-3xl text-muted-foreground">
+          Anyone on this list is silently skipped before any sequence email is
+          sent. Add individual addresses, or whole domains, by connecting a
+          Google Sheet below. Unsubscribes and hard bounces add themselves
+          automatically.
         </p>
       </div>
 
