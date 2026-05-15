@@ -30,11 +30,27 @@ describe("Universe page copy (operator)", () => {
   it("renders contact table heads from the shared twelve-label contract", () => {
     expect(clientSource).toContain("UniverseContactFieldTableHeads");
     expect(clientSource).not.toMatch(/<TableHead>Name<\/TableHead>/);
-    expect(universeHeadsSource).toContain("STAFF_VISIBLE_CONTACT_IMPORT_HEADERS");
+    expect(universeHeadsSource).toContain("UNIVERSE_CONTACT_FIELD_COLUMNS");
   });
 
   it("shows client display name in the workspace selector trigger", () => {
     expect(clientSource).toContain("formatClientWorkspaceSelectLabel");
     expect(clientSource).toContain("{formatClientWorkspaceSelectLabel(clients, clientId)}");
+  });
+
+  // PR #138 — visible-column controls and richer sort options.
+  it("renders the column-visibility controls panel", () => {
+    expect(clientSource).toContain("UniverseColumnControls");
+    expect(clientSource).toContain("visibleKeys={visibleKeys}");
+  });
+
+  it("offers sort by Name, Country, and City (PR #138)", () => {
+    expect(clientSource).toContain('<option value="name">');
+    expect(clientSource).toContain('<option value="country">');
+    expect(clientSource).toContain('<option value="city">');
+  });
+
+  it("preserves the cols param through filter applies", () => {
+    expect(clientSource).toContain('sp?.get("cols")');
   });
 });

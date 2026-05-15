@@ -1,6 +1,10 @@
 import { Suspense } from "react";
 
 import { UniversePageClient } from "@/components/universe/universe-page-client";
+import {
+  parseUniverseVisibleColumns,
+  serializeUniverseVisibleColumns,
+} from "@/lib/universe/column-config";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import {
@@ -33,6 +37,9 @@ export default async function UniversePage({ searchParams }: Props) {
   const sort = one(sp.sort) ?? "lastSeen";
   const page = Math.max(1, Number(one(sp.page) ?? "1") || 1);
   const pageSize = 25;
+
+  const visibleColumnKeys = parseUniverseVisibleColumns(one(sp.cols));
+  const visibleColumns = serializeUniverseVisibleColumns(visibleColumnKeys);
 
   const stRaw = sourceType || "ALL";
   const filterPayload: UniverseTableQuery = {
@@ -81,6 +88,7 @@ export default async function UniversePage({ searchParams }: Props) {
             sourceType,
             sort,
           }}
+          visibleColumns={visibleColumns}
         />
       </Suspense>
     </div>

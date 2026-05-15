@@ -4,7 +4,6 @@ import {
   Globe2,
   GraduationCap,
   ListFilter,
-  Mail,
   PieChart,
   Settings,
   Sparkles,
@@ -27,14 +26,20 @@ export type NavItem = {
  * (`/operations/outbound`) is also intentionally not listed here — it is a
  * delivery/queue diagnostic surface for admins only; the route is still
  * reachable from internal links and from action-redirect targets in the
- * outbound flow. Both decisions are tracked in
- * `docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md`.
+ * outbound flow.
+ *
+ * PR #138 (G10 in SYSTEM_HANDOVER_GAPS.md): the global Contacts route
+ * (`/contacts`) is removed from the sidebar because Universe is now the
+ * canonical cross-client contact warehouse and per-client Sources owns
+ * imports. The `/contacts` route itself is preserved (it still owns the
+ * cross-client CSV import + per-row send sheet) but is no longer advertised
+ * here — staff reach contact directory via Universe, and per-client imports
+ * via Sources. See `docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md`.
  */
 export const mainNav: NavItem[] = [
   { title: "Reports", href: "/reporting", icon: PieChart },
   { title: "Clients", href: "/clients", icon: Users },
   { title: "New client", href: "/clients/new", icon: Sparkles },
-  { title: "Contacts", href: "/contacts", icon: Mail },
   { title: "Universe", href: "/universe", icon: Globe2 },
   { title: "Do-not-contact", href: "/suppression", icon: ListFilter },
   { title: "Activity", href: "/activity", icon: Activity },

@@ -28,6 +28,8 @@ Each PR is independently small, gated, and includes a Safety section.
 
 ## A. Global sidebar (`mainNav` in `src/components/app-shell/nav-config.ts`)
 
+> **Status: DRAFT (last updated PR #138).**
+
 Current items, in order:
 
 1. Dashboard → `/dashboard`
@@ -130,6 +132,61 @@ Current items, in order:
   now deferred to the PR #140 handover checklist — lower priority because
   client Activity is the trustworthy operational surface.
 - **PR target:** PR #140 handover checklist.
+
+### A.6a Sources / Universe / Contacts / Do-not-contact — PR #138 outcome
+
+- **Decision:** Make Sources / Universe / Contacts / Do-not-contact
+  staff-ready and less duplicative without changing any send / import /
+  RocketReach behaviour.
+- **PR #138 — completed:**
+  - **Sources (client tab)** now leads with a "What we import for every
+    contact" card showing the twelve canonical fields (sourced from
+    `STAFF_VISIBLE_CONTACT_IMPORT_HEADERS`). CSV upload and RocketReach
+    write contacts using exactly the same headings.
+  - **RocketReach panel** got a professional branded card header
+    ("Search prospects on RocketReach") with a monogram-style brand
+    block. The in-app search section is now a visible `<section>`, not a
+    collapsed `<details>`. All live-search safety machinery
+    (confirmation phrase + credit warning + API-key check + list
+    target) is unchanged.
+  - **Universe (global sidebar)** gained a URL-backed visible-column
+    panel (`?cols=name,employer,emails`), so staff can hide individual
+    contact-field columns to fit their screen. Sort options extended
+    from 3 → 6 (Last seen, Name, Employer, Country, City, A Emails).
+  - **Global Contacts (`/contacts`)** removed from the sidebar. Route
+    preserved (still hosts CSV import + per-row send sheet) with a
+    "Heads up" banner pointing staff to Universe / Sources.
+  - **Client Contacts subnav** renamed to **Lists**. Page heading
+    becomes "Lists & readiness". Each list card now deep-links to
+    `/clients/[id]/lists/[listId]` via an **Open list** button.
+  - **Do-not-contact** copy rewritten end-to-end. Global page heading
+    becomes "People blocked from outreach"; new explainer card lists
+    the four sources of suppression. Raw enum chips (`EMAIL`, `DOMAIN`,
+    `NOT_CONFIGURED`, `IDLE`, `SYNCING`, `SUCCESS`, `ERROR`) replaced
+    with staff-friendly labels from a new
+    `src/lib/suppression/staff-labels.ts` helper.
+  - **No schema changes**. No new migrations. No production data
+    mutated. No live RocketReach search, sync, send, or import was
+    triggered during this PR.
+- **Tests (new or updated):**
+  - `src/lib/universe/column-config.test.ts`
+  - `src/components/universe/universe-contact-field-table-heads.test.ts`
+  - `src/app/(app)/universe/universe-page-copy.test.ts`
+  - `src/app/(app)/clients/[clientId]/sources/sources-page-copy.test.ts`
+  - `src/components/clients/rocketreach-import-panel-staff-ui.test.ts`
+  - `src/app/(app)/contacts/contacts-page-copy.test.ts`
+  - `src/app/(app)/clients/[clientId]/contacts/contacts-page-copy.test.ts`
+  - `src/components/clients/client-workspace-subnav.test.ts`
+  - `src/app/(app)/suppression/suppression-page-copy.test.ts`
+  - `src/lib/suppression/staff-labels.test.ts`
+  - `src/lib/clients/staff-handover-copy.test.ts` (PR #138 amendment)
+- **Residual / deferred to PR #140 handover checklist:**
+  - Search / sort controls on list-detail, Sources lists, and
+    Do-not-contact tables (G7).
+  - Fully redirecting `/contacts` → `/universe` (still hosts the
+    per-row send sheet today).
+  - A real RocketReach SVG logo asset.
+- **PR target:** PR #138.
 
 ### A.7a Client Activity & linked replies — PR #137 outcome
 

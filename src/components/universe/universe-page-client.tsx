@@ -23,8 +23,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { UniverseColumnControls } from "@/components/universe/universe-column-controls";
 import { UniverseContactFieldTableHeads } from "@/components/universe/universe-contact-field-table-heads";
 import { formatClientWorkspaceSelectLabel } from "@/lib/clients/client-workspace-select-label";
+import {
+  parseUniverseVisibleColumns,
+  type UniverseContactFieldKey,
+} from "@/lib/universe/column-config";
 import { cn } from "@/lib/utils";
 import type { UniverseTableRow } from "@/server/queries/contact-universe-list";
 
@@ -47,6 +52,12 @@ type Props = {
     sourceType: string;
     sort: string;
   };
+  /**
+   * Serialized visible-column selection (e.g. "name,employer,emails"). When
+   * the URL omits `cols`, server pre-fills this with the full twelve-key
+   * list so initial render is identical to the legacy default.
+   */
+  visibleColumns: string;
 };
 
 function rowDisplayName(r: UniverseTableRow): string {
@@ -63,6 +74,7 @@ export function UniversePageClient({
   pageSize,
   clients,
   filters,
+  visibleColumns,
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -71,6 +83,13 @@ export function UniversePageClient({
   const [listName, setListName] = useState("");
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  // The URL is the source of truth for column visibility (the toggle panel
+  // pushes a new URL on every change). Parse the server-serialized list back
+  // into a Set for fast per-row lookup.
+  const visibleKeys: Set<UniverseContactFieldKey> =
+    parseUniverseVisibleColumns(visibleColumns);
+  const showCol = (key: UniverseContactFieldKey) => visibleKeys.has(key);
 
   const allPageSelected =
     rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -114,6 +133,14 @@ export function UniversePageClient({
     for (const f of fields) {
       const v = String(fd.get(f) ?? "").trim();
       if (v) q.set(f, v);
+    }
+    // Preserve column-visibility selection across filter applies. Only set
+    // the param when the staff member has hidden at least one column —
+    // a blank `cols` is a meaningful "hide all" signal and is preserved
+    // explicitly via the existing URL param.
+    const existingCols = sp?.get("cols");
+    if (existingCols !== null) {
+      q.set("cols", existingCols);
     }
     q.set("page", "1");
     startTransition(() => {
@@ -199,9 +226,12 @@ export function UniversePageClient({
               disabled={pending}
               className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
             >
-              <option value="lastSeen">Last seen</option>
-              <option value="company">Employer</option>
-              <option value="email">A Emails</option>
+              <option value="lastSeen">Last seen (newest first)</option>
+              <option value="name">Name (A→Z)</option>
+              <option value="company">Employer (A→Z)</option>
+              <option value="country">Country (A→Z)</option>
+              <option value="city">City (A→Z)</option>
+              <option value="email">A Emails (A→Z)</option>
             </select>
           </div>
         </div>
@@ -217,6 +247,8 @@ export function UniversePageClient({
           </Link>
         </div>
       </form>
+
+      <UniverseColumnControls visibleKeys={visibleKeys} />
 
       <div className="rounded-lg border border-border/80 bg-card p-4 shadow-sm space-y-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -308,7 +340,7 @@ export function UniversePageClient({
                   aria-label="Select all on this page"
                 />
               </TableHead>
-              <UniverseContactFieldTableHeads />
+              <UniverseContactFieldTableHeads visibleKeys={visibleKeys} />
               <TableHead>Source</TableHead>
               <TableHead>Last seen</TableHead>
               <TableHead className="text-right">Refs</TableHead>
@@ -325,43 +357,67 @@ export function UniversePageClient({
                     aria-label={`Select ${rowDisplayName(r)}`}
                   />
                 </TableCell>
-                <TableCell className="max-w-[120px] truncate text-sm font-medium">
-                  {rowDisplayName(r)}
-                </TableCell>
-                <TableCell className="max-w-[120px] truncate text-xs">{r.companyName ?? "—"}</TableCell>
-                <TableCell className="max-w-[100px] truncate text-xs">{r.industry ?? "—"}</TableCell>
-                <TableCell className="max-w-[90px] truncate text-xs">{r.firstName ?? "—"}</TableCell>
-                <TableCell className="max-w-[90px] truncate text-xs">{r.lastName ?? "—"}</TableCell>
-                <TableCell className="max-w-[90px] truncate text-xs">{r.city ?? "—"}</TableCell>
-                <TableCell className="max-w-[90px] truncate text-xs">{r.country ?? "—"}</TableCell>
-                <TableCell className="max-w-[100px] truncate text-xs">
-                  {r.linkedinUrlNormalized ? (
-                    <a
-                      className="text-primary underline-offset-2 hover:underline"
-                      href={
-                        r.linkedinUrlNormalized.startsWith("http")
-                          ? r.linkedinUrlNormalized
-                          : `https://${r.linkedinUrlNormalized}`
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Profile
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell className="max-w-[120px] truncate text-xs">{r.jobTitle ?? "—"}</TableCell>
-                <TableCell className="max-w-[140px] truncate font-mono text-xs">
-                  {r.emailNormalized ?? "—"}
-                </TableCell>
-                <TableCell className="max-w-[100px] truncate text-xs">
-                  {r.mobilePhoneNormalized ?? "—"}
-                </TableCell>
-                <TableCell className="max-w-[100px] truncate text-xs">
-                  {r.officePhoneNormalized ?? "—"}
-                </TableCell>
+                {showCol("name") ? (
+                  <TableCell className="max-w-[120px] truncate text-sm font-medium">
+                    {rowDisplayName(r)}
+                  </TableCell>
+                ) : null}
+                {showCol("employer") ? (
+                  <TableCell className="max-w-[120px] truncate text-xs">{r.companyName ?? "—"}</TableCell>
+                ) : null}
+                {showCol("industry") ? (
+                  <TableCell className="max-w-[100px] truncate text-xs">{r.industry ?? "—"}</TableCell>
+                ) : null}
+                {showCol("firstName") ? (
+                  <TableCell className="max-w-[90px] truncate text-xs">{r.firstName ?? "—"}</TableCell>
+                ) : null}
+                {showCol("lastName") ? (
+                  <TableCell className="max-w-[90px] truncate text-xs">{r.lastName ?? "—"}</TableCell>
+                ) : null}
+                {showCol("city") ? (
+                  <TableCell className="max-w-[90px] truncate text-xs">{r.city ?? "—"}</TableCell>
+                ) : null}
+                {showCol("country") ? (
+                  <TableCell className="max-w-[90px] truncate text-xs">{r.country ?? "—"}</TableCell>
+                ) : null}
+                {showCol("linkedin") ? (
+                  <TableCell className="max-w-[100px] truncate text-xs">
+                    {r.linkedinUrlNormalized ? (
+                      <a
+                        className="text-primary underline-offset-2 hover:underline"
+                        href={
+                          r.linkedinUrlNormalized.startsWith("http")
+                            ? r.linkedinUrlNormalized
+                            : `https://${r.linkedinUrlNormalized}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Profile
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                ) : null}
+                {showCol("job1Title") ? (
+                  <TableCell className="max-w-[120px] truncate text-xs">{r.jobTitle ?? "—"}</TableCell>
+                ) : null}
+                {showCol("emails") ? (
+                  <TableCell className="max-w-[140px] truncate font-mono text-xs">
+                    {r.emailNormalized ?? "—"}
+                  </TableCell>
+                ) : null}
+                {showCol("mobile") ? (
+                  <TableCell className="max-w-[100px] truncate text-xs">
+                    {r.mobilePhoneNormalized ?? "—"}
+                  </TableCell>
+                ) : null}
+                {showCol("office") ? (
+                  <TableCell className="max-w-[100px] truncate text-xs">
+                    {r.officePhoneNormalized ?? "—"}
+                  </TableCell>
+                ) : null}
                 <TableCell className="max-w-[120px] truncate text-xs">
                   {r.sourceSummary ?? r.firstSeenSourceType}
                 </TableCell>

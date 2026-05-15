@@ -71,8 +71,26 @@ export function RocketReachImportPanel({
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>RocketReach</CardTitle>
-        <CardDescription>This card never sends email from OpensDoors.</CardDescription>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              aria-hidden
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border/80 bg-gradient-to-br from-sky-500/20 via-violet-500/20 to-rose-500/20 text-base font-bold tracking-tight text-foreground"
+            >
+              RR
+            </div>
+            <div>
+              <CardTitle>
+                Search prospects on{" "}
+                <span className="font-semibold">RocketReach</span>
+              </CardTitle>
+              <CardDescription>
+                Search prospects, review results, then create a client list.
+                This card never sends email from OpensDoors.
+              </CardDescription>
+            </div>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {!apiKeyConfigured ? (
@@ -137,19 +155,27 @@ export function RocketReachImportPanel({
           </p>
         ) : null}
 
-        <details className="mt-6 rounded-md border border-border/80 bg-muted/30 p-3 text-sm">
-          <summary className="cursor-pointer font-medium text-foreground">
-            Search from this app (optional)
-          </summary>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Prefer building your list in RocketReach, then using CSV import above. This shortcut runs a small
-            RocketReach search from OpensDoors when you need it.
-          </p>
+        <section
+          aria-label="RocketReach prospect search"
+          className="mt-6 rounded-md border border-border/80 bg-card p-4 text-sm shadow-sm"
+        >
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-semibold text-foreground">
+              Search prospects on RocketReach
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Run a small RocketReach People Search and write matches to a
+              client list. Results land in this client&rsquo;s workspace and
+              in the global Universe.
+            </p>
+          </div>
 
-          <div className="mt-4 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
+          <div className="mt-3 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
             <p className="font-medium">RocketReach may use credits</p>
             <p className="mt-1 text-xs text-muted-foreground dark:text-amber-100/90">
-              Charges depend on your RocketReach plan.
+              Charges depend on your RocketReach plan. Searches only run after
+              you submit this form — opening the page does not consume
+              credits.
             </p>
             <p className="mt-2 text-xs">
               Type <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
@@ -250,7 +276,7 @@ export function RocketReachImportPanel({
               {pending ? "Working…" : "Search and import"}
             </Button>
           </div>
-        </details>
+        </section>
 
         {allowAdvancedRocketReachJson ? (
           <details className="mt-4 rounded-md border border-border/80 bg-muted/30 p-3 text-sm">

@@ -11,8 +11,18 @@ describe("RocketReachImportPanel — staff vs admin UI", () => {
     expect(src).toContain("Advanced JSON (debug only)");
   });
 
-  it("keeps credit warning inside optional in-app search details", () => {
-    expect(src).toMatch(/Search from this app \(optional\)[\s\S]*RocketReach may use credits/);
+  // PR #138 — the in-app search is no longer hidden inside a collapsed
+  // <details>. It now renders as a visible section ("Search prospects on
+  // RocketReach") and the credit warning lives inside that section, above
+  // the form fields. The confirmation phrase + credit copy must still
+  // surround the search controls so live searches can't run without them.
+  it("renders the credit warning above the visible in-app search section", () => {
+    expect(src).toMatch(
+      /aria-label="RocketReach prospect search"[\s\S]*RocketReach may use credits/,
+    );
+    expect(src).toMatch(
+      /RocketReach may use credits[\s\S]*ROCKETREACH_IMPORT_CONFIRMATION_PHRASE/,
+    );
   });
 
   it("does not render advanced JSON for staff by default", () => {

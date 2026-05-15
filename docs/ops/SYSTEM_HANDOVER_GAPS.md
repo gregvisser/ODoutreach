@@ -1,6 +1,6 @@
 # ODoutreach — System handover gaps
 
-> **Status: DRAFT (last updated PR #137).** This document tracks what is *not*
+> **Status: DRAFT (last updated PR #138).** This document tracks what is *not*
 > yet handover-ready. It is updated progressively as the remaining handover
 > PRs close gaps.
 
@@ -115,22 +115,50 @@ target PR that closes it.
   > "This sequence has send history and is kept for audit. You can keep
   > it archived."
 
-## G6. RocketReach UX & 12 contact fields
+## G6. RocketReach UX & 12 contact fields — **Addressed (PR #138)**
 
-- **Scope:** Sources collapses RocketReach behind a confusing block; the
+- **Scope:** Sources collapsed RocketReach behind a confusing block; the
   12 fields (Name, Employer, Industry, First/Last, City, Country, LinkedIn,
-  Job1 Title, A Emails, Mobile/Office Number) are not consistently
+  Job1 Title, A Emails, Mobile/Office Number) were not consistently
   surfaced.
-- **Impact on staff:** Confusion about what to search and what comes back.
-- **Interim story:** Use CSV imports during the gap.
-- **Target PR:** #138.
+- **PR #138 outcome:**
+  - Sources page renders a dedicated "What we import for every contact"
+    card listing all twelve canonical fields (sourced from
+    `STAFF_VISIBLE_CONTACT_IMPORT_HEADERS`), so staff see the contract
+    once at the top of the page rather than buried inside two import
+    forms.
+  - RocketReach panel now leads with a professional branded header
+    ("Search prospects on RocketReach") plus a monogram-style brand
+    block. The in-app search section is a visible `<section>` (no longer
+    a collapsed `<details>`).
+  - All live-search safety machinery is preserved: confirmation phrase,
+    credit warning, API-key check, list-target requirement. Opening
+    Sources does not consume any RocketReach credits.
+- **Residual:** No real RocketReach logo asset in the repo. A clean text
+  brand block is the contract until/if an SVG is contributed.
+- **Target PR:** Closed by #138.
 
-## G7. Reusable table controls
+## G7. Reusable table controls — **Partly addressed (PR #138)**
 
-- **Scope:** Universe, list detail, Sources, Do-not-contact tables lack
-  search/sort/column toggle/filter reset/visible-row count.
-- **Impact on staff:** Tables are hard to operate at production scale.
-- **Target PR:** #138.
+- **Scope:** Universe, list detail, Sources, Do-not-contact tables lacked
+  search / sort / column toggle / filter reset / visible-row count.
+- **PR #138 outcome:**
+  - Universe gained a URL-backed column-visibility panel
+    (`?cols=name,employer,emails`) that lets staff toggle which of the
+    twelve contact-field columns are shown. Selection is shareable via
+    URL and survives reloads.
+  - Universe sort options extended from 3 → 6 (Last seen, Name, Employer,
+    Country, City, A Emails).
+  - Universe filter form already had search + per-field filters — kept
+    and now preserves the `cols=` param across filter applies.
+- **Residual (deferred to PR #140 handover checklist):**
+  - List detail and Sources lists table do not yet have search / sort
+    controls.
+  - Do-not-contact tables (per-client + global) do not yet have search
+    / sort. Their staff-friendliness was instead improved via the
+    PR #138 copy / label cleanup.
+- **Target PR:** Universe done in #138; remaining surfaces tracked for
+  PR #140.
 
 ## G8. Training videos / voiceover
 
@@ -150,15 +178,65 @@ target PR that closes it.
 - **Target PR:** A small follow-up adds an `isAdmin` gate around the page
   once role policy is settled (likely folded into #137 or #140).
 
-## G10. Global Contacts vs Universe duplication
+## G10. Global Contacts vs Universe duplication — **Addressed (PR #138)**
 
-- **Scope:** Both `/contacts` and `/universe` are advertised in the sidebar.
-  `/contacts` owns CSV import and the per-row send form; `/universe` is
-  the canonical warehouse.
-- **Interim story (PR #135):** Both remain in the sidebar. Audit
-  recommends moving CSV import to Universe and Sources, then redirecting
-  `/contacts` → `/universe`.
-- **Target PR:** #138.
+- **Scope:** Both `/contacts` and `/universe` were advertised in the sidebar.
+  `/contacts` owns CSV import and a per-row send form; `/universe` is the
+  canonical contact warehouse.
+- **PR #138 outcome:**
+  - "Contacts" is removed from the main sidebar (`nav-config.ts`).
+  - The `/contacts` route is preserved (still hosts the cross-client CSV
+    import + per-row send sheet) so existing bookmarks and internal
+    links keep working. The route now renders a "Heads up" banner at
+    the top pointing staff to Universe (directory) and per-client
+    Sources (imports).
+  - Page heading renamed to "Contacts (cross-client tools)" so staff who
+    do land here from a deep link know they&rsquo;re on a tooling
+    surface, not the day-to-day directory.
+  - Decision is locked by `src/lib/clients/staff-handover-copy.test.ts`
+    and `src/app/(app)/contacts/contacts-page-copy.test.ts`.
+- **Target PR:** Closed by #138. A future PR may fully redirect
+  `/contacts` → `/universe` after a deprecation window for the per-row
+  send sheet.
+
+## G10a. Client Contacts subnav duplicated Sources — **Addressed (PR #138)**
+
+- **Scope:** The client workspace subnav had a "Contacts" tab that
+  visually duplicated the Sources tab&rsquo;s "Lists for this client"
+  card. Staff regularly looked for imports there and missed Sources.
+- **PR #138 outcome:**
+  - Subnav label renamed from "Contacts" → **"Lists"**. The href is
+    unchanged so existing in-app links and tests keep working.
+  - Page heading renamed from "Contact lists" → **"Lists & readiness"**.
+    Intro copy now sends staff to Sources for imports.
+  - Each list card on the Lists page now has an **Open list** button
+    that deep-links to `/clients/[id]/lists/[listId]` (delivery status,
+    members). Previously cards only linked back to Sources/Outreach.
+  - Subnav considers `/clients/[id]/lists/[listId]` part of the "Lists"
+    tab so the list-detail page highlights correctly.
+- **Target PR:** Closed by #138.
+
+## G10b. Do-not-contact raw-enum chips — **Addressed (PR #138)**
+
+- **Scope:** Both the global `/suppression` page and the client
+  Do-not-contact card rendered raw Prisma enum values
+  (`EMAIL`, `DOMAIN`, `NOT_CONFIGURED`, `IDLE`, `SYNCING`, `SUCCESS`,
+  `ERROR`) directly to staff. The page heading read "Do-not-contact
+  monitor" — a developer phrase.
+- **PR #138 outcome:**
+  - New `src/lib/suppression/staff-labels.ts` translates enum values to
+    staff-friendly strings ("Email addresses", "Whole domains",
+    "Last sync succeeded", "Sync in progress", &hellip;).
+  - Global page heading: "People blocked from outreach".
+  - New explainer card on the global page lists the four sources of
+    suppression (manual lists, unsubscribes, bounces/provider blocks,
+    per-client safety rules).
+  - All raw chips replaced. Tests
+    (`src/app/(app)/suppression/suppression-page-copy.test.ts`,
+    `src/lib/suppression/staff-labels.test.ts`) lock the no-raw-enum
+    policy.
+- **Residual:** Do-not-contact tables still lack search / sort
+  controls — tracked under G7 as deferred to PR #140.
 
 ## G11. Global Activity vs client Activity
 

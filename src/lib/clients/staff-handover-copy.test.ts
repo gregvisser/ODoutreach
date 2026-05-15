@@ -27,6 +27,19 @@ describe("staff handover copy", () => {
     expect(hrefs).not.toContain("/operations/outbound");
   });
 
+  // PR #138 (G10 in SYSTEM_HANDOVER_GAPS.md): global Contacts duplicates
+  // Universe for the directory case and Sources for the import case. The
+  // sidebar entry is removed; the /contacts route itself is kept alive
+  // (it still hosts the cross-client CSV form + per-row send sheet) and
+  // shows a banner pointing back to Universe / Sources. Test locks both
+  // halves of that decision so regressions are obvious.
+  it("does not advertise global Contacts in the sidebar (PR #138)", () => {
+    const titles = mainNav.map((item) => item.title);
+    expect(titles).not.toContain("Contacts");
+    const hrefs = mainNav.map((item) => item.href);
+    expect(hrefs).not.toContain("/contacts");
+  });
+
   it("makes Reports the first staff destination", () => {
     expect(mainNav[0]?.href).toBe("/reporting");
     expect(mainNav[0]?.title).toBe("Reports");

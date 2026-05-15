@@ -11,6 +11,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  suppressionKindLabel,
+  suppressionKindShortLabel,
+  suppressionSyncStatusBadgeVariant,
+  suppressionSyncStatusLabel,
+} from "@/lib/suppression/staff-labels";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
 import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
@@ -69,10 +75,14 @@ export default async function SuppressionPage({ searchParams }: Props) {
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Do-not-contact monitor</h1>
-          <p className="mt-1 text-muted-foreground">
-            Email addresses and domains that must never receive outreach. Each source
-            applies only to its own client workspace.
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Do-not-contact
+          </p>
+          <h1 className="text-3xl font-semibold tracking-tight">People blocked from outreach</h1>
+          <p className="mt-1 max-w-3xl text-muted-foreground">
+            Email addresses and whole domains that must never receive outreach.
+            Each source applies only to its own client workspace, and every
+            send checks this list before queueing.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -117,6 +127,39 @@ export default async function SuppressionPage({ searchParams }: Props) {
         </p>
       ) : null}
 
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>How do-not-contact works</CardTitle>
+          <CardDescription>
+            Every send checks this list. Anyone on it is silently skipped.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="list-disc space-y-1 pl-6 text-sm text-muted-foreground">
+            <li>
+              <span className="text-foreground">Manual lists</span> — email
+              addresses and whole domains pulled from each client&rsquo;s
+              connected Google Sheet.
+            </li>
+            <li>
+              <span className="text-foreground">Unsubscribes</span> — anyone
+              who clicks the unsubscribe link in a sequence email is added
+              automatically.
+            </li>
+            <li>
+              <span className="text-foreground">Bounces and provider blocks</span>{" "}
+              — hard bounces and provider-rejected sends mark the address as
+              blocked.
+            </li>
+            <li>
+              <span className="text-foreground">Per-client safety rules</span>{" "}
+              — each client&rsquo;s own brief or list can also flag people
+              not to contact.
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+
       <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-4 py-3">
         <summary className="cursor-pointer text-sm font-semibold text-foreground">
           Advanced Google Sheets connection
@@ -154,9 +197,10 @@ export default async function SuppressionPage({ searchParams }: Props) {
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Do-not-contact sheet connections</CardTitle>
+          <CardTitle>Connected do-not-contact sheets</CardTitle>
           <CardDescription>
-            Email vs domain lists — trigger a pull from Google (read-only scope).
+            Each client&rsquo;s linked Google Sheets — read-only scope. Click
+            Sync to pull the latest rows.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -164,10 +208,10 @@ export default async function SuppressionPage({ searchParams }: Props) {
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
-                <TableHead>Kind</TableHead>
+                <TableHead>List type</TableHead>
                 <TableHead>Spreadsheet</TableHead>
                 <TableHead>Range</TableHead>
-                <TableHead>Sync</TableHead>
+                <TableHead>Connection</TableHead>
                 <TableHead className="text-right">Rows</TableHead>
                 <TableHead className="w-[100px]" />
               </TableRow>
@@ -178,7 +222,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
                   <TableCell>{s.client.name}</TableCell>
                   <TableCell>
                     <Badge variant={s.kind === "EMAIL" ? "default" : "secondary"}>
-                      {s.kind}
+                      {suppressionKindLabel(s.kind)}
                     </Badge>
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate font-mono text-xs">
@@ -188,7 +232,9 @@ export default async function SuppressionPage({ searchParams }: Props) {
                     {s.sheetRange ?? "Sheet1!A1:Z50000"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{s.syncStatus}</Badge>
+                    <Badge variant={suppressionSyncStatusBadgeVariant(s.syncStatus)}>
+                      {suppressionSyncStatusLabel(s.syncStatus)}
+                    </Badge>
                     {s.lastError ? (
                       <p className="mt-1 max-w-[200px] truncate text-[10px] text-destructive">
                         {s.lastError}
@@ -214,7 +260,8 @@ export default async function SuppressionPage({ searchParams }: Props) {
           </Table>
           {sources.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No sources configured for accessible workspaces.
+              No do-not-contact sheets connected yet. Connect one from a
+              client&rsquo;s Do-not-contact tab.
             </p>
           ) : null}
         </CardContent>
@@ -223,8 +270,11 @@ export default async function SuppressionPage({ searchParams }: Props) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
-          <CardTitle>Do-not-contact emails</CardTitle>
-            <CardDescription>Last sync replaces rows for that sheet source</CardDescription>
+            <CardTitle>{suppressionKindLabel("EMAIL")}</CardTitle>
+            <CardDescription>
+              Individual addresses blocked from outreach. The latest sync
+              replaces the rows for that sheet.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -243,12 +293,20 @@ export default async function SuppressionPage({ searchParams }: Props) {
                 ))}
               </TableBody>
             </Table>
+            {emails.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No {suppressionKindShortLabel("EMAIL").toLowerCase()} blocked yet.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
-          <CardTitle>Do-not-contact domains</CardTitle>
-            <CardDescription>Normalized domains from the domain sheet</CardDescription>
+            <CardTitle>{suppressionKindLabel("DOMAIN")}</CardTitle>
+            <CardDescription>
+              Whole domains blocked from outreach — anyone whose email ends in
+              one of these is silently skipped.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -267,6 +325,11 @@ export default async function SuppressionPage({ searchParams }: Props) {
                 ))}
               </TableBody>
             </Table>
+            {domains.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No {suppressionKindShortLabel("DOMAIN").toLowerCase()} blocked yet.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       </div>

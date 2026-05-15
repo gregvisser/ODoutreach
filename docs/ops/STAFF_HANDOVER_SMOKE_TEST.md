@@ -1,6 +1,6 @@
 # ODoutreach — Staff handover smoke test
 
-> **Status: DRAFT (last updated PR #137).** This document is filled out
+> **Status: DRAFT (last updated PR #138).** This document is filled out
 > progressively by the audit programme as each surface is cleaned. Until
 > then, follow only the steps marked **READY** and ask Greg before running
 > anything marked **GATED**.
@@ -65,23 +65,44 @@ removed in #135.)
 Connected / Can send / Can read replies / Daily limit / Last sync / Action
 needed columns.)
 
-## 4. Add / import / search contacts (GATED)
+## 4. Add / import / search contacts (READY for view, GATED for live writes)
 
-This step is **GATED** until PR #138 ships and Sources gets a proper test
-mode. Until then:
+After PR #138:
 
-- CSV import: use the **Imports** screen with a test CSV (under 5 rows) in a
-  non-production workspace only.
-- RocketReach: do not run live searches without Greg's approval.
-- Universe: viewing and searching is always safe.
+- **Sources tab (per client)** — leads with a "What we import for every
+  contact" card showing the twelve canonical fields (Name, Employer,
+  Industry, First/Last Name, City, Country, Linkedin, Job1 Title,
+  A Emails, Mobile Number, Office Number). CSV upload and RocketReach
+  search both write to the same twelve fields.
+- **RocketReach (in client Sources)** — visible "Search prospects on
+  RocketReach" section. Opening the page does NOT consume credits. A
+  live search still requires (a) a list target, (b) the confirmation
+  phrase typed in, and (c) the API key configured. Do not type the
+  confirmation phrase during the smoke test.
+- **Universe (global sidebar)** — viewing and searching is always safe.
+  Use the **Columns shown** panel to hide contact-field columns to fit
+  your screen (selection is saved in the URL). Sort by Last seen, Name,
+  Employer, Country, City, or A Emails.
+- **CSV import** — for live imports use a non-production workspace and a
+  small test CSV (under 5 rows). The CSV form has a preview step
+  before saving.
 
 ## 5. Create a list (READY for view only)
 
-1. Open **Sources** (or **Universe** after #138).
+1. Open **Sources** (or **Universe**).
 2. Filter contacts as needed.
 3. Click **Create list** — this only creates the list; it does not send anything.
 
 **Do not** click **Attach list to sequence** unless step 6 is also approved.
+
+## 5a. Inspect a list (READY — PR #138)
+
+1. In a client workspace, open **Lists** (subnav).
+2. The page shows list KPIs (Total lists, Unique contacts, Ready to email,
+   Suppressed, Missing email, Missing identifier).
+3. Click **Open list** on any card to land on
+   `/clients/[id]/lists/[listId]` — the list-detail page already shows
+   delivery status and members.
 
 ## 6. Create a sequence (GATED)
 
@@ -194,11 +215,21 @@ Notes after PR #136:
 - The per-client breakdown totals should add up to the headline totals
   for the All-accessible-clients view.
 
-## 13. Check do-not-contact (READY)
+## 13. Check do-not-contact (READY — PR #138)
 
-1. Open **Do-not-contact** (global or client tab).
-2. Confirm any opt-outs/unsubscribes since last sync appear.
-3. **Do not** click any unsuppress action.
+1. Open **Do-not-contact** (global sidebar or client tab).
+2. The global page is titled **"People blocked from outreach"** and shows
+   a "How do-not-contact works" explainer card listing the four sources
+   of suppression (manual lists, unsubscribes, bounces/provider blocks,
+   per-client safety rules).
+3. The Connected sheets table shows staff-friendly labels — "Email
+   addresses" / "Whole domains" for list type, and connection-status
+   labels like "Last sync succeeded" / "Sync in progress" / "Not
+   connected" (no raw enums).
+4. Confirm any opt-outs / unsubscribes since last sync appear.
+5. **Do not** click any unsuppress action. **Do not** click **Sync**
+   during this smoke unless explicitly approved — it triggers a live
+   Google Sheets read.
 
 ## 14. Archive / remove sequence (GATED until PR #139)
 

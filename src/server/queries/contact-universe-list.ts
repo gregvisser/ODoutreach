@@ -12,7 +12,7 @@ export type UniverseTableQuery = {
   country?: string;
   city?: string;
   sourceType?: UniverseSourceType | "" | "ALL";
-  sort?: "lastSeen" | "company" | "email";
+  sort?: "lastSeen" | "name" | "company" | "country" | "city" | "email";
   page?: number;
   pageSize?: number;
 };
@@ -103,11 +103,17 @@ export async function listContactUniversesForTable(
 
   const sortKey = input.sort ?? "lastSeen";
   const orderBy: Prisma.ContactUniverseOrderByWithRelationInput =
-    sortKey === "company"
-      ? { companyName: "asc" }
-      : sortKey === "email"
-        ? { emailNormalized: "asc" }
-        : { lastSeenAt: "desc" };
+    sortKey === "name"
+      ? { fullName: "asc" }
+      : sortKey === "company"
+        ? { companyName: "asc" }
+        : sortKey === "country"
+          ? { country: "asc" }
+          : sortKey === "city"
+            ? { city: "asc" }
+            : sortKey === "email"
+              ? { emailNormalized: "asc" }
+              : { lastSeenAt: "desc" };
 
   const [total, raw] = await Promise.all([
     prisma.contactUniverse.count({ where }),
