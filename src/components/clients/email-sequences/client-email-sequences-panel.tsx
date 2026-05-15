@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   createClientEmailSequenceEnrollmentsAction,
   deleteOrArchiveClientEmailSequenceAction,
+  returnClientEmailSequenceToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -153,7 +154,8 @@ export function ClientEmailSequencesPanel(props: Props) {
     overview;
 
   const activeSequences = sequences.filter((s) => s.status !== "ARCHIVED");
-  const archivedCount = sequences.length - activeSequences.length;
+  const archivedSequences = sequences.filter((s) => s.status === "ARCHIVED");
+  const archivedCount = archivedSequences.length;
 
   const prepBySequenceId = new Map(
     sequencePrepSnapshots.map((p) => [p.sequenceId, p] as const),
@@ -247,7 +249,7 @@ export function ClientEmailSequencesPanel(props: Props) {
           {activeSequences.length === 0 ? (
             <p className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center text-xs text-muted-foreground">
               {archivedCount > 0
-                ? `No active sequences. ${String(archivedCount)} archived sequence${archivedCount === 1 ? "" : "s"} hidden.`
+                ? `No active sequences. ${String(archivedCount)} archived sequence${archivedCount === 1 ? "" : "s"} available below.`
                 : "No sequences yet. Expand \"New sequence\" above, then open your draft here to review recipients and launch."}
             </p>
           ) : (
@@ -350,11 +352,103 @@ export function ClientEmailSequencesPanel(props: Props) {
           )}
         </div>
 
-        {archivedCount > 0 && activeSequences.length > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {String(archivedCount)} archived sequence{archivedCount === 1 ? "" : "s"} hidden from
-            this table.
-          </p>
+        {archivedCount > 0 ? (
+          <details className="rounded-lg border border-border/70 bg-muted/10">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold outline-none [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-2">
+                Archived sequences
+                <Badge variant="outline" className="text-[10px]">
+                  {String(archivedCount)}
+                </Badge>
+              </span>
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                Kept for audit — sends are paused, contacts and lists are
+                untouched.
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-border/60 p-4">
+              <p className="text-xs text-muted-foreground">
+                Sequences with send history are archived instead of deleted so
+                the audit trail (sends, replies, suppressions) stays intact.
+                Restoring a sequence puts it back into Draft so it can be
+                edited and re-approved — no send is triggered.
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-border/70">
+                <table className="w-full min-w-[520px] text-left text-sm">
+                  <thead className="border-b border-border/70 bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Sequence</th>
+                      <th className="px-3 py-2 font-medium">List</th>
+                      <th className="px-3 py-2 font-medium">Archived</th>
+                      <th className="px-3 py-2 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archivedSequences.map((seq) => (
+                      <tr
+                        key={seq.id}
+                        className="border-b border-border/60 hover:bg-muted/20"
+                      >
+                        <td className="max-w-[200px] px-3 py-2">
+                          <div className="truncate font-medium">{seq.name}</div>
+                          {seq.description ? (
+                            <div className="truncate text-[11px] text-muted-foreground">
+                              {seq.description}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          <Link
+                            href={`/clients/${clientId}/lists/${seq.contactList.id}`}
+                            className="line-clamp-2 underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
+                          >
+                            {seq.contactList.name}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          {formatDate(seq.archivedAtIso)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            <Link
+                              href={outreachSequenceHref(clientId, seq.id)}
+                              className={buttonVariants({
+                                size: "sm",
+                                variant: "ghost",
+                              })}
+                            >
+                              Review
+                            </Link>
+                            {canMutate ? (
+                              <form action={returnClientEmailSequenceToDraftAction}>
+                                <input
+                                  type="hidden"
+                                  name="clientId"
+                                  value={clientId}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="sequenceId"
+                                  value={seq.id}
+                                />
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  variant="outline"
+                                >
+                                  Restore to draft
+                                </Button>
+                              </form>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
         ) : null}
 
         {selected ? (
@@ -478,15 +572,20 @@ export function ClientEmailSequencesPanel(props: Props) {
             </div>
 
             {canMutate && selected.status !== "ARCHIVED" && (
-              <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
+              <div className="space-y-2 border-t border-border/60 pt-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Delete or archive — sequences with send history are kept for
+                  audit. Delete only removes draft sequences that have never
+                  sent. Contacts, lists, and mailboxes are never removed.
+                </p>
                 <ArchiveSequenceConfirmForm
                   action={deleteOrArchiveClientEmailSequenceAction}
                   clientId={clientId}
                   sequenceId={selected.id}
-                  confirmMessage="Delete this sequence? Contacts and lists will stay available."
+                  confirmMessage="Delete or archive this sequence? If it has send history it will be archived (kept for audit). Contacts and lists will stay available."
                 >
                   <Button type="submit" size="sm" variant="destructive">
-                    Delete sequence
+                    Delete or archive sequence
                   </Button>
                 </ArchiveSequenceConfirmForm>
               </div>

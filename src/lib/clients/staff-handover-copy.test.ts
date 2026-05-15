@@ -18,13 +18,18 @@ describe("staff handover copy", () => {
     expect(titles).toContain("Reports");
   });
 
-  it("does not advertise legacy Dashboard or Admin operations in the sidebar", () => {
+  it("does not advertise legacy Dashboard, Admin operations, or global Activity in the sidebar", () => {
     const titles = mainNav.map((item) => item.title);
     expect(titles).not.toContain("Dashboard");
     expect(titles).not.toContain("Admin operations");
+    // PR #140 (G11): global /activity is demoted to admin-only and the
+    // sidebar Activity entry is removed. Per-client Activity remains
+    // inside each client workspace.
+    expect(titles).not.toContain("Activity");
     const hrefs = mainNav.map((item) => item.href);
     expect(hrefs).not.toContain("/dashboard");
     expect(hrefs).not.toContain("/operations/outbound");
+    expect(hrefs).not.toContain("/activity");
   });
 
   // PR #138 (G10 in SYSTEM_HANDOVER_GAPS.md): global Contacts duplicates

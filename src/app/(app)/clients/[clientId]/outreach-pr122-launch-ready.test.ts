@@ -31,10 +31,12 @@ describe("Outreach PR #122 launch-ready flow", () => {
     expect(src).not.toContain("Back to editing");
   });
 
-  it("offers Delete sequence with a confirm wrapper and preserved contacts copy", () => {
+  it("offers Delete or archive sequence with a confirm wrapper and preserved contacts copy", () => {
     const panel = readFileSync(sequencesPanel, "utf8");
     const confirm = readFileSync(archiveConfirm, "utf8");
-    expect(panel).toContain("Delete sequence");
+    // PR #140 (G5): button copy explicitly says "Delete or archive" so staff
+    // know audit history is kept when a sequence has send history.
+    expect(panel).toContain("Delete or archive sequence");
     expect(panel).toContain("Contacts and lists will stay available");
     expect(panel).toContain("ArchiveSequenceConfirmForm");
     expect(confirm).toContain("confirm(");

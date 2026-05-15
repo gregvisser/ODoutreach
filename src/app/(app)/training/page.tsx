@@ -13,6 +13,7 @@ import {
   DAILY_OUTREACH_WORKFLOW,
   OPENSDOORS_TRAINING_EXAMPLE,
   STAFF_HANDOVER_CHECKLIST,
+  STAFF_VIDEO_SCRIPTS,
   TRAINING_FINAL_OUTCOMES,
   TRAINING_MODULES,
 } from "@/lib/training/modules";
@@ -237,6 +238,76 @@ export default async function TrainingIndexPage() {
                   ) : null}
                 </div>
                 <p className="mt-1 text-muted-foreground">{row.detail}</p>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
+
+      {/* Video scripts (PR #140 — G8: no fake videos; scripts only) */}
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Video scripts and recording checklist</CardTitle>
+          <CardDescription>
+            Ten short clips an admin can record for new staff. No video files
+            are committed yet — every clip is marked{" "}
+            <span className="font-medium text-foreground">to record</span>{" "}
+            and the script + filming checklist live below so the same words
+            and the same safety rails are used every time.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="space-y-3">
+            {STAFF_VIDEO_SCRIPTS.map((s, i) => (
+              <li
+                key={s.id}
+                className="rounded-md border border-border/70 bg-background/80 px-3 py-3"
+              >
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-semibold text-foreground">
+                    {String(i + 1)}. {s.title}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] uppercase">
+                    {s.status}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {s.durationGuidance}
+                  </Badge>
+                  <Link
+                    href={s.portalHref}
+                    className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    Open {s.portalHref} →
+                  </Link>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{s.subtitle}</p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-medium text-foreground">
+                    Script and checklist
+                  </summary>
+                  <div className="mt-2 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Script
+                      </p>
+                      <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+                        {s.script.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ol>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Filming checklist
+                      </p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                        {s.checklist.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </details>
               </li>
             ))}
           </ol>

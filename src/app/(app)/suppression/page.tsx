@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 import { runSuppressionSyncAction } from "@/app/(app)/suppression/actions";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -14,20 +13,12 @@ import {
 import {
   suppressionKindLabel,
   suppressionKindShortLabel,
-  suppressionSyncStatusBadgeVariant,
-  suppressionSyncStatusLabel,
 } from "@/lib/suppression/staff-labels";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
 import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { SuppressionSourcesInspectableTable } from "@/components/suppression/suppression-sources-inspectable-table";
+import { SuppressionRowsInspectableTable } from "@/components/suppression/suppression-rows-inspectable-table";
 import { requireStaffUser } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import {
@@ -204,66 +195,22 @@ export default async function SuppressionPage({ searchParams }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>List type</TableHead>
-                <TableHead>Spreadsheet</TableHead>
-                <TableHead>Range</TableHead>
-                <TableHead>Connection</TableHead>
-                <TableHead className="text-right">Rows</TableHead>
-                <TableHead className="w-[100px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sources.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.client.name}</TableCell>
-                  <TableCell>
-                    <Badge variant={s.kind === "EMAIL" ? "default" : "secondary"}>
-                      {suppressionKindLabel(s.kind)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate font-mono text-xs">
-                    {s.spreadsheetId ?? "—"}
-                  </TableCell>
-                  <TableCell className="max-w-[140px] truncate font-mono text-xs">
-                    {s.sheetRange ?? "Sheet1!A1:Z50000"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={suppressionSyncStatusBadgeVariant(s.syncStatus)}>
-                      {suppressionSyncStatusLabel(s.syncStatus)}
-                    </Badge>
-                    {s.lastError ? (
-                      <p className="mt-1 max-w-[200px] truncate text-[10px] text-destructive">
-                        {s.lastError}
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {s.kind === "EMAIL"
-                      ? s._count.suppressedEmails
-                      : s._count.suppressedDomains}
-                  </TableCell>
-                  <TableCell>
-                    <form action={runSuppressionSyncAction}>
-                      <input type="hidden" name="sourceId" value={s.id} />
-                      <Button type="submit" size="sm" variant="outline">
-                        Sync
-                      </Button>
-                    </form>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {sources.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No do-not-contact sheets connected yet. Connect one from a
-              client&rsquo;s Do-not-contact tab.
-            </p>
-          ) : null}
+          <SuppressionSourcesInspectableTable
+            sources={sources.map((s) => ({
+              id: s.id,
+              kind: s.kind,
+              spreadsheetId: s.spreadsheetId,
+              sheetRange: s.sheetRange,
+              syncStatus: s.syncStatus,
+              lastError: s.lastError,
+              client: { id: s.client.id, name: s.client.name },
+              _count: {
+                suppressedEmails: s._count.suppressedEmails,
+                suppressedDomains: s._count.suppressedDomains,
+              },
+            }))}
+            runSuppressionSyncAction={runSuppressionSyncAction}
+          />
         </CardContent>
       </Card>
 
@@ -277,27 +224,15 @@ export default async function SuppressionPage({ searchParams }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Client</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {emails.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-mono text-sm">{e.email}</TableCell>
-                    <TableCell>{e.client.name}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {emails.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No {suppressionKindShortLabel("EMAIL").toLowerCase()} blocked yet.
-              </p>
-            ) : null}
+            <SuppressionRowsInspectableTable
+              valueLabel="Email"
+              rowKindShort={suppressionKindShortLabel("EMAIL")}
+              rows={emails.map((e) => ({
+                id: e.id,
+                value: e.email,
+                clientName: e.client.name,
+              }))}
+            />
           </CardContent>
         </Card>
         <Card className="border-border/80 shadow-sm">
@@ -309,27 +244,15 @@ export default async function SuppressionPage({ searchParams }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Client</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {domains.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-mono text-sm">{d.domain}</TableCell>
-                    <TableCell>{d.client.name}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {domains.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No {suppressionKindShortLabel("DOMAIN").toLowerCase()} blocked yet.
-              </p>
-            ) : null}
+            <SuppressionRowsInspectableTable
+              valueLabel="Domain"
+              rowKindShort={suppressionKindShortLabel("DOMAIN")}
+              rows={domains.map((d) => ({
+                id: d.id,
+                value: d.domain,
+                clientName: d.client.name,
+              }))}
+            />
           </CardContent>
         </Card>
       </div>
