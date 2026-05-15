@@ -32,6 +32,30 @@ export default async function SettingsPage() {
         </p>
       </div>
 
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Where to change what</CardTitle>
+          <CardDescription>
+            Use this page for app-wide settings. Per-client configuration always
+            lives inside the client&rsquo;s own workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+            <li className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+              <span className="font-medium text-foreground">Here (Settings):</span>{" "}
+              Branding, who can sign in, sign-in provider, email-provider mode,
+              cross-app integrations.
+            </li>
+            <li className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+              <span className="font-medium text-foreground">Inside each client:</span>{" "}
+              Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates,
+              Outreach, Activity.
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+
       <section className="space-y-3">
         <SectionHeading
           title="Branding"

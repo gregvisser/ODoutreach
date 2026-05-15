@@ -1,6 +1,6 @@
 # ODoutreach — System handover gaps
 
-> **Status: DRAFT (last updated PR #138).** This document tracks what is *not*
+> **Status: DRAFT (last updated PR #139).** This document tracks what is *not*
 > yet handover-ready. It is updated progressively as the remaining handover
 > PRs close gaps.
 
@@ -110,10 +110,11 @@ target PR that closes it.
 - **Impact on staff:** Easy to accidentally destroy reporting integrity.
 - **Interim story:** Do not click delete on any sequence that has been
   launched.
-- **Target PR:** #139 — disable hard-delete for sequences with send
-  history. Archive is the only allowed action; show:
-  > "This sequence has send history and is kept for audit. You can keep
-  > it archived."
+- **Target PR:** Deferred from #139 to **PR #140** — the PR #139 audit
+  programme focuses on Mailboxes / Settings / Training copy + the PR #117
+  decision. Disabling hard-delete on sequences with send history is a
+  behaviour change and is scheduled separately so the change is reviewed
+  on its own merits.
 
 ## G6. RocketReach UX & 12 contact fields — **Addressed (PR #138)**
 
@@ -248,6 +249,116 @@ target PR that closes it.
   the global Activity duplication is now lower priority.
 - **Target PR:** #140 handover checklist — demote global Activity
   (admin-only or redirect to per-client Activity).
+
+## G13. Mailboxes copy + connect-mailbox explainer — **Addressed (PR #139)**
+
+- **Scope:** The Mailboxes page used long developer-style copy ("Tokens are
+  stored for this client workspace", "Clients do not need ODoutreach
+  sign-in", "shared sending pool", "authorised operator on this client",
+  "MFA in the browser"). The status sublabels and the "Add a mailbox"
+  description copied the same jargon into every row. Staff reading the
+  page in handover walkthroughs did not learn what pressing **Connect**
+  actually does.
+- **PR #139 outcome:**
+  - `MAILBOXES_PAGE_INTRO` shortened to plain English:
+    > "These are the inboxes ODoutreach can send from and monitor for
+    > replies on this client."
+  - New `MAILBOXES_PAGE_SUBTITLE` ("Connected sending mailboxes") used as
+    the page title, with the client name appended.
+  - New "What happens when you connect a mailbox?" explainer card
+    rendered on the Mailboxes page itself. Three bullets state plainly
+    that no email is sent on connect, that replies are read back from
+    connected mailboxes, and that pool capacity is the sum of every
+    connected mailbox's daily limit.
+  - PR #117 (`fix/mailboxes-remove-clutter-copy`) is **superseded** by
+    PR #139. The same five forbidden phrases plus three new ones are
+    locked in `src/app/(app)/clients/[clientId]/mailboxes/mailboxes-page-copy.test.ts`
+    (which extends the PR #117 test rather than duplicating it). PR #117
+    will be closed with a "superseded by PR #139" comment after #139
+    merges.
+  - Status sublabels in `mailboxes-operator-model.ts` and the panel hints
+    in `client-mailbox-identities-panel.tsx` were rewritten to match
+    ("Finish sign-in in the Microsoft or Google window, or press Connect
+    again", "Microsoft needs a fresh sign-in for this mailbox, …").
+- **Target PR:** Closed by #139.
+
+## G14. Settings page boundary clarity — **Addressed (PR #139)**
+
+- **Scope:** Settings already had real status pills (Branding, Team access,
+  Sign-in & security, Sending & compliance, Integrations) and admin-gated
+  Staff Access. Staff occasionally still hunted here for per-client
+  Mailboxes / Brief / Lists controls.
+- **PR #139 outcome:**
+  - Added a "Where to change what" card at the top of `/settings` that
+    explicitly contrasts the two surfaces:
+    *Here (Settings):* Branding, who can sign in, sign-in provider, email
+    provider mode, cross-app integrations.
+    *Inside each client:* Brief, Mailboxes, Sources, Lists, Do-not-contact,
+    Templates, Outreach, Activity.
+  - Lock-down test
+    (`src/app/(app)/settings/settings-page-copy.test.ts`) asserts the
+    section list is present, the admin gating is present, and the post-PR-138
+    subnav names ("Lists", "Do-not-contact") appear in the cross-reference.
+- **Target PR:** Closed by #139. Per-section status pills remain unchanged.
+
+## G15. Training was stale after PR #135 + PR #138 — **Addressed (PR #139)**
+
+- **Scope:** Training modules and the printable staff handover guide still
+  referred to "Suppression" as the subnav label, "Contacts" as a per-client
+  tab, "EMAIL · SUCCESS" raw enum copy on Do-not-contact, and a sidebar
+  screenshot caption listing "Dashboard, Operations, Contacts, Suppression".
+- **PR #139 outcome:**
+  - Module 5 ("Contacts tab") renamed to "Lists and email readiness".
+  - Module 6 ("Suppression — email and domain sheets") renamed to
+    "Do-not-contact — email and domain sheets". Raw enum copy
+    (`EMAIL · SUCCESS · last sync …`) replaced with the PR #138
+    staff-friendly labels (`Emails · Last sync succeeded · last sync …`).
+  - Module 9 (Settings) sidebar screenshot caption rewritten to match the
+    post-PR-138 sidebar (Reports, Clients, New client, Universe,
+    Do-not-contact, Activity, Training, Settings) and explicitly notes
+    that Dashboard and Admin Operations are intentionally not in the
+    sidebar.
+  - Mailboxes module no longer carries the "authorised operator" /
+    "shared sending pool" jargon — text rewritten to match the PR #139
+    Mailboxes UI copy.
+  - New `STAFF_HANDOVER_CHECKLIST` constant exports the 11-item handover
+    list (Understand Reports → Check mailbox status) the audit programme
+    committed to. Rendered as a numbered card on the `/training` index
+    page with portal deep-links where applicable.
+  - Daily outreach workflow gains a "Stop follow-ups after a reply" step
+    (PR #137).
+  - Printable staff handover guide (`/training/staff-handover`) updated
+    to the post-PR-138 subnav names and explicitly notes that Admin
+    Operations was removed from the sidebar in PR #135.
+  - Lock-down test
+    (`src/lib/training/modules-staff-readiness.test.ts`) prevents the
+    sidebar caption, the Lists/Do-not-contact module titles, and the
+    11-item checklist from regressing.
+- **Target PR:** Closed by #139. Module ID slugs (`contacts`,
+  `suppression`) are intentionally unchanged so existing `/training/<id>`
+  bookmarks keep resolving.
+
+## G16. Final navigation / link audit — **Addressed (PR #139)**
+
+- **Scope:** Confirm every sidebar route and every per-client tab still
+  loads after PR #135 + PR #138, with no dev copy and no raw enum chips
+  on staff-visible surfaces.
+- **PR #139 outcome:**
+  - New `src/components/app-shell/nav-config.pr139.test.ts` locks the
+    exact main-sidebar shape and order: `Reports, Clients, New client,
+    Universe, Do-not-contact, Activity, Training, Settings`. The same
+    test asserts the labels `Dashboard`, `Admin Operations`,
+    `Operations`, and `Contacts` are NOT in the main sidebar.
+  - The same test locks the per-client subnav labels: `Overview, Brief,
+    Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach,
+    Activity`.
+  - The post-PR-138 lock-down tests
+    (`src/components/clients/client-workspace-subnav.test.ts`,
+    `src/app/(app)/contacts/contacts-page-copy.test.ts`, …) continue to
+    pass, demonstrating no regression.
+- **Residual:** None for sidebar / subnav shape. Larger structural changes
+  (`/contacts` → `/universe` redirect, demoting `/activity`) remain on
+  the PR #140 deferred list.
 
 ## G12. Old `/dashboard` route
 

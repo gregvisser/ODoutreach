@@ -19,8 +19,8 @@ The full programme is sequenced as:
 | #136  | Reports & metrics correctness                                           |
 | #137  | Activity & replies cleanup, reply handling                              |
 | #138  | Sources/RocketReach UX + Universe & table filtering                     |
-| #139  | Outreach: archived sequences, safe delete behavior                      |
-| #140  | Training, settings, handover docs (smoke test + gaps)                   |
+| #139  | Mailboxes / Settings / Training polish, PR #117 superseded, nav audit  |
+| #140  | Outreach safe-delete, demote `/contacts` & `/activity`, handover residuals |
 
 Each PR is independently small, gated, and includes a Safety section.
 
@@ -28,7 +28,7 @@ Each PR is independently small, gated, and includes a Safety section.
 
 ## A. Global sidebar (`mainNav` in `src/components/app-shell/nav-config.ts`)
 
-> **Status: DRAFT (last updated PR #138).**
+> **Status: DRAFT (last updated PR #139).**
 
 Current items, in order:
 
@@ -188,6 +188,85 @@ Current items, in order:
   - A real RocketReach SVG logo asset.
 - **PR target:** PR #138.
 
+### A.6b Mailboxes / Settings / Training / nav audit — PR #139 outcome
+
+- **Decision:** Make Mailboxes / Settings / Training staff-ready, resolve
+  PR #117 cleanly, and lock in the post-PR-135 + post-PR-138 navigation
+  shape so we cannot accidentally regress in PR #140.
+- **PR #139 — completed:**
+  - **PR #117 superseded.** PR #117
+    (`fix/mailboxes-remove-clutter-copy`) was a small (5 files, +50/-22)
+    copy-only patch that removed five dev-jargon phrases from the
+    Mailboxes hero / intro / connect hints. PR #139 reimplements the same
+    phrase removals on top of `main` (so the diff is rebased and
+    conflict-free), adds three more forbidden phrases, and broadens the
+    test to cover the page, panel, model, and operator-model sources.
+    The PR #117 branch is no longer needed and will be closed with a
+    "superseded by PR #139" comment after PR #139 merges.
+  - **Mailboxes (client tab).** `MAILBOXES_PAGE_INTRO` shortened to plain
+    English. `MAILBOXES_PAGE_SUBTITLE = "Connected sending mailboxes"`
+    used as the page title with the client name appended. A new "What
+    happens when you connect a mailbox?" explainer card is rendered
+    directly on the page with three bullets — what Connect actually
+    does, that no email is sent on connect, and that pool capacity is
+    the sum of every connected mailbox's daily limit. Status sublabels
+    and panel hints rewritten ("Finish sign-in in the Microsoft or
+    Google window, or press Connect again", "Microsoft needs a fresh
+    sign-in for this mailbox, …").
+  - **Mailbox connect / add flow audit:** The Connect flow is wired
+    end-to-end for Microsoft and Google. The "Add a mailbox" sheet now
+    uses one-sentence staff-friendly copy ("Enter the sender address and
+    provider, save, then Connect. Someone who can sign in to that
+    Microsoft or Google mailbox completes the prompt — they don't need
+    an ODoutreach login."). No OAuth was reconnected, no mailbox was
+    added, removed, or modified during the audit.
+  - **Settings.** Already had real status pills for Branding, Team
+    access, Sign-in & security, Sending & compliance, and Integrations,
+    with proper admin gating. PR #139 adds a "Where to change what"
+    intro card that explicitly contrasts the two surfaces (Settings vs
+    per-client workspace). No section was removed or rewired; status
+    pills (Resend connected / Test mode / Google service account /
+    RocketReach) are unchanged.
+  - **Training.** Modules 5 ("Contacts tab") and 6 ("Suppression") were
+    renamed to "Lists" and "Do-not-contact" to match the PR #138 subnav.
+    Raw enum copy (`EMAIL · SUCCESS …`) replaced with the PR #138
+    staff-friendly labels. Module 9 (Settings) sidebar screenshot
+    caption rewritten to match the post-PR-138 sidebar. New
+    `STAFF_HANDOVER_CHECKLIST` constant lists the 11 audit-committed
+    items (Understand Reports → Check mailbox status) and is rendered
+    as a numbered card on `/training` with portal deep-links. Printable
+    `/training/staff-handover` updated to the post-PR-138 subnav names.
+    Module ID slugs were left unchanged (`contacts`, `suppression`) so
+    `/training/<id>` bookmarks keep resolving.
+  - **Nav / link audit.** Every sidebar entry and every per-client tab
+    loads to a real route. Sidebar order locked at `Reports, Clients,
+    New client, Universe, Do-not-contact, Activity, Training, Settings`.
+    Per-client subnav locked at `Overview, Brief, Mailboxes, Sources,
+    Lists, Do-not-contact, Templates, Outreach, Activity`. New test
+    `src/components/app-shell/nav-config.pr139.test.ts` prevents
+    regression of either shape.
+  - **No schema changes.** No new migrations. No production data
+    mutated. No live RocketReach search, no Sync replies, no Process
+    outbound queue, no sends.
+- **Tests (new or updated):**
+  - `src/lib/mailboxes/mailbox-workspace-model.test.ts` (updated; same
+    file PR #117 touched, now extended)
+  - `src/app/(app)/clients/[clientId]/mailboxes/mailboxes-page-copy.test.ts`
+    (NEW; reimplements PR #117's test on the broader contract)
+  - `src/lib/mailboxes/mailboxes-operator-model.test.ts` (updated; key
+    states now assert plain-English sublabels)
+  - `src/app/(app)/settings/settings-page-copy.test.ts` (NEW)
+  - `src/lib/training/modules-staff-readiness.test.ts` (NEW)
+  - `src/components/app-shell/nav-config.pr139.test.ts` (NEW)
+- **Residual / deferred to PR #140 handover checklist:**
+  - Outreach safe-delete (G5) — disable hard-delete on sequences with
+    send history (behaviour change, not a copy change; scheduled
+    separately).
+  - Demote / redirect global `/contacts` and `/activity` (G10, G11).
+  - Admin role gate on `/operations/outbound` (G9).
+  - `ReportingDailySnapshot` schema cleanup (G2a).
+- **PR target:** PR #139.
+
 ### A.7a Client Activity & linked replies — PR #137 outcome
 
 - **Decision:** Replies are the headline of the page. Sequence timeline is
@@ -261,15 +340,23 @@ Current items, in order:
 ### A.9 Training
 
 - **Purpose:** Staff training centre.
-- **Decision:** Keep. Phase 11 expands content and adds storyboards/scripts
-  (no fake videos).
-- **PR target:** #140.
+- **Decision:** Keep. Updated in PR #139: post-PR-138 terminology
+  reconciled, 11-item handover checklist rendered on the index, printable
+  handover guide refreshed. No fake video assets — recording tooling
+  (Playwright + TTS) stays scheduled separately (G8 in
+  `SYSTEM_HANDOVER_GAPS.md`).
+- **PR target:** PR #139 (closed). Future recording work → PR #140.
 
 ### A.10 Settings
 
-- **Purpose:** Branding, staff access, etc.
-- **Decision:** Keep. Phase 12 audits dead controls, secret display, wiring.
-- **PR target:** #140.
+- **Purpose:** Branding, staff access, sign-in/security, sending mode,
+  integrations.
+- **Decision:** Keep. PR #139 added a "Where to change what" intro card
+  that contrasts Settings vs per-client workspace. All five real
+  sections (Branding, Team access, Sign-in & security, Sending &
+  compliance, Integrations) audited and kept; admin gating verified;
+  no placeholder copy.
+- **PR target:** PR #139 (closed).
 
 ---
 
@@ -302,10 +389,12 @@ Templates, Outreach, Activity.
 ### B.3 Mailboxes
 
 - **Purpose:** Connect/state of sending mailboxes.
-- **PR target:** PR #117 (`fix/mailboxes-remove-clutter-copy`) is still open and
-  exactly targets this. **PR #135 does not touch Mailboxes.** Recommendation:
-  resolve PR #117 in a dedicated step — either rebase + merge cleanly, or close
-  with its changes folded into Phase 3.
+- **PR target:** **Closed by PR #139.** PR #117
+  (`fix/mailboxes-remove-clutter-copy`) is **superseded** by PR #139 —
+  the same dev-jargon phrases are removed plus three more, and the
+  "What happens when you connect a mailbox?" explainer was added.
+  PR #117 will be closed with a "superseded by PR #139" comment after
+  PR #139 merges. See A.6b above for the full outcome.
 
 ### B.4 Sources
 
@@ -315,14 +404,13 @@ Templates, Outreach, Activity.
   Mobile/Office Number) is not consistently surfaced.
 - **PR target:** #138.
 
-### B.5 Contacts (client tab)
+### B.5 Lists (client tab — renamed from Contacts in PR #138)
 
-- **Issue:** Duplicates Sources (which already lists imports) and the
-  list-detail page (which already shows membership + delivery status).
-- **Decision (deferred):** Audit precisely what `/clients/[id]/contacts`
-  uniquely shows; if it is only a list of imports + status counts, redirect
-  to Sources or to a dedicated lists-index page.
-- **PR target:** #138/#139.
+- **Outcome:** Subnav label is **"Lists"** (PR #138). Page heading is
+  "Lists & readiness". Each list card has an **Open list** deep-link to
+  `/clients/[id]/lists/[listId]`. Intro copy points staff at Sources for
+  imports.
+- **PR target:** Closed by PR #138.
 
 ### B.6 Do-not-contact (client tab)
 

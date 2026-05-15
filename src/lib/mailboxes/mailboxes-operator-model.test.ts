@@ -48,7 +48,9 @@ describe("mailboxRowOperatorStatus", () => {
     expect(mailboxRowOperatorStatus(r0).label).toBe("Needs connection");
     const r1 = { ...base(), connectionStatus: "PENDING_CONNECTION" as const };
     expect(mailboxRowOperatorStatus(r1).label).toBe("Needs approval");
-    expect(mailboxRowOperatorStatus(r1).sublabel).toContain("mailbox owner");
+    // PR #139: dev jargon "mailbox owner" replaced with staff-friendly copy.
+    expect(mailboxRowOperatorStatus(r1).sublabel).toMatch(/Finish sign-in/i);
+    expect(mailboxRowOperatorStatus(r1).sublabel).not.toContain("mailbox owner");
     const r2 = { ...base(), connectionStatus: "CONNECTION_ERROR" as const, provider: "MICROSOFT" as const };
     expect(mailboxRowOperatorStatus(r2).sublabel).toBe(
       MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,

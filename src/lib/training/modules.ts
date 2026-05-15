@@ -174,7 +174,7 @@ const onboardingModule: TrainingModule = {
   title: "Onboarding a client workspace",
   tagline: "Create the OpensDoors workspace and land on the overview.",
   purpose:
-    "The Clients and New client pages are where a programme begins. Create the workspace shell, give it a canonical name and slug, then land on the Overview — the control centre for everything that follows (Brief, Mailboxes, Sources, Contacts, Suppression, Outreach, Activity).",
+    "The Clients and New client pages are where a programme begins. Create the workspace shell, give it a canonical name and slug, then land on the Overview — the control centre for everything that follows (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity).",
   details: [
     'For this training the worked example is OpensDoors itself. You create a workspace called "OpensDoors" and use the real OpensDoors business details, so the copy, signatures, mailboxes and suppression you see in training are the exact values you will see in production.',
     "Creating the shell is a pure data action. No emails are sent, no mailboxes are contacted, no sheets are pulled, no OAuth is touched.",
@@ -224,7 +224,7 @@ const onboardingModule: TrainingModule = {
     {
       title: "Click Create workspace",
       detail:
-        "You land on the Overview. The workflow strip shows Brief → Mailboxes → Sources → Suppression → Contacts → Outreach → Activity. The client stays in ONBOARDING until every required step is complete.",
+        "You land on the Overview. The workflow strip shows Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity. The client stays in ONBOARDING until every required step is complete.",
     },
     {
       title: "Bookmark the Overview",
@@ -360,7 +360,7 @@ const briefModule: TrainingModule = {
   commonMistakes: [
     "Treating the brief as the place to configure mailboxes or sequences — those live under Mailboxes, Sequences, and Sources.",
     "Expecting the brief to set {{email_signature}} — configure signatures per mailbox in Mailboxes (brief may still hold legacy text for old data).",
-    "Skipping exclusions — keep partners and competitors out of the ICP and suppression lists before sends.",
+    "Skipping exclusions — keep partners and competitors out of the ICP and Do-not-contact lists before sends.",
   ],
   nextSteps: [
     {
@@ -369,7 +369,7 @@ const briefModule: TrainingModule = {
       description: "Five mailboxes × 30/day = 150 governed sends per UTC day.",
     },
     {
-      label: "Configure suppression",
+      label: "Configure Do-not-contact",
       moduleId: "suppression",
       description: "Attach the two OpensDoors Google Sheets before any contacts are imported.",
     },
@@ -406,11 +406,11 @@ const mailboxesModule: TrainingModule = {
   title: "Mailboxes and sender identities",
   tagline: "Shared workspace pool — up to five addresses, 30 sends/day each.",
   purpose:
-    "The Mailboxes page lists every connected sending address for a client, its provider (Microsoft 365 or Google Workspace), connection state, daily capacity, and per-mailbox sender identity. Mailboxes belong to the client workspace; any authorised operator on that client may send from an eligible address in the pool. Read this page before every launch to avoid the wrong From address or a silent zero-capacity state.",
+    "The Mailboxes page lists every connected sending address for a client, its provider (Microsoft 365 or Google Workspace), connection state, daily limit, and per-mailbox sender identity. Mailboxes belong to the client workspace; staff on that client can send and reply from any connected, eligible mailbox. Read this page before every launch to avoid the wrong From address or a silent zero-capacity state.",
   details: [
-    `OpensDoors runs outreach from up to ${String(ex.capacity.maxMailboxes)} connected mailboxes per workspace. Each mailbox sends up to ${String(ex.capacity.perMailboxDailyCap)} messages per UTC day, for a pooled ceiling of ${String(ex.capacity.dailyTheoreticalMax)} sends per day.`,
-    "Each mailbox has its own sender name, signature, and daily counter. The workspace pools capacity: the planner prefers the mailbox with the most remaining slots, breaking ties with the primary address — it is not a personal lock on a mailbox for one operator.",
-    "Connection is workspace-admin-managed: an authorised operator runs Connect for each row. Microsoft 365 supports a delegate (e.g. IT admin) completing OAuth when Exchange grants them access to that mailbox; Google usually requires the mailbox's own Google account unless the tenant uses a documented delegation setup.",
+    `OpensDoors runs outreach from up to ${String(ex.capacity.maxMailboxes)} connected mailboxes per workspace. Each mailbox sends up to ${String(ex.capacity.perMailboxDailyCap)} messages per day, for a workspace total of ${String(ex.capacity.dailyTheoreticalMax)} sends per day.`,
+    "Each mailbox has its own sender name, signature, and daily counter. The workspace pools capacity: the planner prefers the mailbox with the most remaining slots, breaking ties with the primary address. It is not a personal lock on a mailbox for one operator.",
+    "Connection is admin-managed. An admin presses Connect for each row; the person who can sign in to that Microsoft or Google mailbox finishes the prompt in the window that opens.",
   ],
   screenshots: [
     {
@@ -477,7 +477,7 @@ const mailboxesModule: TrainingModule = {
       description: "Sources is where contacts enter the workspace.",
     },
     {
-      label: "Configure suppression before any send",
+      label: "Configure Do-not-contact before any send",
       moduleId: "suppression",
       description: "Two Google Sheets per client — emails and domains.",
     },
@@ -495,7 +495,7 @@ const mailboxesModule: TrainingModule = {
   callout: {
     tone: "info",
     heading: "Test mode vs. live",
-    body: "For real prospect outreach, OpensDoors delivers through your **connected** Microsoft 365 or Google mailboxes in the shared pool — not through a single global email API. A `noreply@` placeholder and mock transport apply only to legacy or test rows without a mailbox. Connect mailboxes, complete the brief, suppression, and launch readiness, then you are live through your own domains.",
+    body: "For real prospect outreach, OpensDoors delivers through your **connected** Microsoft 365 or Google mailboxes — not through a single global email API. A `noreply@` placeholder and mock transport apply only to legacy or test rows without a mailbox. Connect mailboxes, complete the brief, Do-not-contact, and launch readiness, then you are live through your own domains.",
   },
   outcomes: [
     "You know which five mailboxes OpensDoors sends from and their per-mailbox daily caps.",
@@ -512,7 +512,7 @@ const sourcesModule: TrainingModule = {
   purpose:
     "Each client workspace has a Sources tab for CSV upload and RocketReach search. Upload → Preview → Confirm saves people to Universe (shared, one row per person) and to the list you name in that workspace. Open Universe to filter individual contacts and create another list for any client. Deleting a client list does not remove people from Universe. Sequences always target one client list.",
   details: [
-    "Imports don't bypass suppression. Suppression is applied at enrollment time, so safe-to-import and safe-to-email are two different things.",
+    "Imports don't bypass Do-not-contact. The block-list is applied at enrollment time, so safe-to-import and safe-to-email are two different things.",
     "Contact rows are valid if they have at least one of: email, Linkedin profile URL, mobile number, or office number. They are ready-to-email only if they also have an email address — only ready-to-email contacts are included in sends.",
   ],
   screenshots: [
@@ -561,12 +561,12 @@ const sourcesModule: TrainingModule = {
     "Every import belongs to a named list — never a dumping ground list called \"Imports\" or \"All\".",
     "List name includes the client, segment and month so the next operator knows what it is.",
     "Preview shows a clean split between Valid contacts and Ready-to-email.",
-    "Suppression is already configured before you import — so the Contacts KPIs reflect real eligibility.",
+    "Do-not-contact is already configured before you import — so the Lists KPIs reflect real eligibility.",
     "No PII leaks into internal notes or sheet URLs; the data stays in the workspace store.",
   ],
   commonMistakes: [
     "Importing into a list you'll never name again — future sequences won't know which list to target.",
-    "Running imports before suppression is attached — suppression blocks at enrollment, so you get false positives on 'eligible'.",
+    "Running imports before Do-not-contact is attached — the block-list applies at enrollment, so you get false positives on 'eligible'.",
     "Uploading CSVs with random column names — use the twelve headings shown in Sources (Name, Employer, Industry, First Name, Last Name, City, Country, Linkedin, Job1 Title, A Emails, Mobile Number, Office Number). Optional legacy Location is still read when present.",
     "Running giant imports to save time — max 10 per run exists to keep data quality honest.",
   ],
@@ -574,7 +574,7 @@ const sourcesModule: TrainingModule = {
     {
       label: "Review contacts and list KPIs",
       moduleId: "contacts",
-      description: "See what's ready-to-email after suppression.",
+      description: "See what's ready-to-email after Do-not-contact.",
     },
     {
       label: "Build the outreach sequence",
@@ -596,19 +596,19 @@ const sourcesModule: TrainingModule = {
     "You can run a small RocketReach or CSV import into a named list.",
     "You know CSV and RocketReach imports run from the client Sources tab and also update Universe.",
     "You know the difference between Valid and Ready-to-email.",
-    "You always run Sources after Suppression is configured, not before.",
+    "You always run Sources after Do-not-contact is configured, not before.",
   ],
 };
 
 const contactsModule: TrainingModule = {
   id: "contacts",
   order: 5,
-  title: "Contacts and email lists",
-  tagline: "Read-only view of who's in the workspace and who can be emailed.",
+  title: "Lists and email readiness",
+  tagline: "Read-only view of every client list and who's actually emailable.",
   purpose:
-    "The Contacts tab is the operator's read-only dashboard for this client's contact store. It shows every list attached to the client, the total unique contacts across all lists, and the KPI splits — Ready to email, Suppressed, Missing email, Missing identifier. Sequences later send to exactly one list you choose here.",
+    "The Lists tab (client subnav) is the operator's read-only dashboard for this client's lists. It shows every list attached to the client, the total unique contacts across all lists, and the KPI splits — Ready to email, Suppressed, Missing email, Missing identifier. Sequences later send to exactly one list you choose here. Each list card has an Open list button that deep-links to the list-detail page.",
   details: [
-    "Contacts are never edited in-place. If you need to add or change contacts, do it from Sources (import) or via the Suppression sheets — this page is a window, not a workbench.",
+    "Lists are never edited in-place here. If you need to add or change contacts, do it from Sources (import) or via the Do-not-contact sheets — this page is a window, not a workbench.",
     "Unique counts dedupe across lists. A contact on three lists still counts as one unique contact.",
   ],
   screenshots: [
@@ -623,9 +623,9 @@ const contactsModule: TrainingModule = {
   ],
   steps: [
     {
-      title: "Open Contacts from the client sub-nav",
+      title: "Open Lists from the client sub-nav",
       detail:
-        "Inside the OpensDoors workspace, click Contacts. The KPI strip renders first — read these numbers before any further decision.",
+        "Inside the OpensDoors workspace, click Lists. The KPI strip renders first — read these numbers before any further decision.",
     },
     {
       title: "Interpret the KPI cards",
@@ -638,26 +638,26 @@ const contactsModule: TrainingModule = {
         "Each list shows its name, how many of its contacts are ready-to-email, and the last import date. If a list has zero ready-to-email, you know it's either entirely suppressed or entirely missing emails.",
     },
     {
-      title: "Jump back to Sources or Suppression from the quick links",
+      title: "Jump back to Sources or Do-not-contact from the quick links",
       detail:
-        "Open sources (to import more), Open outreach (to build a sequence against a list), and Open suppression (to review why contacts are blocked) are at the top of the page.",
+        "Open sources (to import more), Open outreach (to build a sequence against a list), and Open Do-not-contact (to review why contacts are blocked) are at the top of the page. Each list card has Open list to deep-link to delivery status.",
     },
   ],
   whatGoodLooksLike: [
     "Every list is named clearly and has a non-zero Ready to email count.",
-    "Suppressed count is small but non-zero — zero suppressed means you probably haven't run suppression sync.",
+    "Suppressed count is small but non-zero — zero suppressed means you probably haven't run Do-not-contact sync.",
     "Missing identifier count is zero or near-zero — rows without any channel shouldn't be imported in the first place.",
     "You can pick exactly one list per sequence without hesitation.",
   ],
   commonMistakes: [
     "Treating Total lists as important — one carefully named list beats five anonymous ones.",
     "Ignoring Missing email and assuming those contacts can be emailed anyway — they cannot.",
-    "Editing contacts in the database to 'fix' suppression — update the OpensDoors suppression sheet instead.",
+    "Editing contacts in the database to 'fix' Do-not-contact — update the OpensDoors Do-not-contact sheet instead.",
     "Building a sequence before the KPIs look clean — the sequence inherits every flaw in the list.",
   ],
   nextSteps: [
     {
-      label: "Configure suppression",
+      label: "Configure Do-not-contact",
       moduleId: "suppression",
       description: "Shrink Suppressed and Missing identifier before enrolling.",
     },
@@ -668,47 +668,47 @@ const contactsModule: TrainingModule = {
     },
   ],
   portalLink: {
-    label: "Open Contacts in the portal",
+    label: "Open Lists in the portal",
     href: "/clients",
-    description: "Inside the OpensDoors workspace, click Contacts.",
+    description: "Inside the OpensDoors workspace, click Lists.",
   },
   callout: {
     tone: "info",
     heading: "This page is read-only by design",
-    body: "Adds and edits happen in Sources and Suppression. The Contacts tab only reads — so the numbers you see are the numbers the sequence planner sees.",
+    body: "Adds and edits happen in Sources and Do-not-contact. The Lists tab only reads — so the numbers you see are the numbers the sequence planner sees.",
   },
   outcomes: [
-    "You can read the Contacts tab and explain every KPI without a reference.",
-    "You know Contacts is a read-only window, not the place to edit data.",
-    "You always pair this page with Sources and Suppression before launching a sequence.",
+    "You can read the Lists tab and explain every KPI without a reference.",
+    "You know Lists is a read-only window, not the place to edit data.",
+    "You always pair this page with Sources and Do-not-contact before launching a sequence.",
   ],
 };
 
 const suppressionModule: TrainingModule = {
   id: "suppression",
   order: 6,
-  title: "Suppression — email and domain sheets",
+  title: "Do-not-contact — email and domain sheets",
   tagline: "Two OpensDoors Google Sheets stand between outreach and the wrong inbox.",
   purpose:
-    "Suppression is how we keep outreach safe. OpensDoors maintains one Google Sheet of suppressed emails and one of suppressed domains. The Suppression tab on each client workspace stores those sheet URLs, triggers sync, and renders the last-sync status. Nothing ships without suppression being present and healthy.",
+    "Do-not-contact is how we keep outreach safe. OpensDoors maintains one Google Sheet of blocked email addresses and one of blocked domains. The Do-not-contact tab on each client workspace stores those sheet URLs, triggers sync, and renders the last-sync status. Nothing ships without these sheets being present and healthy.",
   details: [
-    "Each client has its own suppression sheets — we never share a suppression list across tenants. Admin-level Google service account credentials are already configured; operators only paste sheet URLs and click Sync.",
-    "The service account email shown on the page (the `...gserviceaccount.com` address) is the identity operators share each sheet with as Viewer. It is not a secret.",
+    "Each client has its own Do-not-contact sheets — we never share a do-not-contact list across clients. Admin-level Google service account credentials are already configured; staff only paste sheet URLs and click Sync.",
+    "The service account email shown on the page (the `...gserviceaccount.com` address) is the identity staff share each sheet with as Viewer. It is not a secret.",
   ],
   screenshots: [
     {
       src: "/training/training-suppression.png",
-      alt: "Client suppression page with service account email, email suppression sheet id and domain suppression field",
+      alt: "Client Do-not-contact page with service account email, email Do-not-contact sheet id and domain Do-not-contact field",
       caption:
-        "Suppression tab — paste the email sheet URL, paste the domain sheet URL, share both with the service account as Viewer.",
+        "Do-not-contact tab — paste the email sheet URL, paste the domain sheet URL, share both with the service account as Viewer.",
       width: FULL_W,
       height: FULL_H,
     },
     {
       src: "/training/training-suppression-monitor.png",
-      alt: "Global suppression monitor with integration status and per-client sources",
+      alt: "Global People-blocked-from-outreach view with integration status and per-client sources",
       caption:
-        "Suppression monitor — the cross-client health view. Integration status, service account email, and each client's sync state.",
+        "People blocked from outreach — the cross-client health view. Integration status, service account email, and each client's sync state.",
       width: FULL_W,
       height: FULL_H,
     },
@@ -717,61 +717,61 @@ const suppressionModule: TrainingModule = {
     {
       title: "Open the OpensDoors Emails sheet URL",
       detail:
-        "Copy the OpensDoors suppression-emails Google Sheet URL, paste it into the Email suppression field, and click Save email sheet.",
+        "Copy the OpensDoors Do-not-contact emails Google Sheet URL, paste it into the Email Do-not-contact field, and click Save email sheet.",
     },
     {
       title: "Share the sheet with the service account as Viewer",
       detail:
-        "In Google Sheets, Share → paste the service account email shown on the Suppression page → role Viewer → Send. The portal cannot read the sheet until this step is done.",
+        "In Google Sheets, Share → paste the service account email shown on the Do-not-contact page → role Viewer → Send. The portal cannot read the sheet until this step is done.",
     },
     {
       title: "Repeat for the domains sheet",
       detail:
-        "Same flow for the domain suppression sheet. Domains block whole companies (competitors, partners, do-not-contact).",
+        "Same flow for the domain Do-not-contact sheet. Domains block whole companies (competitors, partners, do-not-contact).",
     },
     {
       title: "Click Sync once each",
       detail:
-        'First sync pulls every row into the client\'s suppression store. The connection status at the bottom shows "EMAIL · SUCCESS · last sync <timestamp>" when healthy.',
+        'First sync pulls every row into the client\'s Do-not-contact store. The connection status reads "Emails · Last sync succeeded · last sync <timestamp>" when healthy. (No raw enum chips like EMAIL/SUCCESS — that copy was retired in PR #138.)',
     },
     {
       title: "Re-read the status before every launch",
       detail:
-        "Open the Suppression monitor (sidebar → Suppression) any time you want a cross-client view. Last-sync timestamps older than a few days are a flag.",
+        'Open the cross-client view (sidebar → Do-not-contact, titled "People blocked from outreach") any time you want a multi-client look. Last-sync timestamps older than a few days are a flag.',
     },
   ],
   whatGoodLooksLike: [
-    "Both suppression sheets are attached and show a recent SUCCESS timestamp.",
+    'Both Do-not-contact sheets are attached and show a recent "Last sync succeeded" badge.',
     "Sharing the sheet with the service account shows it as a Viewer in Google Sheets.",
-    "The Contacts tab reflects the suppression sync in its Suppressed KPI (non-zero).",
-    "The cross-client monitor shows Integration status = Credentials detected and no amber/red badges.",
+    "The Lists tab reflects the Do-not-contact sync in its Suppressed KPI (non-zero).",
+    "The cross-client view shows Integration status = Credentials detected and no amber/red badges.",
   ],
   commonMistakes: [
     "Forgetting to share the sheet with the service account — the sync silently fails with a permission error.",
     "Using a draft sheet that hasn't been populated — the sync succeeds but blocks nothing.",
-    "Treating suppression as 'nice to have' — empty suppression is the fastest way to send to the wrong person and burn the relationship.",
+    "Treating Do-not-contact as 'nice to have' — an empty list is the fastest way to send to the wrong person and burn the relationship.",
     "Running sync during training — observe the status, don't click Sync against live data.",
   ],
   nextSteps: [
     {
       label: "Build the outreach sequence",
       moduleId: "outreach",
-      description: "Now that suppression is healthy, templates and sequences are safe to wire up.",
+      description: "Now that Do-not-contact is healthy, templates and sequences are safe to wire up.",
     },
     {
       label: "Monitor activity for unsubscribes",
       moduleId: "activity",
-      description: "Unsubscribes flow into suppression automatically.",
+      description: "Unsubscribes flow into Do-not-contact automatically.",
     },
   ],
   portalLink: {
-    label: "Open Suppression in the portal",
+    label: "Open Do-not-contact in the portal",
     href: "/clients",
-    description: "Inside the OpensDoors workspace, click Suppression.",
+    description: "Inside the OpensDoors workspace, click Do-not-contact.",
   },
   relatedPortalLinks: [
     {
-      label: "Cross-client Suppression monitor",
+      label: "People blocked from outreach (cross-client)",
       href: "/suppression",
       description: "Top-level view of every client's sync health.",
     },
@@ -792,13 +792,13 @@ const suppressionModule: TrainingModule = {
   ],
   callout: {
     tone: "warn",
-    heading: "Missing suppression is a launch blocker",
-    body: "If suppression is missing or stale, the launch checklist will not clear. Treat it as a hard gate — wrong-person sends carry regulatory, reputation and mailbox-deliverability cost.",
+    heading: "Missing Do-not-contact is a launch blocker",
+    body: "If Do-not-contact is missing or stale, the launch checklist will not clear. Treat it as a hard gate — wrong-person sends carry regulatory, reputation and mailbox-deliverability cost.",
   },
   outcomes: [
-    "You know where the OpensDoors Emails and Domains suppression sheets live.",
+    "You know where the OpensDoors Emails and Domains Do-not-contact sheets live.",
     "You can share a new sheet with the service account and run a first sync.",
-    "You never launch a client that has missing or stale suppression.",
+    "You never launch a client that has missing or stale Do-not-contact.",
   ],
 };
 
@@ -959,7 +959,7 @@ const activityModule: TrainingModule = {
     {
       title: "Investigate every non-sent status",
       detail:
-        "Bounced, suppressed, failed and queued-too-long each have different causes. Suppressed = expected (the suppression guard did its job); Bounced = deliverability risk; Failed = infrastructure — escalate.",
+        "Bounced, suppressed, failed and queued-too-long each have different causes. Suppressed = expected (the Do-not-contact guard did its job); Bounced = deliverability risk; Failed = infrastructure — escalate.",
     },
     {
       title: "Read and reply to inbound messages in the portal",
@@ -969,7 +969,7 @@ const activityModule: TrainingModule = {
     {
       title: "Treat every opt-out as terminal",
       detail:
-        "One-click unsubscribes auto-suppress the contact. Inbound replies that say 'please remove me' should also end in the suppression sheet — don't rely on courtesy alone.",
+        "One-click unsubscribes auto-block the contact. Inbound replies that say 'please remove me' should also end in the Do-not-contact sheet — don't rely on courtesy alone.",
     },
   ],
   whatGoodLooksLike: [
@@ -983,7 +983,7 @@ const activityModule: TrainingModule = {
     'Replying from Outlook — the portal loses the thread linkage back to the sequence.',
     "Ignoring the Warnings/Errors KPI — small numbers hide real issues.",
     "Treating bounces as noise — every bounce reduces a mailbox's daily capacity and signals a deliverability issue.",
-    "Classifying a 'please remove me' reply as unsubscribe alone — also add the address to the OpensDoors suppression sheet.",
+    "Classifying a 'please remove me' reply as unsubscribe alone — also add the address to the OpensDoors Do-not-contact sheet.",
   ],
   nextSteps: [
     {
@@ -992,7 +992,7 @@ const activityModule: TrainingModule = {
       description: "Who can change what, and what should you never touch.",
     },
     {
-      label: "Revisit suppression",
+      label: "Revisit Do-not-contact",
       moduleId: "suppression",
       description: "Unsubscribes and opt-outs must also make it into the sheet.",
     },
@@ -1027,7 +1027,7 @@ const settingsModule: TrainingModule = {
   title: "Settings and admin",
   tagline: "What admins configure — and what ordinary operators should not touch.",
   purpose:
-    "Settings is for platform-level configuration, not per-client work. Team access, sign-in/security, sending defaults and integration credentials live here. Per-client configuration (brief, mailboxes, suppression, templates, sequences) always lives inside the client workspace.",
+    "Settings is for platform-level configuration, not per-client work. Team access, sign-in/security, sending defaults and integration credentials live here. Per-client configuration (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity) always lives inside the client workspace.",
   details: [
     "Authentication is handled by Microsoft 365 — invitations and role changes flow through the OpensDoors tenant. Multi-factor auth, session length and conditional access are tenant-level policies, not portal switches.",
     'Blast radius matters: a wrong toggle in Settings affects every client at once. When in doubt, ask an admin — there is no fast-path fix.',
@@ -1043,9 +1043,9 @@ const settingsModule: TrainingModule = {
     },
     {
       src: "/training/training-sidebar.png",
-      alt: "Main sidebar — Dashboard, Clients, New client, Operations, Contacts, Suppression, Activity, Reports, Settings",
+      alt: "Main sidebar — Reports, Clients, New client, Universe, Do-not-contact, Activity, Training, Settings",
       caption:
-        "Main sidebar — Training lives here alongside Dashboard, Clients, Operations, Contacts, Suppression, Activity, Reports and Settings.",
+        "Main sidebar (post-PR-138). Reports is the staff default. Universe is the cross-client contact directory. Do-not-contact replaces the old Suppression label. Dashboard and Admin Operations are intentionally not in the sidebar.",
       width: SIDE_W,
       height: SIDE_H,
     },
@@ -1064,7 +1064,7 @@ const settingsModule: TrainingModule = {
     {
       title: "Understand what lives here vs. per-client",
       detail:
-        "Per-client items — mailboxes, suppression, templates, sequences, contacts, brief — live inside the client workspace. Settings is strictly platform-level.",
+        "Per-client items — Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity — live inside the client workspace. Settings is strictly platform-level.",
     },
     {
       title: "Do not rotate credentials during an active campaign",
@@ -1153,21 +1153,94 @@ export function getTrainingModule(id: string): TrainingModule | null {
 export const TRAINING_FINAL_OUTCOMES: readonly string[] = [
   "Understand the full OpensDoors outreach workflow end-to-end.",
   "Onboard a client workspace correctly, using OpensDoors' own onboarding as the worked example.",
-  "Configure mailboxes and suppression the way OpensDoors actually uses them.",
+  "Configure mailboxes and Do-not-contact the way OpensDoors actually uses them.",
   "Build, review and approve outreach — templates, sequences, enrollments — safely.",
   "Read and manage replies from inside ODoutreach without switching to Outlook.",
   "Know what to do next on each portal page without needing Greg to train you in person.",
 ];
 
 export const DAILY_OUTREACH_WORKFLOW: readonly string[] = [
-  "Check Mailboxes: every sending inbox should be connected, have a signature, and show daily capacity. Reconnect any mailbox that asks for Microsoft MFA.",
-  "Import contacts: use RocketReach or CSV (Sources). Every import is added to Universe and your chosen client list — confirm rows in Contacts or review globally in Universe.",
-  "Check Do-not-contact: make sure excluded emails and domains are active before outreach.",
+  "Check Mailboxes: every sending inbox should be Connected, have a signature, and show daily capacity. Reconnect any mailbox flagged for a fresh Microsoft or Google sign-in.",
+  "Import contacts: use RocketReach or CSV (Sources). Every import is added to Universe and your chosen client list — confirm rows in Lists or review globally in Universe.",
+  "Check Do-not-contact: make sure blocked emails and domains are active before outreach.",
   "Build a simple Outreach sequence: one Introduction email is enough; add follow-ups only if needed.",
   "Choose the sending mailbox: use auto-pick for the ready pool, or select a specific connected mailbox.",
   "Preview and review: check the subject, body, sender signature, and recipient list before sending.",
   "Send or schedule from Outreach only when the list, mailbox, and message are ready.",
   "Check Activity: use Check replies to pull the latest replies from connected mailboxes.",
+  "Stop follow-ups after a reply: open the reply, click Stop follow-ups so the sequence ends for that contact.",
+];
+
+/**
+ * Eleven-item handover checklist — staff should be able to do every one of
+ * these without a shoulder-tap. Each row points to the canonical surface in
+ * the portal so the checklist is verifiable.
+ */
+export type StaffHandoverChecklistItem = {
+  step: string;
+  detail: string;
+  portalHref?: string;
+};
+
+export const STAFF_HANDOVER_CHECKLIST: readonly StaffHandoverChecklistItem[] = [
+  {
+    step: "Understand Reports",
+    detail:
+      "Read the live KPI strip (Sent, Delivered, Replies, Bounces, Opt-outs). Reports is the default landing page.",
+    portalHref: "/reporting",
+  },
+  {
+    step: "Add / import contacts through Sources",
+    detail:
+      "Open the client's Sources tab. Use CSV preview-and-confirm or the visible RocketReach search section. The twelve-field contract is shown at the top.",
+  },
+  {
+    step: "Use Universe",
+    detail:
+      "Open Universe (sidebar). Filter, sort, toggle visible columns via the panel, then create a list from the selection. URL preserves your cols= choice.",
+    portalHref: "/universe",
+  },
+  {
+    step: "Create / open lists",
+    detail:
+      "Inside a client, open Lists. Each card has Open list, which deep-links to the list-detail page (delivery status, members).",
+  },
+  {
+    step: "Create a sequence",
+    detail:
+      "Inside a client, open Outreach. Build one Introduction step; add follow-ups only if you need them.",
+  },
+  {
+    step: "Review recipients",
+    detail:
+      "Outreach preview shows the resolved subject, body and recipient list before any send. Verify placeholder rendering and signature.",
+  },
+  {
+    step: "Launch sequence",
+    detail:
+      "Schedule or send only when the list, mailbox and copy are ready. Production launches use the main sequence path, not the small-batch confirmation tool.",
+  },
+  {
+    step: "Read replies",
+    detail:
+      "Activity headlines replies. Click a reply event to open the reply-detail page with the full inbound body and linked contact.",
+  },
+  {
+    step: "Stop follow-ups after replies",
+    detail:
+      "On the reply-detail page, click Stop follow-ups to end the sequence for that contact. Already-queued steps for that recipient are cancelled.",
+  },
+  {
+    step: "Check Do-not-contact",
+    detail:
+      'Open the cross-client view (sidebar, titled "People blocked from outreach") or the per-client Do-not-contact tab. Verify the connection status reads "Last sync succeeded" — no raw enum chips.',
+    portalHref: "/suppression",
+  },
+  {
+    step: "Check mailbox status",
+    detail:
+      'Open a client\'s Mailboxes tab. Read the "What happens when you connect a mailbox?" explainer card. Verify every row reads Connected and shows daily capacity. Reconnect any row flagged for sign-in.',
+  },
 ];
 
 export const DAILY_OUTREACH_WORKFLOW_STEPS: readonly string[] = [

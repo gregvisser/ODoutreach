@@ -1,6 +1,6 @@
 # ODoutreach — Staff handover smoke test
 
-> **Status: DRAFT (last updated PR #138).** This document is filled out
+> **Status: DRAFT (last updated PR #139).** This document is filled out
 > progressively by the audit programme as each surface is cleaned. Until
 > then, follow only the steps marked **READY** and ask Greg before running
 > anything marked **GATED**.
@@ -52,18 +52,30 @@ launch readiness, operational snapshot.
 (Pre-#135 there was a duplicate "Workspace status" card here — that is
 removed in #135.)
 
-## 3. Check mailboxes (READY for view only)
+## 3. Check mailboxes (READY for view only — PR #139)
 
-1. Open the **Mailboxes** tab.
-2. Confirm at least one Microsoft mailbox and one Google mailbox is
-   `Connected`.
-3. Confirm `Can send` and `Can read replies` for both.
+1. Open the **Mailboxes** tab. The page is titled
+   **"Connected sending mailboxes — {client name}"**.
+2. Read the **"What happens when you connect a mailbox?"** explainer
+   card directly under the title. It states plainly that no email is
+   sent on connect, that replies are read back from connected
+   mailboxes, and that pool capacity is the sum of every connected
+   mailbox's daily limit.
+3. Confirm at least one Microsoft mailbox and one Google mailbox is
+   marked **Connected** in the status column.
+4. Confirm `Can send` and `Can read replies` for both.
+5. Look at the status sublabels for any non-Connected row — they should
+   read in plain English ("Finish sign-in in the Microsoft or Google
+   window, or press Connect again", "Microsoft needs a fresh sign-in
+   for this mailbox …"). No raw OAuth/tenant jargon.
 
-**Do not** click `Reconnect`. **Do not** remove a mailbox.
+**Do not** click `Reconnect`. **Do not** click `Disconnect`. **Do not**
+remove a mailbox. **Do not** click `Run internal proof send` (admin
+tool).
 
-(Mailboxes UI clean-up is PR #117 — once merged, this step uses only the
-Connected / Can send / Can read replies / Daily limit / Last sync / Action
-needed columns.)
+(PR #117 — `fix/mailboxes-remove-clutter-copy` — is **superseded** by
+PR #139. The same dev-jargon removals are in PR #139 plus the explainer
+card and broader test coverage.)
 
 ## 4. Add / import / search contacts (READY for view, GATED for live writes)
 
@@ -231,16 +243,78 @@ Notes after PR #136:
    during this smoke unless explicitly approved — it triggers a live
    Google Sheets read.
 
-## 14. Archive / remove sequence (GATED until PR #139)
+## 14. Archive / remove sequence (GATED until PR #140)
 
-Until PR #139:
+Until PR #140:
 
 - Active sequences are visible.
-- Hard-delete is risky for any sequence with send history. PR #139 makes
-  delete safe by blocking it for sequences with send history and surfacing
-  Archive instead.
+- Hard-delete is risky for any sequence with send history. PR #140 makes
+  delete safe by blocking it for sequences with send history and
+  surfacing Archive instead. (Originally scheduled for PR #139; PR #139
+  focused on Mailboxes / Settings / Training copy + the PR #117 decision,
+  and the safe-delete behaviour change moved to PR #140.)
 
-## 15. Troubleshooting
+## 15. Settings audit (READY — PR #139)
+
+1. Open **Settings** from the main sidebar.
+2. Read the **"Where to change what"** card at the top — it states that
+   Settings holds Branding, who can sign in, sign-in provider, email
+   provider mode, and cross-app integrations; per-client items
+   (Brief / Mailboxes / Sources / Lists / Do-not-contact / Templates /
+   Outreach / Activity) live inside each client workspace.
+3. Confirm each section renders with a status pill:
+   - **Branding** — admin-only editor with a link to `/settings/branding`.
+   - **Team access** — admin-only "Staff and roles" card (regular staff
+     see the "Only administrators can…" message).
+   - **Your account** — your sign-in email + role.
+   - **Sign-in and security** — Microsoft Entra ID + domain allowlist
+     (Enforced / Not enforced).
+   - **Sending and compliance** — `Resend connected` or `Test mode`.
+     Unsubscribe & List-Unsubscribe rules summarised.
+   - **Integrations** — Google Workspace suppression + RocketReach
+     status pills (`Connected` / `Not connected`).
+4. **Do not** click any control that mutates Settings during the smoke
+   test. Branding edits, staff role changes, and Microsoft 365 tenant
+   policy changes are real admin actions.
+
+## 16. Training audit (READY — PR #139)
+
+1. Open **Training** from the main sidebar.
+2. The page renders nine modules; module 5 is **"Lists and email
+   readiness"** and module 6 is **"Do-not-contact — email and domain
+   sheets"**. (Pre-#139 these were titled "Contacts" and "Suppression".)
+3. Scroll to the new **"Staff handover checklist"** card — 11 numbered
+   steps with portal deep-links where applicable. Verify the list runs
+   from "Understand Reports" through "Check mailbox status".
+4. Open the printable guide at `/training/staff-handover`. The "Daily
+   workflow checklist" should include a "Stop follow-ups after a reply"
+   step; the "Admin operations" section should explicitly note Admin
+   Operations was removed from the sidebar in PR #135.
+5. Training pages are **read-only**. Nothing on `/training` sends
+   email, runs imports, syncs mailboxes, or changes settings.
+
+## 17. Sidebar / nav final check (READY — PR #139)
+
+The main sidebar **must** show exactly these entries, in order:
+
+`Reports`, `Clients`, `New client`, `Universe`, `Do-not-contact`,
+`Activity`, `Training`, `Settings`.
+
+Confirm `Dashboard`, `Admin operations`, and a global `Contacts` entry
+are **not** present. (Each was intentionally removed: Dashboard and
+Admin Operations in PR #135, Contacts in PR #138.) The legacy URLs
+(`/dashboard`, `/operations/outbound`, `/contacts`) still resolve, but
+are not advertised.
+
+Inside any client workspace, the subnav **must** show exactly:
+
+`Overview`, `Brief`, `Mailboxes`, `Sources`, `Lists`, `Do-not-contact`,
+`Templates`, `Outreach`, `Activity`.
+
+`Lists` is the post-PR-138 label for the old `Contacts` tab. `Do-not-contact`
+is the post-PR-138 label for the old `Suppression` tab.
+
+## 18. Troubleshooting
 
 If something looks wrong:
 

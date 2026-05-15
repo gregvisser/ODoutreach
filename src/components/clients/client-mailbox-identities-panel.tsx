@@ -164,19 +164,19 @@ function providerConnectionHint(
   }
   switch (row.connectionStatus) {
     case "DRAFT":
-      return "Not connected — press Connect. The mailbox owner or their Microsoft/Google admin can complete provider sign-in and MFA in the window that opens.";
+      return "Not connected — press Connect. Someone who can sign in to that mailbox finishes the prompt in the window that opens.";
     case "PENDING_CONNECTION":
-      return "Finish sign-in in the Microsoft or Google window (mailbox owner or admin), or press Connect again.";
+      return "Finish sign-in in the Microsoft or Google window, or press Connect again.";
     case "CONNECTED":
       return row.connectedAt
         ? `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`
         : "Connected.";
     case "CONNECTION_ERROR":
       return row.provider === "MICROSOFT"
-        ? `Microsoft requires a fresh sign-in for this mailbox (often MFA). Sign into Microsoft as ${row.email}. Check the last error below if it persists.`
+        ? `Microsoft needs a fresh sign-in for this mailbox. Sign in as ${row.email}. Check the last error below if it persists.`
         : "Sign-in didn't complete. Check the last error below and reconnect.";
     case "DISCONNECTED":
-      return "Disconnected — use Connect to run provider sign-in again (Microsoft delegate or the Gmail user for this row).";
+      return "Disconnected — press Connect and sign in again for this row.";
     default:
       return "";
   }
@@ -476,7 +476,7 @@ export function ClientMailboxIdentitiesPanel({
                 <MailboxForm
                   variant="create"
                   title="Add a mailbox"
-                  description="Enter the client’s sender address and provider. After saving, press Connect mailbox with Microsoft or Google — the mailbox owner or their admin completes provider sign-in; they do not need ODoutreach Staff Access. Microsoft: delegate or shared access is supported when granted in Exchange. Google: usually the mailbox’s Google user (domain-wide delegation is an org prerequisite if you use a different model)."
+                  description="Enter the sender address and provider, save, then Connect. Someone who can sign in to that Microsoft or Google mailbox completes the prompt — they don't need an ODoutreach login."
                   submitLabel="Save"
                   clientId={clientId}
                   disabled={pending}
@@ -503,10 +503,9 @@ export function ClientMailboxIdentitiesPanel({
                 <SheetHeader>
                   <SheetTitle>Remove from workspace</SheetTitle>
                   <SheetDescription className="text-left text-sm text-muted-foreground">
-                    This address will not be used for future sends, replies, inbox sync, or signature sync.
-                    Outbound and inbound history already stored in OpensDoors remains visible.{" "}
-                    <span className="text-foreground font-medium">Disconnect</span> only revokes OAuth and
-                    keeps the row; removal archives the address until you run Restore.
+                    Stops this address for sends, replies, and sync. Past history stays visible.{" "}
+                    <span className="text-foreground font-medium">Disconnect</span> revokes mailbox
+                    sign-in only; Remove archives the row until you Restore.
                   </SheetDescription>
                 </SheetHeader>
                 {removeTarget ? (
@@ -685,7 +684,7 @@ export function ClientMailboxIdentitiesPanel({
                               disabled={pending || !oauthOk || !row.isActive}
                               title={
                                 !oauthOk
-                                  ? "The administrator must complete provider sign-in for this app before mailboxes can connect."
+                                  ? "An administrator must finish Microsoft/Google setup for this app before mailboxes can connect."
                                   : undefined
                               }
                               onClick={() => startOAuth(row.id)}
