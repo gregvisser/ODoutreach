@@ -40,6 +40,22 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
       return byOid;
     }
 
+    const byInvitedGuestObjectId = await tx.staffUser.findFirst({
+      where: { graphInvitedUserObjectId: entraObjectId },
+    });
+    if (byInvitedGuestObjectId) {
+      return tx.staffUser.update({
+        where: { id: byInvitedGuestObjectId.id },
+        data: {
+          entraObjectId,
+          displayName: displayName ?? byInvitedGuestObjectId.displayName,
+          ...(byInvitedGuestObjectId.guestInvitationState === "PENDING"
+            ? { guestInvitationState: "ACCEPTED" as const }
+            : {}),
+        },
+      });
+    }
+
     if (!email) return null;
 
     const byEmail = await tx.staffUser.findUnique({ where: { email } });

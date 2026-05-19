@@ -52,7 +52,10 @@ function assertInviteeDomainAllowed(email: string): void {
 }
 
 const inviteSchema = z.object({
-  email: z.string().email(),
+  email: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    return value.trim();
+  }, z.string().email()),
   role: staffRoleSchema,
   isActive: z.boolean().optional().default(true),
 });

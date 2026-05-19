@@ -50,10 +50,12 @@ const config = {
           oid?: string;
           preferred_username?: string;
           email?: string;
+          upn?: string;
         };
         token.oid = p.oid;
         if (p.preferred_username) token.email = p.preferred_username;
         else if (p.email) token.email = p.email;
+        else if (p.upn) token.email = p.upn;
       }
       return token;
     },
