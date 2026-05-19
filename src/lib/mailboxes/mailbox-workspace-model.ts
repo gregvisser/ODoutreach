@@ -34,6 +34,9 @@ export const MAILBOXES_WHAT_HAPPENS_BULLETS: readonly string[] = [
   "Reconnect, Disconnect and Remove are admin-only and do not delete past send history.",
 ];
 
+export const GOOGLE_OAUTH_VERIFICATION_NOTICE =
+  "Google Workspace mailbox connection requires the ODoutreach Google OAuth app to be verified by Google, or the mailbox must be added as an approved Google test user while verification is pending. Microsoft 365 mailboxes are unaffected.";
+
 export const OUTREACH_HERO_ADDENDUM =
   "Outreach sends use the connected mailboxes on this client. Capacity and sender identity are configured in Mailboxes.";
 

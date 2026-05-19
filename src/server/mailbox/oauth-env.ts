@@ -64,18 +64,20 @@ export const GOOGLE_SCOPE_GMAIL_READONLY =
 export const GOOGLE_SCOPE_GMAIL_SEND =
   "https://www.googleapis.com/auth/gmail.send";
 
+export const GOOGLE_MAILBOX_OAUTH_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  GOOGLE_SCOPE_GMAIL_READONLY,
+  GOOGLE_SCOPE_GMAIL_SEND,
+] as const;
+
 /**
  * Delegated scopes — identity + refresh + Gmail read + send.
  * Adding scopes requires a mailbox reconnect so Google issues a refresh token with consent.
  */
 export function googleMailboxOAuthScopes(): string {
-  return [
-    "openid",
-    "email",
-    "profile",
-    GOOGLE_SCOPE_GMAIL_READONLY,
-    GOOGLE_SCOPE_GMAIL_SEND,
-  ].join(" ");
+  return GOOGLE_MAILBOX_OAUTH_SCOPES.join(" ");
 }
 
 export function mailboxMicrosoftRedirectUri(): string {

@@ -13,6 +13,7 @@ import {
   MAILBOXES_PAGE_INTRO,
   MAILBOXES_PAGE_SUBTITLE,
   MAILBOXES_WHAT_HAPPENS_BULLETS,
+  GOOGLE_OAUTH_VERIFICATION_NOTICE,
 } from "@/lib/mailboxes/mailbox-workspace-model";
 import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
 import { prisma } from "@/lib/db";
@@ -138,6 +139,10 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           </ul>
         </CardContent>
       </Card>
+
+      <p className="max-w-3xl rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+        {GOOGLE_OAUTH_VERIFICATION_NOTICE}
+      </p>
 
       {showMailboxSetupTools ? (
         <InternalProofSendCard

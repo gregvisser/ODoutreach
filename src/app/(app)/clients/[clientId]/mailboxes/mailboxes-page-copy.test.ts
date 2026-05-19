@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  GOOGLE_OAUTH_VERIFICATION_NOTICE,
   MAILBOXES_PAGE_INTRO,
   MAILBOXES_PAGE_SUBTITLE,
   MAILBOXES_WHAT_HAPPENS_BULLETS,
@@ -90,5 +91,14 @@ describe("Client Mailboxes page copy (PR #139, supersedes PR #117)", () => {
   it("explainer states replies are read back from connected mailboxes", () => {
     const explainer = MAILBOXES_WHAT_HAPPENS_BULLETS.join("\n");
     expect(explainer).toMatch(/read replies/i);
+  });
+
+  it("explains Google OAuth verification and test-user access on the Mailboxes page", () => {
+    expect(GOOGLE_OAUTH_VERIFICATION_NOTICE).toContain(
+      "Google Workspace mailbox connection requires the ODoutreach Google OAuth app to be verified by Google",
+    );
+    expect(GOOGLE_OAUTH_VERIFICATION_NOTICE).toContain("approved Google test user");
+    const pageSrc = readFileSync(PAGE_PATH, "utf8");
+    expect(pageSrc).toContain("GOOGLE_OAUTH_VERIFICATION_NOTICE");
   });
 });
