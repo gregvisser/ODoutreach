@@ -12,6 +12,7 @@
 
 export type InvitationErrorCode =
   | "missing_graph_permission"
+  | "missing_graph_user_read_permission"
   | "admin_consent_required"
   | "guest_invitation_not_allowed_by_tenant"
   | "signed_in_admin_lacks_required_role"
@@ -39,6 +40,11 @@ const GENERIC_ADMIN_GUIDANCE =
   "Ask the Bidlow Entra admin to grant the Microsoft Graph application permission " +
   "User.Invite.All on the ODoutreach Entra app registration, grant admin consent, " +
   "and confirm that B2B guest invitations are enabled in the tenant.";
+
+const GRAPH_USER_READ_GUIDANCE =
+  "Ask the Bidlow Entra admin to grant the Microsoft Graph application permission " +
+  "User.Read.All on the ODoutreach Entra app registration and grant admin consent. " +
+  "This only affects Staff access invitation-status refresh; it is not an ODoutreach staff role problem.";
 
 type GraphErrorShape = {
   error?: {
@@ -223,6 +229,77 @@ export function classifyInvitationError(input: {
     message: "Microsoft Graph refused the invitation.",
     guidance:
       "Share the Microsoft request id below with the Bidlow Entra admin so they can review Sign-in / Audit logs for the ODoutreach app registration.",
+  };
+}
+
+/**
+ * Classify failures from `GET /users/{id}?$select=id,externalUserState`.
+ * This read powers the Staff access "Refresh invitation status" button. It
+ * requires Microsoft Graph Application permission `User.Read.All`; `User.Invite.All`
+ * is enough to create invitations but not to read users afterwards.
+ */
+export function classifyGraphUserReadError(input: {
+  status: number | null;
+  body: string | null | undefined;
+}): ClassifiedInvitationError {
+  const { status } = input;
+  const parsed = safeParse(input.body);
+  const rawMessage = parsed?.error?.message ?? "";
+  const graphCode = parsed?.error?.code ?? null;
+  const innerCode = parsed?.error?.innerError?.code ?? null;
+  const requestId =
+    parsed?.error?.innerError?.["request-id"] ??
+    parsed?.error?.innerError?.requestId ??
+    null;
+
+  const haystack = `${graphCode ?? ""} ${innerCode ?? ""} ${rawMessage}`;
+  const base = {
+    status,
+    requestId,
+    graphCode,
+  };
+
+  if (
+    (status === 401 || status === 403) &&
+    (containsIgnoreCase(haystack, "Authorization_RequestDenied") ||
+      containsIgnoreCase(haystack, "insufficient privileges") ||
+      containsIgnoreCase(haystack, "access is denied") ||
+      containsIgnoreCase(haystack, "access denied") ||
+      containsIgnoreCase(haystack, "forbidden"))
+  ) {
+    return {
+      ...base,
+      code: "missing_graph_user_read_permission",
+      message: "Microsoft Graph cannot read invited users.",
+      guidance: GRAPH_USER_READ_GUIDANCE,
+    };
+  }
+
+  if (status === 429) {
+    return {
+      ...base,
+      code: "graph_rate_limited",
+      message: "Microsoft Graph is rate-limiting invited-user status reads.",
+      guidance: "Wait a minute and try again. Do not retry in a loop.",
+    };
+  }
+
+  if (status !== null && status >= 500) {
+    return {
+      ...base,
+      code: "graph_service_unavailable",
+      message: "Microsoft Graph is unavailable right now.",
+      guidance:
+        "This is a Microsoft-side issue. Wait a few minutes and retry; if it persists, check Microsoft 365 service health.",
+    };
+  }
+
+  return {
+    ...base,
+    code: "unknown_graph_invite_error",
+    message: "Microsoft Graph refused the invited-user status read.",
+    guidance:
+      "Share the Microsoft request id below with the Bidlow Entra admin so they can review permissions for the ODoutreach app registration.",
   };
 }
 

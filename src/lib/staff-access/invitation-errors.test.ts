@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyGraphUserReadError,
   classifyInvitationError,
   formatInvitationErrorForBanner,
 } from "./invitation-errors";
@@ -144,6 +145,41 @@ describe("classifyInvitationError", () => {
       body: "<html>proxy error</html>",
     });
     expect(result.code).toBe("unknown_graph_invite_error");
+  });
+});
+
+describe("classifyGraphUserReadError", () => {
+  it("classifies invited-user read 403 as missing User.Read.All", () => {
+    const body = graphError(
+      "Authorization_RequestDenied",
+      "Insufficient privileges to complete the operation.",
+      { requestId: "read-req-1" },
+    );
+    const result = classifyGraphUserReadError({ status: 403, body });
+
+    expect(result.code).toBe("missing_graph_user_read_permission");
+    expect(result.status).toBe(403);
+    expect(result.requestId).toBe("read-req-1");
+    expect(result.guidance).toContain("User.Read.All");
+    expect(result.guidance).not.toContain("User.Invite.All");
+  });
+
+  it("formats invited-user read errors without raw Graph JSON", () => {
+    const body = graphError(
+      "Authorization_RequestDenied",
+      "Insufficient privileges to complete the operation.",
+      { requestId: "read-req-2" },
+    );
+    const banner = formatInvitationErrorForBanner(
+      classifyGraphUserReadError({ status: 403, body }),
+    );
+
+    expect(banner).toContain("Microsoft Graph cannot read invited users.");
+    expect(banner).toContain("User.Read.All");
+    expect(banner).toContain("request-id read-req-2");
+    expect(banner).not.toMatch(/"error"\s*:/);
+    expect(banner).not.toContain("Authorization_RequestDenied");
+    expect(banner).not.toContain("Insufficient privileges to complete the operation");
   });
 });
 

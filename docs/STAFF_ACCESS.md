@@ -67,6 +67,7 @@ tenant admins to correlate with Entra sign-in / audit logs).
 | Code | What it means | Admin action |
 |------|---------------|--------------|
 | `missing_graph_permission` | Graph replied 401/403 `Authorization_RequestDenied` or equivalent. The Entra app registration does not have working invite permissions. | Grant `User.Invite.All` (Application) and admin consent on the ODoutreach Entra app registration. |
+| `missing_graph_user_read_permission` | Graph replied 401/403 while refreshing an invited user's status. Invitations may still send, but ODoutreach cannot read `externalUserState`. | Grant `User.Read.All` (Application) and admin consent on the ODoutreach Entra app registration. |
 | `admin_consent_required` | Graph says admin consent is required. | Grant admin consent for the ODoutreach Entra app registration in the Bidlow tenant. |
 | `guest_invitation_not_allowed_by_tenant` | Graph says B2B invitations are disabled by policy. | Enable external collaboration / B2B guest invitations in Entra External Identities. |
 | `signed_in_admin_lacks_required_role` | Graph says the signed-in user isn’t allowed to invite. | Assign Guest Inviter / User Administrator, or allow tenant-default guest-invite. |
