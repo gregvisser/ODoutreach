@@ -3,7 +3,7 @@
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   addGoogleOauthTestUsers,
-  listGoogleOauthTestUsers,
+  getConsoleTestUsersUrl,
 } from "@/server/integrations/google-oauth-test-users/test-users-api";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 
@@ -14,11 +14,7 @@ export type OauthTestUserActionResult =
       alreadyPresent: string[];
       total: number;
     }
-  | { ok: false; error: string };
-
-export type OauthTestUserListResult =
-  | { ok: true; emails: string[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; consoleUrl?: string };
 
 function parseEmailList(raw: string): string[] {
   return raw
@@ -52,8 +48,17 @@ export async function addOauthTestUsersAction(
     return { ok: false, error: "Maximum 100 emails per submission." };
   }
 
+  // The Console API uses SetTrustedUserList (full replace). We need the
+  // current list to merge new additions. The "currentKnownUsers" hidden
+  // field is maintained by the client from its local state.
+  const currentRaw = (formData.get("currentKnownUsers") as string | null) ?? "";
+  const currentList = currentRaw
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.includes("@") && s.length > 3);
+
   try {
-    const result = await addGoogleOauthTestUsers(emails);
+    const result = await addGoogleOauthTestUsers(emails, currentList);
     return {
       ok: true,
       added: result.added,
@@ -61,28 +66,15 @@ export async function addOauthTestUsersAction(
       total: result.total,
     };
   } catch (e) {
+    const consoleUrl = getConsoleTestUsersUrl();
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Unexpected error adding test users.",
+      consoleUrl,
     };
   }
 }
 
-export async function listOauthTestUsersAction(): Promise<OauthTestUserListResult> {
-  const staff = await requireOpensDoorsStaff();
-  if (staff.role !== "ADMIN") {
-    return { ok: false, error: "Forbidden" };
-  }
-  if (!hasGoogleServiceAccountConfig()) {
-    return { ok: false, error: "Google service account not configured." };
-  }
-  try {
-    const emails = await listGoogleOauthTestUsers();
-    return { ok: true, emails };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "Failed to list test users.",
-    };
-  }
+export async function getConsoleUrlAction(): Promise<string> {
+  return getConsoleTestUsersUrl();
 }

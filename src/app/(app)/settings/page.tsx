@@ -11,6 +11,7 @@ import {
 import { staffRoleLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
+import { getConsoleTestUsersUrl } from "@/server/integrations/google-oauth-test-users/test-users-api";
 import { GoogleOauthTestUsersPanel } from "@/components/settings/google-oauth-test-users-panel";
 
 export const dynamic = "force-dynamic";
@@ -341,7 +342,7 @@ export default async function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <GoogleOauthTestUsersPanel />
+              <GoogleOauthTestUsersPanel consoleUrl={getConsoleTestUsersUrl()} />
             </CardContent>
           </Card>
         )}
