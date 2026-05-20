@@ -29,6 +29,8 @@ export type MappedGmailInboxRow = {
   receivedAt: Date;
   conversationId: string | null;
   metadata: Record<string, string | null | boolean>;
+  /** RFC 5322 In-Reply-To header value. Non-null only for genuine thread replies. */
+  inReplyToHeader: string | null;
 };
 
 function headerValue(
@@ -76,6 +78,7 @@ export function mapGmailMessageToRow(msg: GmailApiMessageDetail): MappedGmailInb
     bodyPreview: snippet,
     receivedAt,
     conversationId: msg.threadId != null ? msg.threadId : null,
+    inReplyToHeader: headerValue(headers, "In-Reply-To"),
     metadata: {
       threadId: msg.threadId != null ? msg.threadId : null,
       // PR Q — capture Gmail's `internalDate` so future fetch/debug has
@@ -140,6 +143,9 @@ export async function getGmailMessageMetadata(
   // PR Q — capture the RFC 5322 Message-ID so we have a cross-provider
   // stable identifier for future fallback lookups.
   url.searchParams.append("metadataHeaders", "Message-ID");
+  // Required for reply filtering: only messages with In-Reply-To are genuine
+  // thread replies. Messages without it are fresh emails, not outreach replies.
+  url.searchParams.append("metadataHeaders", "In-Reply-To");
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
   });

@@ -11,8 +11,12 @@ import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follo
  * emails and, if so, creates an InboundReply linked to the outbound.
  *
  * Matching strategy (mailbox-scoped, strongest-first):
+ *   Gate: `inReplyToHeader` must be present (RFC 5322 In-Reply-To header).
+ *         Messages without it are fresh emails, not thread replies — skip them
+ *         entirely to avoid ingesting unrelated inbox traffic as replies.
  *   1. Find an OutboundEmail WHERE same clientId, same mailboxIdentityId,
- *      toEmail = inbound fromEmail, status is sent/delivered/replied, sentAt set.
+ *      toEmail = inbound fromEmail, sentAt <= inbound receivedAt,
+ *      status is sent/delivered/replied.
  *      Take the most recent match (handles multiple sequence sends to same contact).
  *   2. If no mailbox-scoped match, skip — don't create unlinked noise.
  *
@@ -29,7 +33,15 @@ export async function processSyncedMessageForReply(input: {
   bodyPreview: string | null;
   receivedAt: Date;
   conversationId: string | null;
+  /** RFC 5322 In-Reply-To header. Null means the message is a fresh email, not a reply. */
+  inReplyToHeader: string | null;
 }): Promise<{ created: boolean; replyId?: string }> {
+  // Only genuine thread replies carry an In-Reply-To header. Without it the
+  // message is a new email landing in the mailbox — never an outreach reply.
+  if (!input.inReplyToHeader) {
+    return { created: false };
+  }
+
   const from = normalizeEmail(input.fromEmail);
 
   const existing = await prisma.inboundReply.findFirst({
@@ -48,7 +60,7 @@ export async function processSyncedMessageForReply(input: {
       clientId: input.clientId,
       mailboxIdentityId: input.mailboxIdentityId,
       toEmail: from,
-      sentAt: { not: null },
+      sentAt: { not: null, lte: input.receivedAt },
       status: { in: ["SENT", "DELIVERED", "REPLIED"] },
     },
     orderBy: { sentAt: "desc" },

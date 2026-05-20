@@ -171,6 +171,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       bodyPreview: row.bodyPreview,
       receivedAt: row.receivedAt,
       conversationId: row.conversationId,
+      inReplyToHeader: row.inReplyToHeader,
     });
     if (replyResult.created) repliesLinked += 1;
     n += 1;
@@ -302,6 +303,7 @@ export async function syncGoogleInboxForMailbox(input: {
       bodyPreview: row.bodyPreview,
       receivedAt: row.receivedAt,
       conversationId: row.conversationId,
+      inReplyToHeader: row.inReplyToHeader,
     });
     if (replyResult.created) repliesLinked += 1;
     n += 1;

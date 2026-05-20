@@ -19,6 +19,8 @@ export type MicrosoftGraphMessage = {
   receivedDateTime?: string;
   conversationId?: string;
   internetMessageId?: string;
+  /** All RFC 5322 internet headers. Used to extract In-Reply-To for reply filtering. */
+  internetMessageHeaders?: { name: string; value: string }[];
 };
 
 const PREVIEW_MAX = 4000;
@@ -48,6 +50,8 @@ export async function listMicrosoftGraphInboxMessages(
       "body",
       "conversationId",
       "internetMessageId",
+      // Required for reply filtering: In-Reply-To header signals a genuine thread reply.
+      "internetMessageHeaders",
     ].join(","),
   );
   const res = await fetch(url.toString(), {
@@ -82,6 +86,8 @@ export type MappedInboxRow = {
   receivedAt: Date;
   conversationId: string | null;
   metadata: Record<string, string | null | boolean>;
+  /** RFC 5322 In-Reply-To header value. Non-null only for genuine thread replies. */
+  inReplyToHeader: string | null;
   /**
    * PR P — full-body cache fields extracted from Graph `message.body`.
    * When Graph returns a usable body, we normalize it to safe plain
@@ -134,6 +140,11 @@ export function mapGraphInboxMessageToRow(
           fullBodyFetchedAt: new Date(),
         }
       : null;
+  const inReplyToHeader =
+    (msg.internetMessageHeaders ?? []).find(
+      (h) => h.name.toLowerCase() === "in-reply-to",
+    )?.value?.trim() ?? null;
+
   return {
     providerMessageId: msg.id,
     fromEmail,
@@ -143,6 +154,7 @@ export function mapGraphInboxMessageToRow(
     bodyPreview: preview,
     receivedAt: received,
     conversationId: msg.conversationId != null ? msg.conversationId : null,
+    inReplyToHeader,
     metadata: {
       internetMessageId: msg.internetMessageId != null ? msg.internetMessageId : null,
     },

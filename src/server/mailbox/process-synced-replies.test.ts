@@ -45,6 +45,7 @@ const BASE_INPUT = {
   bodyPreview: "Thanks for reaching out, I'd love to chat.",
   receivedAt: new Date("2026-05-14T12:00:00Z"),
   conversationId: "conv-abc",
+  inReplyToHeader: "<outbound-msg-id@mail.gmail.com>",
 };
 
 describe("processSyncedMessageForReply", () => {
@@ -211,6 +212,31 @@ describe("processSyncedMessageForReply", () => {
     expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
   });
 
+  it("skips message with no In-Reply-To header (fresh email, not a thread reply)", async () => {
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      inReplyToHeader: null,
+    });
+
+    expect(result.created).toBe(false);
+    // Must not touch the DB at all — gate fires before any query
+    expect(prismaMock.inboundReply.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
+    expect(stopFollowUpsMock).not.toHaveBeenCalled();
+  });
+
+  it("skips message with empty In-Reply-To header", async () => {
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      inReplyToHeader: "",
+    });
+
+    expect(result.created).toBe(false);
+    expect(prismaMock.inboundReply.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
+  });
+
   it("matches outbound by mailboxIdentityId scope", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
     prismaMock.outboundEmail.findFirst.mockResolvedValue({
@@ -228,7 +254,7 @@ describe("processSyncedMessageForReply", () => {
           clientId: "c1",
           mailboxIdentityId: "mbx1",
           toEmail: "contact@example.com",
-          sentAt: { not: null },
+          sentAt: { not: null, lte: BASE_INPUT.receivedAt },
           status: { in: ["SENT", "DELIVERED", "REPLIED"] },
         }),
         orderBy: { sentAt: "desc" },

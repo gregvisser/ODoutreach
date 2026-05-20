@@ -41,6 +41,27 @@ describe("mapGmailMessageToRow", () => {
     // PR Q — internalDate and rfc822MessageId captured for future fetch reliability.
     expect(row!.metadata.internalDate).toBe("1700000000000");
     expect(row!.metadata.rfc822MessageId).toBeNull();
+    // No In-Reply-To header → fresh email, not a thread reply
+    expect(row!.inReplyToHeader).toBeNull();
+  });
+
+  it("captures In-Reply-To header for genuine thread replies", () => {
+    const msg: GmailApiMessageDetail = {
+      id: "msgReply",
+      threadId: "threadX",
+      snippet: "Thanks!",
+      internalDate: "1700000001000",
+      payload: {
+        headers: [
+          { name: "From", value: "contact@example.com" },
+          { name: "To", value: "staff@bidlow.co.uk" },
+          { name: "Subject", value: "Re: Your outreach" },
+          { name: "In-Reply-To", value: "<outbound-id@mail.gmail.com>" },
+        ],
+      },
+    };
+    const row = mapGmailMessageToRow(msg);
+    expect(row!.inReplyToHeader).toBe("<outbound-id@mail.gmail.com>");
   });
 
   it("captures rfc822 Message-ID header in metadata (PR Q)", () => {
