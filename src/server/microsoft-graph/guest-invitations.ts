@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   classifyInvitationError,
+  classifyGraphUserReadError,
+  formatInvitationErrorForBanner,
   type ClassifiedInvitationError,
 } from "@/lib/staff-access/invitation-errors";
 
@@ -24,6 +26,21 @@ export class GuestInvitationError extends Error {
   constructor(classified: ClassifiedInvitationError) {
     super(classified.message);
     this.name = "GuestInvitationError";
+    this.classified = classified;
+  }
+}
+
+/**
+ * Typed error thrown when ODoutreach cannot read a guest user's
+ * `externalUserState`. The message is already operator-safe and never
+ * includes the raw Microsoft Graph JSON body.
+ */
+export class GraphUserReadError extends Error {
+  readonly classified: ClassifiedInvitationError;
+
+  constructor(classified: ClassifiedInvitationError) {
+    super(formatInvitationErrorForBanner(classified));
+    this.name = "GraphUserReadError";
     this.classified = classified;
   }
 }
@@ -92,7 +109,9 @@ export async function getGuestUserExternalState(
   if (!res.ok) {
     if (res.status === 404) return null;
     const t = await res.text();
-    throw new Error(`Graph user read failed (${res.status}): ${t}`);
+    throw new GraphUserReadError(
+      classifyGraphUserReadError({ status: res.status, body: t }),
+    );
   }
   const json = (await res.json()) as { externalUserState?: string | null };
   return json.externalUserState ?? null;
