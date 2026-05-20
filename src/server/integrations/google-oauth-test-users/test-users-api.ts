@@ -51,11 +51,22 @@ export function getProjectIdFromServiceAccount(): string {
   return id.trim();
 }
 
-/** Resolves project ID → numeric project number via Cloud Resource Manager. */
+/**
+ * Resolves the numeric project number.
+ *
+ * Prefers the GOOGLE_CLOUD_PROJECT_NUMBER env var (avoids needing the
+ * resourcemanager.projects.get permission on the service account). Falls
+ * back to Cloud Resource Manager if the env var is unset.
+ */
 async function getProjectNumber(
   projectId: string,
   token: string,
 ): Promise<string> {
+  const fromEnv = process.env.GOOGLE_CLOUD_PROJECT_NUMBER?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+
   const res = await fetch(
     `https://cloudresourcemanager.googleapis.com/v3/projects/${encodeURIComponent(projectId)}`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -63,7 +74,9 @@ async function getProjectNumber(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(
-      `Could not resolve project number for "${projectId}" (HTTP ${res.status}): ${body.slice(0, 300)}`,
+      `Could not resolve project number for "${projectId}" (HTTP ${res.status}). ` +
+        `Set GOOGLE_CLOUD_PROJECT_NUMBER env var to skip this lookup. ` +
+        `Response: ${body.slice(0, 200)}`,
     );
   }
   const data = (await res.json()) as { name?: string };
