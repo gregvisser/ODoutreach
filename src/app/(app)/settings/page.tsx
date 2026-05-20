@@ -11,6 +11,7 @@ import {
 import { staffRoleLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
+import { GoogleOauthTestUsersPanel } from "@/components/settings/google-oauth-test-users-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -328,6 +329,22 @@ export default async function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {staff.role === "ADMIN" && googleWorkspaceSuppressionConfigured && (
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Google OAuth — test users</CardTitle>
+              <CardDescription>
+                While the Google OAuth app is in Testing status, only explicitly
+                listed test users can connect Google Workspace mailboxes. Add
+                addresses here instead of going to Google Cloud Console.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GoogleOauthTestUsersPanel />
+            </CardContent>
+          </Card>
+        )}
       </section>
     </div>
   );
