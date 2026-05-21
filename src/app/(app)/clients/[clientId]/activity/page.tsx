@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ClientActivityTimelinePanel } from "@/components/activity/client-activity-timeline-panel";
 import { ClientOutreachRepliesPanel } from "@/components/activity/client-outreach-replies-panel";
+import { ClearClientRepliesButton } from "@/components/activity/clear-client-replies-button";
 import { AdminQueueDrainPanel } from "@/components/ops/admin-queue-drain-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
 import { Badge } from "@/components/ui/badge";
@@ -214,6 +215,22 @@ export default async function ClientActivityPage({ params, searchParams }: Props
                 <RecentGovernedSendsPanel
                   rows={bundle.recentGovernedSends}
                   currentUtcWindowKey={currentUtcWindowKey}
+                />
+              </CardContent>
+            </Card>
+            <Card className="border-destructive/40 shadow-sm">
+              <CardHeader>
+                <CardTitle>Clear replies</CardTitle>
+                <CardDescription>
+                  Permanently delete all reply records for this client. Use this
+                  to remove historical false-positive replies ingested before
+                  the In-Reply-To filter was added. This cannot be undone.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ClearClientRepliesButton
+                  clientId={bundle.client.id}
+                  clientName={bundle.client.name}
                 />
               </CardContent>
             </Card>
