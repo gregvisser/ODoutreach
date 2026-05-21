@@ -79,34 +79,28 @@ export default async function ClientActivityPage({ params, searchParams }: Props
         </p>
       </div>
 
+      {/*
+        Top strip is driven by the same full-count metrics as the "Outreach
+        metrics" card below — NOT the activity timeline (which is capped at 40
+        rows/source + 100 total and would under-report at volume).
+      */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <SummaryCard
-          label="Introductions sent"
-          value={timeline.summary.byType.send ?? 0}
-        />
-        <SummaryCard label="Replies" value={totalReplies} />
+        <SummaryCard label="Emails sent" value={metrics.sent} />
+        <SummaryCard label="Replies" value={metrics.replies} />
         <SummaryCard
           label="Bounces"
-          value={timeline.summary.byType.bounce ?? 0}
-          tone={
-            (timeline.summary.byType.bounce ?? 0) > 0 ? "warning" : undefined
-          }
+          value={metrics.bounces}
+          tone={metrics.bounces > 0 ? "warning" : undefined}
         />
         <SummaryCard
           label="Unsubscribes"
-          value={timeline.summary.byType.unsubscribe ?? 0}
-          tone={
-            (timeline.summary.byType.unsubscribe ?? 0) > 0
-              ? "warning"
-              : undefined
-          }
+          value={metrics.unsubscribes}
+          tone={metrics.unsubscribes > 0 ? "warning" : undefined}
         />
         <SummaryCard
           label="Failed sends"
-          value={timeline.summary.byType.error ?? 0}
-          tone={
-            (timeline.summary.byType.error ?? 0) > 0 ? "error" : undefined
-          }
+          value={metrics.failed}
+          tone={metrics.failed > 0 ? "error" : undefined}
         />
       </div>
 
