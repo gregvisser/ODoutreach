@@ -102,8 +102,9 @@ describe("/reporting UI policy (PR #136)", () => {
 
   it("renders the staff-facing metric contract panel", () => {
     expect(reportingPageSource).toContain("What these metrics mean");
+    // Open tracking is now live (pixel) — the contract explains it's approximate.
     expect(reportingPageSource).toContain(
-      "Open tracking is not implemented",
+      "tracking pixel loaded at least once",
     );
   });
 

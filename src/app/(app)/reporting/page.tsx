@@ -225,7 +225,7 @@ export default async function ReportingPage({ searchParams }: Props) {
             />
             <ContractTerm
               term="Opens / Open rate"
-              body='Open tracking is not implemented. Reply rate is the only engagement signal you can trust.'
+              body='Counts emails whose tracking pixel loaded at least once. Approximate by nature — Apple Mail Privacy Protection auto-loads pixels (inflates opens) and image-blocking clients suppress them. Treat as directional; reply rate is the firmest engagement signal.'
             />
             <ContractTerm
               term="Replies / Reply rate"

@@ -15,6 +15,10 @@ import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microso
 import { sendMicrosoftGraphSendMail } from "@/server/mailbox/microsoft-graph-sendmail";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
+import {
+  appendOpenTrackingPixel,
+  buildOpenTrackingPixelUrl,
+} from "@/lib/tracking/open-pixel";
 import { getOutboundEmailProvider } from "../providers";
 import {
   humanizeGovernanceRejection,
@@ -399,12 +403,19 @@ async function sendViaConnectedMailboxOrFail(
     ];
     try {
       const accessToken = await getGoogleGmailAccessTokenForMailbox(mailbox.id);
+      // Open tracking: embed a hidden pixel keyed on correlationId so the
+      // /api/track/open endpoint can record opens. Skipped when no public
+      // base URL is configured.
+      const gmailPixelUrl = buildOpenTrackingPixelUrl(row.correlationId);
+      const gmailHtml = gmailPixelUrl
+        ? appendOpenTrackingPixel(bodyParts.html, gmailPixelUrl)
+        : bodyParts.html;
       const rfc = buildRfc5322PlainTextEmail({
         from: fromForLog,
         to,
         subject,
         bodyText: bodyParts.text,
-        bodyHtml: bodyParts.html,
+        bodyHtml: gmailHtml,
         extraHeaders: gmailExtraHeaders,
       });
       const result = await sendGmailUsersMessagesSend({
@@ -492,6 +503,11 @@ async function sendViaConnectedMailboxOrFail(
     mailbox,
     hostedUnsubscribeUrl: graphListUnsubscribeUrl,
   });
+  // Open tracking pixel (see Gmail path above).
+  const graphPixelUrl = buildOpenTrackingPixelUrl(row.correlationId);
+  const graphHtml = graphPixelUrl
+    ? appendOpenTrackingPixel(bodyParts.html, graphPixelUrl)
+    : bodyParts.html;
 
   try {
     const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
@@ -503,7 +519,7 @@ async function sendViaConnectedMailboxOrFail(
       bodyText: bodyParts.text,
       correlationId: row.correlationId,
       options: {
-        bodyHtml: bodyParts.html,
+        bodyHtml: graphHtml,
         ...(graphListUnsubscribeUrl
           ? { listUnsubscribeUrl: graphListUnsubscribeUrl }
           : {}),

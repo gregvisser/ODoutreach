@@ -86,11 +86,10 @@ export async function loadGlobalOutreachMetrics(
     if (raw.deliveryTracked) {
       totals.deliveryTracked = true;
     }
+    if (raw.opensTracked) {
+      totals.opensTracked = true;
+    }
   }
-
-  // Open tracking is not implemented anywhere in src/. See
-  // docs/ops/SYSTEM_HANDOVER_GAPS.md G2.
-  totals.opensTracked = false;
 
   return {
     global: deriveOutreachMetrics(totals),
@@ -142,6 +141,7 @@ async function gatherRawCounts(scope: {
     totalContacts,
     emailSendable,
     deliveryEventCount,
+    opens,
   ] = await Promise.all([
     prisma.outboundEmail.count({
       where: {
@@ -216,6 +216,11 @@ async function gatherRawCounts(scope: {
         eventType: { contains: DELIVERY_EVENT_TYPE_FRAGMENT, mode: "insensitive" },
       },
     }),
+    // Opens: distinct outbound emails whose tracking pixel has loaded at
+    // least once (openedAt set by /api/track/open). See open-pixel.ts.
+    prisma.outboundEmail.count({
+      where: { ...scope, openedAt: { not: null } },
+    }),
   ]);
 
   const sentProofMissing = Math.max(
@@ -232,8 +237,10 @@ async function gatherRawCounts(scope: {
     sentProofMissing,
     delivered,
     deliveryTracked,
-    opens: 0,
-    opensTracked: false,
+    opens,
+    // Open tracking is live (pixel injected into outgoing HTML). Approximate
+    // by nature — Apple MPP inflates, image-blocking clients suppress.
+    opensTracked: true,
     replies,
     unsubscribes,
     bounces,

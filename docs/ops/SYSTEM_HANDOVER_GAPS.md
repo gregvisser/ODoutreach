@@ -27,17 +27,20 @@ target PR that closes it.
   webhooks?") is still a future enhancement, but is no longer required for
   trustworthy staff-facing numbers.
 
-## G2. Open tracking is not implemented — **Addressed (PR #136)**
+## G2. Open tracking — **Implemented (pixel)**
 
-- **Scope:** No open-pixel injection, no open events ingested.
-- **Impact on staff:** Open metrics show 0% — looks like the system "is
-  broken" or "no one is reading".
-- **PR #136 outcome:** Verified in code that no `src/` path writes
-  `OutboundEmail.openedAt`. Reports now always renders **Not tracked** for
-  opens, with the contract panel stating: "Open tracking is not implemented.
-  Reply rate is the only engagement signal you can trust."
-- **Residual:** Real open tracking would require provider-side pixel
-  injection + ingestion. Out of programme scope.
+- **Original gap (PR #136):** No open-pixel injection, no open events
+  ingested; reports rendered **Not tracked** for opens.
+- **Now implemented:** Outgoing HTML emails (Gmail + Microsoft Graph mailbox
+  sends) embed a hidden 1×1 pixel pointing at `/api/track/open/<correlationId>`
+  (`src/lib/tracking/open-pixel.ts`, `src/app/api/track/open/[token]/route.ts`).
+  The endpoint records the first `OutboundEmail.openedAt`. Metrics count opens
+  (`openedAt != null`) and set `opensTracked = true`.
+- **Caveat (surfaced in the UI contract panel):** Approximate by nature —
+  Apple Mail Privacy Protection auto-loads pixels (inflates opens) and
+  image-blocking clients suppress them. Reply rate remains the firmest signal.
+- **Residual:** Resend ESP path does not yet inject the pixel (mailbox sends
+  do). Per-open event history is not stored — only first-open time.
 
 ## G2a. Reporting daily snapshot rollup is unused — **Runtime closed (PR #140), schema cleanup deferred**
 
