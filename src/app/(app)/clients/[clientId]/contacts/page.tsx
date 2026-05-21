@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
-import { ContactReadinessBadge } from "@/components/contacts/contact-readiness-badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -271,191 +270,105 @@ export default async function ClientContactsPage({ params }: Props) {
           </CardContent>
         </Card>
       ) : (
-        <section
-          aria-label="Email lists"
-          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-        >
-          {lists.map((list) => {
-            const readiness = list.readiness;
-            return (
-              <Card
-                key={list.id}
-                className="flex h-full flex-col border-border/80 shadow-sm"
-              >
-                <CardHeader className="space-y-2">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <CardTitle className="break-words text-lg leading-tight">
-                      {list.name}
-                    </CardTitle>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant={listStatusBadgeVariant(list.statusLabel)}>
-                        {listStatusLabel(list.statusLabel)}
-                      </Badge>
-                      {list.hasSuppression ? (
-                        <Badge variant="destructive">
-                          {readiness.suppressed} suppressed
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                  {list.description ? (
-                    <CardDescription className="break-words">
-                      {list.description}
-                    </CardDescription>
-                  ) : null}
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <div>
-                      <dt className="font-medium uppercase tracking-wider">
-                        Members
-                      </dt>
-                      <dd className="tabular-nums text-foreground">
-                        {list.memberCount}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium uppercase tracking-wider">
-                        Updated
-                      </dt>
-                      <dd className="text-foreground">
-                        {formatDate(list.updatedAt)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium uppercase tracking-wider">
-                        Created
-                      </dt>
-                      <dd className="text-foreground">
-                        {formatDate(list.createdAt)}
-                      </dd>
-                    </div>
-                    {list.createdByName ? (
-                      <div>
-                        <dt className="font-medium uppercase tracking-wider">
-                          By
-                        </dt>
-                        <dd
-                          className="truncate text-foreground"
-                          title={list.createdByName}
+        <Card className="border-border/80 shadow-sm">
+          <CardContent className="overflow-x-auto p-0">
+            <table
+              aria-label="Email lists"
+              className="w-full text-left text-sm"
+            >
+              <thead>
+                <tr className="border-b text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <th className="px-4 py-2.5">List</th>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5 text-right">Members</th>
+                  <th className="px-3 py-2.5 text-right">Ready to email</th>
+                  <th className="px-3 py-2.5 text-right">Suppressed</th>
+                  <th className="px-3 py-2.5 text-right">Missing email</th>
+                  <th className="px-3 py-2.5 text-right">Missing identifier</th>
+                  <th className="px-3 py-2.5">Updated</th>
+                  <th className="px-3 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {lists.map((list) => {
+                  const readiness = list.readiness;
+                  return (
+                    <tr key={list.id} className="align-top hover:bg-muted/40">
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`${base}/lists/${list.id}`}
+                          className="font-medium text-foreground underline-offset-2 hover:underline"
                         >
-                          {list.createdByName}
-                        </dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-4">
-                  <dl className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5">
-                      <dt className="font-medium uppercase tracking-wider text-muted-foreground">
-                        Ready to email
-                      </dt>
-                      <dd className="text-base font-semibold tabular-nums">
-                        {readiness.emailSendable}
-                      </dd>
-                    </div>
-                    <div className="rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5">
-                      <dt className="font-medium uppercase tracking-wider text-muted-foreground">
-                        Suppressed
-                      </dt>
-                      <dd className="text-base font-semibold tabular-nums">
-                        {readiness.suppressed}
-                      </dd>
-                    </div>
-                    <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1.5">
-                      <dt className="font-medium uppercase tracking-wider text-muted-foreground">
-                        Missing email
-                      </dt>
-                      <dd className="text-base font-semibold tabular-nums">
-                        {readiness.missingEmail}
-                      </dd>
-                    </div>
-                    <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1.5">
-                      <dt className="font-medium uppercase tracking-wider text-muted-foreground">
-                        Missing identifier
-                      </dt>
-                      <dd className="text-base font-semibold tabular-nums">
-                        {readiness.missingOutreachIdentifier}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Recent members
-                    </p>
-                    {list.recentMembers.length === 0 ? (
-                      <p className="rounded-md border border-dashed border-border/80 bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-                        No contacts in this list yet. Contacts appear here
-                        after your next import into this list.
-                      </p>
-                    ) : (
-                      <ul className="divide-y divide-border/60 rounded-md border border-border/80">
-                        {list.recentMembers.map((member) => (
-                          <li
-                            key={member.id}
-                            className="flex flex-col gap-1 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between"
+                          {list.name}
+                        </Link>
+                        {list.description ? (
+                          <p
+                            className="mt-0.5 max-w-xs truncate text-xs text-muted-foreground"
+                            title={list.description}
                           >
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className="truncate font-medium text-foreground"
-                                title={member.displayName}
-                              >
-                                {member.displayName}
-                              </p>
-                              <p
-                                className="truncate text-muted-foreground"
-                                title={
-                                  [member.company, member.email]
-                                    .filter(Boolean)
-                                    .join(" · ") || undefined
-                                }
-                              >
-                                {[member.company, member.email]
-                                  .filter(Boolean)
-                                  .join(" · ") || "—"}
-                              </p>
-                            </div>
-                            <ContactReadinessBadge
-                              status={member.status}
-                              className="self-start sm:self-center"
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="mt-auto flex flex-wrap gap-2 pt-2">
-                    <Link
-                      href={`${base}/lists/${list.id}`}
-                      className={cn(
-                        buttonVariants({ variant: "default", size: "sm" }),
-                      )}
-                    >
-                      Open list
-                    </Link>
-                    <Link
-                      href={`${base}/sources`}
-                      className={cn(
-                        buttonVariants({ variant: "outline", size: "sm" }),
-                      )}
-                    >
-                      Open sources
-                    </Link>
-                    <Link
-                      href={`${base}/outreach`}
-                      className={cn(
-                        buttonVariants({ variant: "outline", size: "sm" }),
-                      )}
-                    >
-                      Open outreach
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </section>
+                            {list.description}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={listStatusBadgeVariant(list.statusLabel)}>
+                            {listStatusLabel(list.statusLabel)}
+                          </Badge>
+                          {list.hasSuppression ? (
+                            <Badge variant="destructive">
+                              {readiness.suppressed} suppressed
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {list.memberCount}
+                      </td>
+                      <td className="px-3 py-3 text-right font-medium tabular-nums">
+                        {readiness.emailSendable}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {readiness.suppressed}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {readiness.missingEmail}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {readiness.missingOutreachIdentifier}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap text-muted-foreground">
+                        {formatDate(list.updatedAt)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex justify-end gap-1.5 whitespace-nowrap">
+                          <Link
+                            href={`${base}/lists/${list.id}`}
+                            className={cn(buttonVariants({ variant: "default", size: "xs" }))}
+                          >
+                            Open
+                          </Link>
+                          <Link
+                            href={`${base}/sources`}
+                            className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
+                          >
+                            Sources
+                          </Link>
+                          <Link
+                            href={`${base}/outreach`}
+                            className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
+                          >
+                            Outreach
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
 
       <Card className="border-border/80 shadow-sm">

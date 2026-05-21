@@ -18,9 +18,14 @@ describe("Client Lists tab (PR #138)", () => {
     expect(pageSource).toMatch(/Lists\s*\n\s*<\/p>/);
   });
 
-  it("links each list card to /clients/[id]/lists/[listId]", () => {
+  it("links each list row to /clients/[id]/lists/[listId]", () => {
     expect(pageSource).toContain("`${base}/lists/${list.id}`");
-    expect(pageSource).toContain("Open list");
+  });
+
+  it("renders lists as a table (list view) rather than a card grid", () => {
+    expect(pageSource).toContain('aria-label="Email lists"');
+    expect(pageSource).toContain("<table");
+    expect(pageSource).not.toContain("md:grid-cols-2 xl:grid-cols-3");
   });
 
   it("points staff at Sources for adding contacts", () => {
