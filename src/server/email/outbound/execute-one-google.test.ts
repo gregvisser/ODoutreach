@@ -36,11 +36,13 @@ vi.mock("@/server/mailbox/google-mailbox-access", () => ({
 const { buildRfc } = vi.hoisted(() => ({
   buildRfc: vi.fn(() => "rfc"),
 }));
+const TEST_MESSAGE_ID = "<test-msg-id@workspace.test>";
 vi.mock("@/server/mailbox/gmail-sendmail", () => ({
   buildRfc5322PlainTextEmail: (...a: unknown[]) =>
     (buildRfc as (...args: unknown[]) => string)(...a),
   sendGmailUsersMessagesSend: (...a: unknown[]) =>
     (sendGmail as (...args: unknown[]) => unknown)(...a),
+  generateRfc822MessageId: () => TEST_MESSAGE_ID,
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),
@@ -152,6 +154,7 @@ describe("executeOutboundSend — Google governed path", () => {
       bodyHtml?: string;
     };
     expect(firstArg.extraHeaders).toEqual([
+      { name: "Message-ID", value: TEST_MESSAGE_ID },
       {
         name: "List-Unsubscribe",
         value: "<https://app.example.com/unsubscribe/raw-g>",
@@ -165,11 +168,15 @@ describe("executeOutboundSend — Google governed path", () => {
     expect(firstArg.bodyHtml).not.toContain("Unsubscribe: https://app.example.com/unsubscribe/raw-g");
   });
 
-  it("PR N — passes no extraHeaders when metadata lacks unsubscribe header shape", async () => {
+  it("PR N — stamps only the Message-ID header when metadata lacks unsubscribe shape", async () => {
     await executeOutboundSend("out1");
     const rfcCalls = buildRfc.mock.calls as unknown as unknown[][];
     expect(rfcCalls.length).toBeGreaterThan(0);
-    const firstArg = rfcCalls[0]![0] as { extraHeaders?: unknown };
-    expect(firstArg.extraHeaders).toBeUndefined();
+    const firstArg = rfcCalls[0]![0] as {
+      extraHeaders?: Array<{ name: string; value: string }>;
+    };
+    expect(firstArg.extraHeaders).toEqual([
+      { name: "Message-ID", value: TEST_MESSAGE_ID },
+    ]);
   });
 });

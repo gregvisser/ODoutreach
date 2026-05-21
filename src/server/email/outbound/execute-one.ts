@@ -8,6 +8,7 @@ import { resolveValidatedSenderForClient } from "@/server/email/sender-identity"
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import {
   buildRfc5322PlainTextEmail,
+  generateRfc822MessageId,
   sendGmailUsersMessagesSend,
 } from "@/server/mailbox/gmail-sendmail";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
@@ -384,12 +385,18 @@ async function sendViaConnectedMailboxOrFail(
       mailbox,
       hostedUnsubscribeUrl: hostedU,
     });
-    const gmailExtraHeaders = listUnsub
-      ? [
-          { name: "List-Unsubscribe", value: listUnsub.listUnsubscribe },
-          { name: "List-Unsubscribe-Post", value: listUnsub.listUnsubscribePost },
-        ]
-      : undefined;
+    // Stamp our own Message-ID so genuine replies link back to this exact send
+    // via their In-Reply-To header (see process-synced-replies BY_THREAD_REF).
+    const rfc822MessageId = generateRfc822MessageId(fromForLog);
+    const gmailExtraHeaders = [
+      { name: "Message-ID", value: rfc822MessageId },
+      ...(listUnsub
+        ? [
+            { name: "List-Unsubscribe", value: listUnsub.listUnsubscribe },
+            { name: "List-Unsubscribe-Post", value: listUnsub.listUnsubscribePost },
+          ]
+        : []),
+    ];
     try {
       const accessToken = await getGoogleGmailAccessTokenForMailbox(mailbox.id);
       const rfc = buildRfc5322PlainTextEmail({
@@ -427,6 +434,7 @@ async function sendViaConnectedMailboxOrFail(
           status: "SENT",
           providerMessageId: result.providerMessageId,
           providerName: result.providerName,
+          rfc822MessageId,
           sentAt: new Date(),
           claimedAt: null,
           claimExpiresAt: null,

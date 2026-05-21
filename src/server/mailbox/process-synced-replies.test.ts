@@ -54,6 +54,37 @@ describe("processSyncedMessageForReply", () => {
     stopFollowUpsMock.mockResolvedValue({ enrollmentsStopped: 0 });
   });
 
+  it("links definitively by rfc822 Message-ID (BY_THREAD_REF)", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    // First findFirst = rfc822MessageId lookup → returns the outbound.
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob-thread",
+      contactId: "ct-thread",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-thread" });
+
+    const result = await processSyncedMessageForReply(BASE_INPUT);
+
+    expect(result.created).toBe(true);
+    // The definitive lookup is keyed on rfc822MessageId == In-Reply-To value.
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          clientId: "c1",
+          rfc822MessageId: "<outbound-msg-id@mail.gmail.com>",
+        }),
+      }),
+    );
+    expect(prismaMock.inboundReply.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        matchMethod: "BY_THREAD_REF",
+        linkedOutboundEmailId: "ob-thread",
+        inReplyToProviderId: "<outbound-msg-id@mail.gmail.com>",
+      }),
+    });
+  });
+
   it("calls stopFollowUpsForLinkedReply for the matched outbound (PR #137)", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
     prismaMock.outboundEmail.findFirst.mockResolvedValue({
@@ -88,13 +119,12 @@ describe("processSyncedMessageForReply", () => {
     expect(stopFollowUpsMock).not.toHaveBeenCalled();
   });
 
-  it("creates InboundReply linked to outbound when contact email matches", async () => {
+  it("falls back to contact-email match for legacy sends (BY_CONTACT_EMAIL)", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
-    prismaMock.outboundEmail.findFirst.mockResolvedValue({
-      id: "ob1",
-      contactId: "ct1",
-      status: "SENT",
-    });
+    // No rfc822 Message-ID match (legacy send), then the contact-email fallback hits.
+    prismaMock.outboundEmail.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "ob1", contactId: "ct1", status: "SENT" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply1" });
 
     const result = await processSyncedMessageForReply(BASE_INPUT);
@@ -112,6 +142,29 @@ describe("processSyncedMessageForReply", () => {
         ingestionSource: "mailbox_sync",
       }),
     });
+  });
+
+  it("legacy fallback only matches outbounds with no stamped Message-ID", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "ob-legacy", contactId: "ct1", status: "SENT" });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-legacy" });
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    // The fallback query must constrain rfc822MessageId to null so modern sends
+    // are never loosely linked by an unrelated thread reply.
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          clientId: "c1",
+          mailboxIdentityId: "mbx1",
+          toEmail: "contact@example.com",
+          rfc822MessageId: null,
+        }),
+      }),
+    );
   });
 
   it("updates outbound status to REPLIED for SENT outbound", async () => {
@@ -237,18 +290,16 @@ describe("processSyncedMessageForReply", () => {
     expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
   });
 
-  it("matches outbound by mailboxIdentityId scope", async () => {
+  it("matches outbound by mailboxIdentityId scope (legacy fallback)", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
-    prismaMock.outboundEmail.findFirst.mockResolvedValue({
-      id: "ob5",
-      contactId: "ct5",
-      status: "DELIVERED",
-    });
+    prismaMock.outboundEmail.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "ob5", contactId: "ct5", status: "DELIVERED" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply5" });
 
     await processSyncedMessageForReply(BASE_INPUT);
 
-    expect(prismaMock.outboundEmail.findFirst).toHaveBeenCalledWith(
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           clientId: "c1",
@@ -256,6 +307,7 @@ describe("processSyncedMessageForReply", () => {
           toEmail: "contact@example.com",
           sentAt: { not: null, lte: BASE_INPUT.receivedAt },
           status: { in: ["SENT", "DELIVERED", "REPLIED"] },
+          rfc822MessageId: null,
         }),
         orderBy: { sentAt: "desc" },
       }),
@@ -281,13 +333,11 @@ describe("processSyncedMessageForReply", () => {
     );
   });
 
-  it("normalizes email before matching", async () => {
+  it("normalizes email before matching (legacy fallback)", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
-    prismaMock.outboundEmail.findFirst.mockResolvedValue({
-      id: "ob6",
-      contactId: "ct6",
-      status: "SENT",
-    });
+    prismaMock.outboundEmail.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "ob6", contactId: "ct6", status: "SENT" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply6" });
 
     await processSyncedMessageForReply({
@@ -295,7 +345,7 @@ describe("processSyncedMessageForReply", () => {
       fromEmail: "  CONTACT@Example.COM  ",
     });
 
-    expect(prismaMock.outboundEmail.findFirst).toHaveBeenCalledWith(
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           toEmail: "contact@example.com",

@@ -1166,6 +1166,9 @@ model OutboundEmail {
   staffUserId            String?
   /// ESP message id (SendGrid/Postmark/etc.)
   providerMessageId      String?
+  /// RFC 5322 Message-ID header we stamp on the outgoing email (e.g. "<uuid@domain>").
+  /// Lets inbound replies link back to this exact send via their In-Reply-To header.
+  rfc822MessageId        String?
   /// e.g. mock, resend, postmark
   providerName           String?
   fromAddress            String?
@@ -1229,6 +1232,7 @@ model OutboundEmail {
   @@index([correlationId])
   @@index([status, nextRetryAt, queuedAt])
   @@index([mailboxIdentityId, sentAt])
+  @@index([clientId, rfc822MessageId])
 }
 
 model MailboxSendReservation {

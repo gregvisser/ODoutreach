@@ -1,8 +1,23 @@
 import "server-only";
 
+import { randomUUID } from "crypto";
+
 import type { SendEmailResult } from "@/server/email/providers/types";
 
 const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+
+/**
+ * Generate an RFC 5322 Message-ID we control, e.g. "<uuid@sending-domain>".
+ *
+ * We stamp this header on the outgoing email so that when the recipient
+ * replies, their In-Reply-To header carries this exact value — letting us
+ * link the reply back to this specific send with certainty (rather than
+ * guessing by sender address). Gmail preserves a client-supplied Message-ID.
+ */
+export function generateRfc822MessageId(fromEmail: string): string {
+  const domain = fromEmail.split("@")[1]?.trim().toLowerCase() || "odoutreach.local";
+  return `<${randomUUID()}@${domain}>`;
+}
 
 function safeHeaderLines(extraHeaders?: ReadonlyArray<{ name: string; value: string }>): string[] {
   const safeExtra: string[] = [];
