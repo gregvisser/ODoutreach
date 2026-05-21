@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ClientActivityTimelinePanel } from "@/components/activity/client-activity-timeline-panel";
 import { ClientOutreachRepliesPanel } from "@/components/activity/client-outreach-replies-panel";
 import { ClearClientRepliesButton } from "@/components/activity/clear-client-replies-button";
+import { ResetClientOutreachPanel } from "@/components/activity/reset-client-outreach-panel";
 import { AdminQueueDrainPanel } from "@/components/ops/admin-queue-drain-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
 import { Badge } from "@/components/ui/badge";
@@ -209,6 +210,24 @@ export default async function ClientActivityPage({ params, searchParams }: Props
                 <RecentGovernedSendsPanel
                   rows={bundle.recentGovernedSends}
                   currentUtcWindowKey={currentUtcWindowKey}
+                />
+              </CardContent>
+            </Card>
+            <Card className="border-destructive/40 shadow-sm">
+              <CardHeader>
+                <CardTitle>Reset pre-production data</CardTitle>
+                <CardDescription>
+                  Permanently delete test outreach created before a cutoff date
+                  (sends, step-sends, enrollments, replies, events, reservations)
+                  so metrics reflect only real production outreach. Preview shows
+                  exact counts before anything is deleted. Cannot be undone.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResetClientOutreachPanel
+                  clientId={bundle.client.id}
+                  clientName={bundle.client.name}
+                  defaultCutoff="2026-05-17"
                 />
               </CardContent>
             </Card>
