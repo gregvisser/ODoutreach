@@ -117,7 +117,6 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             <MetricRow label="Total sent (with proof)" value={metrics.sent.toLocaleString()} />
             <MetricRow label="Queued" value={metrics.queued.toLocaleString()} tone={metrics.queued > 0 ? "warning" : undefined} />
             <MetricRow label="Send proof missing" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "error" : undefined} />
-            <MetricRow label="Delivery" value={formatTrackedMetric(metrics.delivered, metrics.deliveryTracked)} sub={metrics.deliveryTracked ? `Rate: ${formatRate(metrics.deliveryRate)}` : undefined} />
             <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
             <MetricRow label="Replies" value={metrics.replies.toLocaleString()} sub={`Rate: ${formatRate(metrics.replyRate)}`} />
             <MetricRow label="Opt-outs" value={metrics.unsubscribes.toLocaleString()} sub={`Rate: ${formatRate(metrics.unsubscribeRate)}`} />

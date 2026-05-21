@@ -3,8 +3,16 @@ import "server-only";
 import type { StaffRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 
-/** Roles that may see all client workspaces (internal ops). */
-const GLOBAL_CLIENT_ACCESS_ROLES: StaffRole[] = ["ADMIN", "MANAGER"];
+/**
+ * Roles that may see/operate on all client workspaces (internal ops staff).
+ * OPERATOR is included: operators are trusted staff who do the day-to-day
+ * outreach work across every client, so they no longer need per-client
+ * membership to access a workspace. VIEWER stays membership-scoped + read-only.
+ */
+const GLOBAL_CLIENT_ACCESS_ROLES: StaffRole[] = ["ADMIN", "MANAGER", "OPERATOR"];
+
+/** Roles allowed to assign other staff to client workspaces (admin-level). */
+const MEMBERSHIP_ASSIGNMENT_ROLES: StaffRole[] = ["ADMIN", "MANAGER"];
 
 export type StaffIdentity = {
   id: string;
@@ -13,7 +21,7 @@ export type StaffIdentity = {
 
 /** ADMIN/MANAGER may assign OPERATOR/VIEWER staff to client workspaces via `ClientMembership`. */
 export function canAssignClientWorkspaceMembership(staff: StaffIdentity): boolean {
-  return GLOBAL_CLIENT_ACCESS_ROLES.includes(staff.role);
+  return MEMBERSHIP_ASSIGNMENT_ROLES.includes(staff.role);
 }
 
 /**

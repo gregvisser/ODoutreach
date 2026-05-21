@@ -95,9 +95,13 @@ describe("/reporting UI policy (PR #136)", () => {
     expect(reportingPageSource).toContain("Not reached");
   });
 
-  it("surfaces the 'Not tracked' state via formatTrackedMetric for delivery and opens", () => {
-    expect(reportingPageSource).toContain("formatTrackedMetric(m.delivered, m.deliveryTracked)");
+  it("surfaces the 'Not tracked' state via formatTrackedMetric for opens", () => {
     expect(reportingPageSource).toContain("formatTrackedMetric(m.opens, m.opensTracked)");
+  });
+
+  it("no longer renders the untrackable Delivery metric", () => {
+    expect(reportingPageSource).not.toContain('label="Delivery"');
+    expect(reportingPageSource).not.toContain("Delivery / Delivery rate");
   });
 
   it("renders the staff-facing metric contract panel", () => {
@@ -115,10 +119,11 @@ describe("/reporting UI policy (PR #136)", () => {
 
   it("keeps the per-client breakdown table with staff-friendly column labels", () => {
     expect(reportingPageSource).toContain("Per-client breakdown");
-    expect(reportingPageSource).toContain(">Delivery rate<");
     expect(reportingPageSource).toContain(">Reply rate<");
     expect(reportingPageSource).toContain(">Not reached<");
     expect(reportingPageSource).toContain(">Proof missing<");
+    // Delivery columns removed — mailbox sends cannot be delivery-tracked.
+    expect(reportingPageSource).not.toContain(">Delivery rate<");
   });
 
   it("never imports send / reply / queue / sync action modules", () => {

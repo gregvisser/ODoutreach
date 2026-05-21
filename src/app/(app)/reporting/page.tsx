@@ -139,16 +139,6 @@ export default async function ReportingPage({ searchParams }: Props) {
               hint={`Reply rate: ${formatRate(m.replyRate)}`}
               tone={m.replies > 0 ? "positive" : undefined}
             />
-            <HeadlineMetric
-              label="Delivery"
-              value={formatTrackedMetric(m.delivered, m.deliveryTracked)}
-              hint={
-                m.deliveryTracked
-                  ? `Delivery rate: ${formatRate(m.deliveryRate)}`
-                  : "No delivery webhooks observed for this scope"
-              }
-              tone={!m.deliveryTracked ? "muted" : undefined}
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
@@ -220,10 +210,6 @@ export default async function ReportingPage({ searchParams }: Props) {
               body='A sequence step was marked SENT but the underlying OutboundEmail does not have provider proof. Treat as not reached until investigated.'
             />
             <ContractTerm
-              term="Delivery / Delivery rate"
-              body='Only counted when the provider emits a delivery webhook. Some providers (e.g. Microsoft Graph send) do not emit one — for those clients delivery shows as "Not tracked".'
-            />
-            <ContractTerm
               term="Opens / Open rate"
               body='Counts emails whose tracking pixel loaded at least once. Approximate by nature — Apple Mail Privacy Protection auto-loads pixels (inflates opens) and image-blocking clients suppress them. Treat as directional; reply rate is the firmest engagement signal.'
             />
@@ -267,8 +253,6 @@ export default async function ReportingPage({ searchParams }: Props) {
                   <th className="px-3 py-2">Client</th>
                   <th className="px-3 py-2 text-right">Sent</th>
                   <th className="px-3 py-2 text-right">Queued</th>
-                  <th className="px-3 py-2 text-right">Delivered</th>
-                  <th className="px-3 py-2 text-right">Delivery rate</th>
                   <th className="px-3 py-2 text-right">Replies</th>
                   <th className="px-3 py-2 text-right">Reply rate</th>
                   <th className="px-3 py-2 text-right">Opt-outs</th>
@@ -294,17 +278,6 @@ export default async function ReportingPage({ searchParams }: Props) {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {row.metrics.queued.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {formatTrackedMetric(
-                        row.metrics.delivered,
-                        row.metrics.deliveryTracked,
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.deliveryTracked
-                        ? formatRate(row.metrics.deliveryRate)
-                        : "—"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {row.metrics.replies.toLocaleString()}

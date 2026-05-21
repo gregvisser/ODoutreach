@@ -16,10 +16,10 @@ describe("mailboxMutatorAllowedFromRoles", () => {
     expect(mailboxMutatorAllowedFromRoles("MANAGER", null)).toBe(true);
   });
 
-  it("allows OPERATOR only with LEAD or CONTRIBUTOR membership", () => {
+  it("allows OPERATOR regardless of membership (full operational role)", () => {
     expect(mailboxMutatorAllowedFromRoles("OPERATOR", "LEAD")).toBe(true);
     expect(mailboxMutatorAllowedFromRoles("OPERATOR", "CONTRIBUTOR")).toBe(true);
-    expect(mailboxMutatorAllowedFromRoles("OPERATOR", "VIEWER")).toBe(false);
-    expect(mailboxMutatorAllowedFromRoles("OPERATOR", null)).toBe(false);
+    expect(mailboxMutatorAllowedFromRoles("OPERATOR", "VIEWER")).toBe(true);
+    expect(mailboxMutatorAllowedFromRoles("OPERATOR", null)).toBe(true);
   });
 });
