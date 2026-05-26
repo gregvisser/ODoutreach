@@ -42,6 +42,37 @@ export function buildMicrosoftMailboxAuthorizeUrl(
   return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
 }
 
+/**
+ * Tenant-wide admin consent URL.
+ *
+ * Security-conscious Microsoft 365 tenants block regular users from
+ * consenting to third-party apps. When the mailbox owner sees Microsoft's
+ * "Need admin approval" screen, their org's IT admin must approve OpensDoors
+ * once via this URL. After they accept, every mailbox in that tenant connects
+ * normally. The admin lands back on the mailbox callback, which detects the
+ * `admin_consent` response and shows a friendly confirmation page.
+ *
+ * @param emailOrDomain  A mailbox address (alex@chevronsecurity.co.uk) or a
+ *                       bare domain (chevronsecurity.co.uk). The tenant is
+ *                       scoped to that domain so the admin lands on their org.
+ * @returns the URL, or null when the Microsoft OAuth client id is not set.
+ */
+export function buildMicrosoftAdminConsentUrl(
+  emailOrDomain: string,
+): string | null {
+  const clientId = process.env.MAILBOX_MICROSOFT_OAUTH_CLIENT_ID?.trim();
+  if (!clientId) return null;
+  const raw = emailOrDomain.trim().toLowerCase();
+  const domain = raw.includes("@") ? raw.split("@")[1]?.trim() : raw;
+  const tenant = domain && domain.length > 0 ? domain : "organizations";
+  const params = new URLSearchParams({
+    client_id: clientId,
+    scope: "https://graph.microsoft.com/.default",
+    redirect_uri: mailboxMicrosoftRedirectUri(),
+  });
+  return `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/v2.0/adminconsent?${params.toString()}`;
+}
+
 export async function exchangeMicrosoftMailboxAuthCode(
   code: string,
 ): Promise<{

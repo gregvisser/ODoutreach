@@ -8,11 +8,46 @@ import { resolveMicrosoftMailboxOAuthConnection } from "@/server/mailbox/mailbox
 import { encryptMailboxCredentialJson } from "@/server/mailbox/oauth-crypto";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 
+/** Minimal branded standalone page shown to a customer's IT admin after they
+ *  grant (or decline) tenant-wide admin consent. Non-technical, no app chrome. */
+function adminConsentResultPage(ok: boolean, detail?: string): Response {
+  const title = ok
+    ? "OpensDoors is approved ✅"
+    : "Approval was not completed";
+  const body = ok
+    ? "Your organisation's administrator has approved OpensDoors. You can close this window. The mailbox owner can now connect their mailbox in OpensDoors — no more admin approval prompt."
+    : `The approval did not go through${detail ? `: ${detail}` : "."} You can close this window and try the link again, or contact OpensDoors for help.`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title}</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+  .card{background:#fff;max-width:460px;border:1px solid #e5e5ea;border-radius:14px;padding:28px 26px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  h1{font-size:20px;margin:0 0 12px}
+  p{font-size:15px;line-height:1.55;color:#3a3a3c;margin:0}
+</style></head><body><div class="card"><h1>${title}</h1><p>${body}</p></div></body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const err = url.searchParams.get("error");
   const state = url.searchParams.get("state")?.trim();
   const code = url.searchParams.get("code")?.trim();
+
+  // Tenant-wide admin consent (separate from a mailbox connect) redirects here
+  // with `admin_consent` and no `code`/mailbox `state`. Show the customer's IT
+  // admin a friendly confirmation rather than the connect-flow error path.
+  if (url.searchParams.get("admin_consent") !== null) {
+    if (err) {
+      const desc = url.searchParams.get("error_description") ?? err;
+      return adminConsentResultPage(false, desc);
+    }
+    return adminConsentResultPage(true);
+  }
 
   if (!state) {
     return mailboxOAuthRedirectToClient("", {

@@ -3,6 +3,11 @@ import { notFound } from "next/navigation";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
+  MicrosoftAdminConsentHelp,
+  type AdminConsentEntry,
+} from "@/components/clients/microsoft-admin-consent-help";
+import { buildMicrosoftAdminConsentUrl } from "@/server/mailbox/microsoft-mailbox-oauth";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -53,6 +58,25 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const client = bundle.client;
   const showMailboxSetupTools = canAccessMailboxSetupTools(staff.role);
   const publicSiteOrigin = resolvePublicBaseUrl();
+
+  // Tenant-wide admin-consent helper: one entry per distinct Microsoft mailbox
+  // domain, so staff can hand the customer's IT admin a ready-made approval
+  // link when the owner hits Microsoft's "Need admin approval" screen.
+  const adminConsentEntries: AdminConsentEntry[] = bundle.oauthMicrosoftReady
+    ? Array.from(
+        new Set(
+          bundle.mailboxRows
+            .filter((m) => m.provider === "MICROSOFT")
+            .map((m) => m.email.split("@")[1]?.trim().toLowerCase())
+            .filter((d): d is string => Boolean(d)),
+        ),
+      )
+        .map((domain) => {
+          const url = buildMicrosoftAdminConsentUrl(domain);
+          return url ? { domain, url } : null;
+        })
+        .filter((e): e is AdminConsentEntry => e !== null)
+    : [];
 
   /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
   let oauthMailboxVerifiedConnected = false;
@@ -138,6 +162,10 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           </ul>
         </CardContent>
       </Card>
+
+      {adminConsentEntries.length > 0 ? (
+        <MicrosoftAdminConsentHelp entries={adminConsentEntries} />
+      ) : null}
 
       {showMailboxSetupTools ? (
         <InternalProofSendCard
