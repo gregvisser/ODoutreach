@@ -80,17 +80,21 @@ export function MicrosoftAdminConsentHelp({
   if (entries.length === 0) return null;
 
   return (
-    <Card className="border-border/80 shadow-sm">
+    <Card className="border-2 border-amber-500/70 bg-amber-50/70 shadow-sm dark:bg-amber-500/10">
       <CardHeader>
-        <CardTitle className="text-lg">
+        <div className="mb-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/20 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-100">
+          ⚠ Microsoft admin approval
+        </div>
+        <CardTitle className="text-xl font-bold">
           Microsoft mailbox shows &ldquo;Need admin approval&rdquo;?
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-foreground/80">
           Some organisations block staff from approving outside apps — only
-          their IT administrator can. This is <span className="font-medium">not</span>{" "}
-          a password or MFA problem. Send the customer the link and steps below;
-          their admin approves OpensDoors once, then every mailbox on that
-          domain connects normally.
+          their IT administrator can. This is{" "}
+          <span className="font-semibold text-foreground">not</span> a password
+          or MFA problem. Send the customer the link and steps below; their
+          admin approves OpensDoors once, then every mailbox on that domain
+          connects normally.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
