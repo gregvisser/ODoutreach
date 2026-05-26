@@ -40,6 +40,8 @@ const createSchema = z.object({
 const updateSchema = z.object({
   clientId: z.string().min(1),
   mailboxId: z.string().min(1),
+  /** Optional — only present when correcting a mailbox added with the wrong provider. */
+  provider: providerSchema.optional(),
   ...baseFields,
   dailySendCap: z.coerce.number().int().min(1).max(5000),
 });
@@ -206,10 +208,29 @@ export async function updateClientMailboxIdentity(
         throw new Error("This mailbox was removed from the workspace. Restore it before editing.");
       }
 
-      assertPrimaryRequiresConnected(
-        data.data.isPrimary,
-        existing.connectionStatus,
-      );
+      const providerChanged =
+        !!data.data.provider && data.data.provider !== existing.provider;
+
+      // A provider change invalidates the stored OAuth credential (they are
+      // provider-specific), so we reset the connection — the mailbox must be
+      // reconnected via the correct provider. This is how a mailbox added with
+      // the wrong provider gets corrected.
+      if (providerChanged) {
+        await tx.mailboxIdentitySecret.deleteMany({
+          where: { mailboxIdentityId: existing.id },
+        });
+        await tx.mailboxSendReservation.updateMany({
+          where: { mailboxIdentityId: existing.id, status: "RESERVED" },
+          data: { status: "RELEASED" },
+        });
+      } else {
+        // Only enforce the connected-for-primary rule when we are NOT resetting
+        // the connection (a provider change forces it disconnected below).
+        assertPrimaryRequiresConnected(
+          data.data.isPrimary,
+          existing.connectionStatus,
+        );
+      }
 
       const activeCount = await tx.clientMailboxIdentity.count({
         where: {
@@ -224,7 +245,7 @@ export async function updateClientMailboxIdentity(
         assertActiveMailboxLimit(activeCount, true);
       }
 
-      if (data.data.isPrimary) {
+      if (data.data.isPrimary && !providerChanged) {
         await tx.clientMailboxIdentity.updateMany({
           where: {
             clientId: data.data.clientId,
@@ -246,24 +267,45 @@ export async function updateClientMailboxIdentity(
           isActive: data.data.isActive,
           isPrimary: data.data.isPrimary ? true : false,
           lastError: data.data.lastError?.trim() || null,
-          ...(data.data.isActive === false
-            ? { isPrimary: false }
+          ...(data.data.isActive === false ? { isPrimary: false } : {}),
+          // Provider change: switch provider + force a clean disconnect so the
+          // owner reconnects through the right Microsoft/Google flow.
+          ...(providerChanged
+            ? {
+                provider: data.data.provider,
+                connectionStatus: "DISCONNECTED" as const,
+                providerLinkedUserId: null,
+                connectedAt: null,
+                oauthState: null,
+                oauthStateExpiresAt: null,
+                isPrimary: false,
+                lastError: null,
+              }
             : {}),
         },
       });
 
+      if (providerChanged) {
+        await reconcilePrimaryMailboxForClient(tx, data.data.clientId);
+      }
+
       await auditMailbox(staff.id, data.data.clientId, next.id, "UPDATE", {
+        ...(providerChanged ? { kind: "mailbox_provider_changed" } : {}),
         before: {
+          provider: existing.provider,
           isActive: existing.isActive,
           isPrimary: existing.isPrimary,
           isSendingEnabled: existing.isSendingEnabled,
           dailySendCap: existing.dailySendCap,
+          connectionStatus: existing.connectionStatus,
         },
         after: {
+          provider: next.provider,
           isActive: next.isActive,
           isPrimary: next.isPrimary,
           isSendingEnabled: next.isSendingEnabled,
           dailySendCap: next.dailySendCap,
+          connectionStatus: next.connectionStatus,
         },
       });
     });

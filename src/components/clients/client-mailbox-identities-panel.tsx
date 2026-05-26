@@ -1245,6 +1245,7 @@ function MailboxForm(props: MailboxFormProps) {
             props.onSubmitUpdate({
               clientId,
               mailboxId: props.editRow.id,
+              provider,
               displayName: displayName.trim() || null,
               canSend,
               canReceive,
@@ -1292,24 +1293,35 @@ function MailboxForm(props: MailboxFormProps) {
           </div>
         )}
 
-        {!isEdit ? (
-          <div className="space-y-1.5">
-            <span className="text-sm font-medium">Provider</span>
-            <select
-              className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              value={provider}
-              onChange={(e) =>
-                setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])
-              }
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        <div className="space-y-1.5">
+          <span className="text-sm font-medium">Provider</span>
+          <select
+            className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={provider}
+            onChange={(e) =>
+              setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])
+            }
+          >
+            {PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          {isEdit && initial && provider !== initial.provider ? (
+            <p className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-900 dark:text-amber-100">
+              Changing the provider will disconnect this mailbox. After saving,
+              click <span className="font-medium">Connect</span> to sign in
+              through {PROVIDERS.find((p) => p.value === provider)?.label ?? provider}.
+            </p>
+          ) : isEdit ? (
+            <p className="text-xs text-muted-foreground">
+              Use this only to correct a mailbox added with the wrong provider.
+              Changing it disconnects the mailbox so it can be reconnected
+              correctly.
+            </p>
+          ) : null}
+        </div>
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium" htmlFor="mb-display">
