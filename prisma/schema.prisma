@@ -288,8 +288,74 @@ model StaffUser {
   clientsLaunchApproved         Client[]                        @relation("ClientLaunchApprovedBy")
   clientsAsBriefAccountManager  Client[]                        @relation("ClientBriefAccountManager")
   clientComplianceFilesUploaded ClientComplianceAttachment[]  @relation("ClientComplianceUpload")
+  supportTicketsCreated         SupportTicket[]               @relation("SupportTicketCreatedBy")
+  supportTicketsApproved        SupportTicket[]               @relation("SupportTicketApprovedBy")
 
   @@index([invitedById])
+}
+
+/// Staff-raised support ticket for issues with the ODoutreach system itself
+/// (not client outreach). Workspace-wide, not client-scoped.
+enum SupportTicketStatus {
+  OPEN
+  IN_REVIEW
+  AWAITING_APPROVAL
+  APPROVED
+  RESOLVED
+  REJECTED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model SupportTicket {
+  id                    String                @id @default(cuid())
+  /// Short one-line summary.
+  title                 String
+  /// Full detail of the issue the user is experiencing.
+  description           String                @db.Text
+  priority              SupportTicketPriority @default(MEDIUM)
+  status                SupportTicketStatus   @default(OPEN)
+  /// Snapshot of the reporter's email at creation (survives staff deletion).
+  reporterEmail         String
+  createdByStaffUserId  String?
+  /// Developer's proposed fix, recorded before approval.
+  proposedFix           String?               @db.Text
+  /// Free-text resolution note when closed.
+  resolutionNote        String?               @db.Text
+  /// Approval is restricted to the configured approver (greg@bidlow.co.uk).
+  approvedByStaffUserId String?
+  approvedAt            DateTime?
+  rejectedAt            DateTime?
+  resolvedAt            DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  createdBy   StaffUser?                @relation("SupportTicketCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy  StaffUser?                @relation("SupportTicketApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  attachments SupportTicketAttachment[]
+
+  @@index([status, createdAt])
+  @@index([createdByStaffUserId])
+}
+
+model SupportTicketAttachment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+  /// Raw image bytes (screenshot). Stored in DB like ClientComplianceAttachment.
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
 }
 
 // ——— Tenant / workspace ———

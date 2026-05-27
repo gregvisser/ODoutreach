@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Globe2,
   GraduationCap,
+  LifeBuoy,
   ListFilter,
   PieChart,
   Settings,
@@ -51,5 +52,6 @@ export const mainNav: NavItem[] = [
   { title: "Universe", href: "/universe", icon: Globe2 },
   { title: "Do-not-contact", href: "/suppression", icon: ListFilter },
   { title: "Training", href: "/training", icon: GraduationCap },
+  { title: "Support", href: "/support", icon: LifeBuoy },
   { title: "Settings", href: "/settings", icon: Settings },
 ];

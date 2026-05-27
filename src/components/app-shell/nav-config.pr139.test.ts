@@ -30,6 +30,7 @@ describe("Main sidebar (PR #139 final audit, updated PR #140)", () => {
       "Universe",
       "Do-not-contact",
       "Training",
+      "Support",
       "Settings",
     ]);
   });
