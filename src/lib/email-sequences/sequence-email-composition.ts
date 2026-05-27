@@ -112,6 +112,47 @@ function trimOrNull(value: string | null | undefined): string | null {
   return t.length > 0 ? t : null;
 }
 
+function looksLikeEmail(value: string): boolean {
+  return /\S+@\S+\.\S+/.test(value);
+}
+
+/** "alex@trainhugger.com" → "Alex"; "sam.p@x.com" → "Sam P". */
+function humanizeNameFromEmail(email: string): string | null {
+  const local = email.split("@")[0] ?? "";
+  const words = local
+    .split(/[._\-+]+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (words.length === 0) return null;
+  return words
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Resolve the value for `{{ sender_name }}`. A sender name must read as a
+ * person's name in a sign-off — never a raw email address. If the configured
+ * display name is missing or actually an email, derive a friendly name from
+ * the sender email's local part instead.
+ */
+export function resolveSenderNameForDisplay(
+  senderName: string | null | undefined,
+  senderEmail: string | null | undefined,
+): string | null {
+  const name = trimOrNull(senderName);
+  if (name && !looksLikeEmail(name)) return name;
+
+  const email = trimOrNull(senderEmail);
+  if (email && looksLikeEmail(email)) {
+    return humanizeNameFromEmail(email);
+  }
+  // Last resort: the only value we have is itself an email-looking string.
+  if (name && looksLikeEmail(name)) {
+    return humanizeNameFromEmail(name);
+  }
+  return name;
+}
+
 /**
  * Build the concrete substitution table for the provided contact +
  * sender. Values that are empty/missing resolve to `null` so the
@@ -156,7 +197,7 @@ function buildValueTable(
     website: trimOrNull(contact.website),
     email,
     phone,
-    sender_name: trimOrNull(sender.senderName),
+    sender_name: resolveSenderNameForDisplay(sender.senderName, sender.senderEmail),
     sender_email: trimOrNull(sender.senderEmail),
     sender_company_name: trimOrNull(sender.senderCompanyName),
     email_signature: trimOrNull(sender.emailSignature),

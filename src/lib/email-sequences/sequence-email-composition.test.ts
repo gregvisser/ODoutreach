@@ -88,6 +88,45 @@ describe("composeSequenceEmail", () => {
     );
   });
 
+  it("renders sender_name as a name, never the sender email", () => {
+    // Bug: a mailbox whose display name is the email made {{sender_name}}
+    // render "alex@trainhugger.com" in the sign-off. It must read as a name.
+    const result = composeSequenceEmail(
+      input({
+        subject: "",
+        content: "Best,\n{{sender_name}}",
+        sender: sender({
+          senderName: "alex@trainhugger.com",
+          senderEmail: "alex@trainhugger.com",
+        }),
+      }),
+    );
+    expect(result.body).toBe("Best,\nAlex");
+    expect(result.body).not.toContain("@");
+  });
+
+  it("derives a multi-word sender_name from a dotted email local part", () => {
+    const result = composeSequenceEmail(
+      input({
+        subject: "",
+        content: "{{sender_name}}",
+        sender: sender({ senderName: null, senderEmail: "sam.p@trainhugger.com" }),
+      }),
+    );
+    expect(result.body).toBe("Sam P");
+  });
+
+  it("keeps a real sender display name untouched", () => {
+    const result = composeSequenceEmail(
+      input({
+        subject: "",
+        content: "{{sender_name}}",
+        sender: sender({ senderName: "Alex Trainhugger", senderEmail: "alex@trainhugger.com" }),
+      }),
+    );
+    expect(result.body).toBe("Alex Trainhugger");
+  });
+
   it("distinguishes company_name (recipient) from sender_company_name", () => {
     const result = composeSequenceEmail(
       input({
