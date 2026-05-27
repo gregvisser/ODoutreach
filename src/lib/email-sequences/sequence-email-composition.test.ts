@@ -255,15 +255,31 @@ describe("composeSequenceEmail", () => {
     expect(result.missingFields).toEqual(["unsubscribe_link"]);
   });
 
-  it("does not support camelCase placeholders in D4e.1", () => {
+  it("renders human-friendly placeholder forms (the {{First Name}} bug)", () => {
+    // Staff naturally type "{{First Name}}" / "{{Company Name}}" — these must
+    // resolve, not go out to the recipient verbatim.
     const result = composeSequenceEmail(
       input({
-        subject: "Hi {{firstName}}",
+        subject: "Hi {{First Name}} at {{ Company Name }}",
+        content: "From {{firstName}} — {{first name}}",
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.subject).toBe("Hi Ada at Analytical Engines");
+    expect(result.body).toBe("From Ada — Ada");
+    expect(result.unknownPlaceholders).toEqual([]);
+  });
+
+  it("still flags genuinely unknown placeholders (and no longer leaks them silently)", () => {
+    const result = composeSequenceEmail(
+      input({
+        subject: "Hi {{Pet Name}}",
         content: "",
       }),
     );
     expect(result.ok).toBe(false);
-    expect(result.unknownPlaceholders).toEqual(["firstName"]);
+    // Normalised to canonical form so the warning is consistent.
+    expect(result.unknownPlaceholders).toEqual(["pet_name"]);
   });
 
   it("SEQUENCE_SEND_REQUIRED_FIELDS covers email + sender critical fields", () => {

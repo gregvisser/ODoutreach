@@ -55,17 +55,38 @@ export const ALL_PLACEHOLDERS: readonly PlaceholderDescriptor[] = [
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set(ALL_PLACEHOLDERS.map((p) => p.key));
 
-/** `{{ token }}` — whitespace allowed inside the braces. */
-const PLACEHOLDER_PATTERN = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
+/**
+ * `{{ token }}` — captures ANY inner text (not just snake_case) so that
+ * human-friendly forms like `{{First Name}}` are recognised and then
+ * normalised, instead of being silently passed through to the recipient.
+ */
+const PLACEHOLDER_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+/**
+ * Normalise a raw placeholder key to canonical snake_case so the system is
+ * forgiving of how staff actually type tokens. Handles:
+ *   "First Name" → first_name, "first name" → first_name,
+ *   "First_Name" → first_name, "firstName" → first_name,
+ *   "Company-Name" → company_name.
+ */
+export function normalizePlaceholderKey(raw: string): string {
+  return raw
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // camelCase → camel_Case
+    .replace(/[\s-]+/g, "_") // spaces / hyphens → underscore
+    .toLowerCase()
+    .replace(/_+/g, "_") // collapse repeated underscores
+    .replace(/^_+|_+$/g, ""); // trim leading/trailing underscores
+}
 
 export function isKnownPlaceholder(key: string): boolean {
-  return KNOWN_KEYS.has(key);
+  return KNOWN_KEYS.has(normalizePlaceholderKey(key));
 }
 
 /**
- * Extract every `{{ key }}` token present across the provided strings.
- * Duplicates ARE kept in `all` (so the UI can show usage counts), but
- * `unique` is what approval validation uses.
+ * Extract every `{{ key }}` token present across the provided strings,
+ * normalised to canonical snake_case. Duplicates ARE kept in `all` (so the
+ * UI can show usage counts), but `unique` is what approval validation uses.
  */
 export function extractPlaceholders(...inputs: string[]): {
   all: string[];
@@ -77,7 +98,7 @@ export function extractPlaceholders(...inputs: string[]): {
     const matches = input.matchAll(PLACEHOLDER_PATTERN);
     for (const m of matches) {
       const key = m[1];
-      if (key) all.push(key);
+      if (key && key.trim().length > 0) all.push(normalizePlaceholderKey(key));
     }
   }
   return { all, unique: Array.from(new Set(all)) };

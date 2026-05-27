@@ -29,6 +29,7 @@
 import {
   extractPlaceholders,
   isKnownPlaceholder,
+  normalizePlaceholderKey,
 } from "@/lib/email-templates/placeholders";
 
 /** Canonical snake_case placeholder keys accepted in D4e.1. */
@@ -163,7 +164,9 @@ function buildValueTable(
   };
 }
 
-const PLACEHOLDER_PATTERN = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
+// Capture any inner text so human-friendly tokens like `{{First Name}}` are
+// recognised, then normalised — never passed through to a recipient verbatim.
+const PLACEHOLDER_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
 function renderString(
   input: string,
@@ -173,7 +176,7 @@ function renderString(
   missingFields: Set<SequencePlaceholderKey>,
 ): string {
   return input.replace(PLACEHOLDER_PATTERN, (match, rawKey: string) => {
-    const key = rawKey as string;
+    const key = normalizePlaceholderKey(rawKey);
     if (!isKnownPlaceholder(key)) {
       unknownPlaceholders.add(key);
       // Keep the token in the output so operators can spot which

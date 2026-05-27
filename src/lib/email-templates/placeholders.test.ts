@@ -49,10 +49,17 @@ describe("email template placeholders", () => {
     expect(recipient?.group).toBe("recipient");
   });
 
-  it("rejects camelCase aliases — UI only promotes snake_case", () => {
-    expect(isKnownPlaceholder("firstName")).toBe(false);
-    expect(isKnownPlaceholder("senderName")).toBe(false);
-    expect(isKnownPlaceholder("companyName")).toBe(false);
+  it("accepts human-friendly placeholder forms (forgiving matching)", () => {
+    // Natural language with spaces + capitals — what staff actually type.
+    expect(isKnownPlaceholder("First Name")).toBe(true);
+    expect(isKnownPlaceholder("Company Name")).toBe(true);
+    expect(isKnownPlaceholder("first name")).toBe(true);
+    // camelCase + hyphenated also normalise to the canonical key.
+    expect(isKnownPlaceholder("firstName")).toBe(true);
+    expect(isKnownPlaceholder("senderName")).toBe(true);
+    expect(isKnownPlaceholder("company-name")).toBe(true);
+    // Genuinely unknown keys stay unknown.
+    expect(isKnownPlaceholder("Deal Amount")).toBe(false);
   });
 });
 
@@ -74,12 +81,21 @@ describe("extractPlaceholders", () => {
     expect(unique.sort()).toEqual(["first_name", "role"]);
   });
 
-  it("ignores non-placeholder braces and malformed tokens", () => {
+  it("ignores single braces and empty tokens, normalises the rest", () => {
     const { unique } = extractPlaceholders(
-      "Not {a placeholder} and {{ }} empty and {{ weird-key }} skipped",
+      "Not {a placeholder} and {{ }} empty and {{ weird-key }} captured",
     );
-    // `weird-key` contains a hyphen so regex does not match
-    expect(unique).toEqual([]);
+    // Single braces + empty `{{ }}` are ignored; `weird-key` is captured and
+    // normalised to `weird_key` (unknown, so it will be flagged downstream).
+    expect(unique).toEqual(["weird_key"]);
+  });
+
+  it("normalises human-friendly forms to canonical keys", () => {
+    const { unique } = extractPlaceholders(
+      "Hi {{First Name}} at {{ Company Name }}",
+      "Regards {{firstName}}",
+    );
+    expect(unique.sort()).toEqual(["company_name", "first_name"]);
   });
 
   it("skips empty / non-string inputs gracefully", () => {
@@ -114,12 +130,16 @@ describe("validateTemplatePlaceholders", () => {
     expect(res.knownUsed.sort()).toEqual(["first_name", "sender_name"]);
   });
 
-  it("treats camelCase aliases as unknown", () => {
+  it("accepts camelCase and natural-language aliases as known", () => {
     const res = validateTemplatePlaceholders(
-      "Hi {{firstName}}",
-      "Cheers {{senderName}}",
+      "Hi {{firstName}} and {{First Name}}",
+      "Cheers {{senderName}} at {{ Company Name }}",
     );
-    expect(res.unknown.sort()).toEqual(["firstName", "senderName"]);
-    expect(res.knownUsed).toEqual([]);
+    expect(res.unknown).toEqual([]);
+    expect(res.knownUsed.sort()).toEqual([
+      "company_name",
+      "first_name",
+      "sender_name",
+    ]);
   });
 });
