@@ -93,7 +93,7 @@ export function SupportTicketDetailActions({
         {/* Copy-for-developer — available to everyone */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
           <p className="text-xs text-muted-foreground">
-            Hand this ticket to the developer (paste into a Claude session).
+            Copy this ticket to send to the developer.
           </p>
           <Button
             type="button"
