@@ -252,6 +252,23 @@ describe("composeSequenceEmail", () => {
     expect(result.missingFields).toContain("unsubscribe_link");
   });
 
+  it("does not block sending when {{email_signature}} is referenced but empty", () => {
+    // Reported bug: adding {{email_signature}} to a template blocked the
+    // email when the mailbox had no signature. The dispatcher appends the
+    // mailbox signature itself, so the placeholder is convenience-only.
+    const result = composeSequenceEmail(
+      input({
+        subject: "",
+        content: "Body\n---\n{{email_signature}}",
+        sender: sender({ emailSignature: null }),
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.sendReady).toBe(true);
+    expect(result.missingFields).not.toContain("email_signature");
+    expect(result.body).toBe("Body\n---\n");
+  });
+
   it("inserts the sender email_signature verbatim", () => {
     const result = composeSequenceEmail(
       input({

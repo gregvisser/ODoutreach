@@ -209,6 +209,16 @@ function buildValueTable(
 // recognised, then normalised — never passed through to a recipient verbatim.
 const PLACEHOLDER_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
+/**
+ * Optional placeholders — when the template references one of these and the
+ * value is empty, render an empty string but DO NOT block the send. The
+ * dispatcher appends the mailbox signature on its own, so `{{email_signature}}`
+ * is a convenience for layout, not a hard requirement.
+ */
+const OPTIONAL_PLACEHOLDERS: ReadonlySet<SequencePlaceholderKey> = new Set([
+  "email_signature",
+]);
+
 function renderString(
   input: string,
   values: Record<SequencePlaceholderKey, string | null>,
@@ -228,7 +238,9 @@ function renderString(
     usedPlaceholders.add(typed);
     const value = values[typed];
     if (value === null || value === undefined || value.length === 0) {
-      missingFields.add(typed);
+      if (!OPTIONAL_PLACEHOLDERS.has(typed)) {
+        missingFields.add(typed);
+      }
       return "";
     }
     return value;
