@@ -388,7 +388,7 @@ function IntroSendDispatchBlock({
         {introSend.blockedReasonCounts.length > 0 && (
           <details className="mt-1">
             <summary className="cursor-pointer font-medium text-foreground">
-              Why blocked ({String(blocked)})
+              Blocked recipients ({String(blocked)})
             </summary>
             <ul className="mt-1 list-disc pl-5">
               {introSend.blockedReasonCounts.map((r) => (

@@ -54,7 +54,7 @@ function basePanel(overrides: Partial<LaunchReadinessPanelInput> = {}): LaunchRe
 }
 
 describe("deriveLaunchStageLabel", () => {
-  it("returns Pilot-ready when brief ready and pilot can run", () => {
+  it("returns Ready to launch when brief ready and outreach can run", () => {
     expect(
       deriveLaunchStageLabel(
         baseInput({
@@ -62,7 +62,7 @@ describe("deriveLaunchStageLabel", () => {
           outreachPilotRunnable: true,
         }),
       ),
-    ).toBe("Pilot-ready");
+    ).toBe("Ready to launch");
   });
 
   it("returns Brief not started when brief empty", () => {
@@ -141,7 +141,7 @@ describe("buildLaunchReadinessRows", () => {
     expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
   });
 
-  it("prioritises launchable production sequence over approved counts when pilot-ready", () => {
+  it("prioritises launchable production sequence over approved counts when ready to launch", () => {
     const row = buildLaunchReadinessRows(
       basePanel({
         outreachPilotRunnable: true,
@@ -151,7 +151,7 @@ describe("buildLaunchReadinessRows", () => {
       }),
     ).find((r) => r.id === "outreach");
     expect(row?.pillStatus).toBe("ready");
-    expect(row?.metric).toBe("Pilot ready · launchable production sequence");
+    expect(row?.metric).toBe("Ready to launch · launchable production sequence");
   });
 
   it("hints that a sequence is pending approval when introduction templates exist but no approved sequence", () => {
@@ -170,7 +170,7 @@ describe("buildLaunchReadinessRows", () => {
     const row = buildLaunchReadinessRows(
       basePanel({ outreachPilotRunnable: true, hasProductionLaunchableSequence: false }),
     ).find((r) => r.id === "outreach");
-    expect(row?.metric).toBe("Pilot ready");
+    expect(row?.metric).toBe("Ready to launch");
   });
 
   it("uses informational copy for Activity when there is no send history yet", () => {

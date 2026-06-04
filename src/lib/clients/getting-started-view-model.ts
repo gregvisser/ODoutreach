@@ -126,7 +126,7 @@ export function buildGettingStartedViewModel(
       id: "launch",
       label: "Check launch readiness",
       description:
-        "Use the Launch readiness panel to confirm mailboxes, OAuth, suppression, and pilot are all green.",
+        "Use the Launch readiness panel to confirm mailboxes, suppression, and contacts are all green. The client activates automatically once every section is ready.",
       href: `${base}`,
       done: input.outreachPilotRunnable,
     },

@@ -6,6 +6,22 @@ import { SEQUENCE_INTRODUCTION_BATCH_CAP } from "@/lib/controlled-pilot-constant
 export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefined): string | null {
   if (!raw || !raw.trim()) return null;
   const s = raw.trim();
+  // Governance gate codes — never surface raw "blocked_*" strings to staff.
+  if (/blocked_client_inactive/i.test(s) || (/Client is/i.test(s) && /not ACTIVE/i.test(s))) {
+    return "This client isn't live yet. Finish the onboarding sections on the client overview page — the client activates automatically when every section is ready.";
+  }
+  if (/blocked_launch_approval_required/i.test(s)) {
+    return "This client still needs to finish onboarding before sequences can launch.";
+  }
+  if (/blocked_live_mode_not_enabled/i.test(s)) {
+    return "Live sending isn't enabled for this client yet.";
+  }
+  if (/blocked_unsubscribe_required/i.test(s)) {
+    return "An unsubscribe link is required before this sequence can send.";
+  }
+  if (/blocked_allowlist/i.test(s)) {
+    return "Sending is restricted to allowlisted recipients right now.";
+  }
   if (/not APPROVED/i.test(s) && /Sequence is/i.test(s)) {
     return "This sequence is not activated for sending yet. Save again, or open Templates if an email still needs approval.";
   }

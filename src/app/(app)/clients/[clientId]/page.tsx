@@ -27,6 +27,7 @@ import {
 } from "@/lib/outreach-mailbox-model";
 import { clientStatusLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { autoPromoteClientIfReady } from "@/server/clients/auto-promote-client";
 import { getClientHasProductionLaunchableSequence } from "@/server/email-sequences/queries";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -49,6 +50,16 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       : Array.isArray(sp.created)
         ? sp.created[0] === "1"
         : false;
+
+  // Auto-promote ONBOARDING → ACTIVE when every readiness section is complete.
+  // Replaces the old manual "APPROVE LAUNCH" phrase action: operators just
+  // finish the onboarding sections and the client activates on the next
+  // visit to this page. Best-effort — failures don't block the render.
+  try {
+    await autoPromoteClientIfReady(clientId, staff);
+  } catch {
+    /* never block the overview page on auto-promote */
+  }
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
@@ -197,13 +208,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       detail: "At least one connected Google Workspace mailbox",
     },
     {
-      label: "Test sender ready",
-      ok: bundle.hasGovernedMailbox && bundle.oauthReadyForGovernedTest,
-      detail: bundle.hasGovernedMailbox
-        ? "A connected mailbox can send proof emails"
-        : "Connect a mailbox to enable test sends",
-    },
-    {
       label: "Outreach mailbox capacity",
       ok: bundle.connectedSendingCount >= 1,
       detail: formatOutreachMailboxCapacityChecklistDetail(bundle.connectedSendingCount),
@@ -221,11 +225,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       label: "Daily send capacity",
       ok: bundle.aggregateRemaining >= 1,
       detail: `${String(bundle.aggregateRemaining)} send${bundle.aggregateRemaining === 1 ? "" : "s"} remaining today (max ${String(THEORETICAL_MAX_CLIENT_DAILY_SENDS)}/day with ${String(REQUIRED_OUTREACH_MAILBOX_COUNT)} mailboxes at ${String(OUTREACH_MAILBOX_DAILY_CAP)} each)`,
-    },
-    {
-      label: "Pilot send ready",
-      ok: outreachPilotRunnable,
-      detail: "Uses the full mailbox pool",
     },
   ];
 

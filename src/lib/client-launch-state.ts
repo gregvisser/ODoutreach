@@ -215,8 +215,8 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         label: "Outreach",
         pillStatus: "ready",
         metric: hasLaunchable
-          ? "Pilot ready · launchable production sequence"
-          : `Pilot ready${sequenceHint}`,
+          ? "Ready to launch · launchable production sequence"
+          : `Ready to launch${sequenceHint}`,
         href: `${base}/outreach`,
         actionLabel: "Open outreach",
       };
@@ -271,7 +271,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
 /** One-line status for the command center header. */
 export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string {
   if (input.brief.status === "ready" && input.outreachPilotRunnable) {
-    return "Pilot-ready";
+    return "Ready to launch";
   }
   if (input.brief.status === "empty") {
     return "Brief not started";
@@ -383,7 +383,7 @@ export function buildClientWorkflowSteps(input: ClientLaunchSnapshotInput): Clie
       id: "outreach",
       label: "Outreach",
       status: stepStatus(outreachComplete, !input.outreachPilotRunnable, outreachStarted),
-      metric: input.outreachPilotRunnable ? "Pilot can run" : "Check prerequisites",
+      metric: input.outreachPilotRunnable ? "Ready to launch" : "Check prerequisites",
       href: `${base}/outreach`,
     },
     {

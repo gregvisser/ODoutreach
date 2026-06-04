@@ -23,13 +23,14 @@ describe("Outreach live sequence flow (PR #119–#121)", () => {
     expect(src).not.toContain("ClientEmailTemplatesPanel");
   });
 
-  it("hides governed test and pilot panels behind admin-only wrapper", () => {
+  it("does not surface pilot/test/proof-send panels on the Outreach page", () => {
+    // Operators don't run pilots or proof sends before live launches —
+    // sequence launches go through `evaluateSendGovernance` directly.
     const page = readFileSync(outreachPage, "utf8");
-    expect(page).toContain("AdminOutreachDiagnosticsPanel");
-    expect(page).toContain("isAdmin");
-    expect(page).toContain("GovernedTestSendPanel");
-    expect(page).toContain("ControlledPilotSendPanel");
-    expect(page).not.toMatch(/<details[\s\S]*GovernedTestSendPanel/);
+    expect(page).not.toMatch(/<AdminOutreachDiagnosticsPanel/);
+    expect(page).not.toMatch(/<GovernedTestSendPanel/);
+    expect(page).not.toMatch(/<ControlledPilotSendPanel/);
+    expect(page).not.toMatch(/<InternalProofSendCard/);
   });
 
   it("uses dashboard-oriented wording on the Outreach page", () => {

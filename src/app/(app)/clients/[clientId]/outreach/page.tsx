@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { AdminOutreachDiagnosticsPanel } from "@/components/clients/admin-outreach-diagnostics-panel";
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
-import { ControlledPilotSendPanel } from "@/components/clients/controlled-pilot-send-panel";
-import { GovernedTestSendPanel } from "@/components/clients/governed-test-send-panel";
 import {
   Card,
   CardContent,
@@ -13,9 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
-import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
 import { OUTREACH_PAGE_SUBTITLE, OUTREACH_PAGE_TITLE } from "@/lib/clients/outreach-staff-copy";
-import { OUTREACH_MAILBOX_DAILY_CAP } from "@/lib/outreach-mailbox-model";
 import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -128,8 +123,6 @@ export default async function ClientOutreachPage({
     stepSendSnapshots: stepSendBundle.snapshots,
   });
 
-  const isAdmin = staff.role === "ADMIN";
-
   return (
     <div className="space-y-8">
       <div>
@@ -176,47 +169,12 @@ export default async function ClientOutreachPage({
         stepSendSnapshots={stepSendBundle.snapshots}
       />
 
-      <AdminOutreachDiagnosticsPanel isAdmin={isAdmin}>
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle>Internal verification send</CardTitle>
-            <CardDescription>
-              Send a single message to an allowlisted internal address to confirm layout and
-              personalisation.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GovernedTestSendPanel
-              clientId={client.id}
-              canMutate={bundle.canMutateMailboxes}
-              hasGovernedMailbox={bundle.hasGovernedMailbox}
-              oauthReadyForGovernedTest={bundle.oauthReadyForGovernedTest}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle>Limited first batch (legacy)</CardTitle>
-            <CardDescription>
-              Optional capped path: up to {String(CONTROLLED_PILOT_HARD_MAX_RECIPIENTS)} recipients
-              per run. Each mailbox can send up to {String(OUTREACH_MAILBOX_DAILY_CAP)} emails per UTC
-              day.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ControlledPilotSendPanel
-              key={`pilot-${client.id}-${bundle.brief.pilotSubjectTemplate ?? ""}-${bundle.brief.pilotBodyTemplate ?? ""}`}
-              clientId={client.id}
-              canMutate={bundle.canMutateMailboxes}
-              prerequisites={bundle.pilotPrerequisites}
-              initialSubject={bundle.brief.pilotSubjectTemplate}
-              initialBody={bundle.brief.pilotBodyTemplate}
-              contactSummary={bundle.pilotContactSummary}
-            />
-          </CardContent>
-        </Card>
-      </AdminOutreachDiagnosticsPanel>
+      {/*
+        Pilot/test/internal-proof diagnostic cards intentionally removed —
+        operators don't run pilots before live sends. Real sequence sends
+        use the standard suppression + daily-cap + mailbox-readiness rails
+        in `evaluateSendGovernance` (already on the dispatcher).
+      */}
     </div>
   );
 }
