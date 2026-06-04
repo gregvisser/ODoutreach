@@ -15,8 +15,9 @@ import { describe, expect, it } from "vitest";
  *   3. Render the "Not tracked" affordance for delivery and opens when the
  *      data does not back the metric.
  *   4. Keep the trustworthy outreach-metrics card path.
- *   5. Render the "What these metrics mean" contract panel so staff have
- *      a single source of truth in-product.
+ *   5. NOT render the verbose "What these metrics mean" glossary — it
+ *      made the dashboard look busy and was removed at the operator's
+ *      request (the metric hints under each tile carry the meaning).
  *
  * Reading the source file as a string lets us assert the policy without
  * spinning up React, Prisma, or auth. No DB or send/sync path is touched
@@ -104,12 +105,9 @@ describe("/reporting UI policy (PR #136)", () => {
     expect(reportingPageSource).not.toContain("Delivery / Delivery rate");
   });
 
-  it("renders the staff-facing metric contract panel", () => {
-    expect(reportingPageSource).toContain("What these metrics mean");
-    // Open tracking is now live (pixel) — the contract explains it's approximate.
-    expect(reportingPageSource).toContain(
-      "tracking pixel loaded at least once",
-    );
+  it("does NOT render the verbose 'What these metrics mean' glossary (removed for clarity)", () => {
+    expect(reportingPageSource).not.toContain("What these metrics mean");
+    expect(reportingPageSource).not.toContain("ContractTerm");
   });
 
   it("labels the scope (All accessible clients or specific client) and the time window (All-time)", () => {

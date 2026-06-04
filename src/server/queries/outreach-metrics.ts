@@ -187,6 +187,12 @@ async function gatherRawCounts(scope: {
       where: {
         ...scope,
         status: { in: ["SUPPRESSED", "SKIPPED", "BLOCKED"] },
+        // Exclude 21-day outreach-cooldown deferrals. Those contacts were
+        // ALREADY emailed (that's why they're in cooldown) — they're
+        // counted under "Sent" via their original send. Counting them
+        // again as suppressed/skipped would wrongly inflate "Not reached"
+        // for people who were, in fact, reached.
+        NOT: { blockedReason: { contains: "cooldown", mode: "insensitive" } },
       },
     }),
     prisma.inboundReply.count({

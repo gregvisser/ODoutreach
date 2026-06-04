@@ -35,7 +35,24 @@ export function deriveOutreachDashboardStatusLabel(args: {
     if (sent > 0 && ready === 0 && blocked === 0) return "Sent";
     if (sent > 0 && ready > 0) return "Sending";
 
-    if (launchReadiness && !launchReadiness.canLaunch) return "Blocked";
+    if (launchReadiness && !launchReadiness.canLaunch) {
+      // Distinguish a genuine configuration problem (no mailbox, missing
+      // template/unsubscribe, etc.) from the benign "there's simply
+      // nobody to send to right now" case. The latter is usually because
+      // every eligible contact has already been emailed or is inside the
+      // 21-day outreach cooldown — that is NOT broken, so it must not show
+      // the alarming red "Blocked" pill.
+      const activeBlockers = launchReadiness.checks.filter(
+        (c) => c.status === "fail" && c.severity === "blocker",
+      );
+      const onlyNoRecipients =
+        activeBlockers.length > 0 &&
+        activeBlockers.every(
+          (c) => c.id === "pending_email_sendable_recipients",
+        );
+      if (onlyNoRecipients) return "No recipients ready";
+      return "Blocked";
+    }
 
     return "Ready";
   }

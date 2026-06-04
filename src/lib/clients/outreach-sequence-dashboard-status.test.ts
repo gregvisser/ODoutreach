@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readiness";
+import type {
+  SequenceLaunchCheckId,
+  SequenceLaunchReadiness,
+} from "@/lib/email-sequences/launch-readiness";
 import { deriveOutreachDashboardStatusLabel } from "@/lib/clients/outreach-sequence-dashboard-status";
 
 function lr(canLaunch: boolean): SequenceLaunchReadiness {
@@ -9,6 +12,22 @@ function lr(canLaunch: boolean): SequenceLaunchReadiness {
     checks: [],
     totalWarnings: 0,
     totalBlockers: canLaunch ? 0 : 1,
+  };
+}
+
+/** Build an un-launchable readiness whose blockers are the given check ids. */
+function lrBlockedBy(ids: SequenceLaunchCheckId[]): SequenceLaunchReadiness {
+  return {
+    canLaunch: false,
+    totalWarnings: 0,
+    totalBlockers: ids.length,
+    checks: ids.map((id) => ({
+      id,
+      label: id,
+      severity: "blocker" as const,
+      status: "fail" as const,
+      detail: "blocked",
+    })),
   };
 }
 
@@ -74,6 +93,43 @@ describe("deriveOutreachDashboardStatusLabel", () => {
         status: "APPROVED",
         launchReadiness: lr(false),
         prepCounts: { ready: 0, blocked: 3, suppressed: 0, sent: 15, failed: 0 },
+        enrollmentPending: 0,
+      }),
+    ).toBe("Blocked");
+  });
+
+  it("labels 'No recipients ready' (not Blocked) when the only blocker is no eligible recipients", () => {
+    // Everyone already emailed or inside the 21-day cooldown — not broken.
+    expect(
+      deriveOutreachDashboardStatusLabel({
+        status: "APPROVED",
+        launchReadiness: lrBlockedBy(["pending_email_sendable_recipients"]),
+        prepCounts: { ready: 0, blocked: 0, suppressed: 0, sent: 0, failed: 0 },
+        enrollmentPending: 0,
+      }),
+    ).toBe("No recipients ready");
+  });
+
+  it("still labels Blocked when a real config blocker is present alongside no-recipients", () => {
+    expect(
+      deriveOutreachDashboardStatusLabel({
+        status: "APPROVED",
+        launchReadiness: lrBlockedBy([
+          "pending_email_sendable_recipients",
+          "connected_sending_mailbox",
+        ]),
+        prepCounts: { ready: 0, blocked: 0, suppressed: 0, sent: 0, failed: 0 },
+        enrollmentPending: 0,
+      }),
+    ).toBe("Blocked");
+  });
+
+  it("labels Blocked for a genuine config blocker (missing mailbox)", () => {
+    expect(
+      deriveOutreachDashboardStatusLabel({
+        status: "APPROVED",
+        launchReadiness: lrBlockedBy(["connected_sending_mailbox"]),
+        prepCounts: { ready: 0, blocked: 0, suppressed: 0, sent: 0, failed: 0 },
         enrollmentPending: 0,
       }),
     ).toBe("Blocked");

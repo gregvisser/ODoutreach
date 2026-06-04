@@ -117,6 +117,9 @@ function badgeVariantForDashboardStatus(
   if (label === "Sent") return "secondary";
   if (label === "Completed") return "secondary";
   if (label === "Ready") return "secondary";
+  // "No recipients ready" is informational (everyone already emailed or
+  // in cooldown) — neutral outline, never the alarming destructive red.
+  if (label === "No recipients ready") return "outline";
   if (label === "Draft") return "outline";
   if (label === "Archived") return "outline";
   return "outline";

@@ -41,6 +41,8 @@ function statusBadge(status: string) {
       return <span className={`${base} bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300`}>{status}</span>;
     case "Suppressed / skipped":
       return <span className={`${base} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400`}>{status}</span>;
+    case "Awaiting send":
+      return <span className={`${base} bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300`}>{status}</span>;
     case "Queued":
       return <span className={`${base} bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300`}>{status}</span>;
     default:
@@ -68,6 +70,7 @@ const STATUS_FILTER_LABELS = [
   "All",
   "Sent from mailbox",
   "Sent — time unavailable",
+  "Awaiting send",
   "Queued",
   "Send proof missing",
   "Failed",
@@ -132,6 +135,7 @@ function matchesStatus(row: ContactDeliveryRow, filter: StatusFilterLabel): bool
     return (
       row.sendStatus !== "Sent from mailbox" &&
       row.sendStatus !== "Sent — time unavailable" &&
+      row.sendStatus !== "Awaiting send" &&
       row.sendStatus !== "Queued" &&
       row.sendStatus !== "Send proof missing" &&
       row.sendStatus !== "Failed" &&
@@ -303,10 +307,22 @@ export function ListDetailContactTable({ contacts }: Props) {
                     setExpanded(expanded === c.contactId ? null : c.contactId)
                   }
                 >
-                  <td className="px-3 py-2 font-medium">{c.name}</td>
+                  <td className="px-3 py-2 font-medium">
+                    <div>{c.name}</div>
+                    <div className="text-[11px] font-normal text-muted-foreground">
+                      {c.email ?? "no email on file"}
+                    </div>
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">{c.employer ?? "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground">{c.jobTitle ?? "—"}</td>
-                  <td className="px-3 py-2">{statusBadge(c.sendStatus)}</td>
+                  <td className="px-3 py-2">
+                    {statusBadge(c.sendStatus)}
+                    {c.skipReason ? (
+                      <div className="mt-1 max-w-[220px] text-[11px] leading-tight text-muted-foreground">
+                        {c.skipReason}
+                      </div>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{c.sequenceName ?? "—"}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[140px]">{c.mailboxLabel ?? "—"}</td>
                   <td className="px-3 py-2 text-xs tabular-nums">{formatDate(c.sentAt)}</td>
@@ -321,9 +337,19 @@ export function ListDetailContactTable({ contacts }: Props) {
                           Marked sent, but no provider send proof was found.
                         </p>
                       )}
+                      {c.sendStatus === "Awaiting send" && (
+                        <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          Awaiting send — this contact is eligible and will be emailed on the next launch / send run. Nothing has been handed to the mailbox yet.
+                        </p>
+                      )}
                       {c.sendStatus === "Queued" && (
                         <p className="mb-2 text-xs font-medium text-violet-600 dark:text-violet-400">
-                          Queued — waiting for the outbound processor to send via the connected mailbox.
+                          Queued — the email has been handed to the outbound processor and is waiting to send via the connected mailbox.
+                        </p>
+                      )}
+                      {c.skipReason && c.sendStatus === "Suppressed / skipped" && (
+                        <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                          Not being emailed: {c.skipReason}
                         </p>
                       )}
                       <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs sm:grid-cols-4">

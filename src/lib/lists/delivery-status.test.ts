@@ -28,15 +28,26 @@ describe("deriveDeliveryStatus", () => {
     expect(deriveDeliveryStatus(base())).toBe("Not sent");
   });
 
-  it("returns 'Queued' for PLANNED step send", () => {
+  it("returns 'Awaiting send' for PLANNED step send with no OutboundEmail", () => {
     expect(
       deriveDeliveryStatus({ ...base(), stepSendStatus: "PLANNED" }),
-    ).toBe("Queued");
+    ).toBe("Awaiting send");
   });
 
-  it("returns 'Queued' for READY step send", () => {
+  it("returns 'Awaiting send' for READY step send with no OutboundEmail", () => {
     expect(
       deriveDeliveryStatus({ ...base(), stepSendStatus: "READY" }),
+    ).toBe("Awaiting send");
+  });
+
+  it("returns 'Queued' (not 'Awaiting send') once a real OutboundEmail is queued", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        stepSendStatus: "READY",
+        outboundStatus: "QUEUED",
+        hasOutboundEmail: true,
+      }),
     ).toBe("Queued");
   });
 
@@ -316,12 +327,14 @@ describe("summarizeDelivery", () => {
       "Unsubscribed" as const,
       "Suppressed / skipped" as const,
       "Not sent" as const,
+      "Awaiting send" as const,
       "Queued" as const,
     ];
     const s = summarizeDelivery(statuses, 7);
-    expect(s.totalContacts).toBe(10);
+    expect(s.totalContacts).toBe(11);
     expect(s.emailSendable).toBe(7);
     expect(s.sent).toBe(2);
+    expect(s.awaitingSend).toBe(1);
     expect(s.queued).toBe(1);
     expect(s.sentProofMissing).toBe(1);
     expect(s.failed).toBe(1);

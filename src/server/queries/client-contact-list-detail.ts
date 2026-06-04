@@ -29,6 +29,13 @@ export type ContactDeliveryRow = {
   mailboxLabel: string | null;
   subject: string | null;
   sendStatus: DeliveryStatusLabel;
+  /**
+   * Plain-English explanation of WHY this contact will not / did not
+   * receive an email, when the status is a non-send state (Suppressed /
+   * skipped, Awaiting send blocked, etc.). Null when there's nothing to
+   * explain (e.g. already sent, or a clean awaiting-send).
+   */
+  skipReason: string | null;
   sentAt: Date | null;
   failedAt: Date | null;
   bounceStatus: string | null;
@@ -126,6 +133,7 @@ export async function loadClientContactListDetail(
         totalContacts: 0,
         emailSendable: 0,
         sent: 0,
+        awaitingSend: 0,
         queued: 0,
         sentProofMissing: 0,
         failed: 0,
@@ -145,6 +153,7 @@ export async function loadClientContactListDetail(
       select: {
         contactId: true,
         status: true,
+        blockedReason: true,
         outboundEmailId: true,
         subjectPreview: true,
         sequence: { select: { name: true } },
@@ -248,6 +257,14 @@ export async function loadClientContactListDetail(
       hasLinkedReply: replyDate !== null,
     });
 
+    const skipReason = deriveSkipReason({
+      deliveryStatus,
+      blockedReason: ss?.blockedReason ?? null,
+      failureReason: outbound?.failureReason ?? null,
+      isSuppressed: c.isSuppressed,
+      hasEmail,
+    });
+
     const mailboxEmail = outbound?.mailbox?.email ?? null;
     const mailboxName = outbound?.mailbox?.displayName ?? null;
     const mailboxLabel =
@@ -279,6 +296,7 @@ export async function loadClientContactListDetail(
       mailboxLabel: mailboxLabel ?? null,
       subject: ss?.subjectPreview ?? outbound?.mailbox?.email ?? null,
       sendStatus: deliveryStatus,
+      skipReason,
       sentAt: outbound?.sentAt ?? null,
       failedAt: outbound?.failureReason ? (outbound.sentAt ?? null) : null,
       bounceStatus: outbound?.bounceCategory ?? null,
@@ -330,4 +348,63 @@ function sendPriority(status: string): number {
     default:
       return 1;
   }
+}
+
+/**
+ * Plain-English "why this contact isn't being emailed" line for the list
+ * detail table. Only populated for non-send states so operators can see
+ * exactly which addresses are excluded and why, without reading raw
+ * status codes.
+ */
+function deriveSkipReason(input: {
+  deliveryStatus: DeliveryStatusLabel;
+  blockedReason: string | null;
+  failureReason: string | null;
+  isSuppressed: boolean;
+  hasEmail: boolean;
+}): string | null {
+  if (input.deliveryStatus === "Suppressed / skipped") {
+    if (input.blockedReason && input.blockedReason.trim()) {
+      return humanizeStepSendBlockedReason(input.blockedReason.trim());
+    }
+    if (input.isSuppressed) {
+      return "On the suppression list — will not be emailed.";
+    }
+    if (!input.hasEmail) {
+      return "No email address on file.";
+    }
+    return "Skipped — not eligible for this send.";
+  }
+  if (input.deliveryStatus === "Failed") {
+    return (
+      input.failureReason?.trim() || "Send failed — see Activity for details."
+    );
+  }
+  return null;
+}
+
+/** Map a persisted step-send blockedReason to staff-friendly copy. */
+function humanizeStepSendBlockedReason(raw: string): string {
+  const lower = raw.toLowerCase();
+  // Cooldown reasons are already written for staff (they embed the
+  // eligible-again date), so pass them straight through.
+  if (lower.includes("cooldown") || lower.includes("recently contacted")) {
+    return raw;
+  }
+  if (lower.includes("suppress")) {
+    return "On the suppression list — will not be emailed.";
+  }
+  if (lower.includes("no email") || lower.includes("not email-sendable")) {
+    return "No email address on file.";
+  }
+  if (lower.includes("not approved")) {
+    return "Waiting on an approved email template.";
+  }
+  if (lower.includes("unsubscribe")) {
+    return "Sender profile is missing an unsubscribe link.";
+  }
+  if (lower.includes("missing required sender") || lower.includes("required field")) {
+    return "Sender profile is incomplete (a required field is missing).";
+  }
+  return raw;
 }

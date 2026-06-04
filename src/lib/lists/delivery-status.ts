@@ -15,6 +15,7 @@
 
 export type DeliveryStatusLabel =
   | "Not sent"
+  | "Awaiting send"
   | "Queued"
   | "Sent from mailbox"
   | "Sent — time unavailable"
@@ -82,6 +83,10 @@ export function deriveDeliveryStatus(
     return "Suppressed / skipped";
   }
 
+  // "Queued" means the email has actually been handed to the send
+  // pipeline — a real OutboundEmail row exists in a pre-send state. This
+  // is the SAME definition the workspace Reports page uses, so the two
+  // surfaces reconcile.
   if (
     input.outboundStatus === "QUEUED" ||
     input.outboundStatus === "PROCESSING" ||
@@ -112,11 +117,17 @@ export function deriveDeliveryStatus(
     return "Send proof missing";
   }
 
+  // The contact is enrolled and prepared to send (step-send READY or
+  // PLANNED) but NO OutboundEmail exists yet — nothing has been handed
+  // to the send pipeline. This is "Awaiting send", NOT "Queued". These
+  // go out on the next launch / send-queue run. Labelling them "Queued"
+  // is what made the per-list count disagree with the workspace Reports
+  // page (which only counts real queued OutboundEmail rows).
   if (
     input.stepSendStatus === "READY" ||
     input.stepSendStatus === "PLANNED"
   ) {
-    return "Queued";
+    return "Awaiting send";
   }
 
   if (input.isSuppressed) {
@@ -137,6 +148,7 @@ export type ListDeliverySummary = {
   totalContacts: number;
   emailSendable: number;
   sent: number;
+  awaitingSend: number;
   queued: number;
   sentProofMissing: number;
   failed: number;
@@ -154,6 +166,7 @@ export function summarizeDelivery(
     totalContacts: statuses.length,
     emailSendable: emailSendableCount,
     sent: 0,
+    awaitingSend: 0,
     queued: 0,
     sentProofMissing: 0,
     failed: 0,
@@ -168,6 +181,9 @@ export function summarizeDelivery(
       case "Sent from mailbox":
       case "Sent — time unavailable":
         summary.sent++;
+        break;
+      case "Awaiting send":
+        summary.awaitingSend++;
         break;
       case "Queued":
         summary.queued++;

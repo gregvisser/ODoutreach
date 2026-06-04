@@ -41,6 +41,7 @@ function row(partial: Partial<ContactDeliveryRow>): ContactDeliveryRow {
     mailboxLabel: null,
     subject: null,
     sendStatus: "Not sent",
+    skipReason: null,
     sentAt: null,
     failedAt: null,
     bounceStatus: null,
@@ -102,6 +103,9 @@ describe("list-detail search/filter/sort helpers (PR #140)", () => {
       expect(matchesStatus(row({ sendStatus: "Bounced" }), "Bounced")).toBe(true);
       expect(matchesStatus(row({ sendStatus: "Queued" }), "Queued")).toBe(true);
       expect(
+        matchesStatus(row({ sendStatus: "Awaiting send" }), "Awaiting send"),
+      ).toBe(true);
+      expect(
         matchesStatus(row({ sendStatus: "Send proof missing" }), "Send proof missing"),
       ).toBe(true);
       expect(matchesStatus(row({ sendStatus: "Failed" }), "Failed")).toBe(true);
@@ -119,6 +123,9 @@ describe("list-detail search/filter/sort helpers (PR #140)", () => {
         false,
       );
       expect(matchesStatus(row({ sendStatus: "Replied" }), "Not sent")).toBe(false);
+      // "Awaiting send" is a real delivery state — it must NOT collapse
+      // into the "Not sent" bucket.
+      expect(matchesStatus(row({ sendStatus: "Awaiting send" }), "Not sent")).toBe(false);
     });
 
     it("filter selections are mismatch when status differs", () => {

@@ -101,6 +101,7 @@ export default async function ListDetailPage({ params }: Props) {
         <SummaryCard label="Total contacts" value={summary.totalContacts} />
         <SummaryCard label="Email-sendable" value={summary.emailSendable} />
         <SummaryCard label="Sent" value={summary.sent} />
+        <SummaryCard label="Awaiting send" value={summary.awaitingSend} />
         <SummaryCard
           label="Queued"
           value={summary.queued}
@@ -147,8 +148,11 @@ export default async function ListDetailPage({ params }: Props) {
             If no bounce is recorded, the system has not seen a delivery failure.
           </p>
           <p className="mt-1 text-xs text-muted-foreground/80">
-            &ldquo;Queued&rdquo; means the email is waiting for the sender to
-            process it. It has not been sent by the mailbox yet.
+            &ldquo;Awaiting send&rdquo; means the contact is eligible and will be
+            emailed on the next launch or send run — nothing has been handed to a
+            mailbox yet. &ldquo;Queued&rdquo; means the email has already been handed
+            to the sender and is waiting to go out. &ldquo;Suppressed / skipped&rdquo;
+            contacts will not be emailed — each row shows the reason.
           </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">

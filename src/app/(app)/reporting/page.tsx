@@ -188,55 +188,6 @@ export default async function ReportingPage({ searchParams }: Props) {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">What these metrics mean</CardTitle>
-          <CardDescription>
-            Read this before sharing any number outside the team.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
-            <ContractTerm
-              term="Sent (with provider proof)"
-              body='ODoutreach handed the email to the connected mailbox/provider and got back a message id or send timestamp. This does not guarantee inbox placement.'
-            />
-            <ContractTerm
-              term="Queued / preparing"
-              body='Waiting for the sender worker — REQUESTED, PREPARING, QUEUED, or PROCESSING. Not yet sent.'
-            />
-            <ContractTerm
-              term="Send proof missing"
-              body='A sequence step was marked SENT but the underlying OutboundEmail does not have provider proof. Treat as not reached until investigated.'
-            />
-            <ContractTerm
-              term="Opens / Open rate"
-              body='Counts emails whose tracking pixel loaded at least once. Approximate by nature — Apple Mail Privacy Protection auto-loads pixels (inflates opens) and image-blocking clients suppress them. Treat as directional; reply rate is the firmest engagement signal.'
-            />
-            <ContractTerm
-              term="Replies / Reply rate"
-              body='Counts InboundReply rows that link to an outbound send. Unlinked inbox messages are not counted.'
-            />
-            <ContractTerm
-              term="Opt-outs / Opt-out rate"
-              body='Counts UnsubscribeToken rows that have been used. Manual suppression sheet entries are counted under Suppressed / skipped instead.'
-            />
-            <ContractTerm
-              term="Bounces / Bounce rate"
-              body='Counts OutboundEmail rows in BOUNCED status — both hard and soft bounces from provider webhooks.'
-            />
-            <ContractTerm
-              term="Failed"
-              body='Terminal send failures (provider rejected, transport error). Different from Bounces, which happen after a successful send.'
-            />
-            <ContractTerm
-              term="Not reached"
-              body='failed + bounces + suppressed/skipped + send proof missing. The full "did not reach the inbox" pool.'
-            />
-          </dl>
-        </CardContent>
-      </Card>
-
       {!clientFilter && metricsData.byClient.length > 0 && (
         <Card className="border-border/80 shadow-sm">
           <CardHeader className="pb-2">
@@ -373,15 +324,6 @@ function MetricItem({
       {sub ? (
         <span className="ml-1 text-xs text-muted-foreground">({sub})</span>
       ) : null}
-    </div>
-  );
-}
-
-function ContractTerm({ term, body }: { term: string; body: string }) {
-  return (
-    <div>
-      <dt className="font-medium text-foreground">{term}</dt>
-      <dd className="text-muted-foreground">{body}</dd>
     </div>
   );
 }
