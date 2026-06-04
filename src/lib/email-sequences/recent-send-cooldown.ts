@@ -1,35 +1,38 @@
 /**
- * Client-wide outreach cooldown — no contact can receive more than one
- * outreach email per client within this window. Applies across ALL
- * sequences for the client, so a contact emailed by Sequence A is
- * automatically skipped by Sequence B until the cooldown clears.
+ * Workspace-wide outreach cooldown — no email address can receive more
+ * than one outreach email across the entire OpensDoors workspace within
+ * this window. Applies across ALL clients and ALL sequences, so a
+ * contact emailed by Client A is automatically skipped by Client B
+ * until the cooldown clears. Matched by email address (case-insensitive)
+ * rather than contactId, because the same person can be a separate
+ * Contact row under each client.
  *
  * Pure helpers — no I/O, no Prisma, no clock. The classifier in
  * `sequence-send-policy.ts` and the planner in `step-sends.ts` pass in
  * `now` / `lastSentAt` explicitly so this stays unit-testable.
  */
 
-/** Days a contact stays in cooldown after their most recent send. */
-export const CLIENT_OUTREACH_COOLDOWN_DAYS = 28;
+/** Days an email stays in cooldown after its most recent send. */
+export const OUTREACH_COOLDOWN_DAYS = 21;
 
 /** When the contact becomes eligible again, given their last send. */
-export function dateWhenContactEligibleAgain(
+export function dateWhenEmailEligibleAgain(
   lastSentAt: Date,
-  cooldownDays: number = CLIENT_OUTREACH_COOLDOWN_DAYS,
+  cooldownDays: number = OUTREACH_COOLDOWN_DAYS,
 ): Date {
   const eligible = new Date(lastSentAt.getTime());
   eligible.setUTCDate(eligible.getUTCDate() + cooldownDays);
   return eligible;
 }
 
-/** True if this contact is still inside the cooldown window. */
-export function isContactInCooldown(
+/** True if this email is still inside the cooldown window. */
+export function isEmailInCooldown(
   lastSentAt: Date | null | undefined,
   now: Date,
-  cooldownDays: number = CLIENT_OUTREACH_COOLDOWN_DAYS,
+  cooldownDays: number = OUTREACH_COOLDOWN_DAYS,
 ): boolean {
   if (!lastSentAt) return false;
-  const eligible = dateWhenContactEligibleAgain(lastSentAt, cooldownDays);
+  const eligible = dateWhenEmailEligibleAgain(lastSentAt, cooldownDays);
   return eligible.getTime() > now.getTime();
 }
 
@@ -44,10 +47,10 @@ function isoDate(d: Date): string {
  */
 export function formatCooldownReason(
   lastSentAt: Date,
-  cooldownDays: number = CLIENT_OUTREACH_COOLDOWN_DAYS,
+  cooldownDays: number = OUTREACH_COOLDOWN_DAYS,
 ): string {
-  const eligible = dateWhenContactEligibleAgain(lastSentAt, cooldownDays);
-  return `Already emailed for this client on ${isoDate(lastSentAt)} — eligible again on ${isoDate(
+  const eligible = dateWhenEmailEligibleAgain(lastSentAt, cooldownDays);
+  return `Recently contacted on ${isoDate(lastSentAt)} — eligible again on ${isoDate(
     eligible,
   )} (${String(cooldownDays)}-day cooldown).`;
 }

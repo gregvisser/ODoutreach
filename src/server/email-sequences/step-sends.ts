@@ -14,8 +14,8 @@ import {
   type SequenceStepSendClassificationCounts,
 } from "@/lib/email-sequences/sequence-send-policy";
 import {
-  CLIENT_OUTREACH_COOLDOWN_DAYS,
-  dateWhenContactEligibleAgain,
+  OUTREACH_COOLDOWN_DAYS,
+  dateWhenEmailEligibleAgain,
 } from "@/lib/email-sequences/recent-send-cooldown";
 import {
   getClientSenderProfile,
@@ -327,51 +327,64 @@ export async function planSequenceStepSends(params: {
   let counts: SequenceStepSendClassificationCounts = zeroStepSendCounts();
   const previews: SequenceStepSendPreview[] = [];
 
-  // Client-wide outreach cooldown: no contact gets more than one
-  // outreach email per client within CLIENT_OUTREACH_COOLDOWN_DAYS days.
-  // We batch-fetch the most recent OutboundEmail for every candidate
-  // contact in this client within the cooldown window, then exclude
-  // sends that belong to THIS sequence (so a step-2 follow-up is not
-  // mistaken for a duplicate of step-1 from the same sequence).
+  // Workspace-wide outreach cooldown: no email address receives more
+  // than one outreach email across the entire OpensDoors workspace
+  // within OUTREACH_COOLDOWN_DAYS days. We batch-fetch the most recent
+  // OutboundEmail for every candidate's email address (case insensitive)
+  // ACROSS ALL CLIENTS in this workspace, then exclude sends that belong
+  // to THIS sequence (so a step-2 follow-up is not mistaken for a
+  // duplicate of step-1 from the same sequence).
+  //
+  // Matching by email (not contactId) is intentional — the same person
+  // can exist as a separate Contact row under each client, so contactId
+  // is per-client but the dedup must be cross-client.
   const now = new Date();
   const cooldownStart = new Date(
-    now.getTime() - CLIENT_OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+    now.getTime() - OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
   );
-  const candidateContactIds = enrollments
-    .map((e) => e.contactId)
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
-  const recentSendsByContactId = new Map<
+  const candidateEmails = Array.from(
+    new Set(
+      enrollments
+        .map((e) =>
+          typeof e.contact.email === "string"
+            ? e.contact.email.trim().toLowerCase()
+            : null,
+        )
+        .filter((email): email is string => email !== null && email.length > 0),
+    ),
+  );
+  const recentSendsByEmail = new Map<
     string,
     { lastSentAt: Date; eligibleAt: Date }
   >();
-  if (candidateContactIds.length > 0) {
+  if (candidateEmails.length > 0) {
     const recentSendRows = await prisma.outboundEmail.findMany({
       where: {
-        clientId: params.clientId,
-        contactId: { in: candidateContactIds },
+        toEmail: { in: candidateEmails, mode: "insensitive" },
         sentAt: { gte: cooldownStart, not: null },
       },
       select: {
-        contactId: true,
+        toEmail: true,
         sentAt: true,
         sequenceStepSends: { select: { sequenceId: true } },
       },
       orderBy: { sentAt: "desc" },
     });
     for (const row of recentSendRows) {
-      if (!row.contactId || !row.sentAt) continue;
+      if (!row.toEmail || !row.sentAt) continue;
       // Skip sends that belong to THIS sequence — step-2 follow-ups
       // should not be blocked by step-1's own send.
       const belongsToCurrentSequence = row.sequenceStepSends.some(
         (s) => s.sequenceId === sequence.id,
       );
       if (belongsToCurrentSequence) continue;
-      // Keep the most recent per contact (rows are ordered desc, so
-      // first-write wins).
-      if (!recentSendsByContactId.has(row.contactId)) {
-        recentSendsByContactId.set(row.contactId, {
+      // Keep the most recent per email (rows are ordered desc, so
+      // first-write wins). Normalise to lowercase for lookup.
+      const key = row.toEmail.trim().toLowerCase();
+      if (!recentSendsByEmail.has(key)) {
+        recentSendsByEmail.set(key, {
           lastSentAt: row.sentAt,
-          eligibleAt: dateWhenContactEligibleAgain(row.sentAt),
+          eligibleAt: dateWhenEmailEligibleAgain(row.sentAt),
         });
       }
     }
@@ -417,8 +430,13 @@ export async function planSequenceStepSends(params: {
         isSuppressed: enrollment.contact.isSuppressed,
       },
       sender: senderRow,
-      recentClientSend:
-        recentSendsByContactId.get(enrollment.contactId) ?? null,
+      recentClientSend: ((): { lastSentAt: Date; eligibleAt: Date } | null => {
+        const e =
+          typeof enrollment.contact.email === "string"
+            ? enrollment.contact.email.trim().toLowerCase()
+            : null;
+        return e ? recentSendsByEmail.get(e) ?? null : null;
+      })(),
     };
 
     const decision: SequenceStepSendClassification =

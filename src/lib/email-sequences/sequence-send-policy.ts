@@ -222,13 +222,14 @@ export function classifySequenceStepSendCandidate(
     };
   }
 
-  // 1.5 Client-wide outreach cooldown — no contact receives more than
-  //     one outreach email per client within the cooldown window
-  //     (default 28 days). When the planner sees a recent send for this
-  //     contact + client across ANY sequence, it sets `recentClientSend`
-  //     and we skip here. Re-running the planner after the window
-  //     elapses re-classifies the row as READY automatically (the
-  //     planner won't set `recentClientSend` once the window passes).
+  // 1.5 Workspace-wide outreach cooldown — no email receives more than
+  //     one outreach email across the whole OpensDoors workspace within
+  //     the cooldown window (default 21 days). When the planner sees a
+  //     recent send for this email across ANY client + ANY sequence, it
+  //     sets `recentClientSend` and we skip here. Re-running the planner
+  //     after the window elapses re-classifies the row as READY
+  //     automatically (the planner won't set `recentClientSend` once
+  //     the window passes).
   if (input.recentClientSend) {
     return {
       status: "SKIPPED",
