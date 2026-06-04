@@ -820,9 +820,10 @@ function LaunchReadinessBlock({
         <>
           <p className="text-sm font-semibold text-foreground">Ready to launch</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Sending mailboxes: {String(mailboxSnapshot.connectedSendingCount)} connected ·{" "}
-            {String(mailboxSnapshot.aggregateRemainingToday)} sends remaining today across the pool
-            (UTC day).
+            {String(mailboxSnapshot.connectedSendingCount)} mailbox
+            {mailboxSnapshot.connectedSendingCount === 1 ? "" : "es"} connected ·{" "}
+            {String(mailboxSnapshot.aggregateRemainingToday)} send
+            {mailboxSnapshot.aggregateRemainingToday === 1 ? "" : "s"} available today.
           </p>
           {readiness.totalWarnings > 0 ? (
             <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-200">
@@ -833,7 +834,7 @@ function LaunchReadinessBlock({
         </>
       ) : (
         <>
-          <p className="text-sm font-semibold text-foreground">Cannot launch</p>
+          <p className="text-sm font-semibold text-foreground">Not ready to launch yet</p>
           {blockers.length > 0 ? (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-muted-foreground">
               {blockers.map((line) => (
@@ -845,10 +846,6 @@ function LaunchReadinessBlock({
               Fix the items above, then check again.
             </p>
           )}
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Mailboxes: {String(mailboxSnapshot.connectedSendingCount)} connected · pool capacity{" "}
-            {String(mailboxSnapshot.aggregateRemainingToday)} remaining today.
-          </p>
         </>
       )}
     </div>

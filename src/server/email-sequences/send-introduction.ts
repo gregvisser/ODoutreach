@@ -1461,7 +1461,7 @@ export async function loadSequenceStepSendUiSnapshots(
             : `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked — review recipients for details.`;
         } else {
           disabledReason =
-            "No eligible recipients yet — review recipients to prepare send rows.";
+            "No eligible recipients yet. Open Review recipients to add or refresh the contacts for this sequence.";
         }
       }
 

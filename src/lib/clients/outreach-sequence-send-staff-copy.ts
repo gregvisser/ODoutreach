@@ -32,10 +32,13 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
     return "No eligible recipients — some prepared rows are missing an email address.";
   }
   if (/No eligible recipients/i.test(s) && /launch batch/i.test(s)) {
-    return "No eligible recipients yet — review recipients, suppression, or mailbox capacity.";
+    return "No recipients are ready to send for this sequence right now. Open Review recipients to see why — they may already be enrolled in another sequence, suppressed, or missing an email address.";
   }
-  if (/Review recipients to refresh/i.test(s)) {
-    return "Review recipients to refresh the launch batch.";
+  if (/Review recipients to refresh/i.test(s) || /refresh the launch batch/i.test(s)) {
+    return "No recipients are ready to send right now. Open Review recipients to see why — they may already be enrolled in another sequence, suppressed, or missing an email address.";
+  }
+  if (/prepare send rows|prepare send records|send rows/i.test(s)) {
+    return "No eligible recipients yet. Open Review recipients to add or refresh the contacts for this sequence.";
   }
   if (/Previous step/i.test(s) && /SENT/i.test(s)) {
     return "The previous step must finish sending before this step can go out.";

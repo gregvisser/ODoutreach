@@ -38,12 +38,13 @@ describe("humanizeSequenceLaunchDisabledReason", () => {
     expect(humanizeSequenceLaunchDisabledReason(msg)).toBe(msg);
   });
 
-  it("maps 'Review recipients to refresh' reason", () => {
-    expect(
-      humanizeSequenceLaunchDisabledReason(
-        "Review recipients to refresh the launch batch.",
-      ),
-    ).toMatch(/Review recipients to refresh/i);
+  it("maps 'Review recipients to refresh' reason to plain English", () => {
+    const out = humanizeSequenceLaunchDisabledReason(
+      "Review recipients to refresh the launch batch.",
+    );
+    expect(out).toMatch(/Review recipients/i);
+    expect(out).not.toMatch(/launch batch/i);
+    expect(out).toMatch(/another sequence|suppressed|missing an email/i);
   });
 });
 

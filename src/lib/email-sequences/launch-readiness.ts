@@ -356,7 +356,7 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       pass(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
+        "Recipients ready to send",
         `${String(batchCount)} recipient(s) ready to send now.`,
       ),
     );
@@ -364,8 +364,8 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
-        "Review recipients to refresh the launch batch.",
+        "Recipients ready to send",
+        "No recipients are ready to send for this sequence right now. They may already be enrolled in another sequence, suppressed, or missing an email address — open Review recipients to see why.",
         "blocker",
       ),
     );
@@ -373,8 +373,8 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
-        "Review recipients to prepare this sequence before launching.",
+        "Recipients ready to send",
+        "No recipients enrolled yet. Open Review recipients to add contacts before launching.",
         "blocker",
       ),
     );
@@ -387,7 +387,7 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
+        "Recipients ready to send",
         detail,
         "blocker",
       ),
@@ -396,7 +396,7 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       pass(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
+        "Recipients ready to send",
         `${String(pending)} PENDING enrollment row(s).`,
       ),
     );
@@ -404,8 +404,8 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
-        "Review recipients to prepare this sequence before launching.",
+        "Recipients ready to send",
+        "No recipients enrolled yet. Open Review recipients to add contacts before launching.",
         "blocker",
       ),
     );
@@ -418,7 +418,7 @@ export function evaluateSequenceLaunchReadiness(
     checks.push(
       fail(
         "pending_email_sendable_recipients",
-        "Eligible recipients in launch batch",
+        "Recipients ready to send",
         detail,
         "blocker",
       ),
