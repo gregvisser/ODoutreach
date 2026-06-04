@@ -11,17 +11,21 @@ import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follo
  * emails and, if so, creates an InboundReply linked to the outbound.
  *
  * Matching strategy (strongest-first):
- *   Gate: `inReplyToHeader` must be present (RFC 5322 In-Reply-To header).
- *         Messages without it are fresh emails, not thread replies — skip them
- *         entirely to avoid ingesting unrelated inbox traffic as replies.
- *   1. BY_THREAD_REF (definitive): the In-Reply-To value equals the
- *      `rfc822MessageId` we stamped on a specific OutboundEmail for this client.
- *      Unambiguous — a genuine reply to that exact sequence send.
- *   2. BY_CONTACT_EMAIL (legacy fallback): only for outbounds with NO stamped
- *      Message-ID (sent before that feature shipped). Match same clientId, same
+ *   Gate: the inbound message must look like a reply / forward — either the
+ *         RFC 5322 In-Reply-To header is present, OR the subject starts with
+ *         a reply/forward prefix ("Re:", "RE:", "Fwd:", "Sv:", "Aw:", etc.).
+ *         The subject fallback exists because Microsoft Graph's
+ *         list-messages endpoint does NOT actually populate
+ *         internetMessageHeaders — every Microsoft 365 sync would otherwise
+ *         reject every reply. Fresh inbox mail (no header, no Re:) is skipped.
+ *   1. BY_THREAD_REF (definitive, only when In-Reply-To present): the header
+ *      value equals the `rfc822MessageId` we stamped on a specific OutboundEmail
+ *      for this client. Unambiguous — a genuine reply to that exact send.
+ *   2. BY_CONTACT_EMAIL fallback: outbounds with NO stamped Message-ID
+ *      (Microsoft Graph sends, and legacy Gmail). Match same clientId, same
  *      mailboxIdentityId, toEmail = inbound fromEmail, sentAt <= received,
  *      status sent/delivered/replied. Requiring `rfc822MessageId = null` here
- *      stops unrelated thread replies from being mislinked to modern sends.
+ *      stops unrelated thread replies from being mislinked to modern Gmail sends.
  *   3. If neither matches, skip — don't create unlinked noise.
  *
  * Idempotent: skips if an InboundReply already exists for this providerMessageId.
@@ -37,16 +41,25 @@ export async function processSyncedMessageForReply(input: {
   bodyPreview: string | null;
   receivedAt: Date;
   conversationId: string | null;
-  /** RFC 5322 In-Reply-To header. Null means the message is a fresh email, not a reply. */
+  /** RFC 5322 In-Reply-To header. Null when the provider didn't expose headers. */
   inReplyToHeader: string | null;
 }): Promise<{ created: boolean; replyId?: string }> {
-  // Only genuine thread replies carry an In-Reply-To header. Without it the
-  // message is a new email landing in the mailbox — never an outreach reply.
-  if (!input.inReplyToHeader) {
-    return { created: false };
-  }
-  const inReplyTo = input.inReplyToHeader.trim();
-  if (!inReplyTo) {
+  const inReplyTo = input.inReplyToHeader?.trim() || null;
+  const hasInReplyTo = inReplyTo !== null && inReplyTo.length > 0;
+  // Subject-line reply signal. Covers most common languages and clients:
+  // "Re:" / "RE:" (English), "Sv:" (Scandinavian), "Aw:" / "Antw:" / "Wg:"
+  // (German/Dutch), "Tr:" (French), "回复:" (Chinese), plus forwards
+  // ("Fwd:" / "Fw:"). Used as a fallback when the provider didn't include
+  // the In-Reply-To header — notably Microsoft Graph's list-messages
+  // endpoint returns internetMessageHeaders empty even when $select'd.
+  const subject = (input.subject ?? "").trim();
+  const looksLikeReplyBySubject =
+    /^(re|sv|aw|antw|wg|tr|fwd|fw)\s*:/i.test(subject) ||
+    /^回复\s*:/.test(subject);
+
+  if (!hasInReplyTo && !looksLikeReplyBySubject) {
+    // No In-Reply-To header AND subject doesn't look like a reply/forward —
+    // this is fresh inbox mail, never an outreach reply.
     return { created: false };
   }
 
@@ -63,22 +76,26 @@ export async function processSyncedMessageForReply(input: {
     return { created: false };
   }
 
-  // 1) Definitive: the reply's In-Reply-To equals the Message-ID we stamped on
-  //    a specific outbound send. Globally unique within the client — a true
-  //    reply to that exact sequence email.
-  let outbound = await prisma.outboundEmail.findFirst({
-    where: {
-      clientId: input.clientId,
-      rfc822MessageId: inReplyTo,
-    },
-    orderBy: { sentAt: "desc" },
-    select: { id: true, contactId: true, status: true },
-  });
+  // 1) Definitive (only when we actually have an In-Reply-To header):
+  //    the reply's In-Reply-To equals the Message-ID we stamped on a
+  //    specific outbound send. Globally unique within the client.
+  let outbound = hasInReplyTo
+    ? await prisma.outboundEmail.findFirst({
+        where: {
+          clientId: input.clientId,
+          rfc822MessageId: inReplyTo,
+        },
+        orderBy: { sentAt: "desc" },
+        select: { id: true, contactId: true, status: true },
+      })
+    : null;
   let matchMethod: "BY_THREAD_REF" | "BY_CONTACT_EMAIL" = "BY_THREAD_REF";
 
-  // 2) Legacy fallback: outbounds sent before we stamped Message-IDs. Restrict
-  //    to rfc822MessageId = null so modern sends are never loosely matched by
-  //    an unrelated thread reply from the same contact.
+  // 2) Contact-email fallback: outbounds with no stamped Message-ID (legacy
+  //    Gmail or any Microsoft Graph send — we don't stamp Graph yet). Same
+  //    clientId + mailbox + recipient + sent-before-received + good status,
+  //    restricted to rfc822MessageId = null so modern Gmail sends aren't
+  //    loosely matched by an unrelated thread from the same contact.
   if (!outbound) {
     outbound = await prisma.outboundEmail.findFirst({
       where: {

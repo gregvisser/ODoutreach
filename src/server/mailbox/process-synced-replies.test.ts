@@ -265,29 +265,79 @@ describe("processSyncedMessageForReply", () => {
     expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
   });
 
-  it("skips message with no In-Reply-To header (fresh email, not a thread reply)", async () => {
+  it("skips a fresh email — no In-Reply-To AND subject doesn't look like a reply", async () => {
     const result = await processSyncedMessageForReply({
       ...BASE_INPUT,
       inReplyToHeader: null,
+      subject: "Quick intro from Acme", // not Re:/Fwd:/etc.
     });
 
     expect(result.created).toBe(false);
-    // Must not touch the DB at all — gate fires before any query
+    // Gate fires before any DB work.
     expect(prismaMock.inboundReply.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
     expect(stopFollowUpsMock).not.toHaveBeenCalled();
   });
 
-  it("skips message with empty In-Reply-To header", async () => {
+  it("skips an empty In-Reply-To when subject also isn't a reply", async () => {
     const result = await processSyncedMessageForReply({
       ...BASE_INPUT,
       inReplyToHeader: "",
+      subject: "Hello from Acme",
     });
 
     expect(result.created).toBe(false);
     expect(prismaMock.inboundReply.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("links by subject 'Re:' when In-Reply-To header is missing (Microsoft Graph case)", async () => {
+    // Microsoft Graph's list-messages endpoint silently omits
+    // internetMessageHeaders even when $select'd. We fall back to the
+    // subject prefix + the existing contact-email match.
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    // BY_THREAD_REF is skipped (no In-Reply-To) — only the fallback runs.
+    prismaMock.outboundEmail.findFirst.mockResolvedValueOnce({
+      id: "ob-graph",
+      contactId: "ct-graph",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-graph" });
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      inReplyToHeader: null,
+      subject: "Re: Our intro email",
+    });
+
+    expect(result.created).toBe(true);
+    expect(prismaMock.inboundReply.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        matchMethod: "BY_CONTACT_EMAIL",
+        linkedOutboundEmailId: "ob-graph",
+        inReplyToProviderId: null, // we had no In-Reply-To value to store
+      }),
+    });
+  });
+
+  it("recognises non-English reply prefixes (Sv:, Aw:, Tr:, Fwd:, etc.)", async () => {
+    for (const subject of ["Sv: Hi", "AW: Frage", "Tr: Bonjour", "Fwd: heads up"]) {
+      prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+      prismaMock.outboundEmail.findFirst.mockResolvedValueOnce({
+        id: "ob",
+        contactId: "ct",
+        status: "SENT",
+      });
+      prismaMock.inboundReply.create.mockResolvedValue({ id: "reply" });
+
+      const result = await processSyncedMessageForReply({
+        ...BASE_INPUT,
+        inReplyToHeader: null,
+        subject,
+      });
+      expect(result.created).toBe(true);
+    }
   });
 
   it("matches outbound by mailboxIdentityId scope (legacy fallback)", async () => {
