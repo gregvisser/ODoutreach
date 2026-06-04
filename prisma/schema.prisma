@@ -364,7 +364,7 @@ model Client {
   id                          String                    @id @default(cuid())
   name                        String
   slug                        String                    @unique
-  status                      ClientLifecycleStatus     @default(ONBOARDING)
+  status                      ClientLifecycleStatus     @default(ACTIVE)
   industry                    String?
   website                     String?
   notes                       String?
