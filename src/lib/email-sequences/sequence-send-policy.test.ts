@@ -69,6 +69,7 @@ function candidate(
         emailSignature: "—Charles",
         unsubscribeLink: "https://u.example/1",
       } as const),
+    recentClientSend: overrides.recentClientSend ?? null,
   };
 }
 
@@ -239,6 +240,30 @@ describe("classifySequenceStepSendCandidate", () => {
     );
     expect(result.status).toBe("SKIPPED");
     expect(result.reason).toBe("skipped_enrollment_paused");
+  });
+
+  it("skips when contact is in the client outreach cooldown window", () => {
+    const lastSentAt = new Date("2026-06-01T10:00:00.000Z");
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        recentClientSend: {
+          lastSentAt,
+          eligibleAt: new Date("2026-06-29T10:00:00.000Z"),
+        },
+      }),
+    );
+    expect(result.status).toBe("SKIPPED");
+    expect(result.reason).toBe("skipped_client_outreach_cooldown");
+    expect(result.reasonDetail).toContain("2026-06-01");
+    expect(result.reasonDetail).toContain("2026-06-29");
+    expect(result.reasonDetail).toContain("28-day cooldown");
+  });
+
+  it("does not skip on cooldown when recentClientSend is null", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({ recentClientSend: null }),
+    );
+    expect(result.status).toBe("READY");
   });
 
   it("blocks cross-client sequence", () => {

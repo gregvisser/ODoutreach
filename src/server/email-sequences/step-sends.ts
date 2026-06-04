@@ -14,6 +14,10 @@ import {
   type SequenceStepSendClassificationCounts,
 } from "@/lib/email-sequences/sequence-send-policy";
 import {
+  CLIENT_OUTREACH_COOLDOWN_DAYS,
+  dateWhenContactEligibleAgain,
+} from "@/lib/email-sequences/recent-send-cooldown";
+import {
   getClientSenderProfile,
   type ClientSenderProfile,
 } from "@/lib/opensdoors-brief";
@@ -49,6 +53,7 @@ export type SequenceStepSendPreview = {
     | "skipped_enrollment_excluded"
     | "skipped_enrollment_completed"
     | "skipped_enrollment_paused"
+    | "skipped_client_outreach_cooldown"
     | "blocked_wrong_client"
     | "blocked_wrong_sequence"
     | "blocked_step_not_in_sequence"
@@ -322,6 +327,56 @@ export async function planSequenceStepSends(params: {
   let counts: SequenceStepSendClassificationCounts = zeroStepSendCounts();
   const previews: SequenceStepSendPreview[] = [];
 
+  // Client-wide outreach cooldown: no contact gets more than one
+  // outreach email per client within CLIENT_OUTREACH_COOLDOWN_DAYS days.
+  // We batch-fetch the most recent OutboundEmail for every candidate
+  // contact in this client within the cooldown window, then exclude
+  // sends that belong to THIS sequence (so a step-2 follow-up is not
+  // mistaken for a duplicate of step-1 from the same sequence).
+  const now = new Date();
+  const cooldownStart = new Date(
+    now.getTime() - CLIENT_OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const candidateContactIds = enrollments
+    .map((e) => e.contactId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const recentSendsByContactId = new Map<
+    string,
+    { lastSentAt: Date; eligibleAt: Date }
+  >();
+  if (candidateContactIds.length > 0) {
+    const recentSendRows = await prisma.outboundEmail.findMany({
+      where: {
+        clientId: params.clientId,
+        contactId: { in: candidateContactIds },
+        sentAt: { gte: cooldownStart, not: null },
+      },
+      select: {
+        contactId: true,
+        sentAt: true,
+        sequenceStepSends: { select: { sequenceId: true } },
+      },
+      orderBy: { sentAt: "desc" },
+    });
+    for (const row of recentSendRows) {
+      if (!row.contactId || !row.sentAt) continue;
+      // Skip sends that belong to THIS sequence — step-2 follow-ups
+      // should not be blocked by step-1's own send.
+      const belongsToCurrentSequence = row.sequenceStepSends.some(
+        (s) => s.sequenceId === sequence.id,
+      );
+      if (belongsToCurrentSequence) continue;
+      // Keep the most recent per contact (rows are ordered desc, so
+      // first-write wins).
+      if (!recentSendsByContactId.has(row.contactId)) {
+        recentSendsByContactId.set(row.contactId, {
+          lastSentAt: row.sentAt,
+          eligibleAt: dateWhenContactEligibleAgain(row.sentAt),
+        });
+      }
+    }
+  }
+
   // Write each plan row via upsert so re-running the planner is
   // fully idempotent. We never overwrite a SENT/FAILED row (D4e.2+).
   for (const enrollment of enrollments) {
@@ -362,6 +417,8 @@ export async function planSequenceStepSends(params: {
         isSuppressed: enrollment.contact.isSuppressed,
       },
       sender: senderRow,
+      recentClientSend:
+        recentSendsByContactId.get(enrollment.contactId) ?? null,
     };
 
     const decision: SequenceStepSendClassification =

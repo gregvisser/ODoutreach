@@ -22,6 +22,7 @@ import {
   type SequenceCompositionResult,
   type SequenceCompositionSender,
 } from "./sequence-email-composition";
+import { formatCooldownReason } from "./recent-send-cooldown";
 
 /** Stable idempotency key for a (sequence, enrollment, step) triple. */
 export function buildSequenceStepSendIdempotencyKey(args: {
@@ -46,7 +47,8 @@ export type SequenceStepSendClassificationReason =
   | "blocked_missing_required_field"
   | "skipped_enrollment_excluded"
   | "skipped_enrollment_completed"
-  | "skipped_enrollment_paused";
+  | "skipped_enrollment_paused"
+  | "skipped_client_outreach_cooldown";
 
 export type SequenceStepSendClassification = {
   status: ClientEmailSequenceStepSendStatus;
@@ -86,6 +88,18 @@ export type SequenceStepSendCandidate = {
     isSuppressed: boolean;
   };
   sender: SequenceCompositionSender;
+  /**
+   * Most recent outreach send (across ALL sequences) for this contact +
+   * client. When set, the contact is currently in the 28-day cooldown
+   * window and this candidate will be skipped. When null/undefined, no
+   * cooldown applies. The planner fills this in by querying
+   * `OutboundEmail` once for all candidate contactIds in a batch.
+   */
+  recentClientSend?: {
+    lastSentAt: Date;
+    /** Date the contact becomes eligible again (lastSentAt + cooldown). */
+    eligibleAt: Date;
+  } | null;
 };
 
 function block(
@@ -204,6 +218,22 @@ export function classifySequenceStepSendCandidate(
       status: "SKIPPED",
       reason: "skipped_enrollment_paused",
       reasonDetail: "Enrollment is PAUSED — step skipped.",
+      composition: emptyComposition,
+    };
+  }
+
+  // 1.5 Client-wide outreach cooldown — no contact receives more than
+  //     one outreach email per client within the cooldown window
+  //     (default 28 days). When the planner sees a recent send for this
+  //     contact + client across ANY sequence, it sets `recentClientSend`
+  //     and we skip here. Re-running the planner after the window
+  //     elapses re-classifies the row as READY automatically (the
+  //     planner won't set `recentClientSend` once the window passes).
+  if (input.recentClientSend) {
+    return {
+      status: "SKIPPED",
+      reason: "skipped_client_outreach_cooldown",
+      reasonDetail: formatCooldownReason(input.recentClientSend.lastSentAt),
       composition: emptyComposition,
     };
   }

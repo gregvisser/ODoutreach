@@ -88,6 +88,20 @@ function categoryLabel(category: ClientEmailTemplateCategory): string {
 
 function humanizeBlockedReason(raw: string): string {
   const lower = raw.toLowerCase();
+  // 28-day client outreach cooldown — surface the eligibility date if
+  // it's already embedded in the raw reason (the planner formats it as
+  // "Already emailed for this client on YYYY-MM-DD — eligible again on
+  // YYYY-MM-DD (28-day cooldown).").
+  if (
+    lower.includes("cooldown") ||
+    (lower.includes("already emailed") && lower.includes("eligible again"))
+  ) {
+    const match = raw.match(/eligible again on (\d{4}-\d{2}-\d{2})/i);
+    if (match) {
+      return `Recently contacted for this client — eligible again on ${match[1]}`;
+    }
+    return "Recently contacted for this client (28-day cooldown)";
+  }
   if (lower.includes("template") && lower.includes("not approved"))
     return "Template is not yet approved";
   if (lower.includes("missing") && lower.includes("sender"))
