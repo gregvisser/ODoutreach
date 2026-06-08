@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -15,7 +15,6 @@ const sendPrepPanel = join(
   root,
   "src/components/clients/email-sequences/sequence-send-preparation-panel.tsx",
 );
-const adminPanel = join(root, "src/components/clients/admin-outreach-diagnostics-panel.tsx");
 
 describe("Outreach live sequence flow (PR #119–#121)", () => {
   it("does not embed the templates panel on the Outreach page", () => {
@@ -113,10 +112,17 @@ describe("Outreach live sequence flow (PR #119–#121)", () => {
     expect(combined).not.toMatch(/\bBatch cap\b/i);
   });
 
-  it("admin diagnostics wrapper is opt-in for admins only", () => {
-    const src = readFileSync(adminPanel, "utf8");
-    expect(src).toContain("isAdmin");
-    expect(src).toContain("Admin diagnostics");
+  it("the pilot/test/diagnostic send components are deleted (not just hidden)", () => {
+    // Final production audit: these were dead, orphaned components with
+    // no runtime importers. Deleting them guarantees no pilot/test send
+    // surface can ever reappear in the staff UI.
+    for (const rel of [
+      "src/components/clients/controlled-pilot-send-panel.tsx",
+      "src/components/clients/governed-test-send-panel.tsx",
+      "src/components/clients/admin-outreach-diagnostics-panel.tsx",
+    ]) {
+      expect(existsSync(join(root, rel))).toBe(false);
+    }
   });
 });
 

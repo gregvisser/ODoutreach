@@ -93,8 +93,9 @@ export function RecentGovernedSendsPanel({
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-muted-foreground">
-                  No test or pilot sends for this client yet. These show up
-                  once you dispatch an internal test or pilot email.
+                  No internal verification sends for this client yet. These
+                  appear once you send a verification email from a connected
+                  mailbox.
                 </TableCell>
               </TableRow>
             ) : (

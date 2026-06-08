@@ -142,7 +142,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         {!showMailboxSetupTools ? (
           <p className="mt-3 max-w-3xl rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
             Connected senders and today&rsquo;s remaining send capacity. Signature setup and
-            proof sends are admin-only — ask a manager if something needs changing.
+            mailbox verification sends are admin-only — ask a manager if something needs changing.
           </p>
         ) : null}
       </div>

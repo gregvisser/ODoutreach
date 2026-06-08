@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { requireClientAccess } from "@/server/tenant/access";
 
 /**
@@ -44,6 +45,17 @@ export async function markEnrollmentCompletedAction(input: {
   const staff = await requireOpensDoorsStaff();
   await requireClientAccess(staff, input.clientId);
 
+  // Read-only roles (global VIEWER, client-level VIEWER) may open the
+  // reply but must not change enrolment lifecycle. Same predicate that
+  // gates sequence/template mutation, so the permission model stays
+  // consistent across the workspace.
+  if (!(await getClientEmailSequenceMutationAllowed(staff, input.clientId))) {
+    return {
+      ok: false,
+      reason: "You do not have permission to change enrolments for this client.",
+    };
+  }
+
   const enrolment = await loadEnrollmentForClient({
     clientId: input.clientId,
     enrollmentId: input.enrollmentId,
@@ -79,6 +91,13 @@ export async function pauseEnrollmentAction(input: {
 }): Promise<EnrollmentActionResult> {
   const staff = await requireOpensDoorsStaff();
   await requireClientAccess(staff, input.clientId);
+
+  if (!(await getClientEmailSequenceMutationAllowed(staff, input.clientId))) {
+    return {
+      ok: false,
+      reason: "You do not have permission to change enrolments for this client.",
+    };
+  }
 
   const enrolment = await loadEnrollmentForClient({
     clientId: input.clientId,

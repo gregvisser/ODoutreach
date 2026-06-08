@@ -125,23 +125,24 @@ export function InternalProofSendCard({
     <section className="rounded-lg border border-border/80 bg-card p-4 shadow-sm">
       <div className="flex flex-col gap-1">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Internal proof send
+          Mailbox verification
         </p>
-        <h2 className="text-lg font-semibold tracking-tight">Send internal proof</h2>
+        <h2 className="text-lg font-semibold tracking-tight">Send a verification email</h2>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Sends exactly one allowlisted internal proof from the selected connected mailbox.
-          It reserves one daily slot for that mailbox, appends that mailbox&apos;s saved
-          signature and unsubscribe footer, and appears in Activity and recent send logs.
+          Sends exactly one internal verification email from the selected connected mailbox
+          to confirm it can deliver. It reserves one daily slot for that mailbox, appends that
+          mailbox&apos;s saved signature and unsubscribe footer, and appears in Activity and
+          recent send logs.
         </p>
       </div>
 
       {!canMutate ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          You do not have permission to send mailbox proofs for this workspace.
+          You do not have permission to send mailbox verification emails for this workspace.
         </p>
       ) : eligibleRows.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          No mailbox is currently eligible for an internal proof. Check connection,
+          No mailbox is currently eligible for a verification send. Check connection,
           OAuth readiness, signature status, and remaining daily capacity.
         </p>
       ) : (
@@ -185,7 +186,7 @@ export function InternalProofSendCard({
               id="internal-proof-subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="ODoutreach controlled proof — mailbox — timestamp"
+              placeholder="ODoutreach mailbox verification — mailbox — timestamp"
             />
           </div>
           <div className="space-y-2 lg:col-span-2">
@@ -195,7 +196,7 @@ export function InternalProofSendCard({
               rows={7}
               value={bodyText}
               onChange={(e) => setBodyText(e.target.value)}
-              placeholder="This is an ODoutreach controlled internal proof send."
+              placeholder="This is an ODoutreach internal mailbox verification email."
             />
             <p className="text-xs text-muted-foreground">
               Do not paste a signature or unsubscribe footer here; the selected mailbox&apos;s
@@ -216,7 +217,7 @@ export function InternalProofSendCard({
           </div>
           <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
             <Button type="submit" disabled={!canSubmit}>
-              {pending ? "Sending proof..." : "Send one internal proof"}
+              {pending ? "Sending..." : "Send verification email"}
             </Button>
             <p className="text-xs text-muted-foreground">
               Server-side guard accepts only the listed recipients and exactly one selected mailbox.

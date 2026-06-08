@@ -199,10 +199,10 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             </Card>
             <Card className="border-border/80 shadow-sm">
               <CardHeader>
-                <CardTitle>Recent controlled sends</CardTitle>
+                <CardTitle>Recent internal sends</CardTitle>
                 <CardDescription>
-                  Internal test and pilot sends for this client, with delivery
-                  detail. Visible to admins only.
+                  Internal mailbox verification sends for this client, with
+                  delivery detail. Visible to admins only.
                 </CardDescription>
               </CardHeader>
               <CardContent>
