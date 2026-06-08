@@ -29,9 +29,9 @@ jobs:
       AUTH_MICROSOFT_ENTRA_ID_ISSUER: "https://login.microsoftonline.com/22222222-2222-2222-2222-222222222222/v2.0/"
       DATABASE_URL: "postgresql://ci:ci@127.0.0.1:5432/ci_build?schema=public"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: npm
@@ -61,7 +61,7 @@ jobs:
 
       # Log in immediately before deploy so the OIDC/Azure token lifetime covers deployment only.
       - name: Azure login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

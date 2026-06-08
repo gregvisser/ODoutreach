@@ -22,9 +22,9 @@ jobs:
       # Prisma is imported during `next build` page-data collection — URL is compile-only (no DB required on runners).
       DATABASE_URL: "postgresql://ci:ci@127.0.0.1:5432/ci_build?schema=public"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: npm
