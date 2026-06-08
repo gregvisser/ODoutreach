@@ -58,8 +58,9 @@ jobs:
           # Baked into the bundle so /api/build-info reports the live
           # commit + build time at runtime (Azure has no GITHUB_SHA).
           NEXT_PUBLIC_BUILD_COMMIT: ${{ github.sha }}
-          NEXT_PUBLIC_BUILD_TIMESTAMP: ${{ github.run_started_at }}
-        run: npm run build
+        run: |
+          export NEXT_PUBLIC_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          npm run build
 
       - name: Prune devDependencies for deployment
         run: npm prune --omit=dev
