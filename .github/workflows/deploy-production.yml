@@ -54,6 +54,11 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Build (webpack — avoids Turbopack workspace-root issue on CI)
+        env:
+          # Baked into the bundle so /api/build-info reports the live
+          # commit + build time at runtime (Azure has no GITHUB_SHA).
+          NEXT_PUBLIC_BUILD_COMMIT: ${{ github.sha }}
+          NEXT_PUBLIC_BUILD_TIMESTAMP: ${{ github.run_started_at }}
         run: npm run build
 
       - name: Prune devDependencies for deployment
