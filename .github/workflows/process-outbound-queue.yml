@@ -14,6 +14,31 @@ jobs:
   process-queue:
     runs-on: ubuntu-latest
     steps:
+      # Stage + dispatch any follow-ups whose delay has elapsed BEFORE the
+      # drain, so a due follow-up is queued and sent in the same tick. The
+      # advancer is idempotent and delay-guarded (it cannot fire a
+      # follow-up early or twice), so a failure here must not block the
+      # drain — we log and continue.
+      - name: Advance due sequence follow-ups
+        env:
+          ADVANCE_FOLLOWUPS_URL: https://opensdoors.bidlow.co.uk/api/internal/sequences/advance
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; skipping follow-up advance."
+            exit 0
+          fi
+          status=$(curl -sS -o /tmp/advance-response.json -w "%{http_code}" \
+            -X POST "$ADVANCE_FOLLOWUPS_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{}') || status="000"
+          echo "Follow-up advancer HTTP status: ${status}"
+          cat /tmp/advance-response.json 2>/dev/null || true
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "Follow-up advance did not succeed (status ${status}); continuing to queue drain."
+          fi
+
       - name: Call outbound queue processor
         env:
           PROCESS_QUEUE_URL: https://opensdoors.bidlow.co.uk/api/internal/outbound/process-queue

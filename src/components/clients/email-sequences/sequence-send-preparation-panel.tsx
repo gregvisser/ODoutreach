@@ -523,55 +523,53 @@ function StepSendDispatchBlock({
   const label = categoryLabel(category);
   const canSend = canMutate && stepSnapshot.sendable;
 
-  const disabledReasons: string[] = [];
-  if (!canMutate) {
-    disabledReasons.push("You do not have permission to launch sends for this client.");
-  }
-  if (stepSnapshot.disabledReason) {
-    disabledReasons.push(
-      humanizeSequenceLaunchDisabledReason(stepSnapshot.disabledReason) ??
-        stepSnapshot.disabledReason,
-    );
-  }
-
   const delayDescription =
     stepSnapshot.delayDays > 0
       ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was sent`
-      : "after the previous step is sent";
+      : "once the previous step has sent";
 
-  const followModalBody = `This queues real emails for ${label}, up to ${String(stepSnapshot.eligibleInLaunchBatchNowCount)} eligible contacts in this batch. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} Each person must have received the previous step, with ${delayDescription}.`;
+  const followModalBody = `This sends ${label} now to up to ${String(stepSnapshot.eligibleInLaunchBatchNowCount)} contacts who are already due. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} Follow-ups also send automatically — this button is only to push the due batch immediately.`;
+
+  // With automatic follow-ups, "no eligible recipients right now" is not
+  // an error — it just means nobody is due yet. Only a real permission
+  // problem is a hard "cannot". Everything else is informational.
+  const permissionBlocked = !canMutate;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/15 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-medium capitalize text-foreground">
-          {label} — live send
+          {label} — sends automatically
         </div>
       </div>
       <p className="mt-1 text-muted-foreground">{LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP}</p>
 
+      <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-50/40 px-2 py-1.5 text-[11px] text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-100">
+        This follow-up sends automatically — each contact is emailed{" "}
+        {delayDescription}. The system checks for due follow-ups every few
+        minutes; you don&apos;t need to launch it by hand.
+      </div>
+
       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
         <p>
-          <span className="font-medium text-foreground">This batch</span>:{" "}
-          {String(stepSnapshot.eligibleInLaunchBatchNowCount)} eligible now ·{" "}
+          <span className="font-medium text-foreground">Due now</span>:{" "}
+          {String(stepSnapshot.eligibleInLaunchBatchNowCount)} ·{" "}
           <span className="font-medium text-foreground">Sent</span>: {String(stepSnapshot.sentCount)}
         </p>
         <p>{sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)}</p>
         <p className="text-muted-foreground/90">
-          Prior step: {String(stepSnapshot.previousStepMissingCount)} waiting · Delay:{" "}
-          {String(stepSnapshot.delayPendingCount)} waiting · Next eligible:{" "}
+          Waiting on previous step: {String(stepSnapshot.previousStepMissingCount)} · Waiting for delay:{" "}
+          {String(stepSnapshot.delayPendingCount)} · Next sends:{" "}
           {formatRelative(stepSnapshot.earliestEligibleAtIso)}
         </p>
       </div>
 
-      {disabledReasons.length > 0 ? (
+      {permissionBlocked ? (
         <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
-          <p className="font-medium text-foreground">Cannot launch</p>
-          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
-            {disabledReasons.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
+          <p className="font-medium text-foreground">View only</p>
+          <p className="mt-1 text-muted-foreground">
+            You do not have permission to send for this client.
+          </p>
         </div>
       ) : null}
 
@@ -579,18 +577,19 @@ function StepSendDispatchBlock({
         <SequencePhraseConfirmLaunch
           formAction={sendClientEmailSequenceStepAction}
           confirmationPhrase={phrase}
-          modalTitle={`Launch ${label}?`}
+          modalTitle={`Send ${label} now?`}
           modalBody={followModalBody}
-          triggerLabel={`Launch ${label}`}
+          triggerLabel={`Send ${label} now`}
           disabled={!canSend}
-          variant="default"
+          variant="secondary"
         >
           <input type="hidden" name="clientId" value={clientId} />
           <input type="hidden" name="sequenceId" value={sequenceId} />
           <input type="hidden" name="category" value={category} />
         </SequencePhraseConfirmLaunch>
         <span className="text-[11px] text-muted-foreground">
-          You will confirm in a dialog before anything is queued.
+          Optional — due follow-ups send on their own. Use this only to push the
+          ready batch immediately.
         </span>
       </div>
     </div>
