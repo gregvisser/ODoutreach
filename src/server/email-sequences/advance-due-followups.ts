@@ -49,8 +49,22 @@ export type AdvanceFollowUpsResult = {
   sequencesProcessed: number;
   stepsProcessed: number;
   followUpsQueued: number;
+  /** True when automation was paused by the kill-switch (no work done). */
+  paused?: boolean;
   errors: string[];
 };
+
+/**
+ * Kill-switch. Set SEQUENCE_FOLLOWUP_AUTOSEND to "off" / "false" / "0" in
+ * Azure App Service config to instantly pause automatic follow-up sending
+ * (e.g. during a mailbox-reconnect incident) without a code deploy. Unset
+ * or any other value = enabled (the default behaviour). Manual "Send
+ * follow-up now" from the UI is unaffected.
+ */
+function autoSendPaused(): boolean {
+  const v = process.env.SEQUENCE_FOLLOWUP_AUTOSEND?.trim().toLowerCase();
+  return v === "off" || v === "false" || v === "0" || v === "no";
+}
 
 export async function advanceDueSequenceFollowUps(opts?: {
   /** Restrict to one client (e.g. for a targeted re-run / test). */
@@ -63,6 +77,10 @@ export async function advanceDueSequenceFollowUps(opts?: {
     followUpsQueued: 0,
     errors: [],
   };
+
+  if (autoSendPaused()) {
+    return { ...result, paused: true };
+  }
 
   // System actor. An ADMIN has global client access, which satisfies the
   // dispatcher's `requireClientAccess` for every tenant and attributes

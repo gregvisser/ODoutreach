@@ -58,6 +58,11 @@ describe("advance-due-followups wiring", () => {
     expect(advancer).toContain("result.errors.push");
   });
 
+  it("has an env kill-switch to pause automatic sending without a deploy", () => {
+    expect(advancer).toContain("SEQUENCE_FOLLOWUP_AUTOSEND");
+    expect(advancer).toContain("paused: true");
+  });
+
   it("the internal route is gated behind the PROCESS_QUEUE_SECRET bearer", () => {
     expect(route).toContain("PROCESS_QUEUE_SECRET");
     expect(route).toContain("Bearer ${secret}");
