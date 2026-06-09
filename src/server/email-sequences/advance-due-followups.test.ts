@@ -63,6 +63,11 @@ describe("advance-due-followups wiring", () => {
     expect(advancer).toContain("paused: true");
   });
 
+  it("passes a freshness window so resuming automation can't blast a backlog", () => {
+    expect(advancer).toContain("autoSendMaxOverdueMs");
+    expect(advancer).toContain("resolveAutoFollowUpFreshnessDays");
+  });
+
   it("the internal route is gated behind the PROCESS_QUEUE_SECRET bearer", () => {
     expect(route).toContain("PROCESS_QUEUE_SECRET");
     expect(route).toContain("Bearer ${secret}");

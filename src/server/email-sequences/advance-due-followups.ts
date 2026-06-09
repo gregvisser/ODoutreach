@@ -2,6 +2,10 @@ import "server-only";
 
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import {
+  freshnessDaysToMs,
+  resolveAutoFollowUpFreshnessDays,
+} from "@/lib/email-sequences/auto-followup-window";
 import { getSequenceStepSendConfirmationPhrase } from "@/lib/email-sequences/sequence-send-execution-constants";
 import { previousCategoryFor } from "@/lib/email-sequences/sequence-send-execution-policy";
 
@@ -81,6 +85,16 @@ export async function advanceDueSequenceFollowUps(opts?: {
   if (autoSendPaused()) {
     return { ...result, paused: true };
   }
+
+  // Freshness window: only AUTO-send follow-ups that became due recently
+  // (default 3 days, tunable via SEQUENCE_FOLLOWUP_AUTOSEND_MAX_OVERDUE_DAYS).
+  // More-overdue follow-ups stay READY for a manual "Send now" so resuming
+  // automation never blasts a backlog. The manual launch path is unbounded.
+  const autoSendMaxOverdueMs = freshnessDaysToMs(
+    resolveAutoFollowUpFreshnessDays(
+      process.env.SEQUENCE_FOLLOWUP_AUTOSEND_MAX_OVERDUE_DAYS,
+    ),
+  );
 
   // System actor. An ADMIN has global client access, which satisfies the
   // dispatcher's `requireClientAccess` for every tenant and attributes
@@ -173,6 +187,7 @@ export async function advanceDueSequenceFollowUps(opts?: {
             sequenceId: seq.id,
             category,
             confirmationPhrase: getSequenceStepSendConfirmationPhrase(category),
+            autoSendMaxOverdueMs,
           });
           result.followUpsQueued += batch.counts.queued;
         } catch (e) {

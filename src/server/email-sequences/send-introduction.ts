@@ -46,6 +46,7 @@ import {
   type ClientSenderProfile,
 } from "@/lib/opensdoors-brief";
 import { composeSequenceEmail } from "@/lib/email-sequences/sequence-email-composition";
+import { isFollowUpTooStaleForAutoSend } from "@/lib/email-sequences/auto-followup-window";
 import {
   chooseSignatureForSend,
   type SenderSignatureMailbox,
@@ -294,6 +295,14 @@ export async function sendSequenceStepBatch(input: {
   category: ClientEmailTemplateCategory;
   /** Raw operator input — trimmed/validated inside this helper. */
   confirmationPhrase: string;
+  /**
+   * AUTOMATIC-SEND ONLY (set by the cron follow-up advancer, never by a
+   * manual launch). When set, a follow-up that became due more than this
+   * many ms ago is skipped — left READY for a human "Send now" — so
+   * resuming automation can't blast a backlog of stale follow-ups. The
+   * manual path leaves this undefined → no upper bound.
+   */
+  autoSendMaxOverdueMs?: number;
 }): Promise<SequenceStepSendBatchResult> {
   const { staff, clientId, sequenceId, category } = input;
   await requireClientAccess(staff, clientId);
@@ -639,6 +648,32 @@ export async function sendSequenceStepBatch(input: {
             const hit = previousSentByEnrollmentId.get(row.enrollmentId);
             return hit ? { status: "SENT", sentAtIso: hit.sentAtIso } : null;
           })();
+
+    // Automatic-send freshness guard. Only engaged when the cron advancer
+    // passes `autoSendMaxOverdueMs` (manual launches never do). A follow-up
+    // that became due more than the window ago is left READY — it shows in
+    // the UI as "due now" with a manual Send button — instead of being
+    // auto-fired. This stops a backlog blast when automation resumes after
+    // a pause or a mailbox-reconnect outage.
+    if (
+      typeof input.autoSendMaxOverdueMs === "number" &&
+      prevProjection?.status === "SENT"
+    ) {
+      const prevSentAtMs = Date.parse(prevProjection.sentAtIso);
+      if (
+        !Number.isNaN(prevSentAtMs) &&
+        isFollowUpTooStaleForAutoSend({
+          prevSentAtMs,
+          delayMs:
+            stepDelayDays * 24 * 60 * 60 * 1000 +
+            stepDelayHours * 60 * 60 * 1000,
+          nowMs: Date.parse(nowIsoForClassifier),
+          maxOverdueMs: input.autoSendMaxOverdueMs,
+        })
+      ) {
+        continue;
+      }
+    }
 
     // Run the governance gate before the plan-time classifier.
     // For live sequence sends on ACTIVE clients, non-allowlisted
