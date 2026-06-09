@@ -28,6 +28,22 @@ export async function autoPromoteClientIfReady(
   clientId: string,
   staff: Pick<StaffUser, "id" | "role" | "email">,
 ): Promise<AutoPromoteResult> {
+  // PERF: this runs on EVERY client-overview page load. The vast majority
+  // of the time the client is already ACTIVE, so do a single cheap status
+  // read first and bail before the expensive launch-approval snapshot
+  // (which fans out into many queries + a full policy evaluation). Only
+  // ONBOARDING clients need that work.
+  const statusRow = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { status: true },
+  });
+  if (!statusRow) {
+    return { promoted: false, reason: "client_not_found" };
+  }
+  if (statusRow.status !== "ONBOARDING") {
+    return { promoted: false, reason: "not_onboarding" };
+  }
+
   const snapshot = await loadClientLaunchApprovalSnapshot(
     clientId,
     staff,
@@ -39,11 +55,9 @@ export async function autoPromoteClientIfReady(
     return { promoted: false, reason: "snapshot_unavailable" };
   }
 
-  // Only auto-promote from ONBOARDING. PAUSED clients were paused for a
-  // reason and need an explicit resume; ACTIVE / ARCHIVED don't need to
-  // change. The launch policy itself blocks "already ACTIVE" so we'd
-  // also be guarded by that, but checking explicitly avoids loading the
-  // snapshot at all for the common case where the client is already live.
+  // Re-check after the snapshot load (defensive — status can't have
+  // changed to non-ONBOARDING in this request, but keeps the promote
+  // guard explicit).
   if (snapshot.clientStatus !== "ONBOARDING") {
     return { promoted: false, reason: "not_onboarding" };
   }

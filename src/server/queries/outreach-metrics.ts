@@ -57,15 +57,27 @@ export async function loadGlobalOutreachMetrics(
     select: { id: true, name: true },
   });
 
-  const perClient: ClientMetricsRow[] = [];
   const totals = emptyRawCounts();
   // Until at least one client in scope has a delivery event, leave
   // deliveryTracked=false. As soon as we observe any delivery proof, the
   // global aggregate flips to true.
   totals.deliveryTracked = false;
 
-  for (const client of clients) {
-    const raw = await gatherRawCounts({ clientId: client.id });
+  // PERF: this is the post-login landing page (dashboard → reporting).
+  // Previously the per-client counts ran in a sequential `for await`
+  // loop — 13 queries × N clients one after another, so login latency
+  // grew linearly with the number of accessible clients. Gather every
+  // client's counts concurrently instead; the connection pool naturally
+  // bounds the in-flight queries.
+  const rawByClient = await Promise.all(
+    clients.map(async (client) => ({
+      client,
+      raw: await gatherRawCounts({ clientId: client.id }),
+    })),
+  );
+
+  const perClient: ClientMetricsRow[] = [];
+  for (const { client, raw } of rawByClient) {
     perClient.push({
       clientId: client.id,
       clientName: client.name,

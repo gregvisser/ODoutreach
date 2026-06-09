@@ -31,8 +31,12 @@ export const dynamic = "force-dynamic";
 export default async function ClientsPage() {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
-  const clients = await listClientsForStaff(accessible);
-  const totalClientsInDatabase = await prisma.client.count();
+  // listClientsForStaff needs `accessible`; the total count does not —
+  // run them concurrently instead of one after another.
+  const [clients, totalClientsInDatabase] = await Promise.all([
+    listClientsForStaff(accessible),
+    prisma.client.count(),
+  ]);
   const emptyCopy = resolveClientsPageEmptyCopy({
     staffRole: staff.role,
     listedClientCount: clients.length,
