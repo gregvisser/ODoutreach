@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { chunk } from "@/lib/db-bulk";
 
 import {
   assertContactListClientScope,
@@ -178,19 +179,27 @@ export async function attachContactsToClientList(args: {
     requiredClientId: clientId,
   });
 
-  const result = await prisma.contactListMember.createMany({
-    data: contacts.map((c) => ({
+  // Insert in chunks so a large list upload never becomes one oversized
+  // INSERT statement.
+  let added = 0;
+  for (const batch of chunk(
+    contacts.map((c) => ({
       contactListId,
       contactId: c.id,
       clientId,
       addedByStaffUserId: addedByStaffUserId ?? null,
     })),
-    skipDuplicates: true,
-  });
+  )) {
+    const result = await prisma.contactListMember.createMany({
+      data: batch,
+      skipDuplicates: true,
+    });
+    added += result.count;
+  }
 
   return {
-    added: result.count,
-    skipped: uniqueIds.length - result.count,
+    added,
+    skipped: uniqueIds.length - added,
   };
 }
 

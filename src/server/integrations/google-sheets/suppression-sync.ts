@@ -4,6 +4,7 @@ import { google } from "googleapis";
 
 import type { SuppressionListKind } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import { BULK_TRANSACTION_OPTIONS, chunk } from "@/lib/db-bulk";
 import {
   isValidDomainFormat,
   isValidEmailFormat,
@@ -175,16 +176,19 @@ async function applySheetToSuppressionTables(args: {
 
       if (list.length === 0) return 0;
 
-      await tx.suppressedEmail.createMany({
-        data: list.map((email) => ({
-          clientId,
-          sourceId,
-          email,
-        })),
-        skipDuplicates: true,
-      });
+      // Chunked inserts keep each statement bounded; the bulk transaction
+      // timeout (vs Prisma's 5s default) lets a large DNC list commit
+      // atomically instead of failing with an expired-transaction error.
+      for (const batch of chunk(
+        list.map((email) => ({ clientId, sourceId, email })),
+      )) {
+        await tx.suppressedEmail.createMany({
+          data: batch,
+          skipDuplicates: true,
+        });
+      }
       return list.length;
-    });
+    }, BULK_TRANSACTION_OPTIONS);
   }
 
   const domains = new Set<string>();
@@ -213,14 +217,14 @@ async function applySheetToSuppressionTables(args: {
 
     if (list.length === 0) return 0;
 
-    await tx.suppressedDomain.createMany({
-      data: list.map((domain) => ({
-        clientId,
-        sourceId,
-        domain,
-      })),
-      skipDuplicates: true,
-    });
+    for (const batch of chunk(
+      list.map((domain) => ({ clientId, sourceId, domain })),
+    )) {
+      await tx.suppressedDomain.createMany({
+        data: batch,
+        skipDuplicates: true,
+      });
+    }
     return list.length;
-  });
+  }, BULK_TRANSACTION_OPTIONS);
 }

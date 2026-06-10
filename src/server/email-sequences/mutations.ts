@@ -9,6 +9,7 @@ import type {
   ClientEmailTemplateCategory,
 } from "@/generated/prisma/enums";
 import { summarizeContactReadiness } from "@/lib/client-contacts-readiness";
+import { BULK_TRANSACTION_OPTIONS } from "@/lib/db-bulk";
 import {
   canApproveSequence,
   canTransitionSequenceStatus,
@@ -646,6 +647,9 @@ export async function deleteOrArchiveSequence(
     };
   }
 
+  // Bulk delete: a sequence with many enrollments/step-sends can exceed
+  // Prisma's default 5s interactive-transaction timeout, so use the bulk
+  // options. Kept atomic so a sequence is never half-deleted.
   await prisma.$transaction(async (tx) => {
     await tx.clientEmailSequenceStepSend.deleteMany({
       where: { sequenceId: seq.id, clientId: input.clientId },
@@ -659,7 +663,7 @@ export async function deleteOrArchiveSequence(
     await tx.clientEmailSequence.delete({
       where: { id: seq.id },
     });
-  });
+  }, BULK_TRANSACTION_OPTIONS);
 
   return {
     action: "deleted",

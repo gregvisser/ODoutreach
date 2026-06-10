@@ -8,6 +8,7 @@ import {
   type EnrollmentReadinessReason,
 } from "@/lib/email-sequences/enrollment-policy";
 import { prisma } from "@/lib/db";
+import { chunk } from "@/lib/db-bulk";
 
 /**
  * Server helpers for `ClientEmailSequenceEnrollment` (PR D4c).
@@ -275,8 +276,11 @@ export async function enrollSequenceContacts(input: {
     };
   }
 
-  const result = await prisma.clientEmailSequenceEnrollment.createMany({
-    data: toInsert.map((contactId) => ({
+  // Chunk so enrolling a very large contact list never becomes one
+  // oversized INSERT statement.
+  let inserted = 0;
+  for (const batch of chunk(
+    toInsert.map((contactId) => ({
       clientId: input.clientId,
       sequenceId: sequence.id,
       contactId,
@@ -284,18 +288,23 @@ export async function enrollSequenceContacts(input: {
       status: "PENDING" as const,
       createdByStaffUserId: input.staffUserId,
     })),
-    skipDuplicates: true,
-  });
+  )) {
+    const result = await prisma.clientEmailSequenceEnrollment.createMany({
+      data: batch,
+      skipDuplicates: true,
+    });
+    inserted += result.count;
+  }
 
   return {
-    inserted: result.count,
+    inserted,
     skipped: {
       suppressed: preview.suppressed,
       missingEmail: preview.missingEmail,
       missingIdentifier: preview.missingIdentifier,
       alreadyEnrolled: preview.alreadyEnrolled,
     },
-    totalEnrollments: overview.total + result.count,
+    totalEnrollments: overview.total + inserted,
   };
 }
 
