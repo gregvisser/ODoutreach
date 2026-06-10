@@ -25,13 +25,25 @@ import { assertClientInAccessibleList } from "@/server/tenant/access";
  * delivery webhooks; for those clients the rate would otherwise sit at 0%
  * forever and mislead staff. See `docs/ops/SYSTEM_HANDOVER_GAPS.md` G1.
  */
+/**
+ * Optional reporting window (inclusive lower / exclusive upper bound,
+ * UTC). When set, EVENT metrics are filtered to the window: sends by
+ * sentAt, replies by receivedAt, opt-outs by usedAt, opens by openedAt,
+ * bounces by bouncedAt (falling back to the send time when the webhook
+ * didn't stamp one), failures by createdAt. STATE metrics — queued now,
+ * suppressed/skipped, contact counts — have no historical form and stay
+ * live values regardless of the window; the Reports page labels them.
+ */
+export type MetricsWindow = { gte: Date; lt: Date };
+
 export async function loadClientOutreachMetrics(
   clientId: string,
   accessibleClientIds: string[],
+  window?: MetricsWindow,
 ): Promise<OutreachMetrics> {
   assertClientInAccessibleList(clientId, accessibleClientIds);
 
-  const raw = await gatherRawCounts({ clientId });
+  const raw = await gatherRawCounts({ clientId }, window);
   return deriveOutreachMetrics(raw);
 }
 
@@ -43,6 +55,7 @@ export async function loadClientOutreachMetrics(
  */
 export async function loadGlobalOutreachMetrics(
   accessibleClientIds: string[],
+  window?: MetricsWindow,
 ): Promise<{
   global: OutreachMetrics;
   byClient: ClientMetricsRow[];
@@ -72,7 +85,7 @@ export async function loadGlobalOutreachMetrics(
   const rawByClient = await Promise.all(
     clients.map(async (client) => ({
       client,
-      raw: await gatherRawCounts({ clientId: client.id }),
+      raw: await gatherRawCounts({ clientId: client.id }, window),
     })),
   );
 
@@ -137,9 +150,17 @@ function emptyRawCounts(): RawMetricsCounts {
  */
 const DELIVERY_EVENT_TYPE_FRAGMENT = "delivered";
 
-async function gatherRawCounts(scope: {
-  clientId: string;
-}): Promise<RawMetricsCounts> {
+async function gatherRawCounts(
+  scope: {
+    clientId: string;
+  },
+  window?: MetricsWindow,
+): Promise<RawMetricsCounts> {
+  const { clientId } = scope;
+  // Inclusive-from / exclusive-to bound applied to the relevant event
+  // timestamp of each windowed metric. Undefined → all-time (unchanged
+  // behaviour).
+  const w = window ? { gte: window.gte, lt: window.lt } : undefined;
   const [
     sentWithProof,
     allStepSendsSent,
@@ -157,47 +178,63 @@ async function gatherRawCounts(scope: {
   ] = await Promise.all([
     prisma.outboundEmail.count({
       where: {
-        ...scope,
+        clientId,
         status: { in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] },
-        OR: [
-          { sentAt: { not: null } },
-          { providerMessageId: { not: null } },
-        ],
+        // Windowed: a sentAt inside the window is itself the send proof.
+        // All-time: sentAt OR providerMessageId proves the send.
+        ...(w
+          ? { sentAt: w }
+          : {
+              OR: [
+                { sentAt: { not: null } },
+                { providerMessageId: { not: null } },
+              ],
+            }),
       },
     }),
     prisma.clientEmailSequenceStepSend.count({
-      where: { ...scope, status: "SENT" },
+      // Step-send rows flip to SENT at dispatch, so updatedAt is the send
+      // moment for windowing purposes.
+      where: { clientId, status: "SENT", ...(w ? { updatedAt: w } : {}) },
     }),
     prisma.outboundEmail.count({
       where: {
-        ...scope,
+        clientId,
         // Include the full pre-send lifecycle so staff understand exactly
         // how much is still waiting on the sender, not just the QUEUED slice.
+        // Deliberately NOT windowed — "waiting right now" has no history.
         status: { in: ["REQUESTED", "PREPARING", "QUEUED", "PROCESSING"] },
       },
     }),
     prisma.outboundEmail.count({
       where: {
-        ...scope,
+        clientId,
         status: "DELIVERED",
-        deliveredAt: { not: null },
+        deliveredAt: w ?? { not: null },
       },
     }),
     prisma.outboundEmail.count({
       where: {
-        ...scope,
+        clientId,
         status: "BOUNCED",
+        // Window on when the bounce happened; webhooks that didn't stamp
+        // bouncedAt fall back to the send time so the row isn't lost.
+        ...(w
+          ? { OR: [{ bouncedAt: w }, { bouncedAt: null, sentAt: w }] }
+          : {}),
       },
     }),
     prisma.outboundEmail.count({
       where: {
-        ...scope,
+        clientId,
         status: "FAILED",
+        ...(w ? { createdAt: w } : {}),
       },
     }),
     prisma.clientEmailSequenceStepSend.count({
       where: {
-        ...scope,
+        clientId,
+        // Deliberately NOT windowed — planning state, not an event.
         status: { in: ["SUPPRESSED", "SKIPPED", "BLOCKED"] },
         // Exclude 21-day outreach-cooldown deferrals. Those contacts were
         // ALREADY emailed (that's why they're in cooldown) — they're
@@ -209,35 +246,36 @@ async function gatherRawCounts(scope: {
     }),
     prisma.inboundReply.count({
       where: {
-        ...scope,
+        clientId,
         matchMethod: { not: "UNLINKED" },
         linkedOutboundEmailId: { not: null },
+        ...(w ? { receivedAt: w } : {}),
       },
     }),
     prisma.unsubscribeToken.count({
       where: {
-        ...scope,
-        usedAt: { not: null },
+        clientId,
+        usedAt: w ?? { not: null },
       },
     }),
-    prisma.contact.count({ where: scope }),
+    prisma.contact.count({ where: { clientId } }),
     prisma.contact.count({
       where: {
-        ...scope,
+        clientId,
         email: { not: null },
         isSuppressed: false,
       },
     }),
     prisma.outboundProviderEvent.count({
       where: {
-        ...scope,
+        clientId,
         eventType: { contains: DELIVERY_EVENT_TYPE_FRAGMENT, mode: "insensitive" },
       },
     }),
     // Opens: distinct outbound emails whose tracking pixel has loaded at
     // least once (openedAt set by /api/track/open). See open-pixel.ts.
     prisma.outboundEmail.count({
-      where: { ...scope, openedAt: { not: null } },
+      where: { clientId, openedAt: w ?? { not: null } },
     }),
   ]);
 

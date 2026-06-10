@@ -115,6 +115,16 @@ describe("/reporting UI policy (PR #136)", () => {
     expect(reportingPageSource).toContain("All-time");
   });
 
+  it("supports a date-range filter for client reports (from/to, applied to event metrics)", () => {
+    expect(reportingPageSource).toContain("ReportsDateRangePicker");
+    expect(reportingPageSource).toContain("parseReportDateRange");
+    // The window must reach BOTH the all-clients and single-client loaders.
+    expect(reportingPageSource).toContain("loadGlobalOutreachMetrics(accessible, window)");
+    expect(reportingPageSource).toContain("loadClientOutreachMetrics(clientFilter, accessible, window)");
+    // Switching client chips must keep the selected dates.
+    expect(reportingPageSource).toContain("rangeQuery");
+  });
+
   it("keeps the per-client breakdown table with staff-friendly column labels", () => {
     expect(reportingPageSource).toContain("Per-client breakdown");
     expect(reportingPageSource).toContain(">Reply rate<");

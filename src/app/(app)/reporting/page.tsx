@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ReportsDateRangePicker } from "@/components/reports/reports-date-range-picker";
 import {
   Card,
   CardContent,
@@ -13,6 +14,7 @@ import {
   formatRate,
   formatTrackedMetric,
 } from "@/lib/reports/outreach-metrics";
+import { parseReportDateRange } from "@/lib/reports/report-date-range";
 import { requireStaffUser } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import {
@@ -23,7 +25,9 @@ import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams?: Promise<{ client?: string }> };
+type Props = {
+  searchParams?: Promise<{ client?: string; from?: string; to?: string }>;
+};
 
 /**
  * PR #136 — Reports is the single trustworthy operational dashboard.
@@ -52,21 +56,31 @@ export default async function ReportingPage({ searchParams }: Props) {
   const rawFilter = sp.client;
   const clientFilter =
     rawFilter && accessible.includes(rawFilter) ? rawFilter : undefined;
+  // Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD window (inclusive days).
+  // Invalid/missing → null → All-time, exactly as before.
+  const range = parseReportDateRange(sp.from, sp.to);
+  const window = range ? { gte: range.gte, lt: range.lt } : undefined;
 
   const [clients, metricsData] = await Promise.all([
     listClientsForStaff(accessible),
     clientFilter
-      ? loadClientOutreachMetrics(clientFilter, accessible).then((m) => ({
-          global: m,
-          byClient: [],
-        }))
-      : loadGlobalOutreachMetrics(accessible),
+      ? loadClientOutreachMetrics(clientFilter, accessible, window).then(
+          (m) => ({
+            global: m,
+            byClient: [],
+          }),
+        )
+      : loadGlobalOutreachMetrics(accessible, window),
   ]);
 
   const m = metricsData.global;
   const scopeLabel = clientFilter
     ? clients.find((c) => c.id === clientFilter)?.name ?? "Selected client"
     : "All accessible clients";
+  const timeLabel = range ? range.label : "All-time";
+  // Keep the active range on client-chip and table links so switching
+  // client doesn't silently reset the dates.
+  const rangeQuery = range ? `&from=${range.fromIso}&to=${range.toIso}` : "";
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -80,7 +94,7 @@ export default async function ReportingPage({ searchParams }: Props) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
-            href="/reporting"
+            href={range ? `/reporting?from=${range.fromIso}&to=${range.toIso}` : "/reporting"}
             className={cn(
               buttonVariants({
                 variant: !clientFilter ? "secondary" : "outline",
@@ -93,7 +107,7 @@ export default async function ReportingPage({ searchParams }: Props) {
           {clients.map((c) => (
             <Link
               key={c.id}
-              href={`/reporting?client=${c.id}`}
+              href={`/reporting?client=${c.id}${rangeQuery}`}
               className={cn(
                 buttonVariants({
                   variant: clientFilter === c.id ? "secondary" : "outline",
@@ -107,17 +121,32 @@ export default async function ReportingPage({ searchParams }: Props) {
         </div>
       </div>
 
+      <ReportsDateRangePicker
+        clientId={clientFilter ?? null}
+        fromIso={range?.fromIso ?? null}
+        toIso={range?.toIso ?? null}
+      />
+
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <CardTitle className="text-base">Outreach metrics</CardTitle>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Scope: {scopeLabel} · All-time
+              Scope: {scopeLabel} · {timeLabel}
             </p>
           </div>
           <CardDescription>
             Every count below is a live database read. Sends are only counted
             when the provider returned a message id or recorded a send time.
+            {range ? (
+              <>
+                {" "}
+                Sent, replies, opt-outs, opens, bounces and failures are
+                filtered to the selected dates. Queued, Suppressed / skipped
+                and Contacts are live right-now values — they have no
+                history, so the date range doesn&apos;t change them.
+              </>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -194,7 +223,7 @@ export default async function ReportingPage({ searchParams }: Props) {
             <CardTitle className="text-base">Per-client breakdown</CardTitle>
             <CardDescription>
               Open a row by selecting that workspace in the filter chips above.
-              All-time, send-proof verified.
+              {" "}{timeLabel}, send-proof verified.
             </CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
@@ -219,7 +248,7 @@ export default async function ReportingPage({ searchParams }: Props) {
                     <td className="px-3 py-2 font-medium">
                       <Link
                         className="underline-offset-2 hover:underline"
-                        href={`/reporting?client=${row.clientId}`}
+                        href={`/reporting?client=${row.clientId}${rangeQuery}`}
                       >
                         {row.clientName}
                       </Link>
