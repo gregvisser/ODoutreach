@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientLinkedReplyDetail } from "@/components/activity/client-linked-reply-detail";
+import { AddToDoNotContactButtons } from "@/components/suppression/add-to-dnc";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientLinkedReplyDetail } from "@/server/queries/client-linked-reply-detail";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -24,9 +25,10 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
   if (!detail) notFound();
 
   return (
-    <ClientLinkedReplyDetail
-      clientId={clientId}
-      detail={{
+    <div className="space-y-6">
+      <ClientLinkedReplyDetail
+        clientId={clientId}
+        detail={{
         ...detail,
         reply: {
           ...detail.reply,
@@ -50,6 +52,11 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
             }
           : null,
       }}
-    />
+      />
+      <AddToDoNotContactButtons
+        clientId={clientId}
+        email={detail.reply.fromEmail}
+      />
+    </div>
   );
 }

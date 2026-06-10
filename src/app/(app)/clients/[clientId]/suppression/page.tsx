@@ -1,6 +1,14 @@
 import { notFound } from "next/navigation";
 
 import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
+import { ManualDncAddForm } from "@/components/suppression/add-to-dnc";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -57,6 +65,20 @@ export default async function ClientSuppressionPage({ params }: Props) {
           automatically.
         </p>
       </div>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Quick add</CardTitle>
+          <CardDescription>
+            Captured a lead or had an opt-out request? Block them here and
+            it&apos;s enforced on the very next send — add them to the Google
+            Sheet later (or not at all).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ManualDncAddForm clientId={client.id} />
+        </CardContent>
+      </Card>
 
       <ClientSuppressionInlineCard
         clientId={client.id}
