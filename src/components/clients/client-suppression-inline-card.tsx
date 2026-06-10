@@ -33,6 +33,8 @@ type SourceRow = {
   syncStatus: string;
   lastSyncedAt: string | null;
   lastError: string | null;
+  /** Live count of rows currently in the do-not-contact store. */
+  entryCount?: number;
 };
 
 type Props = {
@@ -259,6 +261,9 @@ export function ClientSuppressionInlineCard({
               <li key={s.id}>
                 {suppressionKindShortLabel(s.kind)} ·{" "}
                 {suppressionSyncStatusLabel(s.syncStatus)}
+                {typeof s.entryCount === "number"
+                  ? ` · ${s.entryCount.toLocaleString()} ${s.kind === "EMAIL" ? "address" : "domain"}${s.entryCount === 1 ? "" : "s"} on the list`
+                  : ""}
                 {s.lastSyncedAt ? ` · last sync ${s.lastSyncedAt}` : ""}
                 {s.lastError ? ` · ${s.lastError}` : ""}
               </li>
