@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { NewReplyNotifier } from "@/components/notifications/new-reply-notifier";
 import { StaffEmailBlocked } from "@/components/staff/staff-email-blocked";
 import { StaffInactive } from "@/components/staff/staff-inactive";
 import { StaffNotRegistered } from "@/components/staff/staff-not-registered";
@@ -40,6 +41,7 @@ export default async function AppLayout({
           {children}
         </main>
       </div>
+      <NewReplyNotifier />
     </div>
   );
 }

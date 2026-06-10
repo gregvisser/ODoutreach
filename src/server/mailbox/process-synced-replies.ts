@@ -21,15 +21,34 @@ import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follo
  *   1. BY_THREAD_REF (definitive, only when In-Reply-To present): the header
  *      value equals the `rfc822MessageId` we stamped on a specific OutboundEmail
  *      for this client. Unambiguous — a genuine reply to that exact send.
- *   2. BY_CONTACT_EMAIL fallback: outbounds with NO stamped Message-ID
- *      (Microsoft Graph sends, and legacy Gmail). Match same clientId, same
- *      mailboxIdentityId, toEmail = inbound fromEmail, sentAt <= received,
- *      status sent/delivered/replied. Requiring `rfc822MessageId = null` here
- *      stops unrelated thread replies from being mislinked to modern Gmail sends.
- *   3. If neither matches, skip — don't create unlinked noise.
+ *   2. BY_CONTACT_EMAIL subject-anchored: any outbound (stamped or not) to
+ *      that exact recipient from that mailbox whose subject equals the
+ *      reply's base subject (Re:/Fwd: prefixes stripped). Required because
+ *      Gmail rewrites outgoing Message-IDs, so a stamped send can miss the
+ *      thread match through no fault of ours.
+ *   3. BY_CONTACT_EMAIL legacy fallback: outbounds with NO stamped
+ *      Message-ID (Microsoft Graph sends, and legacy Gmail). Match same
+ *      clientId, same mailboxIdentityId, toEmail = inbound fromEmail,
+ *      sentAt <= received, status sent/delivered/replied. Requiring
+ *      `rfc822MessageId = null` here stops unrelated thread replies (with a
+ *      different subject) from being mislinked to modern Gmail sends.
+ *   4. If nothing matches, skip — don't create unlinked noise.
  *
  * Idempotent: skips if an InboundReply already exists for this providerMessageId.
  */
+
+/**
+ * Strip leading reply/forward markers (repeatedly) to recover the subject
+ * we originally sent: "RE: RE: Fwd: Hello" → "Hello". Mirrors the prefix
+ * set used by the looks-like-reply gate. Pure — exported for unit tests.
+ */
+export function stripReplyPrefixes(subject: string | null | undefined): string {
+  const s = (subject ?? "").trim();
+  return s
+    .replace(/^((re|sv|aw|antw|wg|tr|fwd|fw|回复)\s*:\s*)+/i, "")
+    .trim();
+}
+
 export async function processSyncedMessageForReply(input: {
   clientId: string;
   mailboxIdentityId: string;
@@ -91,11 +110,42 @@ export async function processSyncedMessageForReply(input: {
     : null;
   let matchMethod: "BY_THREAD_REF" | "BY_CONTACT_EMAIL" = "BY_THREAD_REF";
 
-  // 2) Contact-email fallback: outbounds with no stamped Message-ID (legacy
+  // 2) Subject-anchored contact match. Stamped (Gmail) sends can miss the
+  //    thread match for reasons outside our control — Gmail rewrites the
+  //    outgoing Message-ID at send time, and some recipients' clients drop
+  //    or mangle In-Reply-To — and the legacy fallback below deliberately
+  //    excludes stamped sends. Without this leg a Gmail-sent outreach reply
+  //    could NEVER link (observed in production: repliesLinked stayed 0 and
+  //    a confirmed Train Hugger lead reply never appeared for staff).
+  //    Anchoring on the reply's base subject (prefixes stripped) equalling
+  //    the subject WE sent to that exact recipient from that mailbox keeps
+  //    false positives out: an unrelated thread from the same contact has a
+  //    different subject.
+  if (!outbound && looksLikeReplyBySubject) {
+    const baseSubject = stripReplyPrefixes(subject);
+    if (baseSubject.length > 0) {
+      outbound = await prisma.outboundEmail.findFirst({
+        where: {
+          clientId: input.clientId,
+          mailboxIdentityId: input.mailboxIdentityId,
+          toEmail: from,
+          sentAt: { not: null, lte: input.receivedAt },
+          status: { in: ["SENT", "DELIVERED", "REPLIED"] },
+          subject: { equals: baseSubject, mode: "insensitive" },
+        },
+        orderBy: { sentAt: "desc" },
+        select: { id: true, contactId: true, status: true },
+      });
+      matchMethod = "BY_CONTACT_EMAIL";
+    }
+  }
+
+  // 3) Contact-email fallback: outbounds with no stamped Message-ID (legacy
   //    Gmail or any Microsoft Graph send — we don't stamp Graph yet). Same
   //    clientId + mailbox + recipient + sent-before-received + good status,
   //    restricted to rfc822MessageId = null so modern Gmail sends aren't
-  //    loosely matched by an unrelated thread from the same contact.
+  //    loosely matched by an unrelated thread from the same contact (the
+  //    subject-anchored leg above is the safe path for stamped sends).
   if (!outbound) {
     outbound = await prisma.outboundEmail.findFirst({
       where: {

@@ -32,7 +32,35 @@ vi.mock("@/server/email-sequences/stop-follow-ups-on-reply", () => ({
   stopFollowUpsForLinkedReply: stopFollowUpsMock,
 }));
 
-import { processSyncedMessageForReply } from "./process-synced-replies";
+import {
+  processSyncedMessageForReply,
+  stripReplyPrefixes,
+} from "./process-synced-replies";
+
+describe("stripReplyPrefixes", () => {
+  it("strips single and stacked reply/forward markers", () => {
+    expect(stripReplyPrefixes("RE: More Impact. No New Budget")).toBe(
+      "More Impact. No New Budget",
+    );
+    expect(stripReplyPrefixes("Re: RE: Fwd: Hello")).toBe("Hello");
+    expect(stripReplyPrefixes("Sv: Hej")).toBe("Hej");
+    expect(stripReplyPrefixes("回复: 主题")).toBe("主题");
+  });
+
+  it("leaves non-reply subjects untouched", () => {
+    expect(stripReplyPrefixes("Awesome news")).toBe("Awesome news");
+    expect(stripReplyPrefixes("Trip plan")).toBe("Trip plan");
+    expect(stripReplyPrefixes("More Impact. No New Budget")).toBe(
+      "More Impact. No New Budget",
+    );
+  });
+
+  it("returns empty for bare markers / empty input", () => {
+    expect(stripReplyPrefixes("Re:")).toBe("");
+    expect(stripReplyPrefixes(null)).toBe("");
+    expect(stripReplyPrefixes(undefined)).toBe("");
+  });
+});
 
 const BASE_INPUT = {
   clientId: "c1",
@@ -146,7 +174,9 @@ describe("processSyncedMessageForReply", () => {
 
   it("legacy fallback only matches outbounds with no stamped Message-ID", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    // thread-ref miss → subject-anchored miss → legacy fallback hit.
     prismaMock.outboundEmail.findFirst
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: "ob-legacy", contactId: "ct1", status: "SENT" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-legacy" });
@@ -163,6 +193,64 @@ describe("processSyncedMessageForReply", () => {
           toEmail: "contact@example.com",
           rfc822MessageId: null,
         }),
+      }),
+    );
+  });
+
+  it("links a stamped Gmail send by base subject when the thread match misses (Outlook reply case)", async () => {
+    // Production bug: Gmail rewrites the outgoing Message-ID, so the reply's
+    // In-Reply-To never equals our stored rfc822MessageId, and the legacy
+    // fallback excludes stamped sends — the reply never linked. The
+    // subject-anchored leg must catch it.
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst
+      .mockResolvedValueOnce(null) // BY_THREAD_REF miss (rewritten Message-ID)
+      .mockResolvedValueOnce({ id: "ob-subj", contactId: "ct-subj", status: "SENT" });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-subj" });
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      subject: "RE: RE: More Impact. No New Budget",
+      inReplyToHeader: "<gmail-rewrote-this@mail.gmail.com>",
+    });
+
+    expect(result.created).toBe(true);
+    // Anchored on the ORIGINAL subject with prefixes stripped, scoped to the
+    // exact recipient + mailbox, with NO rfc822MessageId restriction.
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          clientId: "c1",
+          mailboxIdentityId: "mbx1",
+          toEmail: "contact@example.com",
+          subject: { equals: "More Impact. No New Budget", mode: "insensitive" },
+        }),
+      }),
+    );
+    expect(prismaMock.inboundReply.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        matchMethod: "BY_CONTACT_EMAIL",
+        linkedOutboundEmailId: "ob-subj",
+      }),
+    });
+  });
+
+  it("skips the subject leg when the stripped subject is empty (bare 'Re:')", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue(null);
+
+    await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      inReplyToHeader: null,
+      subject: "Re:",
+    });
+
+    // Only the legacy fallback ran (one call), and it kept the
+    // rfc822MessageId: null constraint.
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenCalledTimes(1);
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ rfc822MessageId: null }),
       }),
     );
   });
@@ -343,7 +431,8 @@ describe("processSyncedMessageForReply", () => {
   it("matches outbound by mailboxIdentityId scope (legacy fallback)", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
     prismaMock.outboundEmail.findFirst
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null) // thread-ref miss
+      .mockResolvedValueOnce(null) // subject-anchored miss
       .mockResolvedValueOnce({ id: "ob5", contactId: "ct5", status: "DELIVERED" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply5" });
 

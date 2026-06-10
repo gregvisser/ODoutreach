@@ -42,3 +42,28 @@ jobs:
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             exit 1
           fi
+
+      # Re-sync every configured do-not-contact sheet so staff additions to
+      # the DNC sheets reach the suppression tables — and therefore the
+      # send-time gate — without anyone clicking "Sync now". Non-fatal: a
+      # broken sheet shows on the suppression page; it must not fail the
+      # replies workflow.
+      - name: Sync do-not-contact sheets
+        env:
+          SUPPRESSION_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/suppression/sync-all
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; skipping DNC sheet sync."
+            exit 0
+          fi
+          status=$(curl -sS -o /tmp/suppression-sync.json -w "%{http_code}" \
+            -X POST "$SUPPRESSION_SYNC_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{}') || status="000"
+          echo "DNC sheet sync HTTP status: ${status}"
+          cat /tmp/suppression-sync.json 2>/dev/null || true
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "DNC sheet sync did not succeed (status ${status}); continuing."
+          fi
