@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 
 import { InboundMessageFullBody } from "@/components/activity/inbound-message-full-body";
 import { InboundMessageReplyForm } from "@/components/activity/inbound-message-reply-form";
+import { AddToDoNotContactButtons } from "@/components/suppression/add-to-dnc";
+import { detectRemovalIntent } from "@/lib/unsubscribe/detect-removal-intent";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -46,6 +48,14 @@ export default async function InboundMessageDetailPage({ params }: Props) {
 
   const { message, mailbox, handling, replyHistory, linkedReply } = detail;
   const replySubject = buildReplySubject(message.subject);
+  // F6 (b) — flag (don't auto-act on) inbound mail that reads as an
+  // unsubscribe / removal request, so staff can one-click suppress. This is
+  // the surface a real prospect's "please remove me" reply lands on.
+  const removalIntent = detectRemovalIntent({
+    subject: message.subject,
+    snippet: message.snippet,
+    bodyPreview: message.bodyPreview,
+  });
   const ineligibleCode = mailboxIneligibleForGovernedSendExecution(mailbox);
   const providerSupportsReply =
     mailbox.provider === "MICROSOFT" || mailbox.provider === "GOOGLE";
@@ -61,6 +71,24 @@ export default async function InboundMessageDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-8">
+      {removalIntent.detected ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-4">
+          <p className="text-sm font-semibold text-destructive">
+            This message asks to be removed from outreach.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            It reads as an unsubscribe / removal request. If that&apos;s correct,
+            add them to Do-not-contact now — treat this as a compliance action,
+            not optional.
+          </p>
+          <div className="mt-3">
+            <AddToDoNotContactButtons
+              clientId={clientId}
+              email={message.fromEmail}
+            />
+          </div>
+        </div>
+      ) : null}
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <Link
@@ -242,6 +270,13 @@ export default async function InboundMessageDetailPage({ params }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {removalIntent.detected ? null : (
+        <AddToDoNotContactButtons
+          clientId={clientId}
+          email={message.fromEmail}
+        />
+      )}
     </div>
   );
 }

@@ -264,6 +264,9 @@ describe("sendSequenceStepBatch — governance gate", () => {
     });
     mountReadyRow("prospect@example.com", "ss-live-ok");
 
+    // A real-prospect send now requires a working one-click unsubscribe.
+    process.env.AUTH_URL = "https://outreach.example.com";
+
     prismaMock.$transaction.mockImplementation(async () => {
       throw new Error("reached-transaction");
     });
@@ -284,7 +287,7 @@ describe("sendSequenceStepBatch — governance gate", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("allows ACTIVE non-allowlisted even without launch approval or one-click unsubscribe", async () => {
+  it("allows ACTIVE non-allowlisted without launch approval once one-click unsubscribe is ready", async () => {
     mountSequence();
     mountMailboxPool();
     mountClient({
@@ -293,6 +296,10 @@ describe("sendSequenceStepBatch — governance gate", () => {
       launchApprovalMode: null,
     });
     mountReadyRow("prospect@example.com", "ss-no-approval");
+
+    // Live sequence sends do not need launch approval — but they DO need a
+    // working one-click unsubscribe, so configure the public base URL.
+    process.env.AUTH_URL = "https://outreach.example.com";
 
     prismaMock.$transaction.mockImplementation(async () => {
       throw new Error("reached-transaction");
@@ -309,6 +316,40 @@ describe("sendSequenceStepBatch — governance gate", () => {
     ).rejects.toThrow(/reached-transaction/);
 
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("BLOCKS a non-allowlisted real-prospect send when one-click unsubscribe is not configured", async () => {
+    mountSequence();
+    mountMailboxPool();
+    mountClient({
+      status: "ACTIVE",
+      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+      launchApprovalMode: "LIVE_PROSPECT",
+    });
+    mountReadyRow("prospect@example.com", "ss-no-unsub");
+
+    // beforeEach cleared AUTH_URL / INTERNAL_APP_URL / NEXT_PUBLIC_APP_URL,
+    // so no hosted, redeemable unsubscribe link can be minted. The send
+    // must be blocked rather than emailed with a dead opt-out.
+    const result = await sendSequenceStepBatch({
+      staff,
+      clientId: "c1",
+      sequenceId: "seq-1",
+      category: "INTRODUCTION",
+      confirmationPhrase: "SEND INTRODUCTION",
+    });
+
+    expect(result.counts.queued).toBe(0);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.clientEmailSequenceStepSend.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "ss-no-unsub" },
+        data: expect.objectContaining({
+          status: "BLOCKED",
+          blockedReason: expect.stringContaining("blocked_unsubscribe_required"),
+        }),
+      }),
+    );
   });
 
   it("reaches the send transaction for allowlisted recipient on ACTIVE + LIVE_PROSPECT client", async () => {
@@ -360,7 +401,10 @@ describe("sendSequenceStepBatch — governance gate", () => {
         },
       },
     } as never);
-    mountReadyRow("prospect@example.com", "ss-null-sender");
+    // Allowlisted recipient: the mailto placeholder path is legitimate for
+    // governed-test/allowlisted sends (real-prospect sends now require a
+    // hosted unsubscribe). This still exercises the null-sender fallback.
+    mountReadyRow("ada@bidlow.co.uk", "ss-null-sender");
 
     prismaMock.$transaction.mockImplementation(async () => {
       throw new Error("reached-transaction");

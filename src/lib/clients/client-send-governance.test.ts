@@ -122,6 +122,7 @@ describe("evaluateSendGovernance", () => {
         baseInput({
           sendKind: "SEQUENCE_INTRODUCTION",
           recipientAllowlisted: false,
+          oneClickUnsubscribeReady: true,
           client: {
             status: "ACTIVE",
             launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
@@ -138,6 +139,7 @@ describe("evaluateSendGovernance", () => {
         baseInput({
           sendKind: "SEQUENCE_FOLLOW_UP",
           recipientAllowlisted: false,
+          oneClickUnsubscribeReady: true,
           client: {
             status: "ACTIVE",
             launchApprovedAt: null,
@@ -154,7 +156,7 @@ describe("evaluateSendGovernance", () => {
         baseInput({
           sendKind: "SEQUENCE_INTRODUCTION",
           recipientAllowlisted: false,
-          oneClickUnsubscribeReady: false,
+          oneClickUnsubscribeReady: true,
           client: {
             status: "ACTIVE",
             launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
@@ -166,7 +168,7 @@ describe("evaluateSendGovernance", () => {
       if (decision.allowed) expect(decision.mode).toBe("live_prospect");
     });
 
-    it("does not require one-click unsubscribe for sequence sends", () => {
+    it("BLOCKS a non-allowlisted sequence send when one-click unsubscribe is not ready", () => {
       const decision = evaluateSendGovernance(
         baseInput({
           sendKind: "SEQUENCE_INTRODUCTION",
@@ -176,6 +178,28 @@ describe("evaluateSendGovernance", () => {
             status: "ACTIVE",
             launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
             launchApprovalMode: "LIVE_PROSPECT",
+          },
+        }),
+      );
+      // Compliance: a real prospect must get a working opt-out. If the
+      // hosted unsubscribe rail isn't wired we block rather than email a
+      // dead link.
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.mode).toBe("blocked_unsubscribe_missing");
+      }
+    });
+
+    it("allows a non-allowlisted sequence send once one-click unsubscribe is ready", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_FOLLOW_UP",
+          recipientAllowlisted: false,
+          oneClickUnsubscribeReady: true,
+          client: {
+            status: "ACTIVE",
+            launchApprovedAt: null,
+            launchApprovalMode: null,
           },
         }),
       );

@@ -15,10 +15,13 @@
  *     allowlisted recipient; REPLY is always allowed.
  *   * SEQUENCE_INTRODUCTION / SEQUENCE_FOLLOW_UP — live outreach path.
  *     Allowlisted recipients pass as `allowlisted_test`. Non-allowlisted
- *     recipients require client.status === ACTIVE; no hidden
- *     LIVE_PROSPECT mode or one-click unsubscribe gate. Suppression,
- *     mailbox capacity, batch caps and the typed confirmation phrase
- *     remain enforced by the dispatcher.
+ *     (real prospect) recipients require client.status === ACTIVE AND a
+ *     working one-click unsubscribe (`oneClickUnsubscribeReady`) — we must
+ *     never email a real prospect an opt-out they can't use, so if no
+ *     hosted unsubscribe URL can be generated the send is blocked rather
+ *     than silently degraded to a dead mailto. No LIVE_PROSPECT-mode gate.
+ *     Suppression, mailbox capacity, batch caps and the typed confirmation
+ *     phrase remain enforced by the dispatcher.
  *   * CONTROLLED_PILOT — retains strict gates: ACTIVE + approved +
  *     LIVE_PROSPECT mode + one-click unsubscribe. This preserves pilot
  *     safety while live sequence sends operate freely.
@@ -70,10 +73,12 @@ export type SendGovernanceInput = {
   recipientAllowlisted: boolean;
   sendKind: SendKind;
   /**
-   * `true` only when one-click unsubscribe is wired end-to-end for
-   * this client (per-message List-Unsubscribe header + handler). Until
-   * a future PR wires this up, every caller in production passes
-   * `false`, which means every non-allowlisted send stays blocked.
+   * `true` only when one-click unsubscribe is wired end-to-end: a public
+   * base URL is configured so the dispatcher can mint a hosted, redeemable
+   * unsubscribe link + List-Unsubscribe header. The sequence dispatcher
+   * passes the live `isOneClickUnsubscribeReady()` value. When `false`,
+   * real-prospect sequence sends AND controlled-pilot sends are blocked so
+   * no recipient is emailed an unusable opt-out.
    */
   oneClickUnsubscribeReady: boolean;
 };
@@ -217,11 +222,25 @@ export function evaluateSendGovernance(
         reason: `Client is ${status}, not ACTIVE — activate the client before launching live sequences.`,
       };
     }
+    // Compliance gate: a real-prospect outreach email MUST carry a working
+    // one-click unsubscribe. If the hosted unsubscribe rail isn't wired
+    // (public base URL unset → the dispatcher would fall back to a dead
+    // mailto with no redeemable token), block rather than send. In a
+    // correctly configured environment this is always ready, so this never
+    // fires in normal operation — it only catches a misconfiguration.
+    if (!oneClickUnsubscribeReady) {
+      return {
+        allowed: false,
+        mode: "blocked_unsubscribe_missing",
+        reason:
+          "No working one-click unsubscribe could be generated (public base URL not configured) — a real-prospect send is blocked so we never email a dead opt-out link.",
+      };
+    }
     return {
       allowed: true,
       mode: "live_prospect",
       reason:
-        "Client is ACTIVE — live sequence sends proceed with dispatcher safety checks.",
+        "Client is ACTIVE and a working unsubscribe is wired — live sequence sends proceed with dispatcher safety checks.",
     };
   }
 
