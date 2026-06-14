@@ -3,6 +3,11 @@ import "server-only";
 import { prisma } from "@/lib/db";
 
 import {
+  classifyBounceHardness,
+  isBounceSuppressionEnabled,
+} from "@/lib/email/bounce-suppression-policy";
+import { suppressRecipientForHardBounce } from "@/server/email/bounce-suppression";
+import {
   mapEventTypeToKind,
   planWebhookMutation,
 } from "@/server/email/outbound/lifecycle";
@@ -15,6 +20,12 @@ export type NormalizedEmailEvent = {
   eventType: string;
   createdAt: Date;
   bounceCategory?: string | null;
+  /**
+   * Provider's structured bounce type (e.g. Resend/SES `bounce.type`:
+   * "Permanent" | "Transient" | "Undetermined"). Preferred signal for the
+   * hard-vs-soft classification. Optional — older callers don't set it.
+   */
+  bounceType?: string | null;
   providerStatus?: string | null;
   rawPayload: unknown;
   /** Svix `svix-id` — preferred replay key */
@@ -72,6 +83,8 @@ export async function applyNormalizedEmailEvent(
     select: {
       id: true,
       clientId: true,
+      contactId: true,
+      toEmail: true,
       status: true,
       lastProviderEventAt: true,
     },
@@ -103,6 +116,34 @@ export async function applyNormalizedEmailEvent(
     lastProviderEventAt: outbound.lastProviderEventAt,
   });
 
+  // Hard-bounce suppression (behind a default-off flag). A permanent bounce
+  // means the address is dead — append it to the suppression list so it is
+  // never re-contacted once the 21-day cooldown lapses. Soft / transient /
+  // undetermined bounces never suppress. We only run this once the bounce
+  // is actually being applied (or refreshed on an already-terminal row);
+  // the `skip` paths (stale ordering, REPLIED-wins) deliberately do not
+  // suppress. Suppression is append-only + idempotent.
+  const isHardBounce =
+    kind === "bounced" &&
+    isBounceSuppressionEnabled() &&
+    classifyBounceHardness({
+      bounceType: event.bounceType,
+      bounceCategory: event.bounceCategory,
+    }) === "hard";
+  const maybeSuppressHardBounce = async (): Promise<void> => {
+    if (!isHardBounce) return;
+    if (!outbound.clientId || !outbound.toEmail) return;
+    await suppressRecipientForHardBounce({
+      clientId: outbound.clientId,
+      email: outbound.toEmail,
+      contactId: outbound.contactId,
+      outboundEmailId: outbound.id,
+      bounceCategory: event.bounceCategory ?? null,
+      providerEventType: event.eventType,
+      at: event.createdAt,
+    });
+  };
+
   if (plan.mode === "skip") {
     await prisma.outboundProviderEvent.updateMany({
       where: { dedupeHash },
@@ -130,6 +171,10 @@ export async function applyNormalizedEmailEvent(
           : {}),
       },
     });
+    // A hard bounce can arrive on an already-terminal row (e.g. status was
+    // already BOUNCED/FAILED → metadata-only refresh). Still ensure the
+    // address is suppressed — idempotent, so a no-op if it already is.
+    await maybeSuppressHardBounce();
     await prisma.outboundProviderEvent.updateMany({
       where: { dedupeHash },
       data: { stateMutated: true, processingNote: plan.reason },
@@ -184,6 +229,12 @@ export async function applyNormalizedEmailEvent(
       data: baseMeta,
     });
   }
+
+  // After the status mutation: if this was a hard bounce, suppress the
+  // recipient so it is never re-sent (normal mode AND under any cooldown
+  // re-engage override — the suppression gate is checked independently of
+  // the cooldown). Append-only + idempotent.
+  await maybeSuppressHardBounce();
 
   await prisma.outboundProviderEvent.updateMany({
     where: { dedupeHash },

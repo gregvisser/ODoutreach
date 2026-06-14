@@ -65,6 +65,9 @@ export async function POST(req: NextRequest) {
     eventType: type,
     createdAt: parsed.created_at ? new Date(parsed.created_at) : new Date(),
     bounceCategory: bounce?.type ?? bounce?.message ?? null,
+    // Structured bounce type ("Permanent" | "Transient" | "Undetermined")
+    // drives the hard-vs-soft suppression decision.
+    bounceType: bounce?.type ?? null,
     providerStatus: type,
     rawPayload: parsed,
     webhookMessageId: svixId,

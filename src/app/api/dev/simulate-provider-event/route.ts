@@ -8,6 +8,8 @@ export const runtime = "nodejs";
 type Body = {
   outboundEmailId?: string;
   eventType?: string;
+  /** For `email.bounced`: "Permanent" | "Transient" | "Undetermined". */
+  bounceType?: string;
 };
 
 /**
@@ -40,6 +42,8 @@ export async function POST(req: NextRequest) {
   const outboundEmailId = typeof body.outboundEmailId === "string" ? body.outboundEmailId : null;
   const eventType =
     typeof body.eventType === "string" ? body.eventType : "email.delivered";
+  const bounceType =
+    typeof body.bounceType === "string" ? body.bounceType : null;
 
   if (!outboundEmailId) {
     return NextResponse.json({ error: "outboundEmailId required" }, { status: 400 });
@@ -62,7 +66,9 @@ export async function POST(req: NextRequest) {
     providerMessageId: ob.providerMessageId,
     eventType,
     createdAt: new Date(),
-    rawPayload: { dev: true, outboundEmailId, eventType },
+    bounceType,
+    bounceCategory: bounceType,
+    rawPayload: { dev: true, outboundEmailId, eventType, bounceType },
   });
 
   return NextResponse.json({ ok: true, ...r });
