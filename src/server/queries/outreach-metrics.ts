@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createLimiter, type TaskGate } from "@/lib/concurrency";
 import { prisma } from "@/lib/db";
 import {
   deriveOutreachMetrics,
@@ -36,6 +37,22 @@ import { assertClientInAccessibleList } from "@/server/tenant/access";
  */
 export type MetricsWindow = { gte: Date; lt: Date };
 
+/**
+ * Max metric COUNT queries the Reports loaders keep in flight at once.
+ *
+ * Each client contributes 13 counts and the global view fans out across
+ * every accessible client, so the uncapped burst is `13 × clients` — enough
+ * to exhaust the pg pool on a cold start right after login. The page then
+ * throws its error boundary; a refresh against the now-warm pool succeeds.
+ * Gating the counts keeps in-flight queries below the smallest pool the app
+ * runs with (`PG_POOL_MAX` defaults to 10 — see src/lib/db.ts), so the fix
+ * holds even if that env var is unset. Tunable via REPORT_QUERY_CONCURRENCY.
+ */
+const REPORT_QUERY_CONCURRENCY = (() => {
+  const n = Number.parseInt(process.env.REPORT_QUERY_CONCURRENCY ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 8;
+})();
+
 export async function loadClientOutreachMetrics(
   clientId: string,
   accessibleClientIds: string[],
@@ -43,7 +60,8 @@ export async function loadClientOutreachMetrics(
 ): Promise<OutreachMetrics> {
   assertClientInAccessibleList(clientId, accessibleClientIds);
 
-  const raw = await gatherRawCounts({ clientId }, window);
+  const run = createLimiter(REPORT_QUERY_CONCURRENCY);
+  const raw = await gatherRawCounts({ clientId }, run, window);
   return deriveOutreachMetrics(raw);
 }
 
@@ -76,16 +94,18 @@ export async function loadGlobalOutreachMetrics(
   // global aggregate flips to true.
   totals.deliveryTracked = false;
 
-  // PERF: this is the post-login landing page (dashboard → reporting).
-  // Previously the per-client counts ran in a sequential `for await`
-  // loop — 13 queries × N clients one after another, so login latency
-  // grew linearly with the number of accessible clients. Gather every
-  // client's counts concurrently instead; the connection pool naturally
-  // bounds the in-flight queries.
+  // PERF / STABILITY: this is the post-login landing page (→ /reporting).
+  // The per-client counts must not run sequentially (login latency would
+  // grow linearly with client count) nor all at once (13 × clients queries
+  // in one burst exhausts the pg pool on a cold post-login start, so the
+  // page throws its error boundary). One shared limiter runs every client's
+  // counts concurrently while capping total in-flight queries — see
+  // REPORT_QUERY_CONCURRENCY.
+  const run = createLimiter(REPORT_QUERY_CONCURRENCY);
   const rawByClient = await Promise.all(
     clients.map(async (client) => ({
       client,
-      raw: await gatherRawCounts({ clientId: client.id }, window),
+      raw: await gatherRawCounts({ clientId: client.id }, run, window),
     })),
   );
 
@@ -154,6 +174,7 @@ async function gatherRawCounts(
   scope: {
     clientId: string;
   },
+  run: TaskGate,
   window?: MetricsWindow,
 ): Promise<RawMetricsCounts> {
   const { clientId } = scope;
@@ -176,7 +197,7 @@ async function gatherRawCounts(
     deliveryEventCount,
     opens,
   ] = await Promise.all([
-    prisma.outboundEmail.count({
+    run(() => prisma.outboundEmail.count({
       where: {
         clientId,
         status: { in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] },
@@ -191,13 +212,13 @@ async function gatherRawCounts(
               ],
             }),
       },
-    }),
-    prisma.clientEmailSequenceStepSend.count({
+    })),
+    run(() => prisma.clientEmailSequenceStepSend.count({
       // Step-send rows flip to SENT at dispatch, so updatedAt is the send
       // moment for windowing purposes.
       where: { clientId, status: "SENT", ...(w ? { updatedAt: w } : {}) },
-    }),
-    prisma.outboundEmail.count({
+    })),
+    run(() => prisma.outboundEmail.count({
       where: {
         clientId,
         // Include the full pre-send lifecycle so staff understand exactly
@@ -205,15 +226,15 @@ async function gatherRawCounts(
         // Deliberately NOT windowed — "waiting right now" has no history.
         status: { in: ["REQUESTED", "PREPARING", "QUEUED", "PROCESSING"] },
       },
-    }),
-    prisma.outboundEmail.count({
+    })),
+    run(() => prisma.outboundEmail.count({
       where: {
         clientId,
         status: "DELIVERED",
         deliveredAt: w ?? { not: null },
       },
-    }),
-    prisma.outboundEmail.count({
+    })),
+    run(() => prisma.outboundEmail.count({
       where: {
         clientId,
         status: "BOUNCED",
@@ -223,15 +244,15 @@ async function gatherRawCounts(
           ? { OR: [{ bouncedAt: w }, { bouncedAt: null, sentAt: w }] }
           : {}),
       },
-    }),
-    prisma.outboundEmail.count({
+    })),
+    run(() => prisma.outboundEmail.count({
       where: {
         clientId,
         status: "FAILED",
         ...(w ? { createdAt: w } : {}),
       },
-    }),
-    prisma.clientEmailSequenceStepSend.count({
+    })),
+    run(() => prisma.clientEmailSequenceStepSend.count({
       where: {
         clientId,
         // Deliberately NOT windowed — planning state, not an event.
@@ -243,40 +264,40 @@ async function gatherRawCounts(
         // for people who were, in fact, reached.
         NOT: { blockedReason: { contains: "cooldown", mode: "insensitive" } },
       },
-    }),
-    prisma.inboundReply.count({
+    })),
+    run(() => prisma.inboundReply.count({
       where: {
         clientId,
         matchMethod: { not: "UNLINKED" },
         linkedOutboundEmailId: { not: null },
         ...(w ? { receivedAt: w } : {}),
       },
-    }),
-    prisma.unsubscribeToken.count({
+    })),
+    run(() => prisma.unsubscribeToken.count({
       where: {
         clientId,
         usedAt: w ?? { not: null },
       },
-    }),
-    prisma.contact.count({ where: { clientId } }),
-    prisma.contact.count({
+    })),
+    run(() => prisma.contact.count({ where: { clientId } })),
+    run(() => prisma.contact.count({
       where: {
         clientId,
         email: { not: null },
         isSuppressed: false,
       },
-    }),
-    prisma.outboundProviderEvent.count({
+    })),
+    run(() => prisma.outboundProviderEvent.count({
       where: {
         clientId,
         eventType: { contains: DELIVERY_EVENT_TYPE_FRAGMENT, mode: "insensitive" },
       },
-    }),
+    })),
     // Opens: distinct outbound emails whose tracking pixel has loaded at
     // least once (openedAt set by /api/track/open). See open-pixel.ts.
-    prisma.outboundEmail.count({
+    run(() => prisma.outboundEmail.count({
       where: { clientId, openedAt: w ?? { not: null } },
-    }),
+    })),
   ]);
 
   const sentProofMissing = Math.max(
