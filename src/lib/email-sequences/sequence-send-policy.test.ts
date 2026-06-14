@@ -266,6 +266,21 @@ describe("classifySequenceStepSendCandidate", () => {
     expect(result.status).toBe("READY");
   });
 
+  it("F3 re-engage guarantee: a suppressed (e.g. hard-bounced) contact is SUPPRESSED even with cooldown bypassed", () => {
+    // An F3 re-engage override clears the cooldown signal (recentClientSend
+    // null), so cooldown can no longer be what blocks the send. The
+    // suppression check is independent of cooldown and must still block a
+    // hard-bounced address — proving it is never re-sent under the override.
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        recentClientSend: null,
+        contact: { ...candidate().contact, isSuppressed: true },
+      }),
+    );
+    expect(result.status).toBe("SUPPRESSED");
+    expect(result.reason).toBe("blocked_suppressed");
+  });
+
   it("blocks cross-client sequence", () => {
     const result = classifySequenceStepSendCandidate(
       candidate({
