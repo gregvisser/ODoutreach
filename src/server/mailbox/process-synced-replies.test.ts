@@ -353,6 +353,73 @@ describe("processSyncedMessageForReply", () => {
     expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
   });
 
+  // ── F4: internal-mail filtering (active only when internalDomains is set) ──
+  it("F4: skips internal staff mail (both ends on a workspace domain)", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      fromEmail: "lucysg@opensdoors.co.uk",
+      toEmail: "james@opensdoors.co.uk",
+      subject: "Re: OpensDoors Prospect - Services Depot Ltd",
+      internalDomains: ["opensdoors.co.uk"],
+    });
+
+    expect(result.created).toBe(false);
+    // Skipped before any outbound lookup — never even considered a link.
+    expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
+  });
+
+  it("F4: rejects a thread-ref match from an internal sender (no mislink)", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    // Only the thread-ref leg (queries by rfc822MessageId) could return a
+    // hit; the contact-email legs resolve null. An internal sender must keep
+    // the thread-ref leg from linking even though the In-Reply-To matches.
+    prismaMock.outboundEmail.findFirst.mockImplementation(
+      (args?: { where?: { rfc822MessageId?: unknown } }) =>
+        Promise.resolve(
+          args?.where?.rfc822MessageId
+            ? { id: "ob-x", contactId: "ct-x", status: "SENT" }
+            : null,
+        ),
+    );
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      // Internal sender, EXTERNAL recipient (a forward) — the both-ends skip
+      // does NOT catch this, so the leg-1 sender guard must.
+      fromEmail: "lucysg@opensdoors.co.uk",
+      toEmail: "buyer@external-prospect.com",
+      inReplyToHeader: "<outbound-msg-id@mail.gmail.com>",
+      internalDomains: ["opensdoors.co.uk"],
+    });
+
+    expect(result.created).toBe(false);
+    expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
+  });
+
+  it("F4: still links a genuine EXTERNAL reply when the filter is on (alex.ullmann case)", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob-ext",
+      contactId: "ct-ext",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "ir-ext" });
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      fromEmail: "alex.ullmann@pxc.co.uk",
+      toEmail: "sam.p@trainhugger.com",
+      subject: "Re: No budget approval needed",
+      internalDomains: ["trainhugger.com"],
+    });
+
+    expect(result.created).toBe(true);
+    expect(prismaMock.inboundReply.create).toHaveBeenCalledTimes(1);
+  });
+
   it("skips a fresh email — no In-Reply-To AND subject doesn't look like a reply", async () => {
     const result = await processSyncedMessageForReply({
       ...BASE_INPUT,

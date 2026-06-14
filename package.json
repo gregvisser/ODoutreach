@@ -17,6 +17,7 @@
     "staging:verify-health": "tsx scripts/verify-deployment-health.ts",
     "ops:retire-test-client": "tsx scripts/retire-test-client.ts",
     "ops:hard-delete-test-client": "tsx scripts/hard-delete-test-client.ts",
+    "ops:f4-contamination-report": "tsx scripts/f4-contamination-report.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

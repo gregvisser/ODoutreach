@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { emailDomain, isInternalMail } from "@/lib/inbox/internal-mail";
 import { normalizeEmail } from "@/lib/normalize";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
@@ -62,6 +63,13 @@ export async function processSyncedMessageForReply(input: {
   conversationId: string | null;
   /** RFC 5322 In-Reply-To header. Null when the provider didn't expose headers. */
   inReplyToHeader: string | null;
+  /**
+   * F4 — the workspace's own mailbox domains. When set, a message whose
+   * sender AND recipient are both internal is never matched (internal staff
+   * mail is not a prospect reply), and a thread-ref match from an internal
+   * sender is rejected. Empty / omitted = filter off (legacy behaviour).
+   */
+  internalDomains?: readonly string[];
 }): Promise<{ created: boolean; replyId?: string }> {
   const inReplyTo = input.inReplyToHeader?.trim() || null;
   const hasInReplyTo = inReplyTo !== null && inReplyTo.length > 0;
@@ -82,7 +90,24 @@ export async function processSyncedMessageForReply(input: {
     return { created: false };
   }
 
+  // F4 — internal staff mail (both ends on a workspace domain) is never a
+  // prospect reply. internalDomains is empty when the filter is disabled.
+  const internalDomains = input.internalDomains ?? [];
+  if (
+    isInternalMail({
+      fromEmail: input.fromEmail,
+      toEmail: input.toEmail,
+      internalDomains,
+    })
+  ) {
+    return { created: false };
+  }
+
   const from = normalizeEmail(input.fromEmail);
+  const internalDomainSet = new Set(internalDomains.map((d) => d.toLowerCase()));
+  const senderDomain = emailDomain(from);
+  const senderIsInternal =
+    senderDomain !== null && internalDomainSet.has(senderDomain);
 
   const existing = await prisma.inboundReply.findFirst({
     where: {
@@ -98,16 +123,21 @@ export async function processSyncedMessageForReply(input: {
   // 1) Definitive (only when we actually have an In-Reply-To header):
   //    the reply's In-Reply-To equals the Message-ID we stamped on a
   //    specific outbound send. Globally unique within the client.
-  let outbound = hasInReplyTo
-    ? await prisma.outboundEmail.findFirst({
-        where: {
-          clientId: input.clientId,
-          rfc822MessageId: inReplyTo,
-        },
-        orderBy: { sentAt: "desc" },
-        select: { id: true, contactId: true, status: true },
-      })
-    : null;
+  // F4 — a thread-ref match is only trustworthy when the reply comes from an
+  // external party. An internal sender on the thread (a staff reply-all or
+  // forward that still carries our Message-ID) must NOT be linked to the
+  // prospect, even though the In-Reply-To matches our outbound.
+  let outbound =
+    hasInReplyTo && !senderIsInternal
+      ? await prisma.outboundEmail.findFirst({
+          where: {
+            clientId: input.clientId,
+            rfc822MessageId: inReplyTo,
+          },
+          orderBy: { sentAt: "desc" },
+          select: { id: true, contactId: true, status: true },
+        })
+      : null;
   let matchMethod: "BY_THREAD_REF" | "BY_CONTACT_EMAIL" = "BY_THREAD_REF";
 
   // 2) Subject-anchored contact match. Stamped (Gmail) sends can miss the

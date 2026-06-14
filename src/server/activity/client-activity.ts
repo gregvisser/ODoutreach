@@ -1,6 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { isInternalMail } from "@/lib/inbox/internal-mail";
+import { resolveInternalDomainsForClient } from "@/server/inbox/internal-domains";
 import {
   buildClientTimeline,
   classifyImportBatchStatus,
@@ -58,6 +60,9 @@ export async function loadClientActivityTimeline(
   }
 
   const limit = opts.limit ?? DEFAULT_TIMELINE_LIMIT;
+  // F4 — the workspace's own domains, used to drop internal staff mail from
+  // the activity feed (read-side only; historical rows are never deleted).
+  const internalDomains = await resolveInternalDomainsForClient(clientId);
 
   const [
     outbound,
@@ -110,6 +115,7 @@ export async function loadClientActivityTimeline(
       select: {
         id: true,
         fromEmail: true,
+        toEmail: true,
         subject: true,
         receivedAt: true,
         mailboxIdentityId: true,
@@ -268,6 +274,16 @@ export async function loadClientActivityTimeline(
   }
 
   for (const row of inboundMessages) {
+    // F4 — internal staff mail never surfaces as a prospect conversation.
+    if (
+      isInternalMail({
+        fromEmail: row.fromEmail,
+        toEmail: row.toEmail,
+        internalDomains,
+      })
+    ) {
+      continue;
+    }
     events.push({
       id: `inbound:${row.id}`,
       occurredAt: row.receivedAt,

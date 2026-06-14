@@ -18,6 +18,7 @@ const {
   enrollmentFindMany,
   stepSendFindMany,
   auditFindMany,
+  mailboxFindMany,
 } = vi.hoisted(() => ({
   outboundFindMany: vi.fn().mockResolvedValue([]),
   inboundReplyFindMany: vi.fn().mockResolvedValue([]),
@@ -29,6 +30,7 @@ const {
   enrollmentFindMany: vi.fn().mockResolvedValue([]),
   stepSendFindMany: vi.fn().mockResolvedValue([]),
   auditFindMany: vi.fn().mockResolvedValue([]),
+  mailboxFindMany: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -43,6 +45,7 @@ vi.mock("@/lib/db", () => ({
     clientEmailSequenceEnrollment: { findMany: enrollmentFindMany },
     clientEmailSequenceStepSend: { findMany: stepSendFindMany },
     auditLog: { findMany: auditFindMany },
+    clientMailboxIdentity: { findMany: mailboxFindMany },
   },
 }));
 
@@ -81,6 +84,7 @@ describe("loadClientActivityTimeline — unsubscribe audit mapping (PR O)", () =
       enrollmentFindMany,
       stepSendFindMany,
       auditFindMany,
+      mailboxFindMany,
     ]) {
       m.mockReset();
       m.mockResolvedValue([]);
