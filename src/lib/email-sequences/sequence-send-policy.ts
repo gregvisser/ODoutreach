@@ -42,6 +42,7 @@ export type SequenceStepSendClassificationReason =
   | "blocked_template_not_approved"
   | "blocked_missing_email"
   | "blocked_suppressed"
+  | "blocked_recent_bounce"
   | "blocked_unknown_placeholder"
   | "blocked_missing_unsubscribe_link"
   | "blocked_missing_required_field"
@@ -99,7 +100,19 @@ export type SequenceStepSendCandidate = {
     lastSentAt: Date;
     /** Date the contact becomes eligible again (lastSentAt + cooldown). */
     eligibleAt: Date;
+    /**
+     * F3 — true when the most recent in-window send to this address HARD
+     * bounced. A bounced address is never re-sent, even under re-engage.
+     */
+    bounced: boolean;
   } | null;
+  /**
+   * F3 — permissioned re-engage override. When true the workspace-wide
+   * outreach cooldown TIMER is bypassed for this candidate. It bypasses
+   * ONLY the cooldown: suppression (unsubscribe / DNC), a recent hard
+   * bounce, missing email, and every other guard below still apply.
+   */
+  bypassCooldown?: boolean;
 };
 
 function block(
@@ -230,7 +243,25 @@ export function classifySequenceStepSendCandidate(
   //     after the window elapses re-classifies the row as READY
   //     automatically (the planner won't set `recentClientSend` once
   //     the window passes).
-  if (input.recentClientSend) {
+  // 1.5a Recent HARD bounce — never re-send to an address whose most recent
+  //      in-window send bounced. A bounce still registers as a "recent
+  //      send", so this is checked BEFORE the cooldown bypass: re-engage
+  //      overrides the timer, never a bounce. (Bounces outside the window
+  //      need the separate permanent-suppression fix.)
+  if (input.recentClientSend?.bounced) {
+    return {
+      status: "SUPPRESSED",
+      reason: "blocked_recent_bounce",
+      reasonDetail:
+        "Most recent send to this address hard-bounced — not re-sent.",
+      composition: emptyComposition,
+    };
+  }
+
+  // 1.5b Workspace-wide outreach cooldown. The permissioned re-engage
+  //      override (`bypassCooldown`) skips ONLY this timer; suppression,
+  //      bounces and every other guard below still apply.
+  if (input.recentClientSend && !input.bypassCooldown) {
     return {
       status: "SKIPPED",
       reason: "skipped_client_outreach_cooldown",

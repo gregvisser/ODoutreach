@@ -61,6 +61,7 @@ export type SequenceStepSendPreview = {
     | "blocked_template_not_approved"
     | "blocked_missing_email"
     | "blocked_suppressed"
+    | "blocked_recent_bounce"
     | "blocked_unknown_placeholder"
     | "blocked_missing_unsubscribe_link"
     | "blocked_missing_required_field";
@@ -300,6 +301,14 @@ export async function planSequenceStepSends(params: {
   sequenceId: string;
   stepId: string;
   staffUserId: string;
+  /**
+   * F3 — permissioned re-engage. When true the 21-day outreach cooldown
+   * TIMER is bypassed for this plan (to re-use older lists). It bypasses
+   * ONLY the cooldown: suppression, recent hard bounces and every other
+   * guard still apply. The CALLER must enforce the permission before
+   * passing true.
+   */
+  bypassCooldown?: boolean;
 }): Promise<SequenceStepSendPlanResult> {
   const bundle = await loadPlanningBundle(params);
   const { client, sequence, step, template, enrollments, mailboxEmailFallback } = bundle;
@@ -355,7 +364,7 @@ export async function planSequenceStepSends(params: {
   );
   const recentSendsByEmail = new Map<
     string,
-    { lastSentAt: Date; eligibleAt: Date }
+    { lastSentAt: Date; eligibleAt: Date; bounced: boolean }
   >();
   if (candidateEmails.length > 0) {
     const recentSendRows = await prisma.outboundEmail.findMany({
@@ -366,6 +375,7 @@ export async function planSequenceStepSends(params: {
       select: {
         toEmail: true,
         sentAt: true,
+        status: true,
         sequenceStepSends: { select: { sequenceId: true } },
       },
       orderBy: { sentAt: "desc" },
@@ -381,11 +391,17 @@ export async function planSequenceStepSends(params: {
       // Keep the most recent per email (rows are ordered desc, so
       // first-write wins). Normalise to lowercase for lookup.
       const key = row.toEmail.trim().toLowerCase();
-      if (!recentSendsByEmail.has(key)) {
+      const isBounce = row.status === "BOUNCED";
+      const existing = recentSendsByEmail.get(key);
+      if (!existing) {
         recentSendsByEmail.set(key, {
           lastSentAt: row.sentAt,
           eligibleAt: dateWhenEmailEligibleAgain(row.sentAt),
+          bounced: isBounce,
         });
+      } else if (isBounce) {
+        // Any hard bounce in the window marks the address — never re-send.
+        existing.bounced = true;
       }
     }
   }
@@ -430,13 +446,18 @@ export async function planSequenceStepSends(params: {
         isSuppressed: enrollment.contact.isSuppressed,
       },
       sender: senderRow,
-      recentClientSend: ((): { lastSentAt: Date; eligibleAt: Date } | null => {
+      recentClientSend: ((): {
+        lastSentAt: Date;
+        eligibleAt: Date;
+        bounced: boolean;
+      } | null => {
         const e =
           typeof enrollment.contact.email === "string"
             ? enrollment.contact.email.trim().toLowerCase()
             : null;
         return e ? recentSendsByEmail.get(e) ?? null : null;
       })(),
+      bypassCooldown: params.bypassCooldown ?? false,
     };
 
     const decision: SequenceStepSendClassification =

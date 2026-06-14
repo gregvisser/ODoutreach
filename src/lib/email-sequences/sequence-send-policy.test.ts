@@ -70,6 +70,7 @@ function candidate(
         unsubscribeLink: "https://u.example/1",
       } as const),
     recentClientSend: overrides.recentClientSend ?? null,
+    bypassCooldown: overrides.bypassCooldown,
   };
 }
 
@@ -249,6 +250,7 @@ describe("classifySequenceStepSendCandidate", () => {
         recentClientSend: {
           lastSentAt,
           eligibleAt: new Date("2026-06-22T10:00:00.000Z"),
+          bounced: false,
         },
       }),
     );
@@ -267,10 +269,8 @@ describe("classifySequenceStepSendCandidate", () => {
   });
 
   it("F3 re-engage guarantee: a suppressed (e.g. hard-bounced) contact is SUPPRESSED even with cooldown bypassed", () => {
-    // An F3 re-engage override clears the cooldown signal (recentClientSend
-    // null), so cooldown can no longer be what blocks the send. The
-    // suppression check is independent of cooldown and must still block a
-    // hard-bounced address — proving it is never re-sent under the override.
+    // The suppression check is independent of cooldown and must still block a
+    // hard-bounced / unsubscribed address — never re-sent under the override.
     const result = classifySequenceStepSendCandidate(
       candidate({
         recentClientSend: null,
@@ -279,6 +279,78 @@ describe("classifySequenceStepSendCandidate", () => {
     );
     expect(result.status).toBe("SUPPRESSED");
     expect(result.reason).toBe("blocked_suppressed");
+  });
+
+  it("F3 re-engage: bypassCooldown overrides the cooldown timer → READY", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        bypassCooldown: true,
+        recentClientSend: {
+          lastSentAt: new Date("2026-06-01T10:00:00.000Z"),
+          eligibleAt: new Date("2026-06-22T10:00:00.000Z"),
+          bounced: false,
+        },
+      }),
+    );
+    expect(result.status).toBe("READY");
+  });
+
+  it("F3 re-engage: NEVER bypasses suppression (unsubscribe / DNC stays hard)", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        bypassCooldown: true,
+        recentClientSend: {
+          lastSentAt: new Date("2026-06-01T10:00:00.000Z"),
+          eligibleAt: new Date("2026-06-22T10:00:00.000Z"),
+          bounced: false,
+        },
+        contact: {
+          id: "ct-1",
+          clientId: "client-1",
+          firstName: "Ada",
+          lastName: "Lovelace",
+          fullName: "Ada Lovelace",
+          company: "Analytical",
+          role: null,
+          website: null,
+          email: "ada@example.com",
+          mobilePhone: null,
+          officePhone: null,
+          isSuppressed: true,
+        },
+      }),
+    );
+    expect(result.status).toBe("SUPPRESSED");
+    expect(result.reason).toBe("blocked_suppressed");
+  });
+
+  it("F3 re-engage: NEVER bypasses a recent hard bounce", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        bypassCooldown: true,
+        recentClientSend: {
+          lastSentAt: new Date("2026-06-01T10:00:00.000Z"),
+          eligibleAt: new Date("2026-06-22T10:00:00.000Z"),
+          bounced: true,
+        },
+      }),
+    );
+    expect(result.status).toBe("SUPPRESSED");
+    expect(result.reason).toBe("blocked_recent_bounce");
+  });
+
+  it("blocks a recent hard bounce even without re-engage", () => {
+    const result = classifySequenceStepSendCandidate(
+      candidate({
+        recentClientSend: {
+          lastSentAt: new Date("2026-06-01T10:00:00.000Z"),
+          eligibleAt: new Date("2026-06-22T10:00:00.000Z"),
+          bounced: true,
+        },
+      }),
+    );
+    expect(result.status).toBe("SUPPRESSED");
+    expect(result.reason).toBe("blocked_recent_bounce");
   });
 
   it("blocks cross-client sequence", () => {
