@@ -78,3 +78,49 @@ export function formatIneligibilityReason(input: {
   if (parts.length === 0) return null;
   return `${parts.join(", ")} → ${String(input.eligible)} eligible to send right now.`;
 }
+
+/**
+ * Map a step-send classification reason to an ineligibility bucket, or null
+ * when the row is actually eligible (`ready`). Keeps the planner's reason
+ * vocabulary in one place.
+ */
+export function bucketIneligibilityReason(
+  reason: string,
+): keyof IneligibilityBreakdown | null {
+  switch (reason) {
+    case "ready":
+      return null;
+    case "skipped_client_outreach_cooldown":
+      return "cooldown";
+    case "blocked_suppressed":
+      return "suppressed";
+    case "blocked_recent_bounce":
+      return "bounced";
+    case "blocked_missing_email":
+      return "missingEmail";
+    case "skipped_enrollment_completed":
+    case "skipped_enrollment_excluded":
+    case "skipped_enrollment_paused":
+      return "alreadyEnrolled";
+    default:
+      return "other";
+  }
+}
+
+/** Bucket a list of planned step-send reasons into a breakdown + eligible count. */
+export function breakdownFromReasons(reasons: readonly string[]): {
+  breakdown: IneligibilityBreakdown;
+  eligible: number;
+} {
+  const breakdown = emptyIneligibilityBreakdown();
+  let eligible = 0;
+  for (const reason of reasons) {
+    const bucket = bucketIneligibilityReason(reason);
+    if (bucket === null) {
+      eligible += 1;
+      continue;
+    }
+    breakdown[bucket] += 1;
+  }
+  return { breakdown, eligible };
+}

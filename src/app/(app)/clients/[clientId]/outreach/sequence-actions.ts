@@ -42,6 +42,10 @@ import {
   canUseCooldownReengage,
   requireClientAccess,
 } from "@/server/tenant/access";
+import {
+  breakdownFromReasons,
+  formatIneligibilityReason,
+} from "@/lib/email-sequences/ineligibility-reason";
 
 /**
  * Server actions used by the Outreach page "Email sequences" section
@@ -503,6 +507,16 @@ export async function prepareClientEmailSequenceStepSendsAction(
       parts.push(`${String(plan.counts.suppressed)} suppressed`);
     if (plan.counts.skipped > 0)
       parts.push(`${String(plan.counts.skipped)} skipped`);
+    // F3 — when nothing is sendable, show the precise itemised reason
+    // (e.g. "480 in cooldown, 15 unsubscribed/DNC, 5 hard-bounced → 0
+    // eligible") instead of a silent "0 ready".
+    if (plan.counts.ready === 0) {
+      const { breakdown, eligible } = breakdownFromReasons(
+        plan.previews.map((p) => p.reason),
+      );
+      const itemised = formatIneligibilityReason({ breakdown, eligible });
+      if (itemised) parts.push(itemised);
+    }
     if (bypassCooldown) {
       parts.push(
         "re-engage ON — cooldown bypassed (suppression & bounces still enforced)",

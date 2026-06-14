@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  breakdownFromReasons,
   emptyIneligibilityBreakdown,
   formatIneligibilityReason,
   totalIneligible,
@@ -67,5 +68,38 @@ describe("totalIneligible", () => {
         other: 1,
       }),
     ).toBe(507);
+  });
+});
+
+describe("breakdownFromReasons", () => {
+  it("buckets the brief's old-CSV scenario into the itemised reason", () => {
+    const reasons = [
+      ...Array<string>(480).fill("skipped_client_outreach_cooldown"),
+      ...Array<string>(15).fill("blocked_suppressed"),
+      ...Array<string>(5).fill("blocked_recent_bounce"),
+    ];
+    const { breakdown, eligible } = breakdownFromReasons(reasons);
+    expect(eligible).toBe(0);
+    expect(breakdown.cooldown).toBe(480);
+    expect(breakdown.suppressed).toBe(15);
+    expect(breakdown.bounced).toBe(5);
+    expect(formatIneligibilityReason({ breakdown, eligible })).toBe(
+      "480 in cooldown, 15 unsubscribed / do-not-contact, 5 hard-bounced → 0 eligible to send right now.",
+    );
+  });
+
+  it("counts 'ready' as eligible and groups enrollment-skips + other", () => {
+    const { breakdown, eligible } = breakdownFromReasons([
+      "ready",
+      "ready",
+      "blocked_missing_email",
+      "skipped_enrollment_completed",
+      "skipped_enrollment_paused",
+      "blocked_template_not_approved",
+    ]);
+    expect(eligible).toBe(2);
+    expect(breakdown.missingEmail).toBe(1);
+    expect(breakdown.alreadyEnrolled).toBe(2);
+    expect(breakdown.other).toBe(1);
   });
 });
