@@ -25,6 +25,18 @@ export function canAssignClientWorkspaceMembership(staff: StaffIdentity): boolea
 }
 
 /**
+ * F3 — roles that may use the "re-engage" override: bypassing the 21-day
+ * outreach cooldown to re-use an older list. Senior staff only. The override
+ * NEVER bypasses suppression (unsubscribe / DNC) or hard bounces.
+ */
+const COOLDOWN_REENGAGE_ROLES: StaffRole[] = ["ADMIN", "MANAGER"];
+
+/** True if this staff member may bypass the outreach cooldown timer (re-engage). */
+export function canUseCooldownReengage(staff: StaffIdentity): boolean {
+  return COOLDOWN_REENGAGE_ROLES.includes(staff.role);
+}
+
+/**
  * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
  * from the client without intersecting with this list.
  */

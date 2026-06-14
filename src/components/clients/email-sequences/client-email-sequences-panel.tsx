@@ -44,6 +44,8 @@ type Props = {
   clientId: string;
   clientName: string;
   canMutate: boolean;
+  /** F3 — staff may use the cooldown re-engage override (ADMIN/MANAGER). */
+  canReengage: boolean;
   overview: ClientEmailSequencesOverview;
   flash: {
     ok: string | null;
@@ -143,6 +145,7 @@ export function ClientEmailSequencesPanel(props: Props) {
     clientId,
     clientName,
     canMutate,
+    canReengage,
     overview,
     flash,
     selectedSequenceId,
@@ -556,6 +559,7 @@ export function ClientEmailSequencesPanel(props: Props) {
             <SequenceSendPreparationPanel
               clientId={clientId}
               canMutate={canMutate}
+              canReengage={canReengage}
               onlySequenceId={selected.id}
               snapshots={sequencePrepSnapshots}
               stepSendSnapshots={stepSendSnapshots}

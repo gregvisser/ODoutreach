@@ -21,7 +21,10 @@ import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/
 import { loadSequenceStepSendUiSnapshots } from "@/server/email-sequences/send-introduction";
 import { loadClientSequencePrepSnapshots } from "@/server/email-sequences/step-sends";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
-import { getAccessibleClientIds } from "@/server/tenant/access";
+import {
+  canUseCooldownReengage,
+  getAccessibleClientIds,
+} from "@/server/tenant/access";
 import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
 import { mailboxRowOperatorStatus } from "@/lib/mailboxes/mailboxes-operator-model";
 
@@ -155,6 +158,7 @@ export default async function ClientOutreachPage({
         clientId={client.id}
         clientName={client.name}
         canMutate={canMutateSequences}
+        canReengage={canUseCooldownReengage(staff)}
         overview={sequencesOverview}
         flash={sequencesFlash}
         selectedSequenceId={selectedSequenceId}

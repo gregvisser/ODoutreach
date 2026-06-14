@@ -44,6 +44,8 @@ import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
 type Props = {
   clientId: string;
   canMutate: boolean;
+  /** F3 — whether this staff member may use the cooldown re-engage override. */
+  canReengage: boolean;
   /** When set, only this sequence is shown (dashboard selection). */
   onlySequenceId: string | null;
   snapshots: SequencePrepSnapshot[];
@@ -124,6 +126,7 @@ function humanizeBlockedReason(raw: string): string {
 export function SequenceSendPreparationPanel({
   clientId,
   canMutate,
+  canReengage,
   onlySequenceId,
   snapshots,
   stepSendSnapshots = [],
@@ -262,15 +265,30 @@ export function SequenceSendPreparationPanel({
                   name="stepId"
                   value={s.introductionStepId ?? ""}
                 />
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                  disabled={!canPrepare}
-                  title="Updates who can receive the next live send — does not send email."
-                >
-                  Review recipients
-                </Button>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={!canPrepare}
+                    title="Updates who can receive the next live send — does not send email."
+                  >
+                    Review recipients
+                  </Button>
+                  {canReengage ? (
+                    <label
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                      title="Re-use an older list: bypasses the 21-day outreach cooldown for this preparation only. Unsubscribe / DNC and hard bounces are still enforced."
+                    >
+                      <input
+                        type="checkbox"
+                        name="reengage"
+                        className="h-3.5 w-3.5"
+                      />
+                      Re-engage (bypass cooldown)
+                    </label>
+                  ) : null}
+                </div>
               </form>
               <span className="text-xs text-muted-foreground">
                 Refreshes who can receive the next live send. No email is sent by this step.

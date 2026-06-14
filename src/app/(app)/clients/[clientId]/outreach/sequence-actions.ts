@@ -38,7 +38,10 @@ import {
   updateSequenceMetadata,
 } from "@/server/email-sequences/mutations";
 import { requireClientEmailSequenceMutator } from "@/server/email-sequences/mutator-access";
-import { requireClientAccess } from "@/server/tenant/access";
+import {
+  canUseCooldownReengage,
+  requireClientAccess,
+} from "@/server/tenant/access";
 
 /**
  * Server actions used by the Outreach page "Email sequences" section
@@ -451,12 +454,31 @@ export async function prepareClientEmailSequenceStepSendsAction(
   await requireClientAccess(staff, clientId);
   await requireClientEmailSequenceMutator(staff, clientId);
 
+  // F3 — permissioned re-engage: an authorised (ADMIN/MANAGER) user may
+  // bypass the 21-day outreach cooldown to re-use an older list. It bypasses
+  // ONLY the cooldown timer; suppression (unsubscribe/DNC) and hard bounces
+  // are still enforced by the classifier and at dispatch.
+  const reengageRaw = String(formData.get("reengage") ?? "").toLowerCase();
+  const reengageRequested = reengageRaw === "on" || reengageRaw === "true";
+  if (reengageRequested && !canUseCooldownReengage(staff)) {
+    redirectBack(
+      clientId,
+      {
+        kind: "error",
+        message: "Re-engage (cooldown override) requires an admin or manager.",
+      },
+      sequenceId,
+    );
+  }
+  const bypassCooldown = reengageRequested && canUseCooldownReengage(staff);
+
   try {
     const plan = await planSequenceStepSends({
       clientId,
       sequenceId,
       stepId,
       staffUserId: staff.id,
+      bypassCooldown,
     });
     revalidatePath(`/clients/${clientId}/outreach`);
     const parts: string[] = [];
@@ -481,6 +503,11 @@ export async function prepareClientEmailSequenceStepSendsAction(
       parts.push(`${String(plan.counts.suppressed)} suppressed`);
     if (plan.counts.skipped > 0)
       parts.push(`${String(plan.counts.skipped)} skipped`);
+    if (bypassCooldown) {
+      parts.push(
+        "re-engage ON — cooldown bypassed (suppression & bounces still enforced)",
+      );
+    }
     redirectBack(
       clientId,
       {
