@@ -258,6 +258,9 @@ model StaffUser {
   displayName              String?
   role                     StaffRole                 @default(OPERATOR)
   isActive                 Boolean                   @default(true)
+  /// F2 — super-admin capability (delete/purge a workspace). Gated per
+  /// account, NOT by email string. Assigned to greg@bidlow.co.uk.
+  isSuperAdmin             Boolean                   @default(false)
   guestInvitationState     StaffGuestInvitationState @default(NONE)
   invitedAt                DateTime?
   invitationLastSentAt     DateTime?
@@ -396,8 +399,13 @@ model Client {
   briefAssignedAccountManagerId   String?
   createdAt                   DateTime                  @default(now())
   updatedAt                   DateTime                  @updatedAt
+  /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
+  /// and recoverable within the window before a separate, explicit hard purge.
+  deletedAt                   DateTime?
+  deletedByStaffUserId        String?
 
   memberships             ClientMembership[]
+  @@index([deletedAt])
   onboarding              ClientOnboarding?
   contacts                Contact[]
   contactLists            ContactList[]

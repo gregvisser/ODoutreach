@@ -7,7 +7,9 @@ export async function listClientsForStaff(accessibleClientIds: string[]) {
     return [];
   }
   return prisma.client.findMany({
-    where: { id: { in: accessibleClientIds } },
+    // F2 — never surface a soft-deleted workspace in normal lists. `accessibleClientIds`
+    // already excludes them, but we filter here too so this query is correct in isolation.
+    where: { id: { in: accessibleClientIds }, deletedAt: null },
     orderBy: { name: "asc" },
     include: {
       onboarding: true,
@@ -37,8 +39,10 @@ export async function getClientByIdForStaff(
   if (!accessibleClientIds.includes(clientId)) {
     return null;
   }
-  return prisma.client.findUnique({
-    where: { id: clientId },
+  return prisma.client.findFirst({
+    // F2 — `findFirst` (not `findUnique`) so we can require `deletedAt: null`;
+    // a soft-deleted workspace must not be loadable through the normal path.
+    where: { id: clientId, deletedAt: null },
     include: {
       onboarding: true,
       suppressionSources: true,
@@ -63,6 +67,27 @@ export async function getClientByIdForStaff(
           campaigns: true,
         },
       },
+    },
+  });
+}
+
+/**
+ * F2 — the super-admin recovery view: the ONLY query that returns soft-deleted
+ * workspaces. Caller must be a super-admin (gate with `requireSuperAdmin`).
+ * Ordered most-recently-deleted first so the recovery window is easy to read.
+ */
+export async function listSoftDeletedClients() {
+  return prisma.client.findMany({
+    where: { deletedAt: { not: null } },
+    orderBy: { deletedAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      deletedAt: true,
+      deletedByStaffUserId: true,
+      _count: { select: { contacts: true, campaigns: true } },
     },
   });
 }

@@ -37,6 +37,16 @@ export function canUseCooldownReengage(staff: StaffIdentity): boolean {
 }
 
 /**
+ * F2 — only a super-admin may soft-delete / restore / purge a whole client
+ * workspace. This is gated on the per-account `isSuperAdmin` capability, NOT
+ * on a role enum value and NOT on an email string, so the permission travels
+ * with the account and is auditable. Currently assigned to greg@bidlow.co.uk.
+ */
+export function canDeleteWorkspace(staff: { isSuperAdmin: boolean }): boolean {
+  return staff.isSuperAdmin === true;
+}
+
+/**
  * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
  * from the client without intersecting with this list.
  */
@@ -44,12 +54,19 @@ export async function getAccessibleClientIds(
   staff: StaffIdentity,
 ): Promise<string[]> {
   if (GLOBAL_CLIENT_ACCESS_ROLES.includes(staff.role)) {
-    const rows = await prisma.client.findMany({ select: { id: true } });
+    // F2 — soft-deleted workspaces are invisible to all normal access paths.
+    // Only the dedicated super-admin recovery view (`listSoftDeletedClients`)
+    // may see them.
+    const rows = await prisma.client.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+    });
     return rows.map((r) => r.id);
   }
 
   const memberships = await prisma.clientMembership.findMany({
-    where: { staffUserId: staff.id },
+    // F2 — exclude memberships whose workspace has been soft-deleted.
+    where: { staffUserId: staff.id, client: { deletedAt: null } },
     select: { clientId: true },
   });
   return memberships.map((m) => m.clientId);

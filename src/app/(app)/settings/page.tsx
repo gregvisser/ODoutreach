@@ -148,6 +148,38 @@ export default async function SettingsPage() {
         </Card>
       </section>
 
+      {staff.isSuperAdmin ? (
+        <section className="space-y-3">
+          <SectionHeading
+            title="Workspace administration"
+            description="Super-admin controls for deleting and recovering whole client workspaces."
+          />
+
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Deleted workspaces</CardTitle>
+              <CardDescription>
+                Restore a soft-deleted workspace within its recovery window. The
+                delete control itself lives on each workspace&apos;s overview
+                page.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Soft-delete hides a workspace and stops its sending without
+                touching any email, sequence, or suppression data.
+              </p>
+              <Link
+                href="/settings/deleted-workspaces"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Open deleted workspaces →
+              </Link>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
       <section className="space-y-3">
         <SectionHeading
           title="Sign-in and security"

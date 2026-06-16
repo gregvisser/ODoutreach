@@ -192,3 +192,30 @@ export async function getStaffRole(): Promise<StaffRole | null> {
   const staff = await loadStaffRecord();
   return staff?.role ?? null;
 }
+
+/**
+ * F2 — super-admin gate for destructive workspace operations (soft-delete,
+ * restore, hard purge). Builds on the full OpensDoors staff gate, then
+ * additionally requires the per-account `isSuperAdmin` capability. This is
+ * NOT role-based and NOT email-based, so it cannot be reached by escalating a
+ * role or spoofing an address.
+ */
+export async function requireSuperAdmin(): Promise<StaffUser> {
+  const staff = await requireOpensDoorsStaff();
+  if (!staff.isSuperAdmin) {
+    throw new Error("SUPER_ADMIN_ONLY");
+  }
+  return staff;
+}
+
+/**
+ * Same as {@link requireSuperAdmin} but collapses every failure to a single
+ * user-facing message — use from server actions / API routes.
+ */
+export async function requireSuperAdminForAction(): Promise<StaffUser> {
+  try {
+    return await requireSuperAdmin();
+  } catch {
+    throw new Error("You do not have permission to delete workspaces.");
+  }
+}

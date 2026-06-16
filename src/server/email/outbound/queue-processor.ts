@@ -38,6 +38,13 @@ export async function processOutboundSendQueue(opts: {
           OR "OutboundEmail"."claimExpiresAt" IS NULL
           OR "OutboundEmail"."claimExpiresAt" < ${now}
         )
+        -- F2: never claim a send whose workspace has been soft-deleted. Read-side
+        -- only — the queued rows are left untouched so a restore resumes cleanly.
+        -- No-op until a super-admin soft-deletes a workspace (deletedAt is null otherwise).
+        AND EXISTS (
+          SELECT 1 FROM "Client" c
+          WHERE c."id" = "OutboundEmail"."clientId" AND c."deletedAt" IS NULL
+        )
       ORDER BY "OutboundEmail"."queuedAt" ASC NULLS LAST, "OutboundEmail"."createdAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

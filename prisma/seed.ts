@@ -32,10 +32,15 @@ async function main() {
       email: seedStaffEmail,
       displayName: "Demo Staff",
       role: "ADMIN",
+      // F2 — demo admin is a super-admin so the workspace soft-delete / restore
+      // flow is exercisable on local/staging. Production grants this capability
+      // to greg@bidlow.co.uk as a separate, deliberate step (never via seed).
+      isSuperAdmin: true,
     },
     update: {
       email: seedStaffEmail,
       displayName: "Demo Staff",
+      isSuperAdmin: true,
     },
   });
 
