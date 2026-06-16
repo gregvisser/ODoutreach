@@ -82,6 +82,19 @@ export default async function ReportingPage({ searchParams }: Props) {
   // client doesn't silently reset the dates.
   const rangeQuery = range ? `&from=${range.fromIso}&to=${range.toIso}` : "";
 
+  // F5 — drill-down link for a metric, preserving the active scope + date range.
+  const detailHref = (metric: string, forClientId?: string) => {
+    const p = new URLSearchParams();
+    p.set("metric", metric);
+    const cid = forClientId ?? clientFilter;
+    if (cid) p.set("client", cid);
+    if (range) {
+      p.set("from", range.fromIso);
+      p.set("to", range.toIso);
+    }
+    return `/reporting/detail?${p.toString()}`;
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
@@ -155,18 +168,21 @@ export default async function ReportingPage({ searchParams }: Props) {
               label="Sent (with provider proof)"
               value={m.sent.toLocaleString()}
               hint="Provider returned a message id or sentAt"
+              href={detailHref("sent")}
             />
             <HeadlineMetric
               label="Queued / preparing"
               value={m.queued.toLocaleString()}
               hint="Waiting on the sender — not yet handed off"
               tone={m.queued > 0 ? "warning" : undefined}
+              href={detailHref("queued")}
             />
             <HeadlineMetric
               label="Replies"
               value={m.replies.toLocaleString()}
               hint={`Reply rate: ${formatRate(m.replyRate)}`}
               tone={m.replies > 0 ? "positive" : undefined}
+              href={detailHref("replies")}
             />
           </div>
 
@@ -181,20 +197,24 @@ export default async function ReportingPage({ searchParams }: Props) {
               value={m.bounces.toLocaleString()}
               sub={`Rate: ${formatRate(m.bounceRate)}`}
               tone={m.bounces > 0 ? "error" : undefined}
+              href={detailHref("bounces")}
             />
             <MetricItem
               label="Opt-outs"
               value={m.unsubscribes.toLocaleString()}
               sub={`Rate: ${formatRate(m.unsubscribeRate)}`}
+              href={detailHref("unsubscribes")}
             />
             <MetricItem
               label="Failed"
               value={m.failed.toLocaleString()}
               tone={m.failed > 0 ? "error" : undefined}
+              href={detailHref("failed")}
             />
             <MetricItem
               label="Suppressed / skipped"
               value={m.suppressedOrSkipped.toLocaleString()}
+              href={detailHref("suppressed")}
             />
             <MetricItem
               label="Not reached"
@@ -207,6 +227,7 @@ export default async function ReportingPage({ searchParams }: Props) {
               value={formatTrackedMetric(m.opens, m.opensTracked)}
               sub={m.opensTracked ? `Rate: ${formatRate(m.openRate)}` : undefined}
               tone={!m.opensTracked ? "muted" : undefined}
+              href={m.opensTracked ? detailHref("opens") : undefined}
             />
             <MetricItem
               label="Contacts (sendable)"
@@ -253,27 +274,33 @@ export default async function ReportingPage({ searchParams }: Props) {
                         {row.clientName}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.sent.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.queued.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.replies.toLocaleString()}
-                    </td>
+                    <DrillCell
+                      href={detailHref("sent", row.clientId)}
+                      value={row.metrics.sent.toLocaleString()}
+                    />
+                    <DrillCell
+                      href={detailHref("queued", row.clientId)}
+                      value={row.metrics.queued.toLocaleString()}
+                    />
+                    <DrillCell
+                      href={detailHref("replies", row.clientId)}
+                      value={row.metrics.replies.toLocaleString()}
+                    />
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatRate(row.metrics.replyRate)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.unsubscribes.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.bounces.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {row.metrics.failed.toLocaleString()}
-                    </td>
+                    <DrillCell
+                      href={detailHref("unsubscribes", row.clientId)}
+                      value={row.metrics.unsubscribes.toLocaleString()}
+                    />
+                    <DrillCell
+                      href={detailHref("bounces", row.clientId)}
+                      value={row.metrics.bounces.toLocaleString()}
+                    />
+                    <DrillCell
+                      href={detailHref("failed", row.clientId)}
+                      value={row.metrics.failed.toLocaleString()}
+                    />
                     <td className="px-3 py-2 text-right tabular-nums">
                       {row.metrics.notReached.toLocaleString()}
                     </td>
@@ -296,11 +323,13 @@ function HeadlineMetric({
   value,
   hint,
   tone,
+  href,
 }: {
   label: string;
   value: string;
   hint: string;
   tone?: "error" | "warning" | "positive" | "muted";
+  href?: string;
 }) {
   const valueTone =
     tone === "error"
@@ -315,9 +344,26 @@ function HeadlineMetric({
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader className="pb-2">
-        <CardDescription>{label}</CardDescription>
+        <CardDescription>
+          {href ? (
+            <Link
+              href={href}
+              className="underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {label}
+            </Link>
+          ) : (
+            label
+          )}
+        </CardDescription>
         <CardTitle className={`text-3xl tabular-nums ${valueTone}`}>
-          {value}
+          {href ? (
+            <Link href={href} className="hover:underline">
+              {value}
+            </Link>
+          ) : (
+            value
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -332,11 +378,13 @@ function MetricItem({
   value,
   sub,
   tone,
+  href,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "error" | "warning" | "muted";
+  href?: string;
 }) {
   const valueTone =
     tone === "error"
@@ -348,11 +396,31 @@ function MetricItem({
           : "";
   return (
     <div>
-      <span className="text-muted-foreground">{label}: </span>
+      {href ? (
+        <Link
+          href={href}
+          className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {label}:{" "}
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">{label}: </span>
+      )}
       <span className={`font-semibold tabular-nums ${valueTone}`}>{value}</span>
       {sub ? (
         <span className="ml-1 text-xs text-muted-foreground">({sub})</span>
       ) : null}
     </div>
+  );
+}
+
+/** F5 — a right-aligned per-client table cell whose number drills into detail. */
+function DrillCell({ href, value }: { href: string; value: string }) {
+  return (
+    <td className="px-3 py-2 text-right tabular-nums">
+      <Link href={href} className="underline-offset-2 hover:underline">
+        {value}
+      </Link>
+    </td>
   );
 }
