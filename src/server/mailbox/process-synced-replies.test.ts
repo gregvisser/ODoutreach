@@ -559,4 +559,76 @@ describe("processSyncedMessageForReply", () => {
       }),
     );
   });
+
+  // ── M5/M6: thread-ref sender guard (requireThreadRefSenderMatch) ──
+  it("M6: thread-ref leg adds the toEmail==from sender guard when enabled", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob",
+      contactId: "ct",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "r" });
+
+    await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      requireThreadRefSenderMatch: true,
+    });
+
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          rfc822MessageId: BASE_INPUT.inReplyToHeader,
+          toEmail: "contact@example.com",
+        }),
+      }),
+    );
+  });
+
+  it("legacy: thread-ref leg has NO toEmail guard when the flag is off", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob",
+      contactId: "ct",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "r" });
+
+    await processSyncedMessageForReply(BASE_INPUT); // flag omitted = off
+
+    const firstWhere = (
+      prismaMock.outboundEmail.findFirst.mock.calls[0][0] as {
+        where: Record<string, unknown>;
+      }
+    ).where;
+    expect(firstWhere).toMatchObject({
+      rfc822MessageId: BASE_INPUT.inReplyToHeader,
+    });
+    expect(firstWhere).not.toHaveProperty("toEmail");
+  });
+
+  it("M6: a forwarded reply from a third party does NOT link via thread-ref when the guard is on", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    // DB-accurate mock: the thread-ref leg returns the outbound only when the
+    // (optional) toEmail guard matches the address we actually emailed.
+    prismaMock.outboundEmail.findFirst.mockImplementation(
+      (args?: { where?: { rfc822MessageId?: unknown; toEmail?: unknown } }) => {
+        const w = args?.where ?? {};
+        if (!w.rfc822MessageId) return Promise.resolve(null); // not the thread-ref leg
+        if (w.toEmail !== undefined && w.toEmail !== "bob@prospect.com") {
+          return Promise.resolve(null); // guard rejects a non-recipient sender
+        }
+        return Promise.resolve({ id: "ob", contactId: "ct", status: "SENT" });
+      },
+    );
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      fromEmail: "carol@thirdparty.com", // forwarded — NOT who we emailed (bob@prospect.com)
+      requireThreadRefSenderMatch: true,
+    });
+
+    expect(result.created).toBe(false);
+    expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
+  });
 });

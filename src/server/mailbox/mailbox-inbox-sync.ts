@@ -11,7 +11,10 @@ import {
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
 import { processSyncedMessageForReply } from "@/server/mailbox/process-synced-replies";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
-import { resolveInternalDomainsForClient } from "@/server/inbox/internal-domains";
+import {
+  isReplyThreadRefSenderGuardEnabled,
+  resolveInternalDomainsForClient,
+} from "@/server/inbox/internal-domains";
 
 const DEFAULT_TOP = 25;
 
@@ -109,6 +112,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
   }
 
   const internalDomains = await resolveInternalDomainsForClient(clientId);
+  const replySenderGuard = isReplyThreadRefSenderGuardEnabled();
   let n = 0;
   let repliesLinked = 0;
   let skippedInternal = 0;
@@ -189,6 +193,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       conversationId: row.conversationId,
       inReplyToHeader: row.inReplyToHeader,
       internalDomains,
+      requireThreadRefSenderMatch: replySenderGuard,
     });
     if (replyResult.created) repliesLinked += 1;
     n += 1;
@@ -276,6 +281,7 @@ export async function syncGoogleInboxForMailbox(input: {
   }
 
   const internalDomains = await resolveInternalDomainsForClient(clientId);
+  const replySenderGuard = isReplyThreadRefSenderGuardEnabled();
   let n = 0;
   let repliesLinked = 0;
   let skippedInternal = 0;
@@ -337,6 +343,7 @@ export async function syncGoogleInboxForMailbox(input: {
       conversationId: row.conversationId,
       inReplyToHeader: row.inReplyToHeader,
       internalDomains,
+      requireThreadRefSenderMatch: replySenderGuard,
     });
     if (replyResult.created) repliesLinked += 1;
     n += 1;
