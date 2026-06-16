@@ -2,9 +2,13 @@ import "server-only";
 
 import { randomUUID } from "crypto";
 
-import type { SendEmailResult } from "@/server/email/providers/types";
+import type {
+  MailboxMessageLookupResult,
+  SendEmailResult,
+} from "@/server/email/providers/types";
 
 const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_LIST = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
 
 /**
  * Generate an RFC 5322 Message-ID we control, e.g. "<uuid@sending-domain>".
@@ -17,6 +21,47 @@ const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send
 export function generateRfc822MessageId(fromEmail: string): string {
   const domain = fromEmail.split("@")[1]?.trim().toLowerCase() || "odoutreach.local";
   return `<${randomUUID()}@${domain}>`;
+}
+
+/**
+ * H1/H2 — a STABLE Message-ID derived from the OutboundEmail row id, so it is
+ * identical across send attempts. This lets a retry look the message up by its
+ * Message-ID (`rfc822msgid:`) and reconcile-instead-of-resend if a prior attempt
+ * already landed. Same shape as {@link generateRfc822MessageId}; only used when
+ * the preflight-dedup flag is on.
+ */
+export function stableRfc822MessageId(outboundEmailId: string, fromEmail: string): string {
+  const domain = fromEmail.split("@")[1]?.trim().toLowerCase() || "odoutreach.local";
+  return `<osm-${outboundEmailId}@${domain}>`;
+}
+
+/**
+ * H1/H2 — ask Gmail whether a message with this exact Message-ID already exists
+ * in the mailbox (i.e. a prior attempt was accepted). Uses the `rfc822msgid:`
+ * search operator. Never throws — any lookup failure returns `unknown` so the
+ * caller falls back to sending (best-effort dedup, never strands a row).
+ */
+export async function findGmailMessageIdByRfc822MessageId(input: {
+  accessToken: string;
+  rfc822MessageId: string;
+}): Promise<MailboxMessageLookupResult> {
+  const bare = input.rfc822MessageId.replace(/^</, "").replace(/>$/, "").trim();
+  if (!bare) return { status: "unknown" };
+  const url = `${GMAIL_LIST}?q=${encodeURIComponent(`rfc822msgid:${bare}`)}`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${input.accessToken}` },
+    });
+    if (!res.ok) return { status: "unknown" };
+    const json = (await res.json()) as { messages?: Array<{ id?: string }> };
+    const firstId = json.messages?.[0]?.id;
+    if (typeof firstId === "string" && firstId.length > 0) {
+      return { status: "found", providerMessageId: `gmail:${firstId}` };
+    }
+    return { status: "not_found" };
+  } catch {
+    return { status: "unknown" };
+  }
 }
 
 function safeHeaderLines(extraHeaders?: ReadonlyArray<{ name: string; value: string }>): string[] {

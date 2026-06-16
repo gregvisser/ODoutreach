@@ -8,11 +8,17 @@ import { resolveValidatedSenderForClient } from "@/server/email/sender-identity"
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import {
   buildRfc5322PlainTextEmail,
+  findGmailMessageIdByRfc822MessageId,
   generateRfc822MessageId,
   sendGmailUsersMessagesSend,
+  stableRfc822MessageId,
 } from "@/server/mailbox/gmail-sendmail";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
-import { sendMicrosoftGraphSendMail } from "@/server/mailbox/microsoft-graph-sendmail";
+import {
+  findGraphSentMessageId,
+  sendMicrosoftGraphSendMail,
+} from "@/server/mailbox/microsoft-graph-sendmail";
+import { isSendPreflightDedupEnabled } from "./send-preflight-dedup";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 import {
@@ -391,7 +397,12 @@ async function sendViaConnectedMailboxOrFail(
     });
     // Stamp our own Message-ID so genuine replies link back to this exact send
     // via their In-Reply-To header (see process-synced-replies BY_THREAD_REF).
-    const rfc822MessageId = generateRfc822MessageId(fromForLog);
+    // H1/H2: when preflight-dedup is on, use a STABLE id so a retry can look the
+    // message up by it and reconcile instead of re-sending.
+    const dedupOn = isSendPreflightDedupEnabled();
+    const rfc822MessageId = dedupOn
+      ? stableRfc822MessageId(row.id, fromForLog)
+      : generateRfc822MessageId(fromForLog);
     const gmailExtraHeaders = [
       { name: "Message-ID", value: rfc822MessageId },
       ...(listUnsub
@@ -403,6 +414,40 @@ async function sendViaConnectedMailboxOrFail(
     ];
     try {
       const accessToken = await getGoogleGmailAccessTokenForMailbox(mailbox.id);
+      // H1/H2 preflight: on a retry, if this exact Message-ID already landed
+      // (a prior attempt was accepted but its SENT write was lost), reconcile
+      // to SENT instead of re-sending the email.
+      if (dedupOn && row.sendAttempt > 1) {
+        const lookup = await findGmailMessageIdByRfc822MessageId({
+          accessToken,
+          rfc822MessageId,
+        });
+        if (lookup.status === "found") {
+          const reconciled = await prisma.outboundEmail.updateMany({
+            where: { id: row.id, status: "PROCESSING", providerMessageId: null },
+            data: {
+              status: "SENT",
+              providerMessageId: lookup.providerMessageId,
+              providerName: "google_gmail",
+              rfc822MessageId,
+              sentAt: new Date(),
+              claimedAt: null,
+              claimExpiresAt: null,
+              nextRetryAt: null,
+              lastErrorCode: "RECONCILED_PREFLIGHT",
+              lastErrorMessage:
+                "Preflight found this message already sent; reconciled instead of re-sending",
+              failureReason: null,
+              fromAddress: fromForLog,
+              toDomain: extractDomainFromEmail(to) || row.toDomain,
+            },
+          });
+          if (reconciled.count > 0) {
+            await markReservationConsumedForOutbound(row.id);
+          }
+          return { ok: true };
+        }
+      }
       // Open tracking: embed a hidden pixel keyed on correlationId so the
       // /api/track/open endpoint can record opens. Skipped when no public
       // base URL is configured.
@@ -511,6 +556,47 @@ async function sendViaConnectedMailboxOrFail(
 
   try {
     const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
+    // H1/H2 best-effort preflight (Graph can't stamp or look up our Message-ID):
+    // on a retry, check Sent Items for the same recipient + subject in the prior
+    // claim window and reconcile instead of re-sending. Fuzzy by nature — see
+    // findGraphSentMessageId; gated behind the preflight-dedup flag.
+    if (isSendPreflightDedupEnabled() && row.sendAttempt > 1) {
+      const lookbackMs = 6 * 60 * 60 * 1000; // 6h — covers an operator requeue gap
+      const sinceIso = new Date(
+        (row.claimedAt ? row.claimedAt.getTime() : Date.now()) - lookbackMs,
+      ).toISOString();
+      const lookup = await findGraphSentMessageId({
+        accessToken,
+        mailboxUserPrincipalName: mailbox.emailNormalized,
+        to,
+        subject,
+        sinceIso,
+      });
+      if (lookup.status === "found") {
+        const reconciled = await prisma.outboundEmail.updateMany({
+          where: { id: row.id, status: "PROCESSING", providerMessageId: null },
+          data: {
+            status: "SENT",
+            providerMessageId: lookup.providerMessageId,
+            providerName: "microsoft_graph",
+            sentAt: new Date(),
+            claimedAt: null,
+            claimExpiresAt: null,
+            nextRetryAt: null,
+            lastErrorCode: "RECONCILED_PREFLIGHT",
+            lastErrorMessage:
+              "Preflight found a matching Sent Items message; reconciled instead of re-sending",
+            failureReason: null,
+            fromAddress: fromForLog,
+            toDomain: extractDomainFromEmail(to) || row.toDomain,
+          },
+        });
+        if (reconciled.count > 0) {
+          await markReservationConsumedForOutbound(row.id);
+        }
+        return { ok: true };
+      }
+    }
     const result = await sendMicrosoftGraphSendMail({
       accessToken,
       mailboxUserPrincipalName: mailbox.emailNormalized,

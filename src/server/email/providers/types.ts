@@ -40,6 +40,17 @@ export type SendEmailFailure = {
 
 export type SendEmailResult = SendEmailSuccess | SendEmailFailure;
 
+/**
+ * H1/H2 preflight de-dup lookup result. `found` = the provider already has this
+ * message (reconcile to SENT, do not re-send). `not_found` = safe to send.
+ * `unknown` = the lookup itself failed; the caller falls back to sending so the
+ * dedup is best-effort and never strands a legitimately-unsent row.
+ */
+export type MailboxMessageLookupResult =
+  | { status: "found"; providerMessageId: string }
+  | { status: "not_found" }
+  | { status: "unknown" };
+
 export interface OutboundEmailProvider {
   readonly name: string;
   send(input: SendEmailInput): Promise<SendEmailResult>;

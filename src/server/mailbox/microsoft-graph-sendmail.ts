@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { SendEmailResult } from "@/server/email/providers/types";
+import type {
+  MailboxMessageLookupResult,
+  SendEmailResult,
+} from "@/server/email/providers/types";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
@@ -130,4 +133,55 @@ export async function sendMicrosoftGraphSendMail(input: {
     error: `Microsoft Graph sendMail failed (${res.status}): ${text}`,
     code: String(res.status),
   };
+}
+
+/**
+ * H1/H2 — best-effort preflight: did this message already land in Sent Items?
+ *
+ * Graph's JSON `sendMail` cannot stamp our own Message-ID (it rejects non-`x-`
+ * headers) and returns no message id, so — unlike Gmail — we cannot look up by
+ * a stable id. Instead we search Sent Items for a message to the same recipient
+ * with the same subject since `sinceIso` (the prior claim window). This is
+ * inherently fuzzy (same subject to the same recipient could collide); it is
+ * gated behind the preflight flag and documented as best-effort. Never throws —
+ * any failure returns `unknown` and the caller falls back to sending.
+ */
+export async function findGraphSentMessageId(input: {
+  accessToken: string;
+  mailboxUserPrincipalName: string;
+  to: string;
+  subject: string;
+  sinceIso: string;
+}): Promise<MailboxMessageLookupResult> {
+  const userSeg = encodeURIComponent(input.mailboxUserPrincipalName.trim());
+  const subjectEsc = input.subject.replace(/'/g, "''");
+  const filter = `sentDateTime ge ${input.sinceIso} and subject eq '${subjectEsc}'`;
+  const url =
+    `${GRAPH}/users/${userSeg}/mailFolders/SentItems/messages` +
+    `?$filter=${encodeURIComponent(filter)}` +
+    `&$select=id,toRecipients,sentDateTime&$top=25`;
+  const wantTo = input.to.trim().toLowerCase();
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${input.accessToken}` },
+    });
+    if (!res.ok) return { status: "unknown" };
+    const json = (await res.json()) as {
+      value?: Array<{
+        id?: string;
+        toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+      }>;
+    };
+    const match = (json.value ?? []).find((m) =>
+      (m.toRecipients ?? []).some(
+        (r) => r.emailAddress?.address?.trim().toLowerCase() === wantTo,
+      ),
+    );
+    if (match?.id) {
+      return { status: "found", providerMessageId: `msgraph:${match.id}` };
+    }
+    return { status: "not_found" };
+  } catch {
+    return { status: "unknown" };
+  }
 }
