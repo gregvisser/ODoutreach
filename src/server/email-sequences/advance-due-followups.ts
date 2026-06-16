@@ -114,6 +114,8 @@ export async function advanceDueSequenceFollowUps(opts?: {
   const clients = await prisma.client.findMany({
     where: {
       status: "ACTIVE",
+      // F2: a soft-deleted workspace stops advancing follow-ups (read-side; no rows mutated).
+      deletedAt: null,
       ...(opts?.clientId ? { id: opts.clientId } : {}),
     },
     select: { id: true },

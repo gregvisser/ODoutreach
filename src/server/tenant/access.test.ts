@@ -6,6 +6,7 @@ vi.mock("@/lib/db", () => ({
 
 import {
   canAssignClientWorkspaceMembership,
+  canDeleteWorkspace,
   canUseCooldownReengage,
 } from "./access";
 
@@ -38,5 +39,15 @@ describe("canUseCooldownReengage (F3)", () => {
   it("denies OPERATOR and VIEWER (cannot bypass the cooldown)", () => {
     expect(canUseCooldownReengage({ id: "o", role: "OPERATOR" })).toBe(false);
     expect(canUseCooldownReengage({ id: "v", role: "VIEWER" })).toBe(false);
+  });
+});
+
+describe("canDeleteWorkspace (F2)", () => {
+  it("allows only a super-admin, regardless of role", () => {
+    expect(canDeleteWorkspace({ isSuperAdmin: true })).toBe(true);
+  });
+
+  it("denies a non-super-admin (even ADMIN role has it off by default)", () => {
+    expect(canDeleteWorkspace({ isSuperAdmin: false })).toBe(false);
   });
 });

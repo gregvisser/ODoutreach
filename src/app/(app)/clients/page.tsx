@@ -35,7 +35,8 @@ export default async function ClientsPage() {
   // run them concurrently instead of one after another.
   const [clients, totalClientsInDatabase] = await Promise.all([
     listClientsForStaff(accessible),
-    prisma.client.count(),
+    // F2: exclude soft-deleted workspaces from the "exists but you can't see it" hint.
+    prisma.client.count({ where: { deletedAt: null } }),
   ]);
   const emptyCopy = resolveClientsPageEmptyCopy({
     staffRole: staff.role,

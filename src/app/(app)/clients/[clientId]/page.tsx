@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
+import { WorkspaceDangerZone } from "@/components/clients/workspace-danger-zone";
 import { LaunchReadinessPanel } from "@/components/clients/launch-readiness-panel";
 import { TonightLaunchChecklist } from "@/components/clients/tonight-launch-checklist";
 import {
@@ -275,6 +276,10 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       </Card>
 
       <ClientOperationalSnapshot items={snapshotItems} />
+
+      {staff.isSuperAdmin ? (
+        <WorkspaceDangerZone clientId={client.id} clientName={client.name} />
+      ) : null}
     </div>
   );
 }
