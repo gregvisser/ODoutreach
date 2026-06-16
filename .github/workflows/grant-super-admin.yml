@@ -41,9 +41,11 @@ jobs:
           echo "== StaffUser (before) =="
           psql "$PSQL_URL" -c 'SELECT id, email, role, "isSuperAdmin" FROM "StaffUser" ORDER BY email;'
           echo "== Granting super-admin to: ${TARGET_EMAIL} =="
-          granted=$(psql "$PSQL_URL" -v em="$TARGET_EMAIL" -tAc \
+          # Escape single quotes (double them) so the email is a safe SQL string literal.
+          email_esc=$(printf '%s' "$TARGET_EMAIL" | sed "s/'/''/g")
+          granted=$(psql "$PSQL_URL" -tAc \
             "UPDATE \"StaffUser\" SET \"isSuperAdmin\" = true \
-             WHERE lower(trim(email)) = lower(trim(:'em')) RETURNING email;")
+             WHERE lower(trim(email)) = lower(trim('$email_esc')) RETURNING email;")
           if [ -z "$granted" ]; then
             echo "ERROR: no StaffUser matched '${TARGET_EMAIL}'. See the list above; no change was made."
             exit 1
