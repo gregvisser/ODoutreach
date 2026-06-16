@@ -28,6 +28,7 @@ export type SequenceLaunchCheckId =
   | "enrollment_records_exist"
   | "pending_email_sendable_recipients"
   | "connected_sending_mailbox"
+  | "sender_signature_configured"
   | "daily_capacity_available"
   | "sequence_not_launched";
 
@@ -100,6 +101,12 @@ export type SequenceLaunchReadinessSnapshotInput = {
   mailbox: {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
+    /**
+     * F1 — how many connected sending mailboxes have NO signature. A
+     * signature is a property of the sending account and is appended to
+     * every send; launch is blocked (or warned) until each has one.
+     */
+    sendingMailboxesMissingSignature?: number;
   };
   /**
    * True when a public app URL is configured so unsubscribe links can
@@ -117,6 +124,14 @@ export type SequenceLaunchReadinessSnapshotInput = {
     introductionEligibleBatchCount: number;
   } | null;
 };
+
+/**
+ * F1 — whether a missing sending-mailbox signature HARD-BLOCKS launch
+ * (`true`, the default — per Greg) or only warns (`false`). A signature is a
+ * property of the sending account; ODoutreach never injects one of its own,
+ * so a send must not go out from a mailbox that has none. Single switch.
+ */
+export const SENDER_SIGNATURE_REQUIRED_TO_LAUNCH = true;
 
 export type SequenceLaunchReadiness = {
   canLaunch: boolean;
@@ -445,6 +460,32 @@ export function evaluateSequenceLaunchReadiness(
     );
   }
 
+  // 9b. F1 — every connected sending mailbox must have a signature. The
+  //     signature is a property of the sending account and is appended to
+  //     every outgoing email; we never inject our own. Hard block by default
+  //     (SENDER_SIGNATURE_REQUIRED_TO_LAUNCH) so a client can't launch from a
+  //     signature-less mailbox; flip the constant to warn instead.
+  const sendingMailboxesMissingSignature =
+    input.mailbox.sendingMailboxesMissingSignature ?? 0;
+  if (sendingMailboxesMissingSignature > 0) {
+    checks.push(
+      fail(
+        "sender_signature_configured",
+        "Sending mailbox has a signature",
+        `${String(sendingMailboxesMissingSignature)} connected sending mailbox(es) have no signature. Add one on each mailbox in Mailboxes before launch — it is appended to every send.`,
+        SENDER_SIGNATURE_REQUIRED_TO_LAUNCH ? "blocker" : "warning",
+      ),
+    );
+  } else if (input.mailbox.connectedSendingCount >= 1) {
+    checks.push(
+      pass(
+        "sender_signature_configured",
+        "Sending mailbox has a signature",
+        "All connected sending mailboxes have a signature.",
+      ),
+    );
+  }
+
   // 10. Available daily capacity > 0
   if (input.mailbox.aggregateRemainingToday > 0) {
     checks.push(
@@ -515,6 +556,7 @@ export const LAUNCH_CHECK_DISPLAY_ORDER: readonly SequenceLaunchCheckId[] = [
   "enrollment_records_exist",
   "pending_email_sendable_recipients",
   "connected_sending_mailbox",
+  "sender_signature_configured",
   "daily_capacity_available",
   "sequence_not_launched",
 ];
