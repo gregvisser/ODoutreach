@@ -173,6 +173,36 @@ describe("evaluateSequenceLaunchReadiness — blockers", () => {
     expect(r.canLaunch).toBe(false);
   });
 
+  it("F1: blocks launch when a connected sending mailbox has no signature", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        mailbox: {
+          connectedSendingCount: 3,
+          aggregateRemainingToday: 100,
+          sendingMailboxesMissingSignature: 2,
+        },
+      }),
+    );
+    const sig = r.checks.find((c) => c.id === "sender_signature_configured");
+    expect(sig?.status).toBe("fail");
+    expect(r.canLaunch).toBe(false);
+  });
+
+  it("F1: signature check passes when all sending mailboxes have one", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({
+        mailbox: {
+          connectedSendingCount: 3,
+          aggregateRemainingToday: 100,
+          sendingMailboxesMissingSignature: 0,
+        },
+      }),
+    );
+    expect(
+      r.checks.find((c) => c.id === "sender_signature_configured")?.status,
+    ).toBe("pass");
+  });
+
   it("blocks when pool capacity is zero", () => {
     const r = evaluateSequenceLaunchReadiness(
       snapshot({
