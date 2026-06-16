@@ -242,13 +242,19 @@ export function ClientEmailTemplateForm({
               setFields((f) => ({ ...f, content: e.target.value }))
             }
             placeholder={
-              "Hi {{first_name}},\n\nShort plain-text opener about {{company_name}}…\n\n{{sender_name}}\n{{email_signature}}\n{{unsubscribe_link}}"
+              "Hi {{first_name}},\n\nShort plain-text opener about {{company_name}}…\n\nThanks,\n{{sender_name}}"
             }
             rows={10}
             required
             disabled={disabled}
           />
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          Your mailbox signature and the unsubscribe footer are appended
+          automatically at send — don&apos;t add a signature or{" "}
+          <code>{"{{email_signature}}"}</code> here.
+        </p>
 
         <PlaceholderPreview
           knownUsed={placeholders.knownUsed}
