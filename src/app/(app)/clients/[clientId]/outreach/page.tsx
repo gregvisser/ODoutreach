@@ -121,6 +121,7 @@ export default async function ClientOutreachPage({
     mailbox: {
       connectedSendingCount: bundle.connectedSendingCount,
       aggregateRemainingToday: bundle.aggregateRemaining,
+      sendingMailboxesMissingSignature: bundle.sendingMailboxesMissingSignature,
     },
     outboundUnsubscribeReady: isOneClickUnsubscribeReady(),
     stepSendSnapshots: stepSendBundle.snapshots,

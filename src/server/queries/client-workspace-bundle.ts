@@ -21,6 +21,7 @@ import {
   isMailboxExecutionEligible,
   loadGovernedSendingMailbox,
 } from "@/server/mailbox/sending-policy";
+import { chooseSignatureForSend } from "@/lib/mailboxes/sender-signature";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
@@ -251,6 +252,21 @@ export async function loadClientWorkspaceBundle(
     isMailboxExecutionEligible(m),
   );
   const connectedSendingCount = connectedSendingMailboxes.length;
+  // F1 — count connected sending mailboxes with NO signature configured. The
+  // signature is a property of the sending account and appended to every
+  // send; chooseSignatureForSend is the same resolver the send path uses.
+  const sendingMailboxesMissingSignature = connectedSendingMailboxes.filter(
+    (m) =>
+      (
+        chooseSignatureForSend({
+          mailbox: m,
+          clientBrief: {
+            senderDisplayNameFallback: null,
+            emailSignatureFallback: null,
+          },
+        }).emailSignatureText ?? ""
+      ).trim().length === 0,
+  ).length;
   const aggregateRemaining = sumAggregateRemainingAcrossEligible(sendingReadiness);
   const maxRecommendedCapacityMet = connectedSendingCount >= REQUIRED_OUTREACH_MAILBOX_COUNT;
   const poolCanSendPilot = aggregateRemaining >= 1;
@@ -306,6 +322,7 @@ export async function loadClientWorkspaceBundle(
     suppressionSheetRows,
     governedReadiness,
     connectedSendingCount,
+    sendingMailboxesMissingSignature,
     aggregateRemaining,
     maxRecommendedCapacityMet,
     poolCanSendPilot,

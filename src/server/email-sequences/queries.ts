@@ -463,6 +463,8 @@ export function buildSequenceLaunchReadinessMap(params: {
   mailbox: {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
+    /** F1 — connected sending mailboxes with no signature configured. */
+    sendingMailboxesMissingSignature?: number;
   };
   outboundUnsubscribeReady: boolean;
   stepSendSnapshots?: ReadonlyArray<{
