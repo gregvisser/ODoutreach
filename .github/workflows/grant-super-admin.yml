@@ -34,10 +34,14 @@ jobs:
           if [ -z "${PGURL:-}" ]; then
             echo "ERROR: PRODUCTION_DATABASE_URL secret is not set."; exit 1
           fi
+          # The secret is a Prisma-style URL with a `?schema=...` param that psql
+          # rejects. Drop the query string (public is the default schema) and
+          # require SSL, which Azure Flexible Server needs.
+          PSQL_URL="${PGURL%%\?*}?sslmode=require"
           echo "== StaffUser (before) =="
-          psql "$PGURL" -c 'SELECT id, email, role, "isSuperAdmin" FROM "StaffUser" ORDER BY email;'
+          psql "$PSQL_URL" -c 'SELECT id, email, role, "isSuperAdmin" FROM "StaffUser" ORDER BY email;'
           echo "== Granting super-admin to: ${TARGET_EMAIL} =="
-          granted=$(psql "$PGURL" -v em="$TARGET_EMAIL" -tAc \
+          granted=$(psql "$PSQL_URL" -v em="$TARGET_EMAIL" -tAc \
             "UPDATE \"StaffUser\" SET \"isSuperAdmin\" = true \
              WHERE lower(trim(email)) = lower(trim(:'em')) RETURNING email;")
           if [ -z "$granted" ]; then
@@ -46,4 +50,4 @@ jobs:
           fi
           echo "Granted super-admin to: ${granted}"
           echo "== StaffUser (after) =="
-          psql "$PGURL" -c 'SELECT id, email, role, "isSuperAdmin" FROM "StaffUser" ORDER BY email;'
+          psql "$PSQL_URL" -c 'SELECT id, email, role, "isSuperAdmin" FROM "StaffUser" ORDER BY email;'
