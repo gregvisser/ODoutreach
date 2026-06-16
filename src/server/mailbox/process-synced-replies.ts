@@ -70,6 +70,14 @@ export async function processSyncedMessageForReply(input: {
    * sender is rejected. Empty / omitted = filter off (legacy behaviour).
    */
   internalDomains?: readonly string[];
+  /**
+   * Audit M5/M6 — when true, the thread-ref (In-Reply-To) leg additionally
+   * requires `toEmail == from` (sender is the contact we emailed), matching the
+   * constraint the fallback legs already apply. Stops a forwarded / CC'd third
+   * party on the thread from mis-linking to the prospect. Omitted = legacy
+   * behaviour (thread-ref trusts In-Reply-To regardless of sender).
+   */
+  requireThreadRefSenderMatch?: boolean;
 }): Promise<{ created: boolean; replyId?: string }> {
   const inReplyTo = input.inReplyToHeader?.trim() || null;
   const hasInReplyTo = inReplyTo !== null && inReplyTo.length > 0;
@@ -133,6 +141,10 @@ export async function processSyncedMessageForReply(input: {
           where: {
             clientId: input.clientId,
             rfc822MessageId: inReplyTo,
+            // M5/M6 — when enabled, also require the reply to come FROM the
+            // address we emailed, so a forwarded/CC'd third party carrying our
+            // Message-ID can't be attributed to the prospect.
+            ...(input.requireThreadRefSenderMatch ? { toEmail: from } : {}),
           },
           orderBy: { sentAt: "desc" },
           select: { id: true, contactId: true, status: true },
