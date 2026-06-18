@@ -24,17 +24,27 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
   // mistake (e.g. a browser that re-submitted the Preview form directly)
   // and is rejected with a friendly message instead of silently writing.
   const confirmed = String(formData.get("confirm") ?? "").trim() === "yes";
+  const returnToSources =
+    String(formData.get("returnTo") ?? "").trim() === "sources";
+  // Where to send the operator afterwards. The Sources tab locks the client
+  // and wants the result shown there; everything else falls back to /contacts.
+  // The path is built from the validated clientId, never from a raw URL, so
+  // this cannot become an open redirect.
+  const dest =
+    returnToSources && clientId
+      ? `/clients/${clientId}/sources`
+      : "/contacts";
 
   if (!clientId || !(file instanceof File) || file.size === 0) {
     redirect(
-      "/contacts?import=error&message=" +
+      `${dest}?import=error&message=` +
         encodeURIComponent("Choose a client and CSV file."),
     );
   }
 
   if (!confirmed) {
     redirect(
-      "/contacts?import=error&message=" +
+      `${dest}?import=error&message=` +
         encodeURIComponent(
           "Preview the import first, then press Confirm import to write contacts.",
         ),
@@ -48,7 +58,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
   const target = resolveImportListTarget({ existingListId, newListName });
   if ("error" in target) {
     redirect(
-      "/contacts?import=error&message=" + encodeURIComponent(target.error),
+      `${dest}?import=error&message=` + encodeURIComponent(target.error),
     );
   }
 
@@ -72,7 +82,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
               ? "List name must be 120 characters or fewer."
               : "Could not resolve the target list.";
     redirect(
-      "/contacts?import=error&message=" + encodeURIComponent(message),
+      `${dest}?import=error&message=` + encodeURIComponent(message),
     );
   }
 
@@ -91,12 +101,12 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
   } catch (e) {
     const message = e instanceof Error ? e.message : "Import failed";
     redirect(
-      "/contacts?import=error&message=" + encodeURIComponent(message),
+      `${dest}?import=error&message=` + encodeURIComponent(message),
     );
   }
   if (!result) {
     redirect(
-      "/contacts?import=error&message=" + encodeURIComponent("Import failed"),
+      `${dest}?import=error&message=` + encodeURIComponent("Import failed"),
     );
   }
 
@@ -117,5 +127,5 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
     uNew: String(result.summary.universeCreated),
     uMatch: String(result.summary.universeMatched),
   });
-  redirect(`/contacts?${q.toString()}`);
+  redirect(`${dest}?${q.toString()}`);
 }

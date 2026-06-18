@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { CsvImportForm, type ClientListOption } from "@/app/(app)/contacts/csv-import-form";
+import { ContactImportResultBanner } from "@/components/contacts/contact-import-result-banner";
 import { ClientWorkspaceContactLists } from "@/components/clients/client-workspace-contact-lists";
 import { RocketReachImportPanel } from "@/components/clients/rocketreach-import-panel";
 import {
@@ -20,6 +21,16 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ clientId: string }>;
+  searchParams?: Promise<{
+    import?: string;
+    imported?: string;
+    skipped?: string;
+    list?: string;
+    batch?: string;
+    uNew?: string;
+    uMatch?: string;
+    message?: string;
+  }>;
 };
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
@@ -28,10 +39,11 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-export default async function ClientSourcesPage({ params }: Props) {
+export default async function ClientSourcesPage({ params, searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
+  const sp = (await searchParams) ?? {};
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
@@ -59,6 +71,8 @@ export default async function ClientSourcesPage({ params }: Props) {
           Import contacts into a named list for this client. Upload a CSV or use RocketReach below.
         </p>
       </div>
+
+      <ContactImportResultBanner params={sp} />
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>

@@ -164,6 +164,15 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
           action={importContactsCsvAction}
           className="space-y-4"
         >
+          {/*
+            When the form is rendered on a client's Sources tab the workspace
+            is locked, so send the operator back there (with the result banner)
+            instead of the global /contacts page. The action turns this into a
+            safe `/clients/{clientId}/sources` path — it never trusts a raw URL.
+          */}
+          {lockedClientId ? (
+            <input type="hidden" name="returnTo" value="sources" />
+          ) : null}
           <div className="grid gap-2 sm:max-w-md">
             <Label htmlFor="clientId">Client workspace</Label>
             {lockedClientId ? (
@@ -276,8 +285,7 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
             </Button>
             {clients.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No accessible workspaces — ask an admin to grant membership or
-                use an ADMIN account.
+                No client workspaces yet — add a client first.
               </p>
             ) : null}
           </div>
