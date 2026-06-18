@@ -18,7 +18,6 @@ import {
 } from "@/lib/support/support-labels";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { isSupportApprover, supportApproverEmail } from "@/server/support/approver";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +31,6 @@ export default async function SupportTicketDetailPage({ params }: Props) {
     where: { id: ticketId },
     include: {
       createdBy: { select: { displayName: true, email: true } },
-      approvedBy: { select: { displayName: true, email: true } },
       attachments: {
         select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
       },
@@ -40,8 +38,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
   });
   if (!ticket) notFound();
 
-  const canApprove = isSupportApprover(staff.email);
-  const isAdmin = staff.role === "ADMIN";
+  const isOwner = staff.isSuperAdmin;
 
   const developerSummary = [
     `ODoutreach support ticket ${ticket.id}`,
@@ -125,30 +122,6 @@ export default async function SupportTicketDetailPage({ params }: Props) {
         </CardContent>
       </Card>
 
-      {ticket.proposedFix ? (
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">Proposed fix</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-wrap text-sm text-foreground">
-              {ticket.proposedFix}
-            </p>
-            {ticket.status === "APPROVED" && ticket.approvedAt ? (
-              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                Approved by {ticket.approvedBy?.displayName ?? ticket.approvedBy?.email} on{" "}
-                {format(ticket.approvedAt, "d MMM yyyy, HH:mm")}
-              </p>
-            ) : null}
-            {ticket.status === "REJECTED" && ticket.rejectedAt ? (
-              <p className="mt-2 text-xs text-destructive">
-                Rejected on {format(ticket.rejectedAt, "d MMM yyyy, HH:mm")}
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
       {ticket.resolutionNote ? (
         <Card className="border-emerald-600/30 shadow-sm">
           <CardHeader>
@@ -165,10 +138,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
       <SupportTicketDetailActions
         ticketId={ticket.id}
         status={ticket.status}
-        isAdmin={isAdmin}
-        canApprove={canApprove}
-        approverEmail={supportApproverEmail()}
-        proposedFix={ticket.proposedFix}
+        isOwner={isOwner}
         developerSummary={developerSummary}
       />
     </div>

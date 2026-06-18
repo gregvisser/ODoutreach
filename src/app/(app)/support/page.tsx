@@ -20,14 +20,12 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 export const dynamic = "force-dynamic";
 
-// Open work first, then most-recent.
+// Open work first, then resolved. Any legacy in-flight status sorts after
+// these (see the `?? 9` fallback below) until the status-folding migration
+// runs.
 const STATUS_ORDER: Record<string, number> = {
-  AWAITING_APPROVAL: 0,
-  OPEN: 1,
-  IN_REVIEW: 2,
-  APPROVED: 3,
-  REJECTED: 4,
-  RESOLVED: 5,
+  OPEN: 0,
+  RESOLVED: 1,
 };
 
 export default async function SupportPage() {
@@ -64,8 +62,8 @@ export default async function SupportPage() {
         <h1 className="text-3xl font-semibold tracking-tight">Tickets</h1>
         <p className="mt-1 text-muted-foreground">
           Report any issue you hit using ODoutreach. Add screenshots and a
-          priority — the team reviews each ticket, and fixes are authorised
-          before they go live.
+          priority — the developer picks up each ticket, fixes it, and closes
+          it.
         </p>
       </div>
 

@@ -16,27 +16,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import {
-  decideSupportTicket,
+  reopenSupportTicket,
   resolveSupportTicket,
-  triageSupportTicket,
   type SupportActionResult,
 } from "@/app/(app)/support/actions";
 
 export function SupportTicketDetailActions({
   ticketId,
   status,
-  isAdmin,
-  canApprove,
-  approverEmail,
-  proposedFix,
+  isOwner,
   developerSummary,
 }: {
   ticketId: string;
   status: string;
-  isAdmin: boolean;
-  canApprove: boolean;
-  approverEmail: string;
-  proposedFix: string | null;
+  isOwner: boolean;
   developerSummary: string;
 }) {
   const router = useRouter();
@@ -44,7 +37,6 @@ export function SupportTicketDetailActions({
   const [banner, setBanner] = useState<
     { type: "ok" | "err"; text: string } | null
   >(null);
-  const [fixText, setFixText] = useState(proposedFix ?? "");
   const [resolutionText, setResolutionText] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -61,18 +53,15 @@ export function SupportTicketDetailActions({
     });
   }
 
-  const canTriage = isAdmin && status !== "RESOLVED";
-  const canResolve = isAdmin && status === "APPROVED";
-  const awaitingApproval = status === "AWAITING_APPROVAL";
+  const isResolved = status === "RESOLVED";
 
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle className="text-base">Review &amp; approval</CardTitle>
+        <CardTitle className="text-base">Actions</CardTitle>
         <CardDescription>
-          Fixes are built in a developer session and must be authorised by{" "}
-          <span className="font-medium">{approverEmail}</span> before they go
-          live.
+          Anyone can open a ticket. The developer fixes the issue and closes the
+          ticket here.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -113,79 +102,8 @@ export function SupportTicketDetailActions({
           </Button>
         </div>
 
-        {/* Triage: record proposed fix → request approval (ADMIN) */}
-        {canTriage ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="fix">Proposed fix (sends ticket for approval)</Label>
-            <Textarea
-              id="fix"
-              rows={3}
-              value={fixText}
-              onChange={(e) => setFixText(e.target.value)}
-              placeholder="Summarise the fix to be applied…"
-              disabled={pending}
-            />
-            <Button
-              type="button"
-              size="sm"
-              disabled={pending || fixText.trim().length < 5}
-              onClick={() =>
-                run(
-                  triageSupportTicket({ ticketId, proposedFix: fixText }),
-                  "Proposed fix saved — sent for approval.",
-                )
-              }
-            >
-              {pending ? "Saving…" : "Save & request approval"}
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Approve / reject — approver only, when awaiting approval */}
-        {awaitingApproval ? (
-          canApprove ? (
-            <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3">
-              <p className="text-sm font-medium">This fix needs your authorisation.</p>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() =>
-                    run(
-                      decideSupportTicket({ ticketId, decision: "approve" }),
-                      "Fix approved. The developer can now apply it.",
-                    )
-                  }
-                >
-                  Approve fix
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() =>
-                    run(
-                      decideSupportTicket({ ticketId, decision: "reject" }),
-                      "Fix rejected.",
-                    )
-                  }
-                >
-                  Reject
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-muted-foreground">
-              Waiting for <span className="font-medium">{approverEmail}</span> to
-              approve this fix.
-            </p>
-          )
-        ) : null}
-
-        {/* Resolve (ADMIN) once approved + deployed */}
-        {canResolve ? (
+        {/* Resolve & close (owner only, while still open) */}
+        {isOwner && !isResolved ? (
           <div className="space-y-1.5">
             <Label htmlFor="resolution">Resolution note (closes the ticket)</Label>
             <Textarea
@@ -203,13 +121,36 @@ export function SupportTicketDetailActions({
               onClick={() =>
                 run(
                   resolveSupportTicket({ ticketId, resolutionNote: resolutionText }),
-                  "Ticket resolved.",
+                  "Ticket resolved and closed.",
                 )
               }
             >
-              {pending ? "Saving…" : "Mark resolved"}
+              {pending ? "Saving…" : "Resolve & close"}
             </Button>
           </div>
+        ) : null}
+
+        {/* Reopen (owner only, once resolved) */}
+        {isOwner && isResolved ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() =>
+              run(reopenSupportTicket({ ticketId }), "Ticket reopened.")
+            }
+          >
+            {pending ? "Reopening…" : "Reopen ticket"}
+          </Button>
+        ) : null}
+
+        {!isOwner ? (
+          <p className="text-xs text-muted-foreground">
+            {isResolved
+              ? "This ticket has been resolved."
+              : "This ticket is open. The developer will pick it up and close it once fixed."}
+          </p>
         ) : null}
       </CardContent>
     </Card>

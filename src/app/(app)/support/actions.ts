@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import type { SupportTicketPriority } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { isSupportApprover } from "@/server/support/approver";
 
 export type SupportActionResult =
   | { ok: true; ticketId?: string }
@@ -91,18 +90,23 @@ export async function createSupportTicket(
   return { ok: true, ticketId: ticket.id };
 }
 
-/** ADMIN records the developer's proposed fix and moves the ticket forward. */
-export async function triageSupportTicket(input: {
+/**
+ * Resolve & close a ticket. Owner-only (isSuperAdmin).
+ *
+ * The flow is deliberately simple: anyone can open a ticket, and the
+ * developer/owner fixes it and closes it. There is no separate triage /
+ * approve / reject step anymore. Guarded so an already-resolved ticket can't
+ * be re-resolved (the previous version had a role check but NO status guard).
+ * Accepts any non-resolved status so legacy in-flight tickets remain closable
+ * even before the status-folding data migration runs.
+ */
+export async function resolveSupportTicket(input: {
   ticketId: string;
-  proposedFix: string;
+  resolutionNote: string;
 }): Promise<SupportActionResult> {
   const staff = await requireOpensDoorsStaff();
-  if (staff.role !== "ADMIN") {
-    return { ok: false, error: "Only administrators can triage tickets." };
-  }
-  const proposedFix = input.proposedFix.trim();
-  if (proposedFix.length < 5) {
-    return { ok: false, error: "Add a short note describing the proposed fix." };
+  if (!staff.isSuperAdmin) {
+    return { ok: false, error: "Only the owner account can resolve tickets." };
   }
   const existing = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
@@ -115,78 +119,40 @@ export async function triageSupportTicket(input: {
 
   await prisma.supportTicket.update({
     where: { id: existing.id },
-    data: { proposedFix, status: "AWAITING_APPROVAL" },
+    data: {
+      status: "RESOLVED",
+      resolvedAt: new Date(),
+      resolutionNote: input.resolutionNote.trim() || null,
+    },
   });
   revalidatePath("/support");
   revalidatePath(`/support/${existing.id}`);
   return { ok: true };
 }
 
-/** Approve or reject a proposed fix — restricted to the configured approver. */
-export async function decideSupportTicket(input: {
+/**
+ * Reopen a resolved ticket (owner-only) if it turns out the issue wasn't
+ * actually fixed. Clears the resolution so the ticket is a clean OPEN again.
+ */
+export async function reopenSupportTicket(input: {
   ticketId: string;
-  decision: "approve" | "reject";
 }): Promise<SupportActionResult> {
   const staff = await requireOpensDoorsStaff();
-  if (!isSupportApprover(staff.email)) {
-    return {
-      ok: false,
-      error: "Only the authorised approver can approve or reject a fix.",
-    };
+  if (!staff.isSuperAdmin) {
+    return { ok: false, error: "Only the owner account can reopen tickets." };
   }
   const existing = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
     select: { id: true, status: true },
   });
   if (!existing) return { ok: false, error: "Ticket not found." };
-  if (existing.status !== "AWAITING_APPROVAL") {
-    return { ok: false, error: "This ticket is not awaiting approval." };
+  if (existing.status !== "RESOLVED") {
+    return { ok: false, error: "Only a resolved ticket can be reopened." };
   }
 
   await prisma.supportTicket.update({
     where: { id: existing.id },
-    data:
-      input.decision === "approve"
-        ? {
-            status: "APPROVED",
-            approvedByStaffUserId: staff.id,
-            approvedAt: new Date(),
-            rejectedAt: null,
-          }
-        : {
-            status: "REJECTED",
-            rejectedAt: new Date(),
-            approvedByStaffUserId: null,
-            approvedAt: null,
-          },
-  });
-  revalidatePath("/support");
-  revalidatePath(`/support/${existing.id}`);
-  return { ok: true };
-}
-
-/** ADMIN closes the ticket once the approved fix is deployed. */
-export async function resolveSupportTicket(input: {
-  ticketId: string;
-  resolutionNote: string;
-}): Promise<SupportActionResult> {
-  const staff = await requireOpensDoorsStaff();
-  if (staff.role !== "ADMIN") {
-    return { ok: false, error: "Only administrators can resolve tickets." };
-  }
-  const existing = await prisma.supportTicket.findUnique({
-    where: { id: input.ticketId },
-    select: { id: true },
-  });
-  if (!existing) return { ok: false, error: "Ticket not found." };
-
-  await prisma.supportTicket.update({
-    where: { id: existing.id },
-    data: {
-      status: "RESOLVED",
-      resolvedAt: new Date(),
-      resolutionNote: input.resolutionNote.trim() || null,
-    },
+    data: { status: "OPEN", resolvedAt: null, resolutionNote: null },
   });
   revalidatePath("/support");
   revalidatePath(`/support/${existing.id}`);
