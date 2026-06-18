@@ -31,7 +31,7 @@ const ACTIONS_SOURCE = readFileSync(ACTIONS_PATH, "utf8");
 describe("Admin operations gate (PR #140)", () => {
   it("redirects non-admin staff to /reporting", () => {
     expect(PAGE_SOURCE).toContain('redirect("/reporting")');
-    expect(PAGE_SOURCE).toMatch(/staff\.role !== "ADMIN"/);
+    expect(PAGE_SOURCE).toMatch(/!staff\.isSuperAdmin/);
   });
 
   it("uses requireOpensDoorsStaff (not the looser requireStaffUser)", () => {
@@ -53,10 +53,10 @@ describe("Admin operations gate (PR #140)", () => {
     expect(PAGE_SOURCE).toMatch(/Not in the staff\s+sidebar/);
   });
 
-  it("re-checks ADMIN in every mutation action handler", () => {
-    // getQueueStatusAction & processQueueAction already had the guard;
-    // PR #140 adds it to releaseStaleProcessingAction,
-    // operatorRequeueFailedAction, and verifySenderIdentityReadyAction.
+  it("re-checks super-admin in every mutation action handler", () => {
+    // Roles removed (2026-06): these admin-only ops tools are now gated on the
+    // per-account isSuperAdmin capability — via requireSuperAdmin() (which
+    // throws) or an inline !staff.isSuperAdmin guard.
     const actionNames = [
       "releaseStaleProcessingAction",
       "operatorRequeueFailedAction",
@@ -71,7 +71,9 @@ describe("Admin operations gate (PR #140)", () => {
       const after = ACTIONS_SOURCE.slice(fnIndex);
       // The guard must appear before the next action declaration / end of
       // file. We match either the role variable or the throw/return shape.
-      const roleGuardMatch = after.search(/role !== "ADMIN"/);
+      const roleGuardMatch = after.search(
+        /requireSuperAdmin\(\)|!staff\.isSuperAdmin/,
+      );
       expect(roleGuardMatch).toBeGreaterThan(-1);
     }
   });

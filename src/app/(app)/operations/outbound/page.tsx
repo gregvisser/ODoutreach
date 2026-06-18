@@ -54,7 +54,7 @@ type Props = { searchParams?: Promise<{ client?: string }> };
  */
 export default async function OutboundOperationsPage({ searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
-  if (staff.role !== "ADMIN") {
+  if (!staff.isSuperAdmin) {
     redirect("/reporting");
   }
   const accessible = await getAccessibleClientIds(staff);

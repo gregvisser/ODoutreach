@@ -21,7 +21,6 @@ import {
 } from "@/lib/reports/outreach-metrics";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { getStaffRole } from "@/server/auth/staff";
 import { loadClientActivityTimeline } from "@/server/activity/client-activity";
 import { loadClientOutreachReplies } from "@/server/queries/client-outreach-replies";
 import { loadClientOutreachMetrics } from "@/server/queries/outreach-metrics";
@@ -45,8 +44,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
 
-  const staffRole = await getStaffRole();
-  const isAdmin = staffRole === "ADMIN";
+  const isAdmin = staff.isSuperAdmin;
 
   const [timeline, replyGroups, metrics] = await Promise.all([
     loadClientActivityTimeline(bundle.client.id, { mode }),

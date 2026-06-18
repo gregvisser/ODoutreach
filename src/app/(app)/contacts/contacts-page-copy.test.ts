@@ -32,7 +32,7 @@ describe("Global Contacts page (PR #138 + PR #140 admin-only)", () => {
 
   it("redirects non-admin staff to /universe (PR #140)", () => {
     expect(pageSource).toContain('redirect("/universe")');
-    expect(pageSource).toMatch(/staff\.role !== "ADMIN"/);
+    expect(pageSource).toMatch(/!staff\.isSuperAdmin/);
   });
 
   it("uses requireOpensDoorsStaff, not the looser requireStaffUser (PR #140)", () => {
@@ -50,7 +50,7 @@ describe("Global Contacts page (PR #138 + PR #140 admin-only)", () => {
     expect(sendImportIdx).toBeGreaterThan(-1);
     // The export default function must be where the redirect lives.
     expect(pageSource).toMatch(
-      /export default async function ContactsPage[\s\S]*?staff\.role !== "ADMIN"[\s\S]*?redirect\("\/universe"\)/,
+      /export default async function ContactsPage[\s\S]*?!staff\.isSuperAdmin[\s\S]*?redirect\("\/universe"\)/,
     );
   });
 });

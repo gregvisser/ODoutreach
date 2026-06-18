@@ -40,7 +40,7 @@ describe("/activity demotion (PR #140 G11)", () => {
 
   it("non-admin staff are redirected away from global Activity", () => {
     expect(PAGE_SOURCE).toContain('redirect("/clients")');
-    expect(PAGE_SOURCE).toMatch(/staff\.role !== "ADMIN"/);
+    expect(PAGE_SOURCE).toMatch(/!staff\.isSuperAdmin/);
   });
 
   it("global Activity uses requireOpensDoorsStaff (not requireStaffUser)", () => {

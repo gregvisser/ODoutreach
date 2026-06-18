@@ -7,8 +7,7 @@ import {
   releaseStaleProcessingClaimsForScope,
 } from "@/server/email/outbound/operator-recovery";
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
-import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { getStaffRole } from "@/server/auth/staff";
+import { requireOpensDoorsStaff, requireSuperAdmin } from "@/server/auth/staff";
 import { prisma } from "@/lib/db";
 import { getAccessibleClientIds, requireClientAccess } from "@/server/tenant/access";
 
@@ -20,11 +19,7 @@ export type QueueStatusResult = {
 };
 
 export async function getQueueStatusAction(): Promise<QueueStatusResult> {
-  await requireOpensDoorsStaff();
-  const role = await getStaffRole();
-  if (role !== "ADMIN") {
-    throw new Error("Forbidden");
-  }
+  await requireSuperAdmin();
 
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
 
@@ -56,11 +51,7 @@ export type ProcessQueueActionResult = {
 export async function processQueueAction(input: {
   limit: number;
 }): Promise<ProcessQueueActionResult> {
-  await requireOpensDoorsStaff();
-  const role = await getStaffRole();
-  if (role !== "ADMIN") {
-    throw new Error("Forbidden");
-  }
+  await requireSuperAdmin();
 
   const limit = Math.min(Math.max(input.limit, 1), 50);
   const result = await processOutboundSendQueue({ limit });
@@ -74,11 +65,7 @@ export async function processQueueAction(input: {
 export async function releaseStaleProcessingAction(): Promise<{ released: number }> {
   // PR #140 (G9): admin-only — releasing claims affects the queue state
   // for every client in scope and is a support-only operation.
-  const staff = await requireOpensDoorsStaff();
-  const role = await getStaffRole();
-  if (role !== "ADMIN") {
-    throw new Error("Forbidden");
-  }
+  const staff = await requireSuperAdmin();
   const accessible = await getAccessibleClientIds(staff);
   const r = await releaseStaleProcessingClaimsForScope(accessible);
   revalidatePath("/operations/outbound");
@@ -93,8 +80,7 @@ export async function operatorRequeueFailedAction(input: {
   // PR #140 (G9): admin-only — requeueing failed sends bypasses the
   // normal staff send path and is a support-only operation.
   const staff = await requireOpensDoorsStaff();
-  const role = await getStaffRole();
-  if (role !== "ADMIN") {
+  if (!staff.isSuperAdmin) {
     return { ok: false, error: "Forbidden" };
   }
   await requireClientAccess(staff, input.clientId);
@@ -118,11 +104,7 @@ export async function verifySenderIdentityReadyAction(clientId: string): Promise
   // PR #140 (G9): admin-only — flipping a client's sender identity to
   // VERIFIED_READY is a manual sign-off step after DNS/domain checks
   // pass in the Resend dashboard. Non-admin staff must not flip it.
-  const staff = await requireOpensDoorsStaff();
-  const role = await getStaffRole();
-  if (role !== "ADMIN") {
-    throw new Error("Forbidden");
-  }
+  const staff = await requireSuperAdmin();
   await requireClientAccess(staff, clientId);
 
   await prisma.client.update({

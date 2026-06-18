@@ -23,12 +23,12 @@ export async function clearClientReplies(input: {
   confirmation: string;
 }): Promise<ClearRepliesResult> {
   const staff = await requireOpensDoorsStaff();
-  if (staff.role !== "ADMIN") {
-    return { ok: false, error: "Only administrators can clear replies." };
+  if (!staff.isSuperAdmin) {
+    return { ok: false, error: "Only the owner account can clear replies." };
   }
 
-  const client = await prisma.client.findUnique({
-    where: { id: input.clientId },
+  const client = await prisma.client.findFirst({
+    where: { id: input.clientId, deletedAt: null },
     select: { id: true, name: true },
   });
   if (!client) {

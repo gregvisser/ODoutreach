@@ -70,7 +70,7 @@ type Props = {
 
 export default async function ContactsPage({ searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
-  if (staff.role !== "ADMIN") {
+  if (!staff.isSuperAdmin) {
     redirect("/universe");
   }
   const accessible = await getAccessibleClientIds(staff);

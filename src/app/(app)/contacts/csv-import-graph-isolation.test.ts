@@ -52,7 +52,7 @@ describe("CSV import is isolated from Staff access Graph invite-status reads", (
       "utf8",
     );
 
-    expect(contactsPage).toContain('staff.role !== "ADMIN"');
+    expect(contactsPage).toContain('!staff.isSuperAdmin');
     expect(sourcesPage).toContain("getAccessibleClientIds");
     expect(sourcesPage).toContain("loadClientWorkspaceBundle");
   });
