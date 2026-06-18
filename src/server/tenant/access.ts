@@ -4,36 +4,35 @@ import type { StaffRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 
 /**
- * Roles that may see/operate on all client workspaces (internal ops staff).
- * OPERATOR is included: operators are trusted staff who do the day-to-day
- * outreach work across every client, so they no longer need per-client
- * membership to access a workspace. VIEWER stays membership-scoped + read-only.
+ * In-account staff roles were removed (2026-06): every active staff member gets
+ * every feature. The `role` column still exists on StaffUser but is no longer
+ * read for access decisions — these helpers now return the same answer for
+ * everyone. What is DELIBERATELY preserved is tenant isolation: staff may only
+ * ever act on a real, live (non-soft-deleted) client workspace, enforced by
+ * `getAccessibleClientIds` + `requireClientAccess`. Destructive whole-workspace
+ * ops stay gated on the per-account `isSuperAdmin` capability (see canDeleteWorkspace).
  */
-const GLOBAL_CLIENT_ACCESS_ROLES: StaffRole[] = ["ADMIN", "MANAGER", "OPERATOR"];
-
-/** Roles allowed to assign other staff to client workspaces (admin-level). */
-const MEMBERSHIP_ASSIGNMENT_ROLES: StaffRole[] = ["ADMIN", "MANAGER"];
 
 export type StaffIdentity = {
   id: string;
+  /** Retained for back-compat; no longer used for any access decision. */
   role: StaffRole;
 };
 
-/** ADMIN/MANAGER may assign OPERATOR/VIEWER staff to client workspaces via `ClientMembership`. */
+/** Roles removed — any active staff member may assign workspace membership. */
 export function canAssignClientWorkspaceMembership(staff: StaffIdentity): boolean {
-  return MEMBERSHIP_ASSIGNMENT_ROLES.includes(staff.role);
+  void staff;
+  return true;
 }
 
 /**
- * F3 — roles that may use the "re-engage" override: bypassing the 21-day
- * outreach cooldown to re-use an older list. Senior staff only. The override
- * NEVER bypasses suppression (unsubscribe / DNC) or hard bounces.
+ * F3 — the "re-engage" override bypasses the 21-day outreach cooldown to re-use
+ * an older list. It NEVER bypasses suppression (unsubscribe / DNC) or hard
+ * bounces. Roles removed — any active staff member may use it.
  */
-const COOLDOWN_REENGAGE_ROLES: StaffRole[] = ["ADMIN", "MANAGER"];
-
-/** True if this staff member may bypass the outreach cooldown timer (re-engage). */
 export function canUseCooldownReengage(staff: StaffIdentity): boolean {
-  return COOLDOWN_REENGAGE_ROLES.includes(staff.role);
+  void staff;
+  return true;
 }
 
 /**
@@ -49,27 +48,22 @@ export function canDeleteWorkspace(staff: { isSuperAdmin: boolean }): boolean {
 /**
  * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
  * from the client without intersecting with this list.
+ *
+ * Roles removed: every active staff member may access every LIVE client. The
+ * `deletedAt: null` filter is the tenant wall that survives — soft-deleted
+ * workspaces stay invisible to all normal paths (only `listSoftDeletedClients`,
+ * which is super-admin-gated, can see them), so `requireClientAccess` still
+ * rejects a deleted or non-existent client id.
  */
 export async function getAccessibleClientIds(
   staff: StaffIdentity,
 ): Promise<string[]> {
-  if (GLOBAL_CLIENT_ACCESS_ROLES.includes(staff.role)) {
-    // F2 — soft-deleted workspaces are invisible to all normal access paths.
-    // Only the dedicated super-admin recovery view (`listSoftDeletedClients`)
-    // may see them.
-    const rows = await prisma.client.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-    });
-    return rows.map((r) => r.id);
-  }
-
-  const memberships = await prisma.clientMembership.findMany({
-    // F2 — exclude memberships whose workspace has been soft-deleted.
-    where: { staffUserId: staff.id, client: { deletedAt: null } },
-    select: { clientId: true },
+  void staff;
+  const rows = await prisma.client.findMany({
+    where: { deletedAt: null },
+    select: { id: true },
   });
-  return memberships.map((m) => m.clientId);
+  return rows.map((r) => r.id);
 }
 
 /**

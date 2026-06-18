@@ -1,53 +1,60 @@
 import { describe, expect, it, vi } from "vitest";
 
+// Only LIVE (non-deleted) clients are returned by getAccessibleClientIds; the
+// mock stands in for that query.
 vi.mock("@/lib/db", () => ({
-  prisma: {},
+  prisma: {
+    client: {
+      findMany: vi.fn(async () => [{ id: "c1" }, { id: "c2" }]),
+    },
+  },
 }));
 
 import {
   canAssignClientWorkspaceMembership,
   canDeleteWorkspace,
   canUseCooldownReengage,
+  getAccessibleClientIds,
+  requireClientAccess,
 } from "./access";
 
-describe("canAssignClientWorkspaceMembership", () => {
-  it("allows ADMIN and MANAGER", () => {
-    expect(
-      canAssignClientWorkspaceMembership({ id: "a", role: "ADMIN" }),
-    ).toBe(true);
-    expect(
-      canAssignClientWorkspaceMembership({ id: "m", role: "MANAGER" }),
-    ).toBe(true);
+const ROLES = ["ADMIN", "MANAGER", "OPERATOR", "VIEWER"] as const;
+
+describe("in-account roles removed — capabilities open to any active staff", () => {
+  it("canAssignClientWorkspaceMembership is true for every role", () => {
+    for (const role of ROLES) {
+      expect(canAssignClientWorkspaceMembership({ id: "s", role })).toBe(true);
+    }
   });
 
-  it("denies OPERATOR and VIEWER", () => {
-    expect(
-      canAssignClientWorkspaceMembership({ id: "o", role: "OPERATOR" }),
-    ).toBe(false);
-    expect(
-      canAssignClientWorkspaceMembership({ id: "v", role: "VIEWER" }),
-    ).toBe(false);
+  it("canUseCooldownReengage is true for every role", () => {
+    for (const role of ROLES) {
+      expect(canUseCooldownReengage({ id: "s", role })).toBe(true);
+    }
   });
 });
 
-describe("canUseCooldownReengage (F3)", () => {
-  it("allows ADMIN and MANAGER to bypass the cooldown", () => {
-    expect(canUseCooldownReengage({ id: "a", role: "ADMIN" })).toBe(true);
-    expect(canUseCooldownReengage({ id: "m", role: "MANAGER" })).toBe(true);
-  });
-
-  it("denies OPERATOR and VIEWER (cannot bypass the cooldown)", () => {
-    expect(canUseCooldownReengage({ id: "o", role: "OPERATOR" })).toBe(false);
-    expect(canUseCooldownReengage({ id: "v", role: "VIEWER" })).toBe(false);
-  });
-});
-
-describe("canDeleteWorkspace (F2)", () => {
-  it("allows only a super-admin, regardless of role", () => {
+describe("canDeleteWorkspace (F2 — still capability-gated, unchanged)", () => {
+  it("allows only a super-admin", () => {
     expect(canDeleteWorkspace({ isSuperAdmin: true })).toBe(true);
+    expect(canDeleteWorkspace({ isSuperAdmin: false })).toBe(false);
+  });
+});
+
+describe("tenant isolation still holds after role removal", () => {
+  // role is irrelevant now — use the most-restricted historical role to prove it.
+  const anyStaff = { id: "s1", role: "VIEWER" as const };
+
+  it("every staff member can access every LIVE client", async () => {
+    expect(await getAccessibleClientIds(anyStaff)).toEqual(["c1", "c2"]);
+    await expect(requireClientAccess(anyStaff, "c1")).resolves.toBeUndefined();
+    await expect(requireClientAccess(anyStaff, "c2")).resolves.toBeUndefined();
   });
 
-  it("denies a non-super-admin (even ADMIN role has it off by default)", () => {
-    expect(canDeleteWorkspace({ isSuperAdmin: false })).toBe(false);
+  it("a client that is NOT live (soft-deleted or non-existent) is still rejected", async () => {
+    // c3 is not in the live set → the wall rejects it for everyone.
+    await expect(requireClientAccess(anyStaff, "c3")).rejects.toThrow(
+      "FORBIDDEN_CLIENT",
+    );
   });
 });

@@ -2,24 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { mailboxMutatorAllowedFromRoles } from "./mailbox-mutator-policy";
 
-describe("mailboxMutatorAllowedFromRoles", () => {
-  it("denies staff VIEWER", () => {
-    expect(mailboxMutatorAllowedFromRoles("VIEWER", "LEAD")).toBe(false);
-  });
+const STAFF_ROLES = ["ADMIN", "MANAGER", "OPERATOR", "VIEWER"] as const;
+const MEMBER_ROLES = ["LEAD", "CONTRIBUTOR", "VIEWER", null] as const;
 
-  it("allows ADMIN regardless of membership", () => {
-    expect(mailboxMutatorAllowedFromRoles("ADMIN", null)).toBe(true);
-    expect(mailboxMutatorAllowedFromRoles("ADMIN", "VIEWER")).toBe(true);
-  });
-
-  it("allows MANAGER regardless of membership", () => {
-    expect(mailboxMutatorAllowedFromRoles("MANAGER", null)).toBe(true);
-  });
-
-  it("allows OPERATOR regardless of membership (full operational role)", () => {
-    expect(mailboxMutatorAllowedFromRoles("OPERATOR", "LEAD")).toBe(true);
-    expect(mailboxMutatorAllowedFromRoles("OPERATOR", "CONTRIBUTOR")).toBe(true);
-    expect(mailboxMutatorAllowedFromRoles("OPERATOR", "VIEWER")).toBe(true);
-    expect(mailboxMutatorAllowedFromRoles("OPERATOR", null)).toBe(true);
+describe("mailboxMutatorAllowedFromRoles (roles removed)", () => {
+  it("allows any staff role / membership combination", () => {
+    for (const staffRole of STAFF_ROLES) {
+      for (const memberRole of MEMBER_ROLES) {
+        expect(mailboxMutatorAllowedFromRoles(staffRole, memberRole)).toBe(true);
+      }
+    }
   });
 });
