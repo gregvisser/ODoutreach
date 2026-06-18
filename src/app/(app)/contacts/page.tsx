@@ -28,6 +28,7 @@ import {
   CsvImportForm,
   type ClientListOption,
 } from "@/app/(app)/contacts/csv-import-form";
+import { ContactImportResultBanner } from "@/components/contacts/contact-import-result-banner";
 import { SendToContactForm } from "@/app/(app)/contacts/send-to-contact-form";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listContactListsForClient } from "@/server/contacts/contact-lists";
@@ -57,6 +58,7 @@ type Props = {
     import?: string;
     batch?: string;
     imported?: string;
+    attached?: string;
     skipped?: string;
     uNew?: string;
     uMatch?: string;
@@ -78,21 +80,6 @@ export default async function ContactsPage({ searchParams }: Props) {
   const rawFilter = sp.client;
   const clientFilter =
     rawFilter && accessible.includes(rawFilter) ? rawFilter : undefined;
-  const importBanner =
-    sp.import === "ok"
-      ? {
-          kind: "ok" as const,
-          imported: sp.imported,
-          skipped: sp.skipped,
-          batch: sp.batch,
-          list: sp.list,
-          uNew: sp.uNew,
-          uMatch: sp.uMatch,
-        }
-      : sp.import === "error"
-        ? { kind: "error" as const, message: sp.message }
-        : null;
-
   const sendBanner =
     sp.send === "queued"
       ? { kind: "queued" as const, id: sp.id }
@@ -202,40 +189,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         listsByClientId={listsByClientId}
       />
 
-      {importBanner?.kind === "ok" ? (
-        <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
-          Import finished — created{" "}
-          <span className="font-medium">{importBanner.imported ?? "0"}</span>, skipped{" "}
-          <span className="font-medium">{importBanner.skipped ?? "0"}</span>
-          {importBanner.list ? (
-            <>
-              {" "}
-              into list{" "}
-              <span className="font-medium">{importBanner.list}</span>
-            </>
-          ) : null}
-          {importBanner.batch ? (
-            <>
-              {" "}
-              (batch <span className="font-mono text-xs">{importBanner.batch}</span>)
-            </>
-          ) : null}
-          .
-          {importBanner.uNew != null || importBanner.uMatch != null ? (
-            <>
-              {" "}
-              Universe:{" "}
-              <span className="font-medium">{importBanner.uNew ?? "0"}</span> new,{" "}
-              <span className="font-medium">{importBanner.uMatch ?? "0"}</span> matched existing.
-            </>
-          ) : null}
-        </p>
-      ) : null}
-      {importBanner?.kind === "error" ? (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          Import failed: {importBanner.message ?? "Unknown error"}
-        </p>
-      ) : null}
+      <ContactImportResultBanner params={sp} />
 
       {sendBanner?.kind === "queued" ? (
         <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">

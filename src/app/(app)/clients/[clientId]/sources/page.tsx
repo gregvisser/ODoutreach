@@ -24,6 +24,7 @@ type Props = {
   searchParams?: Promise<{
     import?: string;
     imported?: string;
+    attached?: string;
     skipped?: string;
     list?: string;
     batch?: string;

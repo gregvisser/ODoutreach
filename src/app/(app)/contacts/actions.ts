@@ -120,6 +120,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
     import: "ok",
     batch: result.batchId,
     imported: String(result.summary.imported),
+    attached: String(result.summary.attachedExisting),
     skipped: String(
       result.summary.skippedInvalid + result.summary.skippedDuplicate,
     ),

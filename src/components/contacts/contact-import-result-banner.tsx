@@ -1,6 +1,7 @@
 export type ContactImportBannerParams = {
   import?: string;
   imported?: string;
+  attached?: string;
   skipped?: string;
   list?: string;
   batch?: string;
@@ -27,8 +28,14 @@ export function ContactImportResultBanner({
     return (
       <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
         Import finished — created{" "}
-        <span className="font-medium">{params.imported ?? "0"}</span>, skipped{" "}
-        <span className="font-medium">{params.skipped ?? "0"}</span>
+        <span className="font-medium">{params.imported ?? "0"}</span>
+        {params.attached && params.attached !== "0" ? (
+          <>
+            , attached <span className="font-medium">{params.attached}</span>{" "}
+            already-known
+          </>
+        ) : null}
+        , skipped <span className="font-medium">{params.skipped ?? "0"}</span>
         {params.list ? (
           <>
             {" "}

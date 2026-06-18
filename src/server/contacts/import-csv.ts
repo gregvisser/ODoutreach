@@ -20,6 +20,10 @@ import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppr
 export type CsvImportSummary = {
   totalRows: number;
   imported: number;
+  /** Rows that matched an existing client contact and were attached to the
+   * target list (no new contact created). The preview calls these "attach
+   * only"; counting them as skipped made the two screens disagree. */
+  attachedExisting: number;
   skippedInvalid: number;
   skippedDuplicate: number;
   errors: string[];
@@ -92,6 +96,7 @@ export async function runContactCsvImport(args: {
   const summary: CsvImportSummary = {
     totalRows: rows.length,
     imported: 0,
+    attachedExisting: 0,
     skippedInvalid: 0,
     skippedDuplicate: 0,
     errors: [],
@@ -215,7 +220,9 @@ export async function runContactCsvImport(args: {
       else summary.universeMatched++;
 
       if (existing.has(email)) {
-        summary.skippedDuplicate++;
+        // Existing client contact — not a skip: it gets attached to the target
+        // list below (matches the preview's "attach only" bucket).
+        summary.attachedExisting++;
         const existingId = existingIdByEmail.get(email);
         if (existingId) {
           await prisma.contact.updateMany({

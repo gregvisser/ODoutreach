@@ -7,6 +7,7 @@ import {
   type ImportPreviewResult,
   type SuppressionLookup,
 } from "@/lib/contacts/import-preview";
+import { mapContactRow } from "@/lib/contact-import-contract";
 import { normalizeEmail, isValidEmailFormat } from "@/lib/normalize";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -105,24 +106,20 @@ export async function previewContactsCsvAction(
     select: { id: true, email: true },
   });
 
-  // Collect distinct normalized+valid emails from the file so we call the
-  // suppression evaluator exactly once per candidate address.
+  // Collect distinct normalized+valid emails using the SAME column mapping the
+  // importer and the preview builder use (mapContactRow). Previously this loop
+  // matched a hand-coded list of header spellings that drifted from the import
+  // contract, so an email header the importer understood but this list didn't
+  // (e.g. "email_address", or "A  Emails" with odd spacing) produced no
+  // suppression key — and buildCsvImportPreview then showed that row as
+  // sendable when it was actually suppressed. Mapping here the same way keeps
+  // the suppression keys aligned with the per-row email lookups.
   const distinctEmails = new Set<string>();
   for (const row of rawRows) {
-    for (const [rawHeading, rawValue] of Object.entries(row)) {
-      const normalizedHeading = rawHeading.trim().toLowerCase();
-      if (
-        normalizedHeading === "a emails" ||
-        normalizedHeading === "email" ||
-        normalizedHeading === "e-mail" ||
-        normalizedHeading === "email address" ||
-        normalizedHeading === "work email"
-      ) {
-        const candidate = normalizeEmail(String(rawValue ?? ""));
-        if (candidate && isValidEmailFormat(candidate)) {
-          distinctEmails.add(candidate);
-        }
-      }
+    const mapped = mapContactRow(row);
+    const candidate = normalizeEmail(mapped.email ?? "");
+    if (candidate && isValidEmailFormat(candidate)) {
+      distinctEmails.add(candidate);
     }
   }
 

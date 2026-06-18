@@ -184,6 +184,21 @@ export default async function ReportingPage({ searchParams }: Props) {
               tone={m.replies > 0 ? "positive" : undefined}
               href={detailHref("replies")}
             />
+            <HeadlineMetric
+              label="Delivered"
+              value={
+                m.deliveryTracked ? m.delivered.toLocaleString() : "Not tracked"
+              }
+              hint={
+                m.deliveryTracked
+                  ? `Delivery rate: ${formatRate(m.deliveryRate)}`
+                  : "No provider delivery webhooks yet"
+              }
+              tone={
+                m.deliveryTracked && m.delivered > 0 ? "positive" : undefined
+              }
+              href={m.deliveryTracked ? detailHref("delivered") : undefined}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
