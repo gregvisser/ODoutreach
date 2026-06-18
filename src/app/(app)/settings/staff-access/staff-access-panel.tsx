@@ -16,30 +16,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { STAFF_ROLE_LABELS } from "@/lib/ui/status-labels";
 
 import {
   inviteStaffUser,
   resendStaffInvitation,
   setStaffActive,
   syncStaffInvitationStatus,
-  updateStaffRole,
   type StaffActionResult,
 } from "./actions";
-
-const ROLES = ["ADMIN", "MANAGER", "OPERATOR", "VIEWER"] as const;
-
-const ROLE_HINTS: Record<(typeof ROLES)[number], string> = {
-  ADMIN: "Full access, including staff and settings",
-  MANAGER: "Manage clients, sending, and approvals",
-  OPERATOR: "Day-to-day outreach work",
-  VIEWER: "Read-only access",
-};
 
 export type StaffRow = {
   id: string;
   email: string;
-  role: (typeof ROLES)[number];
   isActive: boolean;
   guestInvitationState: "NONE" | "PENDING" | "ACCEPTED";
   invitedAt: string | null;
@@ -108,9 +96,8 @@ export function StaffAccessPanel({ initialRows }: { initialRows: StaffRow[] }) {
           startTransition(async () => {
             const fd = new FormData(form);
             const email = String(fd.get("email") ?? "");
-            const role = String(fd.get("role") ?? "OPERATOR") as StaffRow["role"];
             const isActive = fd.get("isActive") === "on";
-            const r = await inviteStaffUser({ email, role, isActive });
+            const r = await inviteStaffUser({ email, isActive });
             notify(r);
             if (r.ok) form.reset();
           });
@@ -122,7 +109,6 @@ export function StaffAccessPanel({ initialRows }: { initialRows: StaffRow[] }) {
           <TableHeader>
             <TableRow>
               <TableHead>Person</TableHead>
-              <TableHead>Role</TableHead>
               <TableHead>Sign-in</TableHead>
               <TableHead>Invitation</TableHead>
               <TableHead className="min-w-[220px]">Actions</TableHead>
@@ -166,8 +152,7 @@ function InviteForm({
         first. If they are already in{" "}
         <code className="text-xs">StaffUser</code>, they can sign in without
         this step. Microsoft 365 delivers the
-        invite; after acceptance they appear in the list with the role you
-        choose.
+        invite; after acceptance they appear in the list below.
       </p>
       <details className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <summary className="cursor-pointer font-medium text-foreground">
@@ -206,25 +191,6 @@ function InviteForm({
             disabled={disabled}
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="invite-role">Role</Label>
-          <select
-            id="invite-role"
-            name="role"
-            defaultValue="OPERATOR"
-            disabled={disabled}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-          >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {STAFF_ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-          <p className="text-[11px] text-muted-foreground">
-            {ROLE_HINTS.OPERATOR}
-          </p>
-        </div>
         <div className="flex items-end gap-2 pb-2">
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input type="checkbox" name="isActive" defaultChecked className="rounded border-input" />
@@ -252,8 +218,6 @@ function StaffRowActions({
   onResult: (r: StaffActionResult) => void;
   startTransition: (cb: () => void) => void;
 }) {
-  const [role, setRole] = useState(row.role);
-
   const inviteLabel =
     row.guestInvitationState === "PENDING"
       ? "Invitation sent"
@@ -274,37 +238,6 @@ function StaffRowActions({
   return (
     <TableRow>
       <TableCell className="text-sm">{row.email}</TableCell>
-      <TableCell>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as StaffRow["role"])}
-            disabled={disabled}
-            className="h-8 max-w-[160px] rounded-md border border-input bg-transparent px-2 text-xs"
-          >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {STAFF_ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="h-8 text-xs"
-            disabled={disabled || role === row.role}
-            onClick={() => {
-              startTransition(async () => {
-                const r = await updateStaffRole({ staffUserId: row.id, role });
-                onResult(r);
-              });
-            }}
-          >
-            Save role
-          </Button>
-        </div>
-      </TableCell>
       <TableCell>
         <span
           className={cn(

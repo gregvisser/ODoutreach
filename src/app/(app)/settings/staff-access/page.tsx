@@ -13,13 +13,13 @@ export const dynamic = "force-dynamic";
 export default async function StaffAccessPage() {
   const staff = await requireOpensDoorsStaff();
 
-  if (staff.role !== "ADMIN") {
+  if (!staff.isSuperAdmin) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <h1 className="text-2xl font-semibold">Staff access</h1>
         <p className="text-muted-foreground">
-          Only administrators can add staff or change roles. Contact an
-          administrator if you need access adjusted.
+          Only the owner account can add or remove staff. Contact the owner if
+          you need someone&rsquo;s access adjusted.
         </p>
         <Link
           href="/settings"
@@ -41,7 +41,6 @@ export default async function StaffAccessPage() {
   const initialRows: StaffRow[] = rows.map((r) => ({
     id: r.id,
     email: r.email,
-    role: r.role,
     isActive: r.isActive,
     guestInvitationState: r.guestInvitationState,
     invitedAt: r.invitedAt?.toISOString() ?? null,
@@ -57,11 +56,12 @@ export default async function StaffAccessPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Staff access</h1>
           <p className="mt-1 text-muted-foreground">
-            Add people to the app, assign roles, and turn access on or off. Staff
-            who already have a <code className="text-xs">StaffUser</code> row
-            sign in directly with Microsoft 365 (MFA is enforced by your
-            organisation). Optional B2B guest invitation is only needed when you
-            want Microsoft to add someone to a tenant as a guest first.
+            Add people to the app and turn their access on or off. Every active
+            staff member gets the same full set of features. Staff who already
+            have a <code className="text-xs">StaffUser</code> row sign in
+            directly with Microsoft 365 (MFA is enforced by your organisation).
+            Optional B2B guest invitation is only needed when you want Microsoft
+            to add someone to a tenant as a guest first.
           </p>
         </div>
         <Link

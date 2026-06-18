@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { validateGlobalBrandInput } from "@/lib/branding/global-brand";
 import { prisma } from "@/lib/db";
-import { requireStaffAdmin } from "@/server/auth/staff";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 const inputSchema = z.object({
   appLogoUrl: z.string().default(""),
@@ -19,10 +19,10 @@ const inputSchema = z.object({
 export type UpdateGlobalBrandInput = z.infer<typeof inputSchema>;
 
 /**
- * Admin-only: upsert the `GlobalBrandSetting` singleton (id = "global")
- * with the submitted branding values. Each field may be blank — a blank
- * field clears the override and the UI falls back to the shipped
- * OpensDoors defaults.
+ * Any signed-in staff: upsert the `GlobalBrandSetting` singleton
+ * (id = "global") with the submitted branding values. Each field may be
+ * blank — a blank field clears the override and the UI falls back to the
+ * shipped OpensDoors defaults.
  *
  * Strict scope: only touches `GlobalBrandSetting` (+ one AuditLog row).
  * No mailbox, sequence, contact, suppression, OAuth, secret, or
@@ -33,11 +33,11 @@ export async function updateGlobalBrandAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   let staff;
   try {
-    staff = await requireStaffAdmin();
+    staff = await requireOpensDoorsStaff();
   } catch {
     return {
       ok: false,
-      error: "Only administrators can update global branding.",
+      error: "You must be signed in as staff to update global branding.",
     };
   }
 
@@ -94,8 +94,8 @@ export async function updateGlobalBrandAction(
 }
 
 /**
- * Admin-only convenience: clear the entire `GlobalBrandSetting` row
- * back to shipped defaults. Equivalent to saving with every field
+ * Any signed-in staff convenience: clear the entire `GlobalBrandSetting`
+ * row back to shipped defaults. Equivalent to saving with every field
  * blank, but phrased as an explicit "reset" so the UI intent is clear
  * in the audit log.
  */
@@ -104,11 +104,11 @@ export async function resetGlobalBrandAction(): Promise<
 > {
   let staff;
   try {
-    staff = await requireStaffAdmin();
+    staff = await requireOpensDoorsStaff();
   } catch {
     return {
       ok: false,
-      error: "Only administrators can reset global branding.",
+      error: "You must be signed in as staff to reset global branding.",
     };
   }
 

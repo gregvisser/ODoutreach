@@ -54,8 +54,8 @@ describe("Settings page copy (PR #139)", () => {
     }
   });
 
-  it("gates Staff and roles to admins (server-side)", () => {
-    expect(pageSource).toMatch(/staff\.role === "ADMIN"/);
+  it("gates Staff access to the owner account (server-side)", () => {
+    expect(pageSource).toMatch(/staff\.isSuperAdmin/);
   });
 
   it("links to /settings/branding and /settings/staff-access", () => {

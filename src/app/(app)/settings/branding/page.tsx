@@ -21,8 +21,9 @@ export const metadata = {
 };
 
 export default async function SettingsBrandingPage() {
-  const staff = await requireOpensDoorsStaff();
-  const isAdmin = staff.role === "ADMIN";
+  // Branding is a shared feature — any signed-in staff may edit the global
+  // brand (gate is just "registered active staff", no role/owner check).
+  await requireOpensDoorsStaff();
   const [effective, storedRow] = await Promise.all([
     getGlobalBrand(),
     loadStoredBrand(),
@@ -61,7 +62,7 @@ export default async function SettingsBrandingPage() {
         </div>
 
         <GlobalBrandEditor
-          canEdit={isAdmin}
+          canEdit
           effective={effective}
           stored={stored}
         />

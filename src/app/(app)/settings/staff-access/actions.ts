@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
-import { isStaffEmailAllowed, requireStaffAdminForAction } from "@/server/auth/staff";
+import { isStaffEmailAllowed, requireSuperAdminForAction } from "@/server/auth/staff";
 import { logStaffAccessAudit } from "@/server/staff-access/audit";
 import { assertLastActiveAdminProtected } from "@/server/staff-access/last-admin";
 import {
@@ -56,15 +56,18 @@ const inviteSchema = z.object({
     if (typeof value !== "string") return value;
     return value.trim();
   }, z.string().email()),
-  role: staffRoleSchema,
+  // Roles no longer gate features — every active staff member gets the full
+  // app. We still persist a role for schema compatibility + the last-active-
+  // admin lockout guard, defaulting new staff to full ("ADMIN") access.
+  role: staffRoleSchema.default("ADMIN"),
   isActive: z.boolean().optional().default(true),
 });
 
 export async function inviteStaffUser(
-  raw: z.infer<typeof inviteSchema>,
+  raw: z.input<typeof inviteSchema>,
 ): Promise<StaffActionResult> {
   try {
-    const admin = await requireStaffAdminForAction();
+    const admin = await requireSuperAdminForAction();
     const data = inviteSchema.parse(raw);
     const email = normalizeEmail(data.email);
     assertInviteeDomainAllowed(email);
@@ -124,7 +127,7 @@ export async function inviteStaffUser(
 
 export async function resendStaffInvitation(staffUserId: string): Promise<StaffActionResult> {
   try {
-    const admin = await requireStaffAdminForAction();
+    const admin = await requireSuperAdminForAction();
     const staff = await prisma.staffUser.findUnique({ where: { id: staffUserId } });
     if (!staff) {
       return { ok: false, error: "Staff user not found." };
@@ -165,7 +168,7 @@ export async function syncStaffInvitationStatus(
   staffUserId: string,
 ): Promise<StaffActionResult> {
   try {
-    const admin = await requireStaffAdminForAction();
+    const admin = await requireSuperAdminForAction();
     const staff = await prisma.staffUser.findUnique({ where: { id: staffUserId } });
     if (!staff?.graphInvitedUserObjectId) {
       return {
@@ -221,7 +224,7 @@ export async function updateStaffRole(
   raw: z.infer<typeof updateRoleSchema>,
 ): Promise<StaffActionResult> {
   try {
-    const admin = await requireStaffAdminForAction();
+    const admin = await requireSuperAdminForAction();
     const data = updateRoleSchema.parse(raw);
     const before = await prisma.staffUser.findUnique({
       where: { id: data.staffUserId },
@@ -266,7 +269,7 @@ export async function setStaffActive(
   raw: z.infer<typeof setActiveSchema>,
 ): Promise<StaffActionResult> {
   try {
-    const admin = await requireStaffAdminForAction();
+    const admin = await requireSuperAdminForAction();
     const data = setActiveSchema.parse(raw);
     await assertLastActiveAdminProtected({
       actorStaffUserId: admin.id,

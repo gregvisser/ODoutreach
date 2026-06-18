@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { staffRoleLabel } from "@/lib/ui/status-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getConsoleTestUsersUrl } from "@/server/integrations/google-oauth-test-users/test-users-api";
@@ -74,8 +73,8 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              Admin-only editor with live previews. Per-client logos are
-              managed separately in each client&rsquo;s brief.
+              Editor with live previews. Per-client logos are managed
+              separately in each client&rsquo;s brief.
             </p>
             <Link
               href="/settings/branding"
@@ -90,16 +89,16 @@ export default async function SettingsPage() {
       <section className="space-y-3">
         <SectionHeading
           title="Team access"
-          description="Who can sign in to OpensDoors Outreach and what they can do."
+          description="Who can sign in to OpensDoors Outreach. Every active staff member gets the same full set of features."
         />
 
-        {staff.role === "ADMIN" ? (
+        {staff.isSuperAdmin ? (
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Staff and roles</CardTitle>
+              <CardTitle className="text-lg">Staff access</CardTitle>
               <CardDescription>
-                Invite colleagues, assign roles, and deactivate access when
-                people move on.
+                Invite colleagues and turn their access on or off when people
+                join or move on.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center justify-between gap-3">
@@ -118,10 +117,10 @@ export default async function SettingsPage() {
         ) : (
           <Card className="border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Staff and roles</CardTitle>
+            <CardTitle className="text-lg">Staff access</CardTitle>
             <CardDescription>
-              Only administrators can invite colleagues or change roles.
-                Contact an administrator if you need access adjusted.
+              Only the owner account can invite or remove staff. Contact the
+                owner if you need someone&rsquo;s access adjusted.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -141,8 +140,10 @@ export default async function SettingsPage() {
               <p className="font-medium">{staff.email}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Role</p>
-              <p className="font-medium">{staffRoleLabel(staff.role)}</p>
+              <p className="text-muted-foreground">Access</p>
+              <p className="font-medium">
+                {staff.isSuperAdmin ? "Owner" : "Staff"}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -363,7 +364,7 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        {staff.role === "ADMIN" && googleWorkspaceSuppressionConfigured && (
+        {staff.isSuperAdmin && googleWorkspaceSuppressionConfigured && (
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg">Google OAuth — test users</CardTitle>

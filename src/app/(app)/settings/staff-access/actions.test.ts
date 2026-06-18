@@ -4,7 +4,7 @@ const {
   createGuestInvitation,
   logStaffAccessAudit,
   revalidatePath,
-  requireStaffAdminForAction,
+  requireSuperAdminForAction,
   isStaffEmailAllowed,
   staffUserCreate,
   staffUserDelete,
@@ -14,7 +14,7 @@ const {
   createGuestInvitation: vi.fn(),
   logStaffAccessAudit: vi.fn(),
   revalidatePath: vi.fn(),
-  requireStaffAdminForAction: vi.fn(),
+  requireSuperAdminForAction: vi.fn(),
   isStaffEmailAllowed: vi.fn(),
   staffUserCreate: vi.fn(),
   staffUserDelete: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("next/cache", () => ({
 }));
 
 vi.mock("@/server/auth/staff", () => ({
-  requireStaffAdminForAction,
+  requireSuperAdminForAction,
   isStaffEmailAllowed,
 }));
 
@@ -58,7 +58,7 @@ describe("inviteStaffUser", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AUTH_URL = "https://app.example.test";
-    requireStaffAdminForAction.mockResolvedValue({ id: "admin-1" });
+    requireSuperAdminForAction.mockResolvedValue({ id: "admin-1" });
     isStaffEmailAllowed.mockReturnValue(true);
     staffUserFindUnique.mockResolvedValue(null);
     staffUserCreate.mockResolvedValue({ id: "staff-1" });
