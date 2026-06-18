@@ -23,6 +23,14 @@ export async function runSuppressionSyncAction(formData: FormData): Promise<void
   }
 
   await requireClientAccess(staff, source.clientId);
+  // Owner-only: the sync replaces the whole list (delete-then-replace) and can
+  // wipe blocked addresses. Matches the per-client suppression controls.
+  if (!staff.isSuperAdmin) {
+    redirect(
+      "/suppression?sync=error&message=" +
+        encodeURIComponent("Only the owner account can sync suppression sheets."),
+    );
+  }
 
   const result = await syncSuppressionSourceFromGoogle({ sourceId });
 

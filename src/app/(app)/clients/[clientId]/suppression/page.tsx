@@ -104,6 +104,7 @@ export default async function ClientSuppressionPage({ params }: Props) {
       <ClientSuppressionInlineCard
         clientId={client.id}
         clientName={client.name}
+        canManageSheets={staff.isSuperAdmin}
         googleServiceAccountConfigured={bundle.googleSheetsEnvReady}
         googleServiceAccountClientEmail={bundle.googleSaDisplay.clientEmail}
         sources={client.suppressionSources.map((s) => ({

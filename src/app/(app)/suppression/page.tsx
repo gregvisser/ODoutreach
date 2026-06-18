@@ -210,6 +210,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
               },
             }))}
             runSuppressionSyncAction={runSuppressionSyncAction}
+            canSync={staff.isSuperAdmin}
           />
         </CardContent>
       </Card>

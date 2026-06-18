@@ -44,6 +44,13 @@ type Props = {
   googleServiceAccountConfigured: boolean;
   /** Public service account email — safe to show; never a private key. */
   googleServiceAccountClientEmail: string | null;
+  /**
+   * Owner-only (isSuperAdmin). Connecting / re-pointing / syncing a sheet does
+   * a delete-then-replace that can wipe blocked addresses, so the controls are
+   * hidden for everyone else — they still see the read-only status below, and
+   * the all-staff Quick-add manual block lives above this card.
+   */
+  canManageSheets: boolean;
 };
 
 export function ClientSuppressionInlineCard({
@@ -52,6 +59,7 @@ export function ClientSuppressionInlineCard({
   sources,
   googleServiceAccountConfigured,
   googleServiceAccountClientEmail,
+  canManageSheets,
 }: Props) {
   const router = useRouter();
   const [emailUrl, setEmailUrl] = useState("");
@@ -137,119 +145,129 @@ export function ClientSuppressionInlineCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {googleServiceAccountConfigured && googleServiceAccountClientEmail ? (
-          <details className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
-            <summary className="cursor-pointer font-medium text-foreground">
-              Advanced Google Sheet sharing
-            </summary>
-            <div className="mt-3">
-              <GoogleSheetsSharingCallout
-                serviceAccountEmail={googleServiceAccountClientEmail}
-                idPrefix={`client-${clientId}-suppression`}
-                copyDisabled={pending}
-              />
+        {canManageSheets ? (
+          <>
+            {googleServiceAccountConfigured && googleServiceAccountClientEmail ? (
+              <details className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                <summary className="cursor-pointer font-medium text-foreground">
+                  Advanced Google Sheet sharing
+                </summary>
+                <div className="mt-3">
+                  <GoogleSheetsSharingCallout
+                    serviceAccountEmail={googleServiceAccountClientEmail}
+                    idPrefix={`client-${clientId}-suppression`}
+                    copyDisabled={pending}
+                  />
+                </div>
+              </details>
+            ) : (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
+                <p className="font-medium text-foreground">Google Sheets sync is not configured yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A one-time admin setup is required: add{" "}
+                  <code className="text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in Azure App Service
+                  application settings (single service account for all clients). Operators only paste Sheet
+                  URLs here — no per-client Azure changes.
+                </p>
+              </div>
+            )}
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Email addresses never to contact</p>
+                {emailSrc ? (
+                  <p className="font-mono text-xs text-muted-foreground break-all">
+                    Spreadsheet id: {emailSrc.spreadsheetId ?? "—"}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Paste a Sheet URL and save to connect.</p>
+                )}
+                <Label htmlFor="sup-email-url">Sheet URL or id</Label>
+                <Input
+                  id="sup-email-url"
+                  value={emailUrl}
+                  onChange={(e) => setEmailUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/..."
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={pending || !emailUrl.trim()}
+                    onClick={() => save("EMAIL", emailUrl)}
+                  >
+                    Save email sheet
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={pending || !canSyncEmail}
+                    onClick={() => syncEmail()}
+                    title={
+                      !googleServiceAccountConfigured
+                        ? "Configure Google service account in Azure first"
+                        : !emailSrc?.spreadsheetId
+                          ? "Save a Sheet URL first"
+                          : undefined
+                    }
+                  >
+                    Sync email list now
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Domains never to contact</p>
+                {domainSrc ? (
+                  <p className="font-mono text-xs text-muted-foreground break-all">
+                    Spreadsheet id: {domainSrc.spreadsheetId ?? "—"}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Optional — same flow as email.</p>
+                )}
+                <Label htmlFor="sup-domain-url">Sheet URL or id</Label>
+                <Input
+                  id="sup-domain-url"
+                  value={domainUrl}
+                  onChange={(e) => setDomainUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/..."
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={pending || !domainUrl.trim()}
+                    onClick={() => save("DOMAIN", domainUrl)}
+                  >
+                    Save domain sheet
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={pending || !canSyncDomain}
+                    onClick={() => syncDomain()}
+                    title={
+                      !googleServiceAccountConfigured
+                        ? "Configure Google service account in Azure first"
+                        : !domainSrc?.spreadsheetId
+                          ? "Save a Sheet URL first"
+                          : undefined
+                    }
+                  >
+                    Sync domain list now
+                  </Button>
+                </div>
+              </div>
             </div>
-          </details>
+          </>
         ) : (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
-            <p className="font-medium text-foreground">Google Sheets sync is not configured yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              A one-time admin setup is required: add{" "}
-              <code className="text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in Azure App Service
-              application settings (single service account for all clients). Operators only paste Sheet
-              URLs here — no per-client Azure changes.
-            </p>
+          <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+            Suppression sheets are connected and synced by the owner account.
+            You can see the current status below. Manual blocks (the Quick-add
+            form above) work for everyone and take effect on the next send.
           </div>
         )}
-
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Email addresses never to contact</p>
-            {emailSrc ? (
-              <p className="font-mono text-xs text-muted-foreground break-all">
-                Spreadsheet id: {emailSrc.spreadsheetId ?? "—"}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">Paste a Sheet URL and save to connect.</p>
-            )}
-            <Label htmlFor="sup-email-url">Sheet URL or id</Label>
-            <Input
-              id="sup-email-url"
-              value={emailUrl}
-              onChange={(e) => setEmailUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={pending || !emailUrl.trim()}
-                onClick={() => save("EMAIL", emailUrl)}
-              >
-                Save email sheet
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending || !canSyncEmail}
-                onClick={() => syncEmail()}
-                title={
-                  !googleServiceAccountConfigured
-                    ? "Configure Google service account in Azure first"
-                    : !emailSrc?.spreadsheetId
-                      ? "Save a Sheet URL first"
-                      : undefined
-                }
-              >
-                Sync email list now
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Domains never to contact</p>
-            {domainSrc ? (
-              <p className="font-mono text-xs text-muted-foreground break-all">
-                Spreadsheet id: {domainSrc.spreadsheetId ?? "—"}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">Optional — same flow as email.</p>
-            )}
-            <Label htmlFor="sup-domain-url">Sheet URL or id</Label>
-            <Input
-              id="sup-domain-url"
-              value={domainUrl}
-              onChange={(e) => setDomainUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={pending || !domainUrl.trim()}
-                onClick={() => save("DOMAIN", domainUrl)}
-              >
-                Save domain sheet
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending || !canSyncDomain}
-                onClick={() => syncDomain()}
-                title={
-                  !googleServiceAccountConfigured
-                    ? "Configure Google service account in Azure first"
-                    : !domainSrc?.spreadsheetId
-                      ? "Save a Sheet URL first"
-                      : undefined
-                }
-              >
-                Sync domain list now
-              </Button>
-            </div>
-          </div>
-        </div>
 
         <div className="text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Connection status</p>

@@ -34,6 +34,16 @@ export async function upsertSuppressionSpreadsheetAction(
   } catch {
     return { ok: false, error: "Access denied." };
   }
+  // Connecting / re-pointing a suppression sheet is owner-only: a sync does a
+  // delete-then-replace, so re-pointing to the wrong sheet can wipe blocked
+  // addresses and silently re-open people to outreach. Manual blocks (the
+  // Quick-add form) stay available to all staff.
+  if (!staff.isSuperAdmin) {
+    return {
+      ok: false,
+      error: "Only the owner account can connect or change suppression sheets.",
+    };
+  }
 
   const spreadsheetId = extractGoogleSpreadsheetId(parsed.data.urlOrId);
   if (!spreadsheetId) {
@@ -95,6 +105,14 @@ async function syncClientSuppressionSourceByKind(
     await requireClientAccess(staff, clientId);
   } catch {
     return { ok: false, error: "Access denied." };
+  }
+  // Owner-only: the sync replaces the whole list (delete-then-replace), so it
+  // can wipe blocked addresses if the sheet was edited or mis-pointed.
+  if (!staff.isSuperAdmin) {
+    return {
+      ok: false,
+      error: "Only the owner account can sync suppression sheets.",
+    };
   }
 
   const source = await prisma.suppressionSource.findFirst({

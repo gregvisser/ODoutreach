@@ -121,11 +121,14 @@ type Props = {
   // Server action — bound on the server, called only when the form is
   // submitted by an explicit user click. NEVER invoked on render.
   runSuppressionSyncAction: (formData: FormData) => Promise<void> | void;
+  /** Owner-only (isSuperAdmin): sync replaces the list, so hide it otherwise. */
+  canSync: boolean;
 };
 
 export function SuppressionSourcesInspectableTable({
   sources,
   runSuppressionSyncAction,
+  canSync,
 }: Props) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("ALL");
@@ -254,12 +257,16 @@ export function SuppressionSourcesInspectableTable({
                 {rowCount(s)}
               </TableCell>
               <TableCell>
-                <form action={runSuppressionSyncAction}>
-                  <input type="hidden" name="sourceId" value={s.id} />
-                  <Button type="submit" size="sm" variant="outline">
-                    Sync
-                  </Button>
-                </form>
+                {canSync ? (
+                  <form action={runSuppressionSyncAction}>
+                    <input type="hidden" name="sourceId" value={s.id} />
+                    <Button type="submit" size="sm" variant="outline">
+                      Sync
+                    </Button>
+                  </form>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
               </TableCell>
             </TableRow>
           ))}
