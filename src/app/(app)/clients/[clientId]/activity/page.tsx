@@ -52,7 +52,10 @@ export default async function ClientActivityPage({ params, searchParams }: Props
     loadClientOutreachMetrics(bundle.client.id, accessible),
   ]);
 
-  const totalReplies = replyGroups.reduce((sum, g) => sum + g.replyCount, 0);
+  // Replies actually loaded into the grouped panel (capped at the most recent
+  // 200, and only those whose send still has a connected mailbox). The headline
+  // total uses metrics.replies (uncapped) so the card and the panel agree.
+  const shownReplies = replyGroups.reduce((sum, g) => sum + g.replyCount, 0);
   const currentUtcWindowKey = utcDateKeyForInstant(new Date());
 
   const serializedGroups = replyGroups.map((g) => ({
@@ -137,7 +140,9 @@ export default async function ClientActivityPage({ params, searchParams }: Props
       <ClientOutreachRepliesPanel
         clientId={bundle.client.id}
         groups={serializedGroups}
-        totalReplies={totalReplies}
+        totalReplies={metrics.replies}
+        shownReplies={shownReplies}
+        canViewSendDetail={isAdmin}
       />
 
       <details className="rounded-lg border border-border/60 bg-muted/10" open={mode === "all"}>

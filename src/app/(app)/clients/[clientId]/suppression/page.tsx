@@ -44,10 +44,22 @@ export default async function ClientSuppressionPage({ params }: Props) {
       _count: { _all: true },
     }),
   ]);
+  // Source-attributed counts (from a connected sheet). Manual blocks are
+  // stored with a null sourceId by design, so they belong to no source row —
+  // surface them separately below instead of silently dropping them (otherwise
+  // an operator who manually blocked 50 leads sees "0 on the list").
   const countBySourceId = new Map<string, number>();
-  for (const row of [...emailCounts, ...domainCounts]) {
+  let manualEmailCount = 0;
+  let manualDomainCount = 0;
+  for (const row of emailCounts) {
     if (row.sourceId) countBySourceId.set(row.sourceId, row._count._all);
+    else manualEmailCount = row._count._all;
   }
+  for (const row of domainCounts) {
+    if (row.sourceId) countBySourceId.set(row.sourceId, row._count._all);
+    else manualDomainCount = row._count._all;
+  }
+  const manualCount = manualEmailCount + manualDomainCount;
 
   return (
     <div className="space-y-8">
@@ -75,8 +87,17 @@ export default async function ClientSuppressionPage({ params }: Props) {
             Sheet later (or not at all).
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <ManualDncAddForm clientId={client.id} />
+          <p className="text-xs text-muted-foreground">
+            {manualCount === 0
+              ? "Nothing blocked manually yet — these are entries you add here, separate from any connected sheet."
+              : `${manualCount} blocked manually (added here, not from a sheet)${
+                  manualDomainCount > 0
+                    ? ` — ${manualEmailCount} ${manualEmailCount === 1 ? "address" : "addresses"}, ${manualDomainCount} ${manualDomainCount === 1 ? "domain" : "domains"}`
+                    : ""
+                }.`}
+          </p>
         </CardContent>
       </Card>
 

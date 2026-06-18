@@ -38,7 +38,12 @@ type MailboxGroup = {
 type Props = {
   clientId: string;
   groups: MailboxGroup[];
+  /** Authoritative total (matches the summary card) — uncapped DB count. */
   totalReplies: number;
+  /** Replies actually loaded into the groups below (capped at 200, mailbox-linked). */
+  shownReplies: number;
+  /** Owner-only: the send-detail route is gated, so hide its link otherwise. */
+  canViewSendDetail: boolean;
 };
 
 function formatTs(iso: string): string {
@@ -52,9 +57,11 @@ function formatTs(iso: string): string {
 function MailboxGroupRow({
   clientId,
   group,
+  canViewSendDetail,
 }: {
   clientId: string;
   group: MailboxGroup;
+  canViewSendDetail: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const label = group.mailboxDisplayName?.trim() || group.mailboxEmail;
@@ -137,7 +144,7 @@ function MailboxGroupRow({
                   >
                     Open reply →
                   </Link>
-                  {r.linkedOutboundEmailId && (
+                  {canViewSendDetail && r.linkedOutboundEmailId && (
                     <Link
                       href={`/activity/outbound/${r.linkedOutboundEmailId}`}
                       className="text-xs text-muted-foreground underline-offset-4 hover:underline"
@@ -159,6 +166,8 @@ export function ClientOutreachRepliesPanel({
   clientId,
   groups,
   totalReplies,
+  shownReplies,
+  canViewSendDetail,
 }: Props) {
   return (
     <Card className="border-border/80 shadow-sm">
@@ -171,6 +180,13 @@ export function ClientOutreachRepliesPanel({
             <span className="ml-1 font-medium text-foreground">
               {totalReplies} total{" "}
               {totalReplies === 1 ? "reply" : "replies"}.
+            </span>
+          )}
+          {shownReplies < totalReplies && (
+            <span className="ml-1 text-muted-foreground">
+              Showing the most recent {shownReplies} below (older replies, or
+              replies whose sending mailbox was removed, are not listed
+              individually).
             </span>
           )}
         </CardDescription>
@@ -187,6 +203,7 @@ export function ClientOutreachRepliesPanel({
                 key={g.mailboxId}
                 clientId={clientId}
                 group={g}
+                canViewSendDetail={canViewSendDetail}
               />
             ))}
           </div>
