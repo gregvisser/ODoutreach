@@ -23,3 +23,20 @@ export function shouldApplyMailboxAuthFailureOverlay(input: {
   const baseline = input.connectedAt ?? input.mailboxUpdatedAt;
   return input.failure.failedAt.getTime() > baseline.getTime();
 }
+
+/**
+ * Provider-aware "this mailbox needs reconnecting" message. Previously this was
+ * hardcoded to the Microsoft/MFA wording even for Google mailboxes — confusing
+ * for the documented Gmail case, where a Testing-mode refresh token expires
+ * roughly weekly and a reconnect (not MFA) fixes it.
+ */
+export function mailboxReauthMessage(
+  provider: string,
+  failureMessage: string,
+): string {
+  const base =
+    provider === "GOOGLE"
+      ? "Google requires this mailbox to re-authenticate. Reconnect it to restore sending — Google tokens in Testing mode expire about weekly, and reconnecting fixes it."
+      : "Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA.";
+  return `${base} ${failureMessage}`.slice(0, 4000);
+}

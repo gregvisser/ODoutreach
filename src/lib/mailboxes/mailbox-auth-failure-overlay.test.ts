@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldApplyMailboxAuthFailureOverlay } from "./mailbox-auth-failure-overlay";
+import {
+  mailboxReauthMessage,
+  shouldApplyMailboxAuthFailureOverlay,
+} from "./mailbox-auth-failure-overlay";
 
 describe("shouldApplyMailboxAuthFailureOverlay", () => {
   const t0 = new Date("2026-05-01T12:00:00.000Z");
@@ -55,5 +58,28 @@ describe("shouldApplyMailboxAuthFailureOverlay", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("mailboxReauthMessage (provider-aware)", () => {
+  it("uses Google wording (weekly expiry, no MFA) for Google mailboxes", () => {
+    const msg = mailboxReauthMessage("GOOGLE", "invalid_grant");
+    expect(msg).toContain("Google");
+    expect(msg).toContain("weekly");
+    expect(msg).not.toContain("MFA");
+    expect(msg).toContain("invalid_grant");
+  });
+
+  it("uses Microsoft/MFA wording for Microsoft mailboxes", () => {
+    const msg = mailboxReauthMessage("MICROSOFT", "AADSTS50076");
+    expect(msg).toContain("Microsoft");
+    expect(msg).toContain("MFA");
+    expect(msg).toContain("AADSTS50076");
+  });
+
+  it("caps the message length", () => {
+    expect(
+      mailboxReauthMessage("MICROSOFT", "x".repeat(8000)).length,
+    ).toBeLessThanOrEqual(4000);
   });
 });

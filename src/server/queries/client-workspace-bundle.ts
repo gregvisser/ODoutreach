@@ -29,7 +29,10 @@ import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-
 import { getPilotContactSummaryForClient } from "@/server/queries/pilot-contact-summary";
 import type { StaffUser } from "@/generated/prisma/client";
 import type { MailboxAuthFailureSignal } from "@/lib/mailboxes/mailbox-auth-failure-overlay";
-import { shouldApplyMailboxAuthFailureOverlay } from "@/lib/mailboxes/mailbox-auth-failure-overlay";
+import {
+  mailboxReauthMessage,
+  shouldApplyMailboxAuthFailureOverlay,
+} from "@/lib/mailboxes/mailbox-auth-failure-overlay";
 
 export type ClientWorkspaceBundle = Awaited<ReturnType<typeof loadClientWorkspaceBundle>>;
 
@@ -128,10 +131,7 @@ export async function loadClientWorkspaceBundle(
     const connectionStatus = applyAuthOverlay ? "CONNECTION_ERROR" : m.connectionStatus;
     const lastError =
       applyAuthOverlay && authFailure
-        ? `Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. ${authFailure.message}`.slice(
-            0,
-            4000,
-          )
+        ? mailboxReauthMessage(m.provider, authFailure.message)
         : m.lastError;
     return {
     id: m.id,
