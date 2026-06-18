@@ -1,0 +1,49 @@
+name: Fold legacy support ticket statuses (one-off)
+
+# One-off DATA migration: folds in-flight SupportTicket rows
+# (IN_REVIEW / AWAITING_APPROVAL / APPROVED / REJECTED) to OPEN for the
+# simplified Open/Resolved support flow shipped in the audit full-pass.
+#
+# Reversible: prisma/manual/2026-06-18-fold-support-status.sql snapshots the old
+# statuses into a backup table first (the matching .rollback.sql restores them).
+# Idempotent: safe to re-run (the snapshot is kept; the UPDATE then matches 0
+# rows). NO schema change — the SupportTicketStatus enum is unchanged.
+#
+# Runs automatically when this file lands on main (i.e. when the PR is merged),
+# and can also be re-run manually from the Actions tab (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fold-support-statuses.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Ensure psql is available
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+      - name: Run the fold against production
+        env:
+          DB_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::PRODUCTION_DATABASE_URL secret is not set"; exit 1
+          fi
+          # Strip Prisma-only query params (e.g. ?schema=public) that libpq
+          # rejects, and force SSL (required by Azure Postgres).
+          CONN="${DB_URL%%\?*}?sslmode=require"
+          echo "Applying prisma/manual/2026-06-18-fold-support-status.sql ..."
+          psql "$CONN" -v ON_ERROR_STOP=1 -f prisma/manual/2026-06-18-fold-support-status.sql
+          echo "Fold complete."
