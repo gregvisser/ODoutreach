@@ -1,28 +1,21 @@
-import type { StaffRole } from "@/generated/prisma/enums";
-
-export type ClientsPageEmptyCopy =
-  | { variant: "no_clients_in_system" }
-  | { variant: "no_workspace_assigned" };
+export type ClientsPageEmptyCopy = { variant: "no_clients_in_system" };
 
 /**
- * When the staff directory lists zero clients, choose UX copy: either there are truly
- * no workspaces yet, or this user has no {@link ClientMembership} rows while others exist.
+ * When the staff directory lists zero clients, decide the empty-state copy.
+ *
+ * Roles were removed (2026-06): every active staff member can now see every
+ * live client, so an empty list can only mean there are no client workspaces
+ * yet — never "others have workspaces you can't see". The old
+ * `no_workspace_assigned` variant is therefore gone.
  */
 export function resolveClientsPageEmptyCopy(input: {
-  staffRole: StaffRole;
   listedClientCount: number;
   totalClientsInDatabase: number;
 }): ClientsPageEmptyCopy | null {
   if (input.listedClientCount > 0) {
     return null;
   }
-  const globalAccess = input.staffRole === "ADMIN" || input.staffRole === "MANAGER";
-  if (globalAccess) {
-    return input.totalClientsInDatabase === 0
-      ? { variant: "no_clients_in_system" }
-      : null;
-  }
   return input.totalClientsInDatabase === 0
     ? { variant: "no_clients_in_system" }
-    : { variant: "no_workspace_assigned" };
+    : null;
 }

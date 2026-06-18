@@ -29,6 +29,15 @@ export async function sendInternalProofAction(
   },
 ): Promise<InternalProofSendActionResult> {
   const staff = await requireOpensDoorsStaff();
+  // Mailbox verification proof sends are an owner-only setup/diagnostic tool
+  // (the UI card is gated the same way). Re-check server-side so the action
+  // can't be POSTed by a non-owner.
+  if (!staff.isSuperAdmin) {
+    return {
+      ok: false,
+      error: "Only the owner account can send mailbox verification proofs.",
+    };
+  }
   try {
     await requireClientMailboxMutator(staff, clientId);
   } catch (e) {

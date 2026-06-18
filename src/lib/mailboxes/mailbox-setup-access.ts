@@ -1,6 +1,13 @@
-import type { StaffRole } from "@/generated/prisma/enums";
-
-/** Internal proof send, signature editors, and advanced diagnostics. */
-export function canAccessMailboxSetupTools(role: StaffRole): boolean {
-  return role === "ADMIN" || role === "MANAGER";
+/**
+ * Internal proof send, signature editors, and advanced mailbox diagnostics.
+ *
+ * Roles were removed (2026-06): this bundle was previously ADMIN/MANAGER-only
+ * (never available to operators/viewers), so it maps to the surviving elevated
+ * capability — the per-account isSuperAdmin ("owner"). Everyday outreach staff
+ * keep the read-only mailbox view; the owner keeps setup + diagnostics.
+ */
+export function canAccessMailboxSetupTools(staff: {
+  isSuperAdmin: boolean;
+}): boolean {
+  return staff.isSuperAdmin;
 }

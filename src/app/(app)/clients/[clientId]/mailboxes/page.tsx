@@ -56,7 +56,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
-  const showMailboxSetupTools = canAccessMailboxSetupTools(staff.role);
+  const showMailboxSetupTools = canAccessMailboxSetupTools(staff);
   const publicSiteOrigin = resolvePublicBaseUrl();
 
   // Tenant-wide admin-consent helper: one entry per distinct Microsoft mailbox
@@ -142,7 +142,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         {!showMailboxSetupTools ? (
           <p className="mt-3 max-w-3xl rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
             Connected senders and today&rsquo;s remaining send capacity. Signature setup and
-            mailbox verification sends are admin-only — ask a manager if something needs changing.
+            mailbox verification sends are owner-only — ask the owner account if something needs changing.
           </p>
         ) : null}
       </div>
