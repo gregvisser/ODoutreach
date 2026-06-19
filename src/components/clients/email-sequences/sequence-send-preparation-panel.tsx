@@ -11,6 +11,8 @@ import {
   sequenceIntroductionBatchLimitCopy,
 } from "@/lib/clients/outreach-sequence-send-staff-copy";
 import { SequencePhraseConfirmLaunch } from "@/components/clients/email-sequences/sequence-phrase-confirm-launch";
+import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readiness";
+import { infraLaunchBlockerReasons } from "@/lib/email-sequences/launch-infra-blockers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +57,12 @@ type Props = {
    * groups them by sequence and category.
    */
   stepSendSnapshots?: SequenceStepSendUiSnapshot[];
+  /**
+   * Per-sequence launch-readiness (signature / mailbox / capacity / unsubscribe
+   * blockers). Fed into the Launch button so it disables when the readiness
+   * rail above shows a blocker, instead of failing on click.
+   */
+  launchReadinessBySequenceId?: Record<string, SequenceLaunchReadiness>;
   /**
    * `standalone` — full-width card (legacy page placement).
    * `embedded` — inside the selected-sequence panel (no outer card).
@@ -130,6 +138,7 @@ export function SequenceSendPreparationPanel({
   onlySequenceId,
   snapshots,
   stepSendSnapshots = [],
+  launchReadinessBySequenceId = {},
   variant = "standalone",
 }: Props) {
   const embedded = variant === "embedded";
@@ -300,6 +309,7 @@ export function SequenceSendPreparationPanel({
               canMutate={canMutate}
               sequenceId={s.sequenceId}
               introSend={introSnapshot}
+              launchReadiness={launchReadinessBySequenceId[s.sequenceId] ?? null}
             />
 
             <FollowUpDispatchBlocks
@@ -307,6 +317,7 @@ export function SequenceSendPreparationPanel({
               canMutate={canMutate}
               sequenceId={s.sequenceId}
               snapshotsByCategory={snapshotsBySequenceAndCategory}
+              launchReadiness={launchReadinessBySequenceId[s.sequenceId] ?? null}
             />
           </div>
         );
@@ -365,17 +376,23 @@ function IntroSendDispatchBlock({
   canMutate,
   sequenceId,
   introSend,
+  launchReadiness,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   introSend: SequenceStepSendUiSnapshot | undefined;
+  launchReadiness: SequenceLaunchReadiness | null;
 }) {
   if (!introSend) {
     return null;
   }
 
-  const canSend = canMutate && introSend.sendable;
+  // Launch-readiness infra blockers (no mailbox / no signature / no capacity /
+  // missing unsubscribe) the per-step snapshot doesn't capture. Feed them into
+  // the button so it's disabled with a reason instead of failing on click.
+  const infraReasons = infraLaunchBlockerReasons(launchReadiness);
+  const canSend = canMutate && introSend.sendable && infraReasons.length === 0;
   const disabledReasons: string[] = [];
   if (!canMutate) {
     disabledReasons.push("You do not have permission to launch sends for this client.");
@@ -384,6 +401,9 @@ function IntroSendDispatchBlock({
     disabledReasons.push(
       humanizeSequenceLaunchDisabledReason(introSend.disabledReason) ?? introSend.disabledReason,
     );
+  }
+  for (const reason of infraReasons) {
+    disabledReasons.push(reason);
   }
 
   const readyNow = introSend.eligibleInLaunchBatchNowCount;
@@ -482,11 +502,13 @@ function FollowUpDispatchBlocks({
   canMutate,
   sequenceId,
   snapshotsByCategory,
+  launchReadiness,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   snapshotsByCategory: Map<string, SequenceStepSendUiSnapshot>;
+  launchReadiness: SequenceLaunchReadiness | null;
 }) {
   const blocks = FOLLOW_UP_CATEGORIES.map((category) => {
     const snap = snapshotsByCategory.get(`${sequenceId}:${category}`);
@@ -510,6 +532,7 @@ function FollowUpDispatchBlocks({
           sequenceId={sequenceId}
           category={category}
           stepSnapshot={snap}
+          launchReadiness={launchReadiness}
         />
       ))}
     </div>
@@ -530,16 +553,21 @@ function StepSendDispatchBlock({
   sequenceId,
   category,
   stepSnapshot,
+  launchReadiness,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   category: ClientEmailTemplateCategory;
   stepSnapshot: SequenceStepSendUiSnapshot;
+  launchReadiness: SequenceLaunchReadiness | null;
 }) {
   const phrase = getSequenceStepSendConfirmationPhrase(category);
   const label = categoryLabel(category);
-  const canSend = canMutate && stepSnapshot.sendable;
+  // Same sequence-wide infra blockers gate follow-ups (a missing signature /
+  // mailbox / capacity stops any send, not just the intro).
+  const infraReasons = infraLaunchBlockerReasons(launchReadiness);
+  const canSend = canMutate && stepSnapshot.sendable && infraReasons.length === 0;
 
   const delayDescription =
     stepSnapshot.delayDays > 0
@@ -582,12 +610,19 @@ function StepSendDispatchBlock({
         </p>
       </div>
 
-      {permissionBlocked ? (
+      {permissionBlocked || infraReasons.length > 0 ? (
         <div className="mt-2 rounded border border-amber-400/50 bg-amber-50/50 px-2 py-2 text-[11px] dark:bg-amber-950/30">
-          <p className="font-medium text-foreground">View only</p>
-          <p className="mt-1 text-muted-foreground">
-            You do not have permission to send for this client.
+          <p className="font-medium text-foreground">
+            {permissionBlocked ? "View only" : "Cannot send yet"}
           </p>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+            {permissionBlocked ? (
+              <li>You do not have permission to send for this client.</li>
+            ) : null}
+            {infraReasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
 

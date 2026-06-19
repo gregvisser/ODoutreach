@@ -563,6 +563,7 @@ export function ClientEmailSequencesPanel(props: Props) {
               onlySequenceId={selected.id}
               snapshots={sequencePrepSnapshots}
               stepSendSnapshots={stepSendSnapshots}
+              launchReadinessBySequenceId={launchReadinessBySequenceId}
               variant="embedded"
               enrollmentPendingCount={selected.enrollment.counts.PENDING}
             />
