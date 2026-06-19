@@ -1,13 +1,14 @@
 /**
  * Internal proof send, signature editors, and advanced mailbox diagnostics.
  *
- * Roles were removed (2026-06): this bundle was previously ADMIN/MANAGER-only
- * (never available to operators/viewers), so it maps to the surviving elevated
- * capability — the per-account isSuperAdmin ("owner"). Everyday outreach staff
- * keep the read-only mailbox view; the owner keeps setup + diagnostics.
+ * 2026-06-19: the OpensDoors team operates the whole system, so mailbox setup
+ * tools are available to every active staff member (the page already gates on
+ * "registered active staff"). Kept as a function so callers + the
+ * showMailboxSetupTools flag stay stable.
  */
 export function canAccessMailboxSetupTools(staff: {
   isSuperAdmin: boolean;
 }): boolean {
-  return staff.isSuperAdmin;
+  void staff;
+  return true;
 }

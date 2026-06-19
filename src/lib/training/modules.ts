@@ -1350,7 +1350,7 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
       'Read the "What happens when you connect a mailbox?" explainer card aloud.',
       "Walk the table: each row is one connected mailbox, with provider, status pill, daily cap and signature.",
       "Show the workspace pool total at the top — emphasise it is the sum of every connected mailbox.",
-      "Emphasise that Connect / Reconnect / Disconnect / Remove are admin-only and never happen during normal staff work.",
+      "Connect / Reconnect / Disconnect / Remove are available to any staff member — Reconnect is the normal self-service fix when a mailbox shows Connection error (e.g. a Google login expired).",
       "Close with: a mailbox flagged Connection error silently contributes zero capacity — fix or remove it.",
     ],
     checklist: [

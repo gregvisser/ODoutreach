@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { format } from "date-fns";
 
 import { Badge } from "@/components/ui/badge";
@@ -31,13 +31,6 @@ export default async function OutboundDetailPage({ params }: Props) {
   const row = await getOutboundEmailByIdForStaff(id, accessible);
 
   if (!row) notFound();
-
-  // Developer-level send detail (provider IDs, raw lifecycle statuses) is an
-  // admin diagnostic surface. Send non-admins back to the client's Activity
-  // page, where they get clean, human-readable send outcomes.
-  if (!staff.isSuperAdmin) {
-    redirect(`/clients/${row.clientId}/activity`);
-  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">

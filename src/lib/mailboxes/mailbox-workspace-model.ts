@@ -31,7 +31,7 @@ export const MAILBOXES_WHAT_HAPPENS_BULLETS: readonly string[] = [
     "back into Activity for this client.",
   "Each mailbox has its own daily send limit. The pool total at the top of the table " +
     "is the sum of every connected mailbox's daily limit.",
-  "Reconnect, Disconnect and Remove are admin-only and do not delete past send history.",
+  "Any staff member can Connect, Reconnect, Disconnect or Remove a mailbox here — none of these delete past send history.",
 ];
 
 export const OUTREACH_HERO_ADDENDUM =

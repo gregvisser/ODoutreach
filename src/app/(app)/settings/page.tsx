@@ -364,7 +364,7 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        {staff.isSuperAdmin && googleWorkspaceSuppressionConfigured && (
+        {googleWorkspaceSuppressionConfigured && (
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg">Google OAuth — test users</CardTitle>

@@ -142,7 +142,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
         groups={serializedGroups}
         totalReplies={metrics.replies}
         shownReplies={shownReplies}
-        canViewSendDetail={isAdmin}
+        canViewSendDetail
       />
 
       <details className="rounded-lg border border-border/60 bg-muted/10" open={mode === "all"}>

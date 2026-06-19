@@ -23,8 +23,8 @@ import { syncGmailSignatureForMailbox } from "@/server/mailbox/gmail-signature-s
  *   * `updateMailboxSignatureAction({ ... })` — manual edit.
  *
  * Safety:
- *   * Owner (isSuperAdmin) + client-mailbox-mutator access required —
- *     signature setup is an owner-only mailbox setup tool.
+ *   * Client-mailbox-mutator access required (every active staff member with
+ *     access to the client — the OpensDoors team manages its own signatures).
  *   * Mailbox must belong to the client.
  *   * NEVER sends email, reconnects OAuth, or changes anything beyond
  *     the six `senderSignature*` / `senderDisplayName` columns on the
@@ -96,12 +96,6 @@ export async function syncMailboxSignatureAction(
   mailboxId: string,
 ): Promise<MailboxSignatureActionResult> {
   const staff = await requireOpensDoorsStaff();
-  if (!staff.isSuperAdmin) {
-    return {
-      ok: false,
-      error: "Only the owner account can change mailbox signatures.",
-    };
-  }
   try {
     await requireClientMailboxMutator(staff, clientId);
   } catch (e) {
@@ -203,12 +197,6 @@ export async function updateMailboxSignatureAction(
   raw: z.infer<typeof updateSchema>,
 ): Promise<MailboxSignatureActionResult> {
   const staff = await requireOpensDoorsStaff();
-  if (!staff.isSuperAdmin) {
-    return {
-      ok: false,
-      error: "Only the owner account can change mailbox signatures.",
-    };
-  }
   const parsed = updateSchema.safeParse(raw);
   if (!parsed.success) {
     return {
