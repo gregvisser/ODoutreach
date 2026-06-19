@@ -280,7 +280,15 @@ export function ClientSuppressionInlineCard({
                 {suppressionKindShortLabel(s.kind)} ·{" "}
                 {suppressionSyncStatusLabel(s.syncStatus)}
                 {typeof s.entryCount === "number"
-                  ? ` · ${s.entryCount.toLocaleString()} ${s.kind === "EMAIL" ? "address" : "domain"}${s.entryCount === 1 ? "" : "s"} on the list`
+                  ? ` · ${s.entryCount.toLocaleString()} ${
+                      s.entryCount === 1
+                        ? s.kind === "EMAIL"
+                          ? "address"
+                          : "domain"
+                        : s.kind === "EMAIL"
+                          ? "addresses"
+                          : "domains"
+                    } on the list`
                   : ""}
                 {s.lastSyncedAt ? ` · last sync ${s.lastSyncedAt}` : ""}
                 {s.lastError ? ` · ${s.lastError}` : ""}
