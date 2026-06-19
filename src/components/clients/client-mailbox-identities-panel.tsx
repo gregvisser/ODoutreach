@@ -167,10 +167,22 @@ function providerConnectionHint(
       return "Not connected — press Connect. Someone who can sign in to that mailbox finishes the prompt in the window that opens.";
     case "PENDING_CONNECTION":
       return "Finish sign-in in the Microsoft or Google window, or press Connect again.";
-    case "CONNECTED":
-      return row.connectedAt
-        ? `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`
-        : "Connected.";
+    case "CONNECTED": {
+      if (!row.connectedAt) return "Connected.";
+      const connectedLabel = `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`;
+      // Google mailboxes connect via Testing-mode OAuth, whose login expires
+      // roughly weekly. Nudge a proactive Reconnect after ~6 days so a sending
+      // window isn't lost to a silent expiry (no live token check needed). Any
+      // staff member can Reconnect, so the team self-serves this.
+      if (row.provider === "GOOGLE") {
+        const ageDays =
+          (Date.now() - new Date(row.connectedAt).getTime()) / 86_400_000;
+        if (ageDays >= 6) {
+          return `${connectedLabel}. Google logins expire about weekly — press Reconnect now to avoid a gap in sending.`;
+        }
+      }
+      return connectedLabel;
+    }
     case "CONNECTION_ERROR":
       return row.provider === "MICROSOFT"
         ? `Microsoft needs a fresh sign-in for this mailbox. Sign in as ${row.email}. Check the last error below if it persists.`
