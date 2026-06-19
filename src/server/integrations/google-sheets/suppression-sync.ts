@@ -11,6 +11,7 @@ import {
   normalizeEmail,
 } from "@/lib/normalize";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
+import { suppressionShrinkWarning } from "@/lib/suppression/shrink-warning";
 
 import { loadServiceAccountCredentials } from "./auth";
 import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
@@ -108,15 +109,22 @@ export async function syncSuppressionSourceFromGoogle(
       res.data.values as string[][] | undefined,
     );
 
-    const written = await applySheetToSuppressionTables({
+    const { written, previousCount } = await applySheetToSuppressionTables({
       clientId,
       sourceId: source.id,
       kind,
       cells: flat,
     });
 
-    let warning: string | undefined;
-    if (written === 0) {
+    // A shrink (previously-blocked entries removed) is the costliest silent
+    // failure for opt-out data, so it takes precedence over the "nothing
+    // usable found" note.
+    let warning: string | undefined = suppressionShrinkWarning(
+      kind,
+      written,
+      previousCount,
+    );
+    if (!warning && written === 0) {
       if (flat.length === 0) {
         warning = SUPPRESSION_SYNC_MESSAGES.noDataInRange;
       } else {
@@ -158,7 +166,7 @@ async function applySheetToSuppressionTables(args: {
   sourceId: string;
   kind: SuppressionListKind;
   cells: string[];
-}): Promise<number> {
+}): Promise<{ written: number; previousCount: number }> {
   const { clientId, sourceId, kind, cells } = args;
 
   if (kind === "EMAIL") {
@@ -170,11 +178,14 @@ async function applySheetToSuppressionTables(args: {
     const list = [...emails];
 
     return await prisma.$transaction(async (tx) => {
+      const previousCount = await tx.suppressedEmail.count({
+        where: { clientId, sourceId },
+      });
       await tx.suppressedEmail.deleteMany({
         where: { clientId, sourceId },
       });
 
-      if (list.length === 0) return 0;
+      if (list.length === 0) return { written: 0, previousCount };
 
       // Chunked inserts keep each statement bounded; the bulk transaction
       // timeout (vs Prisma's 5s default) lets a large DNC list commit
@@ -187,7 +198,7 @@ async function applySheetToSuppressionTables(args: {
           skipDuplicates: true,
         });
       }
-      return list.length;
+      return { written: list.length, previousCount };
     }, BULK_TRANSACTION_OPTIONS);
   }
 
@@ -211,11 +222,14 @@ async function applySheetToSuppressionTables(args: {
   const list = [...domains];
 
   return await prisma.$transaction(async (tx) => {
+    const previousCount = await tx.suppressedDomain.count({
+      where: { clientId, sourceId },
+    });
     await tx.suppressedDomain.deleteMany({
       where: { clientId, sourceId },
     });
 
-    if (list.length === 0) return 0;
+    if (list.length === 0) return { written: 0, previousCount };
 
     for (const batch of chunk(
       list.map((domain) => ({ clientId, sourceId, domain })),
@@ -225,6 +239,6 @@ async function applySheetToSuppressionTables(args: {
         skipDuplicates: true,
       });
     }
-    return list.length;
+    return { written: list.length, previousCount };
   }, BULK_TRANSACTION_OPTIONS);
 }
