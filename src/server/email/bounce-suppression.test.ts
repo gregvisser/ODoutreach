@@ -115,6 +115,28 @@ describe("suppressRecipientForHardBounce", () => {
     });
   });
 
+  it("tags the audit as a complaint when reason is 'complaint' (L2)", async () => {
+    findUnique.mockResolvedValue(null);
+    createSupp.mockResolvedValue({ id: "supp-c" });
+
+    const res = await suppressRecipientForHardBounce(
+      baseInput({ reason: "complaint", providerEventType: "email.complained" }),
+    );
+
+    expect(createSupp).toHaveBeenCalledTimes(1);
+    expect(createAudit).toHaveBeenCalledTimes(1);
+    expect(createAudit.mock.calls[0][0]).toMatchObject({
+      data: {
+        metadata: {
+          kind: "complaint_suppressed",
+          email: "dead.inbox@example.com",
+          providerEventType: "email.complained",
+        },
+      },
+    });
+    expect(res.suppressed).toBe(true);
+  });
+
   it("is idempotent — existing row is refreshed, not duplicated, and not re-audited", async () => {
     findUnique.mockResolvedValue({ id: "supp-existing" });
 

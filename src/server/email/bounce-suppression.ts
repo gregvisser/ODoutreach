@@ -44,6 +44,13 @@ export type HardBounceSuppressionInput = {
   providerEventType: string;
   /** Event timestamp — used for syncedAt / lastSuppressionCheckAt. */
   at: Date;
+  /**
+   * What triggered the permanent suppression — a hard bounce (default) or a
+   * spam complaint. Drives the audit metadata `kind`. Both append-only +
+   * idempotent; a spam complaint is the strongest opt-out signal, so it
+   * suppresses unconditionally (no flag) — we must never email a complainer.
+   */
+  reason?: "hard_bounce" | "complaint";
 };
 
 export type HardBounceSuppressionResult = {
@@ -124,7 +131,10 @@ export async function suppressRecipientForHardBounce(
           entityType: "SuppressedEmail",
           entityId: null,
           metadata: {
-            kind: "hard_bounce_suppressed",
+            kind:
+              input.reason === "complaint"
+                ? "complaint_suppressed"
+                : "hard_bounce_suppressed",
             email,
             contactId: input.contactId ?? null,
             outboundEmailId: input.outboundEmailId,

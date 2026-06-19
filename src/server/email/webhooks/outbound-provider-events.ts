@@ -144,6 +144,24 @@ export async function applyNormalizedEmailEvent(
     });
   };
 
+  // Spam complaint — the strongest opt-out signal. Suppress the address so it
+  // is never emailed again (append-only + idempotent, same writer as hard
+  // bounce). Unconditional: a complaint must always suppress.
+  const maybeSuppressComplaint = async (): Promise<void> => {
+    if (kind !== "complained") return;
+    if (!outbound.clientId || !outbound.toEmail) return;
+    await suppressRecipientForHardBounce({
+      clientId: outbound.clientId,
+      email: outbound.toEmail,
+      contactId: outbound.contactId,
+      outboundEmailId: outbound.id,
+      bounceCategory: null,
+      providerEventType: event.eventType,
+      at: event.createdAt,
+      reason: "complaint",
+    });
+  };
+
   if (plan.mode === "skip") {
     await prisma.outboundProviderEvent.updateMany({
       where: { dedupeHash },
@@ -175,6 +193,7 @@ export async function applyNormalizedEmailEvent(
     // already BOUNCED/FAILED → metadata-only refresh). Still ensure the
     // address is suppressed — idempotent, so a no-op if it already is.
     await maybeSuppressHardBounce();
+    await maybeSuppressComplaint();
     await prisma.outboundProviderEvent.updateMany({
       where: { dedupeHash },
       data: { stateMutated: true, processingNote: plan.reason },
@@ -235,6 +254,7 @@ export async function applyNormalizedEmailEvent(
   // re-engage override — the suppression gate is checked independently of
   // the cooldown). Append-only + idempotent.
   await maybeSuppressHardBounce();
+  await maybeSuppressComplaint();
 
   await prisma.outboundProviderEvent.updateMany({
     where: { dedupeHash },
