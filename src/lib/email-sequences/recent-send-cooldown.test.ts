@@ -8,14 +8,14 @@ import {
 } from "./recent-send-cooldown";
 
 describe("recent-send-cooldown", () => {
-  it("defaults the cooldown window to 21 days (workspace-wide)", () => {
-    expect(OUTREACH_COOLDOWN_DAYS).toBe(21);
+  it("defaults the cooldown window to 10 days (workspace-wide)", () => {
+    expect(OUTREACH_COOLDOWN_DAYS).toBe(10);
   });
 
   it("computes the eligible-again date by adding the cooldown to lastSentAt", () => {
     const lastSentAt = new Date("2026-06-01T10:00:00.000Z");
     const eligible = dateWhenEmailEligibleAgain(lastSentAt);
-    expect(eligible.toISOString()).toBe("2026-06-22T10:00:00.000Z");
+    expect(eligible.toISOString()).toBe("2026-06-11T10:00:00.000Z");
   });
 
   it("does not mutate the input date when computing eligible-again", () => {
@@ -33,13 +33,13 @@ describe("recent-send-cooldown", () => {
 
   it("isEmailInCooldown returns true within the window", () => {
     const lastSentAt = new Date("2026-06-01T10:00:00.000Z");
-    const now = new Date("2026-06-15T10:00:00.000Z"); // 14 days later
+    const now = new Date("2026-06-05T10:00:00.000Z"); // 4 days later
     expect(isEmailInCooldown(lastSentAt, now)).toBe(true);
   });
 
   it("isEmailInCooldown returns false on the exact boundary (cooldownDays later)", () => {
     const lastSentAt = new Date("2026-06-01T10:00:00.000Z");
-    const now = new Date("2026-06-22T10:00:00.000Z"); // exactly 21 days
+    const now = new Date("2026-06-11T10:00:00.000Z"); // exactly 10 days
     expect(isEmailInCooldown(lastSentAt, now)).toBe(false);
   });
 
@@ -53,8 +53,8 @@ describe("recent-send-cooldown", () => {
     const lastSentAt = new Date("2026-06-01T10:00:00.000Z");
     const reason = formatCooldownReason(lastSentAt);
     expect(reason).toContain("2026-06-01");
-    expect(reason).toContain("2026-06-22");
-    expect(reason).toContain("21-day cooldown");
+    expect(reason).toContain("2026-06-11");
+    expect(reason).toContain("10-day cooldown");
   });
 
   it("formatCooldownReason does not reference a specific client (workspace-wide)", () => {

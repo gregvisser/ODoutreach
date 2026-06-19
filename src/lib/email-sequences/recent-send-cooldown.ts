@@ -13,7 +13,7 @@
  */
 
 /** Days an email stays in cooldown after its most recent send. */
-export const OUTREACH_COOLDOWN_DAYS = 21;
+export const OUTREACH_COOLDOWN_DAYS = 10;
 
 /** When the contact becomes eligible again, given their last send. */
 export function dateWhenEmailEligibleAgain(

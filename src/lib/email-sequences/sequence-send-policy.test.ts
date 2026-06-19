@@ -249,7 +249,7 @@ describe("classifySequenceStepSendCandidate", () => {
       candidate({
         recentClientSend: {
           lastSentAt,
-          eligibleAt: new Date("2026-06-22T10:00:00.000Z"),
+          eligibleAt: new Date("2026-06-11T10:00:00.000Z"),
           bounced: false,
         },
       }),
@@ -257,8 +257,8 @@ describe("classifySequenceStepSendCandidate", () => {
     expect(result.status).toBe("SKIPPED");
     expect(result.reason).toBe("skipped_client_outreach_cooldown");
     expect(result.reasonDetail).toContain("2026-06-01");
-    expect(result.reasonDetail).toContain("2026-06-22");
-    expect(result.reasonDetail).toContain("21-day cooldown");
+    expect(result.reasonDetail).toContain("2026-06-11");
+    expect(result.reasonDetail).toContain("10-day cooldown");
   });
 
   it("does not skip on cooldown when recentClientSend is null", () => {

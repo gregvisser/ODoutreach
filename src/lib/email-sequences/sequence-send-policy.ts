@@ -91,7 +91,7 @@ export type SequenceStepSendCandidate = {
   sender: SequenceCompositionSender;
   /**
    * Most recent outreach send (across ALL sequences) for this contact +
-   * client. When set, the contact is currently in the 28-day cooldown
+   * client. When set, the contact is currently in the 10-day cooldown
    * window and this candidate will be skipped. When null/undefined, no
    * cooldown applies. The planner fills this in by querying
    * `OutboundEmail` once for all candidate contactIds in a batch.
@@ -237,7 +237,7 @@ export function classifySequenceStepSendCandidate(
 
   // 1.5 Workspace-wide outreach cooldown — no email receives more than
   //     one outreach email across the whole OpensDoors workspace within
-  //     the cooldown window (default 21 days). When the planner sees a
+  //     the cooldown window (default 10 days). When the planner sees a
   //     recent send for this email across ANY client + ANY sequence, it
   //     sets `recentClientSend` and we skip here. Re-running the planner
   //     after the window elapses re-classifies the row as READY

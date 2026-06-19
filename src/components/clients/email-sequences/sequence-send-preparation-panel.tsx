@@ -13,6 +13,7 @@ import {
 import { SequencePhraseConfirmLaunch } from "@/components/clients/email-sequences/sequence-phrase-confirm-launch";
 import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readiness";
 import { infraLaunchBlockerReasons } from "@/lib/email-sequences/launch-infra-blockers";
+import { OUTREACH_COOLDOWN_DAYS } from "@/lib/email-sequences/recent-send-cooldown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,7 +102,7 @@ function humanizeBlockedReason(raw: string): string {
   // Workspace-wide outreach cooldown — surface the eligibility date if
   // it's already embedded in the raw reason (the planner formats it as
   // "Recently contacted on YYYY-MM-DD — eligible again on YYYY-MM-DD
-  // (21-day cooldown).").
+  // (10-day cooldown).").
   if (
     lower.includes("cooldown") ||
     (lower.includes("recently contacted") && lower.includes("eligible again"))
@@ -110,7 +111,7 @@ function humanizeBlockedReason(raw: string): string {
     if (match) {
       return `Recently contacted — eligible again on ${match[1]}`;
     }
-    return "Recently contacted (21-day cooldown)";
+    return `Recently contacted (${OUTREACH_COOLDOWN_DAYS}-day cooldown)`;
   }
   if (lower.includes("template") && lower.includes("not approved"))
     return "Template is not yet approved";
@@ -287,7 +288,7 @@ export function SequenceSendPreparationPanel({
                   {canReengage ? (
                     <label
                       className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                      title="Re-use an older list: bypasses the 21-day outreach cooldown for this preparation only. Unsubscribe / DNC and hard bounces are still enforced."
+                      title={`Re-use an older list: bypasses the ${OUTREACH_COOLDOWN_DAYS}-day outreach cooldown for this preparation only. Unsubscribe / DNC and hard bounces are still enforced.`}
                     >
                       <input
                         type="checkbox"
@@ -318,6 +319,7 @@ export function SequenceSendPreparationPanel({
               sequenceId={s.sequenceId}
               snapshotsByCategory={snapshotsBySequenceAndCategory}
               launchReadiness={launchReadinessBySequenceId[s.sequenceId] ?? null}
+              introHasSent={(introSnapshot?.sentCount ?? 0) > 0}
             />
           </div>
         );
@@ -503,12 +505,14 @@ function FollowUpDispatchBlocks({
   sequenceId,
   snapshotsByCategory,
   launchReadiness,
+  introHasSent,
 }: {
   clientId: string;
   canMutate: boolean;
   sequenceId: string;
   snapshotsByCategory: Map<string, SequenceStepSendUiSnapshot>;
   launchReadiness: SequenceLaunchReadiness | null;
+  introHasSent: boolean;
 }) {
   const blocks = FOLLOW_UP_CATEGORIES.map((category) => {
     const snap = snapshotsByCategory.get(`${sequenceId}:${category}`);
@@ -520,6 +524,17 @@ function FollowUpDispatchBlocks({
 
   if (blocks.length === 0) {
     return null;
+  }
+
+  // Audit: follow-ups are inert until the introduction has sent, so don't show
+  // "sends automatically" reassurance for a sequence that hasn't launched yet.
+  if (!introHasSent) {
+    return (
+      <p className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-[11px] text-muted-foreground">
+        Follow-up steps send automatically once the introduction has gone to at
+        least one recipient — they&apos;ll appear here then.
+      </p>
+    );
   }
 
   return (
