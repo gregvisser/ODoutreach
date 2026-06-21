@@ -38,12 +38,23 @@ export async function processOutboundSendQueue(opts: {
           OR "OutboundEmail"."claimExpiresAt" IS NULL
           OR "OutboundEmail"."claimExpiresAt" < ${now}
         )
-        -- F2: never claim a send whose workspace has been soft-deleted. Read-side
-        -- only — the queued rows are left untouched so a restore resumes cleanly.
-        -- No-op until a super-admin soft-deletes a workspace (deletedAt is null otherwise).
+        -- F2 + M1: never claim a send whose workspace cannot currently send —
+        -- soft-deleted (deletedAt set) OR paused/archived (Client.status).
+        -- Read-side only: the QUEUED rows are left untouched, so restoring or
+        -- reactivating the workspace resumes its backlog cleanly. This is a
+        -- no-op for every live workspace (deletedAt null and status
+        -- ONBOARDING/ACTIVE), so it changes nothing for a currently-sending
+        -- client; it only makes "pause/archive the client" actually halt the
+        -- in-flight queue, which it previously did not (the F2 deletedAt guard
+        -- alone left a paused workspace's backlog draining).
         AND EXISTS (
           SELECT 1 FROM "Client" c
-          WHERE c."id" = "OutboundEmail"."clientId" AND c."deletedAt" IS NULL
+          WHERE c."id" = "OutboundEmail"."clientId"
+            AND c."deletedAt" IS NULL
+            AND c."status" NOT IN (
+              'PAUSED'::"ClientLifecycleStatus",
+              'ARCHIVED'::"ClientLifecycleStatus"
+            )
         )
       ORDER BY "OutboundEmail"."queuedAt" ASC NULLS LAST, "OutboundEmail"."createdAt" ASC
       LIMIT ${limit}
