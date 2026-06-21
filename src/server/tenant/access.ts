@@ -26,7 +26,7 @@ export function canAssignClientWorkspaceMembership(staff: StaffIdentity): boolea
 }
 
 /**
- * F3 — the "re-engage" override bypasses the 21-day outreach cooldown to re-use
+ * F3 — the "re-engage" override bypasses the 10-day outreach cooldown to re-use
  * an older list. It NEVER bypasses suppression (unsubscribe / DNC) or hard
  * bounces. Roles removed — any active staff member may use it.
  */

@@ -99,7 +99,7 @@ describe("deriveOutreachDashboardStatusLabel", () => {
   });
 
   it("labels 'No recipients ready' (not Blocked) when the only blocker is no eligible recipients", () => {
-    // Everyone already emailed or inside the 21-day cooldown — not broken.
+    // Everyone already emailed or inside the 10-day cooldown — not broken.
     expect(
       deriveOutreachDashboardStatusLabel({
         status: "APPROVED",

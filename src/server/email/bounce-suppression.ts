@@ -7,7 +7,7 @@ import { normalizeEmail } from "@/lib/normalize";
  * Append-only suppression for a HARD-bounced recipient.
  *
  * When the provider reports a permanent bounce we must stop ever sending to
- * that address again — re-contacting a dead mailbox once the 21-day cooldown
+ * that address again — re-contacting a dead mailbox once the 10-day cooldown
  * lapses is a deliverability / sender-reputation risk. This mirrors the
  * unsubscribe redemption side-effects (`performUnsubscribe`) so the address
  * is blocked on the very next send attempt:

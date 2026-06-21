@@ -302,7 +302,7 @@ export async function planSequenceStepSends(params: {
   stepId: string;
   staffUserId: string;
   /**
-   * F3 — permissioned re-engage. When true the 21-day outreach cooldown
+   * F3 — permissioned re-engage. When true the 10-day outreach cooldown
    * TIMER is bypassed for this plan (to re-use older lists). It bypasses
    * ONLY the cooldown: suppression, recent hard bounces and every other
    * guard still apply. The CALLER must enforce the permission before

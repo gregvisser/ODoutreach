@@ -458,8 +458,8 @@ export async function prepareClientEmailSequenceStepSendsAction(
   await requireClientAccess(staff, clientId);
   await requireClientEmailSequenceMutator(staff, clientId);
 
-  // F3 — permissioned re-engage: an authorised (ADMIN/MANAGER) user may
-  // bypass the 21-day outreach cooldown to re-use an older list. It bypasses
+  // F3 — permissioned re-engage: any active staff member may
+  // bypass the 10-day outreach cooldown to re-use an older list. It bypasses
   // ONLY the cooldown timer; suppression (unsubscribe/DNC) and hard bounces
   // are still enforced by the classifier and at dispatch.
   const reengageRaw = String(formData.get("reengage") ?? "").toLowerCase();

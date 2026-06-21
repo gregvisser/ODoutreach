@@ -9,7 +9,7 @@
  */
 
 export type IneligibilityBreakdown = {
-  /** In the workspace-wide 21-day outreach cooldown. */
+  /** In the workspace-wide 10-day outreach cooldown. */
   cooldown: number;
   /** Unsubscribed or on the do-not-contact / suppression list. */
   suppressed: number;

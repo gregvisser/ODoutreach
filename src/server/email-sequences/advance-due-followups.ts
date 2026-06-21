@@ -41,7 +41,7 @@ import { planSequenceStepSends } from "./step-sends";
  *     dispatch time.
  *   - A reply or a pause stops further follow-ups (PR #137 reply-stop +
  *     the classifier's PAUSED/EXCLUDED/COMPLETED skip).
- *   - The 21-day workspace cooldown still applies (same-sequence sends
+ *   - The 10-day workspace cooldown still applies (same-sequence sends
  *     are excluded so a sequence never blocks its own follow-up).
  *
  * One bad step never aborts the rest — each (sequence × step) is wrapped

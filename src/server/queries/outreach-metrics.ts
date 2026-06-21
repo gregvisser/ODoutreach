@@ -257,7 +257,7 @@ async function gatherRawCounts(
         clientId,
         // Deliberately NOT windowed — planning state, not an event.
         status: { in: ["SUPPRESSED", "SKIPPED", "BLOCKED"] },
-        // Exclude 21-day outreach-cooldown deferrals. Those contacts were
+        // Exclude 10-day outreach-cooldown deferrals. Those contacts were
         // ALREADY emailed (that's why they're in cooldown) — they're
         // counted under "Sent" via their original send. Counting them
         // again as suppressed/skipped would wrongly inflate "Not reached"

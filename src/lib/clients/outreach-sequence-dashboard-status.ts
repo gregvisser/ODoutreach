@@ -40,7 +40,7 @@ export function deriveOutreachDashboardStatusLabel(args: {
       // template/unsubscribe, etc.) from the benign "there's simply
       // nobody to send to right now" case. The latter is usually because
       // every eligible contact has already been emailed or is inside the
-      // 21-day outreach cooldown — that is NOT broken, so it must not show
+      // 10-day outreach cooldown — that is NOT broken, so it must not show
       // the alarming red "Blocked" pill.
       const activeBlockers = launchReadiness.checks.filter(
         (c) => c.status === "fail" && c.severity === "blocker",

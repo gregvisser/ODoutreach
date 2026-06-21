@@ -118,7 +118,7 @@ export async function applyNormalizedEmailEvent(
 
   // Hard-bounce suppression (behind a default-off flag). A permanent bounce
   // means the address is dead — append it to the suppression list so it is
-  // never re-contacted once the 21-day cooldown lapses. Soft / transient /
+  // never re-contacted once the 10-day cooldown lapses. Soft / transient /
   // undetermined bounces never suppress. We only run this once the bounce
   // is actually being applied (or refreshed on an already-terminal row);
   // the `skip` paths (stale ordering, REPLIED-wins) deliberately do not
