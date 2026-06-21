@@ -259,7 +259,9 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle className="text-lg">Email provider</CardTitle>
             <CardDescription>
-              How outbound email is actually delivered.
+              Real client outreach always sends through each client&apos;s
+              connected Microsoft 365 / Google mailboxes. The provider below is
+              only a legacy fallback for non-mailbox system mail.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-sm">
@@ -273,10 +275,12 @@ export default async function SettingsPage() {
               </>
             ) : (
               <>
-                <StatusPill tone="attention">Test mode</StatusPill>
+                <StatusPill tone="ready">Outreach sends via mailboxes</StatusPill>
                 <span className="text-muted-foreground">
-                  Outbound email is being simulated — no real messages leave
-                  the system. An administrator switches to Resend in production.
+                  Client outreach is live — it goes through each client&apos;s
+                  connected mailboxes, not this provider. The legacy Resend
+                  fallback isn&apos;t configured, so only non-mailbox system mail
+                  would be simulated.
                 </span>
               </>
             )}
