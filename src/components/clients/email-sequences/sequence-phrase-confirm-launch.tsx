@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 
@@ -47,9 +48,13 @@ export function SequencePhraseConfirmLaunch({
   const titleId = useId();
   const descId = useId();
   const [error, setError] = useState<string | null>(null);
+  // Guards against a double confirm re-firing the send batch in the brief
+  // window before the page redirects. Reset each time the modal reopens.
+  const submittedRef = useRef(false);
 
   const openModal = () => {
     setError(null);
+    submittedRef.current = false;
     dialogRef.current?.showModal();
   };
 
@@ -58,12 +63,14 @@ export function SequencePhraseConfirmLaunch({
   };
 
   const confirm = () => {
+    if (submittedRef.current) return;
     const form = formRef.current;
     const phraseInput = phraseRef.current;
     if (!form || !phraseInput) {
       setError("Form is not ready. Refresh the page.");
       return;
     }
+    submittedRef.current = true;
     phraseInput.value = confirmationPhrase;
     form.requestSubmit();
     closeModal();
@@ -80,16 +87,13 @@ export function SequencePhraseConfirmLaunch({
           autoComplete="off"
         />
         {children}
-        <Button
-          type="button"
-          size="sm"
-          variant={variant}
-          disabled={disabled}
-          className={submitButtonClassName}
+        <LaunchTriggerButton
+          label={triggerLabel}
           onClick={openModal}
-        >
-          {triggerLabel}
-        </Button>
+          disabled={disabled}
+          variant={variant}
+          className={submitButtonClassName}
+        />
       </form>
 
       <dialog
@@ -122,5 +126,41 @@ export function SequencePhraseConfirmLaunch({
         </div>
       </dialog>
     </>
+  );
+}
+
+/**
+ * The trigger lives INSIDE the server-action form, so `useFormStatus` reports
+ * the form's in-flight state here: once the confirmed phrase submits, this
+ * button disables until the action completes and the page redirects — closing
+ * the window where a second click could re-fire a real send batch. It resets
+ * automatically (success OR error); there is no manual state to get stuck.
+ */
+function LaunchTriggerButton({
+  label,
+  onClick,
+  disabled,
+  variant,
+  className,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  variant?: React.ComponentProps<typeof Button>["variant"];
+  className?: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={variant}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      className={className}
+      onClick={onClick}
+    >
+      {pending ? "Working…" : label}
+    </Button>
   );
 }

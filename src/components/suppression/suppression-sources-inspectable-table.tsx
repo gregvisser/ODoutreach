@@ -121,7 +121,11 @@ type Props = {
   // Server action — bound on the server, called only when the form is
   // submitted by an explicit user click. NEVER invoked on render.
   runSuppressionSyncAction: (formData: FormData) => Promise<void> | void;
-  /** Owner-only (isSuperAdmin): sync replaces the list, so hide it otherwise. */
+  /**
+   * When true, render the Sync control. Open to all active staff (team handoff,
+   * commit 924352d) — sync replaces the list from the connected sheet; the
+   * shrink-warning is the safety net.
+   */
   canSync: boolean;
 };
 

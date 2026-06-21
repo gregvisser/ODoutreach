@@ -365,6 +365,12 @@ export function ClientLinkedReplyDetail({ clientId, detail }: Props) {
                 Stopping or pausing prevents any future sends from this
                 enrolment. No email is sent from this page.
               </span>
+              {enrolmentLockedExcluded ? (
+                <p className="w-full text-xs text-amber-700 dark:text-amber-400">
+                  This contact is excluded from the sequence, so follow-ups are
+                  already stopped — there&apos;s nothing more to do here.
+                </p>
+              ) : null}
             </div>
           ) : (
             <p className="rounded-md border border-border/70 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">

@@ -15,7 +15,7 @@ import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readi
 import { infraLaunchBlockerReasons } from "@/lib/email-sequences/launch-infra-blockers";
 import { OUTREACH_COOLDOWN_DAYS } from "@/lib/email-sequences/recent-send-cooldown";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import {
   Card,
   CardContent,
@@ -276,15 +276,15 @@ export function SequenceSendPreparationPanel({
                   value={s.introductionStepId ?? ""}
                 />
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <Button
-                    type="submit"
+                  <FormSubmitButton
                     size="sm"
                     variant="outline"
                     disabled={!canPrepare}
+                    pendingLabel="Updating…"
                     title="Updates who can receive the next live send — does not send email."
                   >
                     Review recipients
-                  </Button>
+                  </FormSubmitButton>
                   {canReengage ? (
                     <label
                       className="flex items-center gap-1.5 text-xs text-muted-foreground"

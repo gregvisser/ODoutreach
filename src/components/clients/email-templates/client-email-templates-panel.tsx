@@ -3,7 +3,7 @@ import {
   returnClientEmailTemplateToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/template-actions";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import {
   Card,
   CardContent,
@@ -323,18 +323,18 @@ function TemplateRow({
             <form action={returnClientEmailTemplateToDraftAction}>
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="templateId" value={template.id} />
-              <Button type="submit" size="sm" variant="outline">
+              <FormSubmitButton size="sm" variant="outline" pendingLabel="Restoring…">
                 Restore as draft
-              </Button>
+              </FormSubmitButton>
             </form>
           )}
           {template.status !== "ARCHIVED" && (
             <form action={archiveClientEmailTemplateAction}>
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="templateId" value={template.id} />
-              <Button type="submit" size="sm" variant="ghost">
+              <FormSubmitButton size="sm" variant="ghost" pendingLabel="Archiving…">
                 Archive
-              </Button>
+              </FormSubmitButton>
             </form>
           )}
         </div>

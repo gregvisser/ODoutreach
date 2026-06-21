@@ -7,6 +7,7 @@ import {
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import {
   Card,
   CardContent,
@@ -757,9 +758,9 @@ function EnrollmentBlock({
           <form action={createClientEmailSequenceEnrollmentsAction}>
             <input type="hidden" name="clientId" value={clientId} />
             <input type="hidden" name="sequenceId" value={sequence.id} />
-            <Button type="submit" size="sm" variant="outline" disabled={!canEnroll}>
+            <FormSubmitButton size="sm" variant="outline" disabled={!canEnroll} pendingLabel="Adding…">
               {preview.alreadyEnrolled > 0 ? "Include new recipients" : "Review recipients"}
-            </Button>
+            </FormSubmitButton>
           </form>
           <span className="text-[11px] text-muted-foreground">
             Tap after list changes to add new contacts. No email is sent.
