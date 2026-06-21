@@ -44,7 +44,7 @@ export const SENDER_PLACEHOLDERS: readonly PlaceholderDescriptor[] = [
   { key: "sender_name", group: "sender", label: "Sender name", description: "Display name of the sending mailbox" },
   { key: "sender_email", group: "sender", label: "Sender email", description: "Email of the sending mailbox" },
   { key: "sender_company_name", group: "sender", label: "Sender company name", description: "Client workspace name — the sending organisation" },
-  { key: "email_signature", group: "sender", label: "Email signature", description: "Configured sender signature for this client" },
+  { key: "email_signature", group: "sender", label: "Email signature", description: "Legacy — the sending mailbox signature is appended automatically at send; you don't need this" },
   { key: "unsubscribe_link", group: "sender", label: "Unsubscribe link", description: "Compliance footer link injected at send time" },
 ];
 

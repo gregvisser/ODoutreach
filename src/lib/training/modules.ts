@@ -466,7 +466,7 @@ const mailboxesModule: TrainingModule = {
   ],
   commonMistakes: [
     "Launching with three connected mailboxes and assuming 150/day — check the header; the capacity is 3 × 30 = 90.",
-    "Forgetting that Microsoft 365 signatures don't sync — every Microsoft mailbox needs a pasted signature, or {{email_signature}} falls back to the brief.",
+    "Forgetting that Microsoft 365 signatures don't sync — every Microsoft mailbox needs a signature pasted in OpensDoors (Edit manual signature), or the send goes out with no sign-off and launch stays blocked.",
     "Reconnecting a mailbox mid-campaign to 'fix' a non-issue — this interrupts sending and invalidates cached tokens.",
     "Treating connection error as cosmetic — a stale mailbox silently consumes zero capacity until it reconnects.",
   ],
@@ -811,7 +811,7 @@ const outreachModule: TrainingModule = {
     "The Outreach tab is where templates and sequences are built, launch readiness is checked, and you choose contacts, sending mailbox, intro timing, and optional follow-ups. Sequences need an Introduction step; follow-ups are added only if you want them. Saving a template or sequence does not send email — scheduling and launch are separate actions. A small optional limited-batch tool still exists for operators who type the exact confirmation phrase with strict limits.",
   details: [
     "Templates are scoped to a client and a category (Introduction, Follow-up 1–5). Sequences pick saved templates by category; you only need an Introduction to start, then use Add follow-up for additional steps when needed.",
-    'The worked example template for OpensDoors is "OpensDoors Friendly Introduction 1". Study its placeholders — it uses {{first_name}}, {{company_name}} and {{email_signature}} and that is exactly what every downstream send depends on.',
+    'The worked example template for OpensDoors is "OpensDoors Friendly Introduction 1". Study its placeholders — {{first_name}} and {{company_name}} personalise each send. Do not add a signature or {{email_signature}} to the body: the signature saved on the sending mailbox is appended automatically at send.',
   ],
   screenshots: [
     {
@@ -840,7 +840,7 @@ const outreachModule: TrainingModule = {
     {
       title: "Use supported placeholders only",
       detail:
-        "The Supported placeholders panel lists every token the renderer understands. Unknown placeholders block approval. For the first touch: {{first_name}}, {{company_name}}, {{email_signature}}.",
+        "The Supported placeholders panel lists every token the renderer understands. Unknown placeholders block approval. For the first touch: {{first_name}} and {{company_name}} — the signature is appended automatically from the mailbox, so you don't add {{email_signature}}.",
     },
     {
       title: "Save the draft, then use it in a sequence",
@@ -872,7 +872,7 @@ const outreachModule: TrainingModule = {
   ],
   commonMistakes: [
     'Using {{company_name}} and {{sender_company_name}} interchangeably — {{company_name}} is the target company; {{sender_company_name}} is OpensDoors (the sender).',
-    'Leaving {{email_signature}} off the body — every real sequence should sign off properly.',
+    'Adding a signature or {{email_signature}} into the template body — the mailbox signature is appended automatically, so a typed one double-signs and {{email_signature}} resolves to nothing.',
     "Shipping copy you have not read out loud — awkward sentences always make it out in volume.",
     "Using the small-batch confirmation tool with external lists that are not allowlisted — the server may reject; use the production sequence path for real prospects.",
     "Clicking send or queue during training when you only meant to explore the UI — treat every launch as real.",
@@ -898,7 +898,7 @@ const outreachModule: TrainingModule = {
     { label: "Template category", value: ex.template.category },
     { label: "Template name", value: ex.template.name },
     { label: "Subject", value: ex.template.subject, mono: true },
-    { label: "Placeholders", value: "{{first_name}}, {{company_name}}, {{email_signature}}", mono: true },
+    { label: "Placeholders", value: "{{first_name}}, {{company_name}}", mono: true },
   ],
   code: {
     caption: "OpensDoors Friendly Introduction 1 — email body",
