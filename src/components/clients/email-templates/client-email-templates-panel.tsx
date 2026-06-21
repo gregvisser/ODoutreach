@@ -174,7 +174,7 @@ export function ClientEmailTemplatesPanel(props: Props) {
             <h3 className="text-sm font-semibold">Supported placeholders</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               Use <code>{"{{ key }}"}</code> in subject or content. Unknown placeholders must be
-              fixed before a template becomes Saved. Snake_case is canonical.
+              fixed before a template becomes Saved. Use the exact keys shown below.
             </p>
             <PlaceholderGroupList
               title="Target recipient / company"

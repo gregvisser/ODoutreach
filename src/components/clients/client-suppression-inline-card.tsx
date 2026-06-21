@@ -140,7 +140,7 @@ export function ClientSuppressionInlineCard({
           outreach. Each list is kept in its own
           Google Sheet and checked before sending.{" "}
           <Link href={`/suppression?client=${clientId}`} className="underline underline-offset-2">
-            Open admin view
+            See the full blocked list
           </Link>
           .
         </CardDescription>
@@ -315,7 +315,9 @@ export function ClientSuppressionInlineCard({
                           : "domains"
                     } on the list`
                   : ""}
-                {s.lastSyncedAt ? ` · last sync ${s.lastSyncedAt}` : ""}
+                {s.lastSyncedAt
+                  ? ` · last sync ${s.lastSyncedAt.slice(0, 16).replace("T", " ")}`
+                  : ""}
                 {s.lastError ? ` · ${s.lastError}` : ""}
               </li>
             ))}
