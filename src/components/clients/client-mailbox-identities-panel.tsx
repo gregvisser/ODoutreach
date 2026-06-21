@@ -18,6 +18,7 @@ import {
 } from "@/app/(app)/clients/mailbox-identities-actions";
 import {
   applyBrandedSignatureToAllClientMailboxesAction,
+  setClientSignaturePhoneAction,
   syncMailboxSignatureAction,
   updateMailboxSignatureAction,
   type MailboxSignatureActionResult,
@@ -115,6 +116,7 @@ export type MailboxIdentityRow = {
   lastError: string | null;
   updatedAt: string;
   senderDisplayName: string | null;
+  senderPhone: string | null;
   senderSignatureHtml: string | null;
   senderSignatureText: string | null;
   senderSignatureSource: string | null;
@@ -271,6 +273,7 @@ export function ClientMailboxIdentitiesPanel({
   showMailboxSetupTools,
   workspaceDisplayName,
   publicSiteOrigin,
+  clientSignaturePhone,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
@@ -289,6 +292,8 @@ export function ClientMailboxIdentitiesPanel({
   workspaceDisplayName: string;
   /** Public app origin for branded template image URLs (server-resolved). */
   publicSiteOrigin: string | null;
+  /** Client company landline — the default phone the 1-click signature uses. */
+  clientSignaturePhone: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -300,6 +305,7 @@ export function ClientMailboxIdentitiesPanel({
   const [signatureEditRow, setSignatureEditRow] =
     useState<MailboxIdentityRow | null>(null);
   const [previewRow, setPreviewRow] = useState<MailboxIdentityRow | null>(null);
+  const [companyPhone, setCompanyPhone] = useState(clientSignaturePhone ?? "");
   const [showRemoved, setShowRemoved] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<MailboxIdentityRow | null>(null);
   const [removeNote, setRemoveNote] = useState("");
@@ -842,6 +848,42 @@ export function ClientMailboxIdentitiesPanel({
             <strong>Preview signature</strong> on any row to see exactly how it
             will look.
           </p>
+          {canMutate ? (
+            <div className="flex flex-wrap items-end gap-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
+              <div className="min-w-[12rem] flex-1 space-y-1">
+                <label
+                  htmlFor="company-landline"
+                  className="text-xs font-medium text-foreground"
+                >
+                  Company landline (goes on the 1-click signatures)
+                </label>
+                <input
+                  id="company-landline"
+                  className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  value={companyPhone}
+                  onChange={(e) => setCompanyPhone(e.target.value)}
+                  placeholder="e.g. +44 20 1234 5678"
+                />
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="text-xs"
+                disabled={pending}
+                onClick={() =>
+                  runSignature(() =>
+                    setClientSignaturePhoneAction(
+                      clientId,
+                      companyPhone.trim() || null,
+                    ),
+                  )
+                }
+              >
+                Save landline
+              </Button>
+            </div>
+          ) : null}
           <div className="overflow-x-auto rounded-lg border border-border/80 -mx-1 px-1 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
@@ -1494,6 +1536,7 @@ function MailboxSignatureForm(props: {
   );
   const [signatureText, setSignatureText] = useState(row.senderSignatureText ?? "");
   const [signatureHtml, setSignatureHtml] = useState(row.senderSignatureHtml ?? "");
+  const [senderPhone, setSenderPhone] = useState(row.senderPhone ?? "");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const applyBrandedTemplate = () => {
@@ -1502,7 +1545,7 @@ function MailboxSignatureForm(props: {
     const html = buildOpensDoorsBrandedSignatureHtml({
       displayName: display,
       jobTitle: "",
-      phone: "",
+      phone: senderPhone.trim() || "",
       email: row.email,
       website: "https://opensdoors.co.uk",
       legalDisclaimer:
@@ -1512,7 +1555,7 @@ function MailboxSignatureForm(props: {
     const plain = buildOpensDoorsBrandedSignaturePlain({
       displayName: display,
       jobTitle: "",
-      phone: "",
+      phone: senderPhone.trim() || "",
       email: row.email,
       website: "https://opensdoors.co.uk",
       legalDisclaimer:
@@ -1544,6 +1587,7 @@ function MailboxSignatureForm(props: {
             clientId,
             mailboxId: row.id,
             senderDisplayName: senderDisplayName.trim() || null,
+            senderPhone: senderPhone.trim() || null,
             signatureText: signatureText.trim() || null,
             signatureHtml: signatureHtml.trim() || null,
           });
@@ -1563,6 +1607,23 @@ function MailboxSignatureForm(props: {
           <p className="text-xs text-muted-foreground">
             Resolves <code>{"{{sender_name}}"}</code> for sends that go through
             this mailbox. Falls back to the workspace name when empty.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" htmlFor="sig-phone">
+            Phone (optional)
+          </label>
+          <input
+            id="sig-phone"
+            className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={senderPhone}
+            onChange={(e) => setSenderPhone(e.target.value)}
+            placeholder="e.g. +44 20 1234 5678"
+          />
+          <p className="text-xs text-muted-foreground">
+            This sender&apos;s own direct line. Leave blank to use the client&apos;s
+            company landline. The branded template below picks it up.
           </p>
         </div>
 

@@ -9,6 +9,7 @@ const {
   requireStaff,
   requireMutator,
   clientFindFirst,
+  clientUpdate,
   mbFindMany,
   mbUpdate,
   auditCreate,
@@ -16,6 +17,7 @@ const {
   requireStaff: vi.fn(),
   requireMutator: vi.fn(),
   clientFindFirst: vi.fn(),
+  clientUpdate: vi.fn(),
   mbFindMany: vi.fn(),
   mbUpdate: vi.fn(),
   auditCreate: vi.fn(),
@@ -33,7 +35,10 @@ vi.mock("@/server/mailbox/gmail-signature-sync", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", () => ({
   prisma: {
-    client: { findFirst: (...a: unknown[]) => clientFindFirst(...a) },
+    client: {
+      findFirst: (...a: unknown[]) => clientFindFirst(...a),
+      update: (...a: unknown[]) => clientUpdate(...a),
+    },
     clientMailboxIdentity: {
       findMany: (...a: unknown[]) => mbFindMany(...a),
       update: (...a: unknown[]) => mbUpdate(...a),
@@ -42,12 +47,16 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { applyBrandedSignatureToAllClientMailboxesAction } from "./mailbox-signature-actions";
+import {
+  applyBrandedSignatureToAllClientMailboxesAction,
+  setClientSignaturePhoneAction,
+} from "./mailbox-signature-actions";
 
 beforeEach(() => {
   requireStaff.mockReset();
   requireMutator.mockReset();
   clientFindFirst.mockReset();
+  clientUpdate.mockReset();
   mbFindMany.mockReset();
   mbUpdate.mockReset();
   auditCreate.mockReset();
@@ -58,7 +67,9 @@ beforeEach(() => {
     name: "Idverde",
     website: "https://idverde.co.uk",
     logoUrl: null,
+    signaturePhone: "+44 20 7946 0000",
   });
+  clientUpdate.mockResolvedValue({});
   mbUpdate.mockResolvedValue({});
   auditCreate.mockResolvedValue({});
 });
@@ -79,8 +90,8 @@ describe("applyBrandedSignatureToAllClientMailboxesAction", () => {
 
   it("writes a CLIENT-branded signature (manual source) to each empty mailbox and audits", async () => {
     mbFindMany.mockResolvedValue([
-      { id: "mb1", email: "adam@idverde.co.uk", displayName: "Adam", senderDisplayName: null },
-      { id: "mb2", email: "dan@idverde.co.uk", displayName: null, senderDisplayName: "Dan H" },
+      { id: "mb1", email: "adam@idverde.co.uk", displayName: "Adam", senderDisplayName: null, senderPhone: null },
+      { id: "mb2", email: "dan@idverde.co.uk", displayName: null, senderDisplayName: "Dan H", senderPhone: "07700 900111" },
     ]);
 
     const res = await applyBrandedSignatureToAllClientMailboxesAction("c1");
@@ -94,8 +105,13 @@ describe("applyBrandedSignatureToAllClientMailboxesAction", () => {
     expect(first.data.senderSignatureHtml).toContain("idverde.co.uk");
     expect(first.data.senderSignatureHtml).not.toContain("opensdoors.co.uk");
     expect(first.data.senderSignatureText).toContain("idverde.co.uk");
-    // Second mailbox falls back to its senderDisplayName.
-    expect(mbUpdate.mock.calls[1][0].data.senderDisplayName).toBe("Dan H");
+    // mb1 has no number of its own → uses the client's company landline.
+    expect(first.data.senderSignatureHtml).toContain("7946 0000");
+    // mb2 has its own direct line → that wins over the company landline.
+    const second = mbUpdate.mock.calls[1][0].data;
+    expect(second.senderDisplayName).toBe("Dan H");
+    expect(second.senderSignatureHtml).toContain("900111");
+    expect(second.senderSignatureHtml).not.toContain("7946 0000");
 
     expect(auditCreate).toHaveBeenCalledTimes(2);
     expect(res.ok).toBe(true);
@@ -117,5 +133,30 @@ describe("applyBrandedSignatureToAllClientMailboxesAction", () => {
     const res = await applyBrandedSignatureToAllClientMailboxesAction("c1");
     expect(res.ok).toBe(false);
     expect(mbFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("setClientSignaturePhoneAction", () => {
+  it("saves a trimmed company landline on the client", async () => {
+    const res = await setClientSignaturePhoneAction("c1", "  +44 20 7946 0000  ");
+    expect(clientUpdate).toHaveBeenCalledTimes(1);
+    expect(clientUpdate.mock.calls[0][0]).toMatchObject({
+      where: { id: "c1" },
+      data: { signaturePhone: "+44 20 7946 0000" },
+    });
+    expect(res.ok).toBe(true);
+  });
+
+  it("clears the landline when given a blank value", async () => {
+    const res = await setClientSignaturePhoneAction("c1", "   ");
+    expect(clientUpdate.mock.calls[0][0].data).toEqual({ signaturePhone: null });
+    expect(res.ok).toBe(true);
+  });
+
+  it("refuses a missing / soft-deleted client", async () => {
+    clientFindFirst.mockResolvedValue(null);
+    const res = await setClientSignaturePhoneAction("c1", "123");
+    expect(res.ok).toBe(false);
+    expect(clientUpdate).not.toHaveBeenCalled();
   });
 });

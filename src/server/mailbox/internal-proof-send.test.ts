@@ -72,6 +72,7 @@ const baseMailbox: ClientMailboxIdentity = {
   createdAt: new Date("2026-05-06T00:00:00Z"),
   updatedAt: new Date("2026-05-06T00:00:00Z"),
   senderDisplayName: "Adam OpensDoors",
+  senderPhone: null,
   senderSignatureHtml: null,
   senderSignatureText: "Adam OpensDoors\nOpensDoors",
   senderSignatureSource: "manual",

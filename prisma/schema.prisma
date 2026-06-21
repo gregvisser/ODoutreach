@@ -394,6 +394,10 @@ model Client {
   briefMainContact                Json?
   /// Company LinkedIn page URL
   briefLinkedinUrl                String?
+  /// Company landline shown in outreach mailbox signatures — the default the
+  /// one-click branded signature uses for every mailbox. A mailbox's own
+  /// `senderPhone` overrides it when set.
+  signaturePhone                  String?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes              String?                   @db.Text
   briefAssignedAccountManagerId   String?
@@ -528,6 +532,9 @@ model ClientMailboxIdentity {
   /// the historical brief may still be used as a last-resort composition fallback
   /// for `{{email_signature}}` for legacy data — operators configure signatures here.
   senderDisplayName        String?
+  /// Optional per-mailbox phone for this sender's signature. Overrides the
+  /// client-level `Client.signaturePhone` when set; blank falls back to it.
+  senderPhone              String?
   /// Raw HTML signature as retrieved from Gmail `sendAs.signature` or pasted
   /// manually. Never rendered without going through the signature helper.
   senderSignatureHtml      String?                 @db.Text

@@ -49,6 +49,7 @@ const updateSchema = z.object({
   clientId: z.string().min(1),
   mailboxId: z.string().min(1),
   senderDisplayName: z.string().max(200).optional().nullable(),
+  senderPhone: z.string().max(60).optional().nullable(),
   signatureHtml: z.string().max(20_000).optional().nullable(),
   signatureText: z.string().max(20_000).optional().nullable(),
 });
@@ -252,6 +253,7 @@ export async function updateMailboxSignatureAction(
     where: { id: mailbox.id },
     data: {
       senderDisplayName,
+      senderPhone: parsed.data.senderPhone?.trim() || null,
       senderSignatureHtml: nextHtml && nextHtml.length > 0 ? nextHtml : null,
       senderSignatureText: nextText,
       senderSignatureSource: hasAnySignature
@@ -303,7 +305,7 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
 
   const client = await prisma.client.findFirst({
     where: { id: clientId, deletedAt: null },
-    select: { id: true, name: true, website: true, logoUrl: true },
+    select: { id: true, name: true, website: true, logoUrl: true, signaturePhone: true },
   });
   if (!client) {
     return { ok: false, error: "Client not found." };
@@ -320,7 +322,13 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
       senderSignatureHtml: null,
       senderSignatureText: null,
     },
-    select: { id: true, email: true, displayName: true, senderDisplayName: true },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      senderDisplayName: true,
+      senderPhone: true,
+    },
   });
 
   if (mailboxes.length === 0) {
@@ -332,14 +340,18 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
 
   const website = client.website?.trim() || null;
   const logoUrl = client.logoUrl?.trim() || null;
+  const companyPhone = client.signaturePhone?.trim() || null;
 
   let applied = 0;
   for (const mb of mailboxes) {
     const displayName =
       mb.senderDisplayName?.trim() || mb.displayName?.trim() || mb.email;
+    // Per-mailbox number wins; otherwise the client company landline.
+    const phone = mb.senderPhone?.trim() || companyPhone;
     const templateInput = {
       displayName,
       email: mb.email,
+      phone,
       website,
       legalDisclaimer: DEFAULT_SIGNATURE_DISCLAIMER,
       logoUrl,
@@ -375,5 +387,44 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
       applied === 1
         ? "Added a branded signature to 1 mailbox. Open Preview signature to see how it looks."
         : `Added a branded signature to ${applied} mailboxes. Open Preview signature on any row to see how it looks.`,
+  };
+}
+
+/**
+ * Set (or clear) the client's company landline shown in outreach signatures.
+ * This is the default the one-click branded signature uses for every mailbox
+ * that has no number of its own. Does not touch existing signatures — re-run
+ * "Set branded signatures" (or edit a mailbox) to apply a changed number.
+ */
+export async function setClientSignaturePhoneAction(
+  clientId: string,
+  phone: string | null,
+): Promise<MailboxSignatureActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  try {
+    await requireClientMailboxMutator(staff, clientId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!client) {
+    return { ok: false, error: "Client not found." };
+  }
+
+  const value = phone?.trim().slice(0, 60) || null;
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { signaturePhone: value },
+  });
+  revalidatePath(`/clients/${clientId}/mailboxes`);
+  return {
+    ok: true,
+    message: value
+      ? "Company landline saved. Press “Set branded signatures” to apply it to mailboxes."
+      : "Company landline cleared.",
   };
 }

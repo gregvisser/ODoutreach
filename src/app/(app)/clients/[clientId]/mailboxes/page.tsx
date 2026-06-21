@@ -192,6 +192,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             showMailboxSetupTools={showMailboxSetupTools}
             workspaceDisplayName={client.name}
             publicSiteOrigin={publicSiteOrigin}
+            clientSignaturePhone={client.signaturePhone ?? null}
             clientBriefFallback={{
               senderDisplayNameFallback: client.name,
               emailSignatureFallback:

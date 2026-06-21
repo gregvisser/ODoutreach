@@ -154,6 +154,7 @@ export async function loadClientWorkspaceBundle(
     lastError,
     updatedAt: m.updatedAt.toISOString(),
     senderDisplayName: m.senderDisplayName,
+    senderPhone: m.senderPhone,
     senderSignatureHtml: m.senderSignatureHtml,
     senderSignatureText: m.senderSignatureText,
     senderSignatureSource: m.senderSignatureSource,
