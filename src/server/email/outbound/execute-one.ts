@@ -19,6 +19,10 @@ import {
   sendMicrosoftGraphSendMail,
 } from "@/server/mailbox/microsoft-graph-sendmail";
 import { isSendPreflightDedupEnabled } from "./send-preflight-dedup";
+import {
+  evaluateOutboundDispatchRecheck,
+  isDispatchRecheckEnabled,
+} from "./dispatch-recheck";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 import {
@@ -158,6 +162,41 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
       await markReservationReleasedForOutbound(row.id);
     }
     return { ok: true };
+  }
+
+  // M2/M3 — dispatch-time cooldown + hard-bounce re-check (default OFF; behind
+  // SEND_DISPATCH_RECHECK_ENABLED). The planner applied these when the row was
+  // staged, but a row that sat QUEUED (long retry backoff / "prepare now, send
+  // later") can be stale. Suppression / DNC / unsubscribe were already re-checked
+  // above; this adds the 10-day cooldown timer (M2) and a hard-bounce backstop
+  // that does not depend on the suppression flag (M3). We reuse the existing
+  // BLOCKED_SUPPRESSION terminal (no schema change) but tag a distinct error
+  // code so the activity detail shows exactly why it didn't send.
+  if (isDispatchRecheckEnabled()) {
+    const recheck = await evaluateOutboundDispatchRecheck({
+      outboundEmailId: row.id,
+      toEmail: to,
+      now: new Date(),
+    });
+    if (recheck.block) {
+      await prisma.outboundEmail.updateMany({
+        where: { id: row.id, status: "PROCESSING", providerMessageId: null },
+        data: {
+          status: "BLOCKED_SUPPRESSION",
+          claimedAt: null,
+          claimExpiresAt: null,
+          providerIdempotencyKey: null,
+          lastProviderEventType: "dispatch_recheck_blocked",
+          lastErrorCode:
+            recheck.kind === "recent_bounce" ? "RECENT_BOUNCE" : "OUTREACH_COOLDOWN",
+          lastErrorMessage: recheck.reason.slice(0, 2000),
+        },
+      });
+      if (row.mailboxIdentityId) {
+        await markReservationReleasedForOutbound(row.id);
+      }
+      return { ok: true };
+    }
   }
 
   if (!row.subject || !row.bodySnapshot) {
