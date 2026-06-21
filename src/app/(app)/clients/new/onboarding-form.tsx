@@ -105,7 +105,7 @@ export function OnboardingForm() {
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="slug">Workspace slug *</Label>
+          <Label htmlFor="slug">Workspace ID *</Label>
           <Input
             id="slug"
             value={effectiveSlug}

@@ -42,7 +42,7 @@ export function ClientWorkspaceCommandCenter({
             </h1>
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               <span>
-                Slug <span className="font-mono text-foreground">{clientSlug}</span>
+                Workspace ID <span className="font-mono text-foreground">{clientSlug}</span>
               </span>
               <Badge variant="outline">{clientStatus}</Badge>
             </p>
