@@ -69,6 +69,9 @@ export async function POST(
       ok: true,
       id: result.id,
       matchMethod: result.matchMethod,
+      // M8 — "internal_mail" (F4) or "duplicate" (webhook replay) when the
+      // message was deliberately not ingested as a new reply.
+      skipped: result.skipped,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Ingest failed";

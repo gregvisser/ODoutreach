@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       id: result.id,
       matchMethod: result.matchMethod,
+      skipped: result.skipped,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Ingest failed";
