@@ -13,6 +13,14 @@ import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 import { syncGmailSignatureForMailbox } from "@/server/mailbox/gmail-signature-sync";
+import {
+  buildOpensDoorsBrandedSignatureHtml,
+  buildOpensDoorsBrandedSignaturePlain,
+} from "@/lib/mailboxes/opensdoors-branded-signature-template";
+
+/** Generic confidentiality footer used when a client has no bespoke disclaimer. */
+const DEFAULT_SIGNATURE_DISCLAIMER =
+  "This email and any attachments may be confidential. If you are not the intended recipient, please notify the sender and delete this message.";
 
 /**
  * Per-mailbox sender signature server actions (PR — mailbox sender
@@ -270,4 +278,102 @@ export async function updateMailboxSignatureAction(
 
   revalidatePath(`/clients/${parsed.data.clientId}/mailboxes`);
   return { ok: true, message: "Signature updated." };
+}
+
+/**
+ * One-click "set once per client": give every connected mailbox that has NO
+ * signature yet a branded signature built from the CLIENT's own brand (name,
+ * website and logo from its brief) plus that mailbox's display name + email.
+ *
+ * Non-destructive on purpose — a mailbox that already has a signature is
+ * skipped, never overwritten, so this can be run safely at any time and never
+ * clobbers a hand-tuned signature. Microsoft and Google mailboxes are treated
+ * identically (the signature is appended by the send pipeline regardless of
+ * provider). Staff never have to write HTML.
+ */
+export async function applyBrandedSignatureToAllClientMailboxesAction(
+  clientId: string,
+): Promise<MailboxSignatureActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  try {
+    await requireClientMailboxMutator(staff, clientId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: { id: true, name: true, website: true, logoUrl: true },
+  });
+  if (!client) {
+    return { ok: false, error: "Client not found." };
+  }
+
+  // Connected, in-workspace mailboxes with NO signature yet. The WHERE clause
+  // is the non-destructive guard: rows that already have a signature never come
+  // back, so they are never touched.
+  const mailboxes = await prisma.clientMailboxIdentity.findMany({
+    where: {
+      clientId,
+      workspaceRemovedAt: null,
+      connectionStatus: "CONNECTED",
+      senderSignatureHtml: null,
+      senderSignatureText: null,
+    },
+    select: { id: true, email: true, displayName: true, senderDisplayName: true },
+  });
+
+  if (mailboxes.length === 0) {
+    return {
+      ok: true,
+      message: "Every connected mailbox already has a signature — nothing to add.",
+    };
+  }
+
+  const website = client.website?.trim() || null;
+  const logoUrl = client.logoUrl?.trim() || null;
+
+  let applied = 0;
+  for (const mb of mailboxes) {
+    const displayName =
+      mb.senderDisplayName?.trim() || mb.displayName?.trim() || mb.email;
+    const templateInput = {
+      displayName,
+      email: mb.email,
+      website,
+      legalDisclaimer: DEFAULT_SIGNATURE_DISCLAIMER,
+      logoUrl,
+      logoAlt: client.name,
+    };
+    const html = normaliseSignatureHtml(
+      buildOpensDoorsBrandedSignatureHtml(templateInput),
+    );
+    const plain = buildOpensDoorsBrandedSignaturePlain(templateInput);
+
+    await prisma.clientMailboxIdentity.update({
+      where: { id: mb.id },
+      data: {
+        senderDisplayName: displayName,
+        senderSignatureHtml: html.length > 0 ? html : null,
+        senderSignatureText: plain.trim() || null,
+        senderSignatureSource: "manual",
+        senderSignatureSyncedAt: new Date(),
+        senderSignatureSyncError: null,
+      },
+    });
+    await auditMailboxSignature(staff.id, clientId, mb.id, "UPDATE", {
+      change: "signature_branded_bulk_apply",
+      hasSignature: true,
+    });
+    applied += 1;
+  }
+
+  revalidatePath(`/clients/${clientId}/mailboxes`);
+  return {
+    ok: true,
+    message:
+      applied === 1
+        ? "Added a branded signature to 1 mailbox. Open Preview signature to see how it looks."
+        : `Added a branded signature to ${applied} mailboxes. Open Preview signature on any row to see how it looks.`,
+  };
 }

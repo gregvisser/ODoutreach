@@ -13,6 +13,13 @@ export type OpensDoorsBrandedTemplateInput = {
   legalDisclaimer?: string | null;
   /** Trailing slash stripped; used for `/branding/opensdoors-logo.svg`. */
   logoBaseUrl?: string | null;
+  /**
+   * Direct logo image URL (e.g. the client's own brand logo from its brief).
+   * Takes precedence over `logoBaseUrl` so a client signature carries the
+   * CLIENT's logo, not the OpensDoors mark. Alt text for it, when set.
+   */
+  logoUrl?: string | null;
+  logoAlt?: string | null;
 };
 
 function escapeHtmlText(s: string): string {
@@ -27,10 +34,20 @@ function escapeHtmlText(s: string): string {
  * HTML signature/disclaimer block — unsubscribe is appended separately by send pipelines.
  */
 export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemplateInput): string {
+  const directLogo = input.logoUrl?.trim() ?? "";
   const base = input.logoBaseUrl?.trim().replace(/\/+$/, "") ?? "";
+  // A client's own logo (directLogo) wins over the OpensDoors mark so a client
+  // signature is correctly branded. Falls back to the OpensDoors logo path.
+  const logoSrc =
+    directLogo.length > 0
+      ? directLogo
+      : base.length > 0
+        ? `${base}/branding/opensdoors-logo.svg`
+        : "";
+  const logoAlt = input.logoAlt?.trim() || (directLogo.length > 0 ? "" : "OpensDoors");
   const logo =
-    base.length > 0
-      ? `<img src="${escapeHtmlText(`${base}/branding/opensdoors-logo.svg`)}" alt="OpensDoors" width="140" style="display:block;border:0;max-width:140px;height:auto;" />`
+    logoSrc.length > 0
+      ? `<img src="${escapeHtmlText(logoSrc)}" alt="${escapeHtmlText(logoAlt)}" width="140" style="display:block;border:0;max-width:140px;height:auto;" />`
       : "";
 
   const lines = [

@@ -17,6 +17,7 @@ import {
   type MailboxActionResult as IdentityActionResult,
 } from "@/app/(app)/clients/mailbox-identities-actions";
 import {
+  applyBrandedSignatureToAllClientMailboxesAction,
   syncMailboxSignatureAction,
   updateMailboxSignatureAction,
   type MailboxSignatureActionResult,
@@ -813,7 +814,34 @@ export function ClientMailboxIdentitiesPanel({
 
       {showMailboxSetupTools && activeRows.length > 0 ? (
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Sender signatures</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Sender signatures</h3>
+            {canMutate ? (
+              <Button
+                type="button"
+                size="sm"
+                className="text-xs"
+                disabled={pending}
+                onClick={() =>
+                  runSignature(() =>
+                    applyBrandedSignatureToAllClientMailboxesAction(clientId),
+                  )
+                }
+              >
+                Set branded signatures (1 click)
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The signature is added to every send automatically — Outlook
+            signatures can&apos;t be read by any app, so it is set here once. The
+            button above builds a branded signature (name, links, disclaimer)
+            from this client&apos;s brief for every connected mailbox that
+            doesn&apos;t have one yet, and never overwrites one you&apos;ve set.
+            Google mailboxes can also use Sync from Gmail. Use{" "}
+            <strong>Preview signature</strong> on any row to see exactly how it
+            will look.
+          </p>
           <div className="overflow-x-auto rounded-lg border border-border/80 -mx-1 px-1 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
