@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { StaffUser } from "@/generated/prisma/client";
+import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client";
 
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
@@ -43,7 +43,7 @@ import { queueSelectedMailboxInternalProofSend } from "./internal-proof-send";
 
 const staff = { id: "staff1" } as StaffUser;
 
-const baseMailbox = {
+const baseMailbox: ClientMailboxIdentity = {
   id: "mailbox-1",
   clientId: "client-1",
   email: "adam@opensdoors.co.uk",
