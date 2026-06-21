@@ -28,8 +28,12 @@ export async function POST(
     }
   }
 
-  const client = await prisma.client.findUnique({
-    where: { inboundIngestToken: token },
+  // L5 — a soft-deleted workspace must be fully inert: refuse to resolve its
+  // ingest token, so a stray webhook can't drop a reply into the F2 recovery
+  // window. findFirst (not findUnique) because we now filter on more than the
+  // unique token. Collapses to the same generic 404 (no tenant enumeration).
+  const client = await prisma.client.findFirst({
+    where: { inboundIngestToken: token, deletedAt: null },
     select: { id: true },
   });
 
