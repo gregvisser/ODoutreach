@@ -990,57 +990,70 @@ export function ClientMailboxIdentitiesPanel({
                           {previewRow.email} — {pstate.shortDescription}
                         </SheetDescription>
                       </SheetHeader>
-                      <div className="mt-4 space-y-3 px-1 pb-2 text-sm">
-                        <p>
-                          <span className="font-medium text-foreground">Readiness:</span>{" "}
-                          {pstate.label}
-                        </p>
-                        <p>
-                          <span className="font-medium text-foreground">Source:</span>{" "}
-                          {humanizeSignatureSource(preview.selection.source)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {preview.footnote}
-                        </p>
-                        <div>
-                          <p className="text-xs font-medium text-foreground">
-                            HTML unsubscribe preview
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            Production HTML uses the word{" "}
-                            <strong>Unsubscribe</strong> as the link text; the
-                            raw token URL is only in the plain-text fallback.
-                          </p>
-                          <div
-                            className="mt-1 rounded-md border border-border/60 bg-muted/30 p-2 text-xs leading-relaxed text-foreground"
-                            dangerouslySetInnerHTML={{
-                              __html: preview.bodyHtml,
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-foreground">
-                            Signature block + compliance footer (plain text)
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            The unsubscribe line is always appended <strong>after</strong> the
-                            signature (same order as a real send; sample URL
-                            only).
-                          </p>
-                          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-muted/30 p-2 text-xs leading-relaxed text-foreground">
-                            {preview.bodyPlain}
-                          </pre>
-                        </div>
-                        <p className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
-                          Provider-injected signatures or legal disclaimers can
-                          still appear after ODoutreach sends the message. For
-                          final production ordering, keep the full official
-                          signature/disclaimer in ODoutreach per mailbox, or
-                          disable provider-side injection.
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {pstate.recommendedAction}
-                        </p>
+                      <div className="mt-4 space-y-4 px-1 pb-2 text-sm">
+                        {pvm.hasMailboxSignature ? (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-foreground">
+                              How your outreach email will look
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              A sample message, your mailbox signature, then the
+                              one-click unsubscribe line — the exact order the
+                              recipient sees.
+                            </p>
+                            <div
+                              className="rounded-md border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline [&_img]:h-auto [&_img]:max-w-full"
+                              dangerouslySetInnerHTML={{
+                                __html: preview.bodyHtml,
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-3 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
+                            <p className="text-sm font-medium">
+                              No signature set for this mailbox yet
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed">
+                              Outreach from {previewRow.email} would go out with
+                              no sign-off. Close this, then press{" "}
+                              <strong>Set signature</strong> on the mailbox and
+                              use <strong>the branded template</strong> to add one
+                              in a click.
+                            </p>
+                          </div>
+                        )}
+                        <details className="rounded-md border border-border/60 bg-muted/10 px-3 py-2">
+                          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                            Technical details
+                          </summary>
+                          <div className="mt-2 space-y-3">
+                            <p className="text-xs">
+                              <span className="font-medium text-foreground">Status:</span>{" "}
+                              {pstate.label}
+                            </p>
+                            <p className="text-xs">
+                              <span className="font-medium text-foreground">Source:</span>{" "}
+                              {humanizeSignatureSource(preview.selection.source)}
+                            </p>
+                            <div>
+                              <p className="text-xs font-medium text-foreground">
+                                Plain-text version (recipients without HTML)
+                              </p>
+                              <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-muted/30 p-2 text-[11px] leading-relaxed text-foreground">
+                                {preview.bodyPlain}
+                              </pre>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {pstate.recommendedAction}
+                            </p>
+                            <p className="rounded-md border border-amber-300/40 bg-amber-50/40 px-2 py-1.5 text-[11px] leading-relaxed text-amber-900 dark:border-amber-500/20 dark:bg-amber-950/10 dark:text-amber-100">
+                              If the recipient&apos;s copy shows a second
+                              signature, this mailbox&apos;s own mail system is
+                              also adding one — disable provider-side signature
+                              injection for this sender.
+                            </p>
+                          </div>
+                        </details>
                       </div>
                       <SheetFooter className="mt-2">
                         <Button
