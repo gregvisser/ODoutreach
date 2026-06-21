@@ -419,7 +419,16 @@ export function UniversePageClient({
                   </TableCell>
                 ) : null}
                 <TableCell className="max-w-[120px] truncate text-xs">
-                  {r.sourceSummary ?? r.firstSeenSourceType}
+                  {r.sourceSummary ??
+                    (r.firstSeenSourceType === "CSV_IMPORT"
+                      ? "CSV"
+                      : r.firstSeenSourceType === "ROCKETREACH"
+                        ? "RocketReach"
+                        : r.firstSeenSourceType === "MANUAL"
+                          ? "Manual"
+                          : r.firstSeenSourceType === "OTHER"
+                            ? "Other"
+                            : r.firstSeenSourceType)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {r.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")}

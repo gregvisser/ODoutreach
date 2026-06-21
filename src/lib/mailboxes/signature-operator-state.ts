@@ -61,8 +61,7 @@ const TEMPLATES: Record<OperatorSignatureStateKind, Omit<OperatorSignatureState,
     label: "Ready — Full branded signature in ODoutreach",
     shortDescription:
       "A full branded signature/disclaimer is stored for this mailbox. Outreach emails are composed as message body, signature, then unsubscribe.",
-    recommendedAction:
-      "Confirm Preview signature. Disable Microsoft/Exchange signature injection for this sender if duplicate footers appear after send.",
+    recommendedAction: "Confirm it looks right with Preview signature.",
   },
   missing: {
     label: "No mailbox signature configured",
@@ -103,7 +102,7 @@ function withMicrosoftInjectionHint(
 ): Omit<OperatorSignatureState, "kind" | "sendReadyFromSignature"> {
   if (row.provider !== "MICROSOFT") return base;
   const hint =
-    " If Microsoft/Exchange still appends another disclaimer after send, disable provider-side signature injection for this mailbox.";
+    " If a second signature appears in the recipient's copy, your Microsoft/Exchange admin is adding one too — ask them to turn that off to avoid duplicates.";
   return { ...base, recommendedAction: `${base.recommendedAction}${hint}` };
 }
 

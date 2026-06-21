@@ -234,7 +234,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       <ClientWorkspaceCommandCenter
         clientName={client.name}
         clientSlug={client.slug}
-        clientStatus={client.status}
+        clientStatus={clientStatusLabel(client.status)}
         launchStageLabel={launchStage}
         steps={steps}
         logoUrl={client.logoUrl}

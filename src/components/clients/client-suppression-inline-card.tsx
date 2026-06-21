@@ -135,8 +135,9 @@ export function ClientSuppressionInlineCard({
       <CardHeader>
         <CardTitle>Do-not-contact lists</CardTitle>
         <CardDescription>
-          Workspace: <span className="font-medium text-foreground">{clientName}</span>. Add email
-          addresses and domains that must never receive outreach. Each list is kept in its own
+          Block email addresses and whole domains for{" "}
+          <span className="font-medium text-foreground">{clientName}</span> that must never receive
+          outreach. Each list is kept in its own
           Google Sheet and checked before sending.{" "}
           <Link href={`/suppression?client=${clientId}`} className="underline underline-offset-2">
             Open admin view
@@ -150,7 +151,7 @@ export function ClientSuppressionInlineCard({
             {googleServiceAccountConfigured && googleServiceAccountClientEmail ? (
               <details className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
                 <summary className="cursor-pointer font-medium text-foreground">
-                  Advanced Google Sheet sharing
+                  Share your Sheet with us
                 </summary>
                 <div className="mt-3">
                   <GoogleSheetsSharingCallout
@@ -162,12 +163,10 @@ export function ClientSuppressionInlineCard({
               </details>
             ) : (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
-                <p className="font-medium text-foreground">Google Sheets sync is not configured yet</p>
+                <p className="font-medium text-foreground">Google Sheets sync isn&apos;t set up yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  A one-time admin setup is required: add{" "}
-                  <code className="text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in Azure App Service
-                  application settings (single service account for all clients). Operators only paste Sheet
-                  URLs here — no per-client Azure changes.
+                  Ask an administrator to connect Google Sheets sync (a one-time
+                  setup). Once it&apos;s on, you just paste a Sheet URL here.
                 </p>
               </div>
             )}
@@ -176,8 +175,21 @@ export function ClientSuppressionInlineCard({
               <div className="space-y-2">
                 <p className="text-sm font-medium">Email addresses never to contact</p>
                 {emailSrc ? (
-                  <p className="font-mono text-xs text-muted-foreground break-all">
-                    Spreadsheet id: {emailSrc.spreadsheetId ?? "—"}
+                  <p className="text-xs text-muted-foreground">
+                    Sheet connected.
+                    {emailSrc.spreadsheetId ? (
+                      <>
+                        {" "}
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${emailSrc.spreadsheetId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline hover:text-foreground"
+                        >
+                          Open ↗
+                        </a>
+                      </>
+                    ) : null}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">Paste a Sheet URL and save to connect.</p>
@@ -219,8 +231,21 @@ export function ClientSuppressionInlineCard({
               <div className="space-y-2">
                 <p className="text-sm font-medium">Domains never to contact</p>
                 {domainSrc ? (
-                  <p className="font-mono text-xs text-muted-foreground break-all">
-                    Spreadsheet id: {domainSrc.spreadsheetId ?? "—"}
+                  <p className="text-xs text-muted-foreground">
+                    Sheet connected.
+                    {domainSrc.spreadsheetId ? (
+                      <>
+                        {" "}
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${domainSrc.spreadsheetId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline hover:text-foreground"
+                        >
+                          Open ↗
+                        </a>
+                      </>
+                    ) : null}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">Optional — same flow as email.</p>

@@ -193,6 +193,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             workspaceDisplayName={client.name}
             publicSiteOrigin={publicSiteOrigin}
             clientSignaturePhone={client.signaturePhone ?? null}
+            showAdvancedDiagnostics={staff.isSuperAdmin}
             clientBriefFallback={{
               senderDisplayNameFallback: client.name,
               emailSignatureFallback:

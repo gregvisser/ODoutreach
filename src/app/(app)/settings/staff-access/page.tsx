@@ -57,9 +57,9 @@ export default async function StaffAccessPage() {
           <h1 className="text-3xl font-semibold tracking-tight">Staff access</h1>
           <p className="mt-1 text-muted-foreground">
             Add people to the app and turn their access on or off. Every active
-            staff member gets the same full set of features. Staff who already
-            have a <code className="text-xs">StaffUser</code> row sign in
-            directly with Microsoft 365 (MFA is enforced by your organisation).
+            staff member gets the same full set of features. Anyone already
+            listed here signs in directly with Microsoft 365 (MFA is enforced by
+            your organisation).
             Optional B2B guest invitation is only needed when you want Microsoft
             to add someone to a tenant as a guest first.
           </p>

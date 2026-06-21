@@ -740,7 +740,7 @@ function EnrollmentBlock({
 
       <details className="mt-2 rounded-md border border-border/50 bg-background/40 p-2">
         <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground">
-          Details
+          Recipient breakdown
         </summary>
         <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 md:grid-cols-6">
           <PreviewStat label="List members" value={preview.total} />

@@ -89,8 +89,8 @@ export function ClientMailboxInboxPanel({
     if (!oauthMicrosoftReady && !oauthGoogleReady) {
       return (
         <p className="text-sm text-muted-foreground">
-          Set mailbox OAuth env vars (<span className="font-mono">MAILBOX_MICROSOFT_*</span> and/or{" "}
-          <span className="font-mono">MAILBOX_GOOGLE_*</span>) to enable inbox read.
+          Microsoft / Google mailbox access isn&apos;t set up yet — ask an
+          administrator to finish the one-time connection so replies can be read.
         </p>
       );
     }

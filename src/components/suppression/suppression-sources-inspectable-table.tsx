@@ -151,7 +151,7 @@ export function SuppressionSourcesInspectableTable({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Client, spreadsheet, range, status"
+            placeholder="Client, range, status"
             className="w-64 rounded border border-border/60 bg-background px-2 py-1 text-xs"
             aria-label="Search connected do-not-contact sheets"
           />
@@ -221,7 +221,7 @@ export function SuppressionSourcesInspectableTable({
           <TableRow>
             <TableHead>Client</TableHead>
             <TableHead>List type</TableHead>
-            <TableHead>Spreadsheet</TableHead>
+            <TableHead>Sheet</TableHead>
             <TableHead>Range</TableHead>
             <TableHead>Connection</TableHead>
             <TableHead className="text-right">Rows</TableHead>
@@ -237,8 +237,19 @@ export function SuppressionSourcesInspectableTable({
                   {suppressionKindLabel(s.kind)}
                 </Badge>
               </TableCell>
-              <TableCell className="max-w-[200px] truncate font-mono text-xs">
-                {s.spreadsheetId ?? "—"}
+              <TableCell className="text-xs">
+                {s.spreadsheetId ? (
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${s.spreadsheetId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:text-foreground"
+                  >
+                    Open ↗
+                  </a>
+                ) : (
+                  "—"
+                )}
               </TableCell>
               <TableCell className="max-w-[140px] truncate font-mono text-xs">
                 {s.sheetRange ?? "Sheet1!A1:Z50000"}

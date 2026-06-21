@@ -23,8 +23,8 @@ export function TonightLaunchChecklist({
         </li>
       ))}
       <li className="pt-2 text-xs text-muted-foreground">
-        Known limitation: Google Workspace proof may use a Bidlow subdomain mailbox until OpensDoors
-        provides their production Workspace sender.
+        Note: a temporary sender may be used for Google Workspace verification
+        until the client&apos;s own production sender is set up.
       </li>
     </ul>
   );

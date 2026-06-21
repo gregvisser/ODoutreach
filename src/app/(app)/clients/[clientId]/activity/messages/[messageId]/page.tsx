@@ -184,13 +184,9 @@ export default async function InboundMessageDetailPage({ params }: Props) {
 
           {linkedReply ? (
             <p className="rounded-md border border-border/70 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
-              Linked InboundReply{" "}
-              <span className="font-mono">{linkedReply.id}</span> ·{" "}
-              match: {linkedReply.matchMethod}
-              {linkedReply.linkedOutboundEmailId
-                ? ` · reply to OutboundEmail ${linkedReply.linkedOutboundEmailId}`
-                : ""}
-              .
+              This message is a reply linked to one of this client&apos;s outreach
+              emails, so it automatically stops the follow-up sequence for that
+              contact.
             </p>
           ) : null}
         </CardContent>

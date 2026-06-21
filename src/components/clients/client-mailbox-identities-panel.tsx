@@ -274,6 +274,7 @@ export function ClientMailboxIdentitiesPanel({
   workspaceDisplayName,
   publicSiteOrigin,
   clientSignaturePhone,
+  showAdvancedDiagnostics,
 }: {
   clientId: string;
   rows: MailboxIdentityRow[];
@@ -294,6 +295,12 @@ export function ClientMailboxIdentitiesPanel({
   publicSiteOrigin: string | null;
   /** Client company landline — the default phone the 1-click signature uses. */
   clientSignaturePhone: string | null;
+  /**
+   * Owner-only. Gates the "Advanced details" block, which shows internal
+   * connection ids, raw status, and raw provider error strings — developer /
+   * troubleshooting content that ordinary staff should never see.
+   */
+  showAdvancedDiagnostics: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1094,7 +1101,7 @@ export function ClientMailboxIdentitiesPanel({
                         )}
                         <details className="rounded-md border border-border/60 bg-muted/10 px-3 py-2">
                           <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-                            Technical details
+                            Signature status &amp; plain-text version
                           </summary>
                           <div className="mt-2 space-y-3">
                             <p className="text-xs">
@@ -1144,10 +1151,10 @@ export function ClientMailboxIdentitiesPanel({
         </div>
       ) : null}
 
-      {showMailboxSetupTools ? (
+      {showAdvancedDiagnostics ? (
       <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-3 py-2 text-sm">
         <summary className="cursor-pointer font-medium text-foreground">
-          Advanced details
+          Connection diagnostics (owner only)
         </summary>
         <p className="text-xs text-muted-foreground mt-1 mb-3">
           For administrators and troubleshooting. Includes transport notes, internal ids, and

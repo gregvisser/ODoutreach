@@ -78,7 +78,7 @@ export function InternalProofSendCard({
   );
 
   const [mailboxId, setMailboxId] = useState(eligibleRows[0]?.id ?? "");
-  const [recipient, setRecipient] = useState("greg@bidlow.co.uk");
+  const [recipient, setRecipient] = useState("");
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [confirmation, setConfirmation] = useState("");

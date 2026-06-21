@@ -149,8 +149,7 @@ function InviteForm({
       <h2 className="text-lg font-medium">Optional: guest invitation (B2B)</h2>
       <p className="text-sm text-muted-foreground">
         Use this when the person should be added to the tenant as a B2B guest
-        first. If they are already in{" "}
-        <code className="text-xs">StaffUser</code>, they can sign in without
+        first. If they are already in the list below, they can sign in without
         this step. Microsoft 365 delivers the
         invite; after acceptance they appear in the list below.
       </p>

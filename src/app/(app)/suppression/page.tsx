@@ -153,24 +153,21 @@ export default async function SuppressionPage({ searchParams }: Props) {
 
       <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-4 py-3">
         <summary className="cursor-pointer text-sm font-semibold text-foreground">
-          Advanced Google Sheets connection
+          How sheet syncing is connected
         </summary>
         <Card className="mt-3 border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Integration status</CardTitle>
+            <CardTitle>Google Sheets connection</CardTitle>
             <CardDescription>
-              One-time admin setup: set{" "}
-              <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code> in
-              Azure App Service. Operators paste Sheet URLs per workspace on the client page — no per-Sheet
-              Azure settings. Use the exact service account email below to share each Sheet (Viewer). Env:{" "}
-              <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> or{" "}
-              <code className="rounded bg-muted px-1 text-xs">GOOGLE_SERVICE_ACCOUNT_JSON_BASE64</code>.
+              OpensDoors reads each client&apos;s Google Sheet through one shared
+              account. Share every Sheet (Viewer access) with the address below.
+              The one-time account setup is handled by your administrator.
               {googleReady ? (
-                <span className="text-foreground"> Credentials detected.</span>
+                <span className="text-foreground"> Connected and ready.</span>
               ) : (
                 <span className="text-amber-700 dark:text-amber-400">
                   {" "}
-                  Not configured — sync will fail until set.
+                  Not connected yet — ask your administrator to finish setup.
                 </span>
               )}
             </CardDescription>
