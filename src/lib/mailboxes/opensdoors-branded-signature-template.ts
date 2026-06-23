@@ -31,6 +31,21 @@ function escapeHtmlText(s: string): string {
 }
 
 /**
+ * True when `displayName` is a real name worth showing as its own line — i.e.
+ * non-empty and NOT just the email address again (callers fall back to the
+ * email when no name is known). Comparison is case-insensitive and
+ * whitespace-trimmed so the address never renders twice.
+ */
+function nameIsDistinctFromEmail(
+  displayName: string | null | undefined,
+  email: string,
+): boolean {
+  const name = displayName?.trim() ?? "";
+  if (name.length === 0) return false;
+  return name.toLowerCase() !== email.trim().toLowerCase();
+}
+
+/**
  * HTML signature/disclaimer block — unsubscribe is appended separately by send pipelines.
  */
 export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemplateInput): string {
@@ -50,11 +65,17 @@ export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemp
       ? `<img src="${escapeHtmlText(logoSrc)}" alt="${escapeHtmlText(logoAlt)}" width="140" style="display:block;border:0;max-width:140px;height:auto;" />`
       : "";
 
+  const email = input.email.trim();
+  // When no real name is available the caller may pass the email address as the
+  // display name. Drop the standalone name line in that case so the address is
+  // not printed twice (once as a name, once as the mailto link).
+  const showName = nameIsDistinctFromEmail(input.displayName, email);
+
   const lines = [
-    escapeHtmlText(input.displayName.trim()),
+    showName ? escapeHtmlText(input.displayName.trim()) : "",
     input.jobTitle?.trim() ? escapeHtmlText(input.jobTitle.trim()) : "",
     input.phone?.trim() ? escapeHtmlText(input.phone.trim()) : "",
-    `<a href="mailto:${escapeHtmlText(input.email.trim())}">${escapeHtmlText(input.email.trim())}</a>`,
+    `<a href="mailto:${escapeHtmlText(email)}">${escapeHtmlText(email)}</a>`,
     input.website?.trim()
       ? `<a href="${escapeHtmlText(input.website.trim())}">${escapeHtmlText(input.website.replace(/^https?:\/\//i, ""))}</a>`
       : "",
@@ -76,11 +97,15 @@ export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemp
 }
 
 export function buildOpensDoorsBrandedSignaturePlain(input: OpensDoorsBrandedTemplateInput): string {
+  const email = input.email.trim();
+  // Same de-dupe as the HTML builder: omit the name line when it is just the
+  // email address so the address is not printed twice.
+  const showName = nameIsDistinctFromEmail(input.displayName, email);
   const parts = [
-    input.displayName.trim(),
+    showName ? input.displayName.trim() : "",
     input.jobTitle?.trim() ?? "",
     input.phone?.trim() ?? "",
-    input.email.trim(),
+    email,
     input.website?.trim() ?? "",
     input.linkedInUrl?.trim() ? `LinkedIn: ${input.linkedInUrl.trim()}` : "",
     input.legalDisclaimer?.trim() ?? "Replace with approved legal disclaimer.",

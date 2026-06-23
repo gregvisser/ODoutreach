@@ -118,6 +118,30 @@ describe("applyBrandedSignatureToAllClientMailboxesAction", () => {
     expect(res.ok && res.message).toContain("2 mailboxes");
   });
 
+  it("does not store the email as the display name (or duplicate it) when no real name exists", async () => {
+    mbFindMany.mockResolvedValue([
+      {
+        id: "mb1",
+        email: "daniel.harper@idverde.co.uk",
+        displayName: null,
+        senderDisplayName: null,
+        senderPhone: null,
+      },
+    ]);
+
+    await applyBrandedSignatureToAllClientMailboxesAction("c1");
+
+    const data = mbUpdate.mock.calls[0][0].data;
+    // No real name → store null, never the email address as a "From" name.
+    expect(data.senderDisplayName).toBeNull();
+    // The address must appear exactly once in the plain text and not twice in
+    // the HTML (mailto + visible link text only, never a separate name line).
+    const occurrences = (s: string) =>
+      s.split("daniel.harper@idverde.co.uk").length - 1;
+    expect(occurrences(data.senderSignatureText)).toBe(1);
+    expect(occurrences(data.senderSignatureHtml)).toBe(2);
+  });
+
   it("does nothing and reports when every connected mailbox already has a signature", async () => {
     mbFindMany.mockResolvedValue([]);
     const res = await applyBrandedSignatureToAllClientMailboxesAction("c1");

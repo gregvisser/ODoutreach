@@ -344,12 +344,17 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
 
   let applied = 0;
   for (const mb of mailboxes) {
-    const displayName =
-      mb.senderDisplayName?.trim() || mb.displayName?.trim() || mb.email;
+    // The real name, if we have one. When a mailbox has none we leave it null
+    // rather than substituting the email address — the template renders the
+    // email itself, so using it as a name too prints the address twice.
+    const realName =
+      mb.senderDisplayName?.trim() || mb.displayName?.trim() || null;
     // Per-mailbox number wins; otherwise the client company landline.
     const phone = mb.senderPhone?.trim() || companyPhone;
     const templateInput = {
-      displayName,
+      // Pass the email through as a last resort; the template de-dupes it
+      // against the mailto line so it still only appears once.
+      displayName: realName ?? mb.email,
       email: mb.email,
       phone,
       website,
@@ -365,7 +370,7 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
     await prisma.clientMailboxIdentity.update({
       where: { id: mb.id },
       data: {
-        senderDisplayName: displayName,
+        senderDisplayName: realName,
         senderSignatureHtml: html.length > 0 ? html : null,
         senderSignatureText: plain.trim() || null,
         senderSignatureSource: "manual",
