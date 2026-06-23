@@ -5,6 +5,8 @@ import {
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
   LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
   sequenceIntroductionBatchLimitCopy,
+  STALE_RECIPIENTS_CLIENT_NOW_LIVE_COPY,
+  STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON,
 } from "@/lib/clients/outreach-sequence-send-staff-copy";
 
 describe("humanizeSequenceLaunchDisabledReason", () => {
@@ -12,6 +14,16 @@ describe("humanizeSequenceLaunchDisabledReason", () => {
     expect(
       humanizeSequenceLaunchDisabledReason("Sequence is READY_FOR_REVIEW, not APPROVED."),
     ).toMatch(/not activated/i);
+  });
+
+  it("maps the now-live stale-recipients marker to a refresh prompt, NOT the onboarding copy", () => {
+    const out = humanizeSequenceLaunchDisabledReason(
+      STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON,
+    );
+    expect(out).toBe(STALE_RECIPIENTS_CLIENT_NOW_LIVE_COPY);
+    expect(out).toMatch(/Review recipients/i);
+    // Must not send the operator back to onboarding — the client is live.
+    expect(out).not.toMatch(/isn't live|onboarding/i);
   });
 
   it("passes through unknown reasons", () => {

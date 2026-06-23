@@ -119,6 +119,10 @@ function humanizeBlockedReason(raw: string): string {
     return raw;
   if (lower.includes("suppressed"))
     return "Recipient suppressed";
+  // Pre-activation gate: the row was checked while the client wasn't live yet.
+  // Once the client is live a "Review recipients" refresh clears it.
+  if (lower.includes("blocked_client_inactive") || lower.includes("not active"))
+    return "Checked before the client went live — refresh recipients";
   if (lower.includes("missing email") || lower.includes("no email"))
     return "Recipient has no email address";
   if (lower.includes("unsubscribe"))

@@ -7,8 +7,10 @@ import type {
 import {
   blockedReasonForSequenceStepSend,
   evaluateSendGovernance,
+  SEND_GATE_BLOCKED_CODES,
   type SendKind,
 } from "@/lib/clients/client-send-governance";
+import { STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON } from "@/lib/clients/outreach-sequence-send-staff-copy";
 import {
   SEQUENCE_INTRODUCTION_BATCH_CAP,
 } from "@/lib/controlled-pilot-constants";
@@ -1285,10 +1287,21 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export async function loadSequenceStepSendUiSnapshots(
   clientId: string,
+  options?: {
+    /**
+     * Live `Client.status === "ACTIVE"`. When true, a recipient still flagged
+     * "client not active" was checked before the client went live — the
+     * disabled reason becomes a "refresh recipients" marker instead of the
+     * stale "client isn't live" copy. Defaults to false so existing callers
+     * keep the pre-activation behaviour.
+     */
+    clientIsActive?: boolean;
+  },
 ): Promise<{
   allowlist: SequenceStepSendUiAllowlist;
   snapshots: SequenceStepSendUiSnapshot[];
 }> {
+  const clientIsActive = options?.clientIsActive === true;
   const allowlist: SequenceStepSendUiAllowlist = {
     configured: typeof process.env.GOVERNED_TEST_EMAIL_DOMAINS === "string",
     domains: allowedGovernedTestEmailDomains(),
@@ -1491,9 +1504,20 @@ export async function loadSequenceStepSendUiSnapshots(
         } else if (blockedCount > 0 && reasonBuckets.size > 0) {
           const topReason = Array.from(reasonBuckets.entries())
             .sort((a, b) => b[1] - a[1])[0];
-          disabledReason = topReason
-            ? `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked: ${topReason[0]}`
-            : `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked — review recipients for details.`;
+          const topReasonText = topReason?.[0] ?? "";
+          if (
+            clientIsActive &&
+            topReasonText.includes(SEND_GATE_BLOCKED_CODES.clientInactive)
+          ) {
+            // The client has since gone live; this block is stale and clears on
+            // the next "Review recipients". Don't send the operator back to
+            // onboarding — emit the refresh marker instead.
+            disabledReason = STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON;
+          } else {
+            disabledReason = topReason
+              ? `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked: ${topReason[0]}`
+              : `${String(blockedCount)} recipient${blockedCount === 1 ? "" : "s"} blocked — review recipients for details.`;
+          }
         } else {
           disabledReason =
             "No eligible recipients yet. Open Review recipients to add or refresh the contacts for this sequence.";

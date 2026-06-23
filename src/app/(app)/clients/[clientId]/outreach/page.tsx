@@ -61,7 +61,9 @@ export default async function ClientOutreachPage({
       loadClientEmailSequencesOverview(client.id),
       getClientEmailSequenceMutationAllowed(staff, client.id),
       loadClientSequencePrepSnapshots(client.id),
-      loadSequenceStepSendUiSnapshots(client.id),
+      loadSequenceStepSendUiSnapshots(client.id, {
+        clientIsActive: client.status === "ACTIVE",
+      }),
     ]);
 
   const sequenceFlashRaw = firstParam(sp.sequence);

@@ -12,6 +12,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { loadSequenceStepSendUiSnapshots } from "./send-introduction";
+import { STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON } from "@/lib/clients/outreach-sequence-send-staff-copy";
 
 describe("loadSequenceStepSendUiSnapshots", () => {
   beforeEach(() => {
@@ -150,5 +151,65 @@ describe("loadSequenceStepSendUiSnapshots", () => {
     expect(intro!.eligibleInLaunchBatchNowCount).toBe(0);
     expect(intro!.sendable).toBe(false);
     expect(intro!.disabledReason).toMatch(/missing an email address/i);
+  });
+
+  describe("stale 'client not active' block after the client goes live", () => {
+    const clientInactiveBlockedRows = [
+      {
+        sequenceId: "seq-1",
+        stepId: "step-intro",
+        enrollmentId: "enr-1",
+        status: "BLOCKED" as const,
+        blockedReason:
+          "[blocked_client_inactive] Client is ONBOARDING, not ACTIVE — activate the client before launching live sequences.",
+        updatedAt: new Date("2026-05-01T12:00:00Z"),
+        contact: { email: "lead@corp.com" },
+      },
+    ];
+
+    function mockSequenceWithBlockedRow() {
+      prismaMock.clientEmailSequence.findMany.mockResolvedValue([
+        {
+          id: "seq-1",
+          name: "Outreach A",
+          status: "APPROVED",
+          steps: [
+            {
+              id: "step-intro",
+              category: "INTRODUCTION",
+              position: 1,
+              delayDays: 0,
+              templateId: "t1",
+              template: { status: "APPROVED" },
+            },
+          ],
+          _count: { enrollments: 1 },
+        },
+      ] as never);
+      prismaMock.clientEmailSequenceStepSend.findMany.mockResolvedValue(
+        clientInactiveBlockedRows as never,
+      );
+    }
+
+    it("emits the refresh marker when the client is now ACTIVE (not the onboarding copy)", async () => {
+      mockSequenceWithBlockedRow();
+      const { snapshots } = await loadSequenceStepSendUiSnapshots("client-1", {
+        clientIsActive: true,
+      });
+      const intro = snapshots.find((s) => s.category === "INTRODUCTION");
+      expect(intro!.blockedCount).toBe(1);
+      expect(intro!.sendable).toBe(false);
+      expect(intro!.disabledReason).toBe(STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON);
+    });
+
+    it("keeps the raw 'recipients blocked' reason while the client is still onboarding", async () => {
+      mockSequenceWithBlockedRow();
+      const { snapshots } = await loadSequenceStepSendUiSnapshots("client-1");
+      const intro = snapshots.find((s) => s.category === "INTRODUCTION");
+      expect(intro!.disabledReason).not.toBe(
+        STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON,
+      );
+      expect(intro!.disabledReason).toMatch(/recipient.*blocked/i);
+    });
   });
 });
