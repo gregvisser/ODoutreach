@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { StaffUser } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { refreshStaleClientInactiveStepSends } from "@/server/email-sequences/refresh-stale-client-inactive-step-sends";
 
 import { loadClientLaunchApprovalSnapshot } from "./launch-approval";
 
@@ -115,6 +116,20 @@ export async function autoPromoteClientIfReady(
       },
     },
   });
+
+  // Just went live: clear any recipient still flagged "client not active" from
+  // a launch attempt made while ONBOARDING, by re-running the records-only
+  // planner for those steps. This is what makes the recipient go Ready without
+  // a manual "Review recipients". Best-effort — the promotion already
+  // committed, so a refresh failure must never surface as an activation error.
+  try {
+    await refreshStaleClientInactiveStepSends({
+      clientId,
+      staffUserId: staff.id,
+    });
+  } catch {
+    /* best-effort — activation already succeeded */
+  }
 
   return { promoted: true, previousStatus: "ONBOARDING" };
 }
