@@ -391,6 +391,12 @@ function humanizeStepSendBlockedReason(raw: string): string {
   if (lower.includes("cooldown") || lower.includes("recently contacted")) {
     return raw;
   }
+  // Governance "client not active" gate — written when this row was last
+  // checked before the client went live. Stale once the client activates (a
+  // re-prepare clears it). Never show the raw "[blocked_client_inactive]" code.
+  if (lower.includes("blocked_client_inactive") || lower.includes("not active")) {
+    return "Last checked before the client went live — open the sequence in Outreach and use Review recipients to refresh.";
+  }
   if (lower.includes("suppress")) {
     return "On the suppression list — will not be emailed.";
   }

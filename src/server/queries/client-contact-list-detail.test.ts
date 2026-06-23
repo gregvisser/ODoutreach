@@ -211,6 +211,29 @@ describe("loadClientContactListDetail", () => {
     expect(result!.summary.suppressed).toBe(1);
   });
 
+  it("humanizes a stale 'client not active' block — no raw code leaks to staff", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1", {
+        status: "BLOCKED",
+        outboundEmail: null,
+        outboundEmailId: null,
+        blockedReason:
+          "[blocked_client_inactive] Client is ONBOARDING, not ACTIVE — activate the client before launching live sequences. Blocked from live sending — check client status and dispatch requirements.",
+      }),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    const contact = result!.contacts[0];
+    expect(contact.sendStatus).toBe("Suppressed / skipped");
+    // The raw internal code / governance string must never reach staff.
+    expect(contact.skipReason).not.toMatch(/blocked_client_inactive/i);
+    expect(contact.skipReason).not.toMatch(/dispatch requirements/i);
+    expect(contact.skipReason).toMatch(/before the client went live/i);
+    expect(contact.skipReason).toMatch(/Review recipients/i);
+  });
+
   it("returns 'Not sent' when no step send exists", async () => {
     contactListFindFirst.mockResolvedValueOnce(makeList());
     contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
