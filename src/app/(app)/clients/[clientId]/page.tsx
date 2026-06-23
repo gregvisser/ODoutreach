@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
+import { ClientLaunchBlockersCard } from "@/components/clients/client-launch-blockers-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
 import { ClientWorkspaceCommandCenter } from "@/components/clients/client-workspace-command-center";
 import { WorkspaceDangerZone } from "@/components/clients/workspace-danger-zone";
@@ -56,8 +57,14 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   // Replaces the old manual "APPROVE LAUNCH" phrase action: operators just
   // finish the onboarding sections and the client activates on the next
   // visit to this page. Best-effort — failures don't block the render.
+  // When it does NOT promote, capture the exact blockers so we can show the
+  // operator what's left (the same checks the gate runs).
+  let launchBlockers: string[] = [];
   try {
-    await autoPromoteClientIfReady(clientId, staff);
+    const promote = await autoPromoteClientIfReady(clientId, staff);
+    if (!promote.promoted && promote.reason === "blockers_present") {
+      launchBlockers = promote.blockers ?? [];
+    }
   } catch {
     /* never block the overview page on auto-promote */
   }
@@ -253,6 +260,8 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           </p>
         </div>
       ) : null}
+
+      <ClientLaunchBlockersCard clientId={client.id} blockers={launchBlockers} />
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}

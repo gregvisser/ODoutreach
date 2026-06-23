@@ -8,7 +8,17 @@ import { loadClientLaunchApprovalSnapshot } from "./launch-approval";
 
 export type AutoPromoteResult =
   | { promoted: true; previousStatus: "ONBOARDING" | "PAUSED" }
-  | { promoted: false; reason: string };
+  | {
+      promoted: false;
+      reason: string;
+      /**
+       * The exact launch-approval blockers keeping this ONBOARDING client from
+       * activating, when `reason === "blockers_present"`. Returned so the
+       * overview can show "what's left to go live" using the SAME policy that
+       * gates activation — it can never drift from the real gate.
+       */
+      blockers?: string[];
+    };
 
 /**
  * Quietly flip `Client.status` from ONBOARDING → ACTIVE the moment every
@@ -66,7 +76,11 @@ export async function autoPromoteClientIfReady(
   // promotion; warnings don't. The "Client is already ACTIVE" blocker
   // can't fire because we just checked the status above.
   if (snapshot.policy.blockers.length > 0) {
-    return { promoted: false, reason: "blockers_present" };
+    return {
+      promoted: false,
+      reason: "blockers_present",
+      blockers: snapshot.policy.blockers,
+    };
   }
 
   // Race guard — only flip if the row is still ONBOARDING at write time.
