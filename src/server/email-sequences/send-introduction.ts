@@ -50,6 +50,10 @@ import {
 import { composeSequenceEmail } from "@/lib/email-sequences/sequence-email-composition";
 import { isFollowUpTooStaleForAutoSend } from "@/lib/email-sequences/auto-followup-window";
 import {
+  isFollowupRequiresSentIntroEnabled,
+  isIntroOutboundActuallySent,
+} from "@/lib/email-sequences/followup-sent-intro-policy";
+import {
   chooseSignatureForSend,
   type SenderSignatureMailbox,
 } from "@/lib/mailboxes/sender-signature";
@@ -66,6 +70,7 @@ import {
   resolvePublicBaseUrl,
 } from "@/lib/unsubscribe/one-click-readiness";
 import {
+  buildOneClickUnsubscribeUrl,
   buildUnsubscribeUrl,
   generateRawUnsubscribeToken,
   hashUnsubscribeToken,
@@ -544,6 +549,10 @@ export async function sendSequenceStepBatch(input: {
   //    enforce the delay guard at dispatch time.
   const prevCategory = previousCategoryFor(category);
   const previousSentByEnrollmentId = new Map<string, { sentAtIso: string }>();
+  // H5 — when enabled, require the previous step's linked OutboundEmail to have
+  // actually sent (not just the stepSend flag, which is set at dispatch BEFORE
+  // the provider send). Flag OFF (default) = unchanged behaviour.
+  const requireSentIntro = isFollowupRequiresSentIntroEnabled();
   if (prevCategory !== null) {
     const enrollmentIds = stepSendRows.map((r) => r.enrollmentId);
     const prevRows = await prisma.clientEmailSequenceStepSend.findMany({
@@ -557,9 +566,17 @@ export async function sendSequenceStepBatch(input: {
       select: {
         enrollmentId: true,
         updatedAt: true,
+        // H5 — the linked outbound's terminal status is the real "did it send"
+        // signal. Selected unconditionally (harmless when the flag is off).
+        outboundEmail: { select: { status: true } },
       },
     });
     for (const p of prevRows) {
+      // H5 — a stepSend marked SENT whose OutboundEmail never actually sent
+      // (FAILED / still queued) must NOT satisfy the follow-up prerequisite.
+      if (requireSentIntro && !isIntroOutboundActuallySent(p.outboundEmail?.status)) {
+        continue;
+      }
       // If multiple rows exist (shouldn't happen — unique per
       // enrollment+step), keep the latest.
       const existing = previousSentByEnrollmentId.get(p.enrollmentId);
@@ -915,6 +932,11 @@ export async function sendSequenceStepBatch(input: {
             let rawUnsubscribeToken: string | null = null;
             let unsubscribeUrlForSend = fallbackUnsubscribeLink;
             let hostedUnsubscribeUrl: string | null = null;
+            // H1 — the in-body link points at the confirmation PAGE
+            // (`/unsubscribe/<token>`); the List-Unsubscribe HEADER points at
+            // the POST-capable `/api/unsubscribe/<token>` so RFC 8058 one-click
+            // actually suppresses instead of 405-ing on the GET-only page.
+            let oneClickUnsubscribeUrl: string | null = null;
             if (publicBaseUrl !== null) {
               rawUnsubscribeToken = generateRawUnsubscribeToken();
               hostedUnsubscribeUrl = buildUnsubscribeUrl({
@@ -922,13 +944,17 @@ export async function sendSequenceStepBatch(input: {
                 rawToken: rawUnsubscribeToken,
               });
               unsubscribeUrlForSend = hostedUnsubscribeUrl;
+              oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl({
+                baseUrl: publicBaseUrl,
+                rawToken: rawUnsubscribeToken,
+              });
             }
-            // PR N — build List-Unsubscribe / List-Unsubscribe-Post
-            // header values only when we have a hosted http(s) URL.
-            // The helper returns null for the mailto fallback so we
-            // never emit a header pointing at a placeholder.
+            // PR N / H1 — build List-Unsubscribe / List-Unsubscribe-Post
+            // header values from the one-click (POST) URL, only when we have a
+            // hosted http(s) URL. The helper returns null for the mailto
+            // fallback so we never emit a header pointing at a placeholder.
             const listUnsubscribeHeaders =
-              buildListUnsubscribeHeaders(hostedUnsubscribeUrl);
+              buildListUnsubscribeHeaders(oneClickUnsubscribeUrl);
             const senderRowForSend = buildSenderRow(
               client,
               brief,

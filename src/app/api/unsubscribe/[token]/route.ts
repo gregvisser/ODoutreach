@@ -30,6 +30,27 @@ type RouteContext = {
   params: Promise<{ token: string }>;
 };
 
+/**
+ * H1 — GET on the header URL. Some mail clients render the `List-Unsubscribe`
+ * value as a clickable link and follow it with GET (rather than the one-click
+ * POST). Since the header now points here (the POST-capable route), answer GET
+ * by redirecting to the human confirmation page at `/unsubscribe/<token>` so
+ * the recipient sees the masked-email confirm view instead of a 405. No
+ * suppression happens on GET (scanner-prefetch safe — only the explicit POST
+ * redeems the token).
+ */
+export async function GET(
+  req: NextRequest,
+  context: RouteContext,
+): Promise<NextResponse> {
+  const { token } = await context.params;
+  const origin = new URL(req.url).origin;
+  return NextResponse.redirect(
+    new URL(`/unsubscribe/${encodeURIComponent(token)}`, origin),
+    { status: 302 },
+  );
+}
+
 function isOneClickPost(req: NextRequest, body: string): boolean {
   // RFC 8058 one-click: `Content-Type: application/x-www-form-urlencoded`
   // with body `List-Unsubscribe=One-Click`.

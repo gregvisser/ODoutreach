@@ -77,6 +77,32 @@ export function buildUnsubscribeUrl(input: {
   return `${base}/unsubscribe/${input.rawToken}`;
 }
 
+/**
+ * Build the URL used in the `List-Unsubscribe` HEADER (RFC 2369 / RFC 8058).
+ *
+ * Unlike {@link buildUnsubscribeUrl} (the human-facing confirmation PAGE at
+ * `/unsubscribe/<token>`, which only answers GET), the header URL must answer
+ * the one-click `POST List-Unsubscribe=One-Click` that Gmail/Yahoo/Apple send.
+ * That POST handler lives at `/api/unsubscribe/<token>` (route.ts) — the page
+ * route returns 405 to a POST. So the header points here; the in-body link
+ * keeps using {@link buildUnsubscribeUrl}. The API route also answers GET by
+ * redirecting to the confirmation page, so clients that render the header as a
+ * clickable link still land somewhere friendly.
+ */
+export function buildOneClickUnsubscribeUrl(input: {
+  baseUrl: string;
+  rawToken: string;
+}): string {
+  const base = input.baseUrl.trim().replace(/\/+$/, "");
+  if (!base) {
+    throw new Error("buildOneClickUnsubscribeUrl: baseUrl is empty.");
+  }
+  if (!UNSUBSCRIBE_TOKEN_SHAPE.test(input.rawToken)) {
+    throw new Error("buildOneClickUnsubscribeUrl: rawToken has invalid shape.");
+  }
+  return `${base}/api/unsubscribe/${input.rawToken}`;
+}
+
 /** Normalize an email the same way suppression/sending paths do. */
 export function normaliseUnsubscribeEmail(raw: string | null | undefined): string {
   if (typeof raw !== "string") return "";

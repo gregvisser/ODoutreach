@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildOneClickUnsubscribeUrl,
   buildUnsubscribeUrl,
   deriveEmailDomain,
   generateRawUnsubscribeToken,
@@ -83,6 +84,51 @@ describe("buildUnsubscribeUrl", () => {
     ).toThrow();
     expect(() =>
       buildUnsubscribeUrl({
+        baseUrl: "https://example.com",
+        rawToken: "has spaces",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("buildOneClickUnsubscribeUrl (H1)", () => {
+  const goodToken = "a".repeat(43);
+
+  it("points at the POST-capable /api/unsubscribe/<token> path", () => {
+    expect(
+      buildOneClickUnsubscribeUrl({
+        baseUrl: "https://example.com",
+        rawToken: goodToken,
+      }),
+    ).toBe(`https://example.com/api/unsubscribe/${goodToken}`);
+  });
+
+  it("is the API path, distinct from the page path used by the body link", () => {
+    const page = buildUnsubscribeUrl({
+      baseUrl: "https://example.com",
+      rawToken: goodToken,
+    });
+    const header = buildOneClickUnsubscribeUrl({
+      baseUrl: "https://example.com",
+      rawToken: goodToken,
+    });
+    expect(page).toBe(`https://example.com/unsubscribe/${goodToken}`);
+    expect(header).toBe(`https://example.com/api/unsubscribe/${goodToken}`);
+    expect(header).not.toBe(page);
+  });
+
+  it("strips a trailing slash and rejects bad input", () => {
+    expect(
+      buildOneClickUnsubscribeUrl({
+        baseUrl: "https://example.com/",
+        rawToken: goodToken,
+      }),
+    ).toBe(`https://example.com/api/unsubscribe/${goodToken}`);
+    expect(() =>
+      buildOneClickUnsubscribeUrl({ baseUrl: "  ", rawToken: goodToken }),
+    ).toThrow();
+    expect(() =>
+      buildOneClickUnsubscribeUrl({
         baseUrl: "https://example.com",
         rawToken: "has spaces",
       }),

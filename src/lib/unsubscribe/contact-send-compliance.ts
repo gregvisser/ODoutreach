@@ -1,6 +1,7 @@
 import { buildListUnsubscribeHeaders } from "@/lib/unsubscribe/list-unsubscribe-headers";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import {
+  buildOneClickUnsubscribeUrl,
   buildUnsubscribeUrl,
   generateRawUnsubscribeToken,
 } from "@/lib/unsubscribe/unsubscribe-token";
@@ -54,7 +55,10 @@ export function prepareContactSendCompliance(input: {
   if (publicBase) {
     const rawToken = generateRawUnsubscribeToken();
     const url = buildUnsubscribeUrl({ baseUrl: publicBase, rawToken });
-    const headers = buildListUnsubscribeHeaders(url);
+    // H1 — the List-Unsubscribe HEADER must point at the POST-capable
+    // `/api/unsubscribe/<token>` (one-click), not the GET-only page `url`.
+    const oneClickUrl = buildOneClickUnsubscribeUrl({ baseUrl: publicBase, rawToken });
+    const headers = buildListUnsubscribeHeaders(oneClickUrl);
     const finalBody = ensureUnsubscribeLinkInPlainTextBody(input.bodyText, url);
     const bodyParts = buildEmailBodyParts({
       bodyText: finalBody,

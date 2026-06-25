@@ -226,9 +226,12 @@ describe("queueSelectedMailboxInternalProofSend", () => {
     };
     const body = created.data.bodySnapshot;
     expect(body.indexOf("Adam OpensDoors")).toBeLessThan(body.indexOf("Unsubscribe:"));
+    // H1 — the List-Unsubscribe header points at the POST-capable /api/ path
+    // (one-click), while the in-body footer keeps the page path.
     expect(created.data.metadata.headers?.listUnsubscribe).toMatch(
-      /^<https:\/\/opensdoors\.bidlow\.co\.uk\/unsubscribe\/.+>$/,
+      /^<https:\/\/opensdoors\.bidlow\.co\.uk\/api\/unsubscribe\/.+>$/,
     );
+    expect(body).toContain("Unsubscribe: https://opensdoors.bidlow.co.uk/unsubscribe/");
   });
 
   it("creates audit and activity-visible outbound metadata", async () => {
