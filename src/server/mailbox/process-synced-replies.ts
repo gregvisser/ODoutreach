@@ -5,6 +5,7 @@ import { emailDomain, isInternalMail } from "@/lib/inbox/internal-mail";
 import { normalizeEmail } from "@/lib/normalize";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
+import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
 
 /**
  * After mailbox inbox sync upserts an InboundMailboxMessage, this function
@@ -240,6 +241,21 @@ export async function processSyncedMessageForReply(input: {
   await stopFollowUpsForLinkedReply({
     clientId: input.clientId,
     outboundEmailId: outbound.id,
+  });
+
+  // H3 — if this matched reply explicitly demands to stop (opt-out / complaint),
+  // suppress the sender for FUTURE campaigns too (stopping follow-ups only ends
+  // THIS sequence). Flag-gated (`MAILBOX_COMPLAINT_DETECTION_ENABLED`); no-op
+  // when off. The sender is a known contacted prospect (we matched their send),
+  // and seed-allowlist addresses are exempt inside suppressRecipientForHardBounce.
+  await suppressReplyOptOut({
+    clientId: input.clientId,
+    fromEmail: from,
+    subject: input.subject,
+    bodyText: input.bodyPreview ?? input.snippet,
+    contactId: outbound.contactId,
+    outboundEmailId: outbound.id,
+    receivedAt: input.receivedAt,
   });
 
   return { created: true, replyId: reply.id };
