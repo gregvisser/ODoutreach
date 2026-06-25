@@ -10,6 +10,7 @@ import {
 } from "@/server/mailbox/microsoft-graph-inbox";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
 import { processSyncedMessageForReply } from "@/server/mailbox/process-synced-replies";
+import { processSyncedMessageForBounce } from "@/server/mailbox/bounce-detection";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
 import {
   isReplyThreadRefSenderGuardEnabled,
@@ -116,9 +117,23 @@ export async function syncMicrosoftInboxForMailbox(input: {
   let n = 0;
   let repliesLinked = 0;
   let skippedInternal = 0;
+  let bouncesSuppressed = 0;
   for (const raw of items) {
     const row = mapGraphInboxMessageToRow(raw);
     if (!row) continue;
+    // H2 — NDR/DSN bounce detection runs BEFORE the internal-mail skip, because
+    // an NDR often comes from the tenant's own postmaster (an internal sender)
+    // and would otherwise be filtered out. Flag-gated + no-op when off.
+    const bounceResult = await processSyncedMessageForBounce({
+      clientId,
+      mailboxIdentityId,
+      providerMessageId: row.providerMessageId,
+      fromEmail: row.fromEmail,
+      subject: row.subject,
+      bodyText: row.fullBody?.bodyText ?? row.bodyPreview ?? row.snippet,
+      receivedAt: row.receivedAt,
+    });
+    if (bounceResult.suppressed) bouncesSuppressed += 1;
     // F4 — internal staff mail (both ends on a workspace domain) is never a
     // prospect conversation: don't store it and don't try to match it.
     if (
@@ -216,6 +231,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       totalSeen: items.length,
       repliesLinked,
       skippedInternal,
+      bouncesSuppressed,
     },
   });
 
@@ -285,7 +301,20 @@ export async function syncGoogleInboxForMailbox(input: {
   let n = 0;
   let repliesLinked = 0;
   let skippedInternal = 0;
+  let bouncesSuppressed = 0;
   for (const row of rows) {
+    // H2 — NDR/DSN bounce detection (flag-gated, no-op when off). Runs before
+    // the internal-mail skip since NDRs can come from an internal postmaster.
+    const bounceResult = await processSyncedMessageForBounce({
+      clientId,
+      mailboxIdentityId,
+      providerMessageId: row.providerMessageId,
+      fromEmail: row.fromEmail,
+      subject: row.subject,
+      bodyText: row.bodyPreview ?? row.snippet,
+      receivedAt: row.receivedAt,
+    });
+    if (bounceResult.suppressed) bouncesSuppressed += 1;
     // F4 — internal staff mail (both ends on a workspace domain) is never a
     // prospect conversation: don't store it and don't try to match it.
     if (
@@ -366,6 +395,7 @@ export async function syncGoogleInboxForMailbox(input: {
       totalSeen: rows.length,
       repliesLinked,
       skippedInternal,
+      bouncesSuppressed,
     },
   });
 
