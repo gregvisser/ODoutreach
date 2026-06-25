@@ -178,6 +178,29 @@ export default async function SettingsPage() {
               </Link>
             </CardContent>
           </Card>
+
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Internal test addresses</CardTitle>
+              <CardDescription>
+                OpensDoors-internal inboxes that are always deliverable — exempt
+                from suppression and never auto-suppressed by bounces or
+                complaints, and excluded from real campaign analytics.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Manage the always-deliverable internal test inboxes used to
+                verify live sends without touching real prospect suppression.
+              </p>
+              <Link
+                href="/settings/internal-seed"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Open internal test addresses →
+              </Link>
+            </CardContent>
+          </Card>
         </section>
       ) : null}
 

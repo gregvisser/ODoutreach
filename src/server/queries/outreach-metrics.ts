@@ -2,6 +2,7 @@ import "server-only";
 
 import { createLimiter, type TaskGate } from "@/lib/concurrency";
 import { prisma } from "@/lib/db";
+import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
 import {
   deriveOutreachMetrics,
   type ClientMetricsRow,
@@ -182,6 +183,14 @@ async function gatherRawCounts(
   // timestamp of each windowed metric. Undefined → all-time (unchanged
   // behaviour).
   const w = window ? { gte: window.gte, lt: window.lt } : undefined;
+  // Feature A — exclude internal seed/allowlist addresses from the
+  // reputation-sensitive OutboundEmail metrics (sent / delivered / bounced /
+  // opened / failed) so internal test sends never skew real campaign analytics.
+  // Flag-gated: `listActiveInternalSeedEmails` returns `[]` (no query) when the
+  // feature is off, so `seedExclusion` is `{}` and the counts are unchanged.
+  const seedEmails = await listActiveInternalSeedEmails();
+  const seedExclusion =
+    seedEmails.length > 0 ? { toEmail: { notIn: seedEmails } } : {};
   const [
     sentWithProof,
     allStepSendsSent,
@@ -200,6 +209,7 @@ async function gatherRawCounts(
     run(() => prisma.outboundEmail.count({
       where: {
         clientId,
+        ...seedExclusion,
         status: { in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] },
         // Windowed: a sentAt inside the window is itself the send proof.
         // All-time: sentAt OR providerMessageId proves the send.
@@ -230,6 +240,7 @@ async function gatherRawCounts(
     run(() => prisma.outboundEmail.count({
       where: {
         clientId,
+        ...seedExclusion,
         status: "DELIVERED",
         deliveredAt: w ?? { not: null },
       },
@@ -237,6 +248,7 @@ async function gatherRawCounts(
     run(() => prisma.outboundEmail.count({
       where: {
         clientId,
+        ...seedExclusion,
         status: "BOUNCED",
         // Window on when the bounce happened; webhooks that didn't stamp
         // bouncedAt fall back to the send time so the row isn't lost.
@@ -248,6 +260,7 @@ async function gatherRawCounts(
     run(() => prisma.outboundEmail.count({
       where: {
         clientId,
+        ...seedExclusion,
         status: "FAILED",
         ...(w ? { createdAt: w } : {}),
       },
@@ -296,7 +309,7 @@ async function gatherRawCounts(
     // Opens: distinct outbound emails whose tracking pixel has loaded at
     // least once (openedAt set by /api/track/open). See open-pixel.ts.
     run(() => prisma.outboundEmail.count({
-      where: { clientId, openedAt: w ?? { not: null } },
+      where: { clientId, ...seedExclusion, openedAt: w ?? { not: null } },
     })),
   ]);
 

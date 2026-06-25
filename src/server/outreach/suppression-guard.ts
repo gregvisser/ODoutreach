@@ -6,6 +6,7 @@ import {
   normalizeDomain,
   normalizeEmail,
 } from "@/lib/normalize";
+import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
 
 export type SuppressionDecision = {
   suppressed: boolean;
@@ -14,6 +15,13 @@ export type SuppressionDecision = {
   normalizedDomain: string;
   matchedEmail?: string;
   matchedDomain?: string;
+  /**
+   * Feature A — set when the address is exempt because it is an active internal
+   * seed/allowlist address (always deliverable). Only ever true when the
+   * `INTERNAL_SEED_ALLOWLIST_ENABLED` flag is on. Additive/optional so the
+   * shape is unchanged for every existing caller.
+   */
+  internalSeedExempt?: boolean;
 };
 
 /**
@@ -26,6 +34,21 @@ export async function evaluateSuppression(
 ): Promise<SuppressionDecision> {
   const normalizedEmail = normalizeEmail(email);
   const normalizedDomain = normalizeDomain(extractDomainFromEmail(normalizedEmail));
+
+  // Feature A — internal seed / allowlist addresses are ALWAYS deliverable:
+  // short-circuit BEFORE the suppression-list lookups so a seed address is
+  // exempt even if it somehow appears on a list. Flag-gated: when
+  // INTERNAL_SEED_ALLOWLIST_ENABLED is off, `isInternalSeedAddress` returns
+  // false without any query, so this is a no-op and behaviour is unchanged.
+  if (await isInternalSeedAddress(normalizedEmail)) {
+    return {
+      suppressed: false,
+      reason: "none",
+      normalizedEmail,
+      normalizedDomain,
+      internalSeedExempt: true,
+    };
+  }
 
   const [emailHit, domainHit] = await Promise.all([
     prisma.suppressedEmail.findUnique({

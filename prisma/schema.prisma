@@ -939,6 +939,36 @@ model SuppressedDomain {
   @@index([clientId])
 }
 
+/// Feature A (prod hardening) — global internal seed / allowlist.
+///
+/// An admin-managed list of OpensDoors-internal test addresses that are ALWAYS
+/// deliverable: they are exempt from the send-time suppression gate
+/// (`evaluateSuppression`) and NO automated process (import, suppression
+/// refresh, hard-bounce, or spam-complaint) may ever add them to suppression.
+/// Global (not tenant-scoped) — a seed address is exempt for every client.
+///
+/// Entirely INERT unless the `INTERNAL_SEED_ALLOWLIST_ENABLED` feature flag is
+/// on: with the flag off, no read path consults this table and the live send
+/// path behaves exactly as before. Reputation-sensitive analytics exclude
+/// these addresses so internal test sends never skew real campaign metrics.
+model InternalSeedAddress {
+  id        String   @id @default(cuid())
+  /// Lowercase, trimmed email (same normalization as the suppression keys).
+  email     String   @unique
+  /// Human label shown in the admin UI, e.g. "Adam (internal test)".
+  label     String?
+  /// Free-text note (why this address is on the allowlist).
+  note      String?
+  /// Soft on/off without deleting history; only active rows are exempt.
+  isActive  Boolean  @default(true)
+  /// Audit pointer to the staff user who added it (no FK to keep this additive).
+  createdByStaffUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 /// PR M — One-click unsubscribe token.
 ///
 /// Opaque per-recipient-per-send token created when a sequence email is

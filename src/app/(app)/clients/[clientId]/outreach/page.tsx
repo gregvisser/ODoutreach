@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
+import { EmailPreviewPanel } from "@/components/clients/email-preview/email-preview-panel";
 import {
   Card,
   CardContent,
@@ -17,6 +18,7 @@ import {
   buildSequenceLaunchReadinessMap,
   loadClientEmailSequencesOverview,
 } from "@/server/email-sequences/queries";
+import { isPreSendPreviewEnabled } from "@/server/email-rendering/pre-send-preview";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadSequenceStepSendUiSnapshots } from "@/server/email-sequences/send-introduction";
 import { loadClientSequencePrepSnapshots } from "@/server/email-sequences/step-sends";
@@ -118,6 +120,8 @@ export default async function ClientOutreachPage({
       };
     });
 
+  const preSendPreviewEnabled = isPreSendPreviewEnabled();
+
   const launchReadinessBySequenceId = buildSequenceLaunchReadinessMap({
     sequences: sequencesOverview.sequences,
     mailbox: {
@@ -175,6 +179,10 @@ export default async function ClientOutreachPage({
         sequencePrepSnapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}
       />
+
+      {preSendPreviewEnabled ? (
+        <EmailPreviewPanel clientId={client.id} />
+      ) : null}
 
       {/*
         Pilot/test/internal-proof diagnostic cards intentionally removed —

@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
+import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
 
 /**
  * Append-only suppression for a HARD-bounced recipient.
@@ -61,6 +62,13 @@ export type HardBounceSuppressionResult = {
   normalizedEmail: string;
   /** Number of Contact rows flipped to isSuppressed by this call. */
   contactsFlagged: number;
+  /**
+   * Feature A — set when the address was left UN-suppressed because it is an
+   * active internal seed/allowlist address. Only ever true when the
+   * INTERNAL_SEED_ALLOWLIST_ENABLED flag is on. Optional so the result shape is
+   * unchanged for every existing caller.
+   */
+  skippedInternalSeed?: boolean;
 };
 
 export async function suppressRecipientForHardBounce(
@@ -76,6 +84,20 @@ export async function suppressRecipientForHardBounce(
       newlyCreated: false,
       normalizedEmail: email,
       contactsFlagged: 0,
+    };
+  }
+
+  // Feature A — never let an automated bounce/complaint suppress an internal
+  // seed/allowlist address. Flag-gated: when INTERNAL_SEED_ALLOWLIST_ENABLED is
+  // off, `isInternalSeedAddress` returns false without a query, so this is a
+  // no-op and the bounce/complaint path behaves exactly as before.
+  if (await isInternalSeedAddress(email)) {
+    return {
+      suppressed: false,
+      newlyCreated: false,
+      normalizedEmail: email,
+      contactsFlagged: 0,
+      skippedInternalSeed: true,
     };
   }
 

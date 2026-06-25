@@ -240,7 +240,7 @@ function buildUnsubscribePlaceholder(
   return `mailto:${clientDefaultSenderEmail}?subject=unsubscribe`;
 }
 
-function buildSenderRow(
+export function buildSenderRow(
   client: { name: string; defaultSenderEmail: string | null },
   brief: ClientSenderProfile,
   unsubscribeLink: string,
