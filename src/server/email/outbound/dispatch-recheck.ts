@@ -7,6 +7,7 @@ import {
   formatCooldownReason,
   isEmailInCooldown,
 } from "@/lib/email-sequences/recent-send-cooldown";
+import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
 
 /**
  * M2/M3 — dispatch-time re-check kill-switch.
@@ -99,6 +100,10 @@ export async function loadDispatchRecentSend(input: {
 }): Promise<DispatchRecheckRecentSend | null> {
   const normalized = input.toEmail.trim().toLowerCase();
   if (normalized.length === 0) return null;
+
+  // Feature A — internal seed/allowlist addresses are always deliverable: no
+  // cooldown and no recent-bounce block. Flag-gated (returns false when off).
+  if (await isInternalSeedAddress(normalized)) return null;
 
   const cooldownStart = new Date(
     input.now.getTime() - OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,

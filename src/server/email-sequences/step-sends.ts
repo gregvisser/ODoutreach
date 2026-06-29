@@ -22,6 +22,7 @@ import {
   type ClientSenderProfile,
 } from "@/lib/opensdoors-brief";
 import { prisma } from "@/lib/db";
+import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
 
 /**
  * Operator-triggered sequence step-send PLANNER (PR D4e.1 — records only).
@@ -362,6 +363,15 @@ export async function planSequenceStepSends(params: {
         .filter((email): email is string => email !== null && email.length > 0),
     ),
   );
+  // Feature A — internal seed/allowlist addresses are ALWAYS deliverable,
+  // including REPEAT sends: exempt them from the workspace 10-day cooldown so
+  // staff can re-test against internal inboxes without waiting out the timer
+  // (mirrors their exemption from the suppression gate). Flag-gated — returns
+  // an empty set when INTERNAL_SEED_ALLOWLIST_ENABLED is off, so behaviour is
+  // unchanged for everyone else.
+  const seedEmailSet = new Set(
+    (await listActiveInternalSeedEmails()).map((e) => e.toLowerCase()),
+  );
   const recentSendsByEmail = new Map<
     string,
     { lastSentAt: Date; eligibleAt: Date; bounced: boolean }
@@ -455,7 +465,12 @@ export async function planSequenceStepSends(params: {
           typeof enrollment.contact.email === "string"
             ? enrollment.contact.email.trim().toLowerCase()
             : null;
-        return e ? recentSendsByEmail.get(e) ?? null : null;
+        if (!e) return null;
+        // Feature A — a seed/allowlist address has no cooldown (always
+        // deliverable). This also skips the recent-bounce branch for seeds,
+        // which is correct: internal test inboxes don't bounce.
+        if (seedEmailSet.has(e)) return null;
+        return recentSendsByEmail.get(e) ?? null;
       })(),
       bypassCooldown: params.bypassCooldown ?? false,
     };

@@ -3,9 +3,10 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findUnique, findMany } = vi.hoisted(() => ({
+const { findUnique, findMany, isSeed } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  isSeed: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -15,6 +16,10 @@ vi.mock("@/lib/db", () => ({
       findMany: (...a: unknown[]) => findMany(...a),
     },
   },
+}));
+
+vi.mock("@/server/internal-seed/seed-allowlist", () => ({
+  isInternalSeedAddress: (...a: unknown[]) => isSeed(...a),
 }));
 
 import {
@@ -93,10 +98,23 @@ describe("loadDispatchRecentSend (DB) — mirrors the planner", () => {
   beforeEach(() => {
     findUnique.mockReset();
     findMany.mockReset();
+    isSeed.mockReset();
+    isSeed.mockResolvedValue(false);
     // This row belongs to sequence "seq-own".
     findUnique.mockResolvedValue({
       sequenceStepSends: [{ sequenceId: "seq-own" }],
     });
+  });
+
+  it("Feature A — returns null for a seed/allowlist address WITHOUT querying recent sends", async () => {
+    isSeed.mockResolvedValue(true);
+    const r = await loadDispatchRecentSend({
+      outboundEmailId: "out-1",
+      toEmail: "Adam@OpensDoors.co.uk",
+      now: NOW,
+    });
+    expect(r).toBeNull();
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("no-ops on an empty recipient without querying", async () => {
