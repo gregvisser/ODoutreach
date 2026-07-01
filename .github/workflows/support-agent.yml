@@ -8,7 +8,9 @@
 #
 # Required repo secrets (see docs/support-agent-goal.md):
 #   SUPPORT_AGENT_DATABASE_URL  - production DB URL (where tickets live)
-#   ANTHROPIC_API_KEY           - key Claude Code uses in CI
+#   ANTHROPIC_API_KEY           - Claude Code auth in CI (pay-as-you-go API key);
+#                                 OR set CLAUDE_CODE_OAUTH_TOKEN instead (subscription
+#                                 token from `claude setup-token`) — one of the two.
 #   SUPPORT_AGENT_GH_TOKEN      - fine-grained PAT (contents:write + pull-requests:write)
 #                                 so pushes to main trigger the deploy workflow
 # Optional (reporter email notification):
@@ -38,12 +40,15 @@ jobs:
       - name: Guard — required secrets present
         id: guard
         env:
+          # Claude Code auth: either a pay-as-you-go API key OR a subscription
+          # OAuth token from `claude setup-token`. One of the two is required.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SUPPORT_AGENT_DATABASE_URL: ${{ secrets.SUPPORT_AGENT_DATABASE_URL }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$SUPPORT_AGENT_DATABASE_URL" ]; then
+          if [ -z "$SUPPORT_AGENT_DATABASE_URL" ] || { [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; }; then
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Required secrets (ANTHROPIC_API_KEY, SUPPORT_AGENT_DATABASE_URL) not set; skipping."
+            echo "Required secrets not set (need SUPPORT_AGENT_DATABASE_URL plus one of ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN); skipping."
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
@@ -80,7 +85,9 @@ jobs:
       - name: Run support agent
         if: steps.guard.outputs.run == 'true'
         env:
+          # Claude Code auth — supply ONE of these (API key or subscription token).
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SUPPORT_AGENT_DATABASE_URL: ${{ secrets.SUPPORT_AGENT_DATABASE_URL }}
           # gh CLI auth for opening/merging PRs and watching the deploy.
           GH_TOKEN: ${{ secrets.SUPPORT_AGENT_GH_TOKEN }}
