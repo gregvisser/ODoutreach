@@ -1,0 +1,95 @@
+# Autonomous support agent — resolves OPEN ODoutreach support tickets on a schedule.
+# Runs Claude Code headless to execute the mission in docs/support-agent-goal.md:
+# triage each OPEN ticket, fix it safely, verify (lint/typecheck/test/build),
+# ship via PR->main (auto-deploys), then close the ticket with a reporter reply.
+#
+# SAFE TO COMMIT BEFORE YOU'RE READY: this only becomes active once it's on `main`,
+# and the first step exits cleanly if the required secrets are not set.
+#
+# Required repo secrets (see docs/support-agent-goal.md):
+#   SUPPORT_AGENT_DATABASE_URL  - production DB URL (where tickets live)
+#   ANTHROPIC_API_KEY           - key Claude Code uses in CI
+#   SUPPORT_AGENT_GH_TOKEN      - fine-grained PAT (contents:write + pull-requests:write)
+#                                 so pushes to main trigger the deploy workflow
+# Optional (reporter email notification):
+#   SUPPORT_AGENT_NOTIFY_SENDER, MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET
+name: Support agent
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Hourly, UK business hours, weekdays. Tune the cadence to taste.
+    - cron: "0 8-18 * * 1-5"
+
+# Never let two agent runs overlap — two agents resolving the same tickets is chaos.
+concurrency:
+  group: support-agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  resolve-tickets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Guard — required secrets present
+        id: guard
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPPORT_AGENT_DATABASE_URL: ${{ secrets.SUPPORT_AGENT_DATABASE_URL }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$SUPPORT_AGENT_DATABASE_URL" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Required secrets (ANTHROPIC_API_KEY, SUPPORT_AGENT_DATABASE_URL) not set; skipping."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # PAT so pushes to `main` trigger the deploy workflow (GITHUB_TOKEN would not).
+          token: ${{ secrets.SUPPORT_AGENT_GH_TOKEN }}
+
+      - name: Setup Node 20
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
+        run: npm ci
+
+      - name: Install Claude Code
+        if: steps.guard.outputs.run == 'true'
+        run: npm i -g @anthropic-ai/claude-code
+
+      - name: Configure git identity
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          git config user.name "odoutreach-support-agent"
+          git config user.email "support-agent@bidlow.co.uk"
+
+      - name: Run support agent
+        if: steps.guard.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPPORT_AGENT_DATABASE_URL: ${{ secrets.SUPPORT_AGENT_DATABASE_URL }}
+          # gh CLI auth for opening/merging PRs and watching the deploy.
+          GH_TOKEN: ${{ secrets.SUPPORT_AGENT_GH_TOKEN }}
+          # Reporter email notification (optional; the notifier no-ops if unset).
+          SUPPORT_AGENT_NOTIFY_SENDER: ${{ secrets.SUPPORT_AGENT_NOTIFY_SENDER }}
+          MS_GRAPH_TENANT_ID: ${{ secrets.MS_GRAPH_TENANT_ID }}
+          MS_GRAPH_CLIENT_ID: ${{ secrets.MS_GRAPH_CLIENT_ID }}
+          MS_GRAPH_CLIENT_SECRET: ${{ secrets.MS_GRAPH_CLIENT_SECRET }}
+        run: |
+          claude -p "Read docs/support-agent-goal.md and carry out the ODoutreach autonomous support agent mission it describes, end to end, for every OPEN ticket. Obey every hard rail; escalate anything unsafe instead of forcing it." \
+            --dangerously-skip-permissions \
+            --max-turns 200
