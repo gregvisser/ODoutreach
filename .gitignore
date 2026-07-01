@@ -52,3 +52,6 @@ Thumbs.db
 # Azure / local tooling
 .azure/
 *.PublishSettings
+
+# support-agent: dumped ticket screenshots may contain user data — never commit
+.tmp/

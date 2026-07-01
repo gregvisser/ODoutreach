@@ -19,6 +19,10 @@
     "ops:hard-delete-test-client": "tsx scripts/hard-delete-test-client.ts",
     "ops:f4-contamination-report": "tsx scripts/f4-contamination-report.ts",
     "ops:f1-strip-template-signature": "tsx scripts/f1-strip-template-signature.ts",
+    "support:list": "tsx scripts/support-agent/list-open-tickets.ts",
+    "support:get": "tsx scripts/support-agent/get-ticket.ts",
+    "support:resolve": "tsx scripts/support-agent/resolve-ticket.ts",
+    "support:escalate": "tsx scripts/support-agent/escalate-ticket.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
