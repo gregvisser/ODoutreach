@@ -15,6 +15,12 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/internal/suppression/sync-all")).toBe(true);
   });
 
+  it("allows PWA install assets so the manifest loads and the service worker registers without a session", () => {
+    expect(isPublicPath("/manifest.webmanifest")).toBe(true);
+    expect(isPublicPath("/sw.js")).toBe(true);
+    expect(isPublicPath("/icons/icon-512.png")).toBe(true);
+  });
+
   it("keeps the staff notifications poll behind the session (not public)", () => {
     expect(isPublicPath("/api/notifications/replies")).toBe(false);
   });
