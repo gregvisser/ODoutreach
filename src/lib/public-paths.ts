@@ -20,5 +20,12 @@ export function isPublicPath(pathname: string): boolean {
   // Public one-click unsubscribe endpoints. The token itself is the proof.
   if (pathname.startsWith("/unsubscribe/")) return true;
   if (pathname.startsWith("/api/unsubscribe/")) return true;
+  // PWA install assets must be reachable without a session — the browser fetches
+  // the manifest and registers the service worker before (and regardless of)
+  // sign-in. These serve no user data. (Icon PNGs already bypass the middleware
+  // matcher, but are allowed here too for robustness.)
+  if (pathname === "/manifest.webmanifest") return true;
+  if (pathname === "/sw.js") return true;
+  if (pathname.startsWith("/icons/")) return true;
   return false;
 }
