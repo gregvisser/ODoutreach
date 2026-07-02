@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { PwaInstallPrompt } from "@/components/pwa/pwa-install-prompt";
+import { RegisterServiceWorker } from "@/components/pwa/register-service-worker";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getGlobalBrand } from "@/server/branding/get-global-brand";
@@ -16,6 +18,11 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+// Static theme colour for the browser UI / mobile status bar (OpensDoors green).
+export const viewport: Viewport = {
+  themeColor: "#689888",
+};
 
 /**
  * Metadata is generated per-request so the admin-saved favicon, brand
@@ -36,7 +43,14 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: {
       icon: [{ url: brand.faviconUrl }],
       shortcut: [{ url: brand.faviconUrl }],
-      apple: [{ url: brand.faviconUrl }],
+      apple: [
+        { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      ],
+    },
+    appleWebApp: {
+      capable: true,
+      title: "ODoutreach",
+      statusBarStyle: "default",
     },
   };
 }
@@ -55,6 +69,8 @@ export default function RootLayout({
         <SessionProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </SessionProvider>
+        <RegisterServiceWorker />
+        <PwaInstallPrompt />
       </body>
     </html>
   );
