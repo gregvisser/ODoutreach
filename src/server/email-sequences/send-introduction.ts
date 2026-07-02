@@ -36,6 +36,7 @@ import {
 } from "@/lib/governed-test-recipient";
 import { prisma } from "@/lib/db";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
+import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -865,7 +866,9 @@ export async function sendSequenceStepBatch(input: {
       async (tx) => {
         const localRemaining = new Map<string, number>();
         for (const m of pool) {
-          const cap = Math.max(1, m.dailySendCap || 30);
+          // Warm-up ramp: caps cold-outreach volume for young mailboxes.
+          // No-op once a mailbox is warmed, or when the ramp flag is off.
+          const cap = effectiveDailyCap(m, at);
           const booked = await countBookedSendSlotsInUtcWindow(
             tx,
             m.id,
@@ -1179,7 +1182,7 @@ export async function sendSequenceStepBatch(input: {
   // 10. Recompute aggregate remaining capacity for the UI summary.
   let aggregateRemainingAfter = 0;
   for (const m of pool) {
-    const cap = Math.max(1, m.dailySendCap || 30);
+    const cap = effectiveDailyCap(m, at);
     const bookedAfter = await prisma.mailboxSendReservation.count({
       where: {
         mailboxIdentityId: m.id,
