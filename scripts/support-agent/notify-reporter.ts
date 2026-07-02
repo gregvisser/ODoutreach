@@ -3,9 +3,10 @@
  *
  * Sends ONE plain-text email via Microsoft Graph app-only sendMail, from a
  * system mailbox (SUPPORT_AGENT_NOTIFY_SENDER) to the ticket's own reporter
- * address. This is completely separate from the outreach/campaign/sequence/
- * queue pipeline: no ledger, no suppression, no unsubscribe, no client mailbox.
- * It must stay that way.
+ * address, optionally BCC'ing internal address(es) (SUPPORT_AGENT_NOTIFY_BCC,
+ * comma-separated) so staff keep a copy of every ticket-close notice. This is
+ * completely separate from the outreach/campaign/sequence/queue pipeline: no
+ * ledger, no suppression, no unsubscribe, no client mailbox. It must stay that way.
  *
  * Best-effort by contract: any problem (missing creds, token failure, non-2xx
  * from Graph) logs a warning and returns. It NEVER throws, so closing a ticket
@@ -26,6 +27,11 @@ export async function notifyReporter(
   const secret =
     process.env.MS_GRAPH_CLIENT_SECRET ?? process.env.AZURE_CLIENT_SECRET;
   const sender = process.env.SUPPORT_AGENT_NOTIFY_SENDER; // e.g. support@bidlow.co.uk
+  // Optional internal BCC (comma-separated) — every ticket-close notice is copied here.
+  const bccList = (process.env.SUPPORT_AGENT_NOTIFY_BCC ?? "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
 
   if (!tenant || !clientId || !secret || !sender) {
     console.warn(
@@ -71,6 +77,13 @@ export async function notifyReporter(
             subject,
             body: { contentType: "Text", content: body },
             toRecipients: [{ emailAddress: { address: to } }],
+            ...(bccList.length
+              ? {
+                  bccRecipients: bccList.map((a) => ({
+                    emailAddress: { address: a },
+                  })),
+                }
+              : {}),
           },
           saveToSentItems: true,
         }),

@@ -83,7 +83,8 @@ that runs `/goal`:
 | Name | Purpose | Required for |
 |---|---|---|
 | `SUPPORT_AGENT_DATABASE_URL` | Production DB URL (same value as `PRODUCTION_DATABASE_URL`). Tickets live here. | Everything |
-| `ANTHROPIC_API_KEY` | Key Claude Code uses headless in CI. | Scheduled runner |
+| `ANTHROPIC_API_KEY` | Claude Code auth in CI (pay-as-you-go API key). **Or** set `CLAUDE_CODE_OAUTH_TOKEN` instead (subscription token from `claude setup-token`) — the runner accepts either. | Scheduled runner |
 | `SUPPORT_AGENT_GH_TOKEN` | Fine-grained PAT (`contents: write` + `pull-requests: write`) so pushes to `main` trigger the deploy workflow (the built-in `GITHUB_TOKEN` does not). | Scheduled runner |
 | `SUPPORT_AGENT_NOTIFY_SENDER` | System mailbox the reporter email is sent from (e.g. `support@bidlow.co.uk`). | Reporter email |
+| `SUPPORT_AGENT_NOTIFY_BCC` | Optional. Comma-separated internal address(es) BCC'd on every ticket-close notice (e.g. `greg@bidlow.co.uk`) so staff keep a copy. Recipient-only — unaffected by the sender's Application Access Policy. | Reporter email (optional) |
 | `MS_GRAPH_TENANT_ID` / `MS_GRAPH_CLIENT_ID` / `MS_GRAPH_CLIENT_SECRET` | Azure AD app creds for Graph. The app also needs application permission `Mail.Send` (admin-consented) — it currently has only delegated `Mail.Read`, so this likely needs granting. Until then, tickets still close and the email no-ops. | Reporter email |
