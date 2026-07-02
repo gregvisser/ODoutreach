@@ -55,7 +55,7 @@ jobs:
 
       - name: Checkout
         if: steps.guard.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           # PAT so pushes to `main` trigger the deploy workflow (GITHUB_TOKEN would not).
@@ -63,7 +63,7 @@ jobs:
 
       - name: Setup Node 20
         if: steps.guard.outputs.run == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
