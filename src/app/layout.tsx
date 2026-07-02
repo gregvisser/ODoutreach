@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 
 // Static theme colour for the browser UI / mobile status bar (OpensDoors green).
 export const viewport: Viewport = {
-  themeColor: "#689888",
+  themeColor: "#6aa086",
 };
 
 /**
