@@ -12,12 +12,22 @@
 
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 
+/** Deliverability kill-switch: set OPEN_TRACKING_PIXEL=off to stop embedding the pixel. */
+export function isOpenTrackingPixelEnabled(): boolean {
+  return process.env.OPEN_TRACKING_PIXEL !== "off";
+}
+
 /**
  * Absolute open-tracking pixel URL for an outbound email's correlationId.
- * Returns null when no public base URL is configured (so callers skip the
- * pixel rather than emit a broken relative link).
+ * Returns null when open tracking is disabled, or when no public base URL is
+ * configured (so callers skip the pixel rather than emit a broken relative link).
+ *
+ * A hidden 1x1 image pointing at a domain that differs from the sender's is a
+ * strong spam/phishing signal, so this can be switched off tenant-wide while
+ * outreach links are being moved onto sender-aligned domains.
  */
 export function buildOpenTrackingPixelUrl(correlationId: string): string | null {
+  if (!isOpenTrackingPixelEnabled()) return null;
   const id = correlationId?.trim();
   if (!id) return null;
   const base = resolvePublicBaseUrl();

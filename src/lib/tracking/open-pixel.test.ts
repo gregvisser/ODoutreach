@@ -6,16 +6,26 @@ describe("buildOpenTrackingPixelUrl", () => {
   const prevAuth = process.env.AUTH_URL;
   const prevInternal = process.env.INTERNAL_APP_URL;
   const prevPublic = process.env.NEXT_PUBLIC_APP_URL;
+  const prevPixel = process.env.OPEN_TRACKING_PIXEL;
 
   beforeEach(() => {
     delete process.env.AUTH_URL;
     delete process.env.INTERNAL_APP_URL;
     delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.OPEN_TRACKING_PIXEL;
   });
   afterEach(() => {
     process.env.AUTH_URL = prevAuth;
     process.env.INTERNAL_APP_URL = prevInternal;
     process.env.NEXT_PUBLIC_APP_URL = prevPublic;
+    if (prevPixel === undefined) delete process.env.OPEN_TRACKING_PIXEL;
+    else process.env.OPEN_TRACKING_PIXEL = prevPixel;
+  });
+
+  it("returns null when open tracking is disabled via OPEN_TRACKING_PIXEL=off", () => {
+    process.env.AUTH_URL = "https://app.example.com";
+    process.env.OPEN_TRACKING_PIXEL = "off";
+    expect(buildOpenTrackingPixelUrl("corr-123")).toBeNull();
   });
 
   it("builds an absolute pixel URL from the public base URL", () => {
