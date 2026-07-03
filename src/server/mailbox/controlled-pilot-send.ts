@@ -151,6 +151,15 @@ export async function queueControlledPilotBatch(input: {
 
   for (const raw of recipients) {
     const to = normalizeEmail(raw);
+    // Controlled pilot is allowlisted-only by design: every recipient must be
+    // on GOVERNED_TEST_EMAIL_DOMAINS. This is what keeps the pilot within
+    // governed-test scope and is why it does NOT need the sender-aligned
+    // link-domain gate (`clientLinkDomainAligned`) that `evaluateSendGovernance`
+    // applies to real-prospect sequence sends — an allowlisted recipient is
+    // never a real prospect. If this allowlist restriction is ever relaxed to
+    // reach real prospects, this path MUST also enforce the aligned-link-domain
+    // hard rule (see src/lib/clients/client-link-domain.ts) or outreach will be
+    // sent with cross-domain links and quarantined as phishing.
     if (!isRecipientAllowedForGovernedTest(to)) {
       blocked.push({
         email: to,

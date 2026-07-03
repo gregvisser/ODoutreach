@@ -4,6 +4,7 @@ import {
   clientLinkDomainAligned,
   deriveGoLinkDomain,
   isClientLinkDomainReady,
+  isGoDomainAllowedForClient,
   resolveClientLinkBaseUrl,
 } from "./client-link-domain";
 import { evaluateSendGovernance } from "./client-send-governance";
@@ -51,6 +52,31 @@ describe("readiness + base URL", () => {
     expect(resolveClientLinkBaseUrl(ready)).toBe("https://go.paratus365.com");
     expect(resolveClientLinkBaseUrl(notVerified)).toBeNull();
     expect(resolveClientLinkBaseUrl(unset)).toBeNull();
+  });
+});
+
+describe("isGoDomainAllowedForClient", () => {
+  const mailboxes = ["sam@paratus365.com", "info@Paratus365.com"];
+  it("accepts the go. subdomain of a client's sending domain", () => {
+    expect(isGoDomainAllowedForClient("go.paratus365.com", mailboxes)).toBe(true);
+  });
+  it("is case-insensitive on the requested domain", () => {
+    expect(isGoDomainAllowedForClient("GO.Paratus365.com", mailboxes)).toBe(true);
+  });
+  it("accepts when the mailbox list is raw domains, not emails", () => {
+    expect(isGoDomainAllowedForClient("go.rtp-ltd.co.uk", ["rtp-ltd.co.uk"])).toBe(
+      true,
+    );
+  });
+  it("rejects a domain not derived from any mailbox", () => {
+    expect(isGoDomainAllowedForClient("go.evil.com", mailboxes)).toBe(false);
+  });
+  it("rejects the bare domain (must be the go. subdomain)", () => {
+    expect(isGoDomainAllowedForClient("paratus365.com", mailboxes)).toBe(false);
+  });
+  it("rejects empty / no mailboxes", () => {
+    expect(isGoDomainAllowedForClient("", mailboxes)).toBe(false);
+    expect(isGoDomainAllowedForClient("go.paratus365.com", [])).toBe(false);
   });
 });
 
