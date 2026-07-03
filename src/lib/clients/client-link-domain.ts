@@ -18,6 +18,37 @@ export type ClientLinkDomainFields = {
   outreachLinkDomainVerifiedAt: Date | null;
 };
 
+/**
+ * OpensDoors App Service host that each customer `go.<domain>` subdomain CNAMEs
+ * to, and the Azure custom-domain verification id (the `asuid` TXT value). Both
+ * are stable app infrastructure — not secret — and are the single source of
+ * truth shared by the DNS setup card and the verify-and-enable action.
+ */
+export const OUTREACH_LINK_APP_HOST =
+  "app-opensdoors-outreach-prod.azurewebsites.net";
+export const OUTREACH_LINK_DOMAIN_VERIFY_ID =
+  "7B9435585C43845C742978D69DD1DD59B642C267C70449C9730A024E7F365181";
+
+/**
+ * True when `goDomain` is the sender-aligned `go.` subdomain of one of the
+ * client's sending mailbox domains. The verify action only enables a link
+ * domain that actually derives from a real mailbox domain, so an unrelated /
+ * spoofed host can never be written to the client record.
+ */
+export function isGoDomainAllowedForClient(
+  goDomain: string,
+  mailboxEmailsOrDomains: readonly string[],
+): boolean {
+  const target = goDomain?.trim().toLowerCase() ?? "";
+  if (!target) return false;
+  const allowed = new Set(
+    mailboxEmailsOrDomains
+      .map((e) => deriveGoLinkDomain(e))
+      .filter((d): d is string => Boolean(d)),
+  );
+  return allowed.has(target);
+}
+
 /** The `go.<domain>` subdomain for a sending domain or email address (null if unparseable). */
 export function deriveGoLinkDomain(sendingDomainOrEmail: string): string | null {
   const raw = sendingDomainOrEmail?.trim().toLowerCase() ?? "";

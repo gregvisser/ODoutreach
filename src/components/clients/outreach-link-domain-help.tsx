@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 
+import { verifyLinkDomainAction } from "@/app/(app)/clients/link-domain-actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,20 +11,28 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  OUTREACH_LINK_APP_HOST,
+  OUTREACH_LINK_DOMAIN_VERIFY_ID,
+} from "@/lib/clients/client-link-domain";
+import type { VerifyLinkDomainResult } from "@/server/clients/link-domain-verification";
 import { cn } from "@/lib/utils";
 
-// OpensDoors app infrastructure (stable; not secret). The customer CNAMEs
-// go.<domain> to the app and adds the asuid TXT so Azure can verify ownership
-// and issue a TLS certificate for the subdomain.
-const APP_HOST = "app-opensdoors-outreach-prod.azurewebsites.net";
-const DOMAIN_VERIFY_ID =
-  "7B9435585C43845C742978D69DD1DD59B642C267C70449C9730A024E7F365181";
+// Stable app infrastructure (not secret): the customer CNAMEs go.<domain> to
+// this host and adds the asuid TXT so Azure can verify ownership + issue a TLS
+// certificate for the subdomain. Shared with the verify action.
+const APP_HOST = OUTREACH_LINK_APP_HOST;
+const DOMAIN_VERIFY_ID = OUTREACH_LINK_DOMAIN_VERIFY_ID;
 
 export type OutreachLinkDomainEntry = {
+  /** Owning client — needed by the verify-and-enable action. */
+  clientId: string;
   /** The customer's sending domain, e.g. "paratus365.com". */
   domain: string;
   /** The sender-aligned link subdomain, e.g. "go.paratus365.com". */
   goDomain: string;
+  /** True when this go. domain is already verified + enabled for the client. */
+  verified: boolean;
 };
 
 function CopyButton({
@@ -111,16 +120,104 @@ function DnsRecord({
 }
 
 /**
+ * The last setup step: once the customer confirms their DNS is in, staff click
+ * "Verify & enable". The server action proves the go. domain is live (DNS + TLS
+ * + routed to our app) before flipping the client to sender-aligned, so we never
+ * enable a domain whose links would break. Shows the current verified state.
+ */
+function VerifyEnableRow({
+  entry,
+  canVerify,
+}: {
+  entry: OutreachLinkDomainEntry;
+  canVerify: boolean;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [result, setResult] = useState<VerifyLinkDomainResult | null>(null);
+
+  const run = () => {
+    setResult(null);
+    startTransition(async () => {
+      const r = await verifyLinkDomainAction({
+        clientId: entry.clientId,
+        goDomain: entry.goDomain,
+      });
+      setResult(r);
+    });
+  };
+
+  // Already verified (and not showing a fresh result): steady enabled state.
+  const showEnabledBadge = entry.verified && !result;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Step 4 — verify &amp; switch on
+        </p>
+        {showEnabledBadge ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            ✓ Verified &amp; enabled
+          </span>
+        ) : null}
+      </div>
+
+      {canVerify ? (
+        <Button
+          type="button"
+          size="xs"
+          variant={showEnabledBadge ? "outline" : "default"}
+          disabled={isPending}
+          onClick={run}
+        >
+          {isPending
+            ? "Checking…"
+            : showEnabledBadge
+              ? "Re-check"
+              : "Verify & enable"}
+        </Button>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Verifying the link domain is owner-only — ask the owner account to
+          switch it on once the customer&rsquo;s DNS is in.
+        </p>
+      )}
+
+      {result ? (
+        <p
+          className={cn(
+            "rounded-md border px-3 py-2 text-xs",
+            result.ok
+              ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+              : "border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-200",
+          )}
+        >
+          {result.message}
+          {!result.ok && result.detail ? (
+            <span className="mt-1 block font-mono text-[11px] opacity-80">
+              {result.detail}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Help panel shown on the Mailboxes page: the two DNS records a customer's IT
  * admin adds so this client's outreach unsubscribe + tracking links are served
  * from a subdomain of the customer's OWN domain (go.<domain>). Aligning the
  * links with the sending domain is what keeps outreach out of spam/quarantine.
- * Staff hand the records — or a ready-made email — to the customer.
+ * Staff hand the records — or a ready-made email — to the customer, then click
+ * Verify & enable once the customer confirms the DNS is live.
  */
 export function OutreachLinkDomainHelp({
   entries,
+  canVerify,
 }: {
   entries: OutreachLinkDomainEntry[];
+  canVerify: boolean;
 }) {
   if (entries.length === 0) return null;
 
@@ -138,8 +235,8 @@ export function OutreachLinkDomainHelp({
           tracking links must sit on a subdomain of the customer&rsquo;s{" "}
           <span className="font-semibold text-foreground">own</span> domain.
           Send the customer the two DNS records below; their IT / DNS admin adds
-          them once, then we switch it on for that domain. Their normal email is
-          unaffected.
+          them once, then click Verify &amp; enable to switch it on for that
+          domain. Their normal email is unaffected.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -213,6 +310,10 @@ export function OutreachLinkDomainHelp({
                 label="Copy email"
                 className={cn("shrink-0")}
               />
+            </div>
+
+            <div className="border-t border-border/60 pt-3">
+              <VerifyEnableRow entry={entry} canVerify={canVerify} />
             </div>
           </div>
         ))}

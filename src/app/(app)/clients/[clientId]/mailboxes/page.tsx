@@ -85,7 +85,16 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
 
   // Sender-aligned outreach link domain (go.<domain>) setup — one entry per
   // distinct mailbox domain, so staff can hand the customer the two DNS records
-  // (or a ready-made email) needed to align outreach links with their domain.
+  // (or a ready-made email) needed to align outreach links with their domain,
+  // then click Verify & enable once the customer's DNS is live.
+  const clientLinkDomainRow = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { outreachLinkDomain: true, outreachLinkDomainVerifiedAt: true },
+  });
+  const verifiedLinkDomain =
+    clientLinkDomainRow?.outreachLinkDomainVerifiedAt != null
+      ? (clientLinkDomainRow.outreachLinkDomain ?? "").trim().toLowerCase()
+      : null;
   const linkDomainEntries: OutreachLinkDomainEntry[] = Array.from(
     new Set(
       bundle.mailboxRows
@@ -95,7 +104,15 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   )
     .map((domain) => {
       const goDomain = deriveGoLinkDomain(domain);
-      return goDomain ? { domain, goDomain } : null;
+      return goDomain
+        ? {
+            clientId: client.id,
+            domain,
+            goDomain,
+            verified:
+              verifiedLinkDomain !== null && verifiedLinkDomain === goDomain,
+          }
+        : null;
     })
     .filter((e): e is OutreachLinkDomainEntry => e !== null);
 
@@ -189,7 +206,10 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
       ) : null}
 
       {linkDomainEntries.length > 0 ? (
-        <OutreachLinkDomainHelp entries={linkDomainEntries} />
+        <OutreachLinkDomainHelp
+          entries={linkDomainEntries}
+          canVerify={bundle.canMutateMailboxes}
+        />
       ) : null}
 
       {showMailboxSetupTools ? (

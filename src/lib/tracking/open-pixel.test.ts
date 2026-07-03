@@ -57,6 +57,38 @@ describe("buildOpenTrackingPixelUrl", () => {
       "https://app.example.com/api/track/open/a%2Fb%20c",
     );
   });
+
+  it("prefers a client-aligned base URL over the public base URL", () => {
+    process.env.AUTH_URL = "https://app.example.com";
+    expect(
+      buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
+    ).toBe("https://go.paratus365.com/api/track/open/corr-123");
+  });
+
+  it("strips a trailing slash on the aligned base URL", () => {
+    process.env.AUTH_URL = "https://app.example.com";
+    expect(
+      buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com/"),
+    ).toBe("https://go.paratus365.com/api/track/open/corr-123");
+  });
+
+  it("falls back to the public base URL when the aligned base is empty/null", () => {
+    process.env.AUTH_URL = "https://app.example.com";
+    expect(buildOpenTrackingPixelUrl("corr-123", null)).toBe(
+      "https://app.example.com/api/track/open/corr-123",
+    );
+    expect(buildOpenTrackingPixelUrl("corr-123", "   ")).toBe(
+      "https://app.example.com/api/track/open/corr-123",
+    );
+  });
+
+  it("stays disabled even when an aligned base URL is passed", () => {
+    process.env.AUTH_URL = "https://app.example.com";
+    process.env.OPEN_TRACKING_PIXEL = "off";
+    expect(
+      buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
+    ).toBeNull();
+  });
 });
 
 describe("appendOpenTrackingPixel", () => {

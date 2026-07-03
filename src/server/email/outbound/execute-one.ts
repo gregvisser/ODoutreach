@@ -29,6 +29,7 @@ import {
   appendOpenTrackingPixel,
   buildOpenTrackingPixelUrl,
 } from "@/lib/tracking/open-pixel";
+import { resolveClientLinkBaseUrl } from "@/lib/clients/client-link-domain";
 import { getOutboundEmailProvider } from "../providers";
 import {
   humanizeGovernanceRejection,
@@ -415,6 +416,19 @@ async function sendViaConnectedMailboxOrFail(
     await markFailed(row.id, ineligible, msg);
     return { ok: false, error: msg };
   }
+
+  // Serve the open-tracking pixel from this client's sender-aligned link domain
+  // (`go.<domain>`) when it's set up + verified, so the pixel host matches the
+  // sender and the unsubscribe link — a cross-domain pixel is a phishing signal.
+  // Falls back to the tenant public base URL when the client has no aligned
+  // domain yet (buildOpenTrackingPixelUrl handles the null). The unsubscribe
+  // link was already aligned per-client at plan time in send-introduction.ts.
+  const linkClient = await prisma.client.findUnique({
+    where: { id: row.clientId },
+    select: { outreachLinkDomain: true, outreachLinkDomainVerifiedAt: true },
+  });
+  const clientLinkBaseUrl = linkClient ? resolveClientLinkBaseUrl(linkClient) : null;
+
   if (mailbox.provider === "GOOGLE") {
     const fromForLog = row.fromAddress?.trim() || normalizeEmail(mailbox.email);
     if (!fromForLog.includes("@")) {
@@ -488,9 +502,12 @@ async function sendViaConnectedMailboxOrFail(
         }
       }
       // Open tracking: embed a hidden pixel keyed on correlationId so the
-      // /api/track/open endpoint can record opens. Skipped when no public
-      // base URL is configured.
-      const gmailPixelUrl = buildOpenTrackingPixelUrl(row.correlationId);
+      // /api/track/open endpoint can record opens. Served from the client's
+      // aligned link domain when verified. Skipped when no base URL is available.
+      const gmailPixelUrl = buildOpenTrackingPixelUrl(
+        row.correlationId,
+        clientLinkBaseUrl,
+      );
       const gmailHtml = gmailPixelUrl
         ? appendOpenTrackingPixel(bodyParts.html, gmailPixelUrl)
         : bodyParts.html;
@@ -587,8 +604,11 @@ async function sendViaConnectedMailboxOrFail(
     mailbox,
     hostedUnsubscribeUrl: graphListUnsubscribeUrl,
   });
-  // Open tracking pixel (see Gmail path above).
-  const graphPixelUrl = buildOpenTrackingPixelUrl(row.correlationId);
+  // Open tracking pixel (see Gmail path above) — same aligned base URL.
+  const graphPixelUrl = buildOpenTrackingPixelUrl(
+    row.correlationId,
+    clientLinkBaseUrl,
+  );
   const graphHtml = graphPixelUrl
     ? appendOpenTrackingPixel(bodyParts.html, graphPixelUrl)
     : bodyParts.html;

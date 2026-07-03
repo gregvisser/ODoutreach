@@ -19,18 +19,26 @@ export function isOpenTrackingPixelEnabled(): boolean {
 
 /**
  * Absolute open-tracking pixel URL for an outbound email's correlationId.
- * Returns null when open tracking is disabled, or when no public base URL is
- * configured (so callers skip the pixel rather than emit a broken relative link).
+ * Returns null when open tracking is disabled, or when no base URL is
+ * available (so callers skip the pixel rather than emit a broken relative link).
  *
  * A hidden 1x1 image pointing at a domain that differs from the sender's is a
- * strong spam/phishing signal, so this can be switched off tenant-wide while
- * outreach links are being moved onto sender-aligned domains.
+ * strong spam/phishing signal. When a client has a verified sender-aligned link
+ * domain (`go.<client-domain>`), callers pass its base URL as `preferredBaseUrl`
+ * so the pixel is served from the SAME domain family as the sender — clearing
+ * the mismatch signal. Falls back to the tenant public base URL when no aligned
+ * domain is available (e.g. internal/governed-test rows).
  */
-export function buildOpenTrackingPixelUrl(correlationId: string): string | null {
+export function buildOpenTrackingPixelUrl(
+  correlationId: string,
+  preferredBaseUrl?: string | null,
+): string | null {
   if (!isOpenTrackingPixelEnabled()) return null;
   const id = correlationId?.trim();
   if (!id) return null;
-  const base = resolvePublicBaseUrl();
+  const preferred = preferredBaseUrl?.trim();
+  const base = (preferred && preferred.length > 0 ? preferred : resolvePublicBaseUrl())
+    ?.replace(/\/+$/, "");
   if (!base) return null;
   return `${base}/api/track/open/${encodeURIComponent(id)}`;
 }

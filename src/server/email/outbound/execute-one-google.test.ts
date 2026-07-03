@@ -17,6 +17,9 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     outboundEmail: { findUnique, updateMany },
     clientMailboxIdentity: { findFirst: findFirstMbox },
+    // Open-tracking pixel reads the client's aligned link domain; null = fall
+    // back to the default public base URL (unchanged pixel behaviour here).
+    client: { findUnique: vi.fn().mockResolvedValue(null) },
   },
 }));
 vi.mock("@/server/mailbox/sending-policy", () => ({
