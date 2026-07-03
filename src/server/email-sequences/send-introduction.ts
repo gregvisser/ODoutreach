@@ -10,6 +10,10 @@ import {
   SEND_GATE_BLOCKED_CODES,
   type SendKind,
 } from "@/lib/clients/client-send-governance";
+import {
+  clientLinkDomainAligned,
+  resolveClientLinkBaseUrl,
+} from "@/lib/clients/client-link-domain";
 import { STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON } from "@/lib/clients/outreach-sequence-send-staff-copy";
 import {
   SEQUENCE_INTRODUCTION_BATCH_CAP,
@@ -482,6 +486,8 @@ export async function sendSequenceStepBatch(input: {
         defaultSenderEmail: true,
         launchApprovedAt: true,
         launchApprovalMode: true,
+        outreachLinkDomain: true,
+        outreachLinkDomainVerifiedAt: true,
         onboarding: { select: { formData: true } },
       },
     }),
@@ -517,7 +523,10 @@ export async function sendSequenceStepBatch(input: {
   // with a non-empty `{{unsubscribe_link}}`; the real-prospect gate in
   // `evaluateSendGovernance` has already blocked non-allowlisted
   // recipients in that case.
-  const publicBaseUrl = resolvePublicBaseUrl();
+  // Prefer the client's sender-aligned link domain (go.<client-domain>) so
+  // unsubscribe + tracking links match the sending domain; fall back to the
+  // global base only while a client's aligned domain isn't configured yet.
+  const publicBaseUrl = resolveClientLinkBaseUrl(client) ?? resolvePublicBaseUrl();
   const oneClickReady = isOneClickUnsubscribeReady();
   const fallbackUnsubscribeLink = buildUnsubscribePlaceholder(
     client.defaultSenderEmail,
@@ -714,6 +723,7 @@ export async function sendSequenceStepBatch(input: {
       recipientAllowlisted,
       sendKind: governanceSendKind,
       oneClickUnsubscribeReady,
+      linkDomainAligned: clientLinkDomainAligned(client),
     });
     if (!governance.allowed) {
       const governanceReason = blockedReasonForSequenceStepSend(governance);

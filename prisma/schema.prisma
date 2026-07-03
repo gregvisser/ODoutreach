@@ -401,6 +401,15 @@ model Client {
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes              String?                   @db.Text
   briefAssignedAccountManagerId   String?
+  /// Sender-aligned outreach link domain (go.<customer-domain>) that serves this
+  /// client's unsubscribe + open-tracking links. Aligning links with the sending
+  /// domain avoids the cross-domain (phishing) signal that gets outreach
+  /// quarantined. Set only once the DNS CNAME + app custom-domain routing are live.
+  outreachLinkDomain              String?
+  /// When `outreachLinkDomain` was verified as serving correctly. Null = unverified;
+  /// real-prospect sends are blocked when the hard rule is enforced
+  /// (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN).
+  outreachLinkDomainVerifiedAt    DateTime?
   createdAt                   DateTime                  @default(now())
   updatedAt                   DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
