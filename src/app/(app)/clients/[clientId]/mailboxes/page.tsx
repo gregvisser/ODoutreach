@@ -6,6 +6,11 @@ import {
   MicrosoftAdminConsentHelp,
   type AdminConsentEntry,
 } from "@/components/clients/microsoft-admin-consent-help";
+import {
+  OutreachLinkDomainHelp,
+  type OutreachLinkDomainEntry,
+} from "@/components/clients/outreach-link-domain-help";
+import { deriveGoLinkDomain } from "@/lib/clients/client-link-domain";
 import { buildMicrosoftAdminConsentUrl } from "@/server/mailbox/microsoft-mailbox-oauth";
 import {
   Card,
@@ -77,6 +82,22 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         })
         .filter((e): e is AdminConsentEntry => e !== null)
     : [];
+
+  // Sender-aligned outreach link domain (go.<domain>) setup — one entry per
+  // distinct mailbox domain, so staff can hand the customer the two DNS records
+  // (or a ready-made email) needed to align outreach links with their domain.
+  const linkDomainEntries: OutreachLinkDomainEntry[] = Array.from(
+    new Set(
+      bundle.mailboxRows
+        .map((m) => m.email.split("@")[1]?.trim().toLowerCase())
+        .filter((d): d is string => Boolean(d)),
+    ),
+  )
+    .map((domain) => {
+      const goDomain = deriveGoLinkDomain(domain);
+      return goDomain ? { domain, goDomain } : null;
+    })
+    .filter((e): e is OutreachLinkDomainEntry => e !== null);
 
   /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
   let oauthMailboxVerifiedConnected = false;
@@ -165,6 +186,10 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
 
       {adminConsentEntries.length > 0 ? (
         <MicrosoftAdminConsentHelp entries={adminConsentEntries} />
+      ) : null}
+
+      {linkDomainEntries.length > 0 ? (
+        <OutreachLinkDomainHelp entries={linkDomainEntries} />
       ) : null}
 
       {showMailboxSetupTools ? (
