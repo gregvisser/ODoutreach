@@ -46,6 +46,7 @@ export type SendGovernanceMode =
   | "blocked_not_live_mode"
   | "blocked_unsubscribe_missing"
   | "blocked_client_inactive"
+  | "blocked_link_domain_not_aligned"
   | "blocked_allowlist";
 
 export type SendGovernanceDecision =
@@ -81,6 +82,15 @@ export type SendGovernanceInput = {
    * no recipient is emailed an unusable opt-out.
    */
   oneClickUnsubscribeReady: boolean;
+  /**
+   * `false` blocks a real-prospect send under the aligned-link-domain hard rule
+   * (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN): the client's unsubscribe + tracking
+   * links must be on a domain that aligns with the sender (`go.<client-domain>`),
+   * otherwise the email reads as phishing and is quarantined. Callers pass
+   * `clientLinkDomainAligned(client)`. Optional — when omitted it is treated as
+   * aligned (the rule is off), so existing callers are unaffected.
+   */
+  linkDomainAligned?: boolean;
 };
 
 /**
@@ -103,6 +113,7 @@ export const SEND_GATE_BLOCKED_CODES = {
   liveModeNotEnabled: "blocked_live_mode_not_enabled",
   unsubscribeRequired: "blocked_unsubscribe_required",
   clientInactive: "blocked_client_inactive",
+  linkDomainNotAligned: "blocked_link_domain_not_aligned",
   allowlist: "blocked_allowlist",
 } as const;
 
@@ -122,6 +133,8 @@ export function blockedCodeFor(
       return SEND_GATE_BLOCKED_CODES.unsubscribeRequired;
     case "blocked_client_inactive":
       return SEND_GATE_BLOCKED_CODES.clientInactive;
+    case "blocked_link_domain_not_aligned":
+      return SEND_GATE_BLOCKED_CODES.linkDomainNotAligned;
     case "blocked_allowlist":
       return SEND_GATE_BLOCKED_CODES.allowlist;
   }
@@ -207,6 +220,21 @@ export function evaluateSendGovernance(
   }
 
   // --- Non-allowlisted recipients below this line. ---
+
+  // Hard rule (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN): a real-prospect outreach
+  // email must carry its unsubscribe + tracking links on a domain that ALIGNS
+  // with the sender (go.<client-domain>). Cross-domain links read as phishing
+  // and get quarantined, harming the customer's own domain reputation.
+  // Allowlisted / governed-test / reply sends already returned above, so this
+  // only ever gates real prospects — internal testing is never blocked.
+  if (input.linkDomainAligned === false) {
+    return {
+      allowed: false,
+      mode: "blocked_link_domain_not_aligned",
+      reason:
+        "Blocked: this client's outreach links are not on a sender-aligned domain (go.<domain>). Set up and verify the client's link domain before sending to real prospects.",
+    };
+  }
 
   // Live sequence sends: ACTIVE client status is the only governance
   // requirement. The confirmation phrase, suppression, mailbox capacity
