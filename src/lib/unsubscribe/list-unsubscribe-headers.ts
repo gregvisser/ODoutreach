@@ -2,9 +2,12 @@
  * PR N — List-Unsubscribe / List-Unsubscribe-Post header helper.
  *
  * Returns the canonical RFC 2369 / RFC 8058 one-click unsubscribe
- * headers that Gmail and Yahoo require for bulk senders:
+ * headers that Gmail and Yahoo require for bulk senders. The header URL
+ * must answer POST, so callers pass the POST-capable API route
+ * (`/api/unsubscribe/:rawToken`), not the human confirmation page
+ * (`/unsubscribe/:rawToken`, GET-only):
  *
- *   List-Unsubscribe: <https://.../unsubscribe/:rawToken>
+ *   List-Unsubscribe: <https://.../api/unsubscribe/:rawToken>
  *   List-Unsubscribe-Post: List-Unsubscribe=One-Click
  *
  * Rules:

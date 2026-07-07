@@ -6,7 +6,11 @@ import type {
 } from "./types";
 
 /**
- * RocketReach HTTP client — TODO: wire real auth (API key from env), retries, rate limits.
+ * RocketReach HTTP client. The API key is read from env
+ * (ROCKETREACH_API_KEY, see createRocketReachClient) and lookups short-circuit
+ * to an error when it is unset. This is still a STUB: lookupPerson returns
+ * `not_found` without calling the real API — wiring the actual HTTP calls,
+ * retries and rate limits remains TODO (see lookupPerson).
  * All methods must receive tenant context (clientId) for logging/auditing; never mix tenants.
  */
 export class RocketReachClient {
