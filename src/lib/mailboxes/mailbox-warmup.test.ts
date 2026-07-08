@@ -14,8 +14,14 @@ afterEach(() => {
   else process.env[FLAG] = original;
 });
 
+// Freeze one reference instant so `now` and `daysAgo(...)` share a single clock.
+// Reading Date.now() twice (once for `now`, again inside daysAgo) lets a
+// millisecond tick between them and floor the computed age down by a whole day,
+// which intermittently flaked the ramp assertions in CI.
+const NOW_MS = Date.now();
+const NOW = new Date(NOW_MS);
 function daysAgo(n: number): Date {
-  return new Date(Date.now() - n * 86_400_000);
+  return new Date(NOW_MS - n * 86_400_000);
 }
 
 describe("warmupDailyCap (pure ramp)", () => {
@@ -44,7 +50,7 @@ describe("warmupDailyCap (pure ramp)", () => {
 
 describe("mailboxAgeDays", () => {
   it("anchors to connectedAt when present, else createdAt", () => {
-    const now = new Date();
+    const now = NOW;
     expect(
       mailboxAgeDays({ connectedAt: daysAgo(7), createdAt: daysAgo(40) }, now),
     ).toBe(7);
@@ -68,7 +74,7 @@ describe("isWarmupRampEnabled", () => {
 describe("effectiveDailyCap", () => {
   it("returns the configured cap unchanged when the ramp is disabled", () => {
     delete process.env[FLAG];
-    const now = new Date();
+    const now = NOW;
     expect(
       effectiveDailyCap({ dailySendCap: 30, connectedAt: null, createdAt: now }, now),
     ).toBe(30);
@@ -79,7 +85,7 @@ describe("effectiveDailyCap", () => {
 
   it("ramps young mailboxes but leaves warmed mailboxes at their configured cap when enabled", () => {
     process.env[FLAG] = "on";
-    const now = new Date();
+    const now = NOW;
     expect(
       effectiveDailyCap({ dailySendCap: 30, connectedAt: now, createdAt: now }, now),
     ).toBe(5); // brand new

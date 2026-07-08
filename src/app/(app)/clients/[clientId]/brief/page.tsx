@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
-import { clientStatusLabel } from "@/lib/ui/status-labels";
+import { clientStatusBadgeClassName, clientStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -74,7 +74,9 @@ export default async function ClientBriefPage({ params }: Props) {
               <h1 className="text-3xl font-semibold tracking-tight">
                 {client.name}
               </h1>
-              <Badge variant="outline">{clientStatusLabel(client.status)}</Badge>
+              <Badge variant="outline" className={clientStatusBadgeClassName(client.status)}>
+                {clientStatusLabel(client.status)}
+              </Badge>
               <Badge variant={readinessBadgeVariant(completion.status)}>
                 Brief · {completion.percent}%
               </Badge>
