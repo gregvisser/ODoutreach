@@ -31,6 +31,16 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
       href: `${base}/mailboxes`,
       isActive: () => pathname === `${base}/mailboxes`,
     },
+    // Suppression comes before import in the funnel: attach the client's
+    // Do-not-contact sources first, then import contacts via Sources/Lists.
+    {
+      label: "Do-not-contact",
+      href: `${base}/suppression`,
+      isActive: () =>
+        pathname === `${base}/suppression` ||
+        ((pathname === "/suppression" || pathname.startsWith("/suppression/")) &&
+          clientFromQuery === clientId),
+    },
     {
       label: "Sources",
       href: `${base}/sources`,
@@ -43,14 +53,6 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
         pathname === `${base}/contacts` ||
         pathname.startsWith(`${base}/lists/`) ||
         (pathname === "/contacts" && clientFromQuery === clientId),
-    },
-    {
-      label: "Do-not-contact",
-      href: `${base}/suppression`,
-      isActive: () =>
-        pathname === `${base}/suppression` ||
-        ((pathname === "/suppression" || pathname.startsWith("/suppression/")) &&
-          clientFromQuery === clientId),
     },
     {
       label: "Templates",
