@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { clientStatusLabel } from "@/lib/ui/status-labels";
+import { clientStatusBadgeClassName, clientStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -89,7 +89,9 @@ export default async function ClientsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{clientStatusLabel(c.status)}</Badge>
+                    <Badge variant="outline" className={clientStatusBadgeClassName(c.status)}>
+                      {clientStatusLabel(c.status)}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {c._count.contacts}

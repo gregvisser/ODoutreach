@@ -30,6 +30,27 @@ export function clientStatusLabel(status: string | null | undefined): string {
   return CLIENT_STATUS_LABELS[status] ?? status;
 }
 
+/**
+ * Semantic badge colour classes for a client lifecycle status. Use with
+ * `<Badge variant="outline" className={clientStatusBadgeClassName(status)}>`
+ * so the state reads at a glance: active = green, onboarding = amber,
+ * paused = blue, archived/other = neutral.
+ */
+export function clientStatusBadgeClassName(
+  status: string | null | undefined,
+): string {
+  switch (status) {
+    case "ACTIVE":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200";
+    case "ONBOARDING":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200";
+    case "PAUSED":
+      return "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-200";
+    default:
+      return "border-border bg-muted text-muted-foreground";
+  }
+}
+
 export const OUTBOUND_STATUS_LABELS: Record<string, string> = {
   QUEUED: "Queued",
   PROCESSING: "Sending",
