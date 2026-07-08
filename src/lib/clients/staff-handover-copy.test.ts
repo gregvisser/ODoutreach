@@ -11,9 +11,9 @@ describe("staff handover copy", () => {
   // sidebar; their routes are preserved (Dashboard redirects to Reports).
   // Reports is the primary staff destination.
   // See docs/ops/SYSTEM_HANDOVER_READINESS_AUDIT.md.
-  it("uses Do-not-contact and Universe in operator navigation", () => {
+  it("uses Blocked contacts and Universe in operator navigation", () => {
     const titles = mainNav.map((item) => item.title);
-    expect(titles).toContain("Do-not-contact");
+    expect(titles).toContain("Blocked contacts");
     expect(titles).toContain("Universe");
     expect(titles).toContain("Reports");
   });

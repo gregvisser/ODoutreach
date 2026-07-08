@@ -90,7 +90,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
         <h1 className="text-3xl font-semibold tracking-tight">Admin operations</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
           Admin-only delivery and queue troubleshooting. Not in the staff
-          sidebar — normal staff use Reports, Clients, Universe, Do-not-contact,
+          sidebar — normal staff use Reports, Clients, Universe, Blocked contacts,
           Activity, and Training for day-to-day work.
         </p>
       </div>

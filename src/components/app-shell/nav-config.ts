@@ -50,7 +50,11 @@ export const mainNav: NavItem[] = [
   { title: "Clients", href: "/clients", icon: Users },
   { title: "New client", href: "/clients/new", icon: Sparkles },
   { title: "Universe", href: "/universe", icon: Globe2 },
-  { title: "Do-not-contact", href: "/suppression", icon: ListFilter },
+  // Cross-client blocked list. Named "Blocked contacts" (not "Do-not-contact")
+  // so it doesn't collide with the per-client "Do-not-contact" workspace tab,
+  // and echoes the page's own H1 "People blocked from outreach". The app avoids
+  // the word "suppression" in user copy. Route /suppression is unchanged.
+  { title: "Blocked contacts", href: "/suppression", icon: ListFilter },
   { title: "Training", href: "/training", icon: GraduationCap },
   { title: "Support", href: "/support", icon: LifeBuoy },
   { title: "Settings", href: "/settings", icon: Settings },

@@ -51,7 +51,7 @@ describe("Training content alignment (PR #139)", () => {
     );
     expect(sidebarShot).toBeDefined();
     // Must include the current sidebar entries.
-    for (const entry of ["Reports", "Universe", "Do-not-contact", "Training"]) {
+    for (const entry of ["Reports", "Universe", "Blocked contacts", "Training"]) {
       expect(sidebarShot!.alt).toContain(entry);
     }
     // Must not mention removed sidebar entries.
