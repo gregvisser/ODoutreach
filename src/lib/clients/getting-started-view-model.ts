@@ -103,7 +103,9 @@ export function buildGettingStartedViewModel(
       label: "Write the introduction (and optional follow-ups)",
       description:
         "Draft the introduction email and any follow-up templates. Follow-ups are optional; you do not need an APPROVED status to launch in production.",
-      href: `${base}/outreach`,
+      // Writing templates happens on the Templates surface — the previous
+      // /outreach target dropped the user on the sequence builder instead.
+      href: `${base}/templates`,
       done: input.hasProductionLaunchableSequence,
     },
     {
