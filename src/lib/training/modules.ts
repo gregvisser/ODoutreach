@@ -737,7 +737,7 @@ const suppressionModule: TrainingModule = {
     {
       title: "Re-read the status before every launch",
       detail:
-        'Open the cross-client view (sidebar → Do-not-contact, titled "People blocked from outreach") any time you want a multi-client look. Last-sync timestamps older than a few days are a flag.',
+        'Open the cross-client view (sidebar → Blocked contacts, titled "People blocked from outreach") any time you want a multi-client look. Last-sync timestamps older than a few days are a flag.',
     },
   ],
   whatGoodLooksLike: [
@@ -1043,9 +1043,9 @@ const settingsModule: TrainingModule = {
     },
     {
       src: "/training/training-sidebar.png",
-      alt: "Main sidebar — Reports, Clients, New client, Universe, Do-not-contact, Activity, Training, Settings",
+      alt: "Main sidebar — Reports, Clients, New client, Universe, Blocked contacts, Activity, Training, Settings",
       caption:
-        "Main sidebar (post-PR-138). Reports is the staff default. Universe is the cross-client contact directory. Do-not-contact replaces the old Suppression label. Dashboard and Admin Operations are intentionally not in the sidebar.",
+        "Main sidebar (post-PR-138). Reports is the staff default. Universe is the cross-client contact directory. Blocked contacts is the cross-client blocked list (the per-client tab stays Do-not-contact). Dashboard and Admin Operations are intentionally not in the sidebar.",
       width: SIDE_W,
       height: SIDE_H,
     },
@@ -1429,7 +1429,7 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
     portalHref: "/suppression",
     durationGuidance: "3 minutes",
     script: [
-      'Open "People blocked from outreach" from the sidebar (this is the global Do-not-contact view).',
+      'Open "People blocked from outreach" from the sidebar (the Blocked contacts item — the global blocked-contacts view).',
       "Show the Integration status and the Google service-account email staff share their sheets with.",
       "Walk the Connected sheets table — read the connection badge labels (no raw enums).",
       'Demonstrate the new PR #140 search / kind filter / sort controls — but do NOT click Sync on camera.',

@@ -28,7 +28,10 @@ describe("Main sidebar (PR #139 final audit, updated PR #140)", () => {
       "Clients",
       "New client",
       "Universe",
-      "Do-not-contact",
+      // Global cross-client item renamed "Do-not-contact" -> "Blocked contacts"
+      // to end the label collision with the per-client "Do-not-contact" tab and
+      // to match the page H1 "People blocked from outreach". Route unchanged.
+      "Blocked contacts",
       "Training",
       "Support",
       "Settings",
