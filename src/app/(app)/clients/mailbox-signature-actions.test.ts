@@ -54,15 +54,24 @@ import {
 } from "./mailbox-signature-actions";
 import { brandedSignatureNeedsNameBackfill } from "@/lib/mailboxes/branded-signature-backfill";
 
-/** The exact confidentiality footer the branded generator embeds (its fingerprint). */
+/** The one-click bulk footer variant ("please notify"). */
 const DISCLAIMER =
   "This email and any attachments may be confidential. If you are not the intended recipient, please notify the sender and delete this message.";
+/** The per-row "Set signature" footer variant (no "please") — Chevron's real shape. */
+const DISCLAIMER_NO_PLEASE =
+  "This email and any attachments may be confidential. If you are not the intended recipient, notify the sender and delete this message.";
+/** The structural <table> style every branded signature carries verbatim. */
+const BRANDED_TABLE_STYLE =
+  'style="margin-top:12px;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;font-size:13px;color:#111;"';
 
 /** A nameless pre-fix branded signature: logo/email/website + footer, no person. */
 const namelessBrandedHtml = (email: string) =>
-  `<table><tr><td><a href="mailto:${email}">${email}</a><br /><a href="https://idverde.co.uk">idverde.co.uk</a></td></tr><tr><td><p>${DISCLAIMER}</p></td></tr></table>`;
+  `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${BRANDED_TABLE_STYLE}><tr><td><a href="mailto:${email}">${email}</a><br /><a href="https://idverde.co.uk">idverde.co.uk</a></td></tr><tr><td><p>${DISCLAIMER}</p></td></tr></table>`;
 const namelessBrandedText = (email: string) =>
   `${email}\nidverde.co.uk\n${DISCLAIMER}`;
+/** A nameless per-row branded signature — table marker + no-"please" footer (Chevron's actual pre-fix data). */
+const perRowBrandedHtml = (email: string) =>
+  `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ${BRANDED_TABLE_STYLE}><tr><td><a href="mailto:${email}">${email}</a></td></tr><tr><td><p>${DISCLAIMER_NO_PLEASE}</p></td></tr></table>`;
 
 beforeEach(() => {
   requireStaff.mockReset();
@@ -186,6 +195,19 @@ describe("brandedSignatureNeedsNameBackfill", () => {
     ).toBe(true);
   });
 
+  it("flags a per-row branded signature (no-'please' footer) via the table fingerprint", () => {
+    // Chevron's real pre-fix shape: made by the per-row branded template, whose
+    // footer omits "please" — must still be caught by the structural marker.
+    expect(
+      brandedSignatureNeedsNameBackfill({
+        source: "manual",
+        html: perRowBrandedHtml("charlie@chevronsecurity.co.uk"),
+        text: `charlie@chevronsecurity.co.uk\n${DISCLAIMER_NO_PLEASE}`,
+        resolvedName: "Charlie",
+      }),
+    ).toBe(true);
+  });
+
   it("leaves a signature that already shows the name", () => {
     expect(
       brandedSignatureNeedsNameBackfill({
@@ -251,8 +273,9 @@ describe("regenerateBrandedSignaturesForClientAction", () => {
         displayName: null,
         senderDisplayName: null,
         senderPhone: null,
-        senderSignatureHtml: namelessBrandedHtml("charlie@chevronsecurity.co.uk"),
-        senderSignatureText: namelessBrandedText("charlie@chevronsecurity.co.uk"),
+        // Chevron's real shape: per-row branded template, no-"please" footer.
+        senderSignatureHtml: perRowBrandedHtml("charlie@chevronsecurity.co.uk"),
+        senderSignatureText: `charlie@chevronsecurity.co.uk\n${DISCLAIMER_NO_PLEASE}`,
         senderSignatureSource: "manual",
       },
     ]);
