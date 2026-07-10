@@ -16,6 +16,7 @@ import { syncGmailSignatureForMailbox } from "@/server/mailbox/gmail-signature-s
 import {
   buildOpensDoorsBrandedSignatureHtml,
   buildOpensDoorsBrandedSignaturePlain,
+  humanizeEmailLocalPart,
 } from "@/lib/mailboxes/opensdoors-branded-signature-template";
 
 /** Generic confidentiality footer used when a client has no bespoke disclaimer. */
@@ -344,11 +345,15 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
 
   let applied = 0;
   for (const mb of mailboxes) {
-    // The real name, if we have one. When a mailbox has none we leave it null
-    // rather than substituting the email address — the template renders the
-    // email itself, so using it as a name too prints the address twice.
+    // The sender's name. Prefer an explicit one; otherwise derive a human name
+    // from the email local-part (charlie@ → "Charlie") so the signature and the
+    // From header always carry a person, not just the company/address. Staff can
+    // override it any time via the mailbox signature editor.
     const realName =
-      mb.senderDisplayName?.trim() || mb.displayName?.trim() || null;
+      mb.senderDisplayName?.trim() ||
+      mb.displayName?.trim() ||
+      humanizeEmailLocalPart(mb.email) ||
+      null;
     // Per-mailbox number wins; otherwise the client company landline.
     const phone = mb.senderPhone?.trim() || companyPhone;
     const templateInput = {
