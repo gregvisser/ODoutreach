@@ -165,6 +165,25 @@ describe("applyBrandedSignatureToAllClientMailboxesAction", () => {
     expect(occurrences(data.senderSignatureHtml)).toBe(2);
   });
 
+  it("derives a name when senderDisplayName is just the email address (never treats the address as a name)", async () => {
+    // Chevron's real bug: senderDisplayName was stored as the email itself.
+    mbFindMany.mockResolvedValue([
+      {
+        id: "mb1",
+        email: "charlie@idverde.co.uk",
+        displayName: null,
+        senderDisplayName: "charlie@idverde.co.uk",
+        senderPhone: null,
+      },
+    ]);
+
+    await applyBrandedSignatureToAllClientMailboxesAction("c1");
+
+    const data = mbUpdate.mock.calls[0][0].data;
+    expect(data.senderDisplayName).toBe("Charlie");
+    expect(data.senderDisplayName).not.toContain("@");
+  });
+
   it("does nothing and reports when every connected mailbox already has a signature", async () => {
     mbFindMany.mockResolvedValue([]);
     const res = await applyBrandedSignatureToAllClientMailboxesAction("c1");
@@ -290,6 +309,30 @@ describe("regenerateBrandedSignaturesForClientAction", () => {
     expect(auditCreate.mock.calls[0][0].data.metadata).toMatchObject({
       change: "signature_branded_regenerate",
     });
+    expect(res.ok && res.message).toContain("Refreshed 1");
+  });
+
+  it("backfills when senderDisplayName was stored as the email address (Chevron's exact bug)", async () => {
+    mbFindMany.mockResolvedValue([
+      {
+        id: "mb1",
+        email: "charlie@chevronsecurity.co.uk",
+        displayName: null,
+        // The address stored as the display name — must NOT count as a real name.
+        senderDisplayName: "charlie@chevronsecurity.co.uk",
+        senderPhone: null,
+        senderSignatureHtml: perRowBrandedHtml("charlie@chevronsecurity.co.uk"),
+        senderSignatureText: `charlie@chevronsecurity.co.uk\n${DISCLAIMER_NO_PLEASE}`,
+        senderSignatureSource: "manual",
+      },
+    ]);
+
+    const res = await regenerateBrandedSignaturesForClientAction("c1");
+
+    expect(mbUpdate).toHaveBeenCalledTimes(1);
+    const data = mbUpdate.mock.calls[0][0].data;
+    expect(data.senderDisplayName).toBe("Charlie");
+    expect(data.senderSignatureHtml).toContain("Charlie");
     expect(res.ok && res.message).toContain("Refreshed 1");
   });
 
