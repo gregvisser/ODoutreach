@@ -49,8 +49,20 @@ vi.mock("@/lib/db", () => ({
 
 import {
   applyBrandedSignatureToAllClientMailboxesAction,
+  regenerateBrandedSignaturesForClientAction,
   setClientSignaturePhoneAction,
 } from "./mailbox-signature-actions";
+import { brandedSignatureNeedsNameBackfill } from "@/lib/mailboxes/branded-signature-backfill";
+
+/** The exact confidentiality footer the branded generator embeds (its fingerprint). */
+const DISCLAIMER =
+  "This email and any attachments may be confidential. If you are not the intended recipient, please notify the sender and delete this message.";
+
+/** A nameless pre-fix branded signature: logo/email/website + footer, no person. */
+const namelessBrandedHtml = (email: string) =>
+  `<table><tr><td><a href="mailto:${email}">${email}</a><br /><a href="https://idverde.co.uk">idverde.co.uk</a></td></tr><tr><td><p>${DISCLAIMER}</p></td></tr></table>`;
+const namelessBrandedText = (email: string) =>
+  `${email}\nidverde.co.uk\n${DISCLAIMER}`;
 
 beforeEach(() => {
   requireStaff.mockReset();
@@ -157,6 +169,140 @@ describe("applyBrandedSignatureToAllClientMailboxesAction", () => {
   it("refuses when the client is missing or soft-deleted", async () => {
     clientFindFirst.mockResolvedValue(null);
     const res = await applyBrandedSignatureToAllClientMailboxesAction("c1");
+    expect(res.ok).toBe(false);
+    expect(mbFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("brandedSignatureNeedsNameBackfill", () => {
+  it("flags an auto-generated signature that lacks the name line", () => {
+    expect(
+      brandedSignatureNeedsNameBackfill({
+        source: "manual",
+        html: namelessBrandedHtml("charlie@chevronsecurity.co.uk"),
+        text: namelessBrandedText("charlie@chevronsecurity.co.uk"),
+        resolvedName: "Charlie",
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves a signature that already shows the name", () => {
+    expect(
+      brandedSignatureNeedsNameBackfill({
+        source: "manual",
+        html: `<table><tr><td>Charlie<br /><a href="mailto:charlie@x.co">charlie@x.co</a></td></tr><tr><td><p>${DISCLAIMER}</p></td></tr></table>`,
+        text: `Charlie\ncharlie@x.co\n${DISCLAIMER}`,
+        resolvedName: "Charlie",
+      }),
+    ).toBe(false);
+  });
+
+  it("never touches a hand-written signature (missing our footer)", () => {
+    expect(
+      brandedSignatureNeedsNameBackfill({
+        source: "manual",
+        html: "<div><a href='mailto:charlie@x.co'>charlie@x.co</a><br/>Best, the team</div>",
+        text: "charlie@x.co\nBest, the team",
+        resolvedName: "Charlie",
+      }),
+    ).toBe(false);
+  });
+
+  it("never touches a Gmail-synced signature", () => {
+    expect(
+      brandedSignatureNeedsNameBackfill({
+        source: "gmail_send_as",
+        html: namelessBrandedHtml("charlie@x.co"),
+        text: namelessBrandedText("charlie@x.co"),
+        resolvedName: "Charlie",
+      }),
+    ).toBe(false);
+  });
+
+  it("does nothing when no name can be resolved", () => {
+    expect(
+      brandedSignatureNeedsNameBackfill({
+        source: "manual",
+        html: namelessBrandedHtml("charlie@x.co"),
+        text: namelessBrandedText("charlie@x.co"),
+        resolvedName: null,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("regenerateBrandedSignaturesForClientAction", () => {
+  it("only queries CONNECTED, in-workspace, manual-source mailboxes", async () => {
+    mbFindMany.mockResolvedValue([]);
+    await regenerateBrandedSignaturesForClientAction("c1");
+    expect(mbFindMany.mock.calls[0][0].where).toMatchObject({
+      clientId: "c1",
+      workspaceRemovedAt: null,
+      connectionStatus: "CONNECTED",
+      senderSignatureSource: "manual",
+    });
+  });
+
+  it("backfills the name into a nameless auto-generated signature and audits", async () => {
+    mbFindMany.mockResolvedValue([
+      {
+        id: "mb1",
+        email: "charlie@chevronsecurity.co.uk",
+        displayName: null,
+        senderDisplayName: null,
+        senderPhone: null,
+        senderSignatureHtml: namelessBrandedHtml("charlie@chevronsecurity.co.uk"),
+        senderSignatureText: namelessBrandedText("charlie@chevronsecurity.co.uk"),
+        senderSignatureSource: "manual",
+      },
+    ]);
+
+    const res = await regenerateBrandedSignaturesForClientAction("c1");
+
+    expect(mbUpdate).toHaveBeenCalledTimes(1);
+    const data = mbUpdate.mock.calls[0][0].data;
+    expect(data.senderDisplayName).toBe("Charlie");
+    expect(data.senderSignatureHtml).toContain("Charlie");
+    expect(data.senderSignatureSource).toBe("manual");
+    expect(auditCreate.mock.calls[0][0].data.metadata).toMatchObject({
+      change: "signature_branded_regenerate",
+    });
+    expect(res.ok && res.message).toContain("Refreshed 1");
+  });
+
+  it("skips a hand-written signature and one that already has a name", async () => {
+    mbFindMany.mockResolvedValue([
+      {
+        id: "hand",
+        email: "sam@chevronsecurity.co.uk",
+        displayName: null,
+        senderDisplayName: null,
+        senderPhone: null,
+        senderSignatureHtml: "<div>Sam here<br/>Cheers</div>",
+        senderSignatureText: "Sam here\nCheers",
+        senderSignatureSource: "manual",
+      },
+      {
+        id: "named",
+        email: "dana@chevronsecurity.co.uk",
+        displayName: "Dana",
+        senderDisplayName: "Dana",
+        senderPhone: null,
+        senderSignatureHtml: `<table><tr><td>Dana<br /><a href="mailto:dana@chevronsecurity.co.uk">dana@chevronsecurity.co.uk</a></td></tr><tr><td><p>${DISCLAIMER}</p></td></tr></table>`,
+        senderSignatureText: `Dana\ndana@chevronsecurity.co.uk\n${DISCLAIMER}`,
+        senderSignatureSource: "manual",
+      },
+    ]);
+
+    const res = await regenerateBrandedSignaturesForClientAction("c1");
+
+    expect(mbUpdate).not.toHaveBeenCalled();
+    expect(res.ok && res.message).toContain("Nothing to refresh");
+  });
+
+  it("refuses a missing / soft-deleted client", async () => {
+    clientFindFirst.mockResolvedValue(null);
+    const res = await regenerateBrandedSignaturesForClientAction("c1");
     expect(res.ok).toBe(false);
     expect(mbFindMany).not.toHaveBeenCalled();
   });

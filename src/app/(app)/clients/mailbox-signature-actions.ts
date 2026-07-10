@@ -18,10 +18,68 @@ import {
   buildOpensDoorsBrandedSignaturePlain,
   humanizeEmailLocalPart,
 } from "@/lib/mailboxes/opensdoors-branded-signature-template";
+import {
+  brandedSignatureNeedsNameBackfill,
+  DEFAULT_SIGNATURE_DISCLAIMER,
+} from "@/lib/mailboxes/branded-signature-backfill";
 
-/** Generic confidentiality footer used when a client has no bespoke disclaimer. */
-const DEFAULT_SIGNATURE_DISCLAIMER =
-  "This email and any attachments may be confidential. If you are not the intended recipient, please notify the sender and delete this message.";
+/** The client's brand fields (already trimmed to non-empty or null). */
+type BrandedSignatureClientBrand = {
+  name: string;
+  website: string | null;
+  logoUrl: string | null;
+  companyPhone: string | null;
+};
+
+/** The per-mailbox fields the branded signature is built from. */
+type BrandedSignatureMailbox = {
+  email: string;
+  displayName: string | null;
+  senderDisplayName: string | null;
+  senderPhone: string | null;
+};
+
+/**
+ * Build the branded HTML + plain signature for one mailbox from the client's
+ * brand. Shared by the one-click "set" and the "regenerate" actions so both
+ * always produce an identical, named signature.
+ *
+ * `realName` prefers an explicit name, then the mailbox display name, then a
+ * human name derived from the email local-part (charlie@ → "Charlie") so the
+ * signature and the From header always carry a person, never the raw address.
+ */
+function buildBrandedSignatureForMailbox(
+  client: BrandedSignatureClientBrand,
+  mailbox: BrandedSignatureMailbox,
+): { realName: string | null; html: string | null; plain: string | null } {
+  const realName =
+    mailbox.senderDisplayName?.trim() ||
+    mailbox.displayName?.trim() ||
+    humanizeEmailLocalPart(mailbox.email) ||
+    null;
+  // Per-mailbox number wins; otherwise the client company landline.
+  const phone = mailbox.senderPhone?.trim() || client.companyPhone;
+  const templateInput = {
+    // Pass the email through as a last resort; the template de-dupes it against
+    // the mailto line so it still only appears once.
+    displayName: realName ?? mailbox.email,
+    email: mailbox.email,
+    phone,
+    website: client.website,
+    legalDisclaimer: DEFAULT_SIGNATURE_DISCLAIMER,
+    logoUrl: client.logoUrl,
+    logoAlt: client.name,
+  };
+  const html = normaliseSignatureHtml(
+    buildOpensDoorsBrandedSignatureHtml(templateInput),
+  );
+  const plain = buildOpensDoorsBrandedSignaturePlain(templateInput);
+  return {
+    realName,
+    html: html.length > 0 ? html : null,
+    plain: plain.trim() || null,
+  };
+}
 
 /**
  * Per-mailbox sender signature server actions (PR — mailbox sender
@@ -339,45 +397,22 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
     };
   }
 
-  const website = client.website?.trim() || null;
-  const logoUrl = client.logoUrl?.trim() || null;
-  const companyPhone = client.signaturePhone?.trim() || null;
+  const brand: BrandedSignatureClientBrand = {
+    name: client.name,
+    website: client.website?.trim() || null,
+    logoUrl: client.logoUrl?.trim() || null,
+    companyPhone: client.signaturePhone?.trim() || null,
+  };
 
   let applied = 0;
   for (const mb of mailboxes) {
-    // The sender's name. Prefer an explicit one; otherwise derive a human name
-    // from the email local-part (charlie@ → "Charlie") so the signature and the
-    // From header always carry a person, not just the company/address. Staff can
-    // override it any time via the mailbox signature editor.
-    const realName =
-      mb.senderDisplayName?.trim() ||
-      mb.displayName?.trim() ||
-      humanizeEmailLocalPart(mb.email) ||
-      null;
-    // Per-mailbox number wins; otherwise the client company landline.
-    const phone = mb.senderPhone?.trim() || companyPhone;
-    const templateInput = {
-      // Pass the email through as a last resort; the template de-dupes it
-      // against the mailto line so it still only appears once.
-      displayName: realName ?? mb.email,
-      email: mb.email,
-      phone,
-      website,
-      legalDisclaimer: DEFAULT_SIGNATURE_DISCLAIMER,
-      logoUrl,
-      logoAlt: client.name,
-    };
-    const html = normaliseSignatureHtml(
-      buildOpensDoorsBrandedSignatureHtml(templateInput),
-    );
-    const plain = buildOpensDoorsBrandedSignaturePlain(templateInput);
-
+    const built = buildBrandedSignatureForMailbox(brand, mb);
     await prisma.clientMailboxIdentity.update({
       where: { id: mb.id },
       data: {
-        senderDisplayName: realName,
-        senderSignatureHtml: html.length > 0 ? html : null,
-        senderSignatureText: plain.trim() || null,
+        senderDisplayName: built.realName,
+        senderSignatureHtml: built.html,
+        senderSignatureText: built.plain,
         senderSignatureSource: "manual",
         senderSignatureSyncedAt: new Date(),
         senderSignatureSyncError: null,
@@ -397,6 +432,120 @@ export async function applyBrandedSignatureToAllClientMailboxesAction(
       applied === 1
         ? "Added a branded signature to 1 mailbox. Open Preview signature to see how it looks."
         : `Added a branded signature to ${applied} mailboxes. Open Preview signature on any row to see how it looks.`,
+  };
+}
+
+/**
+ * Refresh existing branded signatures that were generated before the "derive a
+ * sender name from the email" fix (they came out nameless — a logo, the email
+ * and the website but no person). Rebuilds each affected signature so it now
+ * shows the sender's name and persists that name to `senderDisplayName`.
+ *
+ * Safe to run any time: it only rewrites OUR auto-generated, still-nameless
+ * signatures (`senderSignatureSource === "manual"` + our confidentiality footer
+ * + no name line — see `brandedSignatureNeedsNameBackfill`). A Gmail-synced
+ * signature, a hand-written one, or one that already shows a name is left
+ * untouched. Never sends mail or changes anything beyond the signature columns.
+ */
+export async function regenerateBrandedSignaturesForClientAction(
+  clientId: string,
+): Promise<MailboxSignatureActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  try {
+    await requireClientMailboxMutator(staff, clientId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      website: true,
+      logoUrl: true,
+      signaturePhone: true,
+    },
+  });
+  if (!client) {
+    return { ok: false, error: "Client not found." };
+  }
+
+  // Connected, in-workspace mailboxes whose signature we set ("manual"). We then
+  // keep only the still-nameless auto-generated ones; everything else is
+  // filtered out per-row by brandedSignatureNeedsNameBackfill.
+  const mailboxes = await prisma.clientMailboxIdentity.findMany({
+    where: {
+      clientId,
+      workspaceRemovedAt: null,
+      connectionStatus: "CONNECTED",
+      senderSignatureSource: "manual",
+    },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      senderDisplayName: true,
+      senderPhone: true,
+      senderSignatureHtml: true,
+      senderSignatureText: true,
+      senderSignatureSource: true,
+    },
+  });
+
+  const brand: BrandedSignatureClientBrand = {
+    name: client.name,
+    website: client.website?.trim() || null,
+    logoUrl: client.logoUrl?.trim() || null,
+    companyPhone: client.signaturePhone?.trim() || null,
+  };
+
+  let regenerated = 0;
+  for (const mb of mailboxes) {
+    const built = buildBrandedSignatureForMailbox(brand, mb);
+    if (
+      !brandedSignatureNeedsNameBackfill({
+        source: mb.senderSignatureSource,
+        html: mb.senderSignatureHtml,
+        text: mb.senderSignatureText,
+        resolvedName: built.realName,
+      })
+    ) {
+      continue;
+    }
+
+    await prisma.clientMailboxIdentity.update({
+      where: { id: mb.id },
+      data: {
+        senderDisplayName: built.realName,
+        senderSignatureHtml: built.html,
+        senderSignatureText: built.plain,
+        senderSignatureSource: "manual",
+        senderSignatureSyncedAt: new Date(),
+        senderSignatureSyncError: null,
+      },
+    });
+    await auditMailboxSignature(staff.id, clientId, mb.id, "UPDATE", {
+      change: "signature_branded_regenerate",
+      hasSignature: true,
+    });
+    regenerated += 1;
+  }
+
+  revalidatePath(`/clients/${clientId}/mailboxes`);
+  if (regenerated === 0) {
+    return {
+      ok: true,
+      message:
+        "Nothing to refresh — every branded signature already shows the sender's name (hand-written signatures are left untouched).",
+    };
+  }
+  return {
+    ok: true,
+    message:
+      regenerated === 1
+        ? "Refreshed 1 branded signature so it now shows the sender's name. Open Preview signature to check."
+        : `Refreshed ${regenerated} branded signatures so they now show the sender's name. Open Preview signature on any row to check.`,
   };
 }
 
