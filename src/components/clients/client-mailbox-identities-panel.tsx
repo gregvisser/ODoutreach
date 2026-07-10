@@ -18,6 +18,7 @@ import {
 } from "@/app/(app)/clients/mailbox-identities-actions";
 import {
   applyBrandedSignatureToAllClientMailboxesAction,
+  regenerateBrandedSignaturesForClientAction,
   setClientSignaturePhoneAction,
   syncMailboxSignatureAction,
   updateMailboxSignatureAction,
@@ -830,19 +831,36 @@ export function ClientMailboxIdentitiesPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">Sender signatures</h3>
             {canMutate ? (
-              <Button
-                type="button"
-                size="sm"
-                className="text-xs"
-                disabled={pending}
-                onClick={() =>
-                  runSignature(() =>
-                    applyBrandedSignatureToAllClientMailboxesAction(clientId),
-                  )
-                }
-              >
-                Set branded signatures (1 click)
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="text-xs"
+                  disabled={pending}
+                  onClick={() =>
+                    runSignature(() =>
+                      applyBrandedSignatureToAllClientMailboxesAction(clientId),
+                    )
+                  }
+                >
+                  Set branded signatures (1 click)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs"
+                  disabled={pending}
+                  title="Refresh signatures set before the name fix so they show the sender's name. Never changes a signature you've hand-written."
+                  onClick={() =>
+                    runSignature(() =>
+                      regenerateBrandedSignaturesForClientAction(clientId),
+                    )
+                  }
+                >
+                  Refresh names
+                </Button>
+              </div>
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
