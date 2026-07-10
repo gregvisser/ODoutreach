@@ -40,23 +40,34 @@ type BrandedSignatureMailbox = {
 };
 
 /**
+ * The sender's real name for a mailbox. Prefer an explicit name —
+ * `senderDisplayName`, then the mailbox display name — but ONLY when it is a real
+ * name and not merely the email address again. Some rows were stored with the
+ * address as the display name (e.g. Chevron's `senderDisplayName` =
+ * "charlie@chevronsecurity.co.uk"); treating that as a name left the signature
+ * nameless and made the backfill think it was already named. Otherwise derive a
+ * human name from the email local-part (charlie@ → "Charlie") so the signature
+ * and the From header always carry a person, never the raw address.
+ */
+function resolveSenderRealName(mailbox: BrandedSignatureMailbox): string | null {
+  const email = mailbox.email.trim().toLowerCase();
+  for (const candidate of [mailbox.senderDisplayName, mailbox.displayName]) {
+    const name = candidate?.trim();
+    if (name && name.toLowerCase() !== email) return name;
+  }
+  return humanizeEmailLocalPart(mailbox.email);
+}
+
+/**
  * Build the branded HTML + plain signature for one mailbox from the client's
  * brand. Shared by the one-click "set" and the "regenerate" actions so both
  * always produce an identical, named signature.
- *
- * `realName` prefers an explicit name, then the mailbox display name, then a
- * human name derived from the email local-part (charlie@ → "Charlie") so the
- * signature and the From header always carry a person, never the raw address.
  */
 function buildBrandedSignatureForMailbox(
   client: BrandedSignatureClientBrand,
   mailbox: BrandedSignatureMailbox,
 ): { realName: string | null; html: string | null; plain: string | null } {
-  const realName =
-    mailbox.senderDisplayName?.trim() ||
-    mailbox.displayName?.trim() ||
-    humanizeEmailLocalPart(mailbox.email) ||
-    null;
+  const realName = resolveSenderRealName(mailbox);
   // Per-mailbox number wins; otherwise the client company landline.
   const phone = mailbox.senderPhone?.trim() || client.companyPhone;
   const templateInput = {
