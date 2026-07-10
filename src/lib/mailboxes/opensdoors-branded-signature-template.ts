@@ -46,6 +46,41 @@ function nameIsDistinctFromEmail(
 }
 
 /**
+ * Derive a human name from an email's local-part when no real name is known —
+ * `charlie@x.com` → "Charlie", `charlie.smith@x.com` → "Charlie Smith". Drops any
+ * `+tag`, separators (`. _ -`) and digits, then title-cases each word. Returns
+ * `null` when nothing usable remains (e.g. a role address that's all digits).
+ */
+export function humanizeEmailLocalPart(email: string): string | null {
+  const local = (email.split("@")[0] ?? "").split("+")[0]?.trim() ?? "";
+  if (!local) return null;
+  const words = local
+    .replace(/[._-]+/g, " ")
+    .replace(/\d+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  return words.length > 0 ? words.join(" ") : null;
+}
+
+/**
+ * The name line to show in a signature. Prefer an explicit display name; when
+ * none is given (or it's just the email address again) derive one from the email
+ * local-part so a branded signature is never nameless. `null` only when even the
+ * email yields nothing usable.
+ */
+function resolveSignatureName(
+  displayName: string | null | undefined,
+  email: string,
+): string | null {
+  if (nameIsDistinctFromEmail(displayName, email)) {
+    return displayName!.trim();
+  }
+  return humanizeEmailLocalPart(email);
+}
+
+/**
  * HTML signature/disclaimer block — unsubscribe is appended separately by send pipelines.
  */
 export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemplateInput): string {
@@ -66,13 +101,14 @@ export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemp
       : "";
 
   const email = input.email.trim();
-  // When no real name is available the caller may pass the email address as the
-  // display name. Drop the standalone name line in that case so the address is
-  // not printed twice (once as a name, once as the mailto link).
-  const showName = nameIsDistinctFromEmail(input.displayName, email);
+  // Always try to show a human name. Prefer an explicit display name; when none
+  // is given (callers may pass the email address as the display name) derive one
+  // from the email local-part so the signature is never nameless — the old
+  // behaviour left branded signatures with a logo + address but no person.
+  const displayName = resolveSignatureName(input.displayName, email);
 
   const lines = [
-    showName ? escapeHtmlText(input.displayName.trim()) : "",
+    displayName ? escapeHtmlText(displayName) : "",
     input.jobTitle?.trim() ? escapeHtmlText(input.jobTitle.trim()) : "",
     input.phone?.trim() ? escapeHtmlText(input.phone.trim()) : "",
     `<a href="mailto:${escapeHtmlText(email)}">${escapeHtmlText(email)}</a>`,
@@ -98,11 +134,12 @@ export function buildOpensDoorsBrandedSignatureHtml(input: OpensDoorsBrandedTemp
 
 export function buildOpensDoorsBrandedSignaturePlain(input: OpensDoorsBrandedTemplateInput): string {
   const email = input.email.trim();
-  // Same de-dupe as the HTML builder: omit the name line when it is just the
-  // email address so the address is not printed twice.
-  const showName = nameIsDistinctFromEmail(input.displayName, email);
+  // Same name resolution as the HTML builder — derive a name from the email
+  // local-part when no explicit one is available so the address is never the
+  // only identifier and is never printed twice.
+  const displayName = resolveSignatureName(input.displayName, email);
   const parts = [
-    showName ? input.displayName.trim() : "",
+    displayName ?? "",
     input.jobTitle?.trim() ?? "",
     input.phone?.trim() ?? "",
     email,

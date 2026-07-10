@@ -3,22 +3,25 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpensDoorsBrandedSignatureHtml,
   buildOpensDoorsBrandedSignaturePlain,
+  humanizeEmailLocalPart,
 } from "./opensdoors-branded-signature-template";
+
+function countOccurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
 
 /**
  * Regression for the support ticket "it has put daniel@idverde twice": when a
  * mailbox has no real name the caller falls back to the email as the display
- * name, which used to render it once as a name line and again as the mailto
- * link. The address must now appear exactly once.
+ * name. The raw address must never be printed as a name line as well as the
+ * mailto link. Since the "no sender name" fix we now DERIVE a human name from
+ * the email local-part instead of leaving the signature nameless — but the raw
+ * address is still never duplicated.
  */
 describe("branded signature — email is never duplicated", () => {
   const email = "daniel.harper@idverde.co.uk";
 
-  function countOccurrences(haystack: string, needle: string): number {
-    return haystack.split(needle).length - 1;
-  }
-
-  it("HTML: omits the name line when the display name IS the email", () => {
+  it("HTML: derives a name from the email, never prints the raw address as a name", () => {
     const html = buildOpensDoorsBrandedSignatureHtml({
       displayName: email,
       email,
@@ -27,6 +30,8 @@ describe("branded signature — email is never duplicated", () => {
     // Once inside mailto:, once as the visible link text — and nowhere else.
     expect(countOccurrences(html, email)).toBe(2);
     expect(countOccurrences(html, `mailto:${email}`)).toBe(1);
+    // A readable name is derived from the local-part instead of a bare address.
+    expect(html).toContain("Daniel Harper");
   });
 
   it("HTML: matches case-insensitively / ignores surrounding whitespace", () => {
@@ -45,7 +50,7 @@ describe("branded signature — email is never duplicated", () => {
     expect(countOccurrences(plain, email)).toBe(1);
   });
 
-  it("still shows a real name on its own line, plus the email link", () => {
+  it("shows an explicit real name on its own line, plus the email link", () => {
     const html = buildOpensDoorsBrandedSignatureHtml({
       displayName: "Daniel Harper",
       email,
@@ -59,5 +64,50 @@ describe("branded signature — email is never duplicated", () => {
     });
     expect(plain).toContain("Daniel Harper");
     expect(countOccurrences(plain, email)).toBe(1);
+  });
+});
+
+describe("humanizeEmailLocalPart", () => {
+  it("title-cases a single-word local part", () => {
+    expect(humanizeEmailLocalPart("charlie@chevronsecurity.co.uk")).toBe("Charlie");
+  });
+  it("splits dotted / underscored / hyphenated names", () => {
+    expect(humanizeEmailLocalPart("charlie.smith@x.com")).toBe("Charlie Smith");
+    expect(humanizeEmailLocalPart("charlie_smith@x.com")).toBe("Charlie Smith");
+    expect(humanizeEmailLocalPart("charlie-smith@x.com")).toBe("Charlie Smith");
+  });
+  it("drops +tags and digits", () => {
+    expect(humanizeEmailLocalPart("charlie+outreach@x.com")).toBe("Charlie");
+    expect(humanizeEmailLocalPart("charlie1@x.com")).toBe("Charlie");
+  });
+  it("returns null when nothing usable remains", () => {
+    expect(humanizeEmailLocalPart("@x.com")).toBeNull();
+    expect(humanizeEmailLocalPart("")).toBeNull();
+    expect(humanizeEmailLocalPart("123@x.com")).toBeNull();
+  });
+});
+
+describe("branded signature always carries a sender name (no-name fix)", () => {
+  const base = {
+    email: "charlie@chevronsecurity.co.uk",
+    website: "https://chevronsecurity.co.uk/",
+    logoUrl: "https://cdn.example.com/chevron.png",
+    logoAlt: "Chevron Security",
+    legalDisclaimer: "Confidential.",
+  };
+
+  it("derives a name from the email when no display name is given", () => {
+    const html = buildOpensDoorsBrandedSignatureHtml({ ...base, displayName: "" });
+    expect(html).toContain("Charlie");
+    const plain = buildOpensDoorsBrandedSignaturePlain({ ...base, displayName: "" });
+    expect(plain.startsWith("Charlie")).toBe(true);
+  });
+
+  it("uses an explicit real name as-is", () => {
+    const plain = buildOpensDoorsBrandedSignaturePlain({
+      ...base,
+      displayName: "Charlie Smith",
+    });
+    expect(plain.startsWith("Charlie Smith")).toBe(true);
   });
 });
