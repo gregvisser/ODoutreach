@@ -48,6 +48,9 @@ vi.mock("@/server/mailbox/microsoft-mailbox-access", () => ({
 }));
 vi.mock("@/server/mailbox/microsoft-graph-sendmail", () => ({
   sendMicrosoftGraphSendMail: (...a: unknown[]) => sendGraph(...a),
+  // MIME send is behind a default-off flag; these tests exercise the JSON path.
+  isMicrosoftMimeSendEnabled: () => false,
+  sendMicrosoftGraphMimeSendMail: (...a: unknown[]) => sendGraph(...a),
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),

@@ -18,6 +18,19 @@ export function isOpenTrackingPixelEnabled(): boolean {
 }
 
 /**
+ * Deliverability: when `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN=on`, only embed the
+ * open-tracking pixel for clients whose outreach links sit on a verified
+ * sender-aligned domain (`go.<client-domain>`). For everyone else the pixel is
+ * skipped rather than served from the OpensDoors app domain — a hidden 1×1 image
+ * on a different host than the sender is a classic cold-bulk/phishing signal, and
+ * for cold outreach that costs more deliverability than the open stats are worth.
+ * Default off, so existing behaviour is unchanged until it is deliberately staged on.
+ */
+export function isOpenTrackingRequireAlignedDomain(): boolean {
+  return process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN === "on";
+}
+
+/**
  * Absolute open-tracking pixel URL for an outbound email's correlationId.
  * Returns null when open tracking is disabled, or when no base URL is
  * available (so callers skip the pixel rather than emit a broken relative link).
@@ -37,8 +50,11 @@ export function buildOpenTrackingPixelUrl(
   const id = correlationId?.trim();
   if (!id) return null;
   const preferred = preferredBaseUrl?.trim();
-  const base = (preferred && preferred.length > 0 ? preferred : resolvePublicBaseUrl())
-    ?.replace(/\/+$/, "");
+  const hasAligned = Boolean(preferred && preferred.length > 0);
+  // When the aligned-domain rule is on, never emit a cross-domain pixel: skip it
+  // entirely unless the client has a verified sender-aligned base URL.
+  if (isOpenTrackingRequireAlignedDomain() && !hasAligned) return null;
+  const base = (hasAligned ? preferred : resolvePublicBaseUrl())?.replace(/\/+$/, "");
   if (!base) return null;
   return `${base}/api/track/open/${encodeURIComponent(id)}`;
 }

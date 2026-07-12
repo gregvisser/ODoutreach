@@ -26,6 +26,76 @@ export type GraphSendMailOptions = {
   bodyHtml?: string | null;
 };
 
+/**
+ * When `MICROSOFT_MIME_SEND=on`, Microsoft outreach is submitted as raw MIME
+ * (see {@link sendMicrosoftGraphMimeSendMail}) instead of Graph's JSON `sendMail`.
+ * The JSON path can only carry ONE body type — so today HTML sends go out
+ * HTML-only (no `text/plain` alternative, which scores as spam) and cannot carry
+ * a `List-Unsubscribe-Post` one-click header. Raw MIME fixes both. Default off so
+ * the send path is unchanged until this is deliberately validated + enabled.
+ */
+export function isMicrosoftMimeSendEnabled(): boolean {
+  return process.env.MICROSOFT_MIME_SEND === "on";
+}
+
+/**
+ * POST `/users/{mailbox}/sendMail` with a raw MIME message (base64-encoded body,
+ * `Content-Type: text/plain`). Unlike the JSON `sendMail` path this carries a
+ * real `multipart/alternative` body (a `text/plain` part alongside the HTML) and
+ * genuine `List-Unsubscribe` / `List-Unsubscribe-Post` headers — neither of which
+ * the JSON path can deliver over Graph. Build the message with the shared
+ * `buildRfc5322PlainTextEmail` helper (same one the Gmail path uses in
+ * production). Gated by {@link isMicrosoftMimeSendEnabled}.
+ */
+export async function sendMicrosoftGraphMimeSendMail(input: {
+  accessToken: string;
+  mailboxUserPrincipalName: string;
+  rfc5322Message: string;
+  correlationId: string;
+}): Promise<SendEmailResult> {
+  const userSeg = encodeURIComponent(input.mailboxUserPrincipalName.trim());
+  const mimeBase64 = Buffer.from(input.rfc5322Message, "utf8").toString("base64");
+  const res = await fetch(`${GRAPH}/users/${userSeg}/sendMail`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "text/plain",
+    },
+    body: mimeBase64,
+  });
+
+  if (res.status === 202) {
+    return {
+      ok: true,
+      providerMessageId: `msgraph:mime:${input.correlationId}`,
+      providerName: "microsoft_graph",
+    };
+  }
+
+  const text = (await res.text()).slice(0, 2000);
+  if (res.status === 429) {
+    return { ok: false, error: `Microsoft Graph throttled: ${text}`, code: "429" };
+  }
+  if (res.status === 401) {
+    return { ok: false, error: `Microsoft Graph auth failed: ${text}`, code: "401" };
+  }
+  if (res.status === 403) {
+    return {
+      ok: false,
+      error: `Microsoft Graph forbidden (check Mail.Send / Mail.Send.Shared and mailbox delegate rights): ${text}`,
+      code: "403",
+    };
+  }
+  if (res.status >= 500) {
+    return { ok: false, error: `Microsoft Graph server error: ${text}`, code: String(res.status) };
+  }
+  return {
+    ok: false,
+    error: `Microsoft Graph MIME sendMail failed (${res.status}): ${text}`,
+    code: String(res.status),
+  };
+}
+
 type GraphMessagePayload = {
   subject: string;
   body: { contentType: "Text" | "HTML"; content: string };

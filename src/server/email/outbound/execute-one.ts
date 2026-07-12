@@ -16,6 +16,8 @@ import {
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import {
   findGraphSentMessageId,
+  isMicrosoftMimeSendEnabled,
+  sendMicrosoftGraphMimeSendMail,
   sendMicrosoftGraphSendMail,
 } from "@/server/mailbox/microsoft-graph-sendmail";
 import { isSendPreflightDedupEnabled } from "./send-preflight-dedup";
@@ -656,20 +658,48 @@ async function sendViaConnectedMailboxOrFail(
         return { ok: true };
       }
     }
-    const result = await sendMicrosoftGraphSendMail({
-      accessToken,
-      mailboxUserPrincipalName: mailbox.emailNormalized,
-      to,
-      subject,
-      bodyText: bodyParts.text,
-      correlationId: row.correlationId,
-      options: {
-        bodyHtml: graphHtml,
-        ...(graphListUnsubscribeUrl
-          ? { listUnsubscribeUrl: graphListUnsubscribeUrl }
-          : {}),
-      },
-    });
+    // Default path: Graph JSON sendMail (HTML-only body; List-Unsubscribe via a
+    // MAPI extended property). When MICROSOFT_MIME_SEND=on, submit raw MIME
+    // instead so the message carries a text/plain alternative alongside the HTML
+    // (HTML-only scores as spam) AND real List-Unsubscribe + List-Unsubscribe-Post
+    // headers (true one-click unsubscribe) — neither of which Graph JSON allows.
+    // Built with the same MIME helper the Gmail path already uses in production.
+    const result = isMicrosoftMimeSendEnabled()
+      ? await sendMicrosoftGraphMimeSendMail({
+          accessToken,
+          mailboxUserPrincipalName: mailbox.emailNormalized,
+          correlationId: row.correlationId,
+          rfc5322Message: buildRfc5322PlainTextEmail({
+            from: fromForLog,
+            to,
+            subject,
+            bodyText: bodyParts.text,
+            bodyHtml: graphHtml,
+            extraHeaders: listUnsub
+              ? [
+                  { name: "List-Unsubscribe", value: listUnsub.listUnsubscribe },
+                  {
+                    name: "List-Unsubscribe-Post",
+                    value: listUnsub.listUnsubscribePost,
+                  },
+                ]
+              : undefined,
+          }),
+        })
+      : await sendMicrosoftGraphSendMail({
+          accessToken,
+          mailboxUserPrincipalName: mailbox.emailNormalized,
+          to,
+          subject,
+          bodyText: bodyParts.text,
+          correlationId: row.correlationId,
+          options: {
+            bodyHtml: graphHtml,
+            ...(graphListUnsubscribeUrl
+              ? { listUnsubscribeUrl: graphListUnsubscribeUrl }
+              : {}),
+          },
+        });
     if (result.ok === false) {
       if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", result.error)) {
         await markMailboxReauthRequired(
