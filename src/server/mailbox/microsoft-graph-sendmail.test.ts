@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { sendMicrosoftGraphSendMail } from "./microsoft-graph-sendmail";
+import {
+  isMicrosoftMimeSendEnabled,
+  sendMicrosoftGraphMimeSendMail,
+  sendMicrosoftGraphSendMail,
+} from "./microsoft-graph-sendmail";
+import { buildRfc5322PlainTextEmail } from "./gmail-sendmail";
 
 describe("sendMicrosoftGraphSendMail", () => {
   afterEach(() => {
@@ -163,5 +168,92 @@ describe("sendMicrosoftGraphSendMail", () => {
     if (!r.ok) {
       expect(r.code).toBe("403");
     }
+  });
+});
+
+describe("isMicrosoftMimeSendEnabled", () => {
+  const prev = process.env.MICROSOFT_MIME_SEND;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.MICROSOFT_MIME_SEND;
+    else process.env.MICROSOFT_MIME_SEND = prev;
+  });
+  it("is off unless explicitly set to 'on'", () => {
+    delete process.env.MICROSOFT_MIME_SEND;
+    expect(isMicrosoftMimeSendEnabled()).toBe(false);
+    process.env.MICROSOFT_MIME_SEND = "true";
+    expect(isMicrosoftMimeSendEnabled()).toBe(false);
+    process.env.MICROSOFT_MIME_SEND = "on";
+    expect(isMicrosoftMimeSendEnabled()).toBe(true);
+  });
+});
+
+describe("sendMicrosoftGraphMimeSendMail", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POSTs base64 MIME as text/plain and returns success on 202", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Build a real multipart MIME the same way the send path does.
+    const mime = buildRfc5322PlainTextEmail({
+      from: "sender@tenant.test",
+      to: "a@b.co",
+      subject: "Hello",
+      bodyText: "Plain body\nUnsubscribe: https://x.co/u",
+      bodyHtml: '<p>Body</p><p><a href="https://x.co/u">Unsubscribe</a></p>',
+      extraHeaders: [
+        { name: "List-Unsubscribe", value: "<https://x.co/u>" },
+        { name: "List-Unsubscribe-Post", value: "List-Unsubscribe=One-Click" },
+      ],
+    });
+
+    const r = await sendMicrosoftGraphMimeSendMail({
+      accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
+      rfc5322Message: mime,
+      correlationId: "corr-mime",
+    });
+
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.providerMessageId).toBe("msgraph:mime:corr-mime");
+      expect(r.providerName).toBe("microsoft_graph");
+    }
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/users/sender%40tenant.test/sendMail");
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
+      "text/plain",
+    );
+    // Body is base64 that decodes back to the exact MIME — a real text/plain
+    // part alongside the HTML, plus true one-click unsubscribe headers.
+    const decoded = Buffer.from(String(init.body), "base64").toString("utf8");
+    expect(decoded).toBe(mime);
+    expect(decoded).toContain("Content-Type: multipart/alternative");
+    expect(decoded).toContain("Content-Type: text/plain; charset=UTF-8");
+    expect(decoded).toContain("Content-Type: text/html; charset=UTF-8");
+    expect(decoded).toContain("List-Unsubscribe: <https://x.co/u>");
+    expect(decoded).toContain(
+      "List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+    );
+  });
+
+  it("returns failure for 403", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("nope", { status: 403 })),
+    );
+    const r = await sendMicrosoftGraphMimeSendMail({
+      accessToken: "t",
+      mailboxUserPrincipalName: "sender@tenant.test",
+      rfc5322Message: "From: a@b.co\r\n\r\nx",
+      correlationId: "corr-403",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("403");
   });
 });
