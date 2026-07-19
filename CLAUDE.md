@@ -25,3 +25,17 @@ Production migrations are **NOT applied automatically on deploy**. The deploy wo
 ## Environment / runtime notes
 - Local Node is v22; CI and Azure build/run on **Node 20** — keep this gap in mind.
 - `.azure/prod-db-admin-password.txt` holds a plaintext prod DB password; `.azure/` is gitignored. Do not commit or echo it.
+
+---
+<!-- BidlowAI Engineering Standard — injected 2026-07-19. Full rules: ENGINEERING-STANDARD.md (repo root) -->
+## BidlowAI Engineering Standard (non-negotiable)
+
+Treat this repository as PRODUCTION software with paying customers — never prototype-quality code. If a request would drop below the standard, STOP and propose the compliant approach. There are no prototypes here.
+
+- **Before code:** restate the spec (goal / must-not-change / how we verify); smallest diff, one concern.
+- **While coding:** strict types (no `any`/`# type: ignore`); validate every boundary (zod/pydantic); handle & report errors — nothing swallowed; secrets from env only; no `console.log`/`print`, commented-out code, or untracked `TODO`.
+- **Done =** lint / typecheck / tests (new tests added) / build all green; e2e for new flows; validation for new inputs.
+- **Git:** conventional commits, scoped; never commit secrets/binaries/other-client assets; PR into protected `main`, CI green.
+- **When it breaks:** revert to the last green commit and retry from a tighter spec — don't prompt-patch deeper.
+
+Full rules & Definition of Done: see `ENGINEERING-STANDARD.md`.
