@@ -79,3 +79,22 @@ jobs:
           app-name: app-opensdoors-outreach-prod
           resource-group-name: rg-opensdoors-outreach-prod
           package: .
+
+      # BidlowAI Engineering Standard §1.10 — a deploy is not done until it is
+      # verified. Polls the public health endpoint (which checks DB connectivity)
+      # and fails the run if the new build is not serving. This does NOT roll back;
+      # it surfaces a bad deploy instead of leaving it silently green.
+      - name: Post-deploy health check
+        run: |
+          url="https://app-opensdoors-outreach-prod.azurewebsites.net/api/health"
+          for attempt in $(seq 1 10); do
+            code=$(curl -fsS -o /tmp/health.json -w "%{http_code}" "$url" 2>/dev/null) && {
+              echo "Health check passed on attempt $attempt (HTTP $code)"
+              cat /tmp/health.json
+              exit 0
+            }
+            echo "Attempt $attempt: not healthy yet — retrying in 15s"
+            sleep 15
+          done
+          echo "::error::Health check failed — $url did not return success after 10 attempts"
+          exit 1
