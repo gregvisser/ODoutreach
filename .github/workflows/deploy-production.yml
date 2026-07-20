@@ -81,20 +81,34 @@ jobs:
           package: .
 
       # BidlowAI Engineering Standard §1.10 — a deploy is not done until it is
-      # verified. Polls the public health endpoint (which checks DB connectivity)
-      # and fails the run if the new build is not serving. This does NOT roll back;
-      # it surfaces a bad deploy instead of leaving it silently green.
+      # verified.
+      #
+      # Liveness alone is NOT enough: for a while after the deploy step returns,
+      # Azure is still serving the PREVIOUS build, so a bare /api/health poll
+      # passes in seconds against the old instance and proves nothing. So we wait
+      # for /api/build-info to report THIS run's commit (stamped from github.sha
+      # at build time), and only then assert health — which also covers DB
+      # connectivity. This surfaces a bad deploy; it does not roll back.
       - name: Post-deploy health check
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
         run: |
-          url="https://app-opensdoors-outreach-prod.azurewebsites.net/api/health"
-          for attempt in $(seq 1 10); do
-            code=$(curl -fsS -o /tmp/health.json -w "%{http_code}" "$url" 2>/dev/null) && {
-              echo "Health check passed on attempt $attempt (HTTP $code)"
-              cat /tmp/health.json
+          base="https://app-opensdoors-outreach-prod.azurewebsites.net"
+          for attempt in $(seq 1 20); do
+            sha=$(curl -fsS --max-time 20 "$base/api/build-info" 2>/dev/null \
+              | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            if [ "$sha" = "$EXPECTED_SHA" ]; then
+              echo "Commit $EXPECTED_SHA is live (attempt $attempt)."
+              if ! curl -fsS --max-time 20 "$base/api/health"; then
+                echo "::error::New build is live but /api/health did not return success"
+                exit 1
+              fi
+              echo ""
+              echo "Post-deploy health check passed."
               exit 0
-            }
-            echo "Attempt $attempt: not healthy yet — retrying in 15s"
-            sleep 15
+            fi
+            echo "Attempt $attempt: serving ${sha:-unknown}, waiting for $EXPECTED_SHA"
+            sleep 20
           done
-          echo "::error::Health check failed — $url did not return success after 10 attempts"
+          echo "::error::$base never reported commit $EXPECTED_SHA — deploy may not have swapped"
           exit 1
