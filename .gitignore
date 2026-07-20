@@ -55,3 +55,6 @@ Thumbs.db
 
 # support-agent: dumped ticket screenshots may contain user data — never commit
 .tmp/
+
+# Sentry Config File
+.env.sentry-build-plugin
