@@ -14,17 +14,17 @@ export default defineConfig({
       // Measure the tested business logic; pages/UI are covered by e2e.
       include: ["src/lib/**", "src/server/**"],
       exclude: ["**/*.test.ts", "**/*.d.ts", "src/test/**"],
-      // Ratcheted to just under the real numbers measured on 2026-07-20
-      // (statements 55.85 · branches 77.26 · functions 75.58 · lines 55.85), so
-      // coverage cannot silently rot. ~0.3-0.6 of slack is deliberate: v8 output
-      // drifts a few tenths between CI's Node 20 and local Node 22, and a false
-      // red trains people to ignore the gate. Re-measure and raise after adding
-      // tests; never lower to make a red build pass.
+      // Ratcheted to just under the real numbers measured on 2026-07-20 after the
+      // src/server test push (statements 56.60 · branches 78.42 · functions 76.30
+      // · lines 56.60), so coverage cannot silently rot. ~0.3-0.6 of slack is
+      // deliberate: v8 output drifts a few tenths between CI's Node 20 and local
+      // Node 22, and a false red trains people to ignore the gate. Re-measure and
+      // raise after adding tests; never lower to make a red build pass.
       thresholds: {
-        lines: 55.5,
-        functions: 75,
-        branches: 77,
-        statements: 55.5,
+        lines: 56,
+        functions: 76,
+        branches: 78,
+        statements: 56,
       },
       // NOTE: per-directory glob thresholds (e.g. `"src/lib/**": { ... }`) are
       // deliberately NOT used. Vitest matches globs with `picomatch(glob)` against
