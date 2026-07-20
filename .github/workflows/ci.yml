@@ -89,6 +89,12 @@ jobs:
       - name: Apply schema to the e2e database
         run: npx prisma migrate deploy
 
+      # Real Prisma against a real schema — covers the src/server orchestration
+      # that mock-based unit tests cannot cover honestly. Runs before the build
+      # so a data-layer regression fails fast.
+      - name: Integration tests
+        run: npm run test:integration
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 

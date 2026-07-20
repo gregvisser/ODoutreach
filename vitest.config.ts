@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
@@ -8,6 +8,10 @@ export default defineConfig({
     // `e2e/*.test.ts` covers the e2e harness's own logic (the safe-database
     // guard). Playwright only claims `*.spec.ts`, so the two do not overlap.
     include: ["src/**/*.test.ts", "e2e/**/*.test.ts"],
+    // `*.integration.test.ts` needs a real database and runs via
+    // `vitest.integration.config.ts` / `npm run test:integration`. This suite
+    // must stay DB-free and fast (AGENTS.md), so it never claims them.
+    exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
