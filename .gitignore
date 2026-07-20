@@ -58,3 +58,9 @@ Thumbs.db
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# playwright / e2e
+/e2e/.auth
+/test-results
+/playwright-report
+/blob-report

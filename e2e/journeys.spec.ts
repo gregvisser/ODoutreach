@@ -1,26 +1,118 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-// Authenticated critical journeys. These need a signed-in browser state — see
-// e2e/README.md for the storageState / global-setup approach. Marked `fixme`
-// until that auth fixture is wired, so CI stays green in the meantime.
-test.describe("authenticated journeys", () => {
-  test.fixme("dashboard loads for a signed-in user", async ({ page }) => {
-    await page.goto("/dashboard");
-    await expect(page.getByRole("heading").first()).toBeVisible();
-  });
+import {
+  E2E_CLIENT,
+  E2E_CONTACT,
+  E2E_OUTBOUND_EMAIL,
+  E2E_STORAGE_STATE,
+} from "./fixtures";
 
-  test.fixme("create an email sequence", async ({ page }) => {
-    await page.goto("/email");
-    // TODO: click "New sequence", add steps, save, assert it appears in the list.
-  });
+/**
+ * Authenticated critical journeys, run against seeded fixtures with a minted
+ * next-auth session cookie (see `e2e/global-setup.ts`).
+ *
+ * SEND SAFETY — these specs never submit a send. `sendEmailToContactAction` is
+ * the real outbound path, and Requeue / Release-stale-locks / Mark-VERIFIED_READY
+ * on the operations page mutate live queue state. Assertions stop at "the control
+ * is present and enabled". The app under test also runs with every provider
+ * credential blanked (`e2e/env.ts`), so a send could not succeed even by mistake.
+ */
 
-  test.fixme("queue / send an outbound campaign", async ({ page }) => {
+test.describe("super-admin journeys", () => {
+  test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
+
+  test("admin operations page renders queue diagnostics for the seeded workspace", async ({
+    page,
+  }) => {
     await page.goto("/operations/outbound");
-    // TODO: select recipients, trigger send/queue, assert queued state + no errors.
+
+    await expect(
+      page.getByRole("heading", { name: "Admin operations", level: 1 }),
+    ).toBeVisible();
+
+    // Proves the page actually read the database, not just rendered a shell.
+    await expect(page.getByText(E2E_CLIENT.name).first()).toBeVisible();
+
+    // The seeded outbound row is SENT, so no queue table can match it.
+    await expect(page.getByText("No aged queue rows.")).toBeVisible();
+    await expect(page.getByText("No stale processing rows.")).toBeVisible();
   });
 
-  test.fixme("handle a reply in activity", async ({ page }) => {
-    await page.goto("/activity/outbound");
-    // TODO: open a thread, assert the reply UI renders and an action can be taken.
+  test("outbound email detail renders routing and timeline", async ({ page }) => {
+    await page.goto(`/activity/outbound/${E2E_OUTBOUND_EMAIL.id}`);
+
+    await expect(
+      page.getByRole("heading", { name: "Outbound email", level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByText("Routing")).toBeVisible();
+    await expect(page.getByText("Timeline")).toBeVisible();
+    await expect(page.getByText(E2E_OUTBOUND_EMAIL.toEmail).first()).toBeVisible();
+    await expect(page.getByText(E2E_OUTBOUND_EMAIL.subject)).toBeVisible();
+  });
+
+  test("an unknown outbound email id is not found", async ({ page }) => {
+    await page.goto("/activity/outbound/e2e-does-not-exist");
+
+    // Asserted on rendered output, not HTTP status: the page is `force-dynamic`,
+    // so the layout has already streamed with a 200 by the time `notFound()`
+    // fires. What matters is that no outbound record is disclosed.
+    await expect(page.getByRole("heading", { name: "404", level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Outbound email", level: 1 }),
+    ).toBeHidden();
+  });
+
+  test("the compose sheet opens without sending", async ({ page }) => {
+    await page.goto(`/contacts?client=${E2E_CLIENT.id}`);
+
+    await expect(page.getByText(E2E_CONTACT.email).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Send", exact: true }).first().click();
+
+    // The sheet renders its compose fields — we stop here, deliberately.
+    await expect(page.getByLabel("Subject")).toBeVisible();
+    await expect(page.getByLabel("Message")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send email" }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("staff role boundaries", () => {
+  test.use({ storageState: E2E_STORAGE_STATE.staff });
+
+  test("non-super-admin staff are redirected away from admin operations", async ({
+    page,
+  }) => {
+    await page.goto("/operations/outbound");
+
+    await expect(page).toHaveURL(/\/reporting$/);
+    await expect(
+      page.getByRole("heading", { name: "Reports", level: 1 }),
+    ).toBeVisible();
+  });
+
+  test("non-super-admin staff can still open an outbound email detail", async ({
+    page,
+  }) => {
+    await page.goto(`/activity/outbound/${E2E_OUTBOUND_EMAIL.id}`);
+
+    await expect(
+      page.getByRole("heading", { name: "Outbound email", level: 1 }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("unauthenticated access", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("a protected page redirects to sign-in with a callback url", async ({
+    page,
+  }) => {
+    await page.goto("/operations/outbound");
+
+    await expect(page).toHaveURL(
+      /\/sign-in\?callbackUrl=%2Foperations%2Foutbound$/,
+    );
   });
 });
