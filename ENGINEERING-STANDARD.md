@@ -56,3 +56,108 @@ Right-sizing (a senior skill, not a shortcut): a static brochure site is "done" 
 - Put a billing alert on every production project.
 
 *Standard owned by BidlowAI. Revisit quarterly. When a rule changes, bump the version and propagate CLAUDE.md + PR template to every repo.*
+
+## Tier Verification Protocol (never claim a rating you haven't proven)
+
+A tier is a claim about **evidence**, not a feeling. Before calling any repo
+"production-ready" or assigning a tier, PROVE each criterion by running it and showing the
+output. Assume nothing; round nothing up.
+
+- A criterion counts **only if you ran it and saw it pass.** "Looks done" ≠ done. "Should pass" ≠ passes.
+- If a gate can't be run or verified, it is **NOT met** — say so explicitly.
+- Report the honest tier **with evidence**, e.g.: "lint ✅ 0 · typecheck ✅ 0 · tests ❌ 1
+  smoke test, ~0% real coverage · monitoring ❌ no Sentry → this is a **5**, not a 9."
+- **Missing tests is the #1 false-9.** A passing CI gate with no real test coverage is a
+  *scaffold*, not a 9. Count what is actually **tested**, not what is wired.
+- A repo is a **9 only when ALL of these are present AND passing, verified by running
+  them:** strict typecheck (0), lint (0), real tests on business logic with enforced
+  coverage thresholds, e2e on critical journeys, error monitoring live, secrets gitignored,
+  a CI gate that blocks merge, automated deploy + health check.
+- **New apps: scaffold these foundations FIRST, before features** — production-grade by
+  construction, never retrofitted.
+
+The failure mode to prevent: believing a repo is a 9 and discovering under load it was a 4.
+The antidote: run the gates, show the evidence, report the honest number.
+
+## The BidlowAI Engineering Operating Model
+
+Every project — whatever it is, however small — is built as a production system by a full
+engineering organization, from commit 1. Not a solo coder throwing up a shell: a team with
+roles, review, and a chain of accountability. When an AI agent works a BidlowAI repo, it
+plays all of these roles in sequence and does not declare work done until each is satisfied.
+
+### The org & the chain of accountability
+- **Head of Engineering** — owns the architecture and this standard. Approves the plan
+  before any code, and signs off on "done" only with evidence (Tier Verification Protocol).
+  Has veto. Guards two lines above all: production from commit 1, and core structures before
+  features — never ship a shell.
+- **Architect / Staff Engineer** — before implementation, designs the core: data model,
+  module boundaries, interfaces/contracts, error-handling and auth strategy, and the
+  non-functionals (performance, cost, scale). Owns build-vs-buy and tool selection.
+- **Implementation Engineers** — build strictly to the design, in small reviewable diffs.
+  Strict types, validated boundaries, explicit error handling, no dead code or TODOs left.
+- **Test / QA Engineer** — writes real tests on the business logic and e2e on the critical
+  journeys; owns coverage and its thresholds. "It compiles" is not "it works."
+- **Security Engineer** — secrets management, authentication/authorization, input
+  validation, prompt-injection defense, RBAC, output filtering, data privacy & compliance.
+- **SRE / DevOps** — the CI gate, automated deploy, post-deploy health check, structured
+  logging, error monitoring, and observability.
+- **Code Reviewer** — an adversarial pass before merge: runs every gate, hunts for the gap,
+  blocks on anything unproven. Reviewer and author are different hats — be your own skeptic.
+
+No task is complete until it has passed the relevant roles and the Head of Engineering has
+proof. Solo or not, run the chain.
+
+### Core structures before features (never shells)
+A new repo's first work is the foundation, not a feature: git + `.gitignore`; strict types;
+the data model / schema and module boundaries; error, auth, and config strategy; the test
+harness with a first real test; the CI gate; error monitoring wired to env; `.env.example`;
+a runnable README; and these standard files. Only once the skeleton is production-grade do
+features get built on top. Retrofitting foundations later is exactly how a "9" turns out to
+be a 4.
+
+### Tooling & Cost decision framework
+Quality and cost are both first-class. For any library, tool, plugin, or service, decide in
+this order and record the trade-off:
+1. **Do we already have it?** Can the standard library or an existing dependency do the job?
+   Prefer adding nothing.
+2. **Is there a mature open-source option?** Prefer well-maintained OSS you can self-host or
+   run free. Weigh maintenance health, security, and community — not just features.
+3. **Is a paid option justified?** Only when its quality, reliability, or time-saved clearly
+   beats the OSS route AND the cost is proportionate at our real scale. Check the free tier
+   first; put a billing alert on anything paid; never adopt a paid service by default.
+Always choose the cheapest option that meets the quality bar — and state why.
+
+**Open-source-first defaults** (start here; move to paid only when the rule above is met):
+
+| Need | Default (OSS / free-first) | Consider paid when |
+|---|---|---|
+| Hosting (web / full-stack) | Railway, Cloudflare, Fly | client mandates Azure/AWS, or real scale |
+| CI | GitHub Actions (free tier) | — |
+| Error monitoring | Sentry (free Developer tier); GlitchTip if self-hosting | volume/users exceed free |
+| Logging / tracing | pino + OpenTelemetry; Grafana Loki (self-host) | managed APM clearly saves ops time |
+| Metrics / dashboards | Prometheus + Grafana (self-host) | — |
+| E2E testing | Playwright (free, OSS) | — |
+| Auth | Auth.js / next-auth (OSS) | Clerk/Auth0 if compliance or time clearly justifies |
+| Automation / orchestration | n8n (self-host) | Make/Zapier for quick, non-critical glue only |
+| Vector store / RAG | pgvector, Chroma, FAISS (self-host) | Pinecone/managed only at real scale |
+| Agent framework | the lightest thing that works — often none | LangChain/LlamaIndex only when they earn their weight |
+
+### AI / agent projects — extra production gates
+When a project uses LLMs or agents (ref: the Agentic AI production domains — prompting,
+agents, LLMs & APIs, tools, orchestration, memory, RAG, deployment, evaluation, security),
+these become production gates, open-source-first:
+- **Prompting & control** — spec-first prompts; self-critique/reflection only where it earns
+  its cost; keep deterministic paths where possible.
+- **LLM & API hygiene** — rate limiting, retries with backoff, token/cost budgets, and model
+  routing (cheapest model that meets the quality bar).
+- **Tool use** — validate every tool's inputs and outputs; sandbox code execution.
+- **Memory & RAG** — ground retrieval in real sources and EVALUATE it; prefer self-host
+  vector stores (pgvector / Chroma / FAISS).
+- **Orchestration** — guardrails and validations at each step; make steps idempotent.
+- **Evaluation is the "tests" of AI** — an AI feature is not done without evals measuring
+  quality; add human-in-the-loop where stakes are high. Trace with OpenTelemetry.
+- **Security & governance** — prompt-injection protection, API-key management, RBAC, output
+  filtering, red-team testing, data-privacy / compliance.
+
+An AI feature with no evals is the AI equivalent of a repo with no tests — a scaffold, not a 9.

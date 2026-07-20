@@ -39,3 +39,54 @@ Treat this repository as PRODUCTION software with paying customers — never pro
 - **When it breaks:** revert to the last green commit and retry from a tighter spec — don't prompt-patch deeper.
 
 Full rules & Definition of Done: see `ENGINEERING-STANDARD.md`.
+
+---
+## Tier verification (non-negotiable)
+
+NEVER claim a tier, "production-ready", or "done" that you have not PROVEN by running the
+gates and showing the output. A rating is evidence, not a feeling.
+
+- A gate counts only if you ran it and saw it pass. "Looks done" ≠ done. "Should pass" ≠ passes.
+- If a gate can't be run, it is NOT met — say so; never round up.
+- **Missing real tests is the #1 false-9:** a green CI gate with no business-logic test
+  coverage is a scaffold, not a 9. Count what is TESTED, not what is wired.
+- A repo is a 9 ONLY when strict typecheck (0), lint (0), real tests + enforced coverage,
+  e2e on critical journeys, live error monitoring, gitignored secrets, a merge-blocking CI
+  gate, and automated deploy + health check are ALL present and passing — verified by running them.
+- New apps: build these foundations FIRST, before features.
+
+Report the honest number with evidence (e.g. "tests ❌ 1 smoke test → this is a 5, not a 9").
+Full protocol: ENGINEERING-STANDARD.md.
+
+---
+## Operating model — run as a full engineering org, not a solo coder
+
+Execute every task as a complete engineering team. Play each role in order; nothing ships
+until the chain is satisfied and the Head of Engineering signs off WITH EVIDENCE (Tier
+Verification Protocol). Build CORE STRUCTURES, never shells.
+
+- **Head of Engineering** — owns architecture + this standard; approves the plan before any
+  code; can veto. Enforces production-from-commit-1 and core-before-features.
+- **Architect** — before code, design the core: data model, module boundaries, contracts,
+  error + auth strategy, and the cost/scale non-functionals. Make build-vs-buy + tooling
+  calls here (see Tooling & Cost).
+- **Engineer** — implement to the design in small, reviewed diffs; strict types, validated
+  boundaries, handled errors, nothing left behind.
+- **Test / QA** — write REAL tests on business logic + e2e on critical journeys; own coverage.
+- **Security** — secrets, authn/z, input validation, prompt-injection, RBAC, output
+  filtering, data privacy.
+- **SRE / DevOps** — CI gate, automated deploy + health check, structured logging + monitoring.
+- **Reviewer** — adversarially review before merge; run every gate; block on any gap. Author
+  and reviewer are different hats — be your own skeptic.
+
+New repo = build FOUNDATIONS first (git, CI gate, strict types, data model + module
+boundaries, test harness + first real tests, monitoring, secrets, README, these .md files).
+Core structures, correct from the beginning — never a shell.
+
+## Tooling & cost — decide deliberately, open source first
+For any library / tool / plugin / service: (1) can the stdlib or an existing dep already do
+it? (2) is there a mature, maintained OPEN-SOURCE option? (3) what does a paid option really
+cost at our scale, and does its quality/reliability clearly justify it? Prefer
+stdlib > mature open source > paid-only-when-it-clearly-wins. State the trade-off, pick the
+cheapest option that meets the quality bar, check the free tier first, and put a billing
+alert on anything paid. Full defaults table + AI/agent gates: ENGINEERING-STANDARD.md.
