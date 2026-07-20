@@ -36,6 +36,20 @@ export default defineConfig({
       // server module is imported.
       DATABASE_URL: E2E_DATABASE_URL,
       E2E_DATABASE_URL,
+
+      // --- send kill-switches -------------------------------------------------
+      // Integration tests exercise the dispatcher. `mock` selects the inert
+      // MockEmailProvider (no network); the blank credentials mean that even if
+      // a test somehow selected a real transport it would fail closed rather
+      // than deliver. Dispatcher specs additionally stub global fetch to throw,
+      // so any unmocked network attempt fails loudly instead of sending.
+      EMAIL_PROVIDER: "mock",
+      RESEND_API_KEY: "",
+      MAILBOX_OAUTH_SECRET: "",
+      MAILBOX_MICROSOFT_OAUTH_CLIENT_ID: "",
+      MAILBOX_MICROSOFT_OAUTH_CLIENT_SECRET: "",
+      MAILBOX_GOOGLE_OAUTH_CLIENT_ID: "",
+      MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET: "",
     },
     coverage: {
       provider: "v8",
