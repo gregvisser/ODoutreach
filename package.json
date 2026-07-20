@@ -23,7 +23,10 @@
     "support:get": "tsx scripts/support-agent/get-ticket.ts",
     "support:resolve": "tsx scripts/support-agent/resolve-ticket.ts",
     "support:escalate": "tsx scripts/support-agent/escalate-ticket.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -51,6 +54,7 @@
     "next-auth": "^5.0.0-beta.30",
     "papaparse": "^5.5.3",
     "pg": "^8.20.0",
+    "pino": "^10.3.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
@@ -61,12 +65,14 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "prisma": "^7.7.0",
