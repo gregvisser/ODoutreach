@@ -1,5 +1,13 @@
 @AGENTS.md
 
+## Customer-Ready Grade (before selling) — HARD RULE (BidlowAI standing rule)
+Before this product goes in front of a paying customer, grade it 0–10 for customer-readiness — is it
+engineered, complete, polished, trustworthy and working properly FROM THE CUSTOMER'S POINT OF VIEW
+(the product's CONDITION, not market demand or pricing). Grade by WALKING the product live as a
+customer, not by reading code. Report it alongside the Engineering grade. **Sell-to-a-customer gate:
+Engineering ≥ 8 AND Customer-Ready ≥ 8** — fix the lower first. Run the **`customer-ready-audit`
+skill** for the full rubric, hard caps, bands and template; save a dated `CUSTOMER-READY-REPORT.md`.
+
 # Project workflow reference
 
 OpensDoors Outreach is a multi-tenant cold-outreach app: **Next.js 16 / React 19 / TypeScript**, **Prisma 7 + PostgreSQL**, auth via **next-auth v5 + Microsoft Entra ID**. Package manager is **npm**. Deployed to **Azure App Service** (`app-opensdoors-outreach-prod`, RG `rg-opensdoors-outreach-prod`) via **GitHub Actions**.
