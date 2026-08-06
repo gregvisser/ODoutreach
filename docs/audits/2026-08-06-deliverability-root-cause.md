@@ -164,6 +164,44 @@ rather than silently substituting a mock. The risk is currently unrealised, not 
 | Two stale rules `migrate-from-dev-20260416220245` and `migrate-from-dev-202604162103` both grant standing access to `31.51.168.206`, a now-defunct address from the April migration | Duplicated and obsolete. Should be removed. Low risk, but it is standing database access for an address nobody uses. |
 | `AllowAllAzureServicesAndResourcesWithinAzureIps` permits any Azure-hosted resource in any subscription to reach the server at the network layer | Standard Azure toggle and the mechanism by which App Service connects. Not wrong, but VNet integration or a private endpoint would be tighter. Phase 4 candidate. |
 
+### ✅ Migration gate is enabled (brief P0-3 — answered)
+
+Repository variable `PRODUCTION_PRISMA_MIGRATE` is **`true`** (set 2026-05-12) and the
+`PRODUCTION_DATABASE_URL` secret exists. The gated step at
+`.github/workflows/deploy-production.yml:50` therefore runs on every production
+deploy.
+
+**Migrations apply automatically. Code cannot deploy against an un-migrated
+database.** The risk described in the project brief was resolved in May and the brief
+predates the fix.
+
+### ⚠️ Stale deploy credential in GitHub Secrets
+
+`AZURE_WEBAPP_PUBLISH_PROFILE` (created 2026-04-17) is **not referenced anywhere** in
+`.github/`. Deployment authenticates via Entra OIDC (`azure/login@v3` with
+`AZURE_CLIENT_ID`), so the publish profile is unused.
+
+A publish profile carries credentials that permit deploying arbitrary code to the App
+Service. Leaving an unused one in repository secrets is standing risk for no benefit.
+
+**Recommendation: delete the secret.** If it is ever needed again it can be
+regenerated from the Azure portal in seconds. Not actioned — deleting a credential
+requires explicit approval.
+
+---
+
+## Phase 0 status — all three brief questions closed
+
+| # | Question | Answer |
+|---|----------|--------|
+| **P0-1** | Is production silently sending via the mock provider? | ✅ **No.** 0 rows with a `mock_` id. Latent config risk only. |
+| **P0-2** | Are any dev-bypass flags enabled in production? | ✅ **No.** All absent. Nothing bypassable. |
+| **P0-3** | Is the database in sync with deployed code? | ✅ **Yes.** `PRODUCTION_PRISMA_MIGRATE=true`, migrations apply on deploy. |
+
+All three came back cleaner than the project brief anticipated.
+
+---
+
 ### 🔴 `OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` is a send kill switch
 
 `src/lib/clients/client-send-governance.ts:213` returns
