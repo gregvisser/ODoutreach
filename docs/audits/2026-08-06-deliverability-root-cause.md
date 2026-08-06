@@ -98,7 +98,7 @@ only setting names, plus the values of non-secret feature flags.
 | Flag | Production value | Notes |
 |------|-----------------|-------|
 | `OPEN_TRACKING_PIXEL` | **`off`** | ✅ Already disabled. Half the root-cause fix was already live. |
-| `MAILBOX_WARMUP_RAMP` | **`off`** | Explicitly set to off, not merely absent. Not the cause of this incident, but an unmitigated volume exposure. |
+| `MAILBOX_WARMUP_RAMP` | **`on`** | ✅ **Enabled 2026-08-06.** Was explicitly `off`. Not the cause of this incident, but it was an unmitigated volume exposure. New mailboxes now ramp from 5/day; established mailboxes are unaffected. App restarted cleanly, health check 200. |
 | `BOUNCE_SUPPRESSION_ENABLED` | `true` | ✅ |
 | `SEND_PREFLIGHT_DEDUP_ENABLED` | `true` | ✅ |
 | `MAILBOX_BOUNCE_DETECTION_ENABLED` | `true` | ✅ |
@@ -161,7 +161,7 @@ rather than silently substituting a mock. The risk is currently unrealised, not 
 
 | Finding | Assessment |
 |---------|-----------|
-| Two stale rules `migrate-from-dev-20260416220245` and `migrate-from-dev-202604162103` both grant standing access to `31.51.168.206`, a now-defunct address from the April migration | Duplicated and obsolete. Should be removed. Low risk, but it is standing database access for an address nobody uses. |
+| ~~Two stale rules `migrate-from-dev-20260416220245` and `migrate-from-dev-202604162103` granting standing access to `31.51.168.206`~~ | ✅ **Both deleted 2026-08-06** (approved). Only `AllowAllAzureServicesAndResourcesWithinAzureIps` remains, which is what App Service requires. |
 | `AllowAllAzureServicesAndResourcesWithinAzureIps` permits any Azure-hosted resource in any subscription to reach the server at the network layer | Standard Azure toggle and the mechanism by which App Service connects. Not wrong, but VNet integration or a private endpoint would be tighter. Phase 4 candidate. |
 
 ### ✅ Migration gate is enabled (brief P0-3 — answered)
@@ -175,18 +175,18 @@ deploy.
 database.** The risk described in the project brief was resolved in May and the brief
 predates the fix.
 
-### ⚠️ Stale deploy credential in GitHub Secrets
+### ✅ Stale deploy credential removed
 
-`AZURE_WEBAPP_PUBLISH_PROFILE` (created 2026-04-17) is **not referenced anywhere** in
+`AZURE_WEBAPP_PUBLISH_PROFILE` (created 2026-04-17) was **not referenced anywhere** in
 `.github/`. Deployment authenticates via Entra OIDC (`azure/login@v3` with
-`AZURE_CLIENT_ID`), so the publish profile is unused.
+`AZURE_CLIENT_ID`), so the publish profile was unused — while still carrying
+credentials that permit deploying arbitrary code to the App Service.
 
-A publish profile carries credentials that permit deploying arbitrary code to the App
-Service. Leaving an unused one in repository secrets is standing risk for no benefit.
+`docs/GITHUB_AZURE_OIDC_DEPLOY.md:76` had already instructed deleting it after the
+OIDC cutover; the step was simply never performed.
 
-**Recommendation: delete the secret.** If it is ever needed again it can be
-regenerated from the Azure portal in seconds. Not actioned — deleting a credential
-requires explicit approval.
+**Deleted 2026-08-06** (approved). Regenerable from the Azure portal in seconds if
+ever needed.
 
 ---
 
