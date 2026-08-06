@@ -461,6 +461,10 @@ async function sendViaConnectedMailboxOrFail(
       bodySnapshotPlain: body,
       mailbox,
       hostedUnsubscribeUrl: hostedU,
+      // Mailto rail: used only when no hosted (aligned-domain) URL exists, so
+      // the recipient always has a visible opt-out even though the email
+      // carries no host other than the sender's own.
+      mailtoUnsubscribeAddress: mailbox.email,
     });
     // Stamp our own Message-ID so genuine replies link back to this exact send
     // via their In-Reply-To header (see process-synced-replies BY_THREAD_REF).
@@ -617,6 +621,8 @@ async function sendViaConnectedMailboxOrFail(
     bodySnapshotPlain: body,
     mailbox,
     hostedUnsubscribeUrl: graphListUnsubscribeUrl,
+    // See the note on the Google path above.
+    mailtoUnsubscribeAddress: mailbox.email,
   });
   // Open tracking pixel (see Gmail path above) — same aligned base URL.
   const graphPixelUrl = buildOpenTrackingPixelUrl(
