@@ -172,10 +172,19 @@ describe("executeOutboundSend — Microsoft governed path", () => {
     );
   });
 
-  it("passes clean HTML body even when metadata has no unsubscribe headers", async () => {
+  it("adds a link-free opt-out when metadata has no unsubscribe headers", async () => {
+    // Before 2026-08 this produced a body with NO opt-out at all whenever no
+    // hosted unsubscribe URL was available. It now falls back to the mailto
+    // rail: a visible instruction, carrying no host other than the sender's.
     await executeOutboundSend("out1");
     const call = sendGraph.mock.calls[0][0] as { options?: { bodyHtml?: string } };
-    expect(call.options?.bodyHtml).toBe("<p>x</p>");
+    const html = call.options?.bodyHtml ?? "";
+
+    expect(html).toContain("<p>x</p>");
+    expect(html).toContain("reply STOP to this email");
+    // The whole point of this rail — no URL and no anchor anywhere.
+    expect(html).not.toMatch(/https?:\/\//);
+    expect(html).not.toContain("<a ");
   });
 
   it("marks Microsoft MFA refresh failures as mailbox reconnect needed and releases capacity", async () => {
