@@ -137,13 +137,32 @@ while the row is recorded as sent.
 Microsoft Graph or Gmail, so it does not use this path. The exposure is limited to
 legacy or non-mailbox rows.
 
-**Outstanding — not yet run:** query production for `OutboundEmail` rows with
-`providerMessageId LIKE 'mock_%'` created after go-live. Any such row is an email the
-system reported as sent and never sent. This requires a production database
-credential and has not been performed.
+**✅ Verified 2026-08-06 — no delivery was affected.** Production was queried via
+`npm run ops:mock-send-report`:
+
+```
+RESULT: 0 rows with a mock_ providerMessageId.
+No outbound email has been recorded as sent via the mock provider.
+```
+
+**Not a single outbound email has ever gone through the mock provider.** P0-1 is a
+latent configuration risk only — no email was reported as sent without being sent, and
+there is no client conversation to have.
+
+Method: a temporary Azure PostgreSQL firewall rule was added for the auditing IP, the
+read-only query was run, and the rule was removed immediately afterwards. Firewall
+state verified as restored.
 
 **Recommended fix (Phase 4):** make the provider default fail loudly in production
-rather than silently substituting a mock.
+rather than silently substituting a mock. The risk is currently unrealised, not absent
+— a future non-mailbox send path would hit it.
+
+### Database network posture (noted, not actioned)
+
+| Finding | Assessment |
+|---------|-----------|
+| Two stale rules `migrate-from-dev-20260416220245` and `migrate-from-dev-202604162103` both grant standing access to `31.51.168.206`, a now-defunct address from the April migration | Duplicated and obsolete. Should be removed. Low risk, but it is standing database access for an address nobody uses. |
+| `AllowAllAzureServicesAndResourcesWithinAzureIps` permits any Azure-hosted resource in any subscription to reach the server at the network layer | Standard Azure toggle and the mechanism by which App Service connects. Not wrong, but VNet integration or a private endpoint would be tighter. Phase 4 candidate. |
 
 ### 🔴 `OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` is a send kill switch
 
