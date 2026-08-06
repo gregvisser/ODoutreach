@@ -1,0 +1,22 @@
+# Normalise line endings in the repository to LF.
+#
+# Development happens on Windows, which checks out CRLF by default and produced
+# whole-file CRLF churn in diffs. `text=auto` stores LF in git and leaves the
+# working copy alone, so diffs show real changes only.
+#
+# NOTE: this applies to files as they are next touched. A one-time
+# `git add --renormalize .` would convert everything at once, but that rewrites
+# every file in a single commit — do it deliberately as its own change, never
+# alongside feature work.
+* text=auto eol=lf
+
+# Binary assets — never convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
