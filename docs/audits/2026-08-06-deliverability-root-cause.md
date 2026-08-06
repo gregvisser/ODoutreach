@@ -70,8 +70,10 @@ authentication was never broken.
 
 | Step | Change | Type | Status |
 |------|--------|------|--------|
-| 1 | `OPEN_TRACKING_PIXEL=off` — removes the tracking pixel for all clients | Production config | Awaiting approval |
+| 1 | `OPEN_TRACKING_PIXEL=off` — removes the tracking pixel for all clients | Production config | ✅ **Already live** (verified 2026-08-06) |
 | 2 | `mailto:` unsubscribe replacing the hosted link, satisfying the send-governance gate rather than bypassing it | Code | In progress |
+
+Because step 1 was already in place, **step 2 alone closes the root cause.**
 
 After both, an outreach email contains no links to any domain other than the sender's.
 
@@ -85,17 +87,63 @@ verification for this. Treated as an opt-in upsell, not a default requirement.
 
 ---
 
-## Flags
+## Production configuration — audited 2026-08-06
 
-Five deliverability flags default to inactive. Each requires an explicit opt-in value.
+Read directly from Azure App Service (`app-opensdoors-outreach-prod`,
+`rg-opensdoors-outreach-prod`) via Azure CLI. Secret values were never retrieved —
+only setting names, plus the values of non-secret feature flags.
 
-| Flag | Effect when enabled | Recommendation |
-|------|--------------------|----------------|
-| `OPEN_TRACKING_PIXEL=off` | Removes the tracking pixel for all clients | **Enable** — half of the root-cause fix |
-| `MAILBOX_WARMUP_RAMP=on` | New mailboxes ramp from 5/day toward their configured cap | **Enable** after a stable window — not the cause here, but an unmitigated exposure |
-| `SEND_DISPATCH_RECHECK_ENABLED=on` | Adds dispatch-time cooldown and a hard-bounce backstop | Enable after the above are stable |
-| `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN=on` | Pixel only for clients with a verified aligned domain | Redundant once `OPEN_TRACKING_PIXEL=off` |
-| `OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN=on` | 🔴 **Blocks every real-prospect send** for any client without a verified `go.<domain>` | **Do not enable.** See below |
+### Deliverability flags — actual production state
+
+| Flag | Production value | Notes |
+|------|-----------------|-------|
+| `OPEN_TRACKING_PIXEL` | **`off`** | ✅ Already disabled. Half the root-cause fix was already live. |
+| `MAILBOX_WARMUP_RAMP` | **`off`** | Explicitly set to off, not merely absent. Not the cause of this incident, but an unmitigated volume exposure. |
+| `BOUNCE_SUPPRESSION_ENABLED` | `true` | ✅ |
+| `SEND_PREFLIGHT_DEDUP_ENABLED` | `true` | ✅ |
+| `MAILBOX_BOUNCE_DETECTION_ENABLED` | `true` | ✅ |
+| `MAILBOX_COMPLAINT_DETECTION_ENABLED` | `true` | ✅ |
+| `INTERNAL_SEED_ALLOWLIST_ENABLED` | `true` | ✅ |
+| `PRE_SEND_PREVIEW_ENABLED` | `true` | ✅ |
+| `FOLLOWUP_REQUIRES_SENT_INTRO` | `true` | ✅ |
+| `REPLY_THREAD_REF_SENDER_GUARD` | `true` | ✅ |
+| `SEND_DISPATCH_RECHECK_ENABLED` | *absent* → off | Optional hardening. |
+| `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN` | *absent* → off | Redundant while the pixel is off. |
+| `OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` | *absent* → off | 🔴 **Keep it that way.** See below. |
+| `MICROSOFT_MIME_SEND` | *absent* → off | |
+
+**Consequence: with the pixel already off, the unsubscribe link is the ONLY remaining
+foreign-domain link in an outreach email.** The `mailto:` change closes the root cause
+completely.
+
+### ✅ No dev-bypass flags in production (brief P0-2 — answered)
+
+Verified absent: every `ALLOW_DEV_*` flag, every `OUTBOUND_DEV_*_SECRET`, and
+`AUTOPROCESS_OUTBOUND_QUEUE`. The queue drains via the scheduled workflow
+authenticated with `PROCESS_QUEUE_SECRET`. **No dev bypass is reachable in
+production.**
+
+### ⚠️ `EMAIL_PROVIDER` is unset in production (brief P0-1 — confirmed risk)
+
+`EMAIL_PROVIDER` is **absent** from App Service configuration, so
+`src/server/email/providers/index.ts:15` falls through to its default of `mock`.
+`RESEND_API_KEY` is also absent.
+
+**Effect:** any `OutboundEmail` row *without* a `mailboxIdentityId` reaches
+`MockEmailProvider`, which returns a `mock_<hash>` id and never touches the network —
+while the row is recorded as sent.
+
+**Containment:** real client outreach always carries a `mailboxIdentityId` and goes via
+Microsoft Graph or Gmail, so it does not use this path. The exposure is limited to
+legacy or non-mailbox rows.
+
+**Outstanding — not yet run:** query production for `OutboundEmail` rows with
+`providerMessageId LIKE 'mock_%'` created after go-live. Any such row is an email the
+system reported as sent and never sent. This requires a production database
+credential and has not been performed.
+
+**Recommended fix (Phase 4):** make the provider default fail loudly in production
+rather than silently substituting a mock.
 
 ### 🔴 `OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` is a send kill switch
 
