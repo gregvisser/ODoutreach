@@ -1,3 +1,11 @@
+# ODoutreach — Tier P (Client Production)
+
+**Tier P · target band 8.5–9.5 · cost multiplier ×3.0 · may be sold.**
+Declared 2026-08-09. OpensDoors is a paying client and this app is live in
+production, sending real mail from real corporate mailboxes. There is no lower
+tier this could honestly be: a defect here reaches a third party's inbox and
+cannot be recalled. Estimates for this repo are quoted naive **and** ×3.0.
+
 @AGENTS.md
 
 ## Customer-Ready Grade (before selling) — HARD RULE (BidlowAI standing rule)

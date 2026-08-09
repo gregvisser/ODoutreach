@@ -1,0 +1,29 @@
+# BidlowAI non-negotiable #5.
+#
+# Without this, the same file checked out on Windows (CRLF) and Linux/CI (LF)
+# looks modified in git even though nobody touched it. That false drift has
+# already cost real time across the estate — it makes review noise, hides real
+# changes, and produces "hundreds of changed files" diffs on a clean checkout.
+#
+# `text=auto eol=lf` means: git decides what is text, stores it with LF in the
+# repository, and checks it out as LF. One canonical form everywhere.
+* text=auto eol=lf
+
+# Lockfiles are generated. Keep them LF and out of diff review.
+package-lock.json -diff linguist-generated
+
+# Binary assets — never line-ending converted, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+
+# Shell scripts must stay LF or they will not execute on Linux/CI.
+*.sh text eol=lf
