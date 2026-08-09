@@ -103,19 +103,45 @@ has none — [lib.mjs](C:/Bidlowprojects/_standards/bidlow-standards/plugins/bid
 a dated, recorded waiver field; this will hit every Bidlow repo that records an
 honest gap.
 
+## Chain and grades — run 2026-08-09
+
+`.bidlow/CHAIN.json` (gitignored — it names the commit it attests to, so
+committing it would make itself stale) and `.bidlow/GRADES.json` (tracked).
+
+| | Result |
+|---|---|
+| Architect / Test / Security / SRE / Reviewer | **passed**, with gaps recorded |
+| Head of Engineering | **sign-off WITHHELD** |
+| Engineering grade | **8.0** — below the 8.5–9.5 Tier P band, deliberately |
+| Customer-Ready grade | **NOT GRADED** |
+
+Engineering is 8.0 not 8.5 because three of the nine things a 9 requires are
+unproven or absent: no e2e on critical journey J5, coverage thresholds not
+verified as enforced, and Sentry wired but not verified as receiving events.
+Rounding up to land inside the band is the false-9 the protocol exists to stop.
+
+Sign-off was withheld because signing would unblock a production deploy of
+send-path changes I have not reviewed, on the strength of a Customer-Ready score
+nobody has measured.
+
 ## Pick this up first
 
-1. **Re-enable the build-gate hook** if it is still parked — restore the
-   `"matcher": "Write|Edit|NotebookEdit"` line in `~/.claude/settings.json`
-2. **Merge and deploy `feat/zero-dns-send-profile`** — the incident's root-cause
-   fix is in git, not in production. Branch protection is on, so PR only. Verify
-   by commit via `/api/build-info`, never by liveness alone
-3. **Set `MAILBOX_WARMUP_RAMP=on`** in Azure App Service config. One flag, then a
-   stable window. It makes the "volume protection is active" line in the client
-   email true
-4. **Push is blocked** until `/bidlow-ship` (role chain) and `/bidlow-grade`
-   (Engineering ≥ 8 and Customer-Ready ≥ 8) have run. Customer-Ready is
-   deliberately ungraded — it requires walking the product live
+1. **Run the `customer-ready-audit` skill** as its own focused session. It is the
+   single blocker on everything else. Walk the product live, save a dated
+   `CUSTOMER-READY-REPORT.md`
+2. **Adversarially review `feat/zero-dns-send-profile`** — 4 send-path commits,
+   ~1,400 lines, currently unreviewed and explicitly outside the chain's scope.
+   Then merge and deploy. Branch protection is on, so PR only; verify by commit
+   via `/api/build-info`, never by liveness alone
+3. **Investigate two production findings** raised while walking the app:
+   - 204 of ~1,470 contacts show **"send proof missing"** (~14%), unexplained
+   - Delivered is **"not tracked — no provider delivery webhooks yet"**, so
+     bounces read 0 (0%) across 1,209 sends. The domain brief makes bounce rate
+     below 2% a non-negotiable. **A threshold that cannot be measured cannot be
+     enforced** — this is arguably the most important open item on the product
+   - `/operations` returns 404 on production; may be a moved route, not diagnosed
+4. **Three local branches are unpushed**, all based on local `main`, which itself
+   carries 2 unpushed docs commits. `origin/main` == deployed (`b36e66e`)
 
 ## Decisions already locked — do not relitigate
 
