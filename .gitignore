@@ -65,6 +65,11 @@ Thumbs.db
 /playwright-report
 /blob-report
 
-# BidlowAI standards — governance artifacts (DOMAIN.json, STATE.md) ARE tracked;
-# the per-session marker is transient and must not be.
+# BidlowAI standards — governance artifacts (DOMAIN.json, STATE.md, GRADES.json)
+# ARE tracked; the per-session marker is transient and must not be.
 /.bidlow/.session-started
+
+# CHAIN.json records the exact commit it attests to, so committing it changes
+# HEAD and makes itself stale on the spot. It is a point-in-time attestation
+# about a commit, not a document that lives in that commit. Kept on disk only.
+/.bidlow/CHAIN.json
