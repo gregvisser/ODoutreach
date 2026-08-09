@@ -59,19 +59,36 @@ Two deliberate decisions recorded in `.bidlow/DOMAIN.json`:
 
 ## Still open, and why
 
-`.bidlow/DOMAIN.json` records **2 irreversible actions as ungated**. Both are
-known, scheduled, and were open before this session:
+`.bidlow/DOMAIN.json` records **1 irreversible action as ungated**:
 
 1. **DNC sibling domains** — `suppression-guard.ts` matches domains on an exact
    key, so `bt.com` on the list does not cover `bteurope.com`. The gate exists and
    is tested; its matching is narrower than ideal. Phase 2, ~18 Tier P days. Live
    compliance exposure the client raised directly
-2. **Warm-up ramp** — written and tested but inert, because
-   `MAILBOX_WARMUP_RAMP` is not `on`. The flat 30/day cap applies unconditionally
-   and is tested, so this is a missing protection, not an open floodgate
 
-**Consequence: the build gate is still shut**, and will stay shut until those two
-are closed or re-recorded. That is the standard working as designed.
+**The build gate stays shut** until that is closed. That is the standard working
+as designed.
+
+### Corrected 2026-08-09 — the warm-up ramp was ALREADY on
+
+`MAILBOX_WARMUP_RAMP` is **`on` in production**, verified directly against Azure:
+
+```
+az webapp config appsettings list --name app-opensdoors-outreach-prod \
+  --resource-group rg-opensdoors-outreach-prod \
+  --query "[?name=='MAILBOX_WARMUP_RAMP']"     ->  value "on"
+```
+
+The August roadmap, the engagement notes and the first version of this file all
+recorded it as OFF. **They were stale — do not trust them on this point.** The
+claim that volume protection is active is therefore true, not false as previously
+stated. The action is now recorded as gated: `mailbox-warmup.test.ts` proves the
+ramp fails closed — clock skew (`-3`) and `NaN` both collapse to the base cap of
+5, and the configured steady cap is never exceeded.
+
+Caveat worth keeping: the ramp is *activated* by a flag that defaults to off, so
+the gate is fail-closed in its logic but fail-open in its activation. Re-verify
+the flag before relying on it.
 
 ## A real gap in the standards tooling
 

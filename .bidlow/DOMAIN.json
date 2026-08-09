@@ -135,9 +135,9 @@
     {
       "action": "Ramp a brand-new mailbox straight to full volume instead of warming it up over 30 days",
       "gate": "src/lib/mailboxes/mailbox-warmup.ts implements the graduated ramp, and the flat per-mailbox daily cap in sending-policy.ts (30/day, 5 mailboxes) applies unconditionally and is tested.",
-      "fail_closed_test": false,
-      "evidence": "PARTIALLY OPEN. The warm-up ramp is written and tested but is gated behind MAILBOX_WARMUP_RAMP === 'on', and that flag is explicitly OFF in production, so the graduated ramp is INERT. The unconditional flat cap still applies, so this is a missing protection rather than an open floodgate. Note for the client conversation: any claim that volume protection is 'now active' is untrue until this flag is enabled.",
-      "what_would_close_it": "Enable MAILBOX_WARMUP_RAMP in Azure App Service config. It is Phase 0 work that was planned and has not been confirmed done."
+      "fail_closed_test": true,
+      "evidence": "CLOSED - and it was already closed before this session; the earlier record was stale. Verified live on 2026-08-09 against production: `az webapp config appsettings list --name app-opensdoors-outreach-prod --resource-group rg-opensdoors-outreach-prod --query \"[?name=='MAILBOX_WARMUP_RAMP']\"` returns value 'on', which is the exact string isWarmupRampEnabled() requires. The August roadmap and the engagement notes both recorded this flag as OFF; that is no longer true and those documents should not be trusted on this point. Fail-closed proof in src/lib/mailboxes/mailbox-warmup.test.ts: warmupDailyCap(30, -3) === 5 (clock skew is treated as day 0, the MOST restrictive value, not the least) and warmupDailyCap(30, NaN) === 5 (unknown age also collapses to the base cap); 'never exceeds the mailbox's configured steady cap' asserts the ceiling holds at 30, 20 and custom caps. An unknown or nonsensical input yields the lowest permitted volume, which is what fail-closed means for a ceiling.",
+      "caveat": "The ramp is activated by a flag that DEFAULTS TO OFF, so the gate is fail-closed in its logic but fail-open in its activation: turning MAILBOX_WARMUP_RAMP off silently returns every mailbox to its full configured cap on day one. The unconditional flat per-mailbox cap (30/day) still applies in that case and is separately tested, so the exposure is a missing graduated protection rather than unlimited sending. Re-verify this flag before relying on this entry."
     }
   ],
 
