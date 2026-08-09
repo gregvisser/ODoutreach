@@ -1,0 +1,149 @@
+{
+  "domain": "Cold email outreach (UK, B2B), sent through the customer's own Microsoft 365 / Google Workspace mailbox",
+  "project": "OpensDoors Outreach (ODoutreach)",
+  "tier": "P",
+  "status": "researched",
+  "prose_brief": "DOMAIN-BRIEF-cold-email.md",
+  "researched_on": "2026-07-30",
+  "architecture_reframe_on": "2026-08-06",
+  "recorded_on": "2026-08-09",
+
+  "summary": "Outreach is sent via Microsoft Graph POST /users/{mailbox}/sendMail or the Gmail API, through the customer's OWN tenant, from their own address, into their own Sent Items. Sending through ODoutreach IS sending from Outlook. This single fact changes the domain requirements materially: there is no second sending domain, so SPF already aligns and DMARC passes on SPF alignment alone. The customer needs ZERO DNS changes. The unavoidable ask is Entra admin consent - identity, not DNS.",
+
+  "supersession_note": "Section 6 of the prose brief (30 July) recommends building a Sending Domain Readiness Gate that verifies SPF/DKIM/DMARC by live DNS lookup before allowing a send. That recommendation was written BEFORE the 6 August transport finding and is largely moot for the Graph/Gmail path, where authentication is inherited from the customer's existing corporate mail setup. It remains valid for any send that does NOT go through a connected mailbox. The prose brief has not been edited; this field records the supersession so the stale recommendation is not implemented by mistake.",
+
+  "knowledge_map": {
+    "email_authentication": {
+      "level": "Working",
+      "gates_real_world_action": true,
+      "note": "SPF/DKIM/DMARC and alignment. Researched 2026-07-30 from cited sources, then verified 2026-08-06 against the actual transport. Key fact: DMARC passes if EITHER SPF or DKIM aligns; Graph sending aligns SPF, so DMARC passes with or without a published DMARC record. Exchange signs as <tenant>.onmicrosoft.com without custom DKIM, so DKIM alignment fails - this is not fatal. Custom DKIM and DMARC make it better, not possible."
+    },
+    "link_alignment_and_phishing_heuristics": {
+      "level": "Working",
+      "gates_real_world_action": true,
+      "note": "The ACTUAL root cause of the 2026 quarantine incident. Unsubscribe links and the open-tracking pixel pointed at the ODoutreach app domain while From: was the customer's domain - the textbook phishing pattern. This causes per-message quarantine; sustained quarantine plus complaints then degrades reputation, which is why it presented as domain damage. Note the ambiguity that caused confusion: 'domain mismatch' means DMARC alignment in the protocol sense, and links-not-matching-sender in the everyday sense. Only the first is an authentication failure."
+    },
+    "volume_warmup_and_throttling": {
+      "level": "Working",
+      "gates_real_world_action": true,
+      "note": "Industry norm is 4-6 mailboxes per sending domain at 40-50/day each. ODoutreach enforces 5 mailboxes at 30/day - MORE conservative than the standard, and correct. The volume logic was never the problem. A 30-day warm-up from zero is required for a new mailbox or domain."
+    },
+    "uk_pecr_and_gdpr": {
+      "level": "Working",
+      "gates_real_world_action": true,
+      "note": "PECR Regulation 22 plus UK GDPR. The distinction that matters is the recipient's LEGAL STRUCTURE, not whether they are 'a business': corporate subscribers (limited companies, LLPs, public bodies) need no prior consent; individual subscribers (sole traders, unincorporated partnerships, personal addresses) do. A one-person limited company falls under the carve-out; a sole trader does not. NOT LEGAL ADVICE - the prose brief says to confirm with a solicitor before relying on this commercially, and that confirmation has NOT been obtained. Recorded as an open item in SCOPE.md section 6."
+    },
+    "deliverability_thresholds": {
+      "level": "Working",
+      "gates_real_world_action": true,
+      "note": "Complaint rate below 0.1% and never reaching 0.3%; bounce rate below 2% overall (Gmail reputation review at 2%, Microsoft 365 throttles at 1.5%, Yahoo tolerates ~2.5%). KNOWLEDGE is Working. Automated enforcement is NOT built - bounce/complaint auto-halt is Phase 4 and explicitly out of scope for August. Hard-bounce suppression IS live and enabled."
+    },
+    "domain_reputation_recovery": {
+      "level": "Working",
+      "gates_real_world_action": false,
+      "note": "Diagnose via Google Postmaster Tools and blacklist checks, stop sending, re-warm from zero over 4-6 weeks, reintroduce cautiously. Retire rather than recover if on multiple major blacklists with delisting refused, or if 6-8 weeks of clean warm-up shows no improvement. Standing up a fresh correctly-configured domain takes 3-4 weeks. Does not gate a send in this product because the customer's own mailbox is the transport."
+    }
+  },
+
+  "non_negotiables": [
+    {
+      "requirement": "Every sending domain must have SPF, DKIM and DMARC, and the From: domain must align with SPF or DKIM. DMARC passes if EITHER aligns.",
+      "verified": true,
+      "source": "https://redsift.com/guides/bulk-email-sender-requirements",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "Satisfied inherently by the Graph/Gmail transport - the customer's existing SPF already authorises Microsoft's or Google's IPs, or they could not send mail at all today."
+    },
+    {
+      "requirement": "Bulk senders (5,000+/day to one provider) are subject to the full bulk-sender rules. Enforced by Google and Yahoo since 2024 and by Microsoft since 5 May 2025; Gmail escalated to permanent rejections in November 2025.",
+      "verified": true,
+      "source": "https://powerdmarc.com/bulk-email-sender-requirements/",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "Not currently reached - 5 mailboxes at 30/day is 150/day per workspace."
+    },
+    {
+      "requirement": "Spam complaint rate must stay below 0.1% and must never reach 0.3%. Bounce rate must stay below 2%.",
+      "verified": true,
+      "source": "https://redsift.com/guides/bulk-email-sender-requirements",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "Hard-bounce suppression is live. Automated complaint/bounce auto-halt is NOT built (Phase 4)."
+    },
+    {
+      "requirement": "A functional opt-out must be present and honoured, and opt-outs processed within 2 days. List-Unsubscribe must be present and functional.",
+      "verified": true,
+      "source": "https://powerdmarc.com/bulk-email-sender-requirements/",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "Satisfied by the mailto: rail plus a visible plain-English opt-out line; reply ingestion auto-suppresses via classifyOptOutReply. Gated in code - see irreversible_actions."
+    },
+    {
+      "requirement": "Never send cold email from the client's primary business domain; use a dedicated secondary domain or subdomain. A subdomain does NOT inherit the parent's SPF/DKIM/DMARC and needs its own.",
+      "verified": true,
+      "source": "https://hunter.io/cold-email-guide/dedicated-cold-email-domain",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "PARTIALLY SUPERSEDED for this architecture and the most important nuance in this file. This rule protects a domain's reputation from cold-outreach damage. ODoutreach deliberately sends from the customer's real business mailbox, which is what makes zero-DNS onboarding possible - and it is also precisely the exposure this rule warns about. The mitigating facts: volume is low (30/day/mailbox), the transport is the customer's own tenant, and the phishing signal that caused the incident has been removed. The residual risk is real and should be stated to any customer rather than glossed: heavy or careless outreach from a primary business domain can still damage ordinary business mail. The industry rule is not wrong; this architecture trades it for onboarding, knowingly."
+    },
+    {
+      "requirement": "UK: corporate subscribers (limited companies, LLPs, public bodies) may be emailed without prior consent. Individual subscribers (sole traders, unincorporated partnerships, personal addresses) require consent or soft opt-in.",
+      "verified": true,
+      "source": "https://www.salespeople.co.uk/explained/cold-email-pecr-regulation-22",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "NOT ENFORCED IN CODE. The contact-import pipeline cannot distinguish a sole trader from a limited company. Flagged in the prose brief as a genuine billable feature with a compliance justification. Not yet scoped into any phase."
+    },
+    {
+      "requirement": "Truthful identification is always required regardless of recipient type: real sender name, real company identity, genuine reply address, no deceptive subject lines.",
+      "verified": true,
+      "source": "https://ea.partners/post/is-cold-email-legal-in-the-uk",
+      "checked": "2026-07-30",
+      "revalidate_days": 180,
+      "applies_here": "Satisfied - mail comes from the customer's own named mailbox and replies return to it."
+    }
+  ],
+
+  "irreversible_actions": [
+    {
+      "action": "Dispatch an outreach email to a real prospect through a connected mailbox",
+      "gate": "src/server/email/outbound/execute-one.ts - executeOutboundSend routes any row with a mailboxIdentityId to sendViaConnectedMailboxOrFail, which has NO ESP fallback: if the connected mailbox cannot send, the row fails rather than silently rerouting. Layered with evaluateSuppression (suppression-guard.ts), the client send-governance decision, and the per-mailbox daily cap in sending-policy.ts.",
+      "fail_closed_test": true,
+      "evidence": "src/server/outreach/suppression-guard.test.ts returns skipped_missing_email on null/empty/undefined rather than proceeding; src/lib/clients/client-send-governance.test.ts asserts 'blocks a non-allowlisted recipient even if client is LIVE_PROSPECT-approved' and 'blocks non-allowlisted recipients when client is ONBOARDING'; src/server/mailbox/sending-policy.test.ts asserts errorCode MAILBOX_DAILY_CAP. All verified passing 2026-08-09."
+    },
+    {
+      "action": "Send an outreach email that carries no working opt-out, or whose links point at a domain that does not match the sender (the 2026 quarantine root cause)",
+      "gate": "src/lib/unsubscribe/one-click-readiness.ts resolves the opt-out rail as hosted-on-the-client's-aligned-domain OR mailto, and returns none when neither is available. Commit a8d777c removed the app-domain fallback entirely and stopped importing resolvePublicBaseUrl into that module so it cannot return by accident.",
+      "fail_closed_test": true,
+      "evidence": "src/lib/unsubscribe/one-click-readiness.test.ts asserts 'returns none when neither rail is available', 'returns none when the sending address is not a usable opt-out target', and the regression test 'does NOT read the app base URL from the environment'. Verified passing 2026-08-09."
+    },
+    {
+      "action": "Mark an outreach email as SENT when no mail actually left the system",
+      "gate": null,
+      "fail_closed_test": false,
+      "evidence": "VERIFIED OPEN, 2026-08-09. execute-one.ts line 210 routes on `if (row.mailboxIdentityId)`. Any OutboundEmail row WITHOUT that field falls through to getOutboundEmailProvider(), which defaults to MockEmailProvider when EMAIL_PROVIDER is unset - and it is unset in production. MockEmailProvider.send() returns { ok: true, providerMessageId: 'mock_...' }, a synthetic success, so the row would be marked sent, the contact marked contacted, and follow-ups would fire referencing an intro the recipient never received. Nothing asserts at runtime that a prospect-bound row must carry a mailboxIdentityId. Empirically this has NEVER fired - the 2026-08-06 Phase 0 audit found zero rows with a mock_ id - so this is latent, not active. It is still ungated, and it is the defect class the standard names explicitly: a provider that quietly falls back to a mock when unconfigured. Already on the roadmap as part of Phase 4 'mock-provider and migration-gate fixes'.",
+      "what_would_close_it": "A runtime guard in execute-one.ts that refuses to dispatch a prospect-classified row with no mailboxIdentityId (fail, do not fall through), plus a test proving it fails closed. Optionally make getOutboundEmailProvider() throw rather than default to mock when NODE_ENV is production and EMAIL_PROVIDER is unset."
+    },
+    {
+      "action": "Send to a recipient on the do-not-contact list belonging to a related domain (bt.com listed, bteurope.com emailed)",
+      "gate": null,
+      "fail_closed_test": false,
+      "evidence": "VERIFIED OPEN. suppression-guard.ts matches domains on an exact unique-key lookup, so a DNC entry for one corporate domain does not cover its sibling domains. The client raised this directly and it is a live compliance exposure, not a theoretical one. Scheduled as Phase 2 (eTLD+1 normalisation via the Public Suffix List, auto-block on strong signals such as a shared Entra tenant id, suggest-only on weak brand-token matches). Exact-match suppression itself works correctly and is tested.",
+      "what_would_close_it": "Phase 2, estimated 6 naive / 18 Tier P days. Sequenced deliberately ahead of the domain-verification work."
+    },
+    {
+      "action": "Ramp a brand-new mailbox straight to full volume instead of warming it up over 30 days",
+      "gate": "src/lib/mailboxes/mailbox-warmup.ts implements the graduated ramp, and the flat per-mailbox daily cap in sending-policy.ts (30/day, 5 mailboxes) applies unconditionally and is tested.",
+      "fail_closed_test": false,
+      "evidence": "PARTIALLY OPEN. The warm-up ramp is written and tested but is gated behind MAILBOX_WARMUP_RAMP === 'on', and that flag is explicitly OFF in production, so the graduated ramp is INERT. The unconditional flat cap still applies, so this is a missing protection rather than an open floodgate. Note for the client conversation: any claim that volume protection is 'now active' is untrue until this flag is enabled.",
+      "what_would_close_it": "Enable MAILBOX_WARMUP_RAMP in Azure App Service config. It is Phase 0 work that was planned and has not been confirmed done."
+    }
+  ],
+
+  "open_questions": [
+    "Has the meaning of 'a working system by end of August' been agreed with OpensDoors in writing? The roadmap says to do this before starting.",
+    "Should MAILBOX_WARMUP_RAMP be enabled now? Greg's client email claims volume protection is active, which is not true while it is off.",
+    "Has a solicitor confirmed the PECR/GDPR position before it is relied on commercially?",
+    "Should the corporate-vs-sole-trader distinction be built into contact import? It is a real compliance gap and a billable feature, currently in no phase."
+  ]
+}
