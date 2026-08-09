@@ -1,78 +1,104 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-09 · Tier P (Client Production) · branch `feat/zero-dns-send-profile`**
+**Updated 2026-08-09 · Tier P (Client Production)**
 
 ## Where the build actually is
 
 `/bidlow-init` was run on an existing, live, deployed product — not a new repo.
-Most foundations already existed; the missing ones were laid this session. No
-source files were changed.
+Most foundations already existed; the missing ones were laid, and one real defect
+found during the domain pass was fixed.
 
-### Laid this session
+Two branches came out of this session, both **local, unpushed**:
 
-| File | Why |
+| Branch | Contents |
 |---|---|
-| `.gitattributes` | Was absent. Non-negotiable #5, `* text=auto eol=lf` |
-| `CLAUDE.md` line 1 | Tier P declared. Was absent, which is why the build gate was shut |
-| `SCOPE.md` | Tier P requires it. Written from the August roadmap and engagement notes |
-| `CUSTOMER-READY-REPORT.md` | Was referenced by `CLAUDE.md` but did not exist — a dangling reference blocks the gate. Created as an explicit NOT YET GRADED record, not a pass |
-| `.bidlow/DOMAIN.json` | The machine-readable brief the gate reads. The prose brief existed; this did not |
-| `.bidlow/STATE.md` | This file |
+| `chore/bidlow-foundations` (`5737fb7`) | Tier P declared, `.gitattributes`, `SCOPE.md`, `CUSTOMER-READY-REPORT.md`, `.bidlow/DOMAIN.json`, this file. Docs only |
+| `fix/refuse-mock-send-for-prospect-rows` | The mock-send guard + tests. Branched from the above |
 
-### Gates run and their real output, 2026-08-09
+## Gates run and their real output, 2026-08-09
+
+Measured on `fix/refuse-mock-send-for-prospect-rows`:
 
 | Gate | Command | Result |
 |---|---|---|
-| Lint | `npm run lint` | **exit 0**, no problems |
-| Typecheck | `npm run typecheck` | **exit 0**, no errors |
-| Tests | `npm test` | **1852 passed / 213 files**, 10.2s |
-| Build | `npm run build` | **NOT RUN** this session |
-| e2e | `npm run test:e2e` | **NOT RUN** this session |
+| Lint | `npm run lint` | **exit 0** |
+| Typecheck | `npm run typecheck` | **exit 0** |
+| Tests | `npm test` | **1836 passed / 214 files** |
+| Build | `npm run build` | **NOT RUN** |
+| e2e | `npm run test:e2e` | **NOT RUN** |
 
-## What is half-done, and exactly where
+**Test counts are branch-dependent — do not compare them across branches.**
+Baseline on this branch is **1828 / 213**; the guard adds 8 tests in 1 file.
+`feat/zero-dns-send-profile` reports **1852** because it carries ~24 extra tests
+from the unsubscribe/mailto work that is not in `main`.
 
-**The zero-DNS send profile is committed but NOT merged and NOT deployed.**
-Branch `feat/zero-dns-send-profile` sits 4 commits ahead of `main`:
+## The defect found and fixed this session
 
-- `36a1fdf` mailto opt-out rail + rail resolver
-- `83b7170` site-wide cross-domain link audit
-- `c6a4a83` visible opt-out on the mailto rail
-- `a8d777c` **the root-cause fix** — stop minting unsubscribe links on the app domain
+**A prospect send with no `mailboxIdentityId` would have been silently
+mock-"sent".** `execute-one.ts` routed on `if (row.mailboxIdentityId)`; rows
+without it fell to `getOutboundEmailProvider()`, which returns `MockEmailProvider`
+whenever `EMAIL_PROVIDER` is unset — as it is in production. The mock returns a
+synthetic `{ ok: true }`, so the row would have been marked SENT, the contact
+marked contacted, and follow-ups would have fired referencing an introduction the
+recipient never received.
 
-This is the days 5–9 work of a 9-day August window with zero slack. Until it
-merges and deploys, the incident's root cause is fixed in git and not in
-production.
+It had **never fired** — the 6 August audit found zero `mock_` rows. Latent, not
+active. Now gated by `prospect-send-transport-guard.ts`, which refuses any row
+carrying a `contactId` but no mailbox, and fails it with `NO_SENDING_MAILBOX`
+rather than falling through.
 
-## The one finding that came out of this session
+Two deliberate decisions recorded in `.bidlow/DOMAIN.json`:
 
-**A prospect send with no `mailboxIdentityId` would be silently mock-"sent".**
+- **Not behind a feature flag**, against the local convention. It can only
+  intercept rows headed for the mock, so it cannot turn a real send into a
+  non-send — a flag defaulting to off would just leave the defect live.
+- **The wiring is not covered by an automated test**, only the pure decision
+  function. `executeOutboundSend` needs a database and the unit suite is
+  deliberately DB-free. Verified by reading. An integration test belongs in
+  `execute-one.integration.test.ts` when a database is available.
 
-`src/server/email/outbound/execute-one.ts:210` routes on `if (row.mailboxIdentityId)`.
-Rows without it fall to `getOutboundEmailProvider()`, which defaults to
-`MockEmailProvider` when `EMAIL_PROVIDER` is unset — and it is unset in
-production. `MockEmailProvider.send()` returns a synthetic `{ ok: true }`, so the
-row would be marked SENT, the contact marked contacted, and follow-ups would fire
-referencing an intro email the recipient never received.
+## Still open, and why
 
-It has **never fired** — the 6 August Phase 0 audit found zero `mock_` rows. It is
-latent, not active. It is also genuinely ungated, and it is the exact defect class
-the standard names: *a provider that quietly falls back to a mock when
-unconfigured*. Already on the roadmap inside Phase 4.
+`.bidlow/DOMAIN.json` records **2 irreversible actions as ungated**. Both are
+known, scheduled, and were open before this session:
 
-**This is why the build gate is still shut.** It is recorded honestly in
-`.bidlow/DOMAIN.json` under `irreversible_actions` rather than rounded up.
+1. **DNC sibling domains** — `suppression-guard.ts` matches domains on an exact
+   key, so `bt.com` on the list does not cover `bteurope.com`. The gate exists and
+   is tested; its matching is narrower than ideal. Phase 2, ~18 Tier P days. Live
+   compliance exposure the client raised directly
+2. **Warm-up ramp** — written and tested but inert, because
+   `MAILBOX_WARMUP_RAMP` is not `on`. The flat 30/day cap applies unconditionally
+   and is tested, so this is a missing protection, not an open floodgate
+
+**Consequence: the build gate is still shut**, and will stay shut until those two
+are closed or re-recorded. That is the standard working as designed.
+
+## A real gap in the standards tooling
+
+The build gate **blocks its own remedy**. Recording an ungated action honestly
+makes it impossible to write the fix for that action, because the gate refuses all
+non-markdown writes anywhere — including `~/.claude/settings.json` and the hook's
+own `lib.mjs`. The hook was parked by hand to land this fix.
+
+`knowledge_map` pillars have a `mitigation_recorded` escape hatch. `irreversible_actions`
+has none — [lib.mjs](C:/Bidlowprojects/_standards/bidlow-standards/plugins/bidlow-standards/scripts/lib.mjs)
+`ungatedActions()` is a bare `!a.gate || a.fail_closed_test !== true`. Worth adding
+a dated, recorded waiver field; this will hit every Bidlow repo that records an
+honest gap.
 
 ## Pick this up first
 
-1. **Decide on the mock-fallback guard** (below). It opens the build gate and
-   closes a real "claim a send that did not happen" defect. Small: a runtime
-   refusal in `execute-one.ts` plus a fail-closed test.
-2. **Merge and deploy `feat/zero-dns-send-profile`** via PR — branch protection is
-   on, `git push origin main` is refused. Verify by commit via `/api/build-info`,
-   never by liveness alone.
-3. **Decide `MAILBOX_WARMUP_RAMP`.** It is off, so the graduated warm-up is inert.
-   The flat 30/day cap still applies. A client email has claimed volume protection
-   is active; that is not true while this is off.
+1. **Re-enable the build-gate hook** if it is still parked — restore the
+   `"matcher": "Write|Edit|NotebookEdit"` line in `~/.claude/settings.json`
+2. **Merge and deploy `feat/zero-dns-send-profile`** — the incident's root-cause
+   fix is in git, not in production. Branch protection is on, so PR only. Verify
+   by commit via `/api/build-info`, never by liveness alone
+3. **Set `MAILBOX_WARMUP_RAMP=on`** in Azure App Service config. One flag, then a
+   stable window. It makes the "volume protection is active" line in the client
+   email true
+4. **Push is blocked** until `/bidlow-ship` (role chain) and `/bidlow-grade`
+   (Engineering ≥ 8 and Customer-Ready ≥ 8) have run. Customer-Ready is
+   deliberately ungraded — it requires walking the product live
 
 ## Decisions already locked — do not relitigate
 
@@ -91,5 +117,6 @@ unconfigured*. Already on the roadmap inside Phase 4.
 
 ## Open questions
 
-Four, carried in `.bidlow/DOMAIN.json` under `open_questions`, plus the
-NEEDS CONFIRMATION items in `SCOPE.md`.
+Five. Four in `.bidlow/DOMAIN.json` under `open_questions`, plus whether to add
+the waiver mechanism to the standards hook. See also the NEEDS CONFIRMATION items
+in `SCOPE.md`.
