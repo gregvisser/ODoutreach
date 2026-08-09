@@ -1,0 +1,60 @@
+{
+  "graded_at": "2026-08-09",
+  "commit": "fd1cffce854b8a1e1224665aa28011e36d80217b",
+  "tier": "P",
+  "target_band": "8.5-9.5",
+
+  "engineering": {
+    "score": 8.0,
+    "verdict": "Real, tested, production software - but sitting just BELOW its own Tier P target band, and the reason is specific.",
+    "evidence_run_today": {
+      "lint": "npm run lint -> exit 0, no problems",
+      "typecheck": "npm run typecheck -> exit 0, no errors (strict)",
+      "tests": "npm test -> 1836 passed across 214 files, exit 0",
+      "build": "npm run build -> exit 0, webpack production build",
+      "health": "GET /api/health -> {ok:true, checks:{database:'ok'}}",
+      "deployed_commit": "GET /api/build-info -> b36e66e, built 2026-07-20, equals origin/main"
+    },
+    "met": [
+      "Strict typecheck at zero",
+      "Lint at zero",
+      "Real business-logic tests, not a smoke suite - 214 files covering suppression, send governance, per-mailbox caps, warm-up ramp, unsubscribe rails, bounce policy and reply matching, with genuine fail-closed assertions",
+      "Tenant isolation tests present (server/tenant/access.test.ts, contacts/csv-import-graph-isolation.test.ts)",
+      "Merge-blocking CI gate, branch protection on main",
+      "Automated deploy via Entra OIDC with a post-deploy health check, verified by commit rather than liveness",
+      "Secrets gitignored; .env.example is the committed template",
+      "Error monitoring wired (Sentry server + edge configs)"
+    ],
+    "not_met": [
+      "NO e2e coverage of critical journey J5 - enrol, launch, send, reply, opt-out. The Playwright suite covers authentication, staff role boundaries and outbound-email detail; it does not cover the journey that actually reaches a third party's inbox. This is the single biggest reason this is not a 9.",
+      "Coverage thresholds are NOT verified as enforced. A test:coverage script exists; whether CI fails below a threshold was not checked today, so it is not claimed.",
+      "Sentry is configured but I did not verify it is RECEIVING events in production. Wired is not the same as live."
+    ],
+    "why_not_higher": "The standard is explicit that a 9 requires strict typecheck, lint, real tests AND enforced coverage, e2e on critical journeys, live error monitoring, gitignored secrets, a merge-blocking CI gate, and automated deploy plus health check - ALL present and passing. Three of those are unproven or absent. Rounding to 8.5 to land inside the tier band would be exactly the false-9 the protocol exists to prevent.",
+    "why_not_lower": "1836 genuine tests with fail-closed assertions on the send path is not a scaffold. Every gate that was run, passed."
+  },
+
+  "customer_ready": {
+    "score": null,
+    "status": "NOT GRADED",
+    "why": "A Customer-Ready grade must come from walking the product live against the full rubric. I walked two pages of production (the reporting dashboard and one 404) with a live authenticated session. That is enough to raise findings and nowhere near enough to justify a number. Putting a score here would be inventing evidence to unblock a production deploy, which is the precise failure mode this gate exists to catch.",
+    "findings_so_far": [
+      "Reporting dashboard renders real live data cleanly and states its own methodology ('live counts, no rollup tables'; sends counted only with provider proof). Reads as trustworthy.",
+      "PWA install prompt is present and correct, satisfying the standing BidlowAI PWA rule.",
+      "204 of ~1,470 contacts show 'send proof missing' (~14%), against 1,209 sends with proof. Unexplained, and material to whether an operator can trust the numbers.",
+      "Delivered shows 'Not tracked - no provider delivery webhooks yet'; Bounces read 0 (0%) and Opens 0 across 1,209 sends. The domain brief makes bounce rate below 2% a non-negotiable. A 0% reading with no delivery webhooks most likely means bounces are not being DETECTED. A threshold that cannot be measured cannot be enforced - this is the most important open question on the product.",
+      "/operations returned 404 on production. Not diagnosed; may be a moved route rather than a defect.",
+      "Known, pre-existing: the Google OAuth app remains in Testing mode, so Google-connected mailboxes need reconnecting roughly weekly. Recurring, customer-visible friction."
+    ],
+    "how_to_complete": "Run the customer-ready-audit skill as its own focused session, walk the product as a customer against the full rubric, and save a dated CUSTOMER-READY-REPORT.md. The placeholder file in the repo root already records the known caps."
+  },
+
+  "sell_gate": {
+    "requirement": "Engineering >= 8 AND Customer-Ready >= 8",
+    "engineering": "8.0 - meets the bar",
+    "customer_ready": "not graded - bar cannot be evaluated",
+    "result": "NOT SATISFIED. Push and deploy remain blocked, correctly. Half of the gate has never been measured."
+  },
+
+  "open_questions": 5
+}
