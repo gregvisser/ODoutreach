@@ -113,7 +113,18 @@ committing it would make itself stale) and `.bidlow/GRADES.json` (tracked).
 | Architect / Test / Security / SRE / Reviewer | **passed**, with gaps recorded |
 | Head of Engineering | **sign-off WITHHELD** |
 | Engineering grade | **8.0** — below the 8.5–9.5 Tier P band, deliberately |
-| Customer-Ready grade | **NOT GRADED** |
+| Customer-Ready grade | **4.0** — graded 2026-08-09 by walking production live |
+
+**Customer-Ready 4.0** (weighted rubric 6.0, capped for a defective core journey).
+Full detail in `CUSTOMER-READY-REPORT.md`. The deciding finding: **production
+still mints unsubscribe links on the OpensDoors app domain** — deployed
+`send-introduction.ts:529` falls through `resolveClientLinkBaseUrl(client) ??
+resolvePublicBaseUrl()` to `AUTH_URL`, because no client has a verified aligned
+domain. That is the phishing pattern behind the quarantine. The tracking-pixel
+half IS fixed and live (`OPEN_TRACKING_PIXEL=off`, verified). The unsubscribe half
+is fixed in `a8d777c` and **unshipped**.
+
+**Sell gate: Engineering 8.0 AND Customer-Ready 4.0 → NOT SATISFIED.**
 
 Engineering is 8.0 not 8.5 because three of the nine things a 9 requires are
 unproven or absent: no e2e on critical journey J5, coverage thresholds not
