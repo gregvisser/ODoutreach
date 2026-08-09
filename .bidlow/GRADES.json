@@ -35,9 +35,15 @@
   },
 
   "customer_ready": {
-    "score": null,
-    "status": "NOT GRADED",
-    "why": "A Customer-Ready grade must come from walking the product live against the full rubric. I walked two pages of production (the reporting dashboard and one 404) with a live authenticated session. That is enough to raise findings and nowhere near enough to justify a number. Putting a score here would be inventing evidence to unblock a production deploy, which is the precise failure mode this gate exists to catch.",
+    "score": 4.0,
+    "band": "Not customer-ready (3.0-4.9)",
+    "status": "GRADED 2026-08-09 by walking production live as a signed-in operator",
+    "report": "CUSTOMER-READY-REPORT.md",
+    "weighted_total_before_caps": 6.0,
+    "cap_applied": "Core customer journey broken/not functional -> cap 4.0. A judgement call, stated openly in the report: the send journey is not mechanically broken (mail leaves, 1,209 sends carry provider proof) but production still mints unsubscribe links on the OpensDoors app domain while From: is the customer's own domain - the exact phishing pattern that caused the quarantine. A journey that completes while defeating its own purpose is not a working journey from the customer's side. If the cap is rejected, the honest uncapped number is 6.0; either way it is below 8 and the required actions are identical.",
+    "decisive_evidence": "Deployed commit b36e66e contains send-introduction.ts:529 `resolveClientLinkBaseUrl(client) ?? resolvePublicBaseUrl()`. No client has a verified aligned link domain, so it falls through to AUTH_URL = https://opensdoors.bidlow.co.uk. The fix (commit a8d777c) exists on the UNMERGED branch feat/zero-dns-send-profile. The other half of the root cause IS fixed and live: OPEN_TRACKING_PIXEL=off, verified against Azure config today.",
+    "why_not_higher": "Beyond the link defect: the Train Hugger workspace shows 'LATEST ACTIVITY - No sends yet' while the reporting page shows 743 sends for that same client, so operators are shown two different truths; bounces read 0 (0%) across 1,209 sends because there are no delivery webhooks, making a stated non-negotiable unenforceable; 204 of ~1,470 contacts show 'send proof missing'; /operations 404s and /clients/{id}/activity silently redirects.",
+    "why_not_lower": "This is not a scaffold. Dev-ism hygiene is genuinely strong (9/10) - friendly labels, no raw enums or cuids, 'Workspace ID' not 'Slug'. UX is good (8/10): a numbered setup workflow, a real launch-readiness panel, and a danger zone that states precisely what deletion does and does not touch and requires typing the workspace name. Auth held and no cross-customer leakage was seen.",
     "findings_so_far": [
       "Reporting dashboard renders real live data cleanly and states its own methodology ('live counts, no rollup tables'; sends counted only with provider proof). Reads as trustworthy.",
       "PWA install prompt is present and correct, satisfying the standing BidlowAI PWA rule.",
@@ -52,8 +58,8 @@
   "sell_gate": {
     "requirement": "Engineering >= 8 AND Customer-Ready >= 8",
     "engineering": "8.0 - meets the bar",
-    "customer_ready": "not graded - bar cannot be evaluated",
-    "result": "NOT SATISFIED. Push and deploy remain blocked, correctly. Half of the gate has never been measured."
+    "customer_ready": "4.0 - FAILS the bar (6.0 even uncapped)",
+    "result": "NOT SATISFIED. Fix the lower grade first: Customer-Ready. The single highest-impact action is to review, merge and deploy feat/zero-dns-send-profile, which removes the app-domain unsubscribe links from production. Push and deploy remain blocked."
   },
 
   "open_questions": 5
