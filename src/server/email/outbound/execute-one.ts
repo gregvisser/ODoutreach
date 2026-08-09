@@ -25,6 +25,7 @@ import {
   evaluateOutboundDispatchRecheck,
   isDispatchRecheckEnabled,
 } from "./dispatch-recheck";
+import { evaluateProspectSendTransport } from "./prospect-send-transport-guard";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 import {
@@ -205,6 +206,17 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   if (!row.subject || !row.bodySnapshot) {
     await markFailed(row.id, "INVALID_PAYLOAD", "Missing subject or body snapshot");
     return { ok: false, error: "Invalid payload" };
+  }
+
+  // A prospect-bound row must leave through a connected mailbox. Without one it
+  // would fall through to the legacy provider stack below, which is the mock
+  // whenever EMAIL_PROVIDER is unset — and the mock reports success without
+  // sending anything. Refuse instead of silently reporting a send that never
+  // happened. See prospect-send-transport-guard.ts for the full reasoning.
+  const transport = evaluateProspectSendTransport(row);
+  if (transport.block) {
+    await markFailed(row.id, transport.code, transport.reason);
+    return { ok: false, error: transport.reason };
   }
 
   if (row.mailboxIdentityId) {
