@@ -14,5 +14,20 @@
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
     "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
   },
-  "amendments": []
+  "amendments": [
+    {
+      "file": "e2e/cross-tenant.spec.ts",
+      "date": "2026-08-22",
+      "authorised_by": "Claude (agent), reviewed by Greg",
+      "what": "First run showed the draft targeted /contacts, a super-admin-only route that redirects members before any tenant filter runs, and asserted an HTTP 404 that a streamed route cannot return. Retargeted at the workspace-scoped contacts list and asserted on disclosure instead of status, so the test fails on a real leak rather than on its own mechanics.",
+      "sha256_after": "e34db4745bfb945e7e5226b1846c2b32c94ae312dac8d3d899c66749630b5888"
+    },
+    {
+      "file": "e2e/cross-tenant.spec.ts",
+      "date": "2026-08-22",
+      "authorised_by": "Claude (agent), for Greg's review",
+      "what": "Second correction after running: the client contacts tab renders contact LISTS not addresses, so it could not carry the spec's recipient rows. Retargeted at the workspace overview (identity) and the activity feed (real prospect addresses and subjects), and added an explicit positive control.",
+      "sha256_after": "5ba3d1c106ef5b6d6f9221969edd57be64c78dc85ca1f16d128b69ded8679a83"
+    }
+  ]
 }
