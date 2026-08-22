@@ -5,6 +5,7 @@ import {
   extractDomainFromEmail,
   normalizeDomain,
   normalizeEmail,
+  suppressionDomainCandidates,
 } from "@/lib/normalize";
 import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
 
@@ -34,6 +35,8 @@ export async function evaluateSuppression(
 ): Promise<SuppressionDecision> {
   const normalizedEmail = normalizeEmail(email);
   const normalizedDomain = normalizeDomain(extractDomainFromEmail(normalizedEmail));
+  // The recipient's domain plus each of its parents, most specific first.
+  const domainCandidates = suppressionDomainCandidates(normalizedDomain);
 
   // Feature A — internal seed / allowlist addresses are ALWAYS deliverable:
   // short-circuit BEFORE the suppression-list lookups so a seed address is
@@ -50,22 +53,21 @@ export async function evaluateSuppression(
     };
   }
 
-  const [emailHit, domainHit] = await Promise.all([
+  const [emailHit, domainHits] = await Promise.all([
     prisma.suppressedEmail.findUnique({
       where: {
         clientId_email: { clientId, email: normalizedEmail },
       },
     }),
-    normalizedDomain
-      ? prisma.suppressedDomain.findUnique({
-          where: {
-            clientId_domain: {
-              clientId,
-              domain: normalizedDomain,
-            },
-          },
+    // A suppressed domain covers its subdomains: match the recipient's domain
+    // OR any of its parents, so suppressing `bt.com` also stops a send to
+    // `someone@newsletter.bt.com`. `suppressionDomainCandidates` splits on
+    // label boundaries, so `notbt.com` and `bt.com.evil.net` do NOT match.
+    domainCandidates.length > 0
+      ? prisma.suppressedDomain.findMany({
+          where: { clientId, domain: { in: domainCandidates } },
         })
-      : Promise.resolve(null),
+      : Promise.resolve([]),
   ]);
 
   if (emailHit) {
@@ -78,13 +80,18 @@ export async function evaluateSuppression(
     };
   }
 
-  if (domainHit) {
+  if (domainHits.length > 0) {
+    // Report the most specific matching row, so the audit trail names the entry
+    // a human would point at when asked why this send was blocked.
+    const matched = domainCandidates.find((candidate) =>
+      domainHits.some((row) => row.domain === candidate),
+    );
     return {
       suppressed: true,
       reason: "domain_list",
       normalizedEmail,
       normalizedDomain,
-      matchedDomain: domainHit.domain,
+      matchedDomain: matched ?? domainHits[0].domain,
     };
   }
 

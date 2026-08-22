@@ -11,17 +11,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * We mock Prisma so `suppressedEmail.findUnique` returns the row the bounce
  * writer would have created.
  */
-const { suppressedEmailFindUnique, suppressedDomainFindUnique } = vi.hoisted(
+const { suppressedEmailFindUnique, suppressedDomainFindMany } = vi.hoisted(
   () => ({
     suppressedEmailFindUnique: vi.fn(),
-    suppressedDomainFindUnique: vi.fn(),
+    suppressedDomainFindMany: vi.fn(),
   }),
 );
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     suppressedEmail: { findUnique: (...a: unknown[]) => suppressedEmailFindUnique(...a) },
-    suppressedDomain: { findUnique: (...a: unknown[]) => suppressedDomainFindUnique(...a) },
+    suppressedDomain: { findMany: (...a: unknown[]) => suppressedDomainFindMany(...a) },
   },
 }));
 
@@ -29,7 +29,8 @@ import { evaluateSuppression, isAddressSuppressed } from "./suppression-guard";
 
 beforeEach(() => {
   suppressedEmailFindUnique.mockReset().mockResolvedValue(null);
-  suppressedDomainFindUnique.mockReset().mockResolvedValue(null);
+  // The guard matches the recipient domain OR any parent, so this is findMany.
+  suppressedDomainFindMany.mockReset().mockResolvedValue([]);
 });
 
 describe("evaluateSuppression blocks a hard-bounced address", () => {
