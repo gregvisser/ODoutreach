@@ -1,6 +1,115 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-09 · Tier P (Client Production)**
+**Updated 2026-08-22 · Tier P (Client Production)**
+
+## Session 2026-08-22 — Monday pilot prep. READ THIS FIRST.
+
+Working branch: **`integrate/monday-pilot`** — local, **unpushed, not deployed**.
+Production still serves `b36e66e` (built 2026-07-20). It contains, on top of
+`fix/refuse-mock-send-for-prospect-rows`:
+
+| Commit | What |
+|---|---|
+| `06ef3d7` | BC-01 cross-tenant spec + membership personas committed (were untracked) |
+| `e61cbde` | **merge of `feat/zero-dns-send-profile`** — no unsubscribe links on the app domain |
+| `e100de6` | BC-01 corrected so it fails on the real leak, not on its own mechanics |
+| `e18cdf6` | **DNC subdomain fix** — a suppressed domain now covers its subdomains |
+| `8adb7b5` | CLASSIFY research answers + partial DNC gate recorded in DOMAIN.json |
+
+Gates on that branch: lint **0**, typecheck **0**, **1875 tests / 216 files all
+pass**, build green, e2e **11 pass / 3 fail** — the 3 failures are BC-01 and are
+deliberate (see below).
+
+## THE FINDING — no tenant isolation between staff
+
+`getAccessibleClientIds` (`src/server/tenant/access.ts`) **discards its `staff`
+argument and returns every live client.** `ClientMembership` is never consulted on
+any read path. The docstring says so deliberately. Proven live: a staff member of
+Client B only can open Client A's workspace, its activity feed (real prospect
+address + subject) and its outbound email detail — all HTTP 200 with full data.
+
+Two supporting facts:
+- **`src/server/tenant/access.test.ts` cannot detect this.** It mocks
+  `prisma.client.findMany`, so it never sees the `where` clause that is the whole
+  control. It stayed green with isolation both on and off.
+- **BC-01 discriminates in both directions.** Red as-is; scoping
+  `getAccessibleClientIds` to `ClientMembership` in a scratch branch turned all 5
+  green. That scratch was reverted, not committed. Typecheck, build and all 1860
+  unit tests passed with it applied — the code cost is one function; the risk is
+  the DATA question below.
+
+**This blocks the two-customer pilot and it is Greg's decision, not an
+engineering fix.** Options: one instance and accept OpensDoors staff reading
+Bidlow's data and vice versa; or Bidlow goes to its own existing instance at
+`outreach.bidlow.co.uk`; or build real isolation — 64 call sites, plus the open
+question of whether production staff hold any `ClientMembership` rows at all
+(if not, switching it on shows them nothing — an outage).
+
+## Half-done / where exactly it was left
+
+- **Nothing is pushed or deployed.** Branch protection requires branch → PR → CI
+  → merge. `integrate/monday-pilot` is ready for a PR once the pilot shape is
+  decided. Local `main` is **2** commits ahead of `origin/main` (both docs-only).
+- **DNC gate still blocks, correctly.** The subdomain half is built and tested
+  (test seen RED first). The **related-domain** half (`bt.com` → `bteurope.com`)
+  is untouched because it is a client business rule. `fail_closed_test` stays
+  false in DOMAIN.json.
+- **CLASSIFY**: 6 of 13 questions answered with sources + expiries. The 7 open
+  ones are all `decision`/`fact` — Greg only. Listed in `_still_blank_and_why`.
+- **204 contacts with "send proof missing"** — still undiagnosed; needs production
+  DB access to say whether it touches the pilot clients. Not attempted.
+
+## Decisions and one-way doors touched
+
+- **No one-way door was walked through this session.** `data_residency` and
+  `retention_model` remain UNSETTLED and are recorded as such in CLASSIFY, not
+  guessed.
+- Recorded a **compensating control** in DOMAIN.json for unmeasured bounces:
+  20 sends/client/day, max 10/mailbox, first 10 working days. Lifts only when
+  `MAILBOX_BOUNCE_DETECTION_ENABLED=true` AND a measured bounce rate under 2%
+  over 200+ sends.
+
+## Discovered — contradicts the brief, and worth not re-deriving
+
+- **Bounce detection is NOT absent.** `src/server/mailbox/bounce-detection.ts`
+  parses NDR/DSN bounce-backs during inbox sync and IS wired in. It is gated by
+  **`MAILBOX_BOUNCE_DETECTION_ENABLED`, default OFF, absent from `.env.example`**.
+  0% bounces across ~1,209 sends most likely means nothing is measuring.
+  Turning it on is an env var, not a webhook project.
+- **Suppression is only half append-only.** Google-Sheet-sourced suppression is
+  **replace-on-sync** (`deleteMany` then rewrite by `sourceId`), so removing a row
+  from the client's sheet makes that address sendable again.
+- **The freeze is broken on a fresh checkout.** 8 of 11 hashes in FROZEN.json are
+  of CRLF bytes for files `.gitattributes` stores and checks out as LF. Any clone
+  reports 8 phantom SAFETY blocks. Defect in `freeze-specs.mjs` — it should hash
+  the canonical LF form. Left alone rather than quietly rewritten.
+- **The build gate is not enforcing**: its `PreToolUse` matcher in
+  `~/.claude/settings.json` is `"TEMPORARILY_DISABLED"`.
+- **BC-01's original assertions were wrong twice** (freeze amended twice, with
+  reasons): `/contacts` is super-admin-only and redirects members before any
+  tenant filter — so the `?client=` case was a FALSE GREEN; and `loading.tsx`
+  makes those routes stream, so a correct implementation also returns HTTP 200
+  and E-03 cannot be asserted on status. It asserts disclosure now.
+- **Playwright reuses an existing server on :3000** — a stale one silently
+  invalidates a run. Same shape as the Azure stale-build trap.
+
+## Next session picks up
+
+1. **Greg's decision on the pilot shape** (one instance vs Bidlow separate vs
+   build isolation). Nothing else about the pilot is safe to settle first.
+2. The 7 classification questions + the 2 env checks
+   (`MAILBOX_WARMUP_RAMP`, `MAILBOX_BOUNCE_DETECTION_ENABLED`).
+3. The related-domain DNC rule, then finish that gate.
+4. PR `integrate/monday-pilot` → `main` once 1 is decided.
+
+## Nothing in PROJECT.json is contradicted
+
+`lifecycle: live` and `live_url` both confirmed — production answered
+`/api/health` 200 and `/api/build-info` `b36e66e`.
+
+---
+
+## Earlier — session 2026-08-09
 
 ## Where the build actually is
 
