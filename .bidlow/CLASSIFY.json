@@ -1,0 +1,6 @@
+{
+  "_comment": "STAGE 2 — CLASSIFY. Types declared 2026-08-20 from evidence in the codebase, NOT from assumption: the repo sends on clients' behalf via sequences and mailboxes (email_infrastructure), holds contacts/clients/campaigns with membership-scoped access (crm, multi_tenancy, identity_auth), advances sequences on a schedule via GitHub Actions (background_processing), and carries a do-not-contact suppression list (regulated_data). ANSWERS ARE DELIBERATELY EMPTY — declaring the type is a fact; answering the questions is research nobody has done yet, and inventing answers here would be the exact failure this stage exists to prevent.",
+  "types": ["cold_outreach"],
+  "declared_by": "Cowork session, 2026-08-20, from code evidence",
+  "answers": {}
+}

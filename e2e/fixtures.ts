@@ -46,7 +46,48 @@ export const E2E_OUTBOUND_EMAIL = {
   subject: "E2E fixture subject",
 } as const;
 
+/**
+ * ---------------------------------------------------------------------------
+ * Cross-tenant isolation fixtures. Ported from the BOutreach fork 2026-08-20.
+ *
+ * The existing personas cannot test isolation: the super admin sees everything
+ * by design, and plain staff hold no ClientMembership so they see nothing. The
+ * case where a leak actually happens is the one in between - a staff user who is
+ * a member of exactly ONE client. These two personas are that case.
+ * ---------------------------------------------------------------------------
+ */
+
+/** A second workspace. Nothing in it may ever be visible from Client A. */
+export const E2E_CLIENT_B = {
+  id: "e2e-client-000000000000000002",
+  name: "E2E Second Workspace",
+  slug: "e2e-second-workspace",
+} as const;
+
+/** Staff member of Client A only. */
+export const E2E_MEMBER_A = {
+  entraObjectId: "e2e-oid-member-a-000000000000003",
+  email: "e2e-member-a@opensdoors.example",
+  displayName: "E2E Member A",
+} as const;
+
+/** Staff member of Client B only. The one who must never see Client A data. */
+export const E2E_MEMBER_B = {
+  entraObjectId: "e2e-oid-member-b-000000000000004",
+  email: "e2e-member-b@opensdoors.example",
+  displayName: "E2E Member B",
+} as const;
+
+/** A contact belonging to Client B, so each side has something of its own. */
+export const E2E_CONTACT_B = {
+  id: "e2e-contact-00000000000000002",
+  email: "recipient-b@example.test",
+  fullName: "E2E Recipient B",
+} as const;
+
 export const E2E_STORAGE_STATE = {
   superAdmin: "e2e/.auth/super-admin.json",
   staff: "e2e/.auth/staff.json",
+  memberA: "e2e/.auth/member-a.json",
+  memberB: "e2e/.auth/member-b.json",
 } as const;
