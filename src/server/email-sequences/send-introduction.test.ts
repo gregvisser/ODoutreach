@@ -81,13 +81,13 @@ function mountSequence(overrides?: Record<string, unknown>) {
   } as never);
 }
 
-function mountMailboxPool() {
+function mountMailboxPool(email = "sender@bidlow.co.uk") {
   prismaMock.clientMailboxIdentity.findMany.mockResolvedValue([
     {
       id: "m1",
       clientId: "c1",
-      email: "sender@bidlow.co.uk",
-      emailNormalized: "sender@bidlow.co.uk",
+      email,
+      emailNormalized: email,
       displayName: null,
       provider: "MICROSOFT",
       connectionStatus: "CONNECTED",
@@ -318,9 +318,13 @@ describe("sendSequenceStepBatch — governance gate", () => {
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("BLOCKS a non-allowlisted real-prospect send when one-click unsubscribe is not configured", async () => {
+  it("BLOCKS a non-allowlisted real-prospect send when NO opt-out rail exists at all", async () => {
     mountSequence();
-    mountMailboxPool();
+    // A pool whose only mailbox address cannot receive a mailto opt-out, and
+    // (via beforeEach) no AUTH_URL / INTERNAL_APP_URL / NEXT_PUBLIC_APP_URL and
+    // no client aligned link domain. There is genuinely no way for this
+    // recipient to opt out, so the send must be blocked.
+    mountMailboxPool("not-a-valid-address");
     mountClient({
       status: "ACTIVE",
       launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
@@ -328,9 +332,6 @@ describe("sendSequenceStepBatch — governance gate", () => {
     });
     mountReadyRow("prospect@example.com", "ss-no-unsub");
 
-    // beforeEach cleared AUTH_URL / INTERNAL_APP_URL / NEXT_PUBLIC_APP_URL,
-    // so no hosted, redeemable unsubscribe link can be minted. The send
-    // must be blocked rather than emailed with a dead opt-out.
     const result = await sendSequenceStepBatch({
       staff,
       clientId: "c1",
@@ -346,6 +347,40 @@ describe("sendSequenceStepBatch — governance gate", () => {
         where: { id: "ss-no-unsub" },
         data: expect.objectContaining({
           status: "BLOCKED",
+          blockedReason: expect.stringContaining("blocked_unsubscribe_required"),
+        }),
+      }),
+    );
+  });
+
+  it("ALLOWS a real-prospect send with no app base URL — the mailbox mailto is a working opt-out", async () => {
+    mountSequence();
+    // Same conditions as the block case above except the mailbox address is
+    // usable. Before 2026-08 this was blocked, because the only rail the gate
+    // recognised was a hosted link on the OpensDoors app domain - which is
+    // exactly the misalignment that caused the quarantine incident. A
+    // monitored mailto on the sender's own domain is a genuinely usable
+    // opt-out, so the send now proceeds.
+    mountMailboxPool();
+    mountClient({
+      status: "ACTIVE",
+      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+      launchApprovalMode: "LIVE_PROSPECT",
+    });
+    mountReadyRow("prospect@example.com", "ss-mailto-rail");
+
+    await sendSequenceStepBatch({
+      staff,
+      clientId: "c1",
+      sequenceId: "seq-1",
+      category: "INTRODUCTION",
+      confirmationPhrase: "SEND INTRODUCTION",
+    });
+
+    expect(prismaMock.clientEmailSequenceStepSend.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "ss-mailto-rail" },
+        data: expect.objectContaining({
           blockedReason: expect.stringContaining("blocked_unsubscribe_required"),
         }),
       }),

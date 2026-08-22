@@ -74,12 +74,23 @@ export type SendGovernanceInput = {
   recipientAllowlisted: boolean;
   sendKind: SendKind;
   /**
-   * `true` only when one-click unsubscribe is wired end-to-end: a public
-   * base URL is configured so the dispatcher can mint a hosted, redeemable
-   * unsubscribe link + List-Unsubscribe header. The sequence dispatcher
-   * passes the live `isOneClickUnsubscribeReady()` value. When `false`,
-   * real-prospect sequence sends AND controlled-pilot sends are blocked so
-   * no recipient is emailed an unusable opt-out.
+   * `true` when the send has a working opt-out rail. Either:
+   *
+   *   * **hosted** — the client has a verified sender-aligned link domain
+   *     (`go.<client-domain>`), so a redeemable unsubscribe link and RFC 8058
+   *     one-click header can be minted on their OWN domain; or
+   *   * **mailto** — a sending mailbox that can receive an opt-out reply.
+   *     Replies are ingested by the reply sync and suppressed automatically by
+   *     `classifyOptOutReply`.
+   *
+   * When `false`, real-prospect sequence sends AND controlled-pilot sends are
+   * blocked so no recipient is emailed an unusable opt-out.
+   *
+   * Widened 2026-08 from "is a public base URL configured?". That older check
+   * was satisfied by the OpensDoors app domain, which is precisely the link
+   * misalignment that caused the quarantine incident — so it reported ready
+   * while the only available link was the harmful one. A monitored mailto is a
+   * genuinely usable opt-out; no rail at all still blocks exactly as before.
    */
   oneClickUnsubscribeReady: boolean;
   /**

@@ -70,17 +70,22 @@ import {
   linkReservationToOutboundInTransaction,
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
-import {
-  isOneClickUnsubscribeReady,
-  resolvePublicBaseUrl,
-} from "@/lib/unsubscribe/one-click-readiness";
+// NOTE: `resolvePublicBaseUrl` is deliberately NOT imported here. It returns the
+// OpensDoors app domain, and putting that host into an outreach email whose
+// From: is the customer's domain is the confirmed cause of the 2026 quarantine
+// incident. Hosted unsubscribe links come from the client's own aligned domain
+// via `resolveClientLinkBaseUrl`, or we use the mailto rail instead.
 import {
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeUrl,
   generateRawUnsubscribeToken,
   hashUnsubscribeToken,
 } from "@/lib/unsubscribe/unsubscribe-token";
-import { buildListUnsubscribeHeaders } from "@/lib/unsubscribe/list-unsubscribe-headers";
+import {
+  buildListUnsubscribeHeaders,
+  buildMailtoUnsubscribeHeaders,
+  normaliseUnsubscribeMailtoAddress,
+} from "@/lib/unsubscribe/list-unsubscribe-headers";
 import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-unsubscribe-in-body";
 
 /**
@@ -236,12 +241,17 @@ function sortMailboxesForPoolPick(
 }
 
 /**
- * Fallback unsubscribe link used only when one-click unsubscribe is
- * NOT wired (no public base URL configured). Preserves the previous
- * D4e.1 placeholder shape so allowlisted governed-test sends keep
- * rendering with a non-empty unsubscribe token. Real-prospect sends
- * are gated by `isOneClickUnsubscribeReady()` in the send governance
- * helper, so this branch is never taken for non-allowlisted recipients.
+ * Unsubscribe link used whenever no hosted link can be minted on the client's
+ * own aligned domain — which, until a client configures `go.<domain>`, is the
+ * normal case rather than an edge case.
+ *
+ * It is a `mailto:` on the client's own sending address, so the composed body
+ * carries no host other than the sender's. Opt-outs arriving this way are
+ * ingested by the reply sync and suppressed by `classifyOptOutReply`.
+ *
+ * The send-governance gate independently requires SOME working opt-out rail
+ * before a real prospect can be emailed, so a send never goes out with no way
+ * to opt out.
  */
 function buildUnsubscribePlaceholder(
   clientDefaultSenderEmail: string | null,
@@ -523,11 +533,25 @@ export async function sendSequenceStepBatch(input: {
   // with a non-empty `{{unsubscribe_link}}`; the real-prospect gate in
   // `evaluateSendGovernance` has already blocked non-allowlisted
   // recipients in that case.
-  // Prefer the client's sender-aligned link domain (go.<client-domain>) so
-  // unsubscribe + tracking links match the sending domain; fall back to the
-  // global base only while a client's aligned domain isn't configured yet.
-  const publicBaseUrl = resolveClientLinkBaseUrl(client) ?? resolvePublicBaseUrl();
-  const oneClickReady = isOneClickUnsubscribeReady();
+  // ROOT-CAUSE FIX (2026-08): only ever mint a hosted unsubscribe URL on the
+  // client's OWN sender-aligned link domain (go.<client-domain>).
+  //
+  // This previously fell back to `resolvePublicBaseUrl()` — the OpensDoors app
+  // domain — whenever a client had no aligned domain, which is every client.
+  // That put a link on an unrelated host into an email whose From: is the
+  // customer's domain: the textbook phishing pattern, and the confirmed cause
+  // of the quarantine incident. See
+  // docs/audits/2026-08-06-deliverability-root-cause.md.
+  //
+  // With no aligned domain we fall through to the mailto rail instead, so the
+  // email carries no host other than the sender's own.
+  const alignedLinkBaseUrl = resolveClientLinkBaseUrl(client);
+  // A send has a working opt-out if it can mint a hosted link on an aligned
+  // domain, or if any mailbox in the pool can receive a mailto opt-out. Reply
+  // ingestion + `classifyOptOutReply` then suppress the contact automatically.
+  const oneClickReady =
+    alignedLinkBaseUrl !== null ||
+    pool.some((m) => normaliseUnsubscribeMailtoAddress(m.email) !== null);
   const fallbackUnsubscribeLink = buildUnsubscribePlaceholder(
     client.defaultSenderEmail,
   );
@@ -950,24 +974,30 @@ export async function sendSequenceStepBatch(input: {
             // the POST-capable `/api/unsubscribe/<token>` so RFC 8058 one-click
             // actually suppresses instead of 405-ing on the GET-only page.
             let oneClickUnsubscribeUrl: string | null = null;
-            if (publicBaseUrl !== null) {
+            if (alignedLinkBaseUrl !== null) {
               rawUnsubscribeToken = generateRawUnsubscribeToken();
               hostedUnsubscribeUrl = buildUnsubscribeUrl({
-                baseUrl: publicBaseUrl,
+                baseUrl: alignedLinkBaseUrl,
                 rawToken: rawUnsubscribeToken,
               });
               unsubscribeUrlForSend = hostedUnsubscribeUrl;
               oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl({
-                baseUrl: publicBaseUrl,
+                baseUrl: alignedLinkBaseUrl,
                 rawToken: rawUnsubscribeToken,
               });
             }
-            // PR N / H1 — build List-Unsubscribe / List-Unsubscribe-Post
-            // header values from the one-click (POST) URL, only when we have a
-            // hosted http(s) URL. The helper returns null for the mailto
-            // fallback so we never emit a header pointing at a placeholder.
+            // PR N / H1 — List-Unsubscribe / List-Unsubscribe-Post from the
+            // one-click (POST) URL when we have a hosted https URL on the
+            // client's aligned domain.
+            //
+            // Otherwise fall back to the mailto rail pointed at THIS sending
+            // mailbox, so the recipient still gets their mail client's native
+            // unsubscribe button and the header carries no foreign host. The
+            // mailto builder deliberately omits List-Unsubscribe-Post — RFC
+            // 8058 one-click is defined for HTTPS only.
             const listUnsubscribeHeaders =
-              buildListUnsubscribeHeaders(oneClickUnsubscribeUrl);
+              buildListUnsubscribeHeaders(oneClickUnsubscribeUrl) ??
+              buildMailtoUnsubscribeHeaders(m.email);
             const senderRowForSend = buildSenderRow(
               client,
               brief,
