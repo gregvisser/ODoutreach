@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock Prisma with exactly the delegates the gate + seed lookup touch.
-const { seedFindFirst, suppEmailFindUnique, suppDomainFindUnique } = vi.hoisted(
+const { seedFindFirst, suppEmailFindUnique, suppDomainFindMany } = vi.hoisted(
   () => ({
     seedFindFirst: vi.fn(),
     suppEmailFindUnique: vi.fn(),
-    suppDomainFindUnique: vi.fn(),
+    suppDomainFindMany: vi.fn(),
   }),
 );
 
@@ -18,7 +18,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: (...a: unknown[]) => suppEmailFindUnique(...a),
     },
     suppressedDomain: {
-      findUnique: (...a: unknown[]) => suppDomainFindUnique(...a),
+      findMany: (...a: unknown[]) => suppDomainFindMany(...a),
     },
   },
 }));
@@ -31,9 +31,9 @@ const prevFlag = process.env[FLAG];
 beforeEach(() => {
   seedFindFirst.mockReset();
   suppEmailFindUnique.mockReset();
-  suppDomainFindUnique.mockReset();
+  suppDomainFindMany.mockReset();
   suppEmailFindUnique.mockResolvedValue(null);
-  suppDomainFindUnique.mockResolvedValue(null);
+  suppDomainFindMany.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -55,7 +55,7 @@ describe("Feature A — internal seed exemption at the suppression gate", () => 
     expect(d.normalizedEmail).toBe("adam@opensdoors.co.uk");
     // Short-circuits BEFORE the suppression-list lookups.
     expect(suppEmailFindUnique).not.toHaveBeenCalled();
-    expect(suppDomainFindUnique).not.toHaveBeenCalled();
+    expect(suppDomainFindMany).not.toHaveBeenCalled();
   });
 
   it("with the flag OFF, the exemption never applies and a suppressed seed address stays blocked (no behaviour change, no seed query)", async () => {
