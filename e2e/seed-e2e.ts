@@ -16,7 +16,11 @@ import { Pool } from "pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
   E2E_CLIENT,
+  E2E_CLIENT_B,
   E2E_CONTACT,
+  E2E_CONTACT_B,
+  E2E_MEMBER_A,
+  E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
   E2E_STAFF,
   E2E_SUPER_ADMIN,
@@ -101,7 +105,59 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
       },
       update: { status: "SENT", subject: E2E_OUTBOUND_EMAIL.subject },
     });
-  } finally {
+
+    // ---- cross-tenant isolation fixtures (BC-01) -----------------------
+    // A second workspace, and one staff member scoped to each. Membership is
+    // what getAccessibleClientIds reads, so without these rows the isolation
+    // path is never exercised by a test.
+    await prisma.client.upsert({
+      where: { id: E2E_CLIENT_B.id },
+      create: {
+        id: E2E_CLIENT_B.id,
+        name: E2E_CLIENT_B.name,
+        slug: E2E_CLIENT_B.slug,
+        status: "ACTIVE",
+      },
+      update: { name: E2E_CLIENT_B.name, status: "ACTIVE", deletedAt: null },
+    });
+
+    for (const [person, clientId] of [
+      [E2E_MEMBER_A, E2E_CLIENT.id],
+      [E2E_MEMBER_B, E2E_CLIENT_B.id],
+    ] as const) {
+      const staff = await prisma.staffUser.upsert({
+        where: { entraObjectId: person.entraObjectId },
+        create: {
+          entraObjectId: person.entraObjectId,
+          email: person.email,
+          displayName: person.displayName,
+          isActive: true,
+          isSuperAdmin: false,
+          role: "OPERATOR",
+        },
+        update: { isActive: true, isSuperAdmin: false, role: "OPERATOR" },
+      });
+
+      await prisma.clientMembership.upsert({
+        where: { staffUserId_clientId: { staffUserId: staff.id, clientId } },
+        create: { staffUserId: staff.id, clientId, role: "CONTRIBUTOR" },
+        update: { role: "CONTRIBUTOR" },
+      });
+    }
+
+    // Client B needs a record of its own, so the test proves each side sees its
+    // own data and not the other, rather than merely seeing nothing.
+    await prisma.contact.upsert({
+      where: { id: E2E_CONTACT_B.id },
+      create: {
+        id: E2E_CONTACT_B.id,
+        clientId: E2E_CLIENT_B.id,
+        email: E2E_CONTACT_B.email,
+        fullName: E2E_CONTACT_B.fullName,
+        emailDomain: "example.test",
+      },
+      update: { email: E2E_CONTACT_B.email, isSuppressed: false },
+    });  } finally {
     await prisma.$disconnect();
     await pool.end();
   }

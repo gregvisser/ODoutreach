@@ -21,7 +21,13 @@ import path from "node:path";
 import { encode } from "next-auth/jwt";
 
 import { E2E_AUTH_SECRET, E2E_BASE_URL, E2E_DATABASE_URL } from "./env";
-import { E2E_STAFF, E2E_STORAGE_STATE, E2E_SUPER_ADMIN } from "./fixtures";
+import {
+  E2E_MEMBER_A,
+  E2E_MEMBER_B,
+  E2E_STAFF,
+  E2E_STORAGE_STATE,
+  E2E_SUPER_ADMIN,
+} from "./fixtures";
 
 /**
  * next-auth derives the JWE salt from the session cookie name
@@ -105,6 +111,15 @@ async function globalSetup(): Promise<void> {
   await writeStorageState({
     ...E2E_STAFF,
     filePath: E2E_STORAGE_STATE.staff,
+  });
+  // Membership-scoped personas - the only ones that can prove BC-01.
+  await writeStorageState({
+    ...E2E_MEMBER_A,
+    filePath: E2E_STORAGE_STATE.memberA,
+  });
+  await writeStorageState({
+    ...E2E_MEMBER_B,
+    filePath: E2E_STORAGE_STATE.memberB,
   });
 }
 

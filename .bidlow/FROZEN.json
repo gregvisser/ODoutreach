@@ -1,0 +1,18 @@
+{
+  "_what": "Hashes of the frozen rules. A change here without an amendment is the gate's SAFETY block.",
+  "_rule": "If a rule is wrong, the human changes it and the tests follow — never the reverse.",
+  "frozen": {
+    "e2e/README.md": "bed7918c945db2bac48fe3e091bdaf022d5715cda7d9a14573d364db3b693bfc",
+    "e2e/cross-tenant.spec.ts": "347cb305e1b511c3b634d6afb8644a1d6007bc010e9edcc23fad15abdd3c0c17",
+    "e2e/env.ts": "a548afa9527d8438812343feb0f58732e81186fc2bb0eff89b75b9708003ce28",
+    "e2e/fixtures.ts": "6c720649b2faacd1372faa7a6b8d9314c0998a523dbd87876fed71ce42b19848",
+    "e2e/global-setup.ts": "d6eef6ab4ec220bdda83920304d3abd8bf54eec512808647d765855306f6ba03",
+    "e2e/journeys.spec.ts": "a6c974bfa25a0040cc908bb1604d845fab197010fa1480894ab584e1a104c43c",
+    "e2e/safe-database.test.ts": "a0a52e7730a59ea9c55fa09a844d4f94930090c9bb598bfb48fcae703d5a60d1",
+    "e2e/safe-database.ts": "ee769ac71f7f08b669b81b5e5459c07d9196b1e01104d84350d4f13ada5ee4aa",
+    "e2e/seed-e2e.ts": "09360905a1cf44e6522fb00e188dbd78aa5b540a95968c053976d70f0ce104cf",
+    "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
+    "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
+  },
+  "amendments": []
+}
