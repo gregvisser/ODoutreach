@@ -7,11 +7,8 @@
   "researched_on": "2026-07-30",
   "architecture_reframe_on": "2026-08-06",
   "recorded_on": "2026-08-09",
-
   "summary": "Outreach is sent via Microsoft Graph POST /users/{mailbox}/sendMail or the Gmail API, through the customer's OWN tenant, from their own address, into their own Sent Items. Sending through ODoutreach IS sending from Outlook. This single fact changes the domain requirements materially: there is no second sending domain, so SPF already aligns and DMARC passes on SPF alignment alone. The customer needs ZERO DNS changes. The unavoidable ask is Entra admin consent - identity, not DNS.",
-
   "supersession_note": "Section 6 of the prose brief (30 July) recommends building a Sending Domain Readiness Gate that verifies SPF/DKIM/DMARC by live DNS lookup before allowing a send. That recommendation was written BEFORE the 6 August transport finding and is largely moot for the Graph/Gmail path, where authentication is inherited from the customer's existing corporate mail setup. It remains valid for any send that does NOT go through a connected mailbox. The prose brief has not been edited; this field records the supersession so the stale recommendation is not implemented by mistake.",
-
   "knowledge_map": {
     "email_authentication": {
       "level": "Working",
@@ -44,7 +41,6 @@
       "note": "Diagnose via Google Postmaster Tools and blacklist checks, stop sending, re-warm from zero over 4-6 weeks, reintroduce cautiously. Retire rather than recover if on multiple major blacklists with delisting refused, or if 6-8 weeks of clean warm-up shows no improvement. Standing up a fresh correctly-configured domain takes 3-4 weeks. Does not gate a send in this product because the customer's own mailbox is the transport."
     }
   },
-
   "non_negotiables": [
     {
       "requirement": "Every sending domain must have SPF, DKIM and DMARC, and the From: domain must align with SPF or DKIM. DMARC passes if EITHER aligns.",
@@ -103,7 +99,6 @@
       "applies_here": "Satisfied - mail comes from the customer's own named mailbox and replies return to it."
     }
   ],
-
   "irreversible_actions": [
     {
       "action": "Dispatch an outreach email to a real prospect through a connected mailbox",
@@ -130,7 +125,14 @@
       "gate": null,
       "fail_closed_test": false,
       "evidence": "VERIFIED OPEN. suppression-guard.ts matches domains on an exact unique-key lookup, so a DNC entry for one corporate domain does not cover its sibling domains. The client raised this directly and it is a live compliance exposure, not a theoretical one. Scheduled as Phase 2 (eTLD+1 normalisation via the Public Suffix List, auto-block on strong signals such as a shared Entra tenant id, suggest-only on weak brand-token matches). Exact-match suppression itself works correctly and is tested.",
-      "what_would_close_it": "Phase 2, estimated 6 naive / 18 Tier P days. Sequenced deliberately ahead of the domain-verification work."
+      "what_would_close_it": "Phase 2, estimated 6 naive / 18 Tier P days. Sequenced deliberately ahead of the domain-verification work.",
+      "partial_gate_2026_08_22": {
+        "what_was_built": "A suppressed domain now covers its SUBDOMAINS. src/lib/normalize.ts suppressionDomainCandidates expands the recipient domain into itself plus each parent (newsletter.bt.com -> [newsletter.bt.com, bt.com]); src/server/outreach/suppression-guard.ts evaluateSuppression matches any of them. Splits on label boundaries, not string suffix, so notbt.com and bt.com.evil.net are still NOT blocked. Stops at two labels so a stray 'com' row cannot blackhole every send.",
+        "fail_closed_test": "src/server/outreach/suppression-guard.subdomain.test.ts — 8 tests. Seen RED first against the old exact-match lookup: the three subdomain cases failed while the four over-blocking guards already passed. Green after the fix. Plus 7 pure-function tests in src/lib/normalize.test.ts.",
+        "what_is_STILL_UNGATED": "RELATED COMPANY DOMAINS — the thing this register entry actually names. Whether do-not-contact for bt.com also covers bteurope.com cannot be derived from the string and is a client business rule, not an engineering inference. Until Greg decides it, there is no gate for this action and fail_closed_test stays false. The block is correct and must remain.",
+        "decided_by": "Greg — open question, see open_questions",
+        "recorded_on": "2026-08-22"
+      }
     },
     {
       "action": "Ramp a brand-new mailbox straight to full volume instead of warming it up over 30 days",
@@ -140,11 +142,21 @@
       "caveat": "The ramp is activated by a flag that DEFAULTS TO OFF, so the gate is fail-closed in its logic but fail-open in its activation: turning MAILBOX_WARMUP_RAMP off silently returns every mailbox to its full configured cap on day one. The unconditional flat per-mailbox cap (30/day) still applies in that case and is separately tested, so the exposure is a missing graduated protection rather than unlimited sending. Re-verify this flag before relying on this entry."
     }
   ],
-
   "open_questions": [
     "Has the meaning of 'a working system by end of August' been agreed with OpensDoors in writing? The roadmap says to do this before starting.",
     "Should MAILBOX_WARMUP_RAMP be enabled now? Greg's client email claims volume protection is active, which is not true while it is off.",
     "Has a solicitor confirmed the PECR/GDPR position before it is relied on commercially?",
     "Should the corporate-vs-sole-trader distinction be built into contact import? It is a real compliance gap and a billable feature, currently in no phase."
+  ],
+  "compensating_controls": [
+    {
+      "for": "Absent bounce measurement on the live mailbox send path",
+      "recorded_on": "2026-08-22",
+      "finding": "There are no provider delivery webhooks for Graph/Gmail sends, but bounce detection is NOT absent: src/server/mailbox/bounce-detection.ts parses NDR/DSN bounce-backs out of the connected mailbox during inbox sync and is wired into mailbox-inbox-sync.ts. It is gated by MAILBOX_BOUNCE_DETECTION_ENABLED, which DEFAULTS OFF and is absent from .env.example. A reported 0% bounce rate across ~1,209 sends is therefore much more likely to mean 'nothing is measuring' than 'delivery is clean'.",
+      "control": "Cap pilot volume hard while the bounce rate is unmeasured, and route the pilot through the controlled-pilot path (src/app/(app)/clients/controlled-pilot-send-actions.ts). Proposed cap: 20 sends per client per day, and no more than 10 per mailbox per day, for the first 10 working days.",
+      "why_that_number": "The domain brief's non-negotiable is a bounce rate below 2%. At 20 sends/day a single hard bounce is 5% of the day's volume and 0.5% of a 10-day pilot, so ONE bad address is visible by eye in the reply inbox without any measurement infrastructure at all — that is the point of the number. It also sits inside the product's own warm-up ramp (WARMUP_BASE_CAP 5, +5 every 5 days), so it does not fight the existing control, and inside the researched week-1 guidance of 5-10/day/mailbox.",
+      "trigger_that_lifts_it": "BOTH: (1) MAILBOX_BOUNCE_DETECTION_ENABLED=true in Azure App Service config, confirmed by observing at least one real NDR being detected and suppressed; and (2) a measured bounce rate below 2% over a minimum of 200 sends. Until both hold, volume is the substitute for measurement.",
+      "cheaper_first_step": "Turn MAILBOX_BOUNCE_DETECTION_ENABLED on. It is an env var on an already-built, already-tested path, not a webhook project."
+    }
   ]
 }
