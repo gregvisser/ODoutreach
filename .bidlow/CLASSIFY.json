@@ -1,6 +1,81 @@
 {
-  "_comment": "STAGE 2 — CLASSIFY. Types declared 2026-08-20 from evidence in the codebase, NOT from assumption: the repo sends on clients' behalf via sequences and mailboxes (email_infrastructure), holds contacts/clients/campaigns with membership-scoped access (crm, multi_tenancy, identity_auth), advances sequences on a schedule via GitHub Actions (background_processing), and carries a do-not-contact suppression list (regulated_data). ANSWERS ARE DELIBERATELY EMPTY — declaring the type is a fact; answering the questions is research nobody has done yet, and inventing answers here would be the exact failure this stage exists to prevent.",
-  "types": ["cold_outreach"],
+  "_comment": "STAGE 2 — CLASSIFY. Types declared 2026-08-20 from evidence in the codebase, NOT from assumption: the repo sends on clients' behalf via sequences and mailboxes (email_infrastructure), holds contacts/clients/campaigns with membership-scoped access (crm, multi_tenancy, identity_auth), advances sequences on a schedule via GitHub Actions (background_processing), and carries a do-not-contact suppression list (regulated_data).",
+  "_answers_note": "2026-08-22: the questions tagged `research` in standards/saas-types.json are drafted below from DOMAIN-BRIEF-cold-email.md (written 30 July 2026, cited) and from what the code actually does, verified by reading it on this date. The questions tagged `decision` and `fact` are DELIBERATELY still blank — the catalogue says only Greg can answer those, and inventing them here is the exact failure this stage exists to prevent. They are listed for him in the session report. A partially answered domain still blocks, and that is correct.",
+  "types": [
+    "cold_outreach"
+  ],
   "declared_by": "Cowork session, 2026-08-20, from code evidence",
-  "answers": {}
+  "answers": {
+    "email_infrastructure": {
+      "3": {
+        "answer": "30 days minimum from zero, per mailbox. Researched ramp: week 1 at 5-10/day to highly engaged recipients only, week 2 at 20-30, week 3 at 50-75 rising ~15% every 2-3 days, week 4 at 100-150; normal volume only after that, and only while monitoring. ENFORCED IN CODE, not by an operator: src/lib/mailboxes/mailbox-warmup.ts computes an effective daily cap from mailbox age (WARMUP_BASE_CAP 5, +5 every 5 days) and send-introduction.ts and controlled-pilot-send.ts both call effectiveDailyCap before dispatch. It is gated by env MAILBOX_WARMUP_RAMP === 'on'; with the flag off the steady cap applies and there is no ramp. Whether that flag is set in Azure App Service config is an env check nobody has evidenced in this repo, so the ENFORCEMENT half of this answer is only as true as that variable.",
+        "confidence": "SP",
+        "source": "DOMAIN-BRIEF-cold-email.md sec.2 'Warm-up ramp - 30 days minimum, from zero' (30 Jul 2026); code read 2026-08-22: src/lib/mailboxes/mailbox-warmup.ts, src/server/email-sequences/send-introduction.ts",
+        "expires": "2027-01-31"
+      },
+      "4": {
+        "answer": "ODoutreach does not send through a bulk ESP on the live path: it sends as the client, through their own connected Microsoft 365 or Google Workspace mailbox (Graph / Gmail API), so the governing limit is the MAILBOX provider's, not an ESP quota. The product's own enforced ceiling is 5 mailboxes per client at 30 sends/mailbox/day, which is deliberately tighter than the researched industry norm of 4-6 mailboxes at 40-50/day (~200/day/domain). CAVEAT, stated rather than hidden: Microsoft's and Google's own published per-mailbox limits were NOT re-verified against their primary documentation in this session. The figure above is the product's self-imposed cap, which is the number that actually binds today, but the provider ceiling behind it is owed a dated primary-source check before volume rises.",
+        "confidence": "SP",
+        "source": "DOMAIN-BRIEF-cold-email.md sec.2 'Volume architecture' (30 Jul 2026); code read 2026-08-22: src/server/mailbox/sending-policy.ts (DEFAULT_MAILBOX_DAILY_SEND_CAP, MAILBOX_DAILY_CAP error)",
+        "expires": "2026-11-22"
+      },
+      "5": {
+        "answer": "Unsubscribes: immediate and durable. A hosted one-click opt-out is minted only on a client-aligned link domain; with none configured the send carries a mailto opt-out on the sending mailbox, and replies are ingested and classified by classifyOptOutReply, which writes a suppression row. evaluateSuppression is re-checked at dispatch, so an opt-out registered between queue and send still blocks. Complaints: a spam-complaint path writes a suppression row (audit L2). Bounces: THIS IS THE WEAK LEG. Hard bounces suppress via suppressRecipientForHardBounce (append-only, idempotent) and BOUNCE_SUPPRESSION_ENABLED is on in production, but that only acts on a bounce someone has DETECTED. For the live mailbox path there is no provider delivery webhook; detection is by NDR/DSN bounce-back parsed out of the connected mailbox during inbox sync (src/server/mailbox/bounce-detection.ts, wired into mailbox-inbox-sync.ts) - and that is gated by MAILBOX_BOUNCE_DETECTION_ENABLED, which DEFAULTS OFF and is not even listed in .env.example. With it off, bounces are not measured at all, which is the most likely explanation for a reported 0% bounce rate across ~1,209 sends rather than genuinely clean delivery. Timing: suppression is immediate on detection; detection is bounded by the reply-sync cron, which runs every 15 minutes on weekdays.",
+        "confidence": "SP",
+        "source": "Code read 2026-08-22: src/server/outreach/suppression-guard.ts, src/server/mailbox/bounce-detection.ts (isMailboxBounceDetectionEnabled, DEFAULT OFF), src/server/mailbox/mailbox-inbox-sync.ts, src/server/email/bounce-suppression.ts, .github/workflows/sync-replies.yml; thresholds from DOMAIN-BRIEF-cold-email.md sec.1 (below 2% bounce, below 0.1% complaint)",
+        "expires": "2026-11-22"
+      },
+      "__specialist_review": {
+        "researched_from": [
+          "DOMAIN-BRIEF-cold-email.md (this repo, written 30 July 2026) — the dated, cited domain brief for cold email, covering authentication, volume architecture, the warm-up ramp, and the bounce/complaint thresholds.",
+          "Its cited sources: redsift.com/guides/bulk-email-sender-requirements; powerdmarc.com/bulk-email-sender-requirements/; hunter.io/cold-email-guide/dedicated-cold-email-domain; growleads.io/blog/subdomain-for-cold-email-protect-main-domain/",
+          "Direct reading of the sending path in this repo on 2026-08-22: mailbox-warmup.ts, sending-policy.ts, send-introduction.ts, execute-one.ts, bounce-detection.ts, mailbox-inbox-sync.ts, suppression-guard.ts"
+        ],
+        "date": "2026-08-22",
+        "note": "NO human email-deliverability specialist has reviewed this. This record is research provenance, not a specialist sign-off, and it should not be read as one. The unverified item is named in Q5: Microsoft's and Google's own published per-mailbox sending limits were not re-checked against their primary documentation in this session."
+      }
+    },
+    "regulated_data": {
+      "1": {
+        "answer": "UK PECR Regulation 22 plus UK GDPR. The distinction that governs is the recipient's LEGAL STRUCTURE, not whether they are 'a business': limited companies, LLPs and public bodies are corporate subscribers and need no prior consent, while sole traders, unincorporated partnerships and personal addresses are individual subscribers and need consent or soft opt-in exactly as consumers do. A one-person limited company falls under the carve-out; a sole trader does not. Always required regardless: truthful sender identification and a functional opt-out honoured across all future campaigns. UK GDPR sits on top - a work email address is personal data, and the lawful basis for B2B outreach is normally legitimate interests, which requires a DOCUMENTED balancing assessment (genuine purpose, proportionality, interest outweighing the recipient's rights). KNOWN PRODUCT GAP, named in the brief and still true in the code on 2026-08-22: the contact-import pipeline cannot distinguish a corporate subscriber from an individual subscriber, so the PECR consent question cannot currently be answered per recipient.",
+        "confidence": "V",
+        "source": "DOMAIN-BRIEF-cold-email.md sec.3 'The legal position - UK' (researched and cited 30 Jul 2026), citing PECR Reg 22 and UK GDPR via ea.partners/post/is-cold-email-legal-in-the-uk and salespeople.co.uk/explained/cold-email-pecr-regulation-22. Not legal advice; the brief itself says confirm with a solicitor before relying on it commercially.",
+        "expires": "2027-01-30"
+      },
+      "2": {
+        "answer": "UK/EU. The data is prospect contact data on UK businesses processed under UK GDPR, and the deployment is Azure App Service + Azure Database for PostgreSQL in the OpensDoors production resource group (rg-opensdoors-outreach-prod). UK GDPR does not mandate UK-only residency, but transfers outside the UK need a transfer mechanism, so the practical rule is: keep the database in the UK South / UK West region and do not introduce a processor that moves it. CAVEAT: the Azure region actually configured for the production database was NOT verified in this session - it is an Azure portal check, and it decides whether this answer is a description or a claim. Data residency is a listed one-way door, so it should be confirmed rather than assumed.",
+        "confidence": "SP",
+        "source": "Deployment facts from CLAUDE.md (app-opensdoors-outreach-prod, rg-opensdoors-outreach-prod) and DOMAIN-BRIEF-cold-email.md sec.3; region NOT verified 2026-08-22",
+        "expires": "2026-11-22"
+      },
+      "3": {
+        "answer": "There is no retention policy expressed in the code. Nothing in the schema or in any scheduled job deletes prospect data on age: Contact, OutboundEmail and InboundReply rows persist indefinitely, and the only deletion path is the super-admin workspace soft-delete/purge. Suppression must outlive the contact record it refers to, or deleting a contact silently un-suppresses them. NOTE, and this cuts against the usual 'suppression is append-only' shorthand: only the hard-bounce path is append-only. Google-Sheet-sourced suppression is REPLACE-ON-SYNC - suppression-sync.ts deleteMany's every SuppressedEmail and SuppressedDomain row for that sourceId and rewrites from the sheet, so an address removed from the client's sheet becomes sendable again. There is a shrink warning, but it warns rather than blocks. What SHOULD force deletion under UK GDPR storage limitation is a defined purpose-linked period (prospect data kept no longer than the outreach purpose needs) plus erasure on request; neither is implemented. Retention is a listed one-way door and it is currently UNSETTLED - which is a finding, not an answer, and it is why this domain still blocks.",
+        "confidence": "SP",
+        "source": "Code read 2026-08-22: prisma/schema.prisma (no TTL/retention fields), .github/workflows (no purge job), src/server/outreach/suppression-guard.ts (append-only suppression); storage-limitation principle per UK GDPR Art.5(1)(e) as summarised in DOMAIN-BRIEF-cold-email.md sec.3",
+        "expires": "2026-11-22"
+      },
+      "__specialist_review": {
+        "researched_from": [
+          "DOMAIN-BRIEF-cold-email.md sec.3 'The legal position — UK' (written 30 July 2026), covering PECR Regulation 22, the corporate-vs-individual subscriber distinction, and the UK GDPR legitimate-interests basis.",
+          "Its cited sources: ea.partners/post/is-cold-email-legal-in-the-uk; salespeople.co.uk/explained/cold-email-pecr-regulation-22",
+          "Direct reading of the data model and deletion paths in this repo on 2026-08-22: prisma/schema.prisma, suppression-guard.ts, google-sheets/suppression-sync.ts, .github/workflows/"
+        ],
+        "date": "2026-08-22",
+        "note": "NO solicitor has reviewed this. The brief itself says to confirm with a solicitor before relying on it commercially, and that caveat stands. Two substantive gaps are recorded rather than papered over: the import pipeline cannot distinguish a corporate subscriber from an individual subscriber (so PECR consent cannot be decided per recipient), and there is no retention policy in code."
+      }
+    }
+  },
+  "_still_blank_and_why": {
+    "email_infrastructure": {
+      "0": "decision — who owns the sending domain. Greg only.",
+      "1": "fact — whether the client will add SPF/DKIM/DMARC to their own domain. Greg only.",
+      "2": "decision — send from a subdomain or the root. One-way door. Greg only.",
+      "6": "decision — separate tracking domain. Greg only.",
+      "7": "decision — automatic stop on reputation drop, or a human noticing. Greg only."
+    },
+    "regulated_data": {
+      "0": "fact — which categories of personal data this holds. Greg only.",
+      "4": "fact — whether a DPA is signed with every processor in the chain. The chain is enumerable from the code (Microsoft Azure as host and database, Microsoft Graph and Google Workspace as mail transports, Google Sheets for suppression sync, Sentry for error monitoring, RocketReach for enrichment, Resend on the legacy fallback path) but whether each is under a signed DPA is a contract fact only Greg holds."
+    }
+  }
 }
