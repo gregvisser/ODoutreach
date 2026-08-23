@@ -1,7 +1,6 @@
 {
   "_what": "Recorded test evidence, derived programmatically from the machine-readable output of real runs (vitest --reporter=json, playwright --reporter=json). Not hand-authored.",
   "_provenance": "Produced LOCALLY, not by CI. CI now also writes and uploads this record (.github/workflows/ci.yml, both jobs, if: always()), but that step has not run yet because the branch is unpushed. A CI record supersedes this one.",
-  "commit": "64cf011127df4cb0f3a37131a076bfba48673d84",
   "recorded_on": "2026-08-23",
   "suites": [
     {
@@ -23,5 +22,7 @@
       "exit_code": 0,
       "note": "Includes the rewritten BC-01 workspace data-isolation suite (6 tests). These did NOT go red first -- the boundary already held -- so they were instead PROVEN capable of failing: removing the clientId scope from the outbound query in src/server/activity/client-activity.ts turned R-5 red (Client B's activity picked up Client A's prospect address). Scratch branch, reverted."
     }
-  ]
+  ],
+  "measured_against_tree_of": "8b32585863ec72c527fe637364f11ea725d02957",
+  "_commit_note": "Deliberately records the commit whose TREE was measured, not a self-referential HEAD: stamping a hash into a tracked file changes that hash. Commits after 8b32585 touch only .bidlow records (evidence + state), never source, so this run remains valid for them. .bidlow/CHAIN.json is gitignored and therefore carries the exact HEAD the gate compares against."
 }
