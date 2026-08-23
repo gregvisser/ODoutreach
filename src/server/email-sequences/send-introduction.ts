@@ -42,6 +42,12 @@ import { prisma } from "@/lib/db";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
+import {
+  isSendPacingEnabled,
+  minuteOfDayUtc,
+  pacingDateKey,
+  sendsPermittedByNow,
+} from "@/lib/mailboxes/send-pacing";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -910,12 +916,27 @@ export async function sendSequenceStepBatch(input: {
           // history of sending. No-op once warmed, or when the flag is off.
           // An absent entry means it has never sent — 0, never "allow".
           const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
+          // Pacing: spread the day allowance instead of emptying it into the
+          // first cron run. It never RAISES the cap - it only withholds part of
+          // it until later in the day, and yields the full cap once the window
+          // has closed, so nothing is ever stranded by pacing alone.
+          const allowedNow = isSendPacingEnabled()
+            ? Math.min(
+                cap,
+                sendsPermittedByNow({
+                  mailboxId: m.id,
+                  dateKey: pacingDateKey(at),
+                  dailyCap: cap,
+                  nowMinuteOfDay: minuteOfDayUtc(at),
+                }),
+              )
+            : cap;
           const booked = await countBookedSendSlotsInUtcWindow(
             tx,
             m.id,
             windowKey,
           );
-          localRemaining.set(m.id, Math.max(0, cap - booked));
+          localRemaining.set(m.id, Math.max(0, allowedNow - booked));
         }
 
         for (const pr of dispatchable) {
