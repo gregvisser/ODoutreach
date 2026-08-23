@@ -297,6 +297,16 @@
         "src/server/email/webhooks/outbound-provider-events.ts",
         "src/server/queries/outreach-metrics.ts"
       ]
+    },
+    {
+      "id": "WARMUP-IMPACT",
+      "question": "Does the ramp fix change what any currently-connected mailbox may send today?",
+      "answer": "CANNOT BE ANSWERED FROM THE REPOSITORY — it depends entirely on production data, which was not queried. What IS certain is the shape of the change, and the query that produces the number.",
+      "what_changes": "Before: cap = f(days since connectedAt). After: cap = f(distinct UTC dates this mailbox actually sent on). For a mailbox that has been sending steadily the two agree and nothing changes. The caps DROP only where a mailbox is older than the ramp window but has little or no sending history — which is precisely the case the fix exists for, and precisely the case being created by onboarding a client ahead of launch.",
+      "predicted": "OpensDoors' own mailboxes have ~1,209 sends behind them. If those span 25 or more distinct days they are already at the full configured cap and NOTHING changes for them. Bidlow's newly connected mailboxes have zero sending days and will correctly start at 5/day and ramp — which under the old anchor they would ALSO have done, since they are new. The mailboxes that change are any connected weeks ago and not yet launched: they drop from their full cap to 5/day. That is the intended correction, not a regression.",
+      "run_this_before_launch": "SELECT m.id, m.email, m.\"dailySendCap\", COUNT(DISTINCT DATE(o.\"sentAt\" AT TIME ZONE 'UTC')) AS sending_days, DATE_PART('day', now() - COALESCE(m.\"connectedAt\", m.\"createdAt\")) AS age_days FROM \"ClientMailboxIdentity\" m LEFT JOIN \"OutboundEmail\" o ON o.\"mailboxIdentityId\" = m.id AND o.\"sentAt\" IS NOT NULL WHERE m.\"isActive\" GROUP BY m.id, m.email, m.\"dailySendCap\", m.\"connectedAt\", m.\"createdAt\" ORDER BY sending_days ASC;",
+      "how_to_read_it": "For each row the NEW cap is min(dailySendCap, 5 + 5*floor(sending_days/5)) and the OLD cap was min(dailySendCap, 5 + 5*floor(age_days/5)). Any row where sending_days is far below age_days is a mailbox that was being allowed to send at full volume with no history behind it. That difference is the answer to Greg's question, and it is a number only production can produce.",
+      "recorded_on": "2026-08-24"
     }
   ],
   "rulings": [
