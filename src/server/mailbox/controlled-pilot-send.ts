@@ -28,6 +28,7 @@ import {
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
+import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 
 export type ControlledPilotBatchResult =
@@ -210,14 +211,19 @@ export async function queueControlledPilotBatch(input: {
   let txBlocked: Array<{ email: string; reason: string }> = [];
   let mailboxesUsed: Array<{ mailboxIdentityId: string; email: string; count: number }> = [];
 
+  // Warm-up anchors on days actually SENT on, not on connection age. Resolved
+  // before the transaction so no extra query runs under the reservation lock.
+  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id));
+
   try {
     const txResult = await prisma.$transaction(
       async (tx) => {
         const localRemaining = new Map<string, number>();
         for (const m of pool) {
-          // Warm-up ramp: caps cold-outreach volume for young mailboxes
-          // (no-op once warmed, or when the ramp flag is off).
-          const cap = effectiveDailyCap(m, at);
+          // Warm-up ramp: caps volume until the mailbox has a sending
+          // history (no-op once warmed, or when the flag is off). An absent
+          // entry means it has never sent — 0, never "allow".
+          const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
           const booked = await countBookedSendSlotsInUtcWindow(tx, m.id, windowKey);
           localRemaining.set(m.id, Math.max(0, cap - booked));
         }
@@ -377,9 +383,11 @@ export async function queueControlledPilotBatch(input: {
   }));
 
   let aggregateRemainingAfter = 0;
-  const firstCap = pool[0] ? effectiveDailyCap(pool[0], at) : 30;
+  const firstCap = pool[0]
+    ? effectiveDailyCap(pool[0], sendingDays.get(pool[0].id) ?? 0)
+    : 30;
   for (const m of pool) {
-    const cap = effectiveDailyCap(m, at);
+    const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
     const bookedAfter = await prisma.mailboxSendReservation.count({
       where: {
         mailboxIdentityId: m.id,

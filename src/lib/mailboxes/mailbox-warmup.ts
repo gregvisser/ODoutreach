@@ -17,16 +17,28 @@ import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
  *
  * Safe + system-wide: gated by `MAILBOX_WARMUP_RAMP === "on"`. When off (the
  * default) every result equals the configured cap exactly, so behaviour is
- * byte-identical to before. Anchored to each mailbox's first send-capable date
- * (`connectedAt`, else `createdAt`), so any mailbox already older than the ramp
- * window is unaffected — its effective cap is its configured cap.
+ * byte-identical to before.
+ *
+ * ANCHOR CORRECTED 2026-08-24. This previously ramped on the mailbox's AGE
+ * (`connectedAt`, else `createdAt`), and any mailbox older than the ramp window
+ * was unaffected. That measured the wrong thing: a mailbox connected months ago
+ * during onboarding and never used received its FULL daily allowance on its very
+ * first send, with no ramp at all — which is precisely the mailbox this product
+ * creates, since mailboxes are connected during setup and launched weeks later.
+ *
+ * Google conditions the rule on a history of SENDING, not on an account's age:
+ * "Avoid introducing sudden volume spikes if you do not have a history of
+ * sending large volumes." (https://support.google.com/a/answer/81126)
+ *
+ * So the ramp now counts DAYS THIS MAILBOX ACTUALLY SENT ON. The shape is
+ * unchanged; only what is counted changed.
  */
 
 /** Sends allowed on a mailbox's first day. */
 export const WARMUP_BASE_CAP = 5;
 /** Extra sends unlocked at each ramp step. */
 export const WARMUP_STEP = 5;
-/** Days between ramp steps: base 5, +5 every 5 days → reaches 30 at ~day 25 (~3.5 weeks). */
+/** Sending days between ramp steps: base 5, +5 every 5 → reaches 30 at 25 sending days. */
 export const WARMUP_STEP_DAYS = 5;
 
 const DAY_MS = 86_400_000;
@@ -36,7 +48,15 @@ export function isWarmupRampEnabled(): boolean {
   return process.env.MAILBOX_WARMUP_RAMP === "on";
 }
 
-/** Whole days since the mailbox first became able to send (connectedAt, else createdAt). */
+/**
+ * Whole days since the mailbox first became able to send (connectedAt, else
+ * createdAt).
+ *
+ * NO LONGER DRIVES THE RAMP — see the note at the top of this file. Retained
+ * because it is genuinely useful for display ("connected 12 days ago") and is
+ * still a fair proxy for how long a mailbox has been *available*. Do not
+ * reintroduce it as the warm-up anchor.
+ */
 export function mailboxAgeDays(
   mailbox: { connectedAt?: Date | null; createdAt: Date },
   now: Date,
@@ -46,30 +66,35 @@ export function mailboxAgeDays(
 }
 
 /**
- * Pure warm-up ceiling for a mailbox of a given age, never exceeding its steady
- * (configured) cap. Flag-independent so it is trivial to unit-test.
+ * Pure warm-up ceiling for a mailbox with a given amount of sending history,
+ * never exceeding its steady (configured) cap. Flag-independent so it is
+ * trivial to unit-test. The parameter is a COUNT OF SENDING DAYS, not an age.
  */
-export function warmupDailyCap(steadyCap: number, ageDays: number): number {
+export function warmupDailyCap(steadyCap: number, sendingDays: number): number {
   const steady = Math.max(1, steadyCap);
-  const day = Number.isFinite(ageDays) ? Math.max(0, Math.floor(ageDays)) : 0;
-  const ramped = WARMUP_BASE_CAP + WARMUP_STEP * Math.floor(day / WARMUP_STEP_DAYS);
+  const days = Number.isFinite(sendingDays)
+    ? Math.max(0, Math.floor(sendingDays))
+    : 0;
+  const ramped = WARMUP_BASE_CAP + WARMUP_STEP * Math.floor(days / WARMUP_STEP_DAYS);
   return Math.max(1, Math.min(steady, ramped));
 }
 
 /**
- * Effective per-mailbox daily cold-outreach cap. When warm-up is enabled young
- * mailboxes ramp toward their configured `dailySendCap`; once past the ramp —
- * and for every mailbox when warm-up is disabled — this equals the configured
- * cap exactly (`Math.max(1, dailySendCap || DEFAULT)`).
+ * Effective per-mailbox daily cold-outreach cap.
+ *
+ * `sendingDays` is the number of distinct days this mailbox has actually sent
+ * on — resolve it with `countMailboxSendingDays`. A mailbox that has never sent
+ * passes 0 and starts at the bottom of the ramp no matter how long ago it was
+ * connected. When warm-up is disabled this equals the configured cap exactly.
  */
 export function effectiveDailyCap(
   mailbox: { dailySendCap: number; connectedAt?: Date | null; createdAt: Date },
-  now: Date,
+  sendingDays: number,
 ): number {
   const steady = Math.max(
     1,
     mailbox.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP,
   );
   if (!isWarmupRampEnabled()) return steady;
-  return warmupDailyCap(steady, mailboxAgeDays(mailbox, now));
+  return warmupDailyCap(steady, sendingDays);
 }

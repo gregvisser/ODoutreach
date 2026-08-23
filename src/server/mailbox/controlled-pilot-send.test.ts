@@ -5,6 +5,10 @@ import type { StaffUser } from "@/generated/prisma/client";
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     clientMailboxIdentity: { findMany: vi.fn() },
+    // Warm-up now anchors on days actually sent on, resolved via a raw query
+    // (countSendingDaysForPool). Default to "never sent" so these fixtures keep
+    // exercising the bottom of the ramp rather than silently skipping it.
+    $queryRaw: vi.fn(async () => []),
     outboundEmail: { findFirst: vi.fn(), findMany: vi.fn() },
     mailboxSendReservation: { count: vi.fn() },
     $transaction: vi.fn(),
