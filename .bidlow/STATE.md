@@ -2,6 +2,80 @@
 
 **Updated 2026-08-24 · Tier P (Client Production)**
 
+## Session 2026-08-24b — BUILD-3. The gate is OPEN. Three PRs now stacked.
+
+**BUILD GATE: 0 BLOCKING — for the first time.** Both ungated irreversible
+actions are now gated with earned, RED-first evidence.
+
+### PRs waiting on Greg, in merge order
+| PR | What | State |
+|---|---|---|
+| **#186** | Rulings 1 & 2, warm-up rules from primary sources, bounce diagnosis, warm-up anchor fix | OPEN, CI green |
+| **#187** | **Ruling 3 — DNC related-company families.** Own PR, own migration. **Stacked on #186** | OPEN, CI green |
+
+**Merge #186 first**, or #187's diff shows its commits too. Production still
+serves `a4e73f62`.
+
+### RULING 3 shipped — the unblocker
+Do-not-contact now covers related company domains **via an explicit per-client
+list, never inferred**. New `SuppressedDomainFamily` table; a family is the rows
+sharing a `label` within one client; suppression is **transitive** — if any
+member is suppressed, all are. Default empty, so nothing changes for existing
+clients.
+
+**Both suppression behaviours were built, deliberately:** the send-path gate is
+authoritative and re-reads families every send (so an entry added today blocks a
+contact loaded months ago — the case that actually happens), AND
+`Contact.isSuppressed` is refreshed so the screen agrees with the gate. The UI
+distinguishes **Blocking** from **Listed, not blocking**.
+
+**Test RED first:** 3 of 10 failed pre-implementation; all seven over-block and
+per-client-isolation guards already passed — the right shape, since the danger
+was never under-listing.
+
+### ⚠️ PRE-EXISTING SCHEMA DRIFT — found, contained, NOT fixed
+`prisma migrate dev` wanted to add **six unrelated statements** to the feature
+migration: two index drops, two index creates, an index rename and two
+`DROP DEFAULT`s on live tables. They come from drift between `schema.prisma` and
+the migration history — two of those indexes exist in **no migration at all**.
+
+**Hand-trimmed out**, because `deploy-production.yml` migrates production
+*before* the Azure login step. **The drift is real and needs its own reviewed
+migration.** Any future `migrate dev` will try to smuggle it again.
+
+### Also earned: the cross-client send gate
+Proven by deliberate breakage — replacing the contact guard with an unreachable
+branch turned `blocks cross-client contact` RED. **Only the CONTACT guard was
+proven; sequence and template are asserted from reading, and the register says so.**
+
+### Gates
+lint 0 · typecheck 0 · **1891 unit / 218 files** · **15 e2e** · build green · CI green.
+
+## NOT done — and two of these need production access I do not have
+- **The real historical bounce rate** — the `BOUNCE-0PCT` query needs the
+  production database. **Greg must run it.** Diagnosis is complete; the fix is not
+  written.
+- **The WARMUP-IMPACT numbers per mailbox** — same, needs production. Query is in
+  `DOMAIN.json` → `diagnoses` → `WARMUP-IMPACT`.
+- **The bounce status write** — now unblocked, not started. Own PR, test RED first.
+- **F-01 daily opt-out capture** — not started. Greg's constraint absolute:
+  aligned domain or no link.
+- **REQ-01/02/03 CSV import** — not started. REQ-03 is the located replace-on-sync
+  defect.
+- **The client risk-disclosure document** (Ruling 2 obligation) — not drafted.
+- **Stage 4 COVERAGE and DATAMODEL** — still missing.
+
+## Next session picks up
+1. **Merge #186, then #187.** Work is stacking faster than it is landing.
+2. Run both production queries and report the real numbers.
+3. Bounce status write → then the volume-response rule unblocks.
+4. F-01, then CSV import.
+5. The schema drift, its own migration.
+
+---
+
+## Earlier — session 2026-08-24 (BUILD-2)
+
 ## Session 2026-08-24 — BUILD-2. Warm-up fixed. One ruling now blocks the rest.
 
 **PR #186 OPEN, CI green.** Production still serves `a4e73f62` from the #185 merge.
