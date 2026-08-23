@@ -1,6 +1,76 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-23 (third session) · Tier P (Client Production)**
+**Updated 2026-08-23 (fourth session) · Tier P (Client Production)**
+
+## Session 2026-08-23d — MERGED AND DEPLOYED. Production is current.
+
+**PR #185 merged (rebase). Production serves `a4e73f62`, health 200, verified by
+commit not by liveness.** The zero-DNS unsubscribe fix and the DNC subdomain fix
+are LIVE. Deploy ran `prisma migrate deploy` clean — that branch carried no
+migration, so the migrate-before-login hazard did not apply.
+
+**PR #186 is OPEN, CI green** — docs/standards only, no source.
+
+## THE FRAMING CHANGED: there is no pilot
+Greg, 2026-08-24: *"i dont want a pilot, i want a full production system from day
+one"* and *"warmup is non negotiable... it must be done according to industry
+standards."* `SELL-EXCEPTION.json` reworded — the word "pilot" is gone from
+`scope` and `why`; all eight risks and the grade are untouched. **It still
+expires 2026-09-03**, and on that date the gate blocks again unless renewed.
+
+## Warm-up, researched from PRIMARY sources
+- **The "2% bounce" non-negotiable had NO primary source** (a vendor guide).
+  Google publishes **no bounce threshold at all**. Removed as a provider
+  requirement; replaced with what Google does publish — complaint rate below
+  0.10%, never 0.30% — plus the behavioural rule *"reduce the sending volume
+  until the SMTP error rate decreases, then increase slowly again"*, which is
+  **not implemented**: no send path reads the rate.
+- Ceilings recorded with sources: Google **2,000 unique external recipients/day**;
+  Microsoft **10,000 recipients/day**, **30 messages/MINUTE**, plus the
+  tenant-wide **TERRL** nobody has checked. At 30/day the product runs at ~1.5%
+  of the Google ceiling — **reputation is the constraint, not quota**.
+
+### THE RAMP FINDING — shape right, anchor wrong
+`mailbox-warmup.ts` ramps on **mailbox AGE** (`connectedAt`), not sending
+history. Its own docstring: *"any mailbox already older than the ramp window is
+unaffected."* **A mailbox connected months ago that has never sent gets its full
+30/day on the first send, with no ramp.** Google's condition is a history of
+*sending*. This is live now, as clients are onboarded ahead of launching.
+
+### CONTRADICTION, flagged not resolved
+Non-negotiable *"never send cold email from the client's primary business
+domain"* vs the shipped product, which sends from the client's **root-domain**
+mailbox by design. Greg accepts the trade in writing, or funds the subdomain
+shape. **One-way door once mailboxes exist.**
+
+## THE 0% BOUNCE IS DIAGNOSED — and it is not what anyone assumed
+**Detection is not broken.** The NDR path detects the bounce and suppresses the
+address, but **never sets `OutboundEmail.status = 'BOUNCED'`** — and that status
+is exactly what the report counts. The legacy ESP webhook path *does* set it
+(`outbound-provider-events.ts:214-218`); the metric was built against a transport
+production no longer uses. **Protection and measurement were wired to different
+tables and only protection reached the live path.**
+
+Better than feared: bounced addresses HAVE been blocked all along. Worse than
+feared: reporting has been showing a clean sheet while it happened.
+Confirmable in one query — see `DOMAIN.json` → `diagnoses` → `BOUNCE-0PCT`.
+
+## Next session picks up
+1. **Greg merges #186.**
+2. **REQ-02 needs Greg** — duplicates within one client, or across all? A prospect
+   on two clients' lists is not a duplicate. Data-model decision, not the agent's.
+3. **Stage 4 — COVERAGE and DATAMODEL.** Still missing. F-02 (manual offboarding,
+   1-2 clients/month, prospect data in a folder outside the system) belongs in
+   COVERAGE area 9.
+4. **Build order:** F-01 daily opt-out capture first (highest value, and Greg's
+   constraint is absolute — *"there cannot be any links that will cause
+   mismatches"*, so mailto rail or no link); then REQ-01/02/03 CSV import, where
+   REQ-03 is the already-found replace-on-sync suppression defect.
+5. Fix the bounce status write (own PR, test RED first) and the warm-up anchor.
+
+---
+
+## Earlier — session 2026-08-23 (third)
 
 ## Session 2026-08-23c — SHIPPED TO PR. Waiting on Greg's merge.
 
