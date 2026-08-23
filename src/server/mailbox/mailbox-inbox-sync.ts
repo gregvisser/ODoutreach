@@ -204,6 +204,10 @@ export async function syncMicrosoftInboxForMailbox(input: {
       subject: row.subject,
       snippet: row.snippet,
       bodyPreview: row.bodyPreview,
+      // The full body, same source the bounce classifier above already uses.
+      // Without this, opt-out detection reads a ~240 character preview of an
+      // email that averages ~4,000 characters in production.
+      bodyText: row.fullBody?.bodyText ?? null,
       receivedAt: row.receivedAt,
       conversationId: row.conversationId,
       inReplyToHeader: row.inReplyToHeader,
@@ -311,7 +315,9 @@ export async function syncGoogleInboxForMailbox(input: {
       providerMessageId: row.providerMessageId,
       fromEmail: row.fromEmail,
       subject: row.subject,
-      bodyText: row.bodyPreview ?? row.snippet,
+      // Google now fetches a real body too (format=full). Same precedence as
+      // the Microsoft path above.
+      bodyText: row.fullBody?.bodyText ?? row.bodyPreview ?? row.snippet,
       receivedAt: row.receivedAt,
     });
     if (bounceResult.suppressed) bouncesSuppressed += 1;
@@ -348,6 +354,15 @@ export async function syncGoogleInboxForMailbox(input: {
         conversationId: row.conversationId,
         metadata: meta,
         ingestionSource: "GMAIL_API",
+        ...(row.fullBody
+          ? {
+              bodyText: row.fullBody.bodyText,
+              bodyContentType: row.fullBody.bodyContentType,
+              fullBodySize: row.fullBody.fullBodySize,
+              fullBodySource: row.fullBody.fullBodySource,
+              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+            }
+          : {}),
       },
       update: {
         toEmail: row.toEmail,
@@ -357,6 +372,15 @@ export async function syncGoogleInboxForMailbox(input: {
         receivedAt: row.receivedAt,
         conversationId: row.conversationId,
         metadata: meta,
+        ...(row.fullBody
+          ? {
+              bodyText: row.fullBody.bodyText,
+              bodyContentType: row.fullBody.bodyContentType,
+              fullBodySize: row.fullBody.fullBodySize,
+              fullBodySource: row.fullBody.fullBodySource,
+              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+            }
+          : {}),
       },
     });
     const replyResult = await processSyncedMessageForReply({
@@ -368,6 +392,8 @@ export async function syncGoogleInboxForMailbox(input: {
       subject: row.subject,
       snippet: row.snippet,
       bodyPreview: row.bodyPreview,
+      // Google now carries a real body too - opt-out detection must see it.
+      bodyText: row.fullBody?.bodyText ?? null,
       receivedAt: row.receivedAt,
       conversationId: row.conversationId,
       inReplyToHeader: row.inReplyToHeader,
