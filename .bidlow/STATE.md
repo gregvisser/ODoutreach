@@ -2,6 +2,78 @@
 
 **Updated 2026-08-24 · Tier P (Client Production)**
 
+## Session 2026-08-24c — BUILD-4. FOUR PRs NOW QUEUED. Merging is the bottleneck.
+
+| PR | What | CI |
+|---|---|---|
+| **#186** | Rulings 1 & 2, warm-up rules from primary sources, bounce diagnosis, warm-up anchor fix | green |
+| **#187** | Ruling 3 — DNC related-company families (own migration) | green |
+| **#188** | **Schema/migration drift reconciliation** (own migration) | green |
+| **#189** | **`scripts/production-report.mjs`** — the two numbers, read-only | green |
+
+**Merge in that order.** Production still serves `a4e73f62`.
+
+**Each PR now opens with a plain-English block** per the new standing rule.
+
+### THE DRIFT IS FIXED — additive only, nothing dropped
+`schema.prisma` and the migration history disagreed **since commit `4160c00`, the
+bootstrap commit**: two indexes were declared there that `20260413103000_init`
+never created. The `updatedAt` defaults came from real migrations doing the right
+thing (adding a NOT NULL column to a table with rows). The index rename is
+Postgres truncating at 63 chars vs a newer Prisma. **Nobody ran SQL outside the
+migration system** — two applied migrations *were* edited later (`79decef`
+client-scope fix, `59be6d1` BOM strip) and neither caused it.
+
+**Approach: make history match reality without dropping anything live.** The
+migration only CREATEs two indexes and RENAMEs one; the defaults and the extra
+index are now DECLARED in the schema instead. **All three destructive statements
+Prisma proposed were refused.**
+
+Proven three ways: clean replay → "No difference detected"; a deliberately
+re-drifted database → reconciles cleanly; applied twice → idempotent.
+**No data can be lost.**
+
+### THE PRODUCTION REPORT — one command, for Greg
+```
+$env:PRODUCTION_DATABASE_URL="<from Azure>"; node scripts/production-report.mjs
+```
+Read-only enforced **three ways** (statement check, session
+`default_transaction_read_only`, explicit `BEGIN READ ONLY`), and the guard is
+tested by importing the **real** exported function, not a copy — 14 tests.
+
+### SEND SPACING — researched, and the brief's premise does not hold
+**Sourced:** don't burst (Microsoft: **30 messages per MINUTE** hard limit);
+send at a **consistent** rate (SendGrid); avoid :00/:15/:30/:45 ISP peaks;
+Google's start-low-increase-slowly.
+
+**NOT sourced:** the brief asserts a fixed cadence is itself a fingerprint and
+gaps must be randomised. **I found no provider or major ESP saying that, and the
+published advice points the other way — send consistently.** It is a
+cold-email-vendor folk belief. Flagged because it is the same shape as the "2%
+bounce" rule, which also sounded authoritative and had nothing behind it.
+
+**Design recorded** in `DOMAIN.json` → `diagnoses` → `SEND-SPACING-RESEARCH`:
+steady base cadence across working hours, modest jitter + per-mailbox offset
+justified as *human appearance and peak-avoidance*, not as a deliverability
+requirement; seeded so it is testable. **NOT BUILT** — see below.
+
+## Why I stopped
+BUILD-4 item 0 says do not let PRs queue. Four are queued. Building a fifth that
+cannot merge would contradict the instruction that opened the brief. The gate
+records that unblock source edits live in `DOMAIN.json` **on those branches**, so
+a branch off `main` is still blocked until they land — which is itself a cost of
+the queue.
+
+## Next session picks up
+1. **Merge #186 → #187 → #188 → #189.**
+2. **Greg runs the production report** and sends the output. Both numbers depend on it.
+3. Send spacing (designed, not built) · bounce status write · F-01 opt-out capture ·
+   CSV import · stage 4 COVERAGE/DATAMODEL · the client risk-disclosure document.
+
+---
+
+## Earlier — session 2026-08-24b (BUILD-3)
+
 ## Session 2026-08-24b — BUILD-3. The gate is OPEN. Three PRs now stacked.
 
 **BUILD GATE: 0 BLOCKING — for the first time.** Both ungated irreversible

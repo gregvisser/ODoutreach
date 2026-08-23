@@ -322,6 +322,27 @@
       "run_this_before_launch": "SELECT m.id, m.email, m.\"dailySendCap\", COUNT(DISTINCT DATE(o.\"sentAt\" AT TIME ZONE 'UTC')) AS sending_days, DATE_PART('day', now() - COALESCE(m.\"connectedAt\", m.\"createdAt\")) AS age_days FROM \"ClientMailboxIdentity\" m LEFT JOIN \"OutboundEmail\" o ON o.\"mailboxIdentityId\" = m.id AND o.\"sentAt\" IS NOT NULL WHERE m.\"isActive\" GROUP BY m.id, m.email, m.\"dailySendCap\", m.\"connectedAt\", m.\"createdAt\" ORDER BY sending_days ASC;",
       "how_to_read_it": "For each row the NEW cap is min(dailySendCap, 5 + 5*floor(sending_days/5)) and the OLD cap was min(dailySendCap, 5 + 5*floor(age_days/5)). Any row where sending_days is far below age_days is a mailbox that was being allowed to send at full volume with no history behind it. That difference is the answer to Greg's question, and it is a number only production can produce.",
       "recorded_on": "2026-08-24"
+    },
+    {
+      "id": "SEND-SPACING-RESEARCH",
+      "question": "What does the evidence actually say about spacing sends across the day, and is randomised jitter a deliverability requirement?",
+      "researched_on": "2026-08-24",
+      "sourced_and_solid": [
+        "DO NOT BURST. Microsoft enforces a hard MESSAGE RATE LIMIT of 30 messages per MINUTE per mailbox (learn.microsoft.com, Exchange Online limits). A mailbox emptying a 30/day allowance into one cron run sits exactly on that line.",
+        "SEND AT A CONSISTENT RATE. SendGrid guidance is explicit that you should not send 60 as fast as possible, pause, then send 60 more -- you should send steadily. The principle sourced here is STEADINESS, not randomness.",
+        "AVOID THE TOP OF THE HOUR. ISP peak times cluster at :00, :15, :30 and :45; sending at odd offsets such as 7, 21 or 36 past reduces queuing behind everyone else (SendGrid).",
+        "Google: start low and increase slowly, and reduce volume if errors rise (support.google.com/a/answer/81126)."
+      ],
+      "NOT_sourced_and_partly_contradicted": "THE BRIEF ASSERTS that a fixed cadence is itself a fingerprint -- \"a metronome is as machine-like as a burst\" -- and that gaps must therefore be randomised. I could find NO provider or major ESP guidance saying that, and what I did find points the other way: the published advice is to send CONSISTENTLY. The anti-fingerprint argument is a cold-email-vendor folk belief, plausible but unsourced. Flagging it because it is the same shape as the \"2% bounce\" rule, which also sounded authoritative and turned out to have no provider behind it.",
+      "recommended_design": "Spread the day allowance evenly across the working window at a STEADY base cadence -- 30 sends over roughly 07:00-18:00 is about one every 22 minutes -- then apply MODEST jitter around each slot (order of +/- a few minutes) and a per-mailbox offset so two mailboxes do not fire in lockstep. Justify the jitter as HUMAN APPEARANCE and as avoiding the on-the-hour peak, NOT as a sourced deliverability requirement. Seed the generator per mailbox per day so the distribution is deterministic and testable rather than flaky.",
+      "what_is_judgement": "The exact jitter width and the working-hours window are JUDGEMENT. Nothing published fixes them. They should be recorded as chosen values with reasoning, not presented as standards.",
+      "status": "RESEARCHED AND DESIGNED, NOT BUILT. Deliberately not started: four PRs were already queued unmerged, and BUILD-4 item 0 says not to let PRs queue.",
+      "sources": [
+        "https://learn.microsoft.com/en-us/office365/servicedescriptions/exchange-online-service-description/exchange-online-limits",
+        "https://support.google.com/a/answer/81126",
+        "https://support.sendgrid.com/hc/en-us/articles/360041316874-Email-Delivery-Deferrals",
+        "https://sendgrid.com/en-us/blog/the-best-time-to-send-your-email-campaign"
+      ]
     }
   ],
   "rulings": [
