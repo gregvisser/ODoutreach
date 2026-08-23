@@ -639,7 +639,7 @@ model InboundMailboxMessage {
   /// re-fetching can be forced. Starts at 1.
   fullBodyStorageVersion Int       @default(1)
   createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  updatedAt              DateTime  @default(now()) @updatedAt
 
   client  Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   mailbox ClientMailboxIdentity @relation(fields: [mailboxIdentityId], references: [id], onDelete: Cascade)
@@ -1369,7 +1369,7 @@ model OutboundEmail {
   openedAt               DateTime?
   metadata               Json?
   createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
+  updatedAt              DateTime            @default(now()) @updatedAt
 
   client            Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   campaign          Campaign?                     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
@@ -1443,6 +1443,10 @@ model OutboundProviderEvent {
   @@index([webhookMessageId])
   @@index([outboundEmailId])
   @@index([clientId, receivedAt])
+  /// Kept because it EXISTS on the live database (created by
+  /// 20260416120000_outbound_queue_lifecycle). Declaring it is how the schema is
+  /// reconciled to reality without running DROP INDEX on a production table.
+  @@index([clientId, createdAt])
 }
 
 model InboundReply {
