@@ -1,6 +1,83 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-22 · Tier P (Client Production)**
+**Updated 2026-08-23 · Tier P (Client Production)**
+
+## Session 2026-08-23 — READ THIS FIRST. The push is BLOCKED, correctly.
+
+Branch `integrate/monday-pilot` is committed but **still unpushed**. The ship gate
+refuses it and the refusal is right: `.bidlow/EVIDENCE.json` now records the e2e
+suite as **RED — 11 pass, 3 fail on BC-01 tenant isolation**. Greg's new standing
+rule ("never end a session unpushed") and the ship gate are in direct conflict,
+and the gate wins until BC-01 is resolved. **This needs Greg's decision — see the
+DECISION OWED section.**
+
+### Done this session
+| Item | Result |
+|---|---|
+| Build gate matcher | Was `"TEMPORARILY_DISABLED"`, set to `Write\|Edit\|NotebookEdit`. **The installer did NOT fix it** — it matches by script name and reported "4 already present". Verified live: the gate then blocked a source write. |
+| Freeze | Greg's LF fix adopted and committed. `--status` → **11 in order, 0 drifted**. His amendment #3 ratifies the BC-01 rewrite. |
+| CLASSIFY | SAFETY blocks **8 → 4**. Answered Q7 (auto-stop) and Q8 (data map) from code; drafted Q3/Q4 (domain ownership, DNS) for confirmation; recorded the `multi_tenancy` decision. |
+| `.env.example` | `MAILBOX_BOUNCE_DETECTION_ENABLED` and `MAILBOX_WARMUP_RAMP` documented with what OFF costs. |
+| CI | Both jobs now write and upload test evidence (`if: always()`, so RED is recorded as red). This closed a real gap — the gate assumed CI wrote `EVIDENCE.json` and **nothing did**. |
+| Housekeeping | Both briefs moved to `C:\Bidlowbusiness\_BidlowAI-Playbook\`; e2e container stopped. |
+
+### Corrections to my own earlier findings — I was wrong twice
+- **`MAILBOX_BOUNCE_DETECTION_ENABLED` is `true` in production**, as are
+  `MAILBOX_COMPLAINT_DETECTION_ENABLED` and `MAILBOX_WARMUP_RAMP=on` (read from
+  live Azure config). My inference that 0% bounces meant "nothing is measuring"
+  is **WITHDRAWN**. The 0% is unexplained and stays open. The cap stands on the
+  uncertainty, not on a diagnosis.
+- **The "204 send proof missing" is not 204 failed sends.** `sentProofMissing` is
+  an arithmetic difference: `allStepSendsSent − sentWithProof − queuedOrProcessing`.
+  **DEFECT FOUND:** `seedExclusion` is applied to the OutboundEmail counts
+  (`src/server/queries/outreach-metrics.ts` lines 212, 243, 251, 263, 312) but
+  **NOT** to the step-send count that produces `allStepSendsSent` (~line 226). With
+  `INTERNAL_SEED_ALLOWLIST_ENABLED=true` in production, **every internal seed send
+  inflates the figure by exactly one.** Partly or wholly a metric bug. NOT FIXED —
+  the gate correctly refuses source edits while SAFETY blocks stand.
+
+### The pilot shape — the brief's premise does not hold
+`outreach.bidlow.co.uk` is live (health 200) but:
+- it resolves to **Railway** (`7i7pt5jv.up.railway.app`), not Azure — there is no
+  Azure app for it, and `opensdoors.bidlow.co.uk` is the only custom hostname on
+  `app-opensdoors-outreach-prod`;
+- `/api/build-info` returns **`commit: null`** — there is no provenance for what
+  code is running;
+- **its source was DECOMMISSIONED BY GREG on 2026-08-20.** `C:\Bidlowprojects\Bidlow\`
+  is empty; the repo sits in `_to_delete6-08-20-decommission\BOutreach-outreach-platform`,
+  whose MANIFEST says *"ODoutreach is the only outreach system that stays"* and flags a
+  live `.env` to be **shredded**.
+
+So "both instances on the same commit after deploy" is **not achievable** — they are
+different codebases. Bidlow's instance would receive **none** of this weekend's work:
+not the zero-DNS link-alignment fix, not the DNC subdomain fix. Sending real prospect
+mail from it means sending from an unmaintained deployment that still carries the
+defect that caused the quarantine.
+
+### DECISION OWED — nothing else can proceed past this
+1. **BC-01.** Greg decided not to build cross-staff isolation. BC-01 therefore
+   asserts a property the product deliberately does not have, so it is
+   **permanently red**, and the ship gate will block **every** push until it is
+   resolved. Either formally DEFER the spec (Greg's to amend — the agent may not
+   touch it) with a trigger, or accept that pushes stay blocked. I did not choose.
+2. **Where does Bidlow actually run?** Given the fork is decommissioned: revive it,
+   run Bidlow as a second workspace on ODoutreach (which re-opens the isolation
+   question Greg just closed), or stand up a second ODoutreach deployment.
+
+### Next session picks up
+1. The two decisions above.
+2. Then: push → PR → CI → Greg merges → verify `/api/build-info`.
+3. The DNC related-domain per-client setting — **its own PR with its own
+   migration**, NOT bundled with this one: `deploy-production.yml` runs
+   `prisma migrate deploy` against production *before* the Azure login step.
+   Design note: "related domains" cannot be safely inferred from a string
+   (`bteurope.com` shares nothing with `bt.com`), so it must be an explicit
+   per-client family list, not an algorithm.
+4. The `sentProofMissing` seed-exclusion defect.
+
+---
+
+## Earlier — session 2026-08-22
 
 ## Session 2026-08-22 — Monday pilot prep. READ THIS FIRST.
 
