@@ -1,6 +1,75 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-23 (second session) · Tier P (Client Production)**
+**Updated 2026-08-23 (third session) · Tier P (Client Production)**
+
+## Session 2026-08-23c — SHIPPED TO PR. Waiting on Greg's merge.
+
+**[PR #185](https://github.com/gregvisser/ODoutreach/pull/185) is OPEN, MERGEABLE, CI GREEN.**
+32 commits. Nothing is deployed — production still serves `b36e66e`.
+**The merge is Greg's**, and `deploy-production.yml` migrates production *before*
+the Azure login step, so it stays his.
+
+### The deadlock is gone
+Greg fixed it in `_standards`: pushing a *branch* is no longer treated as
+shipping (secrets check only); `main`, PR merge and deploy still get everything.
+And `.bidlow/SELL-EXCEPTION.json` now exists as a named, expiring escape.
+
+### Customer-Ready re-graded: 4.0 → **6.8** — still below 8
+Walked 13 pages of the branch build in Chromium with a real session. **Every
+page HTTP 200, zero console errors, zero page errors.** The 4.0 was *capped*
+(broken core journey) for the app-domain unsubscribe defect that this branch
+fixes, so the cap lifts. 6.8 is the honest weighted number. No cap applies.
+Report: `CUSTOMER-READY-REPORT.md`. Shipping proceeds under Greg's recorded
+sell-exception (expires **2026-09-03**), which does not change the grade.
+
+Most of the gain over the old uncapped 6.0 is **onboarding and empty states**,
+previously unproven and now verified — empty workspaces give real empty states
+that name the next action.
+
+**Limitation to carry forward:** this walked a *fixture* DB of four near-empty
+workspaces, not production's seventeen clients. Strong on empty states, weak on
+data scale. Two prior findings could be neither confirmed nor refuted: the
+**Campaigns column reading 0**, and the sends contradiction **at production
+scale**. Re-walk production after the deploy.
+
+### Two findings this session
+- **`/operations` 404 is NOT a defect.** There is no `/operations/page.tsx` — it
+  is a route segment, linked from nowhere, and `admin-gate.test.ts` asserts it is
+  absent from the nav. The real page is `/operations/outbound`, which renders.
+  Corrects the 2026-08-09 audit.
+- **The reporting contradiction is REAL, and now has a minimal reproduction.**
+  Overview reads *"7 Activity — not started"* while the Activity tab reads
+  *"EMAILS SENT 1"* for the same client. Two sources of truth: the overview pill
+  keys off `latestActivityLabel` (`src/lib/client-launch-state.ts:254-266`), the
+  tab counts `OutboundEmail`. **Highest-value cheap fix on the list.**
+
+### CI now records evidence for real — and caught its own bug
+Both jobs write and upload a suite record from the runner's own JSON, with
+`if: always()`. First run: CI was green but `evidence-e2e.json` said
+*"passed: false — no machine-readable result was produced"*. The recorder was
+right and my step was wrong: `npm run … > file` captures npm's banner ahead of
+the JSON. Fixed via `PLAYWRIGHT_JSON_OUTPUT_NAME`. **Verified CI artefact now:
+unit 1875/0, e2e 15/0, `recorded_by: github-actions`.**
+
+### Gates at HEAD
+lint **0** · typecheck **0** · **1875/1875** unit · **15/15** e2e · build green ·
+**CI green on both jobs**. Role chain signed and stamped to HEAD.
+
+### Next session picks up
+1. **Greg merges #185** → then verify `/api/build-info` reports the new commit on
+   `opensdoors.bidlow.co.uk`. A green workflow is not evidence.
+2. **Re-walk production** once deployed — specifically the Campaigns column and
+   the sends contradiction at real scale, which the fixture walk could not see.
+3. Then the pilot: OpensDoors and Bidlow as workspaces on the one instance,
+   hand-checked lists, **20/day, 10/mailbox**. Do not raise it because the deploy
+   went well.
+4. Backlog, in order: make Overview and Activity agree · explain the 0% bounce
+   rate · `sentProofMissing` seed-exclusion defect · DNC related-domain rule (own
+   PR, own migration) · E-06 · the three DPAs.
+
+---
+
+## Earlier — session 2026-08-23 (second)
 
 ## Session 2026-08-23b — BC-01 resolved and GREEN. Push blocked by ONE thing.
 
