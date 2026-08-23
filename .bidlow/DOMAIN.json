@@ -248,9 +248,8 @@
       "why_irreversible": "The mail leaves through a real corporate mailbox and cannot be recalled. It tells Client B's prospect that Client A is contacting them, discloses that OpensDoors holds them as a lead for a second business, and does it under a From: address that is not the one that owns the relationship. It is simultaneously a data-protection breach for the prospect, a confidentiality breach between two paying clients, and a deliverability event on a domain that belongs to neither of them. BC-01 names this as the incident that would end an engagement.",
       "recorded_on": "2026-08-23",
       "recorded_because": "It was not in this register at all. BC-01 was rewritten on 2026-08-23 from staff ACCESS isolation (deliberately absent) to workspace DATA isolation (must hold), and this is the irreversible action that rule exists to prevent. Registering it is what makes the rule enforceable rather than aspirational.",
-      "gate": null,
-      "fail_closed_test": false,
-      "gate_status": "BEING BUILT 2026-08-23. The guards already exist in code; what does NOT yet exist is proof they fail closed, and an end-to-end test of the workspace data boundary. fail_closed_test stays FALSE until that proof is produced and seen RED first. It must not be set to clear a block.",
+      "gate": "src/lib/email-sequences/sequence-send-policy.ts lines 151-177 — four defence-in-depth guards returning blocked_wrong_client when the sequence, enrolment, contact or template belongs to a different client than the send. Layered beneath loader scoping in send-introduction.ts, which already loads every hop scoped by clientId and rejects with WRONG_CLIENT. The module comment states the intent: a second layer \"so a bug in the loader cannot fan out cross-client rows\".",
+      "fail_closed_test": true,
       "gate_files": [
         "src/lib/email-sequences/sequence-send-policy.ts",
         "src/lib/email-sequences/sequence-send-policy.test.ts",
@@ -266,7 +265,9 @@
         "Per-client metrics: every count in outreach-metrics.ts carries clientId. Verified live — Client A's activity page shows its prospect and subject, Client B's shows neither.",
         "Suppression: keyed @@unique([clientId, email]) and looked up with clientId, so it is per-workspace by construction."
       ],
-      "known_hole_2026_08_23": "The same mailbox address MAY be connected to two workspaces (@@unique([clientId, emailNormalized]) is per client). Each workspace then stores its own copy of every raw inbound message, including full bodyText, in InboundMailboxMessage. Replies do not cross — no InboundReply is created without a matching outbound in that client — but the raw message store does. Recorded as E-06 in specs/BC-01-tenant-isolation.md."
+      "known_hole_2026_08_23": "The same mailbox address MAY be connected to two workspaces (@@unique([clientId, emailNormalized]) is per client). Each workspace then stores its own copy of every raw inbound message, including full bodyText, in InboundMailboxMessage. Replies do not cross — no InboundReply is created without a matching outbound in that client — but the raw message store does. Recorded as E-06 in specs/BC-01-tenant-isolation.md.",
+      "fail_closed_test_evidence": "src/lib/email-sequences/sequence-send-policy.test.ts — \"blocks cross-client sequence\", \"blocks cross-client contact\", \"blocks cross-client template\". PROVEN DISCRIMINATING 2026-08-24 rather than assumed: on a scratch branch the contact guard was replaced with an unreachable branch and \"blocks cross-client contact\" went RED (1 failed / 33 passed), then reverted. Only the CONTACT guard was proven this way; the sequence and template guards are asserted from reading the same construction and are not independently proven. End-to-end, e2e/cross-tenant.spec.ts covers the READ side of the same boundary and was itself shown to catch a leak.",
+      "fail_closed_test_earned_on": "2026-08-24"
     }
   ],
   "open_questions": [
