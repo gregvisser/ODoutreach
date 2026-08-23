@@ -35,6 +35,13 @@
       "authorised_by": "Greg",
       "what": "BC-01 retargeted from /contacts (super-admin only, redirects members before any tenant filter) to surfaces that actually render tenant data, after the original test scored a false green on the wrong route",
       "sha256_after": "5ba3d1c106ef5b6d6f9221969edd57be64c78dc85ca1f16d128b69ded8679a83"
+    },
+    {
+      "file": "specs/BC-01-tenant-isolation.md",
+      "date": "2026-08-23",
+      "authorised_by": "Greg",
+      "what": "BC-01 asserted staff-level isolation the product deliberately does not have; retargeted to workspace DATA isolation, with the access decision and its reversal trigger recorded",
+      "sha256_after": "c02c1531eb6b8a800a47dc53106fe75d6f77726e380bccb45a5718907ef942fc"
     }
   ]
 }

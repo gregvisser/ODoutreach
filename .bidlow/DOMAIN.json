@@ -140,6 +140,31 @@
       "fail_closed_test": true,
       "evidence": "CLOSED - and it was already closed before this session; the earlier record was stale. Verified live on 2026-08-09 against production: `az webapp config appsettings list --name app-opensdoors-outreach-prod --resource-group rg-opensdoors-outreach-prod --query \"[?name=='MAILBOX_WARMUP_RAMP']\"` returns value 'on', which is the exact string isWarmupRampEnabled() requires. The August roadmap and the engagement notes both recorded this flag as OFF; that is no longer true and those documents should not be trusted on this point. Fail-closed proof in src/lib/mailboxes/mailbox-warmup.test.ts: warmupDailyCap(30, -3) === 5 (clock skew is treated as day 0, the MOST restrictive value, not the least) and warmupDailyCap(30, NaN) === 5 (unknown age also collapses to the base cap); 'never exceeds the mailbox's configured steady cap' asserts the ceiling holds at 30, 20 and custom caps. An unknown or nonsensical input yields the lowest permitted volume, which is what fail-closed means for a ceiling.",
       "caveat": "The ramp is activated by a flag that DEFAULTS TO OFF, so the gate is fail-closed in its logic but fail-open in its activation: turning MAILBOX_WARMUP_RAMP off silently returns every mailbox to its full configured cap on day one. The unconditional flat per-mailbox cap (30/day) still applies in that case and is separately tested, so the exposure is a missing graduated protection rather than unlimited sending. Re-verify this flag before relying on this entry."
+    },
+    {
+      "action": "Send an outreach email composed for one client to a recipient belonging to a DIFFERENT client's workspace — Client A's campaign drawing Client B's prospect",
+      "why_irreversible": "The mail leaves through a real corporate mailbox and cannot be recalled. It tells Client B's prospect that Client A is contacting them, discloses that OpensDoors holds them as a lead for a second business, and does it under a From: address that is not the one that owns the relationship. It is simultaneously a data-protection breach for the prospect, a confidentiality breach between two paying clients, and a deliverability event on a domain that belongs to neither of them. BC-01 names this as the incident that would end an engagement.",
+      "recorded_on": "2026-08-23",
+      "recorded_because": "It was not in this register at all. BC-01 was rewritten on 2026-08-23 from staff ACCESS isolation (deliberately absent) to workspace DATA isolation (must hold), and this is the irreversible action that rule exists to prevent. Registering it is what makes the rule enforceable rather than aspirational.",
+      "gate": null,
+      "fail_closed_test": false,
+      "gate_status": "BEING BUILT 2026-08-23. The guards already exist in code; what does NOT yet exist is proof they fail closed, and an end-to-end test of the workspace data boundary. fail_closed_test stays FALSE until that proof is produced and seen RED first. It must not be set to clear a block.",
+      "gate_files": [
+        "src/lib/email-sequences/sequence-send-policy.ts",
+        "src/lib/email-sequences/sequence-send-policy.test.ts",
+        "e2e/cross-tenant.spec.ts",
+        "e2e/seed-e2e.ts",
+        "e2e/fixtures.ts"
+      ],
+      "gate_files_note": "These five ARE the gate and its proof: the policy module holds the four tenant guards (sequence / enrolment / contact / template clientId must equal the send's clientId, src/lib/email-sequences/sequence-send-policy.ts lines 151-177); its unit test proves each guard blocks; the e2e spec proves the boundary end-to-end through the real app; and the seed/fixtures supply the second workspace without which none of it can be exercised.",
+      "existing_defences_verified_2026_08_23": [
+        "Loader scoping: send-introduction.ts loads sequence, step and template scoped by clientId at every hop, and rejects with WRONG_CLIENT if sequence.clientId or template.clientId differs (lines 384, 408).",
+        "Policy guards: sequence-send-policy.ts returns blocked_wrong_client when the sequence, enrolment, contact or template belongs to another client — deliberate defence-in-depth, described in its own comment as a second layer 'so a bug in the loader cannot fan out cross-client rows'.",
+        "Reply attribution: process-synced-replies.ts matches on clientId + mailboxIdentityId at every leg, and creates NO InboundReply at all when no outbound in that client matches.",
+        "Per-client metrics: every count in outreach-metrics.ts carries clientId. Verified live — Client A's activity page shows its prospect and subject, Client B's shows neither.",
+        "Suppression: keyed @@unique([clientId, email]) and looked up with clientId, so it is per-workspace by construction."
+      ],
+      "known_hole_2026_08_23": "The same mailbox address MAY be connected to two workspaces (@@unique([clientId, emailNormalized]) is per client). Each workspace then stores its own copy of every raw inbound message, including full bodyText, in InboundMailboxMessage. Replies do not cross — no InboundReply is created without a matching outbound in that client — but the raw message store does. Recorded as E-06 in specs/BC-01-tenant-isolation.md."
     }
   ],
   "open_questions": [
