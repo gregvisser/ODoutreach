@@ -2,6 +2,76 @@
 
 **Updated 2026-08-24 · Tier P (Client Production)**
 
+## Session 2026-08-24e — BUILD-5. The NDR mystery is SOLVED.
+
+Production serves `43aa6bf`. Open PRs: **#191** (salvage), **#192** (send pacing).
+**#183 and #184 closed.**
+
+## WHY NDR DETECTION NEVER FIRED — the detector did not exist
+
+**`bounce-detection.ts` was created in commit `f464ce7` and reached production at
+2026-06-25T22:39:30Z. The send window ran 2026-05-20 → 2026-07-03.** The detector
+was **absent for ~37 of those 44 days**. No other live bounce path covered the
+gap — `BOUNCE_SUPPRESSION_ENABLED` governs the ESP-webhook route and
+`EMAIL_PROVIDER` is unset, so no ESP webhook ever fires for a mailbox send.
+
+Found by five parallel traces plus an adversarial refutation pass. Two of the
+three claimed breaks were **refuted**; this one survived four attempts.
+
+**The tail is NOT explained.** For the last ~8 days the detector existed and the
+sync demonstrably ran (live logs, 2026-07-03: 35 mailboxes, ~400 messages/run,
+16 runs/day). Whether the flag was on then **cannot be determined** — Azure logs
+16 app-settings writes but not *which* setting.
+
+### Two of the three "facts" were weaker than they looked
+- **"0 BOUNCED rows" is a NON-SIGNAL.** The write path never touches
+  `OutboundEmail.status`. A perfectly working detector still leaves 0.
+- **"0 NDR audit rows" has a blind spot.** The audit row is written only when the
+  suppression is *newly* created — an NDR for an already-suppressed address
+  writes nothing.
+
+### Still live, proven, and worth fixing regardless
+- **Gmail fetch never retrieves a body** (`format=metadata`), so the parser gets
+  a ~200-char snippet. Google mailboxes structurally starve it. Microsoft is fine.
+- **ONBOARDING clients send but are never inbox-synced** — send excludes only
+  PAUSED/ARCHIVED; sync requires `status = ACTIVE`.
+- `CONNECTION_ERROR` mailboxes drop out of sync; no pagination or watermark.
+
+### The bounce status write drops down the list
+It fixes *reporting* of something that mostly could not have been detected.
+**Establish detection works first, then make it visible.**
+
+## SEND PACING — built (PR #192)
+Steady cadence across 07:00–18:00, modest jitter, per-mailbox offset, steered off
+:00/:15/:30/:45. Deterministic, seeded. **Proven discriminating:** disabling
+jitter/offset/peak-avoidance turns 3 of 17 tests red. Never raises a cap.
+Flag `MAILBOX_SEND_PACING`, **default OFF and documented** — default-off with
+nobody told is exactly how the NDR detector sat unused for 36 days.
+
+## BACKUP — Greg was right, and the correction makes it FREE
+Geo-redundancy **cannot** be enabled post-creation (Microsoft, verbatim, twice).
+Measured: backup 7.25 GB, data 4.56 GB, provisioned 32 GB.
+
+**Option A — migrate: costs NOTHING.** Free backup allowance is 100% of
+provisioned (32 GB); geo-redundant doubles the copy to 14.5 GB, still under it.
+4.56 GB is a one-hour window, not a weekend. **Recommended.**
+**Option B — Azure Backup vault (GRS):** no downtime, a few £/month, but
+**weekly only** so the offsite copy can be 7 days stale. Explicitly *not* a
+GitHub Actions cron, since that capability is BURNED.
+
+**Sharper than reported:** HA is disabled, so per Microsoft's default the backups
+are **locally redundant — same datacentre**, not merely same region.
+
+## Next session
+1. Run the settling observation (read-only) to close the NDR tail.
+2. Fix Gmail-no-body and ONBOARDING-not-synced.
+3. Greg picks a backup option.
+4. Then: bounce status write · F-01 opt-out capture · CSV import · stage 4.
+
+---
+
+## Earlier — session 2026-08-24d
+
 ## Session 2026-08-24d — QUEUE CLEARED, PRODUCTION MEASURED.
 
 **All four PRs merged, deployed and verified one at a time.** Production serves
