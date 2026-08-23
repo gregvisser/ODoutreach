@@ -343,6 +343,29 @@
         "https://support.sendgrid.com/hc/en-us/articles/360041316874-Email-Delivery-Deferrals",
         "https://sendgrid.com/en-us/blog/the-best-time-to-send-your-email-campaign"
       ]
+    },
+    {
+      "id": "PRODUCTION-MEASURED-2026-08-24",
+      "measured_on": "2026-08-24",
+      "how": "scripts/production-report.mjs run read-only against the production database via a temporary firewall rule for one IP, authorised by Greg, added and removed within minutes. Rule removal verified: only AllowAllAzureServicesAndResourcesWithinAzureIps remains.",
+      "bounces": {
+        "sends": 1358,
+        "period": "2026-05-20 to 2026-07-03",
+        "marked_bounced": 0,
+        "suppressed_without_source": 17,
+        "ndr_audit_entries": 0,
+        "reading": "NDR bounce detection has NEVER fired — zero audit entries across 1,358 sends. That is not the same as \"no bounces\": the detector could be working and finding nothing, or not working at all, and this data cannot distinguish them. The 17 suppressions without a source are almost certainly unsubscribes and manual blocks, not bounces. The bounce rate remains genuinely UNMEASURED, and the status-write fix would not change that on its own — if no NDR is ever detected, marking the row would still mark nothing."
+      },
+      "sending_has_been_idle": "THE LAST SEND WAS 2026-07-03 — roughly seven weeks before this measurement. The system has been silent since. That matters for warm-up: reputation decays with inactivity, so every mailbox is effectively cold regardless of what it did in June.",
+      "warmup_impact": {
+        "mailboxes": 45,
+        "drop": 45,
+        "lowest": "5/day",
+        "max_sending_days_on_any_mailbox": 10,
+        "distribution": "32 of 45 have 4 or fewer sending days. 9 have ZERO. The most-used mailbox in the entire system has 10."
+      },
+      "MY_PREDICTION_WAS_WRONG": "I predicted OpensDoors own mailboxes would NOT move, on the assumption their ~1,209 sends spanned 25+ distinct days. They do move — every single one. ALL 45 of 45 mailboxes drop, most to 5/day, including greg@opensdoors.co.uk (2 sending days across 119 days of age) and joe@opensdoors.co.uk (2 across 122). The assumption behind the prediction was that volume implies regularity. It does not: 1,358 sends spread over 45 mailboxes with a maximum of 10 sending days each means the fleet has been sending in BURSTS, not daily. That is precisely the pattern warm-up exists to prevent, and it means NO MAILBOX IN THIS SYSTEM HAS EVER BEEN WARMED in the sense the ramp intends.",
+      "consequence": "The corrected ramp is not a minor adjustment to a few idle mailboxes. It resets the ENTIRE fleet to the bottom of the ramp. Greg wanted 30/day per mailbox after warm-up; from today that is 25 sending days away for every mailbox, not a handful. He needs to know that before he switches sending on, because the old behaviour would have put 45 mailboxes straight onto 30/day from a standing start after seven weeks of silence."
     }
   ],
   "rulings": [
