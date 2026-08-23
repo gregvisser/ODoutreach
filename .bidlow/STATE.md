@@ -1,6 +1,75 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-23 (fourth session) · Tier P (Client Production)**
+**Updated 2026-08-24 · Tier P (Client Production)**
+
+## Session 2026-08-24 — BUILD-2. Warm-up fixed. One ruling now blocks the rest.
+
+**PR #186 OPEN, CI green.** Production still serves `a4e73f62` from the #185 merge.
+
+### Greg's two rulings, recorded
+- **RULING 1 (settles REQ-02):** duplicates are **per client**. Already on THIS
+  client's list = duplicate, skipped. Same person on a DIFFERENT client's list =
+  not a duplicate, left alone. `Contact` already carries
+  `@@unique([clientId, email])`, so the constraint exists in the database today.
+  `ContactUniverse` stays deliberately cross-client and is unaffected.
+- **RULING 2:** the sending-domain non-negotiable was **wrong, not the product**.
+  Rewritten, old line kept as `superseded_rule` with its date range. Four cited
+  replacements so deleting a rule did not delete the protection. **Residual risk
+  accepted in Greg's name and dated:** outreach runs on the client's PRIMARY
+  domain, so there is no fallback if its reputation is damaged — and **this must
+  be stated in writing to every client before their mailbox is connected.**
+
+### FIXED: the warm-up anchor
+`effectiveDailyCap` now takes a **count of sending days**, not a date. Resolved by
+`countSendingDaysForPool` as distinct UTC dates the mailbox actually sent on,
+once per batch before the transaction opens. Ramp shape unchanged.
+
+**Test seen RED first — 4 of 6 failed**, including the exposing case. The
+existing `mailbox-warmup.test.ts` had to be corrected too: it asserted a
+60-day-old mailbox returns its full cap and called that "long-warmed", which
+**encoded the defect**.
+
+Also **withdrew then re-earned** this gate's `fail_closed_test`. It was recorded
+as passing while the gate was silently inert.
+
+**The number Greg needs before launch is not in the repo** — the SQL is in
+`DOMAIN.json` → `diagnoses` → `WARMUP-IMPACT`.
+
+### Volume-response rule: DEFERRED with a trigger
+A rate-responsive throttle cannot be built on a rate stuck at 0%. Shipping one
+would create a control that never fires and looks like protection. **Trigger:**
+the bounce status write lands, plus 200 measured sends.
+
+## THE BLOCKER — one outstanding ruling now gates all source work
+The build gate reports **1 blocking**: *"Send to a recipient on the do-not-contact
+list belonging to a related domain (bt.com listed, bteurope.com emailed) — no
+gate."* Asked on Monday-1, Monday-3 and again here; **never ruled on.**
+
+Until Greg rules, the gate refuses edits to any file that is not a declared
+gate file. That is why **the bounce status write was not done this session** —
+it is a small, well-understood change with nowhere to legally land.
+
+**Greg's options:** (a) rule that a suppressed domain covers the corporate family
+and it becomes an explicit per-client family list; (b) rule that it does not, and
+the action is recorded as accepted-and-ungated; (c) declare the gate files and
+let the work proceed.
+
+## NOT started, and why
+- **Bounce status write** — blocked as above. Diagnosis complete.
+- **F-01 daily opt-out capture** — the highest-value feature in the brief. Not
+  started. Greg's constraint is absolute: aligned domain or no link.
+- **REQ-01/02/03 CSV import** — not started. REQ-03 (import must not remove DNC
+  entries) is the already-located replace-on-sync defect.
+
+## Next session picks up
+1. **The DNC related-domain ruling.** Everything else is behind it.
+2. Merge #186, then the bounce status write, then run WARMUP-IMPACT on production.
+3. F-01, then CSV import.
+4. Stage 4 COVERAGE and DATAMODEL still missing.
+
+---
+
+## Earlier — session 2026-08-23d
 
 ## Session 2026-08-23d — MERGED AND DEPLOYED. Production is current.
 
