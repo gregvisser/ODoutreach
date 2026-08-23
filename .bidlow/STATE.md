@@ -4,6 +4,32 @@
 
 ## Session 2026-08-23c — SHIPPED TO PR. Waiting on Greg's merge.
 
+## ROUTE: RESCUE — declared 2026-08-23, and nobody had declared it before
+
+**ODoutreach is on the RESCUE route, not the build route.** `.bidlow/BLUEPRINT.json`
+now carries `"route": "rescue"`.
+
+This was never stated, and that omission is the root cause of the whole weekend's
+pattern. Two of the six stages — **ASK** and **PLAN** — had never been run here,
+so nothing flagged the missing discovery, and every surprise landed by accident
+instead of by the map: the agency model that invalidated BC-01, the DPA gap,
+E-06, the unmeasurable bounce rate.
+
+**Stage 1 (ASK) is now drafted** — `.bidlow/BLUEPRINT.json`, `status:
+drafted_for_review`. Six of the seven questions are drafted from evidence with
+their sources cited, so Greg opens a meeting instrument rather than empty boxes.
+The seventh (`frequency`) is deliberately EMPTY and owned by the customer: how
+often a client leaves, how often a prospect reacts badly, how many lists a month
+— none of that is in a repository, and guessing it would stop anyone asking.
+
+Each drafted answer ends with an **ASK IN THE MEETING** list, so the gaps are
+agenda items rather than silence.
+
+**Still missing: COVERAGE and DATAMODEL (stage 4, PLAN).** After the pilot.
+
+---
+
+
 **[PR #185](https://github.com/gregvisser/ODoutreach/pull/185) is OPEN, MERGEABLE, CI GREEN.**
 32 commits. Nothing is deployed — production still serves `b36e66e`.
 **The merge is Greg's**, and `deploy-production.yml` migrates production *before*
