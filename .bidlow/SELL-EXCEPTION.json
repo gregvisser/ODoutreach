@@ -1,0 +1,24 @@
+{
+  "_source": "Drafted by Greg in MONDAY-4-SHIP.md and reproduced verbatim. The agent changed exactly two fields, both because Greg instructed it to: `date` from 2026-08-24 to the actual date the exception was recorded, and `grade_acknowledged.customer_ready` from the placeholder 4.0 to the number the re-grade actually produced (6.8). The words in `why` and `known_risks` are Greg's, unedited.",
+  "authorised_by": "Greg",
+  "date": "2026-08-23",
+  "scope": "push, merge and deploy integrate/monday-pilot to opensdoors.bidlow.co.uk for a ten-day controlled pilot",
+  "why": "The two defects that capped this grade — unsubscribe links on the app domain, and do-not-contact missing subdomains — are fixed and tested on this branch. The remaining findings are real but are bounded by a 20-per-day cap on hand-checked lists, which is a smaller exposure than leaving production on the 20 July build that still carries the defect that caused the quarantine.",
+  "known_risks": [
+    "Bounce rate cannot be trusted: detection is ON in production yet reports 0% across 1,209 sends. Unexplained. The 20/day cap exists so one bad list is visible by eye instead of by measurement.",
+    "Reporting can show two different truths — a workspace reading 'no sends yet' while the report shows 743 for the same client.",
+    "E-06: one mailbox connected to two workspaces stores a duplicate copy of every raw inbound message, body text included. Replies do not cross; the raw store does.",
+    "sentProofMissing is inflated by internal seed sends — a metric defect, not 204 failed sends.",
+    "The do-not-contact related-domain rule is not set, so bt.com does not cover bteurope.com.",
+    "/operations returned 404 in production on 2026-08-09 and has not been re-checked.",
+    "Google OAuth is in Testing mode, so connected mailboxes drop roughly weekly.",
+    "Art.28 DPAs with Sentry, RocketReach and Resend are not verified. RocketReach also raises a lawful-basis question about bought prospect data."
+  ],
+  "grade_acknowledged": {
+    "engineering": 8.0,
+    "customer_ready": 6.8
+  },
+  "expires": "2026-09-03",
+  "_agent_note_on_the_404": "One correction to risk 6, offered rather than edited into Greg's words: /operations 404s because there is no /operations/page.tsx. It is a route segment, not a page, it is linked from nowhere, and admin-gate.test.ts asserts it is absent from the nav. The real page is /operations/outbound, which returns 200 and renders. It is not reachable by clicking, so it is not in the operator's path.",
+  "_agent_note_on_the_grade": "6.8 is not a pass and this exception does not make it one. It records who decided to ship below the bar and why. The shortfall still prints on every gate run, which is the point."
+}

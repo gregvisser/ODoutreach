@@ -3,9 +3,8 @@
   "commit": "fd1cffce854b8a1e1224665aa28011e36d80217b",
   "tier": "P",
   "target_band": "8.5-9.5",
-
   "engineering": {
-    "score": 8.0,
+    "score": 8,
     "verdict": "Real, tested, production software - but sitting just BELOW its own Tier P target band, and the reason is specific.",
     "evidence_run_today": {
       "lint": "npm run lint -> exit 0, no problems",
@@ -33,34 +32,30 @@
     "why_not_higher": "The standard is explicit that a 9 requires strict typecheck, lint, real tests AND enforced coverage, e2e on critical journeys, live error monitoring, gitignored secrets, a merge-blocking CI gate, and automated deploy plus health check - ALL present and passing. Three of those are unproven or absent. Rounding to 8.5 to land inside the tier band would be exactly the false-9 the protocol exists to prevent.",
     "why_not_lower": "1836 genuine tests with fail-closed assertions on the send path is not a scaffold. Every gate that was run, passed."
   },
-
   "customer_ready": {
-    "score": 4.0,
-    "band": "Not customer-ready (3.0-4.9)",
-    "status": "GRADED 2026-08-09 by walking production live as a signed-in operator",
+    "score": 6.8,
+    "band": "Demo-able, not sale-ready (5.0-6.9)",
+    "status": "GRADED 2026-08-23 by walking the integrate/monday-pilot build in Chromium with a real session (13 pages, all HTTP 200, zero console errors)",
     "report": "CUSTOMER-READY-REPORT.md",
-    "weighted_total_before_caps": 6.0,
-    "cap_applied": "Core customer journey broken/not functional -> cap 4.0. A judgement call, stated openly in the report: the send journey is not mechanically broken (mail leaves, 1,209 sends carry provider proof) but production still mints unsubscribe links on the OpensDoors app domain while From: is the customer's own domain - the exact phishing pattern that caused the quarantine. A journey that completes while defeating its own purpose is not a working journey from the customer's side. If the cap is rejected, the honest uncapped number is 6.0; either way it is below 8 and the required actions are identical.",
-    "decisive_evidence": "Deployed commit b36e66e contains send-introduction.ts:529 `resolveClientLinkBaseUrl(client) ?? resolvePublicBaseUrl()`. No client has a verified aligned link domain, so it falls through to AUTH_URL = https://opensdoors.bidlow.co.uk. The fix (commit a8d777c) exists on the UNMERGED branch feat/zero-dns-send-profile. The other half of the root cause IS fixed and live: OPEN_TRACKING_PIXEL=off, verified against Azure config today.",
-    "why_not_higher": "Beyond the link defect: the Train Hugger workspace shows 'LATEST ACTIVITY - No sends yet' while the reporting page shows 743 sends for that same client, so operators are shown two different truths; bounces read 0 (0%) across 1,209 sends because there are no delivery webhooks, making a stated non-negotiable unenforceable; 204 of ~1,470 contacts show 'send proof missing'; /operations 404s and /clients/{id}/activity silently redirects.",
-    "why_not_lower": "This is not a scaffold. Dev-ism hygiene is genuinely strong (9/10) - friendly labels, no raw enums or cuids, 'Workspace ID' not 'Slug'. UX is good (8/10): a numbered setup workflow, a real launch-readiness panel, and a danger zone that states precisely what deletion does and does not touch and requires typing the workspace name. Auth held and no cross-customer leakage was seen.",
-    "findings_so_far": [
-      "Reporting dashboard renders real live data cleanly and states its own methodology ('live counts, no rollup tables'; sends counted only with provider proof). Reads as trustworthy.",
-      "PWA install prompt is present and correct, satisfying the standing BidlowAI PWA rule.",
-      "204 of ~1,470 contacts show 'send proof missing' (~14%), against 1,209 sends with proof. Unexplained, and material to whether an operator can trust the numbers.",
-      "Delivered shows 'Not tracked - no provider delivery webhooks yet'; Bounces read 0 (0%) and Opens 0 across 1,209 sends. The domain brief makes bounce rate below 2% a non-negotiable. A 0% reading with no delivery webhooks most likely means bounces are not being DETECTED. A threshold that cannot be measured cannot be enforced - this is the most important open question on the product.",
-      "/operations returned 404 on production. Not diagnosed; may be a moved route rather than a defect.",
-      "Known, pre-existing: the Google OAuth app remains in Testing mode, so Google-connected mailboxes need reconnecting roughly weekly. Recurring, customer-visible friction."
-    ],
-    "how_to_complete": "Run the customer-ready-audit skill as its own focused session, walk the product as a customer against the full rubric, and save a dated CUSTOMER-READY-REPORT.md. The placeholder file in the repo root already records the known caps."
+    "weighted_total": 6.84,
+    "cap_applied": null,
+    "cap_note": "The previous 4.0 was CAPPED for a broken core journey - production minting unsubscribe links on the app domain. That defect is fixed and tested on this branch (e61cbde), so the cap no longer applies. Every other cap was checked and none applies: no leakage (BC-01 green and proven to catch one), no customer-facing dev-isms, no placeholder content, health check and monitoring present.",
+    "supersedes": "4.0 graded 2026-08-09 against production",
+    "limitation": "Walked a FIXTURE database of four near-empty workspaces, not production with seventeen real clients. Strong evidence about empty states, weak about data scale. Two prior findings (Campaigns column reading 0, and the sends contradiction at production scale) could be neither confirmed nor refuted.",
+    "top_blockers": [
+      "Bounce rate cannot be trusted: detection is ON in production yet reports 0% across 1,209 sends. The domain brief makes <2% non-negotiable.",
+      "The product shows two truths about one client - Overview reads \"Activity - not started\" while Activity reads \"EMAILS SENT 1\". Two sources of truth.",
+      "The core job (compose to send to reply) was never walked end to end on this build.",
+      "E-06: one mailbox on two workspaces duplicates raw inbound mail including body text.",
+      "Art.28 DPAs unverified with Sentry, RocketReach and Resend."
+    ]
   },
-
   "sell_gate": {
     "requirement": "Engineering >= 8 AND Customer-Ready >= 8",
     "engineering": "8.0 - meets the bar",
     "customer_ready": "4.0 - FAILS the bar (6.0 even uncapped)",
     "result": "NOT SATISFIED. Fix the lower grade first: Customer-Ready. The single highest-impact action is to review, merge and deploy feat/zero-dns-send-profile, which removes the app-domain unsubscribe links from production. Push and deploy remain blocked."
   },
-
-  "open_questions": 5
+  "open_questions": 5,
+  "graded_on": "2026-08-23"
 }
