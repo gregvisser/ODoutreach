@@ -42,6 +42,20 @@
       "authorised_by": "Greg",
       "what": "BC-01 asserted staff-level isolation the product deliberately does not have; retargeted to workspace DATA isolation, with the access decision and its reversal trigger recorded",
       "sha256_after": "c02c1531eb6b8a800a47dc53106fe75d6f77726e380bccb45a5718907ef942fc"
+    },
+    {
+      "file": "e2e/cross-tenant.spec.ts",
+      "date": "2026-08-23",
+      "authorised_by": "Greg",
+      "what": "Rewritten alongside the BC-01 spec: the old tests asserted staff-level access isolation the product deliberately does not have. Retargeted at workspace DATA isolation (R-1, R-5, R-6) plus the authentication wall (E-03), with a positive control and an explicit note that these did not go red first",
+      "sha256_after": "e46766d3dc3e6d3181ca7b0a5db31194806433f5fd31d90dc509cb472fb455a4"
+    },
+    {
+      "file": "e2e/cross-tenant.spec.ts",
+      "date": "2026-08-23",
+      "authorised_by": "Greg",
+      "what": "Positive control asserts DOM presence, not visibility: the activity feed sits in a collapsed <details>, and data delivered to another workspace's browser is disclosed whether or not CSS is painting it",
+      "sha256_after": "f7c6f2ad8fd0151c67d5142f402d233a011fe573ea113e0011139f61a65da132"
     }
   ]
 }
