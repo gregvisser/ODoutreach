@@ -195,17 +195,31 @@
     },
     {
       "action": "Send to a recipient on the do-not-contact list belonging to a related domain (bt.com listed, bteurope.com emailed)",
-      "gate": null,
-      "fail_closed_test": false,
+      "gate": "src/server/outreach/suppression-guard.ts — evaluateSuppression resolves the recipient domain and its parents, then looks them up in SuppressedDomainFamily for THIS client. If the recipient is a listed member of a family and ANY member of that family is on the client do-not-contact list, the send is refused with reason \"domain_family\". Runs on the SEND path, so a family entry added today protects a contact loaded months ago. Membership is a listed fact recorded by a human via addDomainToFamilyAction; nothing is inferred from the text of a domain.",
+      "fail_closed_test": true,
       "evidence": "VERIFIED OPEN. suppression-guard.ts matches domains on an exact unique-key lookup, so a DNC entry for one corporate domain does not cover its sibling domains. The client raised this directly and it is a live compliance exposure, not a theoretical one. Scheduled as Phase 2 (eTLD+1 normalisation via the Public Suffix List, auto-block on strong signals such as a shared Entra tenant id, suggest-only on weak brand-token matches). Exact-match suppression itself works correctly and is tested.",
       "what_would_close_it": "Phase 2, estimated 6 naive / 18 Tier P days. Sequenced deliberately ahead of the domain-verification work.",
-      "partial_gate_2026_08_22": {
-        "what_was_built": "A suppressed domain now covers its SUBDOMAINS. src/lib/normalize.ts suppressionDomainCandidates expands the recipient domain into itself plus each parent (newsletter.bt.com -> [newsletter.bt.com, bt.com]); src/server/outreach/suppression-guard.ts evaluateSuppression matches any of them. Splits on label boundaries, not string suffix, so notbt.com and bt.com.evil.net are still NOT blocked. Stops at two labels so a stray 'com' row cannot blackhole every send.",
-        "fail_closed_test": "src/server/outreach/suppression-guard.subdomain.test.ts — 8 tests. Seen RED first against the old exact-match lookup: the three subdomain cases failed while the four over-blocking guards already passed. Green after the fix. Plus 7 pure-function tests in src/lib/normalize.test.ts.",
-        "what_is_STILL_UNGATED": "RELATED COMPANY DOMAINS — the thing this register entry actually names. Whether do-not-contact for bt.com also covers bteurope.com cannot be derived from the string and is a client business rule, not an engineering inference. Until Greg decides it, there is no gate for this action and fail_closed_test stays false. The block is correct and must remain.",
-        "decided_by": "Greg — open question, see open_questions",
-        "recorded_on": "2026-08-22"
-      }
+      "gate_files": [
+        "prisma/schema.prisma",
+        "src/lib/normalize.ts",
+        "src/lib/normalize.test.ts",
+        "src/server/outreach/suppression-guard.ts",
+        "src/server/outreach/suppression-guard.subdomain.test.ts",
+        "src/server/outreach/suppression-guard.family.test.ts",
+        "src/server/outreach/suppression-guard.evaluate.test.ts",
+        "src/server/outreach/suppression-guard.seed.test.ts",
+        "src/server/outreach/suppression-guard.test.ts",
+        "src/server/suppression/domain-families.ts",
+        "src/server/suppression/domain-families.test.ts",
+        "src/app/(app)/clients/do-not-contact-actions.ts",
+        "src/app/(app)/clients/[clientId]/suppression/page.tsx",
+        "src/components/suppression/domain-family-panel.tsx",
+        "prisma/migrations/20260823185647_suppressed_domain_families/migration.sql"
+      ],
+      "fail_closed_test_evidence": "src/server/outreach/suppression-guard.family.test.ts — 10 tests, SEEN RED FIRST: the three family-blocking cases failed against the unimplemented gate while all seven over-block and per-client-isolation guards already passed, which is the right shape (the danger was never that it under-listed, it was that it would over-block or leak across clients). Green after implementation. Covers: bt.com suppressed blocks bteurope.com; any other family member; subdomains of a member; a family with NO suppressed member blocks nothing; a lookalike is not a member; another client is unaffected; another client suppressing the same domain does NOT inherit this client family; and empty families leave the plain domain rules byte-identical.",
+      "fail_closed_test_earned_on": "2026-08-24",
+      "suppression_behaviour_stated": "BOTH, deliberately, and the screen says which. (1) The SEND-PATH gate is authoritative and re-reads families on every send — that is what makes a family entry added today protect a contact loaded last month, the case that actually happens since clients hand over updated sheets weekly. (2) Adding or removing a member ALSO refreshes Contact.isSuppressed for the client, so the lists and counts on screen agree with what the gate will do. Doing only (1) would show a contact as sendable while the gate silently refused it; doing only (2) would leave already-loaded contacts unprotected until someone re-ran a refresh. The UI additionally distinguishes a family that is BLOCKING from one that is LISTED BUT NOT BLOCKING, because a family whose members are none of them suppressed stops nothing and implying otherwise would be the worst outcome of all.",
+      "ruling": "RULING 3, Greg, 2026-08-24: asked whether a client saying \"do not contact BT\" with bt.com should stop a send to someone at bteurope.com — \"do not email them.\" Covered only via an explicit per-client list, never inferred."
     },
     {
       "action": "Ramp a brand-new mailbox straight to full volume instead of warming it up over 30 days",

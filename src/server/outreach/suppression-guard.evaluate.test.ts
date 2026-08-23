@@ -22,6 +22,10 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     suppressedEmail: { findUnique: (...a: unknown[]) => suppressedEmailFindUnique(...a) },
     suppressedDomain: { findMany: (...a: unknown[]) => suppressedDomainFindMany(...a) },
+    // RULING 3: related-company families. Empty here — these fixtures exercise
+    // the plain domain rules, and an empty family list must leave them exactly
+    // as they were.
+    suppressedDomainFamily: { findMany: async () => [], findFirst: async () => null },
   },
 }));
 
