@@ -42,7 +42,42 @@ jobs:
         run: npm run typecheck
 
       - name: Unit tests
-        run: npm run test:coverage
+        run: npm run test:coverage -- --reporter=default --reporter=json --outputFile=vitest-results.json
+
+      # The ship gate reads .bidlow/EVIDENCE.json and refuses to accept "the tests
+      # passed" written by the same agent that wrote the code. Nothing was writing
+      # that file, so the gate's central assumption was false. This step is the
+      # missing producer: it records what ACTUALLY ran, from vitest's own
+      # machine-readable output, and uploads it so the record is independent of
+      # whoever asserts it. `if: always()` so a RED run is recorded as red rather
+      # than leaving no evidence at all.
+      - name: Record unit-test evidence
+        if: always()
+        run: |
+          node -e '
+            const fs = require("fs");
+            let r = null;
+            try { r = JSON.parse(fs.readFileSync("vitest-results.json", "utf8")); } catch {}
+            const suite = r
+              ? { name: "vitest (unit + integration)", command: "npm run test:coverage",
+                  passed: r.success === true && r.numFailedTests === 0,
+                  count: r.numTotalTests, failed: r.numFailedTests, files: r.numTotalTestSuites }
+              : { name: "vitest (unit + integration)", command: "npm run test:coverage",
+                  passed: false, count: 0, failed: null,
+                  note: "no machine-readable result was produced - a check that cannot run is a failure, not a pass" };
+            fs.writeFileSync("evidence-unit.json", JSON.stringify(
+              { commit: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID,
+                recorded_by: "github-actions", suites: [suite] }, null, 2));
+            console.log(JSON.stringify(suite));
+          '
+
+      - name: Upload unit-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-unit
+          path: evidence-unit.json
+          retention-days: 30
 
       - name: Build
         run: npm run build
@@ -102,7 +137,39 @@ jobs:
         run: npm run build
 
       - name: E2E
-        run: npm run test:e2e
+        run: npm run test:e2e -- --reporter=json > playwright-results.json
+
+      # Same contract as the unit job. `if: always()` matters more here: the e2e
+      # suite is currently RED on BC-01 tenant isolation, and the whole point of
+      # recording evidence is that a red run leaves a record saying so.
+      - name: Record e2e evidence
+        if: always()
+        run: |
+          node -e '
+            const fs = require("fs");
+            let r = null;
+            try { r = JSON.parse(fs.readFileSync("playwright-results.json", "utf8")); } catch {}
+            const st = r && r.stats;
+            const suite = st
+              ? { name: "playwright (e2e)", command: "npm run test:e2e",
+                  passed: (st.unexpected || 0) === 0,
+                  count: (st.expected || 0) + (st.unexpected || 0), failed: st.unexpected || 0 }
+              : { name: "playwright (e2e)", command: "npm run test:e2e",
+                  passed: false, count: 0, failed: null,
+                  note: "no machine-readable result was produced - a check that cannot run is a failure, not a pass" };
+            fs.writeFileSync("evidence-e2e.json", JSON.stringify(
+              { commit: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID,
+                recorded_by: "github-actions", suites: [suite] }, null, 2));
+            console.log(JSON.stringify(suite));
+          '
+
+      - name: Upload e2e evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-e2e
+          path: evidence-e2e.json
+          retention-days: 30
 
       - name: Upload Playwright report on failure
         if: failure()
