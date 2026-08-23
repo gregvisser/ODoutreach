@@ -59,12 +59,13 @@
       "applies_here": "Not currently reached - 5 mailboxes at 30/day is 150/day per workspace."
     },
     {
-      "requirement": "Spam complaint rate must stay below 0.1% and must never reach 0.3%. Bounce rate must stay below 2%.",
+      "requirement": "Spam complaint rate must stay below 0.10% and must NEVER reach 0.30%. There is NO published bounce-rate threshold from any provider — see note.",
       "verified": true,
-      "source": "https://redsift.com/guides/bulk-email-sender-requirements",
-      "checked": "2026-07-30",
+      "source": "https://support.google.com/a/answer/81126 — Google's own Email sender guidelines, fetched 2026-08-23. Verbatim: \"Keep spam rates reported in Postmaster Tools below 0.10% and avoid ever reaching a spam rate of 0.30% or higher.\"",
+      "checked": "2026-08-23",
       "revalidate_days": 180,
-      "applies_here": "Hard-bounce suppression is live. Automated complaint/bounce auto-halt is NOT built (Phase 4)."
+      "applies_here": "Complaint capture is live (MAILBOX_COMPLAINT_DETECTION_ENABLED=true in production). Automated auto-halt on a rising rate is NOT built — no send path reads the rate, so a person has to notice.",
+      "correction_2026_08_23": "The previous version of this non-negotiable asserted 'bounce rate must stay below 2%' sourced to redsift.com, a vendor guide. Google's own sender guidelines were fetched on 2026-08-23 and publish NO bounce-rate or error-rate threshold. The 2% figure is a widely-repeated industry heuristic with no provider backing. It has been REMOVED as a provider requirement. What Google actually publishes is a BEHAVIOURAL rule, recorded separately below. Keeping 2% as an internal operating target is fine; presenting it as a provider threshold was not."
     },
     {
       "requirement": "A functional opt-out must be present and honoured, and opt-outs processed within 2 days. List-Unsubscribe must be present and functional.",
@@ -80,7 +81,8 @@
       "source": "https://hunter.io/cold-email-guide/dedicated-cold-email-domain",
       "checked": "2026-07-30",
       "revalidate_days": 180,
-      "applies_here": "PARTIALLY SUPERSEDED for this architecture and the most important nuance in this file. This rule protects a domain's reputation from cold-outreach damage. ODoutreach deliberately sends from the customer's real business mailbox, which is what makes zero-DNS onboarding possible - and it is also precisely the exposure this rule warns about. The mitigating facts: volume is low (30/day/mailbox), the transport is the customer's own tenant, and the phishing signal that caused the incident has been removed. The residual risk is real and should be stated to any customer rather than glossed: heavy or careless outreach from a primary business domain can still damage ordinary business mail. The industry rule is not wrong; this architecture trades it for onboarding, knowingly."
+      "applies_here": "PARTIALLY SUPERSEDED for this architecture and the most important nuance in this file. This rule protects a domain's reputation from cold-outreach damage. ODoutreach deliberately sends from the customer's real business mailbox, which is what makes zero-DNS onboarding possible - and it is also precisely the exposure this rule warns about. The mitigating facts: volume is low (30/day/mailbox), the transport is the customer's own tenant, and the phishing signal that caused the incident has been removed. The residual risk is real and should be stated to any customer rather than glossed: heavy or careless outreach from a primary business domain can still damage ordinary business mail. The industry rule is not wrong; this architecture trades it for onboarding, knowingly.",
+      "CONTRADICTION_2026_08_23": "THIS NON-NEGOTIABLE AND THE SHIPPED PRODUCT DISAGREE, AND NOBODY HAS RECONCILED THEM. The rule says never send cold email from the client primary business domain. The product does exactly that, by design: it sends through the client OWN existing Microsoft 365 / Google Workspace mailbox on their ROOT domain, because that is what makes SPF/DKIM/DMARC pass with no customer DNS change (the zero-DNS architecture, recorded in CLASSIFY email_infrastructure Q3). The trade is explicit: zero onboarding friction in exchange for the client ordinary business domain carrying the reputation risk, with no disposable subdomain to absorb a bad campaign. Moving to a sending subdomain would mean provisioning NEW mailboxes on mail.<client-domain> and having the client sign in to them - a different product shape, not a setting, and a ONE-WAY DOOR once mailboxes exist. NOT the agent decision. Greg must either accept the trade in writing or fund the subdomain shape."
     },
     {
       "requirement": "UK: corporate subscribers (limited companies, LLPs, public bodies) may be emailed without prior consent. Individual subscribers (sole traders, unincorporated partnerships, personal addresses) require consent or soft opt-in.",
@@ -97,6 +99,46 @@
       "checked": "2026-07-30",
       "revalidate_days": 180,
       "applies_here": "Satisfied - mail comes from the customer's own named mailbox and replies return to it."
+    },
+    {
+      "requirement": "When messages start bouncing or being deferred, REDUCE sending volume until the error rate drops, then increase slowly again. This is a behavioural rule, not a threshold — there is no number to be under, only a direction to move in.",
+      "verified": true,
+      "source": "https://support.google.com/a/answer/81126 — fetched 2026-08-23. Verbatim: \"If messages start bouncing or start being deferred, reduce the sending volume until the SMTP error rate decreases. Then, increase slowly again.\" And: \"Start with a low sending volume to engaged users, and slowly increase the volume over time.\"",
+      "checked": "2026-08-23",
+      "revalidate_days": 180,
+      "applies_here": "NOT IMPLEMENTED. Nothing in the send path reads the bounce or error rate, so nothing can reduce volume in response to it. The 20/day ceiling is a static compensating control standing in for this rule, and it is static precisely because the rate cannot currently be read."
+    },
+    {
+      "requirement": "Per-mailbox provider ceilings, Google Workspace: 2,000 messages per user per day; 3,000 total external recipients per day; 2,000 UNIQUE EXTERNAL recipients per day. Applied over a rolling 24-hour window, not a calendar day.",
+      "verified": true,
+      "source": "https://knowledge.workspace.google.com/admin/gmail/gmail-sending-limits-in-google-workspace — Google Workspace admin documentation, fetched 2026-08-23.",
+      "checked": "2026-08-23",
+      "revalidate_days": 180,
+      "applies_here": "NOT the binding constraint. The product caps a mailbox at 30/day, roughly 1.5% of the unique-external-recipient ceiling. Reputation, not provider quota, is what limits this system."
+    },
+    {
+      "requirement": "Per-mailbox provider ceilings, Microsoft 365 / Exchange Online: Recipient rate limit 10,000 recipients per day per mailbox; Message rate limit 30 messages per MINUTE per mailbox; recipient limit customisable up to 1,000 per message. Plus a TENANT-wide Tenant External Recipient Rate Limit (TERRL) scaled to licence count, visible in EAC Reports > Mail flow. Mail from default onmicrosoft.com domains is throttled to 100 external recipients per organisation per 24h.",
+      "verified": true,
+      "source": "https://learn.microsoft.com/en-us/office365/servicedescriptions/exchange-online-service-description/exchange-online-limits — Microsoft Learn, page dated 2026-04-07, fetched 2026-08-23.",
+      "checked": "2026-08-23",
+      "revalidate_days": 180,
+      "applies_here": "Per-mailbox limits are not binding at 30/day. TERRL IS worth knowing because it is TENANT-wide, not per-mailbox: a client running several outreach mailboxes in one tenant shares one external-recipient budget. Nobody has checked any client's TERRL. Microsoft's own footnote states plainly that 'Exchange Online isn't suited to accommodate bulk-mailing scenarios' and points high-volume senders at Azure Communication Services — worth recording as the vendor's own view of this architecture, even though 150/day/client is nowhere near bulk."
+    },
+    {
+      "requirement": "High-volume sender rules bite at 5,000+ messages per day to Microsoft consumer services from one From: domain: SPF and DKIM must both pass, DMARC must be published, and at least one of SPF/DKIM must ALIGN with the 5322.From domain. Since 5 May 2025 non-compliant mail is rejected outright with '550 5.7.515 Access denied, sending domain does not meet the required authentication level'. Microsoft's stated best practice alongside it: From/Reply-To must reflect the true sending domain, a functional unsubscribe must be present, and invalid addresses removed regularly.",
+      "verified": true,
+      "source": "https://techcommunity.microsoft.com/blog/microsoftdefenderforoffice365blog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730 — Microsoft Community Hub, retrieved 2026-08-23.",
+      "checked": "2026-08-23",
+      "revalidate_days": 180,
+      "applies_here": "The 5,000/day threshold is not reached. The ALIGNMENT principle applies regardless of volume and is exactly what the 2026 quarantine was about — Microsoft naming 'From/Reply-To must reflect the true sending domain' independently corroborates the zero-DNS fix shipped on 2026-08-23."
+    },
+    {
+      "requirement": "WARM-UP MUST BE DRIVEN BY SENDING HISTORY, NOT BY HOW LONG A MAILBOX HAS EXISTED.",
+      "verified": true,
+      "source": "https://support.google.com/a/answer/81126 — fetched 2026-08-23. Verbatim: \"Avoid introducing sudden volume spikes if you do not have a history of sending large volumes.\" The condition Google states is a history of SENDING, not an account age.",
+      "checked": "2026-08-23",
+      "revalidate_days": 180,
+      "applies_here": "**NOT SATISFIED — this is the finding.** src/lib/mailboxes/mailbox-warmup.ts anchors the ramp to mailboxAgeDays(), computed from connectedAt (else createdAt). Its own docstring says: 'any mailbox already older than the ramp window is unaffected — its effective cap is its configured cap.' So a mailbox connected three months ago that has NEVER SENT gets its full 30/day on its very first send, with no ramp at all. That is precisely the case being created now: mailboxes connected during onboarding but not yet launched. The ramp's SHAPE is fine and is more conservative than the researched schedule; its ANCHOR measures the wrong thing."
     }
   ],
   "irreversible_actions": [
@@ -182,6 +224,33 @@
       "why_that_number": "The domain brief's non-negotiable is a bounce rate below 2%. At 20 sends/day a single hard bounce is 5% of the day's volume and 0.5% of a 10-day pilot, so ONE bad address is visible by eye in the reply inbox without any measurement infrastructure at all — that is the point of the number. It also sits inside the product's own warm-up ramp (WARMUP_BASE_CAP 5, +5 every 5 days), so it does not fight the existing control, and inside the researched week-1 guidance of 5-10/day/mailbox.",
       "trigger_that_lifts_it": "BOTH: (1) MAILBOX_BOUNCE_DETECTION_ENABLED=true in Azure App Service config, confirmed by observing at least one real NDR being detected and suppressed; and (2) a measured bounce rate below 2% over a minimum of 200 sends. Until both hold, volume is the substitute for measurement.",
       "cheaper_first_step": "Turn MAILBOX_BOUNCE_DETECTION_ENABLED on. It is an env var on an already-built, already-tested path, not a webhook project."
+    }
+  ],
+  "diagnoses": [
+    {
+      "id": "BOUNCE-0PCT",
+      "question": "Why does the bounce rate read 0% across 1,209 sends when MAILBOX_BOUNCE_DETECTION_ENABLED is true in production?",
+      "answer": "DETERMINED, from the code, 2026-08-23. Detection is not broken. The bounce is detected and the address IS suppressed — but the row the report counts is never marked, so the number can only ever read zero.",
+      "the_trace": [
+        "1. NDRs arrive: mailbox-inbox-sync.ts pulls the connected mailbox and calls processSyncedMessageForBounce BEFORE the internal-mail filter, deliberately, because an NDR usually comes from the tenant's own postmaster.",
+        "2. The parser matches: classifyInboundBounce recognises the DSN, extracts the failed recipient, and bounce-detection.ts then requires a matching OutboundEmail (same client, same mailbox, that recipient, actually sent) as a safety gate against spoofed bounces.",
+        "3. The result IS written — but only to suppression. suppressRecipientForHardBounce creates the SuppressedEmail row, flips Contact.isSuppressed, and writes one AuditLog row. It receives outboundEmailId and uses it ONLY as audit metadata (bounce-suppression.ts:162).",
+        "4. NOTHING EVER SETS OutboundEmail.status = BOUNCED. Neither bounce-detection.ts nor bounce-suppression.ts calls outboundEmail.update at all.",
+        "5. The report counts prisma.outboundEmail.count({ clientId, status: 'BOUNCED', ... }). It finds none. It reports 0%."
+      ],
+      "the_asymmetry": "The LEGACY ESP webhook path does mark the row — outbound-provider-events.ts:214-218 sets status 'BOUNCED' and bouncedAt. That is the path the metric was built against. Production does not use it: every real send goes through a connected client mailbox, so every real bounce goes down the NDR path, which suppresses but does not mark. Protection and measurement were wired to two different tables, and only protection got connected to the live transport.",
+      "why_this_matters_more_than_it_looks": "The reassuring reading — '0% means nothing is measuring, so we are blind' — is wrong in a way that flatters the system. Suppression HAS been working the whole time: bounced addresses have been blocked from future sends. What has been missing is the ability to SEE it. So the deliverability protection is in better shape than feared, and the reporting is in worse shape than feared: it has been silently reporting a clean sheet while bounces were being handled.",
+      "how_greg_can_confirm_this_in_one_query": "On the production database: SELECT count(*) FROM \"SuppressedEmail\" WHERE \"sourceId\" IS NULL; and check AuditLog for rows whose metadata carries providerEventType 'mailbox_sync_ndr'. If those counts are non-zero while OutboundEmail has no BOUNCED rows, the diagnosis is confirmed outright. If BOTH are zero, then NDRs are genuinely not arriving or not parsing, and the trace above is wrong at step 1 or 2.",
+      "the_fix_and_its_shape": "In processSyncedMessageForBounce, transition the matched OutboundEmail to BOUNCED with bouncedAt = the NDR receipt time, mirroring what the webhook path already does. Small, but it changes send-path behaviour and must land in its own PR with a test seen RED first: assert that an NDR for a real send both suppresses the address AND marks the row, and that a spoofed NDR naming an address this mailbox never wrote to does neither.",
+      "not_determined": "Whether any NDRs have actually arrived in production. That needs the production database and was not attempted. The code-level defect above is certain; the volume behind it is not.",
+      "determined_on": "2026-08-23",
+      "determined_from": [
+        "src/server/mailbox/mailbox-inbox-sync.ts",
+        "src/server/mailbox/bounce-detection.ts",
+        "src/server/email/bounce-suppression.ts",
+        "src/server/email/webhooks/outbound-provider-events.ts",
+        "src/server/queries/outreach-metrics.ts"
+      ]
     }
   ]
 }
