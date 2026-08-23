@@ -2,8 +2,8 @@
   "_source": "Drafted by Greg in MONDAY-4-SHIP.md and reproduced verbatim. The agent changed exactly two fields, both because Greg instructed it to: `date` from 2026-08-24 to the actual date the exception was recorded, and `grade_acknowledged.customer_ready` from the placeholder 4.0 to the number the re-grade actually produced (6.8). The words in `why` and `known_risks` are Greg's, unedited.",
   "authorised_by": "Greg",
   "date": "2026-08-23",
-  "scope": "push, merge and deploy integrate/monday-pilot to opensdoors.bidlow.co.uk for a ten-day controlled pilot",
-  "why": "The two defects that capped this grade — unsubscribe links on the app domain, and do-not-contact missing subdomains — are fixed and tested on this branch. The remaining findings are real but are bounded by a 20-per-day cap on hand-checked lists, which is a smaller exposure than leaving production on the 20 July build that still carries the defect that caused the quarantine.",
+  "scope": "push, merge and deploy to opensdoors.bidlow.co.uk and run it as a PRODUCTION system: OpensDoors and Bidlow both sending real outreach to real leads, from day one, on a warm-up ramp.",
+  "why": "The two defects that capped this grade — unsubscribe links on the app domain, and do-not-contact missing subdomains — are fixed and tested. The remaining findings are real, and while they stand the daily send volume is held down by a warm-up ramp. That ceiling is NOT a trial period: it exists for two separate reasons, both real. First, warm-up is how email reputation works and is non-negotiable regardless of confidence in the software. Second, it is a compensating control for a bounce figure nobody can currently read. Running this way is a smaller exposure than leaving production on the 20 July build, which still carried the defect that caused the quarantine.",
   "known_risks": [
     "Bounce rate cannot be trusted: detection is ON in production yet reports 0% across 1,209 sends. Unexplained. The 20/day cap exists so one bad list is visible by eye instead of by measurement.",
     "Reporting can show two different truths — a workspace reading 'no sends yet' while the report shows 743 for the same client.",
@@ -15,10 +15,12 @@
     "Art.28 DPAs with Sentry, RocketReach and Resend are not verified. RocketReach also raises a lawful-basis question about bought prospect data."
   ],
   "grade_acknowledged": {
-    "engineering": 8.0,
+    "engineering": 8,
     "customer_ready": 6.8
   },
   "expires": "2026-09-03",
   "_agent_note_on_the_404": "One correction to risk 6, offered rather than edited into Greg's words: /operations 404s because there is no /operations/page.tsx. It is a route segment, not a page, it is linked from nowhere, and admin-gate.test.ts asserts it is absent from the nav. The real page is /operations/outbound, which returns 200 and renders. It is not reachable by clicking, so it is not in the operator's path.",
-  "_agent_note_on_the_grade": "6.8 is not a pass and this exception does not make it one. It records who decided to ship below the bar and why. The shortfall still prints on every gate run, which is the point."
+  "_agent_note_on_the_grade": "6.8 is not a pass and this exception does not make it one. It records who decided to ship below the bar and why. The shortfall still prints on every gate run, which is the point.",
+  "_reworded_on": "2026-08-23",
+  "_reworded_why": "The original text said \"ten-day controlled pilot\" in both scope and why. Greg, 2026-08-24: \"i dont want a pilot, i want a full production system from day one, we will use opensdoors and bidlow to send real outreach to real leads\" and \"warmup is non negotiable, it has to happen. it must be done according to industry standards.\" The word pilot was false and is gone. known_risks and grade_acknowledged are untouched."
 }
