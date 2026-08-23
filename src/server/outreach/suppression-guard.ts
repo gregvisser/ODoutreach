@@ -11,11 +11,17 @@ import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
 
 export type SuppressionDecision = {
   suppressed: boolean;
-  reason: "email_list" | "domain_list" | "none";
+  reason: "email_list" | "domain_list" | "domain_family" | "none";
   normalizedEmail: string;
   normalizedDomain: string;
   matchedEmail?: string;
   matchedDomain?: string;
+  /**
+   * RULING 3 — set when the block came from an explicitly-listed related-company
+   * family rather than a direct domain hit. Carries the human label ("BT") so an
+   * operator asked "why was this blocked?" gets an answer they can act on.
+   */
+  matchedFamilyLabel?: string;
   /**
    * Feature A — set when the address is exempt because it is an active internal
    * seed/allowlist address (always deliverable). Only ever true when the
@@ -53,7 +59,7 @@ export async function evaluateSuppression(
     };
   }
 
-  const [emailHit, domainHits] = await Promise.all([
+  const [emailHit, domainHits, familyHits] = await Promise.all([
     prisma.suppressedEmail.findUnique({
       where: {
         clientId_email: { clientId, email: normalizedEmail },
@@ -65,6 +71,14 @@ export async function evaluateSuppression(
     // label boundaries, so `notbt.com` and `bt.com.evil.net` do NOT match.
     domainCandidates.length > 0
       ? prisma.suppressedDomain.findMany({
+          where: { clientId, domain: { in: domainCandidates } },
+        })
+      : Promise.resolve([]),
+    // RULING 3 — is the recipient's domain (or any parent of it) a listed member
+    // of a related-company family for THIS client? Fetched alongside the others
+    // rather than after them, so the common case costs no extra round trip.
+    domainCandidates.length > 0
+      ? prisma.suppressedDomainFamily.findMany({
           where: { clientId, domain: { in: domainCandidates } },
         })
       : Promise.resolve([]),
@@ -93,6 +107,50 @@ export async function evaluateSuppression(
       normalizedDomain,
       matchedDomain: matched ?? domainHits[0].domain,
     };
+  }
+
+  // RULING 3 (Greg, 2026-08-24) — a suppressed domain may also cover RELATED
+  // COMPANY domains, but only ones a human has explicitly listed for this
+  // client. Suppression is TRANSITIVE across a family: if any member is
+  // suppressed, every member is.
+  //
+  // Runs on the SEND path, not only at import, so a family entry added today
+  // protects a contact loaded last month — which is the case that will actually
+  // happen, since clients hand over updated do-not-contact sheets weekly.
+  //
+  // Deliberately NOT inferred. Membership is a listed fact: `bteurope.com`
+  // shares no text with `bt.com`, and an algorithm that connected them would
+  // also connect things that are not related.
+  if (familyHits.length > 0) {
+    const labels = [...new Set(familyHits.map((f) => f.label))];
+    const members = await prisma.suppressedDomainFamily.findMany({
+      where: { clientId, label: { in: labels } },
+    });
+    const memberDomains = [...new Set(members.map((m) => m.domain))];
+    const suppressedMembers =
+      memberDomains.length > 0
+        ? await prisma.suppressedDomain.findMany({
+            where: { clientId, domain: { in: memberDomains } },
+          })
+        : [];
+
+    if (suppressedMembers.length > 0) {
+      // Report the most specific candidate that put the recipient in a family,
+      // and the label, so "why was this blocked?" has a human answer.
+      const matched =
+        domainCandidates.find((c) => familyHits.some((f) => f.domain === c)) ??
+        familyHits[0].domain;
+      const label =
+        familyHits.find((f) => f.domain === matched)?.label ?? familyHits[0].label;
+      return {
+        suppressed: true,
+        reason: "domain_family",
+        normalizedEmail,
+        normalizedDomain,
+        matchedDomain: matched,
+        matchedFamilyLabel: label,
+      };
+    }
   }
 
   return {

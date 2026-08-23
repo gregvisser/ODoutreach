@@ -68,6 +68,10 @@ vi.mock("@/lib/db", () => ({
       findFirst: async (a: WhereArg) => matchDomains(a)[0] ?? null,
       findMany: async (a: WhereArg) => matchDomains(a),
     },
+    // RULING 3: related-company families. Empty here — these fixtures exercise
+    // the plain domain rules, and an empty family list must leave them exactly
+    // as they were.
+    suppressedDomainFamily: { findMany: async () => [], findFirst: async () => null },
   },
 }));
 

@@ -295,6 +295,7 @@ model StaffUser {
   supportTicketsApproved        SupportTicket[]               @relation("SupportTicketApprovedBy")
 
   @@index([invitedById])
+  suppressedDomainFamiliesCreated SuppressedDomainFamily[] @relation("SuppressedDomainFamilyCreatedBy")
 }
 
 /// Staff-raised support ticket for issues with the ODoutreach system itself
@@ -428,6 +429,7 @@ model Client {
   suppressionSources      SuppressionSource[]
   suppressedEmails        SuppressedEmail[]
   suppressedDomains       SuppressedDomain[]
+  suppressedDomainFamilies SuppressedDomainFamily[]
   campaigns               Campaign[]
   outboundEmails          OutboundEmail[]
   inboundReplies          InboundReply[]
@@ -933,6 +935,42 @@ model SuppressedEmail {
 
   @@unique([clientId, email])
   @@index([clientId])
+}
+
+/// RULING 3 (Greg, 2026-08-24) — a suppressed domain may also cover RELATED
+/// COMPANY domains, but only ones a human has explicitly listed for that client.
+///
+/// It cannot be inferred and must not be: `bteurope.com` shares no text with
+/// `bt.com`, and any algorithm that connected them would also connect things
+/// that are not related — over-blocking a client's real prospects is its own
+/// failure. So someone types "BT" and lists the domains that belong to it.
+///
+/// A family is simply the set of rows sharing a `label` within one client.
+/// Suppression is transitive across the family: if ANY member domain is
+/// suppressed for this client, EVERY member is treated as suppressed.
+///
+/// Per client by construction — one client's view of who BT is has nothing to
+/// do with another's. Default empty, so nothing changes for any existing client
+/// until a human fills it in.
+model SuppressedDomainFamily {
+  id       String   @id @default(cuid())
+  clientId String
+  /// Human label for the company, e.g. "BT". Free text, normalised for display
+  /// only — the label groups rows, it is never matched against an email.
+  label    String
+  /// Normalised domain (lowercase, no protocol/path/www), e.g. "bteurope.com".
+  domain   String
+  /// Who added it, for the audit trail. Null for system/seed rows.
+  createdByStaffUserId String?
+  createdAt DateTime @default(now())
+
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy StaffUser? @relation("SuppressedDomainFamilyCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+
+  /// A domain belongs to at most one family per client — otherwise "which
+  /// family is bteurope.com in" has no answer and the gate is ambiguous.
+  @@unique([clientId, domain])
+  @@index([clientId, label])
 }
 
 model SuppressedDomain {

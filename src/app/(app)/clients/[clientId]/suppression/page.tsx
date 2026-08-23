@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 
 import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
 import { ManualDncAddForm } from "@/components/suppression/add-to-dnc";
+import { DomainFamilyPanel } from "@/components/suppression/domain-family-panel";
+import { listDomainFamiliesForClient } from "@/server/suppression/domain-families";
 import {
   Card,
   CardContent,
@@ -61,6 +63,11 @@ export default async function ClientSuppressionPage({ params }: Props) {
   }
   const manualCount = manualEmailCount + manualDomainCount;
 
+  // Ruling 3 — related-company domain families for this client. Each member is
+  // marked with whether it is itself suppressed, which is what decides whether
+  // the family blocks anything at all.
+  const domainFamilies = await listDomainFamiliesForClient(client.id);
+
   return (
     <div className="space-y-8">
       <div>
@@ -98,6 +105,23 @@ export default async function ClientSuppressionPage({ params }: Props) {
                     : ""
                 }.`}
           </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Related company domains</CardTitle>
+          <CardDescription>
+            Some companies use more than one domain. Blocking{" "}
+            <span className="font-mono">bt.com</span> does not block{" "}
+            <span className="font-mono">bteurope.com</span> on its own — nothing
+            can tell they are the same company without being told. List them
+            here and blocking any one of them blocks them all, for this client
+            only.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DomainFamilyPanel clientId={client.id} families={domainFamilies} />
         </CardContent>
       </Card>
 

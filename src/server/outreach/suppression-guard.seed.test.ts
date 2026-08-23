@@ -20,6 +20,10 @@ vi.mock("@/lib/db", () => ({
     suppressedDomain: {
       findMany: (...a: unknown[]) => suppDomainFindMany(...a),
     },
+    // RULING 3: related-company families. Empty here — these fixtures exercise
+    // the plain domain rules, and an empty family list must leave them exactly
+    // as they were.
+    suppressedDomainFamily: { findMany: async () => [], findFirst: async () => null },
   },
 }));
 
