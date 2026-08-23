@@ -90,6 +90,12 @@
         "source": "Code read 2026-08-22: prisma/schema.prisma (no TTL/retention fields), .github/workflows (no purge job), src/server/outreach/suppression-guard.ts (append-only suppression); storage-limitation principle per UK GDPR Art.5(1)(e) as summarised in DOMAIN-BRIEF-cold-email.md sec.3",
         "expires": "2026-11-22"
       },
+      "4": {
+        "answer": "PARTIALLY — and the gap is named rather than smoothed over. Greg confirmed on 2026-08-23: MICROSOFT and GOOGLE are covered. Their standard data-processing terms (the Microsoft Products and Services Data Protection Addendum, and the Google Workspace / Cloud Data Processing Amendment) are incorporated into the business service terms for a paying customer without a separate signature, so Azure as host and database, Microsoft Graph as transport, and Google Workspace/Gmail plus Google Sheets as transport and suppression sync are all under a DPA. THREE ARE NOT VERIFIED and are an OPEN Art.28 OBLIGATION: (1) SENTRY — error monitoring, which can capture request context and therefore personal data, and which is a US-based processor so the transfer mechanism matters as well as the contract; (2) ROCKETREACH — the enrichment data broker, and the sharper problem of the two, because it raises a CONTROLLER question as well as a processor one: what is the lawful basis of the prospect data being BOUGHT, and can that basis be relied on downstream; (3) RESEND — the legacy fallback mail path. Resend carries no live prospect traffic today (every real send goes through a connected client mailbox via execute-one.ts, which has no ESP fallback), so its exposure is limited to non-mailbox system mail, but it is still in the chain until it is removed from the code. UK GDPR Art.28(3) requires the written contract to be in place BEFORE the processor processes personal data on the controller's behalf, so these three are outstanding NOW, not at some later compliance milestone. RECOMMENDED ORDER: RocketReach first (largest volume of prospect data and the lawful-basis question), Sentry second, and either sign or delete Resend.",
+        "confidence": "SP",
+        "source": "Greg, 2026-08-23, answering the Q5 fact directly. Processor chain enumerated from the code on the same date: Azure App Service + Azure Database for PostgreSQL (CLAUDE.md deployment record), Microsoft Graph and Google Gmail transports (src/server/email/outbound/execute-one.ts), Google Sheets suppression sync (src/server/integrations/google-sheets/), Sentry (instrumentation + the sentry-trace/baggage headers observed on live responses), RocketReach (src/server/... RocketReachEnrichment), Resend (src/app/api/webhooks/resend, legacy fallback only).",
+        "expires": "2026-11-23"
+      },
       "__specialist_review": {
         "researched_from": [
           "DOMAIN-BRIEF-cold-email.md sec.3 'The legal position — UK' (written 30 July 2026), covering PECR Regulation 22, the corporate-vs-individual subscriber distinction, and the UK GDPR legitimate-interests basis.",
@@ -123,12 +129,13 @@
   },
   "_still_blank_and_why": {
     "email_infrastructure": {},
-    "regulated_data": {
-      "4": "fact — DPAs. AN OWED OBLIGATION, NOT PAPERWORK: UK GDPR Art.28 requires a written contract with every processor BEFORE they process personal data on your behalf. The chain is Microsoft (Azure host + database + Graph transport), Google (Workspace/Gmail transport + Sheets suppression sync), Sentry (error monitoring, which can capture request context), RocketReach (a data broker — which also raises a CONTROLLER question about the lawful basis of the data being bought), and Resend on the legacy fallback path. Greg must confirm each. This is outstanding BEFORE real prospect data is processed."
-    },
+    "regulated_data": {},
     "multi_tenancy": {
       "0": "decision — can one person belong to more than one tenant. The SCHEMA allows it (ClientMembership is a join table, unique on staffUserId+clientId), but the intended rule is Greg's, and today the question is moot because everyone sees everything regardless of membership.",
       "2": "decision — can a record ever move between tenants. Not evidenced either way in the code; Greg's call."
     }
+  },
+  "_open_obligations": {
+    "dpa_gap": "Art.28 DPAs NOT verified with Sentry, RocketReach and Resend (Greg, 2026-08-23). Outstanding NOW, not at a later milestone. RocketReach also raises a controller-side lawful-basis question about bought prospect data."
   }
 }
