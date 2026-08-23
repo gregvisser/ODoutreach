@@ -73,3 +73,7 @@ Thumbs.db
 # HEAD and makes itself stale on the spot. It is a point-in-time attestation
 # about a commit, not a document that lives in that commit. Kept on disk only.
 /.bidlow/CHAIN.json
+
+# Claude Code: shared project config may be committed; `.local` is per-developer
+# (one person's permission allowlist) and must not travel with the repo.
+.claude/settings.local.json
