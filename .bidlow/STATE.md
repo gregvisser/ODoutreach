@@ -2,6 +2,74 @@
 
 **Updated 2026-08-24 · Tier P (Client Production)**
 
+## Session 2026-08-24d — QUEUE CLEARED, PRODUCTION MEASURED.
+
+**All four PRs merged, deployed and verified one at a time.** Production serves
+**`1d7e9ea6`**, health ok, database ok. Both migrations applied cleanly.
+
+| PR | Deploy | Verified on prod |
+|---|---|---|
+| #186 warm-up anchor fix, rulings | success | `00278d3` ✓ |
+| #187 DNC families (migration) | success | `f9915a1` ✓ |
+| #188 drift reconciliation (migration) | success | `80971f2` ✓ |
+| #189 production report | success | `1d7e9ea` ✓ |
+
+**Restore path confirmed before touching anything:** `pg-opensdoors-outreach-prod-01`,
+UK South, PITR with **7-day retention**, earliest restore 2026-08-17. **Geo-redundant
+backup is DISABLED** — restore is region-local only.
+
+## THE MEASUREMENTS — and my prediction was WRONG
+
+Run read-only via a temporary firewall rule (added and removed within minutes,
+removal verified).
+
+### Bounces
+**1,358 sends, 2026-05-20 to 2026-07-03. 0 marked BOUNCED. 17 suppressed outside
+a sheet sync. ZERO NDR audit entries.**
+
+NDR detection has **never fired**. That is not "no bounces" — the detector could
+be working and finding nothing, or not working at all, and this data cannot tell
+them apart. **The bounce status write would not fix this on its own:** if no NDR
+is ever detected, marking the row marks nothing. The bounce rate is still
+genuinely unmeasured.
+
+### THE LAST SEND WAS 3 JULY — seven weeks of silence
+Nothing has sent since. Reputation decays with inactivity, so every mailbox is
+effectively cold regardless of June.
+
+### Warm-up: ALL 45 of 45 mailboxes drop
+**I predicted OpensDoors' own mailboxes would not move.** They all do.
+`greg@opensdoors.co.uk` has **2 sending days across 119 days**;
+`joe@opensdoors.co.uk` 2 across 122. **The most-used mailbox in the entire system
+has 10 sending days.** 9 have zero.
+
+**Why I was wrong:** I assumed volume implies regularity. It does not. 1,358 sends
+across 45 mailboxes with ≤10 sending days each means the fleet has been sending
+in **bursts**, not daily — exactly what warm-up exists to prevent. **No mailbox in
+this system has ever been warmed** in the sense the ramp intends.
+
+**Consequence Greg needs before switching sending on:** the corrected ramp is not
+a tweak affecting a few idle mailboxes. It **resets the entire fleet to 5/day**.
+His 30/day target is 25 sending days away for every mailbox. Under the OLD
+behaviour, 45 mailboxes would have gone straight to 30/day from a standing start
+after seven weeks of silence.
+
+## Also
+Two unrelated PRs remain open from 2026-08-06: **#184** (`feat/zero-dns-send-profile`
+— its content is already live via #185, so it is redundant and should be closed)
+and **#183** (`chore/deliverability-findings`, docs). Neither was in scope.
+
+## Next session picks up
+1. **Why has NDR detection never fired?** This now outranks the status write —
+   the status write fixes reporting, but there is nothing to report.
+2. Send spacing (designed in `SEND-SPACING-RESEARCH`, not built).
+3. F-01 opt-out capture · CSV import · stage 4 COVERAGE/DATAMODEL · the client
+   risk-disclosure document.
+
+---
+
+## Earlier — session 2026-08-24c (BUILD-4)
+
 ## Session 2026-08-24c — BUILD-4. FOUR PRs NOW QUEUED. Merging is the bottleneck.
 
 | PR | What | CI |
