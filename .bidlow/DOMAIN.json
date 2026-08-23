@@ -76,13 +76,36 @@
       "applies_here": "Satisfied by the mailto: rail plus a visible plain-English opt-out line; reply ingestion auto-suppresses via classifyOptOutReply. Gated in code - see irreversible_actions."
     },
     {
-      "requirement": "Never send cold email from the client's primary business domain; use a dedicated secondary domain or subdomain. A subdomain does NOT inherit the parent's SPF/DKIM/DMARC and needs its own.",
+      "requirement": "An outreach email may be sent from the client's own primary business mailbox. What must hold instead — all four, together — is: (1) every link in the email is on a domain ALIGNED with the From: domain, or there is no link at all; (2) SPF, DKIM and DMARC pass on the sending domain; (3) sending volume ramps on SENDING HISTORY, per Google's published guidance; (4) the spam-complaint rate stays below 0.10% and never reaches 0.30%.",
       "verified": true,
-      "source": "https://hunter.io/cold-email-guide/dedicated-cold-email-domain",
-      "checked": "2026-07-30",
+      "source": "Greg's ruling 2026-08-24 (quoted below) for the architectural choice; the four replacement protections are each independently sourced — link alignment from the 2026 incident root cause and https://techcommunity.microsoft.com/blog/microsoftdefenderforoffice365blog/strengthening-email-ecosystem-outlook%E2%80%99s-new-requirements-for-high%E2%80%90volume-senders/4399730 ('From/Reply-To must reflect the true sending domain'); volume ramp and complaint thresholds from https://support.google.com/a/answer/81126, fetched 2026-08-23.",
+      "checked": "2026-08-24",
       "revalidate_days": 180,
-      "applies_here": "PARTIALLY SUPERSEDED for this architecture and the most important nuance in this file. This rule protects a domain's reputation from cold-outreach damage. ODoutreach deliberately sends from the customer's real business mailbox, which is what makes zero-DNS onboarding possible - and it is also precisely the exposure this rule warns about. The mitigating facts: volume is low (30/day/mailbox), the transport is the customer's own tenant, and the phishing signal that caused the incident has been removed. The residual risk is real and should be stated to any customer rather than glossed: heavy or careless outreach from a primary business domain can still damage ordinary business mail. The industry rule is not wrong; this architecture trades it for onboarding, knowingly.",
-      "CONTRADICTION_2026_08_23": "THIS NON-NEGOTIABLE AND THE SHIPPED PRODUCT DISAGREE, AND NOBODY HAS RECONCILED THEM. The rule says never send cold email from the client primary business domain. The product does exactly that, by design: it sends through the client OWN existing Microsoft 365 / Google Workspace mailbox on their ROOT domain, because that is what makes SPF/DKIM/DMARC pass with no customer DNS change (the zero-DNS architecture, recorded in CLASSIFY email_infrastructure Q3). The trade is explicit: zero onboarding friction in exchange for the client ordinary business domain carrying the reputation risk, with no disposable subdomain to absorb a bad campaign. Moving to a sending subdomain would mean provisioning NEW mailboxes on mail.<client-domain> and having the client sign in to them - a different product shape, not a setting, and a ONE-WAY DOOR once mailboxes exist. NOT the agent decision. Greg must either accept the trade in writing or fund the subdomain shape."
+      "rewritten_on": "2026-08-24",
+      "rewritten_because": "The rule was wrong, not the product. A separate sending domain is the right shape for high-volume cold-email INFRASTRUCTURE, where domains are consumable and a burnt one is replaced. This product is deliberately not that: it sends from the client's own mailbox, as the client, at roughly 1.5% of the provider's per-mailbox ceiling, with a real human reply-to. That is closer to a salesperson sending by hand than to a bulk sender, and it is the thing that makes the product distinctive. The old rule also BLAMED THE WRONG CAUSE: the 2026 quarantine was not caused by sending from the client's domain. It was caused by the LINK domain not matching the From: domain — the phishing pattern — which is now fixed, tested and live.",
+      "greg_ruling_verbatim": "RULING 2, 2026-08-24: 'the sending-domain non-negotiable is WRONG. Rewrite it.' — 'the rule is wrong, not the product.'",
+      "how_each_replacement_is_enforced": {
+        "1_link_alignment": "ENFORCED AND TESTED. resolveUnsubscribeRail (src/lib/unsubscribe/one-click-readiness.ts) mints a hosted link ONLY from a base URL the caller has confirmed is sender-aligned, and falls to a mailto: rail on the sending mailbox otherwise. send-introduction.ts does not import resolvePublicBaseUrl at all, so the app domain cannot leak back in by accident. Tests: one-click-readiness.test.ts 'does NOT read the app base URL from the environment', 'falls to mailto when there is no aligned domain — the normal case today', 'returns none when neither rail is available'; send-introduction.test.ts 'BLOCKS a non-allowlisted real-prospect send when NO opt-out rail exists at all'. Plus scripts/ops-cross-domain-audit.ts as a site-wide sweep.",
+        "2_spf_dkim_dmarc": "SATISFIED INHERENTLY by the transport. Sending through the client's own Microsoft 365 / Google Workspace mailbox means the provider signs the mail on the client's own domain — their existing SPF already authorises those IPs, or they could not send ordinary business mail today. This is the whole reason the zero-DNS model works.",
+        "3_ramp_on_sending_history": "NOT SATISFIED AS AT 2026-08-24. mailbox-warmup.ts ramps on mailbox AGE (connectedAt), not sends made. Its own docstring concedes any mailbox older than the ramp window is unaffected, so a long-connected but never-used mailbox starts at full allowance. Being fixed under BUILD-2 item 1.",
+        "4_complaint_rate": "MEASURED BUT NOT ACTED ON. MAILBOX_COMPLAINT_DETECTION_ENABLED is true in production, so complaints are captured and suppress the address. No send path reads the RATE, so nothing throttles when it climbs. See the volume-response non-negotiable."
+      },
+      "accepted_residual_risk": {
+        "risk": "Because outreach goes out on the client's PRIMARY business domain, there is NO FALLBACK if that domain's reputation is damaged. The same domain carries their invoices, contracts and ordinary customer mail. A disposable sending subdomain would absorb that damage; there isn't one. Recovery, per the domain brief, is 4-6 weeks of re-warming with no outreach at all — during which their normal business email is also degraded.",
+        "accepted_by": "Greg",
+        "accepted_on": "2026-08-24",
+        "in_exchange_for": "Requiring no DNS changes from the client, which is the product's distinctive onboarding advantage and the reason clients say yes.",
+        "what_makes_it_tolerable": "Low volume (30/day/mailbox, ~1.5% of the provider ceiling), the client's own tenant as transport, a real human reply-to, and the phishing signal that caused the 2026 incident now removed and tested.",
+        "what_would_make_it_intolerable": "Volume rising toward bulk, or a client whose domain reputation is business-critical and who has not been told. THIS RISK MUST BE STATED TO EVERY CLIENT IN WRITING before their mailbox is connected — it is their domain being wagered, not OpensDoors'.",
+        "reversal_trigger": "If a client's primary domain is ever degraded by outreach, the subdomain shape stops being optional. It is a ONE-WAY DOOR once mailboxes exist — moving means provisioning NEW mailboxes on mail.<client-domain> and having the client sign in to them, which is a different product shape, not a setting."
+      },
+      "superseded_rule": {
+        "_note": "Kept visible, not deleted. The line was in force from 2026-07-30 to 2026-08-24 and anything decided under it should be re-read against the rewrite.",
+        "requirement": "Never send cold email from the client's primary business domain; use a dedicated secondary domain or subdomain. A subdomain does NOT inherit the parent's SPF/DKIM/DMARC and needs its own.",
+        "source": "https://hunter.io/cold-email-guide/dedicated-cold-email-domain",
+        "checked": "2026-07-30",
+        "why_superseded": "Correct for high-volume cold-email infrastructure; wrong for this product, and it attributed the 2026 quarantine to the sending domain when the actual cause was link/From misalignment. Superseded by Greg's Ruling 2, 2026-08-24. The SUBDOMAIN FACT within it remains true and worth keeping: a subdomain does NOT inherit its parent's SPF/DKIM/DMARC and would need its own records — which is exactly why adopting the subdomain shape would reintroduce the DNS burden this product exists to avoid."
+      }
     },
     {
       "requirement": "UK: corporate subscribers (limited companies, LLPs, public bodies) may be emailed without prior consent. Individual subscribers (sole traders, unincorporated partnerships, personal addresses) require consent or soft opt-in.",
@@ -106,7 +129,15 @@
       "source": "https://support.google.com/a/answer/81126 — fetched 2026-08-23. Verbatim: \"If messages start bouncing or start being deferred, reduce the sending volume until the SMTP error rate decreases. Then, increase slowly again.\" And: \"Start with a low sending volume to engaged users, and slowly increase the volume over time.\"",
       "checked": "2026-08-23",
       "revalidate_days": 180,
-      "applies_here": "NOT IMPLEMENTED. Nothing in the send path reads the bounce or error rate, so nothing can reduce volume in response to it. The 20/day ceiling is a static compensating control standing in for this rule, and it is static precisely because the rate cannot currently be read."
+      "applies_here": "NOT IMPLEMENTED. Nothing in the send path reads the bounce or error rate, so nothing can reduce volume in response to it. The 20/day ceiling is a static compensating control standing in for this rule, and it is static precisely because the rate cannot currently be read.",
+      "implementation_status": "DEFERRED, with a trigger — recorded 2026-08-24 rather than left stated-and-unimplemented.",
+      "deferral": {
+        "reason": "A rate-responsive throttle cannot be built on a rate that cannot be read. The bounce figure is structurally stuck at 0% because the NDR path never sets OutboundEmail.status=BOUNCED (see diagnoses/BOUNCE-0PCT), and that status is what every metric counts. Building an automatic volume reducer on top of that today would produce a control that never fires and looks like protection — worse than no control, because it would be believed.",
+        "trigger": "BOTH: (1) the bounce status write lands so the rate is readable, and (2) at least 200 sends have been measured through it so the rate means something. Then build the reducer.",
+        "compensating_control_until_then": "The static daily ceiling, which does not need to read anything. It is the substitute for a control that can respond, and it is why the ceiling may not be raised on the strength of a good deploy.",
+        "owner": "engineering",
+        "recorded_on": "2026-08-24"
+      }
     },
     {
       "requirement": "Per-mailbox provider ceilings, Google Workspace: 2,000 messages per user per day; 3,000 total external recipients per day; 2,000 UNIQUE EXTERNAL recipients per day. Applied over a rolling 24-hour window, not a calendar day.",
@@ -251,6 +282,18 @@
         "src/server/email/webhooks/outbound-provider-events.ts",
         "src/server/queries/outreach-metrics.ts"
       ]
+    }
+  ],
+  "rulings": [
+    {
+      "id": "RULING-01",
+      "by": "Greg",
+      "on": "2026-08-24",
+      "settles": "REQ-02",
+      "ruling": "Duplicates are PER CLIENT. A prospect already on THIS client's list is a duplicate and is skipped on import. The same person on a DIFFERENT client's list is NOT a duplicate and is left alone.",
+      "reasoning": "Two clients having a relationship with the same person is normal in outreach. Silently blocking one import because another client got there first would be invisible to both of them.",
+      "where_it_lands": "DATAMODEL when stage 4 runs. Until then it is recorded here so the CSV import work cannot be scoped against a guess.",
+      "implementation_note": "Contact already carries @@unique([clientId, email]), so the per-client uniqueness constraint exists at the database level today. ContactUniverse is deliberately cross-client and deduplicated globally — that is the warehouse, NOT the client list, and Ruling 1 does not change it."
     }
   ]
 }
