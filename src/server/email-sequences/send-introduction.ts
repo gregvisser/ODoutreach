@@ -41,6 +41,7 @@ import {
 import { prisma } from "@/lib/db";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
+import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -895,14 +896,20 @@ export async function sendSequenceStepBatch(input: {
   };
   const txResults: TxResult[] = [];
 
+  // Warm-up anchors on days this mailbox has actually SENT on, not on how long
+  // ago it was connected. Resolved once here, BEFORE the transaction opens, so
+  // no extra query runs while the reservation lock is held.
+  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id));
+
   try {
     await prisma.$transaction(
       async (tx) => {
         const localRemaining = new Map<string, number>();
         for (const m of pool) {
-          // Warm-up ramp: caps cold-outreach volume for young mailboxes.
-          // No-op once a mailbox is warmed, or when the ramp flag is off.
-          const cap = effectiveDailyCap(m, at);
+          // Warm-up ramp: caps cold-outreach volume until a mailbox has a
+          // history of sending. No-op once warmed, or when the flag is off.
+          // An absent entry means it has never sent — 0, never "allow".
+          const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
           const booked = await countBookedSendSlotsInUtcWindow(
             tx,
             m.id,
@@ -1222,7 +1229,7 @@ export async function sendSequenceStepBatch(input: {
   // 10. Recompute aggregate remaining capacity for the UI summary.
   let aggregateRemainingAfter = 0;
   for (const m of pool) {
-    const cap = effectiveDailyCap(m, at);
+    const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
     const bookedAfter = await prisma.mailboxSendReservation.count({
       where: {
         mailboxIdentityId: m.id,

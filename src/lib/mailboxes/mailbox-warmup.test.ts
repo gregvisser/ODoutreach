@@ -71,29 +71,46 @@ describe("isWarmupRampEnabled", () => {
   });
 });
 
+/**
+ * REWRITTEN 2026-08-24 alongside the anchor fix.
+ *
+ * The previous version of this block asserted the DEFECT: it expected a mailbox
+ * with `connectedAt: daysAgo(60)` to return its full cap of 30 and called that
+ * "long-warmed → unaffected". A mailbox is not warmed by the calendar. That
+ * expectation is exactly what let a mailbox connected during onboarding and
+ * never used send at full volume on its first send, and it is why this file's
+ * green run said nothing useful about the real case.
+ *
+ * `effectiveDailyCap` now takes a COUNT OF SENDING DAYS. Age no longer reaches
+ * it. See mailbox-warmup-history.test.ts for the case that exposed it.
+ */
 describe("effectiveDailyCap", () => {
   it("returns the configured cap unchanged when the ramp is disabled", () => {
     delete process.env[FLAG];
     const now = NOW;
     expect(
-      effectiveDailyCap({ dailySendCap: 30, connectedAt: null, createdAt: now }, now),
+      effectiveDailyCap({ dailySendCap: 30, connectedAt: null, createdAt: now }, 0),
     ).toBe(30);
     expect(
-      effectiveDailyCap({ dailySendCap: 0, connectedAt: null, createdAt: now }, now),
+      effectiveDailyCap({ dailySendCap: 0, connectedAt: null, createdAt: now }, 0),
     ).toBe(30); // falls back to DEFAULT (30) exactly like the prior expression
   });
 
-  it("ramps young mailboxes but leaves warmed mailboxes at their configured cap when enabled", () => {
+  it("ramps on sending history, and age does not reach the result", () => {
     process.env[FLAG] = "on";
     const now = NOW;
     expect(
-      effectiveDailyCap({ dailySendCap: 30, connectedAt: now, createdAt: now }, now),
-    ).toBe(5); // brand new
+      effectiveDailyCap({ dailySendCap: 30, connectedAt: now, createdAt: now }, 0),
+    ).toBe(5); // brand new, never sent
     expect(
-      effectiveDailyCap({ dailySendCap: 30, connectedAt: daysAgo(10), createdAt: daysAgo(40) }, now),
-    ).toBe(15);
+      effectiveDailyCap({ dailySendCap: 30, connectedAt: daysAgo(10), createdAt: daysAgo(40) }, 10),
+    ).toBe(15); // ten sending days
     expect(
-      effectiveDailyCap({ dailySendCap: 30, connectedAt: daysAgo(60), createdAt: daysAgo(90) }, now),
-    ).toBe(30); // long-warmed → unaffected
+      effectiveDailyCap({ dailySendCap: 30, connectedAt: daysAgo(60), createdAt: daysAgo(90) }, 25),
+    ).toBe(30); // genuinely warmed — 25 days of actual sending
+    // The regression this whole change exists to prevent: old mailbox, no sends.
+    expect(
+      effectiveDailyCap({ dailySendCap: 30, connectedAt: daysAgo(60), createdAt: daysAgo(90) }, 0),
+    ).toBe(5);
   });
 });
