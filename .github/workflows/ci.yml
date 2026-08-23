@@ -61,7 +61,7 @@ jobs:
             const suite = r
               ? { name: "vitest (unit + integration)", command: "npm run test:coverage",
                   passed: r.success === true && r.numFailedTests === 0,
-                  count: r.numTotalTests, failed: r.numFailedTests, files: r.numTotalTestSuites }
+                  count: r.numTotalTests, failed: r.numFailedTests, suites: r.numTotalTestSuites }
               : { name: "vitest (unit + integration)", command: "npm run test:coverage",
                   passed: false, count: 0, failed: null,
                   note: "no machine-readable result was produced - a check that cannot run is a failure, not a pass" };
@@ -137,7 +137,14 @@ jobs:
         run: npm run build
 
       - name: E2E
-        run: npm run test:e2e -- --reporter=json > playwright-results.json
+        # JSON goes to a FILE via PLAYWRIGHT_JSON_OUTPUT_NAME, not to stdout.
+        # Redirecting stdout here does not work: `npm run` prints its own
+        # "> script@version" banner first, so the file is not valid JSON and the
+        # recorder below correctly reported "no machine-readable result". The
+        # list reporter keeps the log readable for a human reading the run.
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-results.json
+        run: npm run test:e2e -- --reporter=list,json
 
       # Same contract as the unit job. `if: always()` matters more here: the e2e
       # suite is currently RED on BC-01 tenant isolation, and the whole point of
