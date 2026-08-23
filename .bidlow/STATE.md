@@ -1,6 +1,90 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-23 · Tier P (Client Production)**
+**Updated 2026-08-23 (second session) · Tier P (Client Production)**
+
+## Session 2026-08-23b — BC-01 resolved and GREEN. Push blocked by ONE thing.
+
+`integrate/monday-pilot` is **26 commits ahead of origin/main**, everything
+committed, working tree clean. **Still unpushed** — and now for a single,
+different reason. See DEADLOCK below.
+
+### Greg's rulings, taken
+- **ONE INSTANCE.** `opensdoors.bidlow.co.uk`, with Bidlow as a client
+  workspace on it. The Railway fork stays decommissioned. OpensDoors is an
+  agency: staff seeing all customers is the product, not a leak.
+- **DPAs:** Microsoft and Google covered by their standard terms; **Sentry,
+  RocketReach and Resend NOT verified — an open Art.28 obligation, outstanding
+  now.** RocketReach also raises a controller-side lawful-basis question about
+  bought prospect data.
+
+### BC-01 — rewritten, green, and proven to catch a leak
+The spec was wrong about the product, so the spec changed. It now governs
+**workspace DATA isolation** (R-1…R-6), with staff ACCESS isolation recorded as
+a deliberate decision plus the three triggers that reverse it and the note that
+`ClientMembership` already exists, inert, as the mechanism.
+
+`e2e/cross-tenant.spec.ts` rewritten: **6 tests, all passing.** They did NOT go
+red first — the boundary already held — so instead they were **proven capable of
+failing**: removing the `clientId` scope from the outbound query in
+`client-activity.ts` turned R-5 red, with Client B's activity disclosing Client
+A's prospect address. Scratch branch, reverted.
+
+Verified live while writing, not assumed: per-client activity is scoped; replies
+never cross (no `InboundReply` without a matching outbound in that client);
+suppression is per-client **by construction** and so is hard-bounce suppression.
+
+**Two corrections to the previous spec, both from live checks:**
+- **E-02 was FALSE.** A staff user with no membership sees *every* workspace.
+- **E-06 is a real, unfixed hole.** The same mailbox may be connected to two
+  workspaces; each then stores its own copy of every raw inbound message,
+  including full `bodyText`. Replies don't cross; the raw store does.
+
+### Gates, measured 2026-08-23
+lint **0** · typecheck **0** · **1875/1875** unit across 216 files · **15/15**
+e2e · build green. All captured programmatically into `.bidlow/EVIDENCE.json`
+from the runners' own JSON output. Role chain signed for this commit.
+
+Build gate: **0 blocking** when editing a declared gate file; 1 otherwise (the
+DNC related-domain action, still awaiting Greg's rule).
+
+### THE DEADLOCK — this is what to fix first
+`git push` is refused by the **sell gate**: Customer-Ready **4/10**, below 8.
+
+It is a structural deadlock, not a missing piece of work:
+- The 4.0 cap was applied **for the app-domain unsubscribe link**.
+- **This branch fixes exactly that.**
+- The grade describes the **deployed** product, and production still serves
+  `b36e66e`.
+- So the grade cannot improve until this ships, and it cannot ship until the
+  grade improves. **The gate makes its own remedy unshippable.**
+
+`shipActions()` treats `git push` of ANY branch as shipping. Branch protection
+already means a feature-branch push is not a deploy, so the sell gate arguably
+belongs on `isDeploy`/merge, not on `isPush`. **That is an estate-wide change to
+`_standards`, so it is Greg's call, not the agent's.**
+
+The honest re-grade is still 4: production has the defect today. Inflating it to
+pass the gate is the exact false-9 the standard exists to prevent, so it was not
+done.
+
+**Options for Greg:** (a) push the branch himself; (b) change the sell gate to
+fire on deploy rather than push; (c) leave it and production keeps serving the
+20 July build.
+
+### Next session picks up
+1. Greg's call on the deadlock, then: push → PR → CI → **Greg merges** → verify
+   `/api/build-info` on `opensdoors.bidlow.co.uk`.
+2. `sentProofMissing` seed-exclusion defect (`outreach-metrics.ts` ~line 226) —
+   own commit, with a test.
+3. DNC related-domain per-client setting — **own PR, own migration**
+   (`deploy-production.yml` migrates production *before* the Azure login step).
+4. The 0% bounce reading, now more concerning: detection is ON in production yet
+   reports nothing across 1,209 sends.
+5. E-06, and the Sentry/RocketReach/Resend DPAs.
+
+---
+
+## Earlier — session 2026-08-23 (first)
 
 ## Session 2026-08-23 — READ THIS FIRST. The push is BLOCKED, correctly.
 
