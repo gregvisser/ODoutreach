@@ -366,6 +366,53 @@
       },
       "MY_PREDICTION_WAS_WRONG": "I predicted OpensDoors own mailboxes would NOT move, on the assumption their ~1,209 sends spanned 25+ distinct days. They do move — every single one. ALL 45 of 45 mailboxes drop, most to 5/day, including greg@opensdoors.co.uk (2 sending days across 119 days of age) and joe@opensdoors.co.uk (2 across 122). The assumption behind the prediction was that volume implies regularity. It does not: 1,358 sends spread over 45 mailboxes with a maximum of 10 sending days each means the fleet has been sending in BURSTS, not daily. That is precisely the pattern warm-up exists to prevent, and it means NO MAILBOX IN THIS SYSTEM HAS EVER BEEN WARMED in the sense the ramp intends.",
       "consequence": "The corrected ramp is not a minor adjustment to a few idle mailboxes. It resets the ENTIRE fleet to the bottom of the ramp. Greg wanted 30/day per mailbox after warm-up; from today that is 25 sending days away for every mailbox, not a handful. He needs to know that before he switches sending on, because the old behaviour would have put 45 mailboxes straight onto 30/day from a standing start after seven weeks of silence."
+    },
+    {
+      "id": "NDR-NEVER-FIRED-RESOLVED",
+      "question": "Why has NDR bounce detection never fired across 1,358 production sends between 2026-05-20 and 2026-07-03?",
+      "answered_on": "2026-08-24",
+      "method": "Five independent traces of the chain (arrival, ordering, parser, write, reachability), each required to cite file:line, followed by an adversarial refutation pass on every claimed break. Two of the three claimed breaks were REFUTED. One survived four attempts to break it.",
+      "ANSWER": "THE DETECTOR DID NOT EXIST IN THE DEPLOYED BUILD FOR MOST OF THE WINDOW. Both bounce files were created in a single commit, f464ce7 'feat(hardening): live-path hard-bounce (NDR/DSN) detection (H2), flag-gated', and the deploy record shows it reached production at 2026-06-25T22:39:30Z. The send window ran 2026-05-20 to 2026-07-03, so the detector was ABSENT from production for roughly 37 of those 44 days. Every send in that stretch had zero chance of a bounce being detected, whatever the flag said. There was no other live bounce path to cover the gap: BOUNCE_SUPPRESSION_ENABLED governs the ESP-webhook route, and EMAIL_PROVIDER is unset in production, so no ESP webhook ever fires for a mailbox send.",
+      "confidence": "PROVEN for the ~37 days. Verified independently by the refuter, who reproduced the git history and tried four ways to break the claim.",
+      "the_tail_is_NOT_explained": "For the remaining ~8 days (2026-06-25 to 2026-07-03) the detector DID exist and the sync demonstrably ran: live workflow logs from 2026-07-03 show two runs processing 35 mailboxes and ~400 messages each, 16 runs a day. Whether MAILBOX_BOUNCE_DETECTION_ENABLED was true during those 8 days CANNOT BE DETERMINED from the repository. The Azure activity log shows 16 app-settings writes by greg@bidlow.co.uk in the period but does not record WHICH setting changed. Upper bound is firm: a live read on 2026-08-06 recorded it as true.",
+      "two_of_the_three_facts_were_weaker_than_they_looked": [
+        "'0 OutboundEmail rows BOUNCED' is a NON-SIGNAL for this path. suppressRecipientForHardBounce writes SuppressedEmail, flags the Contact and writes one AuditLog row - it never touches OutboundEmail.status. A perfectly working mailbox NDR detector would still leave exactly 0 BOUNCED rows.",
+        "'0 AuditLog rows with mailbox_sync_ndr' is valid but has a blind spot: the audit row is only written when the suppression is NEWLY created. An NDR for an address already suppressed by the DNC sheet, an unsubscribe or a prior bounce refreshes a timestamp and writes nothing auditable. Detections on already-suppressed addresses are invisible."
+      ],
+      "what_this_does_to_the_bounce_status_write": "IT DROPS DOWN THE LIST, and the reasoning is worth keeping. The status write was queued next because the report reads OutboundEmail.status. But it fixes REPORTING of a thing that, for 37 of 44 days, could not have been detected at all - and for the remaining 8 days we cannot yet say whether detection ran. Writing the status first would produce a number that looks authoritative and still means nothing. Establish that detection WORKS first; then make it visible.",
+      "still_live_and_worth_fixing_regardless": [
+        {
+          "id": "GMAIL-NO-BODY",
+          "severity": "HIGH",
+          "finding": "The Gmail fetch NEVER retrieves a message body. gmail-inbox.ts requests format=metadata with only From/To/Subject/Date/Message-ID/In-Reply-To, so bodyText for a Google mailbox is the ~200-character Gmail snippet. classifyInboundBounce extracts the failed recipient from the BODY only, and both of its extraction routes need text a 200-char snippet is unlikely to carry. Google mailboxes therefore structurally starve the parser. Microsoft does NOT have this problem - the Graph fetch includes 'body' in $select.",
+          "confidence": "PROVEN for the fetch; SUSPECTED for whether a real Gmail NDR snippet could ever satisfy the matcher."
+        },
+        {
+          "id": "ONBOARDING-NOT-SYNCED",
+          "severity": "HIGH",
+          "finding": "A workspace can SEND while its inboxes are never polled. The send path excludes only PAUSED and ARCHIVED clients (and a test deliberately asserts it is not an ACTIVE allow-list, so ONBOARDING can send). The inbox sync requires client.status = 'ACTIVE'. So an ONBOARDING workspace sends real prospect mail and no NDR is ever fetched for it - no fetch, no bounce, ever.",
+          "confidence": "PROVEN"
+        },
+        {
+          "id": "CONNECTION-ERROR-DROPS-OUT",
+          "severity": "MEDIUM",
+          "finding": "A send-side token failure sets connectionStatus CONNECTION_ERROR, which drops the mailbox out of the sync set until a human reconnects. Given Google OAuth is in Testing mode with ~7-day refresh-token expiry, Google mailboxes plausibly spend stretches outside the sync set entirely.",
+          "confidence": "PROVEN for the mechanism; magnitude unknown."
+        },
+        {
+          "id": "NO-PAGINATION-NO-WATERMARK",
+          "severity": "MEDIUM",
+          "finding": "The sync fetches only the newest 15-25 messages per mailbox per run and never follows @odata.nextLink or nextPageToken, and nothing filters on lastSyncAt. Anything older than that at the moment of a run is never seen again. Crons run 07:00-18:45 UTC weekdays only, leaving a ~12h nightly and ~60h weekend gap. NDRs usually return within seconds so most should be caught, but a backlog is unrecoverable.",
+          "confidence": "PROVEN"
+        }
+      ],
+      "settling_observation": "Query the production AuditLog for the sync's own telemetry in the post-deploy window: rows where entityType = 'ClientMailboxIdentity' and metadata->>'kind' = 'mailbox_inbox_sync' and createdAt between 2026-06-25 and 2026-07-04, reading outcome, provider, totalSeen, ingested, skippedInternal and bouncesSuppressed. If those rows exist with outcome ok and totalSeen > 0 for the mailboxes that sent the 1,358, the fetch demonstrably ran in that 8-day slice and any remaining gap is downstream in classification. This is the one query that closes the tail, and it is read-only.",
+      "recommended_order": [
+        "1. Run the settling observation - it is read-only and decides whether the tail is explained.",
+        "2. Fix GMAIL-NO-BODY and ONBOARDING-NOT-SYNCED. Both are proven, both are live today, and both would blank out detection regardless of anything else.",
+        "3. Then the bounce status write, so the number becomes visible once it means something.",
+        "4. Then the volume-response rule comes off its deferral."
+      ]
     }
   ],
   "rulings": [
@@ -379,5 +426,40 @@
       "where_it_lands": "DATAMODEL when stage 4 runs. Until then it is recorded here so the CSV import work cannot be scoped against a guess.",
       "implementation_note": "Contact already carries @@unique([clientId, email]), so the per-client uniqueness constraint exists at the database level today. ContactUniverse is deliberately cross-client and deduplicated globally — that is the warehouse, NOT the client list, and Ruling 1 does not change it."
     }
-  ]
+  ],
+  "backup_and_recovery": {
+    "recorded_on": "2026-08-24",
+    "server": "pg-opensdoors-outreach-prod-01 (UK South, PostgreSQL 16, Burstable Standard_B2s, 32 GB Premium_LRS, HA disabled, zone 1)",
+    "measured": {
+      "backup_storage_used_gb": 7.25,
+      "data_storage_used_gb": 4.56,
+      "provisioned_gb": 32,
+      "retention_days": 7,
+      "earliest_restore": "2026-08-17",
+      "geo_redundant": "Disabled"
+    },
+    "THE_EXPOSURE": "Point-in-time restore covers 7 days and is REGION-LOCAL. Worse than that: HA is disabled, and Microsoft documents that backup storage for a server with no high-availability configuration defaults to LOCALLY redundant - same datacentre. So a single datacentre failure can take the server AND its backups. Fourteen clients data.",
+    "greg_was_right_to_be_corrected": "Geo-redundant backup CANNOT be switched on afterwards. Microsoft states it twice, verbatim: \"You can configure geo-redundant storage for backup only during server creation. After a server is provisioned, you can not change the backup storage redundancy option.\" and \"You can configure geo-redundant backup only when you create the server.\" Verified 2026-08-24 at https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-backup-restore",
+    "option_A_migrate": {
+      "what": "Create a NEW flexible server with geo-redundant backup enabled, migrate the data, repoint DATABASE_URL, decommission the old one after a soak.",
+      "cost": "ZERO extra per month, and this is the finding that changes the decision. Azure gives 100% of provisioned storage as free backup allowance - 32 GB here. Geo-redundant doubles the backup copy: 2 x 7.25 = 14.5 GB, which is still well under the free 32 GB. Same compute SKU, so no compute change. Billing formula: ((2 x local backup) - provisioned) x price = negative = nothing.",
+      "downtime": "The data is 4.56 GB, not a weekend. A dump-and-restore is realistically 10-30 minutes; call it a one-hour maintenance window outside the 07:00-18:00 send window to be safe.",
+      "risk": "Moderate and well-understood. The sharp edges are the connection-string cutover and the fact that firewall rules and server parameters are NOT carried over to a new server - Microsoft says so explicitly for restores and the same applies here. Rehearse once against a throwaway server first.",
+      "gains": "True PITR plus cross-region geo-restore. Note the limits even then: geo-restore has up to one hour RPO and there is NO point-in-time restore at the paired region - you get the last available backup."
+    },
+    "option_B_vaulted_backup": {
+      "what": "Keep the server. Add Azure Backup vaulted (long-term retention) backup of the flexible server into a Backup vault with GRS redundancy, so a logical copy lives outside the region.",
+      "NOT_a_github_actions_cron": "DELIBERATELY. scheduled-jobs-github-actions is BURNED in the capability register, and this proposal does not use it. Azure Backup is a managed service with its own scheduler, retry and monitoring - the very things a hand-rolled cron lacked. That is why this is the shape proposed rather than a nightly pg_dump workflow.",
+      "cost": "A few pounds a month at this size. Billed on vault storage; the database is 4.56 GB and a compressed logical dump will be well under that, so even several weekly copies retained is a handful of GB. Confirm on the Azure pricing calculator before committing.",
+      "downtime": "None. It is additive configuration on the existing server.",
+      "LIMITS_that_matter": "Vaulted backup supports ONE WEEKLY backup only - Microsoft: \"only one weekly backup is currently supported. If multiple vaulted backups are scheduled in a week, only the first backup operation of the week is executed.\" So the cross-region copy can be up to SEVEN DAYS stale. It is also restore-as-files only, full backups only, and excludes databases owned by azuresu/azure_pg_admin. Supported in all public regions, server must be under 1 TB (ours is 32 GB), and the Burstable tier is NOT excluded from vaulted backup - the Burstable restriction in the docs applies to on-demand backups, a different feature."
+    },
+    "recommendation": "OPTION A, and the reason is that it costs nothing. The instinct that the cost was small was right; the mistake was only that it cannot be toggled. At 4.56 GB the migration is an evening, not a weekend, and it restores a genuine cross-region recovery path instead of a weekly logical copy. Option B is the right answer only if the maintenance window cannot be found - it is strictly weaker, because a seven-day-stale copy is a very different promise from point-in-time restore.",
+    "known_risk_with_trigger": {
+      "risk": "Single-region, and per Microsoft default single-datacentre, backup for fourteen clients personal data. Seven-day PITR only. No cross-region recovery path exists today.",
+      "accepted_by": "PENDING - Greg to choose Option A or Option B, or to accept the exposure in writing.",
+      "trigger": "Any of: a second client asks about disaster recovery in writing; the data passes roughly 25 GB, at which point geo-redundancy stops being free; or a UK South incident of any length makes the exposure concrete.",
+      "belongs_in": "COVERAGE area 18 (reliability), once stage 4 runs."
+    }
+  }
 }
