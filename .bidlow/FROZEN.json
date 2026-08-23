@@ -2,15 +2,15 @@
   "_what": "Hashes of the frozen rules. A change here without an amendment is the gate's SAFETY block.",
   "_rule": "If a rule is wrong, the human changes it and the tests follow — never the reverse.",
   "frozen": {
-    "e2e/README.md": "bed7918c945db2bac48fe3e091bdaf022d5715cda7d9a14573d364db3b693bfc",
+    "e2e/README.md": "7132584d1b02eafea1335eda0d862bb441057f7823e98551ff0e4fe26ed755af",
     "e2e/cross-tenant.spec.ts": "347cb305e1b511c3b634d6afb8644a1d6007bc010e9edcc23fad15abdd3c0c17",
-    "e2e/env.ts": "a548afa9527d8438812343feb0f58732e81186fc2bb0eff89b75b9708003ce28",
-    "e2e/fixtures.ts": "6c720649b2faacd1372faa7a6b8d9314c0998a523dbd87876fed71ce42b19848",
-    "e2e/global-setup.ts": "d6eef6ab4ec220bdda83920304d3abd8bf54eec512808647d765855306f6ba03",
-    "e2e/journeys.spec.ts": "a6c974bfa25a0040cc908bb1604d845fab197010fa1480894ab584e1a104c43c",
-    "e2e/safe-database.test.ts": "a0a52e7730a59ea9c55fa09a844d4f94930090c9bb598bfb48fcae703d5a60d1",
-    "e2e/safe-database.ts": "ee769ac71f7f08b669b81b5e5459c07d9196b1e01104d84350d4f13ada5ee4aa",
-    "e2e/seed-e2e.ts": "09360905a1cf44e6522fb00e188dbd78aa5b540a95968c053976d70f0ce104cf",
+    "e2e/env.ts": "6fff810c4c99258d97b73c066ad2d0c1d30863cd0b4218b509276bda8b547244",
+    "e2e/fixtures.ts": "8f5344a6b07ea23b76e0510a27eba21f30b1374c070706ec2d7be087ebc5a28d",
+    "e2e/global-setup.ts": "126ed83da826a7a9a920fd5ec75cb71f2f1dc07456a110a211b42e9a3cd400a1",
+    "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
+    "e2e/safe-database.test.ts": "79d8a0d1ea23b892535dc2ccb60bc55413db2f236b52112ada5cdd2f04483dee",
+    "e2e/safe-database.ts": "4a8d42275c899ca1771cd51600a7445ae351d0a50e81dd8611d0e31c6e3197b6",
+    "e2e/seed-e2e.ts": "ffd3daca9181c9854ffc54b9afddf1fb449ef5c068609a8255b1614095d748fb",
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
     "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
   },
@@ -27,6 +27,13 @@
       "date": "2026-08-22",
       "authorised_by": "Claude (agent), for Greg's review",
       "what": "Second correction after running: the client contacts tab renders contact LISTS not addresses, so it could not carry the spec's recipient rows. Retargeted at the workspace overview (identity) and the activity feed (real prospect addresses and subjects), and added an explicit positive control.",
+      "sha256_after": "5ba3d1c106ef5b6d6f9221969edd57be64c78dc85ca1f16d128b69ded8679a83"
+    },
+    {
+      "file": "e2e/cross-tenant.spec.ts",
+      "date": "2026-08-22",
+      "authorised_by": "Greg",
+      "what": "BC-01 retargeted from /contacts (super-admin only, redirects members before any tenant filter) to surfaces that actually render tenant data, after the original test scored a false green on the wrong route",
       "sha256_after": "5ba3d1c106ef5b6d6f9221969edd57be64c78dc85ca1f16d128b69ded8679a83"
     }
   ]
