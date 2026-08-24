@@ -1783,3 +1783,94 @@ Automatic discovery would be its first content.
 
 Nothing was built. This is a measurement and a recommendation, and the shape of
 the feature is different enough from the brief that it is Greg's call.
+
+---
+
+# 2026-08-24 — DNC family discovery: the storage decision is the real blocker
+
+The measurement above asked "which sources are safe". An adversarial pass then
+asked a better question — **what happens once a discovered link is written down**
+— and found something that outranks the source analysis. **This corrects the
+recommendation in the previous section.**
+
+## Even a perfect source is unsafe written into this table
+
+`SuppressedDomainFamily` is `(clientId, label, domain)`. The send-time gate
+collects the labels a recipient hits, refetches **every** member of those labels,
+and blocks if **any one** of them is on `SuppressedDomain`.
+
+So a discovered row is **not an edge. It is an equivalence-class member.** There
+is no column for direction, depth or seed, which means:
+
+**A "directed edge, depth 1, never transitive" guard is unimplementable in this
+table.** One wrong link does not add one wrong block — it joins two whole
+equivalence classes.
+
+## Four consequences, all silent
+
+**1. An automatic guess is indistinguishable from a human-listed fact.** The only
+provenance column is `createdByStaffUserId`, and its own doc comment says "Null
+for system/seed rows". A discovery row, a seed row and a hand-typed row are the
+same row. The operator cannot tell which to distrust.
+
+**2. The one-click reversal does not stick.** `removeDomainFromFamilyAction`
+deletes by id. There is no tombstone and no column for one. Re-resolution "every
+30 days" reads the same DNS, derives the same link, and **re-inserts the row the
+operator deleted** — silently, and they will not look again because they already
+handled it. The stated safety net is a timer that undoes the safety net.
+
+**3. `@@unique([clientId, domain])` has no defined behaviour with two
+discoverers.** Two seeds reaching one shared vendor domain: either the second
+insert errors and the job dies mid-family, or it upserts and silently *moves* the
+domain to a different label — changing which prospects are blocked, with no audit
+signal. A human resolving collisions never hit this.
+
+**4. The dormant-family time bomb.** Discovery "runs on import", so it will build
+families with **no** suppressed member. Those look harmless and review as
+harmless. Then one ordinary domain joins the client's weekly DNC sheet, and
+**every accumulated guess under that label activates at once** — months of them.
+Nobody connects cause to effect.
+
+## Two further corrections to the source analysis
+
+**The CT guards fail on exactly this customer's sector, not just on Train
+Hugger.** A live IONOS certificate: 38 SANs, **15 registrable domains** (under
+the 50 cap), issuer **Sectigo OV**, `O=IONOS Cloud Ltd.` populated and
+consistent — carrying `petertheplumber.co.uk`, `trainwithsteff.co.uk`,
+`wool-works.co.uk`. All three guards say yes. Worse, guard 2 ("discard shared
+issuers where O= does not match") is **inverted when the seed is itself the
+platform**: for IONOS the O *does* match, so the guard actively endorses the
+merge.
+
+**Requiring DMARC external-domain verification would NOT have saved it.**
+RFC 9990 §4 permits a wildcard: `*._report._dmarc.example.com` containing
+`v=DMARC1` is blanket consent to the entire internet. Probed live —
+`zz-not-a-real-domain-9x7.example._report._dmarc.google.com` returns `v=DMARC1`;
+so does `shell.com`. Only `siemens.com` answered specifically. **A wildcard EDV
+record carries zero information about a relationship between two domains**, and
+the DMARC vendors wildcard too. I had assumed EDV would strengthen the signal. It
+does not distinguish a vendor from a relative.
+
+Also: **RFC 7489 is obsolete** as of 2026-05-21, replaced by RFC 9989 (core),
+9990 (aggregate reporting, where EDV now lives) and 9991. Build against those.
+
+And for SPF: **RFC 7208 §6.1 designates `redirect=` as the same-administrative-
+domain mechanism**, while §5.2 assigns `include:` to *crossing* boundaries. If an
+SPF source is ever built, `redirect=` is the better signal and `include:` is the
+worse one — the opposite of the brief's choice.
+
+## Revised recommendation
+
+The previous section said "build DMARC, skip CT". That is still right about the
+sources, but it is not sufficient. **No source should be written into
+`SuppressedDomainFamily` as it stands**, because the table cannot express a
+directed, reversible, evidenced, non-transitive link.
+
+If this is built, it needs a **separate proposal store** — discovered links land
+somewhere that does *not* feed the send gate, an operator confirms or rejects
+each one, a rejection is **remembered** so re-resolution cannot resurrect it, and
+only confirmed links become family rows. That keeps RULING 3 intact: the gate
+still fires on human-confirmed facts, and the machine only ever proposes.
+
+That is a materially larger piece of work than the brief describes, for a
+measured benefit of **13 contacts**.
