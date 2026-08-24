@@ -1,7 +1,11 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { normalizeDomain, isValidDomainFormat } from "@/lib/normalize";
+import {
+  isStorableSuppressionDomain,
+  isValidDomainFormat,
+  normalizeDomain,
+} from "@/lib/normalize";
 
 /**
  * RULING 3 (Greg, 2026-08-24) — related-company domain families.
@@ -53,6 +57,15 @@ export function normalizeFamilyDomain(
   }
   if (!isValidDomainFormat(domain)) {
     return { ok: false, error: `"${raw}" is not a valid domain.` };
+  }
+  // Suppression is transitive across a family, so a public suffix listed as a
+  // member would blackhole an entire TLD for this client the moment any member
+  // is suppressed.
+  if (!isStorableSuppressionDomain(domain)) {
+    return {
+      ok: false,
+      error: `"${domain}" is a domain ending, not a company domain. Enter the company's own domain, e.g. example.${domain.replace(/^\./, "")}`,
+    };
   }
   return { ok: true, domain };
 }

@@ -1,3 +1,5 @@
+import { parse as parsePublicSuffix } from "tldts";
+
 /** Shared normalization for emails and domains — keep in sync with suppression tables. */
 
 const EMAIL_RE =
@@ -46,11 +48,15 @@ export function normalizeDomain(raw: string): string {
  * `endsWith` check would wrongly block the first and a naive `includes` the
  * second.
  *
- * Stops at two labels, so a bare public suffix is never a candidate: a stray
- * "com" row could not blackhole every send. It does NOT consult the Public
- * Suffix List, so an explicitly stored multi-part suffix (e.g. someone typing
- * "co.uk" into the sheet) would still over-block — that is a bad row to store,
- * not a matching bug, and it requires a human to have typed it.
+ * Bare public suffixes are never candidates. Stopping at two labels handled the
+ * single-label case ("com"), but NOT a multi-part suffix: `someone@acme.co.uk`
+ * used to yield ["acme.co.uk", "co.uk"], so one stored "co.uk" row — one typo,
+ * one bad cell in a synced sheet — silently blackholed every .co.uk recipient
+ * for that client as BLOCKED_SUPPRESSION. This now consults the real Public
+ * Suffix List and drops any candidate that IS a suffix.
+ *
+ * `isStorableSuppressionDomain` is the matching guard on the write side, so
+ * such a row cannot be created in the first place.
  *
  * DELIBERATELY NOT HANDLED: related company domains. Whether "do not contact
  * bt.com" also covers `bteurope.com` is a business rule and the client's call.
@@ -62,9 +68,34 @@ export function suppressionDomainCandidates(raw: string): string[] {
   const labels = d.split(".");
   const out: string[] = [];
   for (let i = 0; i + 2 <= labels.length; i += 1) {
-    out.push(labels.slice(i).join("."));
+    const candidate = labels.slice(i).join(".");
+    // Never widen to a public suffix — that is a whole-TLD blackhole.
+    if (!isStorableSuppressionDomain(candidate)) continue;
+    out.push(candidate);
   }
   return out;
+}
+
+/**
+ * Whether a string is a real registrable domain rather than a public suffix.
+ *
+ * `isValidDomainFormat` is a SHAPE check — letters, digits, hyphens, at least
+ * one dot — so it says yes to "co.uk" and "com". Storing either on a
+ * do-not-contact list blackholes an entire TLD for that client, silently.
+ *
+ * Uses the real Public Suffix List via `tldts`, with `allowPrivateDomains` OFF
+ * deliberately: only true ICANN suffixes are refused. A platform domain like
+ * `github.io` stays storable, because blocking it is a deliberate choice rather
+ * than a TLD-wide accident.
+ *
+ * NOTE: this is not inference and does not touch RULING 3. Refusing to store a
+ * public suffix is rejecting an invalid entry, not guessing that two companies
+ * are related.
+ */
+export function isStorableSuppressionDomain(domain: string): boolean {
+  const d = normalizeDomain(domain);
+  if (!d || !isValidDomainFormat(d)) return false;
+  return parsePublicSuffix(d, { allowPrivateDomains: false }).domain !== null;
 }
 
 export function isValidDomainFormat(domain: string): boolean {

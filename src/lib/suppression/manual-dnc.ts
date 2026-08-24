@@ -1,5 +1,6 @@
 import {
   extractDomainFromEmail,
+  isStorableSuppressionDomain,
   isValidDomainFormat,
   isValidEmailFormat,
   normalizeDomain,
@@ -49,6 +50,15 @@ export function normalizeManualDncEntry(
     return {
       ok: false,
       error: "That doesn't look like a valid domain (e.g. example.co.uk).",
+    };
+  }
+  // A bare public suffix would blackhole an entire TLD for this client, and the
+  // shape check above says yes to "co.uk". Refuse it with an error that names
+  // the mistake rather than repeating "invalid domain".
+  if (!isStorableSuppressionDomain(domain)) {
+    return {
+      ok: false,
+      error: `"${domain}" is a domain ending, not a company domain. Blocking it would stop every address that ends that way. Enter the company's own domain, e.g. example${domain.startsWith(".") ? domain : `.${domain}`}.`,
     };
   }
   return { ok: true, kind: "DOMAIN", value: domain };
