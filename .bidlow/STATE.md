@@ -1979,3 +1979,76 @@ Nothing schedules it now either.
 
 The screen PR is open and unmerged. No staff member can see or answer a
 proposal. No re-resolution is scheduled.
+
+---
+
+# 2026-08-24 — session handoff
+
+Production **`ce2ddca`**, `/api/health` database ok. Full detail is in the dated
+sections above; this is the short version for whoever picks it up next.
+
+## Shipped and live
+
+* **Gmail body + opt-out starvation** (#193) — opt-out detection had been reading
+  ~6% of a Microsoft email and a 57-character snippet on Gmail.
+* **`/contacts` send button governed** (#194) — the only real-prospect path with
+  no `evaluateSendGovernance`, and it planted an unsubscribe link on the
+  OpensDoors app domain. Both fixed; action now super-admin only.
+* **Signature link-alignment gate** (#199) — fails closed at dispatch, one guard
+  per provider leg. Plus the Hole 1b fix: a URL scavenged from the stored
+  snapshot could override a deliberately-chosen mailto rail.
+* **One name per destination** (#195) and the **on-screen signature status**
+  (#202).
+* **Public-suffix over-block fix** (#201) — `co.uk` was storable on a
+  do-not-contact list and would have blackholed every `.co.uk` recipient.
+* **DNC family proposal store** (#206 schema, #207 resolver, #209 ops script) —
+  migration applied to production and verified; resolver run; 2 PENDING
+  proposals written; **zero** `SuppressedDomainFamily` rows created.
+
+## Half-done, and exactly where
+
+* **PR #208 — the proposal screen. OPEN AND HELD, deliberately.** Greg approved
+  the migration on condition he reads the findings before any staff member sees
+  the screen. The two proposals are sitting in production as `PENDING` and
+  nobody can see or answer them. **This is the first thing to pick up**, and it
+  needs Greg's answer, not more code.
+* **PR #196 — workflow-strip removal. Open, unmerged on purpose.** Training
+  modules 3 and 7 teach that strip by name with screenshots; removing it needs
+  the training updated in the same change.
+* **No re-resolution is scheduled**, and none should be until Greg decides.
+
+## One-way doors taken
+
+* **A migration was applied to a live client database.** `PRODUCTION_PRISMA_MIGRATE`
+  is `true`, so merging #206 applied it. Additive only, held for approval first,
+  verified after by direct query, drift check empty.
+* **Two `PENDING` proposals were written to production.** Nothing reads that
+  table at send time; `evaluateSuppression` was proven structurally unaffected.
+* **`server-only` was removed from `family-discovery-run.ts`** so the ops script
+  could use the real write path instead of a copy of it. Small loss of a
+  compile-time guard, reasoned in #209.
+
+## Contradicts the record
+
+* **Four design calls in the briefs were wrong and were caught by measuring
+  first**: shared-MX matching, blocking every remote image, Certificate
+  Transparency, and `gmail.com belongs with google.com` — the last being *true*
+  and still catastrophic. The pattern is the same each time: shared
+  infrastructure read as shared ownership. Measure against production before
+  building.
+* **F-01 in `BLUEPRINT.json` was downgraded HIGH → LOW.** "Removal requests
+  arrive daily" was an agent inference recorded as a customer answer.
+* **`gate-ship.mjs` has an unsatisfiable check** — it compares `CHAIN.json.commit`
+  to `HEAD`, but stamping a hash into a tracked file changes that hash, so no
+  commit can contain its own SHA. Worked around with `reviewed_code_commit`.
+* **Stacked PRs do not survive a squash merge**: a PR whose base branch is
+  deleted is auto-closed and cannot be reopened (#200 became #202). Retarget to
+  `main` before merging anything below.
+
+## Unresolved request
+
+Greg asked me to read **`Deck full.md`**. It does not exist in the repo root or
+in Downloads. The only near matches are `bidlow-command-deck.html` and
+`bidlow-command-deck_1.html` in Downloads, which are HTML, not markdown. I did
+not guess. A deck would in any case belong in `C:\Bidlowbusiness` under the
+repository-boundary rule, not here.
