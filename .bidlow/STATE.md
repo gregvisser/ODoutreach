@@ -1432,3 +1432,100 @@ Two details worth keeping:
 The status uses the client's WHOLE domain set — every mailbox address, the
 website, and the verified link domain — so a signature linking to the client's
 own website reads as aligned rather than as a warning.
+
+---
+
+# 2026-08-24 — Step 4: STOPPED, and the one fix that was safe
+
+## Step 4 as written must not be built. It contradicts a ruling recorded here yesterday.
+
+SIGNATURE-AND-DNC.md Step 4 quotes Greg:
+
+> "there must be no human entering the domain or email addresses manually, it
+> must be automated, the owner is willing to take a small risk on possible
+> prospects being missed."
+
+**RULING 3 (Greg, 2026-08-24)** says the opposite, and is recorded in this
+repository in four places — `prisma/schema.prisma:940-951`,
+`src/server/suppression/domain-families.ts:7-19`,
+`src/server/outreach/suppression-guard.ts`, and `STATE.md`. Verbatim from the
+schema:
+
+> It cannot be inferred and **must not be**: `bteurope.com` shares no text with
+> `bt.com`, and any algorithm that connected them would also connect things that
+> are not related — over-blocking a client's real prospects is its own failure.
+> So someone types "BT" and lists the domains that belong to it.
+
+It shipped in `d541a29`, **2026-08-23 20:06 BST** — the evening before this
+brief. It is wired at send time (`suppression-guard.ts` queries
+`suppressedDomainFamily`) and it has a UI
+(`src/components/suppression/domain-family-panel.tsx`).
+
+Step 4's Layer 4 is stem matching, `bt` → `bteurope` — **the exact example
+RULING 3 names as the thing that must never be inferred.**
+
+Two instructions from the same person, about a day apart, pointing opposite ways.
+Per this brief's own rule — *"Do not implement something you have found to be
+wrong because this document said to"* — **nothing was built. This needs Greg.**
+
+## Also: most of Step 4 already exists
+
+* **Layer 1 (registrable domain) is already built**, without `psl`.
+  `suppressionDomainCandidates` splits on label boundaries:
+  `newsletter.bt.com` → `["newsletter.bt.com", "bt.com"]`, and safely,
+  `notbt.com` → `["notbt.com"]`, `bt.com.evil.net` never yields `bt.com`.
+* **Layer 2 (company name) is what RULING 3's explicit list already replaces**,
+  deliberately.
+* Creating `src/lib/suppression/domain-family.ts` would be the **second** family
+  matcher in the repo.
+
+## Layer 3 (shared MX / DMARC rua) — flagged as dangerous regardless
+
+Worth stating even though nothing was built: almost every UK business on
+Microsoft 365 has an MX host under `*.mail.protection.outlook.com`, and Google
+Workspace tenants share `*.google.com`. Matching on "same MX host" would merge a
+large share of the customer base into one corporate family. Under a rule where
+suppression is transitive across the family, that is not a small risk of missing
+prospects — it is a mechanism for blackholing most of a list from one entry.
+
+## The real hazard found instead — opposite direction, and fixed
+
+The brief worried about **under**-blocking. What is actually live is silent,
+client-wide **over**-blocking.
+
+`suppressionDomainCandidates` walked every suffix down to two labels, so
+`someone@acme.co.uk` yielded `["acme.co.uk", "co.uk"]`. And `isValidDomainFormat`
+is a shape check that says **yes to `co.uk`** — `normalize.ts` admitted the gap
+in its own comment. So one typo, or one bad cell in a synced Google Sheet, would
+store `co.uk` and silently mark **every `.co.uk` recipient** for that client as
+`BLOCKED_SUPPRESSION`.
+
+Red first, and it failed exactly there:
+
+```
+× REFUSES co.uk as a manual entry            → expected true to be false
+× REFUSES org.uk / ac.uk / gov.uk / com.au   → expected true to be false
+× does not emit a bare public suffix         → ['someone.acme.co.uk', …] included 'co.uk'
+✓ still ACCEPTS bt.co.uk / mail.bt.com
+✓ still matches the parent company domain
+```
+
+Fixed with the real Public Suffix List (`tldts`, `allowPrivateDomains` off, so
+only true ICANN suffixes are refused and a platform domain like `github.io`
+stays storable). Guarded on **all three write paths** — the manual add, the
+Google Sheet sync, and family membership — and on the match side too, so a
+legacy row cannot widen a match either. The sheet sync **drops** a bad cell
+rather than failing the whole sync: one bad row must not stop a client's real
+do-not-contact list from updating.
+
+**This is not inference and does not touch RULING 3.** Refusing to store a
+public suffix is rejecting an invalid entry, not guessing that two companies are
+related.
+
+## A vacuous test of my own, caught
+
+The first version of that test called `normalizeManualDncEntry("co.uk")` when
+the signature is `(kind, raw)`. Every "REFUSES" case passed — on the empty-input
+error, not on the rule. It looked green and proved nothing. `tsc` would have
+caught it; vitest alone did not. The same failure mode as the `baseInput()` bug
+found in Step 2, twice in one day.

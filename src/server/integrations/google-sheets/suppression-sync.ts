@@ -6,6 +6,7 @@ import type { SuppressionListKind } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { BULK_TRANSACTION_OPTIONS, chunk } from "@/lib/db-bulk";
 import {
+  isStorableSuppressionDomain,
   isValidDomainFormat,
   isValidEmailFormat,
   normalizeEmail,
@@ -216,7 +217,12 @@ async function applySheetToSuppressionTables(args: {
       d = d.slice(at + 1);
     }
     d = d.replace(/\.$/, "").trim();
-    if (isValidDomainFormat(d)) domains.add(d);
+    // A bare public suffix in a client's sheet — one bad cell, e.g. "co.uk" —
+    // would blackhole every recipient ending that way, silently. The shape
+    // check alone accepts it, so the PSL guard is what actually refuses it.
+    // Dropped rather than failing the whole sync: one bad cell must not stop a
+    // client's real do-not-contact list from updating.
+    if (isValidDomainFormat(d) && isStorableSuppressionDomain(d)) domains.add(d);
   }
 
   const list = [...domains];

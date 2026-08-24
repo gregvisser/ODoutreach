@@ -1,16 +1,16 @@
 {
  "_what": "Recorded test evidence, derived programmatically from vitest --reporter=json and playwright --reporter=json. Not hand-authored.",
- "_provenance": "Produced LOCALLY on 2026-08-24 for Step 3 of SIGNATURE-AND-DNC.md. CI also writes this record; a CI record supersedes this one.",
+ "_provenance": "Produced LOCALLY on 2026-08-24 for Step 4 of SIGNATURE-AND-DNC.md.",
  "recorded_on": "2026-08-24",
  "suites": [
   {
    "name": "vitest (unit + integration)",
    "command": "npm test",
    "passed": true,
-   "count": 1981,
+   "count": 1989,
    "failed": 0,
    "exit_code": 0,
-   "suites": 675
+   "suites": 677
   },
   {
    "name": "playwright (e2e)",
@@ -19,17 +19,17 @@
    "count": 15,
    "failed": 0,
    "flaky": 0,
-   "exit_code": 0,
-   "note": "Run against a throwaway postgres:16-alpine on :5434 started for this run and migrated with db:migrate:e2e."
+   "exit_code": 0
   }
  ],
  "new_tests_this_change": {
-  "file": "src/lib/clients/signature-link-status-copy.test.ts",
-  "count": 6,
+  "file": "src/lib/suppression/public-suffix-overblock.test.ts",
+  "count": 8,
   "red_checked": true,
-  "red_result": "The blocked-sentence test FAILED first and drove a real change: the sentence named the registrable domain (bidlow.co.uk) where the operator needs the exact host (opensdoors.bidlow.co.uk) to find and delete it.",
-  "note": "These assert on WORDING, because the wording is the feature. One test exists purely to hold the line the brief drew: no codes, no severity letters."
+  "red_result": "3 of 8 FAILED before the fix - co.uk was accepted as a DNC entry, the other multi-part suffixes were accepted, and someone.acme.co.uk emitted co.uk as a match candidate. The two controls (bt.co.uk accepted, parent-domain matching intact) stayed green throughout.",
+  "vacuous_first_attempt": "The first version called normalizeManualDncEntry with ONE argument when the signature is (kind, raw). Every REFUSES case passed on the empty-input error rather than the rule - green, and proving nothing. tsc would have caught it; vitest alone did not."
  },
- "measured_against_tree_of": "c91ebab6996f7ab1ed87470dbc01845db305933b",
+ "step_4_not_built": "The automated do-not-contact family matching Step 4 asked for was NOT implemented. It contradicts RULING 3 (Greg, 2026-08-24), recorded in four places in this repo and shipped in d541a29 the evening before the brief. Needs Greg to resolve.",
+ "measured_against_tree_of": "28327f23b9c553f40d5b9db5f6479cd4eceb8700",
  "_commit_note": "Records the commit whose TREE was measured; later commits touch only .bidlow records."
 }
