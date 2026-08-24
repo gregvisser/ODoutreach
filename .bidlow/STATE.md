@@ -1607,3 +1607,179 @@ The active-mailbox count moved 45 → 55. Ten mailboxes were connected today:
 **Pareto FM** (5, 11:42–11:43) and **Advantos HVAC Group** (5, 13:10–13:13).
 Staff spent the day onboarding two new clients rather than sending. Both new
 clients' mailboxes are clean under the guard.
+
+---
+
+# 2026-08-24 — DNC family discovery: MEASURED FIRST, and it changes the plan
+
+DNC-AUTOMATED.md asks for four lookup sources, built CT first, then SPF, then
+DMARC, then the combination — and says to measure coverage *after* building.
+
+**The measurement was run first, against production, before writing any feature
+code.** It is cheap to do and it changes what should be built. Nothing was built.
+
+The brief said: *"Two of my design calls have already been wrong this week…
+Assume there is a third."* There is. It is Certificate Transparency.
+
+---
+
+## 1. Certificate Transparency — do not build this
+
+### It produces confident wrong answers on the real customer base
+
+`trainhugger.com` — an actual client — shares **one valid GlobalSign OV
+certificate** (id `13438364684`, valid to 2027-02-15) with **eight unrelated
+companies**:
+
+```
+buytickets.londonnorthwesternrailway.co.uk   www.buytickets.northernrailway.co.uk
+buytickets.westmidlandsrailway.co.uk         www.buytickets.scotrail.co.uk
+m.buytickets.greateranglia.co.uk             www.buytickets.trainhugger.com
+www.alerts.buytickets.crosscountrytrains.co.uk  www.buytickets.westmidlandsrailway.co.uk
+www.buytickets.eastmidlandsrailway.co.uk     www.thetrainline.com
+```
+
+It is Trainline's white-label ticketing platform. Suppressing `trainhugger.com`
+would blackhole **ScotRail, Greater Anglia, Northern, CrossCountry, East
+Midlands, West Midlands, London Northwestern and Trainline** for that client.
+
+**None of the brief's three guards catch it:**
+
+| Guard | Result |
+|---|---|
+| Discard certs with >50 registrable domains | It has **8**. Passes. |
+| Discard shared-infrastructure issuers where O= mismatches | GlobalSign **OV** — a premium CA, not a shared-CDN issuer. Passes. |
+| Prefer certs where O= is populated and consistent | It is OV, so O= *is* populated and consistent. The guard **actively favours it**. |
+
+This is the shared-MX failure again in a new costume: **shared vendor, not shared
+owner.** Third time.
+
+### The ~50 threshold would also discard the brief's own example
+
+Adidas's largest genuine corporate certificate covers **54 distinct registrable
+domains** (one per country: `adidas.de`, `adidas.it`, `adidas.se`…). The proposed
+guard discards anything over ~50, so **it would throw away the flagship case the
+feature exists to solve.** The guard measures cert *size*; the real discriminator
+is whether one company owns the names.
+
+### A discriminator that does work, if this is ever revisited
+
+Require the certificate to cover the **apex** of the foreign domain, not just a
+subdomain of it. Measured:
+
+* Adidas — 58 foreign domains at apex (all genuinely Adidas), 12 subdomain-only.
+* Train Hugger — the 7 train operators are **all subdomain-only** and are
+  correctly rejected; only `thetrainline.com` survives, and it is still wrong.
+
+Better, still not safe. 8 false positives → 1.
+
+### And it is not operationally feasible anyway
+
+| Source | Result today |
+|---|---|
+| crt.sh | **502 on every query form, every retry.** Down. |
+| Cert Spotter (free, unauthenticated) | **HTTP 429 after ONE query.** |
+
+There are **15,714 distinct suppressed domains**. At the free tier this is months
+of wall-clock for a single pass, or a paid plan.
+
+**Verdict: 0 correct additions and 8 wrong ones across the real client base,
+guards that do not work, and no free way to run it at this scale. Do not build.**
+
+---
+
+## 2. SPF and DMARC — these DO work, and the yield is small
+
+Run against production: **966 distinct contact domains** vs **15,714 suppressed
+domains**. 396 contact domains were already suppressed.
+
+### Raw, with no exclusion list — 25% of the prospect universe merges
+
+| Would link to | Contact domains |
+|---|---|
+| `outlook.com` | **216** |
+| `google.com` | 11 |
+| `salesforce.com` | 9 |
+| `nhs.net` | 2 |
+| `yahoo.com` | 1 |
+
+**`outlook.com` is itself on a do-not-contact list** — plausibly deliberately, to
+block personal addresses. That makes it a merge hub: every Microsoft 365 prospect
+links to it. 238 of 966 contact domains — including `boots.co.uk` and NHS trusts
+— would be silently suppressed.
+
+### After the exclusion list — 7 links, and they are right
+
+| Source | Link | Verdict |
+|---|---|---|
+| SPF | `btinternet.com` → `bt.com` | correct |
+| SPF | `thrivinginvestments.co.uk` → `placesforpeople.co.uk` | correct |
+| SPF | `merrychef.com` → `welbilt.com` | correct |
+| DMARC | `openreach.co.uk` → `bt.com` | correct — this is the `bteurope` case |
+| DMARC | `innocentdrinks.co.uk` → `innocentdrinks.com` | correct |
+| DMARC | `jcoffey.com` → `jcoffey.co.uk` | correct |
+| DMARC | `derry-bs.co.uk` → `bandk.co.uk` | plausible, not verified |
+
+**Benefit: 7 contact domains · 13 contacts of 1,470 · 0.9%.**
+
+That is the number the brief asked for: **13 people who said no and were still
+going to be emailed.** Real, and small.
+
+### The problem with how safety is achieved
+
+All of it rests on a **hand-maintained blocklist that fails open**. Vendors found
+in this client base that are on nobody's suggested list: `ukexclaimer.net`,
+`knowbe4.com`, `intacct.com`, `firebasemail.com`, `authsmtp.com`,
+`freshservice.com`, `elasticemail.com`, `serg.uk`. Miss one and its customers
+merge, silently.
+
+**RFC 7208 §5.2 makes this worse for SPF specifically: `include:` is *defined* as
+the mechanism for crossing an administrative boundary, and §6.1 designates
+`redirect=` for the same-authority case.** So `include:` semantically means
+"a different organisation". That it scored 3/3 here is a small sample, not a
+property.
+
+### The fix, derived from the data rather than guessed
+
+Replace the blocklist with a **family-size cap**, which is self-calibrating and
+fails closed. Measured fan-in:
+
+```
+outlook.com        216   vendor          bt.com               2   GENUINE
+google.com          11   vendor          welbilt.com          1   GENUINE
+salesforce.com       9   vendor          placesforpeople      1   GENUINE
+nhs.net              2   shared service  innocentdrinks.com   1   GENUINE
+```
+
+Every genuine relative has fan-in 1–2. Every vendor has 9+. A cap needs no
+maintained list and cannot fail open on a vendor nobody thought of.
+
+---
+
+## 3. Two other things found
+
+**The audit trail the brief requires needs a schema migration.**
+`SuppressedDomainFamily` has `id, clientId, label, domain, createdByStaffUserId,
+createdAt` — **no source, no evidence, no discovered-at.** Storing "the source,
+the raw evidence and the timestamp" needs three additive nullable columns. That
+is a schema change and therefore an approval gate.
+
+**The family feature has never been used: `SuppressedDomainFamily` has 0 rows.**
+Automatic discovery would be its first content.
+
+---
+
+## Recommendation
+
+1. **Do not build Certificate Transparency.** Wrong on the real data, guards do
+   not work, not feasible at this scale.
+2. **Build DMARC `rua`** — 4/4 correct, and the whitelist rule (the reporting
+   address's registrable domain must be one of the two domains under
+   consideration) is fail-closed by construction.
+3. **Build SPF `include:` behind the family-size cap**, not behind a blocklist.
+4. **Skip the website-links source** — weakest, never fires alone, and it adds an
+   outbound-fetch surface for no measured benefit.
+5. Expect roughly **13 additional suppressed contacts**, not hundreds.
+
+Nothing was built. This is a measurement and a recommendation, and the shape of
+the feature is different enough from the brief that it is Greg's call.
