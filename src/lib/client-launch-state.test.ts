@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { LaunchReadinessPanelInput } from "./client-launch-state";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
-  buildClientWorkflowSteps,
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "./client-launch-state";
@@ -70,20 +72,50 @@ describe("deriveLaunchStageLabel", () => {
   });
 });
 
-describe("buildClientWorkflowSteps", () => {
-  it("returns seven steps with client-scoped hrefs", () => {
-    const steps = buildClientWorkflowSteps(baseInput({ clientId: "abc" }));
-    expect(steps).toHaveLength(7);
-    expect(steps[0]?.href).toBe("/clients/abc/brief");
-    expect(steps.map((s) => s.label).join("|")).toContain("Sources");
+/**
+ * The client workspace used to show the same seven destinations THREE times on
+ * the Overview: the subnav tab row, a numbered "Workflow" strip in the command
+ * centre, and the Launch readiness panel. Two of them disagreed on the names -
+ * the tab row said "Do-not-contact" and "Lists" where the other two said
+ * "Suppression" and "Contacts" - so the same page offered two different words
+ * for the same place.
+ *
+ * The strip is removed: it was the weakest of the three (a status dot and a
+ * label), it duplicated the tab row's links, and it computed a `metric` for
+ * every step that it never rendered. Launch readiness shows the same seven with
+ * a status pill AND that metric AND the same link, so no status information is
+ * lost and no destination disappears.
+ *
+ * PR #138 had already decided the subnav names ("Contacts" -> "Lists", with the
+ * href held stable); it simply never reached the readiness panel. This locks the
+ * two together so they cannot drift apart again.
+ */
+describe("one name per destination", () => {
+  const subnavSource = readFileSync(
+    join(process.cwd(), "src/components/clients/client-workspace-subnav.tsx"),
+    "utf8",
+  );
+
+  it("every Launch readiness label is a label the tab row also uses", () => {
+    const rows = buildLaunchReadinessRows(basePanel({ clientId: "abc" }));
+    const subnavLabels = new Set(
+      [...subnavSource.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]),
+    );
+
+    expect(subnavLabels.size).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(subnavLabels).toContain(row.label);
+    }
   });
 
-  it("does not embed env key names in steps", () => {
-    const steps = buildClientWorkflowSteps(
-      baseInput({ rocketReachEnvReady: true, clientId: "x" }),
+  it("does not reintroduce the two names the tab row rejected", () => {
+    const labels = buildLaunchReadinessRows(basePanel({ clientId: "abc" })).map(
+      (r) => r.label,
     );
-    const blob = JSON.stringify(steps);
-    expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
+    expect(labels).not.toContain("Suppression");
+    expect(labels).not.toContain("Contacts");
+    expect(labels).toContain("Do-not-contact");
+    expect(labels).toContain("Lists");
   });
 });
 

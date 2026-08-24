@@ -1,14 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { ClientLogo } from "@/components/clients/client-logo";
-import { ClientWorkflowStrip } from "@/components/clients/client-workflow-strip";
-import type { ClientWorkflowStep } from "@/lib/client-launch-state";
 
 type Props = {
   clientName: string;
   clientSlug: string;
   clientStatus: string;
   launchStageLabel: string;
-  steps: ClientWorkflowStep[];
   logoUrl?: string | null;
   logoAltText?: string | null;
 };
@@ -18,7 +15,6 @@ export function ClientWorkspaceCommandCenter({
   clientSlug,
   clientStatus,
   launchStageLabel,
-  steps,
   logoUrl = null,
   logoAltText = null,
 }: Props) {
@@ -51,16 +47,6 @@ export function ClientWorkspaceCommandCenter({
         <Badge variant="secondary" className="self-start">
           {launchStageLabel}
         </Badge>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="text-sm font-semibold text-foreground">Workflow</h2>
-          <p className="text-xs text-muted-foreground">
-            Follow the client setup path. Open a module to fix details.
-          </p>
-        </div>
-        <ClientWorkflowStrip steps={steps} />
       </div>
     </section>
   );
