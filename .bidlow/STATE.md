@@ -1165,3 +1165,119 @@ commits that touch only `.bidlow/`.
 
 Three, unchanged in substance: the two in `DOMAIN.json`, plus whether to answer
 Q3 and land #196.
+
+---
+
+# 2026-08-24 (afternoon) — Step 1: signature link audit, measured
+
+Greg saw an unsubscribe link inside a mailbox signature during a customer
+meeting. This is what the measurement actually found.
+
+## The pause: not performed, and not needed
+
+`gh workflow disable process-outbound-queue.yml` was **blocked by the tool
+permission classifier**. Before escalating it, I checked what there was to pause:
+
+| | |
+|---|---|
+| Emails **QUEUED** right now | **0** |
+| Emails **sent today** | **0** |
+| Status breakdown | SENT 1345 · FAILED 55 · REPLIED 13 |
+
+**Nothing was pending, so nothing would have been stopped.** The queue is empty
+and nothing has been launched today. The audit is read-only and was run against
+production directly. No sending was interrupted, and none needed to be.
+
+The exposure is not "mail going out now" — it is "the next time someone
+launches". That is a real window, but it is not an emergency, and holding an
+empty queue would have bought nothing.
+
+## The audit — 11 HIGH across 4 clients of 17
+
+`npx tsx scripts/ops-cross-domain-audit.ts` against production. Read-only
+verified before running: the script contains no create/update/delete/upsert/
+executeRaw.
+
+| Mailbox | Client | Offending host | Severity | Field |
+|---|---|---|---|---|
+| jo@chevronsecurity.co.uk | Chevron Security | `qtrypzzcjebvfcihiynt.supabase.co` | HIGH | signature HTML |
+| charlie@chevronsecurity.co.uk | Chevron Security | `qtrypzzcjebvfcihiynt.supabase.co` | HIGH | signature HTML |
+| *(client-level)* | Chevron Security | `qtrypzzcjebvfcihiynt.supabase.co` | HIGH | `Client.logoUrl` |
+| *(client-level)* | OpensDoors | `encrypted-tbn0.gstatic.com` | HIGH | `Client.logoUrl` |
+| *(client-level)* | Pareto FM | `encrypted-tbn0.gstatic.com` | HIGH | `Client.logoUrl` |
+| taylor@trainhugger.com | Train Hugger | `cdn.prod.website-files.com` | HIGH | signature HTML |
+| joe@trainhugger.com | Train Hugger | `cdn.prod.website-files.com` | HIGH | signature HTML |
+| sam.p@trainhugger.com | Train Hugger | `cdn.prod.website-files.com` | HIGH | signature HTML |
+| cam@trainhugger.com | Train Hugger | `cdn.prod.website-files.com` | HIGH | signature HTML |
+| alex@trainhugger.com | Train Hugger | `cdn.prod.website-files.com` | HIGH | signature HTML |
+| *(client-level)* | Train Hugger | `cdn.prod.website-files.com` | HIGH | `Client.logoUrl` |
+
+**17 clients scanned · 13 clean · 4 with findings · 11 HIGH · 0 MEDIUM · 0 LOW.**
+Seven distinct mailboxes carry a signature finding; the other four are client
+logos. Of the 45 active mailboxes in live workspaces, **38 are clean**.
+
+## What the audit did NOT find, and why it matters
+
+**Zero findings reference the OpensDoors app domain.** Not one. Every HIGH is a
+remote *image*, and MEDIUM and LOW are both zero — meaning **no signature
+contains a foreign `<a href>` at all**.
+
+So what Greg saw is **not in stored signature data**. The audit reads
+`senderSignatureHtml`, `senderSignatureText`, templates, `Client.logoUrl` and
+`Client.website`; none contains an unsubscribe link. A data audit cannot explain
+his observation.
+
+**Hole 1b explains it, and the data makes it worse than the brief says.**
+
+| | |
+|---|---|
+| Sent emails whose `bodySnapshot` contains `opensdoors.bidlow.co.uk` | **1358 of 1358 — 100%** |
+| Sent emails using the mailto rail | **0** |
+
+Every email this system has ever sent carries an app-domain unsubscribe URL in
+its stored snapshot. That is **historical, not current**: the mailto rail and the
+app-domain fix landed **2026-08-06** (`1ad6bf5`, `0a20923`, `a8d777c`) and the
+last send was **2026-07-03**, so all 1,358 predate it. Current code is right —
+this is the same trap as the morning's bounce numbers, and it was checked before
+being reported.
+
+But it means the `extracted` fallback in `outreach-mailbox-bodies.ts` has **1,358
+poisoned snapshots to scavenge from**. Where the mailto rail is chosen
+deliberately (`hostedUnsubscribeUrl === null`), a URL pulled from an old snapshot
+can be rendered as an anchor — resurrecting exactly the link the rail exists to
+prevent. That is a **render-time** defect, invisible to any data audit.
+
+**Confirmed by reading the code**, not inferred. `outreach-mailbox-bodies.ts`:
+
+```ts
+const hosted = input.hostedUnsubscribeUrl?.trim() || null;
+const extracted = extractUnsubscribeUrlFromPlainTextBody(input.bodySnapshotPlain);
+const url = hosted ?? extracted ?? null;          // line 77
+...
+const mailtoOptOut = url ? null : normalise(...); // line 97 - rail SKIPPED
+...
+const footer = `<p><a href="${escapeHtmlAttr(url)}">Unsubscribe</a></p>`; // line 122
+```
+
+Passing `hostedUnsubscribeUrl: null` is how a caller *chooses* the mailto rail.
+Line 77 overrides that choice with whatever URL is sitting in the snapshot, and
+line 97 then suppresses the mailto opt-out because `url` is now truthy. The
+deliberate safe choice is silently converted into the unsafe one. This is the
+most likely explanation for what Greg saw.
+
+## Severity model — a problem with the rule as written
+
+The brief says a HIGH finding blocks the send. Applied literally to these
+results, that blocks **Train Hugger — the largest client, 763 sends — for
+hosting its own logo on its own website's CDN**. `cdn.prod.website-files.com` is
+Webflow's asset host and trainhugger.com is a Webflow site. That is a false
+positive that would stop the biggest customer on day one.
+
+Meanwhile `encrypted-tbn0.gstatic.com` on OpensDoors and Pareto FM is a **Google
+Images search-thumbnail URL** pasted in as a logo. That is a genuine defect —
+those URLs are ephemeral and will break — but it is data quality, not a phishing
+signal.
+
+A model that scores "company logo on the company's own CDN" the same as "link to
+an unrelated domain" is not measuring link alignment. Recorded here **before**
+Step 2 builds a gate on top of it.
