@@ -75,6 +75,7 @@ import {
 } from "@/lib/mailbox-identities";
 import { MAILBOX_PRIMARY_DISCONNECTED_WARNING } from "@/lib/mailboxes/mailbox-primary-operator-copy";
 import type { SenderSignatureMailbox } from "@/lib/mailboxes/sender-signature";
+import type { SignatureLinkStatus } from "@/lib/clients/signature-link-alignment";
 
 function toSenderMailbox(row: MailboxIdentityRow): SenderSignatureMailbox {
   return {
@@ -88,6 +89,43 @@ function toSenderMailbox(row: MailboxIdentityRow): SenderSignatureMailbox {
     senderSignatureSyncedAt: row.senderSignatureSyncedAt,
     senderSignatureSyncError: row.senderSignatureSyncError,
   };
+}
+
+/**
+ * Where a signature's links go, in one sentence a non-technical person can act
+ * on. No codes, no severity letters.
+ *
+ * The staff could not see any of this before: the audit lived in a script nobody
+ * ran, and this panel rendered the signature with no indication of where its
+ * links pointed. Greg found it by noticing an unsubscribe link inside a
+ * signature during a customer meeting.
+ */
+function SignatureLinkStatusNote({
+  status,
+}: {
+  status?: SignatureLinkStatus;
+}) {
+  if (!status) return null;
+  const tone =
+    status.tone === "blocked"
+      ? "border-destructive/40 bg-destructive/5 text-destructive"
+      : status.tone === "warning"
+        ? "border-amber-300/60 bg-amber-50/60 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100"
+        : "border-emerald-300/60 bg-emerald-50/60 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-100";
+  return (
+    <div className={cn("rounded-md border px-3 py-2", tone)} role="status">
+      <p className="text-xs font-medium leading-relaxed">{status.sentence}</p>
+      {status.details.length > 0 ? (
+        <ul className="mt-1.5 space-y-1">
+          {status.details.map((d) => (
+            <li key={d} className="text-xs leading-relaxed opacity-90">
+              {d}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 export type MailboxIdentityRow = {
@@ -123,6 +161,14 @@ export type MailboxIdentityRow = {
   senderSignatureSource: string | null;
   senderSignatureSyncedAt: string | null;
   senderSignatureSyncError: string | null;
+  /**
+   * Where this signature's links actually go, in a sentence.
+   *
+   * Resolved on the SERVER — it needs the platform's own hostnames from the
+   * environment, and this is a client component. Optional so any caller that has
+   * not been updated simply shows nothing rather than crashing.
+   */
+  signatureLinkStatus?: SignatureLinkStatus;
 };
 
 function notify(
@@ -1101,6 +1147,9 @@ export function ClientMailboxIdentitiesPanel({
                               dangerouslySetInnerHTML={{
                                 __html: preview.bodyHtml,
                               }}
+                            />
+                            <SignatureLinkStatusNote
+                              status={previewRow.signatureLinkStatus}
                             />
                           </div>
                         ) : (

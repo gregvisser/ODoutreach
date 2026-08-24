@@ -1,16 +1,16 @@
 {
  "_what": "Recorded test evidence, derived programmatically from vitest --reporter=json and playwright --reporter=json. Not hand-authored.",
- "_provenance": "Produced LOCALLY on 2026-08-24 for Step 2 of SIGNATURE-AND-DNC.md. CI also writes this record; a CI record supersedes this one.",
+ "_provenance": "Produced LOCALLY on 2026-08-24 for Step 3 of SIGNATURE-AND-DNC.md. CI also writes this record; a CI record supersedes this one.",
  "recorded_on": "2026-08-24",
  "suites": [
   {
    "name": "vitest (unit + integration)",
    "command": "npm test",
    "passed": true,
-   "count": 1975,
+   "count": 1981,
    "failed": 0,
    "exit_code": 0,
-   "suites": 673
+   "suites": 675
   },
   {
    "name": "playwright (e2e)",
@@ -20,27 +20,16 @@
    "failed": 0,
    "flaky": 0,
    "exit_code": 0,
-   "note": "Run against a throwaway postgres:16-alpine on :5434 started for this run and migrated with db:migrate:e2e. First recorded as NOT RUN; the ship gate correctly refused that, so the suite was actually run rather than the record softened."
+   "note": "Run against a throwaway postgres:16-alpine on :5434 started for this run and migrated with db:migrate:e2e."
   }
  ],
  "new_tests_this_change": {
-  "files": [
-   "src/lib/unsubscribe/outreach-mailbox-bodies.alignment.test.ts",
-   "src/lib/clients/signature-link-alignment.test.ts",
-   "src/lib/clients/client-send-governance.test.ts"
-  ],
-  "count": 33,
+  "file": "src/lib/clients/signature-link-status-copy.test.ts",
+  "count": 6,
   "red_checked": true,
-  "red_result": "Hole 1b: 2 of 4 FAILED before the fix with the two controls green throughout - the foreign host WAS in the email and the mailto opt-out WAS suppressed.",
-  "caught_by_production": "Running the refactored script against production caught a false positive I had introduced (BidlowAI links to its own marketing site scored HIGH). Fixed and pinned by regression test."
+  "red_result": "The blocked-sentence test FAILED first and drove a real change: the sentence named the registrable domain (bidlow.co.uk) where the operator needs the exact host (opensdoors.bidlow.co.uk) to find and delete it.",
+  "note": "These assert on WORDING, because the wording is the feature. One test exists purely to hold the line the brief drew: no codes, no severity letters."
  },
- "production_audit_after_fix": {
-  "clients_scanned": 17,
-  "high": 0,
-  "medium": 11,
-  "low": 0,
-  "note": "0 HIGH means nothing is blocked. The 11 MEDIUM are company logos on third-party CDNs, correctly a warning."
- },
- "measured_against_tree_of": "1c82c12e762f5d67de418b2266a56913ba59f377",
+ "measured_against_tree_of": "c91ebab6996f7ab1ed87470dbc01845db305933b",
  "_commit_note": "Records the commit whose TREE was measured; later commits touch only .bidlow records."
 }
