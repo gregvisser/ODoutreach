@@ -32,108 +32,35 @@
  *   Run:  DATABASE_URL=... npx tsx scripts/ops-cross-domain-audit.ts
  */
 import { prisma } from "@/lib/db";
-
-/** Hosts that are normal in a business signature and carry their own reputation. */
-const WELL_KNOWN_HOSTS = new Set([
-  "linkedin.com",
-  "calendly.com",
-  "youtube.com",
-  "twitter.com",
-  "x.com",
-  "facebook.com",
-  "instagram.com",
-  "google.com",
-  "microsoft.com",
-  "office.com",
-]);
-
-/** Multi-part public suffixes we care about, so bt.co.uk resolves to bt.co.uk. */
-const MULTI_PART_SUFFIXES = [
-  "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk",
-  "com.au", "net.au", "org.au", "co.nz", "co.za", "com.br", "co.jp", "co.in",
-];
-
-/**
- * Registrable domain (eTLD+1), using a short suffix list rather than the full
- * Public Suffix List. Adequate for this audit; the production DNC matcher
- * should use the real PSL.
- */
-function registrableDomain(host: string): string {
-  const h = host.toLowerCase().replace(/^www\./, "").replace(/\.$/, "");
-  const parts = h.split(".");
-  if (parts.length <= 2) return h;
-  const lastTwo = parts.slice(-2).join(".");
-  if (MULTI_PART_SUFFIXES.includes(lastTwo) && parts.length >= 3) {
-    return parts.slice(-3).join(".");
-  }
-  return lastTwo;
-}
-
-type Found = { url: string; host: string; isImage: boolean; where: string };
-
-/** Pull every http(s) URL out of HTML or plain text, noting image contexts. */
-function extractUrls(content: string | null | undefined, where: string): Found[] {
-  if (!content) return [];
-  const out: Found[] = [];
-  const seen = new Set<string>();
-
-  // src="..." / href="..." (quoted or single-quoted), plus bare URLs in text.
-  const attrRe = /\b(src|href)\s*=\s*["']([^"']+)["']/gi;
-  const bareRe = /https?:\/\/[^\s<>"')]+/gi;
-
-  // Dedupe by URL alone, NOT by URL+isImage. The attribute pass and the bare-URL
-  // pass both match the same `src="…"` value, so keying on isImage would report
-  // every logo twice — once as an image and once as a link — and inflate the
-  // counts. First match wins, and the attribute pass runs first so a src is
-  // correctly classified as an image.
-  const push = (raw: string, isImage: boolean) => {
-    const url = raw.trim();
-    if (!/^https?:\/\//i.test(url)) return;
-    const key = `${where}|${url}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    try {
-      out.push({ url, host: new URL(url).hostname, isImage, where });
-    } catch {
-      /* unparseable — ignore */
-    }
-  };
-
-  let m: RegExpExecArray | null;
-  while ((m = attrRe.exec(content)) !== null) {
-    push(m[2], m[1].toLowerCase() === "src");
-  }
-  while ((m = bareRe.exec(content)) !== null) {
-    push(m[0], false);
-  }
-  return out;
-}
-
-function severity(f: Found, ownDomains: Set<string>, appHosts: Set<string>): "HIGH" | "MEDIUM" | "LOW" | null {
-  const reg = registrableDomain(f.host);
-  if (ownDomains.has(reg)) return null; // aligned — this is good, not a problem
-  if (appHosts.has(reg)) return "HIGH"; // our own app domain in a customer's email
-  if (f.isImage) return "HIGH"; // remote image on a foreign host
-  if (WELL_KNOWN_HOSTS.has(reg)) return "LOW";
-  return "MEDIUM";
-}
+import {
+  appDomainsFromEnv,
+  extractLinks,
+  ownDomainsFor,
+  severityForLink,
+  type ExtractedLink,
+  type LinkSeverity,
+} from "@/lib/clients/signature-link-alignment";
 
 async function main(): Promise<void> {
-  // Hosts belonging to the OpensDoors platform itself.
-  const appHosts = new Set<string>();
-  for (const raw of [
-    process.env.AUTH_URL,
-    process.env.INTERNAL_APP_URL,
-    process.env.NEXT_PUBLIC_APP_URL,
-  ]) {
-    if (!raw?.trim()) continue;
-    try {
-      appHosts.add(registrableDomain(new URL(raw.trim()).hostname));
-    } catch {
-      /* ignore */
-    }
+  const appDomains = appDomainsFromEnv();
+  // Refuse to run with app-domain detection silently off.
+  //
+  // `appDomainsFromEnv()` seeds only `azurewebsites.net` when none of AUTH_URL /
+  // INTERNAL_APP_URL / NEXT_PUBLIC_APP_URL is set. The FIRST production run of
+  // this audit on 2026-08-24 was made with DATABASE_URL exported but AUTH_URL
+  // not, so the one severity that blocks — our own domain in a customer's email
+  // — could not fire at all, and the run printed a clean bill of health on that
+  // axis. A check that cannot run is a failure, not a pass.
+  if (appDomains.size <= 1) {
+    console.error(
+      "REFUSING TO RUN: no app URL in the environment (AUTH_URL / INTERNAL_APP_URL / NEXT_PUBLIC_APP_URL).",
+    );
+    console.error(
+      "Without one, a link to the OpensDoors app domain cannot be detected and this audit would report a false clean.",
+    );
+    process.exitCode = 1;
+    return;
   }
-  appHosts.add("azurewebsites.net");
 
   const clients = await prisma.client.findMany({
     where: { deletedAt: null },
@@ -159,38 +86,29 @@ async function main(): Promise<void> {
   let clientsWithFindings = 0;
 
   for (const c of clients) {
-    // The client's own domains: every sending mailbox, plus website + link domain.
-    const own = new Set<string>();
-    for (const m of c.mailboxIdentities) {
-      const at = m.email.indexOf("@");
-      if (at > 0) own.add(registrableDomain(m.email.slice(at + 1)));
-    }
-    for (const raw of [c.website, c.outreachLinkDomain]) {
-      if (!raw?.trim()) continue;
-      const v = raw.trim();
-      try {
-        own.add(registrableDomain(new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).hostname));
-      } catch {
-        /* ignore */
-      }
-    }
+    const own = ownDomainsFor({
+      mailboxEmails: c.mailboxIdentities.map((m) => m.email),
+      website: c.website,
+      outreachLinkDomain: c.outreachLinkDomain,
+    });
+    const ctx = { ownDomains: own, appDomains };
 
-    const found: Found[] = [];
+    const found: ExtractedLink[] = [];
     for (const m of c.mailboxIdentities) {
-      found.push(...extractUrls(m.senderSignatureHtml, `signature HTML (${m.email})`));
-      found.push(...extractUrls(m.senderSignatureText, `signature text (${m.email})`));
+      found.push(...extractLinks(m.senderSignatureHtml, `signature HTML (${m.email})`));
+      found.push(...extractLinks(m.senderSignatureText, `signature text (${m.email})`));
     }
     for (const t of c.emailTemplates) {
-      found.push(...extractUrls(t.subject, `template subject "${t.name}"`));
-      found.push(...extractUrls(t.content, `template body "${t.name}"`));
+      found.push(...extractLinks(t.subject, `template subject "${t.name}"`));
+      found.push(...extractLinks(t.content, `template body "${t.name}"`));
     }
     if (c.logoUrl?.trim()) {
-      found.push(...extractUrls(`<img src="${c.logoUrl.trim()}">`, "Client.logoUrl"));
+      found.push(...extractLinks(`<img src="${c.logoUrl.trim()}">`, "Client.logoUrl"));
     }
 
     const flagged = found
-      .map((f) => ({ f, sev: severity(f, own, appHosts) }))
-      .filter((x): x is { f: Found; sev: "HIGH" | "MEDIUM" | "LOW" } => x.sev !== null);
+      .map((f) => ({ f, sev: severityForLink(f, ctx) }))
+      .filter((x): x is { f: ExtractedLink; sev: LinkSeverity } => x.sev !== null);
 
     if (flagged.length === 0) continue;
     clientsWithFindings += 1;
@@ -212,7 +130,7 @@ async function main(): Promise<void> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`Clients scanned:        ${clients.length}`);
   console.log(`Clients with findings:  ${clientsWithFindings}`);
-  console.log(`HIGH (image on foreign host, or our app domain):  ${totalHigh}`);
+  console.log(`HIGH (our own app domain in a customer's email):   ${totalHigh}`);
   console.log(`MEDIUM (foreign link, not well-known):            ${totalMedium}`);
   console.log(`LOW (well-known professional domain):             ${totalLow}`);
   if (totalHigh === 0 && totalMedium === 0) {

@@ -47,6 +47,7 @@ export type SendGovernanceMode =
   | "blocked_unsubscribe_missing"
   | "blocked_client_inactive"
   | "blocked_link_domain_not_aligned"
+  | "blocked_signature_link_misaligned"
   | "blocked_allowlist";
 
 export type SendGovernanceDecision =
@@ -102,6 +103,27 @@ export type SendGovernanceInput = {
    * aligned (the rule is off), so existing callers are unaffected.
    */
   linkDomainAligned?: boolean;
+  /**
+   * `true` when the CONTENT this send will carry — the mailbox signature, and
+   * anything woven into it — contains a link on the OpensDoors platform's own
+   * domain.
+   *
+   * The gate above (`linkDomainAligned`) is computed from two DATABASE COLUMNS
+   * describing the client's configured link domain. It never reads the message.
+   * So a signature could carry `https://opensdoors.bidlow.co.uk/...` straight to
+   * a prospect and every existing check would pass — the send gate has never
+   * looked at signature content. `scripts/ops-cross-domain-audit.ts` detects
+   * exactly this and has no production caller, which is the same defect class as
+   * PR #194: detector written, caller never built.
+   *
+   * Deliberately a BOOLEAN, not the findings. This helper is pure — no Prisma,
+   * no environment reads — so the caller resolves the content and classifies it
+   * with `@/lib/clients/signature-link-alignment`, and passes the verdict in.
+   *
+   * Optional, defaulting to "no blocking finding", so existing callers are
+   * unaffected until they opt in.
+   */
+  signatureLinkMisaligned?: boolean;
 };
 
 /**
@@ -125,6 +147,7 @@ export const SEND_GATE_BLOCKED_CODES = {
   unsubscribeRequired: "blocked_unsubscribe_required",
   clientInactive: "blocked_client_inactive",
   linkDomainNotAligned: "blocked_link_domain_not_aligned",
+  signatureLinkMisaligned: "blocked_signature_link_misaligned",
   allowlist: "blocked_allowlist",
 } as const;
 
@@ -146,6 +169,8 @@ export function blockedCodeFor(
       return SEND_GATE_BLOCKED_CODES.clientInactive;
     case "blocked_link_domain_not_aligned":
       return SEND_GATE_BLOCKED_CODES.linkDomainNotAligned;
+    case "blocked_signature_link_misaligned":
+      return SEND_GATE_BLOCKED_CODES.signatureLinkMisaligned;
     case "blocked_allowlist":
       return SEND_GATE_BLOCKED_CODES.allowlist;
   }
@@ -244,6 +269,20 @@ export function evaluateSendGovernance(
       mode: "blocked_link_domain_not_aligned",
       reason:
         "Blocked: this client's outreach links are not on a sender-aligned domain (go.<domain>). Set up and verify the client's link domain before sending to real prospects.",
+    };
+  }
+
+  // Signature content gate. A remote IMAGE on a third-party host does NOT reach
+  // here — measured on production 2026-08-24, blocking on that would have
+  // stopped the largest client for hosting its own logo on its own website's
+  // CDN. Only the platform's own domain inside a customer's email blocks, which
+  // is the exact pattern that caused the 2026 quarantine.
+  if (input.signatureLinkMisaligned === true) {
+    return {
+      allowed: false,
+      mode: "blocked_signature_link_misaligned",
+      reason:
+        "Blocked: this mailbox's signature contains a link to the OpensDoors system's own address rather than the client's. Recipients would see a link that does not match who the email is from. Remove it from the signature before sending.",
     };
   }
 
