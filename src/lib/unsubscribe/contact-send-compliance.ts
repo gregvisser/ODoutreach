@@ -1,5 +1,4 @@
 import { buildListUnsubscribeHeaders } from "@/lib/unsubscribe/list-unsubscribe-headers";
-import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import {
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeUrl,
@@ -42,14 +41,28 @@ export type ContactSendComplianceResult =
 
 /**
  * Prepares body text and optional List-Unsubscribe metadata for a
- * one-off contact send. Matches sequence dispatch behaviour: hosted URL
- * when `resolvePublicBaseUrl()` is set, otherwise mailto fallback.
+ * one-off contact send: hosted URL when the caller supplies a base URL that is
+ * safe for THIS recipient, otherwise the mailto fallback.
+ *
+ * `hostedBaseUrl` is a REQUIRED parameter and is deliberately not read from the
+ * environment. It used to call `resolvePublicBaseUrl()` itself, which returns
+ * the OpensDoors app domain (`AUTH_URL`) — so a one-off send to a real prospect
+ * planted an unsubscribe link on a domain with no relationship to the sender.
+ * That is the link misalignment recorded as the 2026 quarantine root cause, and
+ * the sequence dispatcher was fixed for it while this path was not. Making the
+ * value an explicit argument means no caller can inherit it by accident: each
+ * one has to state which base URL is safe for the recipient it is emailing.
+ *
+ * Pass `null` for a real prospect with no verified aligned link domain — the
+ * result is the mailto rail, which is a genuinely usable opt-out and carries no
+ * foreign host.
  */
 export function prepareContactSendCompliance(input: {
   bodyText: string;
   clientDefaultSenderEmail: string | null;
+  hostedBaseUrl: string | null;
 }): ContactSendComplianceResult {
-  const publicBase = resolvePublicBaseUrl();
+  const publicBase = input.hostedBaseUrl?.trim().replace(/\/+$/, "") || null;
   const mailto = buildUnsubscribeMailtoPlaceholder(input.clientDefaultSenderEmail);
 
   if (publicBase) {

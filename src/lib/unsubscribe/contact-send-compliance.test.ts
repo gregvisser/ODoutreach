@@ -13,6 +13,7 @@ describe("prepareContactSendCompliance", () => {
     const result = prepareContactSendCompliance({
       bodyText: "Hello\n\nAdam OpensDoors\nOpensDoors",
       clientDefaultSenderEmail: "adam@opensdoors.co.uk",
+      hostedBaseUrl: "https://opensdoors.bidlow.co.uk",
     });
 
     expect(result.finalBody).toContain("Unsubscribe: https://opensdoors.bidlow.co.uk/unsubscribe/");
@@ -30,6 +31,7 @@ describe("prepareContactSendCompliance", () => {
     const result = prepareContactSendCompliance({
       bodyText: "Hello",
       clientDefaultSenderEmail: "adam@opensdoors.co.uk",
+      hostedBaseUrl: "https://opensdoors.bidlow.co.uk",
     });
 
     expect(result.kind).toBe("hosted");
