@@ -2,6 +2,87 @@
 
 **Updated 2026-08-24 · Tier P (Client Production)**
 
+## Session 2026-08-24f — BUILD-6. NDR tail SETTLED. Real bounces found.
+
+#191 and #192 merged and verified (`e80edea`, `d01cafb`), #183 closed. Production
+serves `d01cafb`. New PR: **#193** (inbox body fixes). Runbook written, NOT run.
+
+### THE NDR TAIL IS SETTLED — and the answer is bad
+Ran the settling observation read-only against production.
+
+**426 NDR-shaped messages are sitting in `InboundMailboxMessage`.** Real bounces —
+`Undeliverable:`, `postmaster@`, `mailer-daemon@googlemail.com` — fetched,
+stored, and **never once classified**. By month: 43 in May, **217 in June**, 120
+in July, 41 in August. Sends were 71 / 1,223 / 64.
+
+**The sync definitely ran** through the whole tail: telemetry for every weekday
+2026-06-25 → 07-03, hundreds of runs, ~10,000 messages seen a day,
+`bouncesSuppressed` **0 every single day**.
+
+**So the tail no longer needs the flag question answered.** Whatever the flag
+said, real bounces were arriving in volume and none were ever classified.
+
+### THE MEASURED CAUSE — Gmail had no body at all
+| source | messages | with bodyText | avg bodyText |
+|---|---|---|---|
+| MICROSOFT_GRAPH | 6,240 | 6,067 | **4,023 chars** |
+| GMAIL_API | 355 | **7** | **57 chars** |
+
+Of **147 Gmail NDRs, ZERO had a body.** The parser reads the body. It never had
+one to read.
+
+### THE SHARPER DEFECT THE BRIEF DID NOT NAME
+**Opt-out detection was starved on MICROSOFT TOO.** The sync passes
+`row.fullBody?.bodyText` to the bounce classifier and, 65 lines later, only
+`snippet`/`bodyPreview` to the reply path — which feeds `suppressReplyOptOut`.
+The full body was fetched, in memory, discarded. **Opt-out detection has been
+reading ~6% of each email**, and an opt-out is a PECR obligation. Reply
+*matching* was fine (headers/subject only) — only compliance was starved.
+
+Both fixed in #193, test seen RED first.
+
+### ONBOARDING: neither a sync bug nor a send bug, as framed
+- The send side's `NOT IN (PAUSED, ARCHIVED)` is **deliberate** — commit
+  `4a11aaf` states the reason and has a guard test.
+- The sync's `ACTIVE` filter is an **unexamined default** — commit `c85b7a7`,
+  a 16-file feature commit whose message never mentions status.
+- `evaluateSendGovernance` **already blocks** ONBOARDING clients from
+  real-prospect sequence sends, and there is no deadlock (promotion needs
+  nothing the sync produces).
+- **The real hole is a third path:** `sendEmailToContact` (the `/contacts` Send
+  button) queues a real prospect send with **no governance check at all**.
+  Mitigated — `/contacts` is super-admin-only — but the action is ungated.
+- **NEW:** the reply sync has **no `deletedAt: null` guard**, so soft-deleted
+  workspaces are still inbox-synced.
+
+**Not fixed this session** — the refuter judged the proposed fix unsafe as
+written, and I would rather leave it named than ship a rushed change to the send
+path. Recommended: align the sync filter to the send filter *and* add governance
+to `sendEmailToContact`, as one considered PR.
+
+### BACKUP RUNBOOK — written, not executed
+`docs/ops/RUNBOOK-geo-redundant-database-migration.md`.
+**PITR cannot select geo-redundancy** — it inherits the source's setting
+(Microsoft, quoted). So a new server plus dump/restore is the only route.
+**Two places hold the connection string**, and the second is the dangerous one:
+App Service `DATABASE_URL` *and* GitHub secret `PRODUCTION_DATABASE_URL`, which
+`deploy-production.yml` uses to migrate **before** Azure login. Miss it and every
+future deploy migrates the old database.
+Downtime **30–60 min** at 4.56 GB. Reversible until the connection-string switch.
+
+## Next session
+1. Merge #193.
+2. **Re-run the bounce numbers after #193 deploys** — the classifier finally has
+   bodies to read, so the real bounce rate should appear for the first time.
+   217 NDRs against 1,223 June sends is a number Greg needs before sending again.
+3. The ONBOARDING/`sendEmailToContact` governance PR, and the soft-delete guard.
+4. Greg schedules the migration.
+5. Then: bounce status write · F-01 · CSV import · stage 4.
+
+---
+
+## Earlier — session 2026-08-24e (BUILD-5)
+
 ## Session 2026-08-24e — BUILD-5. The NDR mystery is SOLVED.
 
 Production serves `43aa6bf`. Open PRs: **#191** (salvage), **#192** (send pacing).

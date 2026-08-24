@@ -11,12 +11,21 @@ export type GmailApiMessageRef = {
   threadId?: string;
 };
 
+export type GmailMessagePart = {
+  mimeType?: string;
+  filename?: string;
+  headers?: { name: string; value: string }[];
+  body?: { size?: number; data?: string; attachmentId?: string };
+  parts?: GmailMessagePart[];
+};
+
 export type GmailApiMessageDetail = {
   id: string;
   threadId?: string;
   snippet?: string;
   internalDate?: string;
-  payload?: { headers?: { name: string; value: string }[] };
+  sizeEstimate?: number;
+  payload?: GmailMessagePart & { headers?: { name: string; value: string }[] };
 };
 
 export type MappedGmailInboxRow = {
@@ -31,7 +40,90 @@ export type MappedGmailInboxRow = {
   metadata: Record<string, string | null | boolean>;
   /** RFC 5322 In-Reply-To header value. Non-null only for genuine thread replies. */
   inReplyToHeader: string | null;
+  /**
+   * The decoded message body. Mirrors MappedInboxRow.fullBody on the Microsoft
+   * side so both providers feed the same downstream consumers.
+   *
+   * Added 2026-08-24. This fetch used format=metadata and never retrieved a body
+   * at all, so every Google message reached the bounce classifier and the
+   * opt-out classifier as Gmail's ~200-character snippet. Measured on
+   * production that day: 355 Gmail messages, SEVEN with any bodyText, average
+   * length 57 characters -- against 6,240 Microsoft messages averaging 4,023.
+   * Of 147 real Gmail NDRs, not one had a body for the parser to read.
+   */
+  fullBody: {
+    bodyText: string;
+    bodyContentType: "text" | "html" | "multipart";
+    fullBodySize: number;
+    fullBodySource: "GMAIL_API";
+    fullBodyFetchedAt: Date;
+  } | null;
 };
+
+/** Gmail returns base64url with no padding. */
+function decodeGmailBody(data: string | undefined): string {
+  if (!data) return "";
+  try {
+    return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+/** Crude tag strip, only ever applied when no text/plain part exists. */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, NL)
+    .replace(/<\/p>/gi, NL)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/[ 	]{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Pull the readable body out of a Gmail payload tree.
+ *
+ * Prefers text/plain anywhere in the tree, falls back to text/html stripped of
+ * tags, and ignores attachments (a part with a filename, or a body that is only
+ * an attachmentId). Exported so the traversal is unit-testable without a live
+ * Gmail response.
+ */
+const NL = String.fromCharCode(10);
+
+export function extractGmailBody(
+  payload: GmailMessagePart | undefined,
+): { text: string; contentType: "text" | "html" | "multipart" } {
+  if (!payload) return { text: "", contentType: "multipart" };
+
+  const plain: string[] = [];
+  const html: string[] = [];
+
+  const walk = (part: GmailMessagePart | undefined): void => {
+    if (!part) return;
+    // Attachments carry no readable body for our purposes.
+    if (part.filename && part.filename.length > 0) return;
+    const mime = (part.mimeType ?? "").toLowerCase();
+    const data = part.body?.data;
+    if (data && mime === "text/plain") plain.push(decodeGmailBody(data));
+    else if (data && mime === "text/html") html.push(decodeGmailBody(data));
+    else if (data && !mime.startsWith("multipart/") && plain.length === 0 && html.length === 0) {
+      // Single-part message with an unlabelled or unusual mime type.
+      plain.push(decodeGmailBody(data));
+    }
+    for (const child of part.parts ?? []) walk(child);
+  };
+  walk(payload);
+
+  if (plain.length > 0) return { text: plain.join(NL).trim(), contentType: "text" };
+  if (html.length > 0) return { text: htmlToText(html.join(NL)), contentType: "html" };
+  return { text: "", contentType: "multipart" };
+}
 
 function headerValue(
   headers: { name: string; value: string }[] | undefined,
@@ -79,6 +171,17 @@ export function mapGmailMessageToRow(msg: GmailApiMessageDetail): MappedGmailInb
     receivedAt,
     conversationId: msg.threadId != null ? msg.threadId : null,
     inReplyToHeader: headerValue(headers, "In-Reply-To"),
+    fullBody: (() => {
+      const b = extractGmailBody(msg.payload);
+      if (b.text.trim().length === 0) return null;
+      return {
+        bodyText: b.text,
+        bodyContentType: b.contentType,
+        fullBodySize: msg.sizeEstimate ?? b.text.length,
+        fullBodySource: "GMAIL_API" as const,
+        fullBodyFetchedAt: new Date(),
+      };
+    })(),
     metadata: {
       threadId: msg.threadId != null ? msg.threadId : null,
       // PR Q — capture Gmail's `internalDate` so future fetch/debug has
@@ -135,17 +238,14 @@ export async function getGmailMessageMetadata(
   messageId: string,
 ): Promise<GmailApiMessageDetail | null> {
   const url = new URL(`${GMAIL}/users/me/messages/${encodeURIComponent(messageId)}`);
-  url.searchParams.set("format", "metadata");
-  url.searchParams.append("metadataHeaders", "From");
-  url.searchParams.append("metadataHeaders", "To");
-  url.searchParams.append("metadataHeaders", "Subject");
-  url.searchParams.append("metadataHeaders", "Date");
-  // PR Q — capture the RFC 5322 Message-ID so we have a cross-provider
-  // stable identifier for future fallback lookups.
-  url.searchParams.append("metadataHeaders", "Message-ID");
-  // Required for reply filtering: only messages with In-Reply-To are genuine
-  // thread replies. Messages without it are fresh emails, not outreach replies.
-  url.searchParams.append("metadataHeaders", "In-Reply-To");
+  // format=full, not metadata. `metadata` returns headers only and NO body at
+  // all, which is why every Google message reached the bounce and opt-out
+  // classifiers as a ~200 character snippet. `full` returns the same headers
+  // (so the metadataHeaders list below is no longer needed - full carries them
+  // all) plus the decoded payload tree. Costs 5 quota units per message instead
+  // of 5 - Gmail prices messages.get the same either way - but the responses
+  // are larger, which is the real trade.
+  url.searchParams.set("format", "full");
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -154,7 +254,7 @@ export async function getGmailMessageMetadata(
   };
   if (!res.ok) {
     const m = body.error?.message ?? "Gmail get message failed";
-    throw new Error(`Gmail message metadata failed: ${m}`);
+    throw new Error(`Gmail message fetch failed: ${m}`);
   }
   return body.id ? body : null;
 }

@@ -58,6 +58,16 @@ export async function processSyncedMessageForReply(input: {
   fromEmail: string;
   toEmail: string | null;
   subject: string | null;
+  /**
+   * The FULL message body when one was fetched, else null.
+   *
+   * Added 2026-08-24. Opt-out detection was reading `bodyPreview`, a ~240
+   * character preview, while the full body sat unused in the caller — the
+   * bounce path 65 lines earlier was already using it. An opt-out is a legal
+   * obligation under PECR however it arrives, and "please remove me" is
+   * usually the second or third paragraph, below any preview.
+   */
+  bodyText?: string | null;
   snippet: string | null;
   bodyPreview: string | null;
   receivedAt: Date;
@@ -252,7 +262,10 @@ export async function processSyncedMessageForReply(input: {
     clientId: input.clientId,
     fromEmail: from,
     subject: input.subject,
-    bodyText: input.bodyPreview ?? input.snippet,
+    // Full body first. This is the compliance leg: reply MATCHING never reads
+    // the body (headers and subject only), so only opt-out detection was
+    // affected -- and it is the one with a legal obligation behind it.
+    bodyText: input.bodyText ?? input.bodyPreview ?? input.snippet,
     contactId: outbound.contactId,
     outboundEmailId: outbound.id,
     receivedAt: input.receivedAt,
