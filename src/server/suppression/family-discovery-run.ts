@@ -1,5 +1,3 @@
-import "server-only";
-
 import dns from "node:dns/promises";
 
 import { prisma } from "@/lib/db";
@@ -29,6 +27,14 @@ import {
  *
  * NOTHING HERE IS ON THE SEND PATH. `evaluateSuppression` never reads proposals.
  * This writes questions; a human answers them.
+ *
+ * NO `server-only` MARKER, deliberately. This is a BATCH module, run by
+ * `scripts/ops-family-proposals.ts` and, if it is ever scheduled, by a worker —
+ * not from a request. `server-only` would make it unimportable by a tsx script,
+ * and the alternative was duplicating the write path into the script, which is
+ * how a report ends up describing code that is not the code that runs. The guard
+ * it provides is redundant here anyway: this module imports `node:dns` and the
+ * Prisma client, so a client bundle would fail on those first.
  */
 
 /** c-ares defaults to ~5s x 4 tries; one black-holed nameserver would stall a run. */
