@@ -1043,3 +1043,125 @@ nobody has measured.
 Five. Four in `.bidlow/DOMAIN.json` under `open_questions`, plus whether to add
 the waiver mechanism to the standards hook. See also the NEEDS CONFIRMATION items
 in `SCOPE.md`.
+
+---
+
+# 2026-08-24 — GO-LIVE morning
+
+Production: **`faba194`**, `/api/health` database ok. Four PRs merged and
+deployed in sequence, each verified by commit against `/api/build-info`.
+
+## The bounce number, which was the stop condition
+
+The brief said stop if genuine hard bounces run near **18% fleet-wide**. They do
+not. But the first answer I was about to give — 0.37% — was also wrong, and the
+way it was wrong is worth keeping.
+
+Classifying 426 NDR-shaped inbound messages by client looked decisive: Thomas
+Franks showed 36 hard bounces against 18 sends, Chevron 27 against 4 — ratios
+above 100%, impossible for bounces of our own mail — while **Train Hugger (763
+sends) and GreenTheUK (332), the two largest senders by far, appeared nowhere in
+the hard-bounce list**. That reads as "almost none of these are ours".
+
+It was an artefact of the blind spot. Both those clients are **Gmail**, and all
+147 of their NDRs had no body, so they fell into UNCLASSIFIABLE and dropped out
+of the hard-bounce count entirely. The two biggest senders were invisible to the
+classifier, not clean.
+
+The honest cut is temporal, and it does not depend on string matching:
+
+| | sends | failure-shaped NDRs | rate |
+|---|---|---|---|
+| Train Hugger, June | 756 | 72 | **9.5%** |
+| GreenTheUK, June | 332 | 30 | **9.0%** |
+
+Those 102 NDRs land **only** in the month those mailboxes sent. Train Hugger had
+1 in April (no sends) and none in July or August. The signal tracks the sends.
+
+Of the Microsoft NDRs that name one of our own subjects and *can* be classified,
+27 of 73 non-delay are genuinely hard — **37%**. Applying that to the failure-
+shaped Gmail volume puts genuine hard bounces at **≈3.5–6%, most likely 4–5%**,
+on roughly 1,100 sends of real campaign volume.
+
+**Not 18%. Not 0.4%. Around 4–5%, straddling the threshold.**
+
+The confound is proven, not inferred: **August carried 42 NDRs against ZERO
+outreach sends.** Bounces of the clients' own staff mail arrive in these
+mailboxes constantly, which is why the naive per-client ratios exceed 100%.
+
+This cannot be narrowed further **because the Gmail bodies were never fetched** —
+which is exactly what #193 fixes. The estimate becomes a measurement within days.
+
+## Merged and live
+
+| PR | What |
+|---|---|
+| #193 | Gmail `format=metadata` -> `format=full` + MIME walker; opt-out detection given the full body on BOTH providers |
+| #194 | `/contacts` send button governed; misaligned opt-out link removed; action gated to super-admin |
+| #195 | One name per destination; F-01 corrected |
+
+**#194 is the one that mattered.** `sendEmailToContact` was the only real-prospect
+path with no `evaluateSendGovernance` check, and the unsubscribe link it planted
+came from `resolvePublicBaseUrl()` — the OpensDoors app domain, with `AUTH_URL`
+set in production — while the mail left the client's own domain. That is the link
+misalignment DOMAIN.json records as the 2026 quarantine root cause, still live on
+one path. `resolveUnsubscribeRail`, the helper written to prevent it, **had no
+production caller at all**. The page redirected non-super-admins; the server
+action behind it did not, so the redirect protected nothing.
+
+## Sending posture — measured, not estimated
+
+45 active mailboxes, 44 in ACTIVE workspaces, every one capped at 30/day.
+
+- `MAILBOX_WARMUP_RAMP=on` — **already set, keep it.** Fleet capacity today is
+  **275/day**, not 1,350. The most-used mailbox has **10 sending days**; most
+  have 0–4.
+- `MAILBOX_SEND_PACING` — **not set, and leave it unset today.** At ~6 sends per
+  mailbox per day there is no burst to spread, and its first production run
+  should not be the morning the client starts. Revisit after the first ramp step.
+- `OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` — **must stay off.** No client has a
+  verified `go.<domain>`, so enabling it blocks every real-prospect send. It is a
+  kill switch, not a hardening flag.
+
+The ramp counts **sending days**, so 30/day needs 25 of them — about five working
+weeks of daily sending, and only for mailboxes that actually send.
+
+## F-01 corrected — and the defect class it earned
+
+BLUEPRINT.json recorded removal-by-reply as **DAILY**. Greg never said it; the
+agent inferred it, wrote it into the artefact, and F-01 was raised HIGH on the
+strength of it. His correction: *"we have not received responses with do not
+contact me, we have had unsubscribe links clicked, but no one responding, take me
+off the list."* Downgraded HIGH -> LOW, not deleted — the obligation stands, the
+frequency does not.
+
+Recorded in the standards repo as **`inherited-artefact-answer`**: an artefact
+answer can be confidently wrong, and everything downstream inherits it.
+
+## Left unmerged, on purpose
+
+**PR #196** removes the duplicated workflow strip so the Overview shows one row
+of links instead of three. It is correct and it deletes code, but the **staff
+training teaches that strip by name, with screenshots** (`modules.ts` 201, 227,
+1330), and `CLIENT_WORKSPACE_MODULE_AUDIT.md` carries it as unresolved open
+question Q3. Removing it needs the training updated in the same change.
+
+Moving the status dots onto the tab row instead was investigated and is **not
+cheap**: the seven statuses depend on most of `loadClientWorkspaceBundle` (8
+parallel queries), so the layout would load that on all nine workspace pages. A
+lighter approximation would create a *third* source of truth for workspace
+status — the defect already recorded against this product.
+
+## Gate defect found
+
+`gate-ship.mjs` compares `CHAIN.json.commit` to `git rev-parse HEAD` for exact
+equality. CHAIN.json is a tracked file, so stamping a hash into it changes that
+hash: **the check has no fixed point and no commit can satisfy it.** Recorded
+`reviewed_code_commit` + `measured_tree` instead, with the reason in the file.
+The comparison should be against the source tree, or should ignore trailing
+commits that touch only `.bidlow/`.
+
+## Open questions
+
+Three, unchanged in substance: the two in `DOMAIN.json`, plus whether to answer
+Q3 and land #196.
