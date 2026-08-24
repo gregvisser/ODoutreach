@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
 import { ManualDncAddForm } from "@/components/suppression/add-to-dnc";
 import { DomainFamilyPanel } from "@/components/suppression/domain-family-panel";
+import { FamilyProposalPanel } from "@/components/suppression/family-proposal-panel";
+import { listPendingFamilyProposals } from "@/server/suppression/family-proposals";
 import { listDomainFamiliesForClient } from "@/server/suppression/domain-families";
 import {
   Card,
@@ -67,6 +69,7 @@ export default async function ClientSuppressionPage({ params }: Props) {
   // marked with whether it is itself suppressed, which is what decides whether
   // the family blocks anything at all.
   const domainFamilies = await listDomainFamiliesForClient(client.id);
+  const familyProposals = await listPendingFamilyProposals(client.id);
 
   return (
     <div className="space-y-8">
@@ -120,7 +123,8 @@ export default async function ClientSuppressionPage({ params }: Props) {
             only.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          <FamilyProposalPanel clientId={client.id} proposals={familyProposals} />
           <DomainFamilyPanel clientId={client.id} families={domainFamilies} />
         </CardContent>
       </Card>
