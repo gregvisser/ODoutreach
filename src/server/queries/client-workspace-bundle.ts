@@ -1,6 +1,11 @@
 import "server-only";
 
 import { CONTROLLED_PILOT_HARD_MAX_RECIPIENTS } from "@/lib/controlled-pilot-constants";
+import {
+  appDomainsFromEnv,
+  ownDomainsFor,
+  signatureLinkStatusFor,
+} from "@/lib/clients/signature-link-alignment";
 import { prisma } from "@/lib/db";
 import { computeOnboardingBriefCompletion, parseOpensDoorsBrief } from "@/lib/opensdoors-brief";
 import {
@@ -120,6 +125,18 @@ export async function loadClientWorkspaceBundle(
     sendingReadiness.map((s) => [s.mailboxId, s]),
   );
 
+  // Link-alignment status per mailbox, resolved HERE because it needs the
+  // environment (the platform's own hostnames) and the panel is a client
+  // component. The client's whole domain set is used, not just the one mailbox's,
+  // so a signature linking to the client's website or verified link domain reads
+  // as aligned rather than as a warning.
+  const clientOwnDomains = ownDomainsFor({
+    mailboxEmails: client.mailboxIdentities.map((m) => m.email),
+    website: client.website,
+    outreachLinkDomain: client.outreachLinkDomain,
+  });
+  const platformDomains = appDomainsFromEnv();
+
   const mailboxRows = client.mailboxIdentities.map((m) => {
     const authFailure = recentMailboxAuthFailures.get(m.id) ?? null;
     const applyAuthOverlay = shouldApplyMailboxAuthFailureOverlay({
@@ -160,6 +177,13 @@ export async function loadClientWorkspaceBundle(
     senderSignatureSource: m.senderSignatureSource,
     senderSignatureSyncedAt: m.senderSignatureSyncedAt?.toISOString() ?? null,
     senderSignatureSyncError: m.senderSignatureSyncError,
+    signatureLinkStatus: signatureLinkStatusFor({
+      email: m.email,
+      senderSignatureHtml: m.senderSignatureHtml,
+      senderSignatureText: m.senderSignatureText,
+      ownDomains: clientOwnDomains,
+      appDomains: platformDomains,
+    }),
     };
   });
 
