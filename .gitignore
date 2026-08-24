@@ -77,3 +77,8 @@ Thumbs.db
 # Claude Code: shared project config may be committed; `.local` is per-developer
 # (one person's permission allowlist) and must not travel with the repo.
 .claude/settings.local.json
+
+# Work briefs handed to the agent live outside the code repo (BidlowAI
+# repository boundary). Kept locally, never committed.
+GO-LIVE.md
+MONDAY-PROMPT.md
