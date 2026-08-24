@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { LaunchReadinessPanelInput } from "./client-launch-state";
@@ -84,6 +87,64 @@ describe("buildClientWorkflowSteps", () => {
     );
     const blob = JSON.stringify(steps);
     expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
+  });
+});
+
+/**
+ * ONE NAME PER DESTINATION.
+ *
+ * The Overview shows the same seven destinations three times: the subnav tab
+ * row, the numbered Workflow strip, and the Launch readiness panel. Two of them
+ * disagreed on the words - the tab row said "Do-not-contact" and "Lists" where
+ * the other two said "Suppression" and "Contacts" - so one page offered two
+ * different names for the same place.
+ *
+ * PR #138 already decided this, renaming Contacts -> Lists in the subnav while
+ * holding the href stable. The decision simply never reached these two
+ * builders. The staff training modules were written against the DECISION, not
+ * the code - modules.ts:227 has taught "Brief -> Mailboxes -> Sources ->
+ * Do-not-contact -> Lists -> Outreach -> Activity" all along - so the product
+ * has been contradicting its own training. This aligns the code with both.
+ *
+ * Labels only. No href, no route, no destination changes.
+ */
+describe("one name per destination", () => {
+  const subnavSource = readFileSync(
+    join(process.cwd(), "src/components/clients/client-workspace-subnav.tsx"),
+    "utf8",
+  );
+  const subnavLabels = new Set(
+    [...subnavSource.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]),
+  );
+
+  it("every Launch readiness label is a name the tab row also uses", () => {
+    expect(subnavLabels.size).toBeGreaterThan(0);
+    for (const row of buildLaunchReadinessRows(basePanel({ clientId: "abc" }))) {
+      expect(subnavLabels).toContain(row.label);
+    }
+  });
+
+  it("every workflow step label is a name the tab row also uses", () => {
+    for (const step of buildClientWorkflowSteps(baseInput({ clientId: "abc" }))) {
+      expect(subnavLabels).toContain(step.label);
+    }
+  });
+
+  it("neither builder reintroduces the two names the tab row rejected", () => {
+    const all = [
+      ...buildLaunchReadinessRows(basePanel({ clientId: "abc" })).map((r) => r.label),
+      ...buildClientWorkflowSteps(baseInput({ clientId: "abc" })).map((s) => s.label),
+    ];
+    expect(all).not.toContain("Suppression");
+    expect(all).not.toContain("Contacts");
+    expect(all).toContain("Do-not-contact");
+    expect(all).toContain("Lists");
+  });
+
+  it("the hrefs are untouched - this is a copy change only", () => {
+    const rows = buildLaunchReadinessRows(basePanel({ clientId: "abc" }));
+    expect(rows.map((r) => r.href)).toContain("/clients/abc/suppression");
+    expect(rows.map((r) => r.href)).toContain("/clients/abc/contacts");
   });
 });
 

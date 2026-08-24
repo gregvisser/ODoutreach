@@ -1,16 +1,16 @@
 {
- "_what": "Recorded test evidence, derived programmatically from the machine-readable output of real runs (vitest --reporter=json, playwright --reporter=json). Not hand-authored.",
- "_provenance": "Produced LOCALLY on 2026-08-24 for the contact-send governance gate. CI also writes and uploads this record (.github/workflows/ci.yml, both jobs, if: always()); a CI record supersedes this one.",
+ "_what": "Recorded test evidence, derived programmatically from vitest --reporter=json and playwright --reporter=json. Not hand-authored.",
+ "_provenance": "Produced LOCALLY on 2026-08-24 for the one-name-per-destination change. CI also writes this record; a CI record supersedes this one.",
  "recorded_on": "2026-08-24",
  "suites": [
   {
    "name": "vitest (unit + integration)",
    "command": "npm test",
    "passed": true,
-   "count": 1938,
+   "count": 1942,
    "failed": 0,
    "exit_code": 0,
-   "suites": 662
+   "suites": 663
   },
   {
    "name": "playwright (e2e)",
@@ -20,18 +20,16 @@
    "failed": 0,
    "flaky": 0,
    "exit_code": 0,
-   "note": "Run against a throwaway postgres:16-alpine on :5434 started for this run, migrated with db:migrate:e2e. The first attempt FAILED because no such database was running - recorded here because a check that cannot run is a failure, not a pass, and the fix was to start the database, not to skip the suite."
+   "note": "Run against a throwaway postgres:16-alpine on :5434 started for these runs and migrated with db:migrate:e2e."
   }
  ],
  "new_tests_this_change": {
-  "file": "src/server/email/send-outbound-governance.test.ts",
-  "count": 5,
+  "file": "src/lib/client-launch-state.test.ts",
+  "count": 4,
   "red_checked": true,
-  "method": "git stash of the four source files with the test file kept, then re-run.",
-  "red_result": "4 of 5 FAILED without the fix; the 5th (allowlisted internal recipient keeps the hosted app-domain link) correctly stayed green because that behaviour is deliberately unchanged.",
-  "red_output_excerpt": "expected 'Hello there.\n\n---\nUnsubscribe: htt...' not to contain 'opensdoors.bidlow.co.uk'",
-  "note": "src/server/email/send-outbound.ts previously had NO test file at all."
+  "method": "git stash of src/lib/client-launch-state.ts with the test file kept, then re-run.",
+  "red_result": "3 of 4 FAILED without the rename; the 4th (hrefs unchanged) correctly stayed green because this is a copy-only change and routes must not move."
  },
- "measured_against_tree_of": "51c7c99bc1d8e963c201eb690132c7fcc7a8136d",
- "_commit_note": "Records the commit whose TREE was measured. Commits after this touch only .bidlow records, never source."
+ "measured_against_tree_of": "08efd20ed481b51b7f46da2fed74648e4a477ad6",
+ "_commit_note": "Records the commit whose TREE was measured; later commits touch only .bidlow records."
 }
