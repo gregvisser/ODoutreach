@@ -275,27 +275,28 @@ model StaffUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships                ClientMembership[]
-  auditLogs                  AuditLog[]
-  outboundSends              OutboundEmail[]                 @relation("OutboundInitiator")
-  mailboxIdentitiesCreated   ClientMailboxIdentity[]         @relation("MailboxIdentityCreatedBy")
-  mailboxesWorkspaceRemoved  ClientMailboxIdentity[]         @relation("MailboxIdentityWorkspaceRemovedBy")
-  contactListsCreated        ContactList[]                   @relation("ContactListCreatedBy")
-  contactListMembersAdded    ContactListMember[]             @relation("ContactListMemberAddedBy")
-  emailTemplatesCreated      ClientEmailTemplate[]           @relation("ClientEmailTemplateCreatedBy")
-  emailTemplatesApproved     ClientEmailTemplate[]           @relation("ClientEmailTemplateApprovedBy")
-  emailSequencesCreated      ClientEmailSequence[]           @relation("ClientEmailSequenceCreatedBy")
-  emailSequencesApproved     ClientEmailSequence[]           @relation("ClientEmailSequenceApprovedBy")
-  sequenceEnrollmentsCreated ClientEmailSequenceEnrollment[] @relation("ClientEmailSequenceEnrollmentCreatedBy")
-  sequenceStepSendsCreated   ClientEmailSequenceStepSend[]   @relation("ClientEmailSequenceStepSendCreatedBy")
-  clientsLaunchApproved         Client[]                        @relation("ClientLaunchApprovedBy")
-  clientsAsBriefAccountManager  Client[]                        @relation("ClientBriefAccountManager")
-  clientComplianceFilesUploaded ClientComplianceAttachment[]  @relation("ClientComplianceUpload")
-  supportTicketsCreated         SupportTicket[]               @relation("SupportTicketCreatedBy")
-  supportTicketsApproved        SupportTicket[]               @relation("SupportTicketApprovedBy")
+  memberships                     ClientMembership[]
+  auditLogs                       AuditLog[]
+  outboundSends                   OutboundEmail[]                  @relation("OutboundInitiator")
+  mailboxIdentitiesCreated        ClientMailboxIdentity[]          @relation("MailboxIdentityCreatedBy")
+  mailboxesWorkspaceRemoved       ClientMailboxIdentity[]          @relation("MailboxIdentityWorkspaceRemovedBy")
+  contactListsCreated             ContactList[]                    @relation("ContactListCreatedBy")
+  contactListMembersAdded         ContactListMember[]              @relation("ContactListMemberAddedBy")
+  emailTemplatesCreated           ClientEmailTemplate[]            @relation("ClientEmailTemplateCreatedBy")
+  emailTemplatesApproved          ClientEmailTemplate[]            @relation("ClientEmailTemplateApprovedBy")
+  emailSequencesCreated           ClientEmailSequence[]            @relation("ClientEmailSequenceCreatedBy")
+  emailSequencesApproved          ClientEmailSequence[]            @relation("ClientEmailSequenceApprovedBy")
+  sequenceEnrollmentsCreated      ClientEmailSequenceEnrollment[]  @relation("ClientEmailSequenceEnrollmentCreatedBy")
+  sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
+  clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
+  clientsAsBriefAccountManager    Client[]                         @relation("ClientBriefAccountManager")
+  clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
+  supportTicketsCreated           SupportTicket[]                  @relation("SupportTicketCreatedBy")
+  supportTicketsApproved          SupportTicket[]                  @relation("SupportTicketApprovedBy")
+  suppressedDomainFamiliesCreated SuppressedDomainFamily[]         @relation("SuppressedDomainFamilyCreatedBy")
+  familyProposalsDecided          SuppressedDomainFamilyProposal[] @relation("FamilyProposalDecidedBy")
 
   @@index([invitedById])
-  suppressedDomainFamiliesCreated SuppressedDomainFamily[] @relation("SuppressedDomainFamilyCreatedBy")
 }
 
 /// Staff-raised support ticket for issues with the ODoutreach system itself
@@ -365,94 +366,95 @@ model SupportTicketAttachment {
 // ——— Tenant / workspace ———
 
 model Client {
-  id                          String                    @id @default(cuid())
-  name                        String
-  slug                        String                    @unique
-  status                      ClientLifecycleStatus     @default(ONBOARDING)
-  industry                    String?
-  website                     String?
-  notes                       String?
+  id                            String                    @id @default(cuid())
+  name                          String
+  slug                          String                    @unique
+  status                        ClientLifecycleStatus     @default(ONBOARDING)
+  industry                      String?
+  website                       String?
+  notes                         String?
   /// Optional per-client logo URL — rendered in the client workspace header, overview, and brief.
-  logoUrl                     String?
+  logoUrl                       String?
   /// Optional accessible alt text for `logoUrl`. When null, UI falls back to the client name.
-  logoAltText                 String?
+  logoAltText                   String?
   /// Opaque token for inbound webhook URL — maps to this tenant only
-  inboundIngestToken          String                    @unique @default(cuid())
+  inboundIngestToken            String                    @unique @default(cuid())
   /// Default From: for outbound (operational placeholder until per-mailbox config)
-  defaultSenderEmail          String?
+  defaultSenderEmail            String?
   /// Provider/domain verification is tracked outside this app until integrated — gates real sends when enforced
-  senderIdentityStatus        SenderIdentityStatus      @default(NOT_SET)
+  senderIdentityStatus          SenderIdentityStatus      @default(NOT_SET)
   /// PR K — Recorded launch approval trail (null for legacy ACTIVE clients predating the workflow).
-  launchApprovedAt            DateTime?
-  launchApprovedByStaffUserId String?
-  launchApprovalMode          ClientLaunchApprovalMode?
-  launchApprovalNotes         String?                   @db.Text
+  launchApprovedAt              DateTime?
+  launchApprovedByStaffUserId   String?
+  launchApprovalMode            ClientLaunchApprovalMode?
+  launchApprovalNotes           String?                   @db.Text
   /// Snapshot of the readiness checklist recorded at approval time — never rewritten after approval.
-  launchApprovalChecklist     Json?
+  launchApprovalChecklist       Json?
   /// Per-client business brief — structured v2. JSON keys: line1, line2, city, region, postalCode, country, formattedSummary
-  briefBusinessAddress            Json?
+  briefBusinessAddress          Json?
   /// Main point of contact: firstName, lastName, role, email, mobile, status (string enum: active|inactive|unknown)
-  briefMainContact                Json?
+  briefMainContact              Json?
   /// Company LinkedIn page URL
-  briefLinkedinUrl                String?
+  briefLinkedinUrl              String?
   /// Company landline shown in outreach mailbox signatures — the default the
   /// one-click branded signature uses for every mailbox. A mailbox's own
   /// `senderPhone` overrides it when set.
-  signaturePhone                  String?
+  signaturePhone                String?
   /// Operator-only context — not shown in outreach templates
-  briefInternalNotes              String?                   @db.Text
-  briefAssignedAccountManagerId   String?
+  briefInternalNotes            String?                   @db.Text
+  briefAssignedAccountManagerId String?
   /// Sender-aligned outreach link domain (go.<customer-domain>) that serves this
   /// client's unsubscribe + open-tracking links. Aligning links with the sending
   /// domain avoids the cross-domain (phishing) signal that gets outreach
   /// quarantined. Set only once the DNS CNAME + app custom-domain routing are live.
-  outreachLinkDomain              String?
+  outreachLinkDomain            String?
   /// When `outreachLinkDomain` was verified as serving correctly. Null = unverified;
   /// real-prospect sends are blocked when the hard rule is enforced
   /// (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN).
-  outreachLinkDomainVerifiedAt    DateTime?
-  createdAt                   DateTime                  @default(now())
-  updatedAt                   DateTime                  @updatedAt
+  outreachLinkDomainVerifiedAt  DateTime?
+  createdAt                     DateTime                  @default(now())
+  updatedAt                     DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
   /// and recoverable within the window before a separate, explicit hard purge.
-  deletedAt                   DateTime?
-  deletedByStaffUserId        String?
+  deletedAt                     DateTime?
+  deletedByStaffUserId          String?
 
-  memberships             ClientMembership[]
-  @@index([deletedAt])
-  onboarding              ClientOnboarding?
-  contacts                Contact[]
-  contactLists            ContactList[]
-  contactListMembers      ContactListMember[]
-  importBatches           ContactImportBatch[]
-  rocketReachJobs         RocketReachEnrichment[]
-  suppressionSources      SuppressionSource[]
-  suppressedEmails        SuppressedEmail[]
-  suppressedDomains       SuppressedDomain[]
-  suppressedDomainFamilies SuppressedDomainFamily[]
-  campaigns               Campaign[]
-  outboundEmails          OutboundEmail[]
-  inboundReplies          InboundReply[]
-  reportingSnapshots      ReportingDailySnapshot[]
-  auditLogs               AuditLog[]
-  outboundProviderEvents  OutboundProviderEvent[]
-  mailboxIdentities       ClientMailboxIdentity[]
+  memberships                     ClientMembership[]
+  onboarding                      ClientOnboarding?
+  contacts                        Contact[]
+  contactLists                    ContactList[]
+  contactListMembers              ContactListMember[]
+  importBatches                   ContactImportBatch[]
+  rocketReachJobs                 RocketReachEnrichment[]
+  suppressionSources              SuppressionSource[]
+  suppressedEmails                SuppressedEmail[]
+  suppressedDomains               SuppressedDomain[]
+  suppressedDomainFamilies        SuppressedDomainFamily[]
+  suppressedDomainFamilyProposals SuppressedDomainFamilyProposal[]
+  campaigns                       Campaign[]
+  outboundEmails                  OutboundEmail[]
+  inboundReplies                  InboundReply[]
+  reportingSnapshots              ReportingDailySnapshot[]
+  auditLogs                       AuditLog[]
+  outboundProviderEvents          OutboundProviderEvent[]
+  mailboxIdentities               ClientMailboxIdentity[]
   /// Microsoft Graph–ingested inbox rows (idempotent by mailbox + Graph message id)
-  inboundMailboxMessages  InboundMailboxMessage[]
-  mailboxSendReservations MailboxSendReservation[]
-  emailTemplates          ClientEmailTemplate[]
-  emailSequences          ClientEmailSequence[]
-  sequenceEnrollments     ClientEmailSequenceEnrollment[]
-  sequenceStepSends       ClientEmailSequenceStepSend[]
-  unsubscribeTokens       UnsubscribeToken[]
-  launchApprovedBy         StaffUser?                 @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
-  briefAccountManager      StaffUser?                 @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
-  briefTaxonomyLinks       ClientBriefTermLink[]
-  complianceAttachments    ClientComplianceAttachment[]
-  briefTaxonomyFirstUses   BriefTaxonomyTerm[]        @relation("BriefTermFirstClient")
-  universesFirstSeen       ContactUniverse[]          @relation("UniverseFirstSeenClient")
-  contactUniverseSources   ContactUniverseSource[]
+  inboundMailboxMessages          InboundMailboxMessage[]
+  mailboxSendReservations         MailboxSendReservation[]
+  emailTemplates                  ClientEmailTemplate[]
+  emailSequences                  ClientEmailSequence[]
+  sequenceEnrollments             ClientEmailSequenceEnrollment[]
+  sequenceStepSends               ClientEmailSequenceStepSend[]
+  unsubscribeTokens               UnsubscribeToken[]
+  launchApprovedBy                StaffUser?                       @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
+  briefAccountManager             StaffUser?                       @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
+  briefTaxonomyLinks              ClientBriefTermLink[]
+  complianceAttachments           ClientComplianceAttachment[]
+  briefTaxonomyFirstUses          BriefTaxonomyTerm[]              @relation("BriefTermFirstClient")
+  universesFirstSeen              ContactUniverse[]                @relation("UniverseFirstSeenClient")
+  contactUniverseSources          ContactUniverseSource[]
 
+  @@index([deletedAt])
   @@index([status])
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
@@ -477,7 +479,7 @@ model BriefTaxonomyTerm {
   firstUsedByClientId String?
   createdAt           DateTime          @default(now())
 
-  firstUsedByClient Client?                 @relation("BriefTermFirstClient", fields: [firstUsedByClientId], references: [id], onDelete: SetNull)
+  firstUsedByClient Client?               @relation("BriefTermFirstClient", fields: [firstUsedByClientId], references: [id], onDelete: SetNull)
   clientLinks       ClientBriefTermLink[]
 
   @@unique([kind, normalizedValue])
@@ -570,14 +572,14 @@ model ClientMailboxIdentity {
   createdAt                DateTime                @default(now())
   updatedAt                DateTime                @updatedAt
 
-  client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy             StaffUser?               @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  workspaceRemovedBy    StaffUser?               @relation("MailboxIdentityWorkspaceRemovedBy", fields: [workspaceRemovedById], references: [id], onDelete: SetNull)
-  secret                MailboxIdentitySecret?
-  graphIngestedMessages InboundMailboxMessage[]
-  sendReservations            MailboxSendReservation[]
-  outboundSends               OutboundEmail[]
-  preferredForSequenceLaunches ClientEmailSequence[] @relation("SequenceLaunchMailbox")
+  client                       Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy                    StaffUser?               @relation("MailboxIdentityCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  workspaceRemovedBy           StaffUser?               @relation("MailboxIdentityWorkspaceRemovedBy", fields: [workspaceRemovedById], references: [id], onDelete: SetNull)
+  secret                       MailboxIdentitySecret?
+  graphIngestedMessages        InboundMailboxMessage[]
+  sendReservations             MailboxSendReservation[]
+  outboundSends                OutboundEmail[]
+  preferredForSequenceLaunches ClientEmailSequence[]    @relation("SequenceLaunchMailbox")
 
   @@unique([clientId, emailNormalized])
   @@index([clientId, isActive])
@@ -678,18 +680,18 @@ model ClientOnboarding {
 // ——— Contacts & imports ———
 
 model ContactImportBatch {
-  id           String            @id @default(cuid())
-  clientId     String
-  fileName     String?
-  rowCount     Int               @default(0)
-  status       ImportBatchStatus @default(PENDING)
-  errorMessage String?
+  id              String                  @id @default(cuid())
+  clientId        String
+  fileName        String?
+  rowCount        Int                     @default(0)
+  status          ImportBatchStatus       @default(PENDING)
+  errorMessage    String?
   /// Import outcome: created, skipped, duplicates, sample errors — JSON
-  summary      Json?
-  completedAt  DateTime?
-  createdAt    DateTime          @default(now())
-  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  contacts     Contact[]
+  summary         Json?
+  completedAt     DateTime?
+  createdAt       DateTime                @default(now())
+  client          Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contacts        Contact[]
   universeSources ContactUniverseSource[]
 
   @@index([clientId, createdAt])
@@ -754,31 +756,31 @@ model Contact {
 
 /// OpensDoors global contact warehouse — deduplicated across imports and clients.
 model ContactUniverse {
-  id                      String             @id @default(cuid())
+  id                    String             @id @default(cuid())
   /// Lowercase trimmed email; unique when present (Postgres allows many NULLs).
-  emailNormalized         String?            @unique
-  linkedinUrlNormalized   String?
-  mobilePhoneNormalized   String?
-  officePhoneNormalized   String?
-  firstName               String?
-  lastName                String?
-  fullName                String?
-  jobTitle                String?
-  companyName             String?
-  location                String?
-  city                    String?
-  country                 String?
-  industry                String?
+  emailNormalized       String?            @unique
+  linkedinUrlNormalized String?
+  mobilePhoneNormalized String?
+  officePhoneNormalized String?
+  firstName             String?
+  lastName              String?
+  fullName              String?
+  jobTitle              String?
+  companyName           String?
+  location              String?
+  city                  String?
+  country               String?
+  industry              String?
   /// Human-readable rollup for the Sources / Universe table (not raw JSON).
-  sourceSummary           String?
-  firstSeenClientId       String?
-  firstSeenSourceType     UniverseSourceType @default(OTHER)
-  firstSeenAt             DateTime           @default(now())
-  lastSeenAt              DateTime           @default(now())
+  sourceSummary         String?
+  firstSeenClientId     String?
+  firstSeenSourceType   UniverseSourceType @default(OTHER)
+  firstSeenAt           DateTime           @default(now())
+  lastSeenAt            DateTime           @default(now())
   /// Optional weak dedupe key (company + name + title hash) when no strong identifiers.
-  weakMatchKey            String?            @unique
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
+  weakMatchKey          String?            @unique
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   firstSeenClient Client?                 @relation("UniverseFirstSeenClient", fields: [firstSeenClientId], references: [id], onDelete: SetNull)
   sources         ContactUniverseSource[]
@@ -804,9 +806,9 @@ model ContactUniverseSource {
   rawSourceMetadata   Json?
   createdAt           DateTime           @default(now())
 
-  universe    ContactUniverse       @relation(fields: [universeContactId], references: [id], onDelete: Cascade)
-  client      Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  importBatch ContactImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  universe    ContactUniverse     @relation(fields: [universeContactId], references: [id], onDelete: Cascade)
+  client      Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  importBatch ContactImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   @@index([universeContactId])
   @@index([clientId])
@@ -822,15 +824,15 @@ model ContactUniverseSource {
 /// per §0.5. Nothing in this PR (D1) reads or writes these rows yet —
 /// the UI and import paths start using them in PR D2.
 model ContactList {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   name                 String
   description          String?
   clientId             String?
   createdByStaffUserId String?
   /// When set, list is hidden from operators but kept for sequence/history FK integrity.
   archivedAt           DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   client              Client?                         @relation(fields: [clientId], references: [id], onDelete: SetNull)
   createdBy           StaffUser?                      @relation("ContactListCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
@@ -952,25 +954,117 @@ model SuppressedEmail {
 /// Per client by construction — one client's view of who BT is has nothing to
 /// do with another's. Default empty, so nothing changes for any existing client
 /// until a human fills it in.
+/// How a family link was discovered. Both are records the company itself
+/// published about its own domains.
+///
+/// Certificate Transparency is deliberately absent and must not be added without
+/// new evidence: measured 2026-08-24, one GlobalSign OV certificate merged a
+/// client with eight unrelated train operators, and all three proposed guards
+/// passed it.
+enum FamilyProposalSource {
+  /// The domain's DMARC record sends aggregate reports to the other domain.
+  DMARC_RUA
+  /// The domain's SPF record redirects to the other domain. RFC 7208 s6.1
+  /// designates `redirect=` for the same administrative domain; `include:` is
+  /// s5.2's mechanism for CROSSING one, and is deliberately not used here.
+  SPF_REDIRECT
+}
+
+enum FamilyProposalStatus {
+  PENDING
+  CONFIRMED
+  /// Final. Re-resolution may never move a row out of this state.
+  REJECTED
+}
+
 model SuppressedDomainFamily {
-  id       String   @id @default(cuid())
-  clientId String
+  id                   String   @id @default(cuid())
+  clientId             String
   /// Human label for the company, e.g. "BT". Free text, normalised for display
   /// only — the label groups rows, it is never matched against an email.
-  label    String
+  label                String
   /// Normalised domain (lowercase, no protocol/path/www), e.g. "bteurope.com".
-  domain   String
+  domain               String
   /// Who added it, for the audit trail. Null for system/seed rows.
   createdByStaffUserId String?
-  createdAt DateTime @default(now())
+  createdAt            DateTime @default(now())
 
-  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy StaffUser? @relation("SuppressedDomainFamilyCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  /// PROVENANCE. Null on every row that predates automatic discovery, which is
+  /// every row today - null therefore means "a human typed this".
+  ///
+  /// Without these three columns a machine proposal, a seed row and a
+  /// hand-entered fact are the same row, and an operator cannot tell which to
+  /// distrust. RULING 3 still holds: nothing reaches this table without a human
+  /// clicking confirm. These record WHICH proposal that click accepted.
+  sourceProposalId String?               @unique
+  discoveredSource FamilyProposalSource?
+  discoveredAt     DateTime?
+
+  client         Client                          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy      StaffUser?                      @relation("SuppressedDomainFamilyCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  sourceProposal SuppressedDomainFamilyProposal? @relation("ConfirmedFromProposal", fields: [sourceProposalId], references: [id], onDelete: SetNull)
 
   /// A domain belongs to at most one family per client — otherwise "which
   /// family is bteurope.com in" has no answer and the gate is ambiguous.
   @@unique([clientId, domain])
   @@index([clientId, label])
+}
+
+/// Where the machine's guesses live, and the reason they are safe.
+///
+/// RULING 3 (Greg, 2026-08-24) says family membership is a listed fact and must
+/// never be inferred. That still holds. Nothing in this table is read by the
+/// send gate - `evaluateSuppression` never touches it. A row here is a QUESTION
+/// put to an operator, and only their confirmation writes a
+/// `SuppressedDomainFamily` row.
+///
+/// The measurement that produced this design (2026-08-24, recorded in STATE.md):
+/// writing discovered links straight into `SuppressedDomainFamily` would have
+/// been unsafe whatever the source, because blocking there is transitive across
+/// a label and a deleted row is re-created by the next resolution run.
+model SuppressedDomainFamilyProposal {
+  id       String @id @default(cuid())
+  clientId String
+
+  /// The suppressed domain the link was found FROM - the one already on the
+  /// client's do-not-contact list.
+  seedDomain     String
+  /// The domain we believe belongs with it. Normalised, lowercase, no www.
+  proposedDomain String
+
+  source   FamilyProposalSource
+  /// The record text exactly as read, so an operator (or a later reviewer) can
+  /// see the evidence rather than trust the verdict.
+  evidence String               @db.Text
+
+  /// How many OTHER contact domains also point at `proposedDomain`.
+  ///
+  /// Measured on production: every genuine corporate relative had fan-in 1-2,
+  /// every shared vendor 9 or more (outlook.com 216, google.com 11,
+  /// salesforce.com 9). Proposals at or above the cap are never raised. This is
+  /// NOT the safety mechanism - the operator's click is - so the number is shown
+  /// on screen too: "4 other companies also point here" is what makes a person
+  /// say no. `nhs.net` had fan-in 2 and is still a shared service.
+  fanIn Int
+
+  discoveredAt DateTime @default(now())
+
+  /// REJECTED IS A TOMBSTONE. Re-resolution must never move a row out of it.
+  /// Without this, the 30-day re-run reads the same DNS, derives the same link,
+  /// and silently reinstates something an operator deliberately refused.
+  status FamilyProposalStatus @default(PENDING)
+
+  decidedByStaffUserId String?
+  decidedAt            DateTime?
+
+  client          Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  decidedBy       StaffUser?              @relation("FamilyProposalDecidedBy", fields: [decidedByStaffUserId], references: [id], onDelete: SetNull)
+  confirmedFamily SuppressedDomainFamily? @relation("ConfirmedFromProposal")
+
+  /// One proposal per (client, seed, proposed) - re-resolution updates the
+  /// existing row rather than raising the same question twice.
+  @@unique([clientId, seedDomain, proposedDomain])
+  @@index([clientId, status])
 }
 
 model SuppressedDomain {
@@ -999,19 +1093,19 @@ model SuppressedDomain {
 /// path behaves exactly as before. Reputation-sensitive analytics exclude
 /// these addresses so internal test sends never skew real campaign metrics.
 model InternalSeedAddress {
-  id        String   @id @default(cuid())
+  id                   String   @id @default(cuid())
   /// Lowercase, trimmed email (same normalization as the suppression keys).
-  email     String   @unique
+  email                String   @unique
   /// Human label shown in the admin UI, e.g. "Adam (internal test)".
-  label     String?
+  label                String?
   /// Free-text note (why this address is on the allowlist).
-  note      String?
+  note                 String?
   /// Soft on/off without deleting history; only active rows are exempt.
-  isActive  Boolean  @default(true)
+  isActive             Boolean  @default(true)
   /// Audit pointer to the staff user who added it (no FK to keep this additive).
   createdByStaffUserId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([isActive])
 }
@@ -1138,14 +1232,14 @@ model ClientEmailSequence {
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
-  client                  Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  contactList              ContactList               @relation(fields: [contactListId], references: [id], onDelete: Restrict)
-  createdBy                StaffUser?                 @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
-  approvedBy               StaffUser?                 @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
-  launchPreferredMailbox   ClientMailboxIdentity?     @relation("SequenceLaunchMailbox", fields: [launchPreferredMailboxId], references: [id], onDelete: SetNull)
-  steps                    ClientEmailSequenceStep[]
-  enrollments              ClientEmailSequenceEnrollment[]
-  stepSends                ClientEmailSequenceStepSend[]
+  client                 Client                          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contactList            ContactList                     @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  createdBy              StaffUser?                      @relation("ClientEmailSequenceCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
+  approvedBy             StaffUser?                      @relation("ClientEmailSequenceApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
+  launchPreferredMailbox ClientMailboxIdentity?          @relation("SequenceLaunchMailbox", fields: [launchPreferredMailboxId], references: [id], onDelete: SetNull)
+  steps                  ClientEmailSequenceStep[]
+  enrollments            ClientEmailSequenceEnrollment[]
+  stepSends              ClientEmailSequenceStepSend[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -1167,7 +1261,7 @@ model ClientEmailSequenceStep {
   category   ClientEmailTemplateCategory
   position   Int
   delayDays  Int                         @default(0)
-  delayHours Int                        @default(0)
+  delayHours Int                         @default(0)
   createdAt  DateTime                    @default(now())
   updatedAt  DateTime                    @updatedAt
 
