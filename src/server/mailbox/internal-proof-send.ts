@@ -12,6 +12,7 @@ import {
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
+import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import {
   complianceMetadata,
   prepareContactSendCompliance,
@@ -123,6 +124,10 @@ export async function queueSelectedMailboxInternalProofSend(input: {
   const compliance = prepareContactSendCompliance({
     bodyText: bodyWithSignature,
     clientDefaultSenderEmail: client.defaultSenderEmail ?? mailbox.email,
+    // Internal proof goes to an APPROVED internal recipient, so the app domain
+    // is the documented carve-out: no third-party domain reputation is at stake
+    // and the link resolves for the person receiving it.
+    hostedBaseUrl: resolvePublicBaseUrl(),
   });
   const metaHeaders = complianceMetadata(compliance);
   const metadata = {

@@ -5,6 +5,17 @@ import { randomUUID } from "node:crypto";
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
+import {
+  clientLinkDomainAligned,
+  resolveClientLinkBaseUrl,
+} from "@/lib/clients/client-link-domain";
+import { evaluateSendGovernance } from "@/lib/clients/client-send-governance";
+import { isRecipientAllowedForGovernedTest } from "@/lib/governed-test-recipient";
+import {
+  isUnsubscribeRailUsable,
+  resolvePublicBaseUrl,
+  resolveUnsubscribeRail,
+} from "@/lib/unsubscribe/one-click-readiness";
 import { evaluateSuppression, type SuppressionDecision } from "@/server/outreach/suppression-guard";
 import { requireClientAccess } from "@/server/tenant/access";
 import type { StaffUser } from "@/generated/prisma/client";
@@ -90,15 +101,61 @@ export async function sendEmailToContact(
 
   const clientRow = await prisma.client.findFirst({
     where: { id: clientId },
-    select: { defaultSenderEmail: true },
+    select: {
+      defaultSenderEmail: true,
+      status: true,
+      launchApprovedAt: true,
+      launchApprovalMode: true,
+      outreachLinkDomain: true,
+      outreachLinkDomainVerifiedAt: true,
+    },
   });
   if (!clientRow) {
     return { ok: false, outcome: "failed", error: "Workspace not found" };
   }
 
+  // GOVERNANCE GATE.
+  //
+  // This one-off send is the same thing the sequence dispatcher sends as an
+  // INTRODUCTION — a first-touch outreach email to a prospect — so it is held
+  // to the same bar: workspace ACTIVE, a working opt-out rail, and (when the
+  // hard rule is enabled) a sender-aligned link domain. Until now this path had
+  // no governance check at all: it could email a real prospect from a paused or
+  // never-approved workspace, which the automated path has always refused.
+  //
+  // The opt-out rail is resolved BEFORE the gate and the same value is used for
+  // the body, so the gate cannot be told the send is compliant and then have a
+  // different link planted in the email.
+  const recipientAllowlisted = isRecipientAllowedForGovernedTest(to);
+  // An allowlisted recipient is internal, so the app domain is the documented
+  // carve-out. A real prospect gets the client's OWN verified link domain or
+  // no hosted link at all — never the OpensDoors app domain.
+  const hostedBaseUrl = recipientAllowlisted
+    ? resolvePublicBaseUrl()
+    : resolveClientLinkBaseUrl(clientRow);
+  const unsubscribeRail = resolveUnsubscribeRail({
+    alignedBaseUrl: hostedBaseUrl,
+    sendingMailboxAddress: clientRow.defaultSenderEmail,
+  });
+  const sendGovernance = evaluateSendGovernance({
+    client: {
+      status: clientRow.status,
+      launchApprovedAt: clientRow.launchApprovedAt,
+      launchApprovalMode: clientRow.launchApprovalMode,
+    },
+    recipientAllowlisted,
+    sendKind: "SEQUENCE_INTRODUCTION",
+    oneClickUnsubscribeReady: isUnsubscribeRailUsable(unsubscribeRail),
+    linkDomainAligned: clientLinkDomainAligned(clientRow),
+  });
+  if (!sendGovernance.allowed) {
+    return { ok: false, outcome: "failed", error: sendGovernance.reason };
+  }
+
   const compliance = prepareContactSendCompliance({
     bodyText,
     clientDefaultSenderEmail: clientRow.defaultSenderEmail,
+    hostedBaseUrl,
   });
   const effectiveBody = compliance.finalBody;
 

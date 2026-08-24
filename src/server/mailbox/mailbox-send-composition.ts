@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ClientMailboxIdentity } from "@/generated/prisma/client";
 import { chooseSignatureForSend } from "@/lib/mailboxes/sender-signature";
+import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import {
   complianceMetadata,
   prepareContactSendCompliance,
@@ -24,6 +25,13 @@ export function appendMailboxSignature(input: {
   return `${input.bodyText.replace(/\s+$/u, "")}\n\n${signature}`;
 }
 
+/**
+ * Compliance for the governed-test and controlled-pilot send paths. Both only
+ * ever reach an ALLOWLISTED recipient, so the OpensDoors app domain is the
+ * documented carve-out for the hosted unsubscribe link. Real-prospect sends do
+ * NOT come through here — see `sendEmailToContact`, which resolves the client's
+ * own aligned link domain or falls back to mailto.
+ */
 export function prepareMailboxSendCompliance(input: {
   bodyText: string;
   mailbox: ClientMailboxIdentity;
@@ -37,6 +45,7 @@ export function prepareMailboxSendCompliance(input: {
   return prepareContactSendCompliance({
     bodyText: withSignature,
     clientDefaultSenderEmail: input.clientDefaultSenderEmail ?? input.mailbox.email,
+    hostedBaseUrl: resolvePublicBaseUrl(),
   });
 }
 

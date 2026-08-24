@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { requireSuperAdmin } from "@/server/auth/staff";
 import { sendEmailToContact } from "@/server/email/send-outbound";
 
 function contactsRedirect(
@@ -21,7 +21,12 @@ function contactsRedirect(
 }
 
 export async function sendEmailToContactAction(formData: FormData): Promise<void> {
-  const staff = await requireOpensDoorsStaff();
+  // `/contacts` already redirects non-super-admins away, but a server action is
+  // a POST endpoint in its own right: the page redirect does not protect it.
+  // Without this the gate on the page was cosmetic — any signed-in staff member
+  // could invoke the action directly and send to a real prospect. Match the
+  // action's authorisation to the page's.
+  const staff = await requireSuperAdmin();
   const clientId = String(formData.get("clientId") ?? "").trim();
   const contactId = String(formData.get("contactId") ?? "").trim();
   const subject = String(formData.get("subject") ?? "").trim();

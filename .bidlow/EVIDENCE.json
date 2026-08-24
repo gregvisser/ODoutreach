@@ -1,28 +1,37 @@
 {
-  "_what": "Recorded test evidence, derived programmatically from the machine-readable output of real runs (vitest --reporter=json, playwright --reporter=json). Not hand-authored.",
-  "_provenance": "Produced LOCALLY, not by CI. CI now also writes and uploads this record (.github/workflows/ci.yml, both jobs, if: always()), but that step has not run yet because the branch is unpushed. A CI record supersedes this one.",
-  "recorded_on": "2026-08-24",
-  "suites": [
-    {
-      "name": "vitest (unit + integration)",
-      "command": "npm test",
-      "passed": true,
-      "count": 1881,
-      "failed": 0,
-      "exit_code": 0,
-      "suites": 217
-    },
-    {
-      "name": "playwright (e2e)",
-      "command": "npm run test:e2e",
-      "passed": true,
-      "count": 15,
-      "failed": 0,
-      "flaky": 0,
-      "exit_code": 0,
-      "note": "Includes the rewritten BC-01 workspace data-isolation suite (6 tests). These did NOT go red first -- the boundary already held -- so they were instead PROVEN capable of failing: removing the clientId scope from the outbound query in src/server/activity/client-activity.ts turned R-5 red (Client B's activity picked up Client A's prospect address). Scratch branch, reverted."
-    }
-  ],
-  "measured_against_tree_of": "ff9563ecb57fa98bc5e3daa9179c3eb57773ac47",
-  "_commit_note": "Deliberately records the commit whose TREE was measured, not a self-referential HEAD: stamping a hash into a tracked file changes that hash. Commits after 8b32585 touch only .bidlow records (evidence + state), never source, so this run remains valid for them. .bidlow/CHAIN.json is gitignored and therefore carries the exact HEAD the gate compares against."
+ "_what": "Recorded test evidence, derived programmatically from the machine-readable output of real runs (vitest --reporter=json, playwright --reporter=json). Not hand-authored.",
+ "_provenance": "Produced LOCALLY on 2026-08-24 for the contact-send governance gate. CI also writes and uploads this record (.github/workflows/ci.yml, both jobs, if: always()); a CI record supersedes this one.",
+ "recorded_on": "2026-08-24",
+ "suites": [
+  {
+   "name": "vitest (unit + integration)",
+   "command": "npm test",
+   "passed": true,
+   "count": 1938,
+   "failed": 0,
+   "exit_code": 0,
+   "suites": 662
+  },
+  {
+   "name": "playwright (e2e)",
+   "command": "npm run test:e2e",
+   "passed": true,
+   "count": 15,
+   "failed": 0,
+   "flaky": 0,
+   "exit_code": 0,
+   "note": "Run against a throwaway postgres:16-alpine on :5434 started for this run, migrated with db:migrate:e2e. The first attempt FAILED because no such database was running - recorded here because a check that cannot run is a failure, not a pass, and the fix was to start the database, not to skip the suite."
+  }
+ ],
+ "new_tests_this_change": {
+  "file": "src/server/email/send-outbound-governance.test.ts",
+  "count": 5,
+  "red_checked": true,
+  "method": "git stash of the four source files with the test file kept, then re-run.",
+  "red_result": "4 of 5 FAILED without the fix; the 5th (allowlisted internal recipient keeps the hosted app-domain link) correctly stayed green because that behaviour is deliberately unchanged.",
+  "red_output_excerpt": "expected 'Hello there.\n\n---\nUnsubscribe: htt...' not to contain 'opensdoors.bidlow.co.uk'",
+  "note": "src/server/email/send-outbound.ts previously had NO test file at all."
+ },
+ "measured_against_tree_of": "51c7c99bc1d8e963c201eb690132c7fcc7a8136d",
+ "_commit_note": "Records the commit whose TREE was measured. Commits after this touch only .bidlow records, never source."
 }
