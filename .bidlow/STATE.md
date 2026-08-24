@@ -1396,3 +1396,39 @@ cleanly, and **silently dropped them** — my first governance test passed for t
 wrong reason until I checked why it did not fail. Any future test written against
 either input would have been vacuous. Fixed to thread the optional fields
 through, keeping "not passed" distinct from "passed as undefined".
+
+---
+
+# 2026-08-24 — Step 3: show it on screen
+
+Greg found this defect by noticing an unsubscribe link inside a signature during
+a customer meeting. That is not a way to find defects. The mailbox panel rendered
+the signature faithfully and said nothing about where its links pointed, and the
+only detector lived in a script nobody ran.
+
+Each signature preview now carries one sentence:
+
+| Situation | What the operator sees |
+|---|---|
+| Clean | "All links point to trainhugger.com — safe to send." |
+| Blocked | "This signature links to opensdoors.bidlow.co.uk — sending is blocked until this is removed." |
+| Warning | "This signature loads content from website-files.com, which is not trainhugger.com. That is usually a logo and usually fine — check it is deliberate." |
+
+No codes, no severity letters — pinned by a test that asserts the rendered text
+never contains `HIGH`/`MEDIUM`/`LOW`, a `blocked_*` code, or the words
+"registrable", "eTLD" or "PSL".
+
+Two details worth keeping:
+
+* **The status is resolved on the SERVER**, in `client-workspace-bundle.ts`, and
+  passed down as a prop. It needs the platform's own hostnames from the
+  environment and the panel is a client component, so computing it in the
+  component would have silently produced "clean" for everything.
+* **The blocked sentence names the EXACT host**, not the registrable domain. A
+  test caught this: it first said "links to bidlow.co.uk", which is true and
+  useless — the operator has to find that string in the signature and delete it,
+  so `opensdoors.bidlow.co.uk` is actionable where `bidlow.co.uk` is not.
+
+The status uses the client's WHOLE domain set — every mailbox address, the
+website, and the verified link domain — so a signature linking to the client's
+own website reads as aligned rather than as a warning.

@@ -203,7 +203,10 @@ export function severityForLink(
 }
 
 function reasonFor(link: ExtractedLink, severity: LinkSeverity): string {
-  const host = registrableDomainOf(link.url) ?? link.host;
+  const host =
+    severity === "HIGH"
+      ? link.host.replace(/^www\./, "")
+      : (registrableDomainOf(link.url) ?? link.host);
   if (severity === "HIGH") {
     return `This links to ${host}, which is the OpensDoors system's own address rather than the client's. Recipients see a link that does not match who the email is from, which is what gets mail quarantined.`;
   }
@@ -306,4 +309,76 @@ export function mailboxSignatureFindings(input: {
     ...findMisalignedLinks(input.senderSignatureHtml, "signature HTML", ctx),
     ...findMisalignedLinks(input.senderSignatureText, "signature text", ctx),
   ];
+}
+
+export type SignatureLinkStatus = {
+  /** `blocked` stops the send. `warning` is worth a look. `clean` is fine. */
+  tone: "clean" | "warning" | "blocked";
+  /**
+   * One sentence, written for a non-technical operator. No codes, no severity
+   * letters, no host lists longer than the reader can act on.
+   */
+  sentence: string;
+  /** The specific reasons, already plain-English. Empty when clean. */
+  details: string[];
+};
+
+/**
+ * Turn findings into something a staff member can act on without help.
+ *
+ * The staff could not see any of this: the audit lived in a script nobody ran,
+ * and the mailbox panel showed the rendered signature with no indication of
+ * where its links went. This is the sentence that goes on screen.
+ */
+export function describeSignatureLinkStatus(
+  findings: readonly LinkFinding[],
+  sendingDomain: string,
+): SignatureLinkStatus {
+  const blocking = findings.filter((f) => f.severity === "HIGH");
+  if (blocking.length > 0) {
+    // The EXACT host, not the registrable domain. The operator has to find this
+    // string in the signature and delete it, so `opensdoors.bidlow.co.uk` is
+    // actionable where `bidlow.co.uk` is not.
+    const hosts = [...new Set(blocking.map((f) => f.host.replace(/^www\./, "")))];
+    return {
+      tone: "blocked",
+      sentence: `This signature links to ${formatHostList(hosts)} — sending is blocked until this is removed.`,
+      details: [...new Set(blocking.map((f) => f.reason))],
+    };
+  }
+
+  const warnings = findings.filter((f) => f.severity === "MEDIUM");
+  if (warnings.length > 0) {
+    const hosts = [...new Set(warnings.map((f) => registrableDomainOf(f.url) ?? f.host))];
+    return {
+      tone: "warning",
+      sentence: `This signature loads content from ${formatHostList(hosts)}, which is not ${sendingDomain}. That is usually a logo and usually fine — check it is deliberate.`,
+      details: [...new Set(warnings.map((f) => f.reason))],
+    };
+  }
+
+  return {
+    tone: "clean",
+    sentence: `All links point to ${sendingDomain} — safe to send.`,
+    details: [],
+  };
+}
+
+function formatHostList(hosts: readonly string[]): string {
+  if (hosts.length === 1) return hosts[0]!;
+  if (hosts.length === 2) return `${hosts[0]} and ${hosts[1]}`;
+  return `${hosts.slice(0, -1).join(", ")} and ${hosts[hosts.length - 1]}`;
+}
+
+/** Convenience: findings + sentence for one mailbox row, in one call. */
+export function signatureLinkStatusFor(input: {
+  email: string;
+  senderSignatureHtml?: string | null;
+  senderSignatureText?: string | null;
+  ownDomains?: ReadonlySet<string>;
+  appDomains?: ReadonlySet<string>;
+}): SignatureLinkStatus {
+  const sendingDomain =
+    registrableDomainOf(input.email.split("@").pop()) ?? "this mailbox's domain";
+  return describeSignatureLinkStatus(mailboxSignatureFindings(input), sendingDomain);
 }
