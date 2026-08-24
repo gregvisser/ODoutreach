@@ -1529,3 +1529,81 @@ the signature is `(kind, raw)`. Every "REFUSES" case passed — on the empty-inp
 error, not on the rule. It looked green and proved nothing. `tsc` would have
 caught it; vitest alone did not. The same failure mode as the `baseInput()` bug
 found in Step 2, twice in one day.
+
+---
+
+# 2026-08-24 — Landed, deployed, and Step 1 measured with the guard LIVE
+
+## Deployed
+
+**`de864b33b79f9ee17e4bda2a7225b4423fc2b9da`** — verified against the direct App
+Service URL (`app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`),
+not the CDN-cached custom domain, and matched to `origin/main` by hash rather
+than by trusting a green workflow. `/api/health` → database ok.
+
+Merged in order: #198 (Step 1 record) → #199 (signature guard + Hole 1b) →
+#202 (on-screen status, superseding #200) → #201 (public-suffix over-block).
+
+Two mechanical notes for next time: #199 conflicted with `main` on `STATE.md`
+because both appended a section — resolved by keeping both in chronological
+order. And **#200 was auto-closed and could not be reopened** when its base
+branch was deleted on merge, so it was re-opened as #202 against `main`. Stacked
+PRs on a squash-merge repo do not survive their parent merging; branch each step
+from `main` and rebase, or accept re-opening.
+
+## Step 1, run against production with the guard live
+
+`npm run ops:cross-domain-audit` — 17 clients scanned, 4 with findings,
+**0 HIGH · 11 MEDIUM · 0 LOW**.
+
+Per mailbox, using the **same functions the dispatch guard calls**
+(`mailboxSignatureFindings` + `hasBlockingFinding`), so this is the guard's own
+verdict rather than a re-derivation that could disagree with production:
+
+| | Mailboxes |
+|---|---|
+| Active | **55** |
+| **Clean** — no findings | **48** |
+| **Warning** — sends normally | **7** |
+| **Blocking** — cannot send | **0** |
+
+### The 7 warnings — none of these block
+
+| Client | Mailbox | Host |
+|---|---|---|
+| Chevron Security | jo@chevronsecurity.co.uk | `qtrypzzcjebvfcihiynt.supabase.co` |
+| Chevron Security | charlie@chevronsecurity.co.uk | `qtrypzzcjebvfcihiynt.supabase.co` |
+| Train Hugger | taylor@trainhugger.com | `cdn.prod.website-files.com` |
+| Train Hugger | joe@trainhugger.com | `cdn.prod.website-files.com` |
+| Train Hugger | sam.p@trainhugger.com | `cdn.prod.website-files.com` |
+| Train Hugger | cam@trainhugger.com | `cdn.prod.website-files.com` |
+| Train Hugger | alex@trainhugger.com | `cdn.prod.website-files.com` |
+
+All seven are the company's own logo on the company's own asset CDN. Under the
+brief's original rule — HIGH blocks, and any remote image is HIGH — **all seven
+would be blocked right now**, including every Train Hugger mailbox, the largest
+client at 763 sends. That is the correction made in Step 2, measured.
+
+## The answer to the question that mattered
+
+**ZERO mailboxes can no longer send.** Nobody has to edit a signature. No member
+of staff will be blocked mid-morning.
+
+## Two corrections to the brief
+
+**1. Sending did not continue all day.** Measured at the same moment as the
+above: **0 emails sent today, 0 queued.** The queue has been empty all day — the
+same reading as this morning. The guard went live before any sending resumed,
+not after a day of ungoverned sends.
+
+**2. Step 1 was not skipped.** It ran at ~13:30, the audit output and counts were
+written to `STATE.md`, and it went up as PR #198 — which is why it was not
+visible on `main`: nothing had been merged. That is the real failure, and the
+brief is right about it. The work existed; it was protecting nothing.
+
+## What staff actually did today
+
+The active-mailbox count moved 45 → 55. Ten mailboxes were connected today:
+**Pareto FM** (5, 11:42–11:43) and **Advantos HVAC Group** (5, 13:10–13:13).
+Staff spent the day onboarding two new clients rather than sending. Both new
+clients' mailboxes are clean under the guard.
