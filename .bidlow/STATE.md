@@ -1874,3 +1874,108 @@ still fires on human-confirmed facts, and the machine only ever proposes.
 
 That is a materially larger piece of work than the brief describes, for a
 measured benefit of **13 contacts**.
+
+---
+
+# 2026-08-24 — DNC family discovery: migration applied, resolver run, 2 proposals
+
+Greg approved the migration on the condition that he sees the findings before any
+staff member sees the screen. The screen PR is **held**.
+
+## The migration is on production
+
+Applied by the gated deploy step at **18:20:16Z**, migration
+`20260824180000_suppressed_domain_family_proposals`, one step, not rolled back.
+
+Verified directly against the production database rather than trusted:
+
+| | |
+|---|---|
+| `FamilyProposalSource` | `DMARC_RUA, SPF_REDIRECT` |
+| `FamilyProposalStatus` | `PENDING, CONFIRMED, REJECTED` |
+| `SuppressedDomainFamilyProposal` | 11 columns, `decidedByStaffUserId` and `decidedAt` nullable, rest NOT NULL |
+| New columns on `SuppressedDomainFamily` | `sourceProposalId`, `discoveredSource`, `discoveredAt` — **all nullable** |
+| `SuppressedDomain` rows | **16,644 — unchanged** |
+| Drift check afterwards | **empty** |
+
+## The run
+
+`npm run ops:family-proposals -- --write` against production.
+
+| | |
+|---|---|
+| Clients checked | 11 |
+| Contact domains checked | **1,060** |
+| Proposals raised | **2** |
+| Contacts they would suppress in total | **2** |
+| Proposals refused | **2** |
+
+### The two proposals
+
+**GreenTheUK — `jcoffey.com` may belong to `jcoffey.co.uk`**
+Proved by: the DMARC record `jcoffey.com` publishes about itself. Fan-in 1.
+Would suppress 1 contact.
+`v=DMARC1; p=quarantine; sp=none; fo=1; ri=3600; rua=mailto:jcoffeyuk@rua.agari.com,mailto:ekillington@jcoffey.co.uk; ...`
+
+**Renewable Temporary Power — `morrisonconstruction.co.uk` may belong to `gallifordtry.co.uk`**
+Proved by: the DMARC record `morrisonconstruction.co.uk` publishes about itself.
+Fan-in 1. Would suppress 1 contact.
+`v=DMARC1;p=reject;pct=100;rua=mailto:infosecmonitoring@gallifordtry.co.uk,mailto:graham.starkie@gallifordtry.co.uk; ...`
+
+Both are correct: J Coffey is one company across two domains, and Morrison
+Construction is part of Galliford Try.
+
+### The two refusals
+
+`gmail.com -> google.com` for Train Hugger, twice — refused as a **consumer
+mailbox host**, not by the fan-in cap. Its fan-in was 1. This is the link found
+earlier today that is *true* and would have suppressed every personal Gmail
+address for that client.
+
+**`outlook.com` appears nowhere.** Confirmed by direct query: zero proposal rows
+mention it on either side.
+
+## Two, not the expected seven — and the reasons are known
+
+The brief expected about seven. Three of the original seven were found through
+SPF `include:`, and switching to `redirect=` — which is the correct mechanism per
+RFC 7208 §6.1 — loses all three, verified against live DNS: none of those domains
+publish a `redirect=`. A fourth, `btinternet.com -> bt.com`, is now refused as a
+consumer host. The rest were counted by a pooled measurement that treated a seed
+as suppressed if it was suppressed for **any** client; scoping per client, which
+is correct, drops them.
+
+Fewer is the safe direction. The brief only required a stop if the count came
+back materially **higher**.
+
+## Nothing was blocked, and nothing can be
+
+| | |
+|---|---|
+| `SuppressedDomainFamily` rows | **0 before, 0 after** |
+| `SuppressedDomain` | 16,644 — unchanged |
+| `SuppressedEmail` | 34,514 — unchanged |
+| Contacts flagged suppressed | 121 — unchanged |
+| Sends blocked by suppression | 0 |
+
+**`evaluateSuppression` behaves identically**, proven structurally rather than
+asserted: it reads `suppressedDomain`, `suppressedDomainFamily` and `contact`,
+and nothing else. A repo-wide search shows **no file outside the discovery
+modules references the proposal table at all**. It cannot see a proposal.
+
+## The tombstone, proven against a real table
+
+Every earlier test of it ran against mocks, which is worth stating plainly: the
+defect is a *database* behaviour, and a mock cannot demonstrate it.
+`family-proposal-tombstone.integration.test.ts` now runs the real resolver
+against a real Postgres, twice, across a real rejection — raise, reject,
+re-resolve with identical DNS — and asserts the **same row id**, still
+`REJECTED`, **zero `PENDING` duplicates**, and **zero family rows** throughout.
+
+It passed. Until it did, nothing should have scheduled the 30-day re-resolution.
+Nothing schedules it now either.
+
+## Held
+
+The screen PR is open and unmerged. No staff member can see or answer a
+proposal. No re-resolution is scheduled.
