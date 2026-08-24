@@ -145,7 +145,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     if (input.suppressionSheetCount === 0) {
       return {
         id: "suppression",
-        label: "Suppression",
+        label: "Do-not-contact",
         pillStatus: "not_started",
         metric: "Not configured",
         href: `${base}/suppression`,
@@ -155,7 +155,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     if (!input.googleSheetsEnvReady) {
       return {
         id: "suppression",
-        label: "Suppression",
+        label: "Do-not-contact",
         pillStatus: "needs_attention",
         metric: "Google API missing",
         href: `${base}/suppression`,
@@ -165,7 +165,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     if (!input.suppressionLatestSyncAt) {
       return {
         id: "suppression",
-        label: "Suppression",
+        label: "Do-not-contact",
         pillStatus: "needs_attention",
         metric: "Needs sync",
         href: `${base}/suppression`,
@@ -174,7 +174,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     }
     return {
       id: "suppression",
-      label: "Suppression",
+      label: "Do-not-contact",
       pillStatus: "ready",
       metric: "Synced",
       href: `${base}/suppression`,
@@ -189,7 +189,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     else pill = "needs_attention";
     return {
       id: "contacts",
-      label: "Contacts",
+      label: "Lists",
       pillStatus: pill,
       metric: `${String(input.contactsTotal)} total · ${String(input.contactsEligible)} eligible`,
       href: `${base}/contacts`,
@@ -360,7 +360,7 @@ export function buildClientWorkflowSteps(input: ClientLaunchSnapshotInput): Clie
     },
     {
       id: "suppression",
-      label: "Suppression",
+      label: "Do-not-contact",
       status: stepStatus(
         suppressionComplete,
         input.suppressionSheetCount === 0 || !input.googleSheetsEnvReady,
@@ -374,7 +374,7 @@ export function buildClientWorkflowSteps(input: ClientLaunchSnapshotInput): Clie
     },
     {
       id: "contacts",
-      label: "Contacts",
+      label: "Lists",
       status: stepStatus(contactsComplete, input.contactsTotal === 0, contactsStarted),
       metric: `${String(input.contactsEligible)} eligible · ${String(input.contactsSuppressedCount)} suppressed`,
       href: `${base}/contacts`,
