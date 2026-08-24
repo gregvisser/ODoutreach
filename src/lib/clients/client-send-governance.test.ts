@@ -21,6 +21,18 @@ function baseInput(
     recipientAllowlisted: overrides.recipientAllowlisted ?? false,
     sendKind: overrides.sendKind ?? "SEQUENCE_INTRODUCTION",
     oneClickUnsubscribeReady: overrides.oneClickUnsubscribeReady ?? false,
+    // The OPTIONAL inputs must be threaded through too. This builder listed only
+    // the required fields, so `Partial<SendGovernanceInput>` accepted
+    // `linkDomainAligned` / `signatureLinkMisaligned` from a caller, typechecked
+    // cleanly, and then silently dropped them — any test written against either
+    // one would pass for the wrong reason. Only spread keys that were actually
+    // supplied, so "not passed" stays distinct from "passed as undefined".
+    ...(overrides.linkDomainAligned === undefined
+      ? {}
+      : { linkDomainAligned: overrides.linkDomainAligned }),
+    ...(overrides.signatureLinkMisaligned === undefined
+      ? {}
+      : { signatureLinkMisaligned: overrides.signatureLinkMisaligned }),
   };
 }
 
@@ -57,6 +69,72 @@ describe("evaluateSendGovernance", () => {
       );
       expect(decision.allowed).toBe(false);
       if (!decision.allowed) expect(decision.mode).toBe("blocked_allowlist");
+    });
+  });
+
+  describe("signature link alignment", () => {
+    const activeClient = {
+      status: "ACTIVE",
+      launchApprovedAt: new Date("2026-04-22T10:00:00Z"),
+      launchApprovalMode: "LIVE_PROSPECT",
+    };
+
+    it("BLOCKS a real prospect when the signature carries our own app domain", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_INTRODUCTION",
+          recipientAllowlisted: false,
+          oneClickUnsubscribeReady: true,
+          client: activeClient,
+          signatureLinkMisaligned: true,
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.mode).toBe("blocked_signature_link_misaligned");
+        // The operator must be able to act on this without a code lookup.
+        expect(decision.reason).toContain("signature");
+      }
+    });
+
+    it("allows the same send when the signature is clean", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_INTRODUCTION",
+          recipientAllowlisted: false,
+          oneClickUnsubscribeReady: true,
+          client: activeClient,
+          signatureLinkMisaligned: false,
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+    });
+
+    it("is inert when the caller does not pass it — existing callers unaffected", () => {
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_INTRODUCTION",
+          recipientAllowlisted: false,
+          oneClickUnsubscribeReady: true,
+          client: activeClient,
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+    });
+
+    it("never blocks an ALLOWLISTED internal recipient on this", () => {
+      // Internal proof sends must stay possible so a signature can be fixed and
+      // re-tested without unblocking the whole client first.
+      const decision = evaluateSendGovernance(
+        baseInput({
+          sendKind: "SEQUENCE_INTRODUCTION",
+          recipientAllowlisted: true,
+          oneClickUnsubscribeReady: true,
+          client: activeClient,
+          signatureLinkMisaligned: true,
+        }),
+      );
+      expect(decision.allowed).toBe(true);
     });
   });
 

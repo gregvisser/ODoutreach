@@ -1165,3 +1165,120 @@ commits that touch only `.bidlow/`.
 
 Three, unchanged in substance: the two in `DOMAIN.json`, plus whether to answer
 Q3 and land #196.
+
+---
+
+# 2026-08-24 — Step 2: make the audit a gate, and close Hole 1b
+
+## Hole 1b — fixed, red first
+
+The live defect. `buildMailboxGovernedEmailBodies` resolved the opt-out as
+`hosted ?? extracted ?? null`, so passing `hostedUnsubscribeUrl: null` — which is
+how a caller *chooses* the mailto rail — was overridden by whatever URL sat in
+the persisted snapshot, and the mailto opt-out was then suppressed because `url`
+had become truthy. The deliberate safe choice was silently converted into the
+unsafe one.
+
+The red test failed exactly as predicted before any fix:
+
+```
+× does NOT put a foreign host in the email when the mailto rail was chosen
+  → expected '<p>Hello there,</p>…' not to contain 'opensdoors.example'
+× still renders the visible mailto opt-out instead of the scavenged link
+  → expected '…' to contain 'To opt out, reply STOP to this email…'
+✓ DOES keep a snapshot URL that is aligned with the sending domain
+✓ an explicit hosted URL is still honoured exactly as before
+```
+
+Two controls passed throughout, so the test is not vacuous.
+
+A snapshot URL is now reused **only** if it is on the sending mailbox's own
+registrable domain. A second facet surfaced while fixing it: `bodyNoFooter` was
+only stripped when `url` was truthy, so a footer we had just REFUSED to reuse
+stayed in the body as visible text and the foreign URL went out anyway, merely
+unlinked. Refusing to link it while still printing it is not a fix. The footer is
+now stripped whenever a replacement is appended, on either rail.
+
+## The gate now has a caller
+
+`execute-one.ts` refuses to dispatch a row whose mailbox signature carries a link
+to the OpensDoors app domain — one guard per provider leg, immediately before the
+body goes on the wire, failing the row with `SIGNATURE_LINK_MISALIGNED`.
+`evaluateSendGovernance` gained `signatureLinkMisaligned` and the matching
+blocked code. The helper stays pure: the caller classifies the content and passes
+a verdict in.
+
+## Severity model — three corrections, one of them mine
+
+`scripts/ops-cross-domain-audit.ts` now imports `signature-link-alignment.ts`;
+its duplicated suffix list, extractor and severity function are gone.
+
+1. **A remote image on a foreign host is MEDIUM, not HIGH.** The old rule
+   produced 11 HIGH findings and every one was a company logo. Blocking on it
+   would have stopped Train Hugger — 763 sends — for hosting its own logo on its
+   own website's CDN.
+2. **Well-known hosts are checked before image-ness.** The old order tested
+   `isImage` first, so a LinkedIn icon scored HIGH. Any signature with social
+   icons would have blocked.
+3. **My own false positive, caught by running against production.** I first put
+   the platform check *before* the alignment check as "belt and braces", and
+   reduced the app URL to its registrable domain. BidlowAI is itself a workspace
+   whose mailbox is `greg@bidlow.co.uk`, and the app runs at
+   `opensdoors.bidlow.co.uk` — so that swallowed the whole `bidlow.co.uk` zone
+   and scored BidlowAI's links to its own marketing site as HIGH, which would
+   have blocked its own sends. Alignment now wins and is checked first, and app
+   domains are matched as **exact hosts** by suffix, never as registrable zones.
+   Pinned by a regression test.
+
+**Production after the fix: 17 clients, 0 HIGH, 11 MEDIUM, 0 LOW.** Nothing is
+blocked. The 11 are the company logos, now correctly a warning.
+
+## A false-clean trap, closed
+
+The FIRST production run of the audit was made with `DATABASE_URL` exported but
+`AUTH_URL` not. `appDomainsFromEnv()` then seeds only `azurewebsites.net`, so the
+one severity that blocks — our own domain in a customer's email — **could not
+fire at all**, and the run reported a clean bill of health on that axis. The
+script now refuses to run without an app URL rather than auditing with detection
+silently off. A check that cannot run is a failure, not a pass.
+
+## The CI job the brief asked for: refused, with a substitute
+
+Step 2.5 asked for the audit as a merge-blocking CI job. **It cannot work.** The
+audit reads real client signatures, templates and logos; CI's `DATABASE_URL` is
+the ephemeral e2e Postgres, which has no clients. The job would pass on an empty
+database and report a clean bill of health — a false green, and a named defect
+class in this estate.
+
+Two things shipped instead:
+
+* `npm run ops:cross-domain-audit` — on demand, named, as asked.
+* `.github/workflows/signature-link-audit.yml` — **scheduled** against production
+  (Mondays 06:00 UTC, before the 07:00 send window), failing the run on HIGH and
+  refusing to run at all if the production connection string is absent.
+
+The script also now exits non-zero on HIGH. It never did: its only
+`process.exitCode = 1` sat in the `.catch()`, so a run finding fifty HIGH issues
+exited 0 — it could have been wired to CI and would still never have failed.
+
+## Tooling: `tldts`, not `psl`
+
+The brief said `npm i psl`. `tldts` (MIT, bundles the real PSL, ships its own
+types) was **already in the dependency tree** via `shadcn → msw → tough-cookie`,
+so declaring it directly costs no install size and the standard is to reuse
+before adding. It is declared as a **direct** dependency deliberately: relying on
+it transitively through a scaffolding CLI would break silently the day someone
+correctly moves `shadcn` to devDependencies.
+
+`allowPrivateDomains` is ON so two projects on a shared platform
+(`a.supabase.co` vs `b.supabase.co`) are not treated as one origin.
+
+## A test-harness bug found on the way
+
+`baseInput()` in `client-send-governance.test.ts` built a fixed object listing
+only the required fields. `Partial<SendGovernanceInput>` therefore accepted
+`linkDomainAligned` or `signatureLinkMisaligned` from a caller, typechecked
+cleanly, and **silently dropped them** — my first governance test passed for the
+wrong reason until I checked why it did not fail. Any future test written against
+either input would have been vacuous. Fixed to thread the optional fields
+through, keeping "not passed" distinct from "passed as undefined".

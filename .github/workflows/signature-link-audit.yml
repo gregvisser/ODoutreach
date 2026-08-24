@@ -1,0 +1,43 @@
+# Cross-domain link audit against PRODUCTION data.
+#
+# Deliberately NOT a merge-blocking CI job. The brief that prompted this asked
+# for one, and it cannot work: the audit reads real client signatures, templates
+# and logos, and CI's DATABASE_URL is the ephemeral e2e Postgres, which has no
+# clients. The job would pass on an empty database and report a clean bill of
+# health — a false green, which is a named defect class in this estate.
+#
+# The real gate is at send time: execute-one.ts refuses to dispatch a row whose
+# mailbox signature carries a link to the OpensDoors app domain. This workflow is
+# defence in depth — it notices a signature that was edited in the provider after
+# the last send, before the next campaign goes out.
+name: Signature link audit (production)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Monday 06:00 UTC — before the weekday send window opens at 07:00.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Cross-domain link audit
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          AUTH_URL: ${{ vars.PRODUCTION_APP_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "PRODUCTION_DATABASE_URL is not configured — refusing to report a clean audit against no database."
+            exit 1
+          fi
+          npm run ops:cross-domain-audit

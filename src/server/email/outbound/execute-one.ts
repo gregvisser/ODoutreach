@@ -27,6 +27,10 @@ import {
 } from "./dispatch-recheck";
 import { evaluateProspectSendTransport } from "./prospect-send-transport-guard";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
+import {
+  hasBlockingFinding,
+  mailboxSignatureFindings,
+} from "@/lib/clients/signature-link-alignment";
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 import {
   appendOpenTrackingPixel,
@@ -457,6 +461,26 @@ async function sendViaConnectedMailboxOrFail(
     }
     const listUnsub = readListUnsubscribeHeadersFromMetadata(row.metadata);
     const hostedU = listUnsub ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe) : null;
+    // FAIL CLOSED on signature link alignment.
+    //
+    // The send gate has never looked at signature content: evaluateSendGovernance
+    // contains no reference to signatures, and its link-domain check reads two
+    // database columns, never the message. scripts/ops-cross-domain-audit.ts
+    // detects exactly this and had no production caller — detector written, caller
+    // never built, the same defect class as PR #194. This is the caller.
+    //
+    // Only the OpensDoors platform's own domain blocks. A remote image on a
+    // third-party host does NOT: measured on production 2026-08-24, blocking on
+    // that would have stopped the largest client for hosting its own logo on its
+    // own website's CDN.
+    if (hasBlockingFinding(mailboxSignatureFindings(mailbox))) {
+      await markFailed(
+        row.id,
+        "SIGNATURE_LINK_MISALIGNED",
+        "Mailbox signature links to the OpensDoors system's own address rather than the client's. Remove it from the signature before sending.",
+      );
+      return { ok: false, error: "Signature contains a misaligned link" };
+    }
     const bodyParts = buildMailboxGovernedEmailBodies({
       bodySnapshotPlain: body,
       mailbox,
@@ -617,6 +641,26 @@ async function sendViaConnectedMailboxOrFail(
   const graphListUnsubscribeUrl = listUnsub
     ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe)
     : null;
+  // FAIL CLOSED on signature link alignment.
+  //
+  // The send gate has never looked at signature content: evaluateSendGovernance
+  // contains no reference to signatures, and its link-domain check reads two
+  // database columns, never the message. scripts/ops-cross-domain-audit.ts
+  // detects exactly this and had no production caller — detector written, caller
+  // never built, the same defect class as PR #194. This is the caller.
+  //
+  // Only the OpensDoors platform's own domain blocks. A remote image on a
+  // third-party host does NOT: measured on production 2026-08-24, blocking on
+  // that would have stopped the largest client for hosting its own logo on its
+  // own website's CDN.
+  if (hasBlockingFinding(mailboxSignatureFindings(mailbox))) {
+    await markFailed(
+      row.id,
+      "SIGNATURE_LINK_MISALIGNED",
+      "Mailbox signature links to the OpensDoors system's own address rather than the client's. Remove it from the signature before sending.",
+    );
+    return { ok: false, error: "Signature contains a misaligned link" };
+  }
   const bodyParts = buildMailboxGovernedEmailBodies({
     bodySnapshotPlain: body,
     mailbox,

@@ -5,6 +5,10 @@
  */
 
 import {
+  appDomainsFromEnv,
+  registrableDomainOf,
+} from "@/lib/clients/signature-link-alignment";
+import {
   chooseSignatureForSend,
   normaliseSignatureHtml,
   type SenderSignatureMailbox,
@@ -64,6 +68,44 @@ export const MAILTO_OPT_OUT_LINE =
  * Passing neither preserves the previous no-footer behaviour exactly, so
  * existing callers are unaffected.
  */
+/**
+ * A snapshot URL is reusable only when it is on the sending mailbox's own
+ * registrable domain. Anything else — most of all the OpensDoors app domain —
+ * is discarded, and the caller's chosen rail stands.
+ *
+ * Exported for tests: the interesting cases are all about what it REFUSES.
+ */
+export function resolveAlignedSnapshotUrl(
+  bodySnapshotPlain: string,
+  sendingMailboxEmail: string,
+): string | null {
+  const extracted = extractUnsubscribeUrlFromPlainTextBody(bodySnapshotPlain);
+  if (!extracted) return null;
+
+  // A mailto: opt-out carries no host at all, so there is nothing to misalign.
+  if (/^mailto:/i.test(extracted)) return extracted;
+
+  const senderDomain = registrableDomainOf(sendingMailboxEmail.split("@").pop());
+  const linkDomain = registrableDomainOf(extracted);
+  // Unresolvable either side: refuse. A guess here becomes a false clean.
+  if (!senderDomain || !linkDomain) return null;
+  if (linkDomain !== senderDomain) return null;
+  // Belt and braces: never reuse our own platform domain even if a client
+  // somehow shares a registrable domain with it. Suffix match, because
+  // `azurewebsites.net` is itself a public suffix.
+  const host = (() => {
+    try {
+      return new URL(extracted).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  for (const app of appDomainsFromEnv()) {
+    if (host === app || host.endsWith(`.${app}`)) return null;
+  }
+  return extracted;
+}
+
 export function buildMailboxGovernedEmailBodies(input: {
   bodySnapshotPlain: string;
   /** Prisma `ClientMailboxIdentity` rows satisfy this shape. */
@@ -73,11 +115,42 @@ export function buildMailboxGovernedEmailBodies(input: {
   mailtoUnsubscribeAddress?: string | null;
 }): EmailBodyParts {
   const hosted = input.hostedUnsubscribeUrl?.trim() || null;
-  const extracted = extractUnsubscribeUrlFromPlainTextBody(input.bodySnapshotPlain);
+  // A URL scavenged from the stored snapshot may only be reused if it is
+  // ALIGNED with the sending mailbox's own domain.
+  //
+  // `hostedUnsubscribeUrl === null` is not missing information — it is how a
+  // caller SAYS "this recipient gets the mailto rail, because there is no
+  // sender-aligned domain to host a link on". Taking `extracted` unconditionally
+  // overrode that decision with whatever URL happened to be in the snapshot, and
+  // the mailto opt-out below was then suppressed because `url` had become
+  // truthy. The deliberate safe choice was silently converted into the unsafe
+  // one.
+  //
+  // Not theoretical: measured on production 2026-08-24, 1358 of 1358 sent emails
+  // carry an unsubscribe URL on the OpensDoors app domain inside `bodySnapshot`
+  // and ZERO use the mailto rail. Those snapshots predate the 2026-08-06 rail
+  // fix, so they are exactly the poisoned input this line reads.
+  const extracted = resolveAlignedSnapshotUrl(
+    input.bodySnapshotPlain,
+    input.mailbox.email,
+  );
   const url = hosted ?? extracted ?? null;
 
+  // Mailto rail applies only when no usable URL is available.
+  const mailtoOptOut = url
+    ? null
+    : normaliseUnsubscribeMailtoAddress(input.mailtoUnsubscribeAddress);
+
+  // Strip the snapshot's existing opt-out footer whenever we are going to
+  // append a replacement — on EITHER rail.
+  //
+  // Previously this only stripped when `url` was truthy. So a snapshot footer
+  // we had just REFUSED to reuse (misaligned host) was left sitting in the
+  // message body as visible text, and the foreign URL went out anyway — merely
+  // as text rather than as an anchor. Refusing to link it while still printing
+  // it is not a fix.
   let bodyNoFooter = input.bodySnapshotPlain;
-  if (url) {
+  if (url || mailtoOptOut) {
     bodyNoFooter = stripPlainTextUnsubscribeFooter(input.bodySnapshotPlain);
   }
 
@@ -92,11 +165,6 @@ export function buildMailboxGovernedEmailBodies(input: {
   const plainWithSig = sigText
     ? `${messageCore.replace(/\s+$/u, "")}\n\n${sigText}`
     : messageCore.replace(/\s+$/u, "");
-
-  // Mailto rail applies only when no hosted URL is available.
-  const mailtoOptOut = url
-    ? null
-    : normaliseUnsubscribeMailtoAddress(input.mailtoUnsubscribeAddress);
 
   const plainFinal = url
     ? ensureUnsubscribeLinkInPlainTextBody(plainWithSig, url)
