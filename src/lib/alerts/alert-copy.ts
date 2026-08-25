@@ -120,11 +120,21 @@ export function buildAlertEmail(input: {
         : `Act now. ${failed.name} did not run at all in ${window}.`;
   } else if (partial) {
     severity = "PARTIAL";
-    const scope =
-      typeof partial.totalCount === "number"
-        ? `${partial.failedCount ?? 0} of ${partial.totalCount} mailboxes`
-        : `${partial.failedCount ?? 0} items`;
-    subject = truncate(`ODoutreach PARTIAL — ${partial.label} failed for ${scope}`, MAX_SUBJECT);
+    // A job that reported a problem WITHOUT a number must never be rendered as
+    // "0 failed" or "failed for 0 items". Seen live on 2026-08-25, where that
+    // line was in fact reporting the same eight failing mailboxes as the job
+    // beside it. Zero is the reassuring reading of a line that exists because
+    // something went wrong, and it is the one reading that is never true.
+    subject = truncate(
+      typeof partial.failedCount === "number"
+        ? `ODoutreach PARTIAL — ${partial.label} failed for ${
+            typeof partial.totalCount === "number"
+              ? `${partial.failedCount} of ${partial.totalCount} mailboxes`
+              : `${partial.failedCount} items`
+          }`
+        : `ODoutreach PARTIAL — ${partial.label} partly failed`,
+      MAX_SUBJECT,
+    );
     leadLine = `Act today. ${partial.name} ran, but part of it failed.`;
   } else {
     severity = "OK";
@@ -142,7 +152,9 @@ export function buildAlertEmail(input: {
       j.conclusion === "failure"
         ? "FAILED"
         : j.conclusion === "partial"
-          ? `PARTIAL — ${j.failedCount ?? 0}${typeof j.totalCount === "number" ? ` of ${j.totalCount}` : ""} failed`
+          ? typeof j.failedCount === "number"
+            ? `PARTIAL — ${j.failedCount}${typeof j.totalCount === "number" ? ` of ${j.totalCount}` : ""} failed`
+            : "PARTIAL — part of it failed, with no count reported"
           : scheduleLooksBroken(j)
             ? "DID NOT RUN — no runs at all in this window"
             : "ok";
