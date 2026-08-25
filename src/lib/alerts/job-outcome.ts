@@ -71,8 +71,14 @@ function readCount(value: unknown): { count: number; usable: boolean } {
  * Work out whether a job result represents a clean run.
  *
  * Handles both shapes in this codebase: a numeric `failed` (reply sync) and an
- * `errors: string[]` list (queue drain, sequence advance). A result carrying
- * both is counted from both.
+ * `errors: string[]` list (queue drain, sequence advance).
+ *
+ * When a result carries BOTH, the numeric `failed` is authoritative and the
+ * list is its reasons — they are not added together. Summing them turned 8
+ * real failures into "16 of 35" the moment reply sync started reporting which
+ * mailboxes had failed. An alert that inflates the number is no better than
+ * one that hides it: either way the number cannot be trusted, and the number
+ * is the whole point.
  *
  * An `ok` field on the input is **ignored**. That literal is what caused the
  * burn, and trusting it here would reintroduce it.
@@ -89,26 +95,32 @@ export function jobOutcome(result: unknown): JobOutcome {
 
   const record = result as Record<string, unknown>;
 
-  let failedCount = 0;
   let unreadable = false;
+  let counted: number | null = null;
 
   if ("failed" in record) {
     const read = readCount(record.failed);
-    if (read.usable) failedCount += read.count;
+    if (read.usable) counted = read.count;
     else unreadable = true;
   }
 
   const reasons: string[] = [];
+  let errorCount = 0;
   if (Array.isArray(record.errors)) {
-    failedCount += record.errors.length;
+    errorCount = record.errors.length;
     for (const entry of record.errors.slice(0, MAX_REASONS)) {
       reasons.push(typeof entry === "string" ? entry : JSON.stringify(entry));
     }
   }
 
+  // The list is only a COUNT when nothing else reports one.
+  const failedCount = counted ?? errorCount;
+
   const total = readCount(record.processed ?? record.claimed);
 
-  const ok = !unreadable && failedCount === 0;
+  // Reasons present alongside `failed: 0` is a contradiction. Never report a
+  // run as clean while it is carrying reasons it failed.
+  const ok = !unreadable && failedCount === 0 && reasons.length === 0;
   return {
     ok,
     failedCount,

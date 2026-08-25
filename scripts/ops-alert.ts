@@ -135,6 +135,10 @@ async function partialDetail(
     for (const a of annotations) {
       if (a.title !== "PARTIAL" || !a.message) continue;
       detail.reasons.push(a.message);
+      // The workflow writes the counting line FIRST and per-mailbox reasons
+      // after it, so the first match wins and a later reason cannot overwrite
+      // the number the subject line is built from.
+      if (detail.failedCount !== undefined) continue;
       // "reply sync partial: 9 of 35 mailboxes failed"
       const pair = a.message.match(/(\d+)\s+of\s+(\d+)/);
       if (pair) {
