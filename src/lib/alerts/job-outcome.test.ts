@@ -75,9 +75,38 @@ describe("a run with ANY failed item is not a success", () => {
     expect(outcome.reasons).toEqual(["row a: token expired", "row b: 550 rejected"]);
   });
 
-  it("counts both shapes when a result carries each", () => {
-    const outcome = jobOutcome({ processed: 10, failed: 2, errors: ["x"] });
-    expect(outcome.failedCount).toBe(3);
+  it("does not count the same failure twice when a result carries both shapes", () => {
+    /**
+     * A near-miss, caught on 2026-08-25 while making reply sync say WHICH
+     * mailboxes failed rather than just how many.
+     *
+     * Adding `errors` to a result that already had a numeric `failed` made
+     * this sum the two: 8 real failures would have alerted as "16 of 35".
+     * An alert that inflates the number is not a smaller problem than one
+     * that hides it — both mean the number cannot be trusted, and the number
+     * is the entire point.
+     *
+     * So: a numeric `failed` is AUTHORITATIVE and `errors` are its reasons.
+     * `errors` is only itself a count when nothing else reports one, which is
+     * the queue-drain shape.
+     */
+    const bothShapes = jobOutcome({
+      processed: 35,
+      failed: 8,
+      errors: ["jo@x.co.uk: Reconnect required", "sam@y.com: Graph 401"],
+    });
+    expect(bothShapes.failedCount).toBe(8);
+    expect(bothShapes.reasons).toHaveLength(2);
+
+    // The queue-drain shape has no `failed`, so the list IS the count.
+    expect(jobOutcome({ claimed: 10, errors: ["a", "b"] }).failedCount).toBe(2);
+  });
+
+  it("still fails a run whose only signal is a reason list", () => {
+    // `failed: 0` with reasons present would be a contradiction; trust the
+    // count, but never report the run as clean while reasons exist.
+    const outcome = jobOutcome({ processed: 5, failed: 0, errors: ["something broke"] });
+    expect(outcome.ok).toBe(false);
   });
 });
 

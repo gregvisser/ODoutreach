@@ -436,7 +436,19 @@ export type ReplySyncBatchResult = {
   totalSeen: number;
   repliesLinked: number;
   skipped: number;
+  /**
+   * `<address>: <reason>` for each failed mailbox, capped.
+   *
+   * The count alone sends someone hunting through 35 mailboxes. Live on
+   * 2026-08-25 the alert could say "8 of 35 failed" and nothing about which
+   * eight — the reason existed at every failure and was discarded one line
+   * later. The count is never trimmed; only this list is.
+   */
+  errors: string[];
 };
+
+/** Enough to act on, not enough to flood an alert email. */
+const MAX_REPORTED_ERRORS = 20;
 
 export async function syncActiveMailboxRepliesBatch(input: {
   perMailboxTop?: number;
@@ -457,7 +469,9 @@ export async function syncActiveMailboxRepliesBatch(input: {
     },
     orderBy: [{ lastSyncAt: "asc" }, { updatedAt: "asc" }],
     take: maxMailboxes,
-    select: { id: true, clientId: true },
+    // `email` is selected so a failure can name the mailbox. Without it the
+    // alert can only report a number.
+    select: { id: true, clientId: true, email: true },
   });
 
   let succeeded = 0;
@@ -465,6 +479,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
   let ingested = 0;
   let totalSeen = 0;
   let repliesLinked = 0;
+  const errors: string[] = [];
   for (const mailbox of mailboxes) {
     const result = await syncOne({
       clientId: mailbox.clientId,
@@ -479,6 +494,9 @@ export async function syncActiveMailboxRepliesBatch(input: {
       repliesLinked += result.repliesLinked;
     } else {
       failed += 1;
+      if (errors.length < MAX_REPORTED_ERRORS) {
+        errors.push(`${mailbox.email}: ${result.error}`);
+      }
     }
   }
 
@@ -490,6 +508,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
     totalSeen,
     repliesLinked,
     skipped: Math.max(0, maxMailboxes - mailboxes.length),
+    errors,
   };
 }
 

@@ -52,6 +52,13 @@ jobs:
           if [ "$ok" != "true" ]; then
             echo "Reply sync reported a PARTIAL run: ${failed} item(s) failed."
             echo "reply sync partial: ${failed} of ${total} mailboxes failed" >> /tmp/run-problems.txt
+            # And WHICH mailboxes. "8 of 35 failed" sends someone hunting
+            # through 35; "jo@x.co.uk: Reconnect required" is a job. Capped at
+            # five here so the subject-bearing line above is never buried.
+            jq -r 'try (.errors // [])[] catch empty' "$response_file" 2>/dev/null               | head -5               | while IFS= read -r reason; do
+                  echo "  ${reason}"
+                  echo "reply sync: ${reason}" >> /tmp/run-problems.txt
+                done
           fi
 
       # Re-sync every configured do-not-contact sheet so staff additions to
