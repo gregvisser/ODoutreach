@@ -21,6 +21,7 @@
     "ops:f1-strip-template-signature": "tsx scripts/f1-strip-template-signature.ts",
     "ops:cross-domain-audit": "tsx scripts/ops-cross-domain-audit.ts",
     "ops:family-proposals": "tsx scripts/ops-family-proposals.ts",
+    "ops:alert": "tsx scripts/ops-alert.ts",
     "support:list": "tsx scripts/support-agent/list-open-tickets.ts",
     "support:get": "tsx scripts/support-agent/get-ticket.ts",
     "support:resolve": "tsx scripts/support-agent/resolve-ticket.ts",
