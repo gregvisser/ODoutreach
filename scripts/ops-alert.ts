@@ -19,6 +19,7 @@
  * wrong, and a skipped send produces exactly the same silence as a dead system.
  */
 import { buildAlertEmail, type JobConclusion, type JobRunSummary } from "@/lib/alerts/alert-copy";
+import { readPartialAnnotations, type PartialDetail } from "@/lib/alerts/partial-annotations";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -101,23 +102,24 @@ async function runsSince(
   return json.workflow_runs ?? [];
 }
 
-type PartialDetail = { failedCount?: number; totalCount?: number; reasons: string[] };
-
 /**
  * Pull the numbers out of a run's check annotations.
  *
  * The jobs API gives step names but not their output, so the workflow emits an
  * `::error title=PARTIAL::` line, which becomes an annotation the REST API
  * exposes. Without this the subject could only say "failed for 0 items", which
- * is a PARTIAL alert that tells Greg nothing — and the brief's whole point is
- * that the subject alone must say whether to act.
+ * is a PARTIAL alert that tells Greg nothing.
+ *
+ * The PARSING lives in `@/lib/alerts/partial-annotations` and is tested there,
+ * against the real annotations this returned live — including the fact that
+ * they come back in reverse order, which the first version of this quietly
+ * depended on not being true.
  */
 async function partialDetail(
   repo: string,
   token: string,
   jobId: number,
 ): Promise<PartialDetail> {
-  const detail: PartialDetail = { reasons: [] };
   try {
     const res = await fetch(
       `https://api.github.com/repos/${repo}/check-runs/${jobId}/annotations?per_page=50`,
@@ -130,29 +132,13 @@ async function partialDetail(
         signal: AbortSignal.timeout(30_000),
       },
     );
-    if (!res.ok) return detail;
+    if (!res.ok) return { reasons: [] };
     const annotations = (await res.json()) as { title?: string; message?: string }[];
-    for (const a of annotations) {
-      if (a.title !== "PARTIAL" || !a.message) continue;
-      detail.reasons.push(a.message);
-      // The workflow writes the counting line FIRST and per-mailbox reasons
-      // after it, so the first match wins and a later reason cannot overwrite
-      // the number the subject line is built from.
-      if (detail.failedCount !== undefined) continue;
-      // "reply sync partial: 9 of 35 mailboxes failed"
-      const pair = a.message.match(/(\d+)\s+of\s+(\d+)/);
-      if (pair) {
-        detail.failedCount = Number(pair[1]);
-        detail.totalCount = Number(pair[2]);
-        continue;
-      }
-      const single = a.message.match(/(\d+)\s+item/);
-      if (single) detail.failedCount = Number(single[1]);
-    }
+    return readPartialAnnotations(annotations);
   } catch {
     /* annotations are a nicety — never fail the alert for want of them */
+    return { reasons: [] };
   }
-  return detail;
 }
 
 /** Did this failed run fail because a batch was partial, or because it broke? */
