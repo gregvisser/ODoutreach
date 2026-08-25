@@ -22,6 +22,15 @@ on:
         description: "Compose and print without sending"
         type: boolean
         default: true
+  # TEMPORARY, REMOVED IN THE SAME SESSION. A workflow_dispatch trigger only
+  # works for files already on the default branch, so proving this alert
+  # actually delivers would otherwise require merging it unproven — the one
+  # thing the brief forbids. A pull_request trigger runs the BRANCH's version
+  # and has secrets on a same-repo PR, so the proof can happen first.
+  # DELETE THIS BLOCK once the email has arrived.
+  pull_request:
+    types: [opened, synchronize]
+
   schedule:
     # 07:00 UTC on weekdays — in Greg's inbox before 08:00 UK either way.
     - cron: "0 7 * * 1-5"
