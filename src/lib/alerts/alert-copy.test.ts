@@ -80,6 +80,26 @@ describe("PARTIAL — it ran, but part of it failed", () => {
     expect(email.body).toContain("today");
   });
 
+  it("names the partial job that can actually say something", () => {
+    // Seen live, 2026-08-25: two jobs were partial, and taking the first match
+    // produced "ODoutreach PARTIAL — sending failed for 0 items" while the body
+    // said "reply sync: 9 of 35 failed". The subject must carry the message.
+    const email = buildAlertEmail({
+      jobs: [
+        job({ label: "sending", conclusion: "partial" }),
+        job({
+          name: "Sync replies",
+          label: "reply sync",
+          conclusion: "partial",
+          failedCount: 9,
+          totalCount: 35,
+        }),
+      ],
+      emailsSent: 0,
+    });
+    expect(email.subject).toBe("ODoutreach PARTIAL — reply sync failed for 9 of 35 mailboxes");
+  });
+
   it("falls back to a count when the total is unknown", () => {
     const email = buildAlertEmail({
       jobs: [job({ label: "reply sync", conclusion: "partial", failedCount: 3 })],
