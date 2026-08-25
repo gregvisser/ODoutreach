@@ -2068,3 +2068,63 @@ mailboxes** — that is real work, not covered by this, and it is the open item.
 Cron is now **daily including weekends** (Greg's call): a weekend outage
 otherwise stays silent until Monday, and the digest is the dead man's switch.
 
+---
+
+# The eight mailboxes, named — 2026-08-25
+
+The alerting was built to report a number. The number turned out to be real, so
+the next question was *which eight*, and the batch could not answer: it counted
+`failed += 1` and threw the per-mailbox reason away one line later. Now it does
+answer, and this is the answer, taken from run `32895921122` on commit
+`7d922e2`:
+
+| Mailbox | Client | Why |
+|---|---|---|
+| `cam@trainhugger.com` | Train Hugger | Google `invalid_grant` |
+| `joe@trainhugger.com` | Train Hugger | Google `invalid_grant` |
+| `sam.p@trainhugger.com` | Train Hugger | Google `invalid_grant` |
+| `taylor@trainhugger.com` | Train Hugger | Google `invalid_grant` |
+| `alex@trainhugger.com` | Train Hugger | Google `invalid_grant` |
+| `adam@greentheuk.com` | Green The UK | Google `invalid_grant` |
+| `jo@chevronsecurity.co.uk` | Chevron Security | **Entra `AADSTS500341` — the user account has been DELETED from the directory** |
+| `charlie@chevronsecurity.co.uk` | Chevron Security | **Entra `AADSTS500341` — the user account has been DELETED from the directory** |
+
+**Two different problems, and only one of them is the familiar one.**
+
+The six Google mailboxes are the known 7-day refresh-token expiry caused by the
+OAuth app sitting in Testing mode — reconnecting fixes them, until next week.
+That is the recurring cost of not publishing the app.
+
+The two Chevron Security mailboxes are **not** that. Those Entra user accounts
+no longer exist. Reconnecting cannot fix a deleted account, and no amount of
+waiting will. They will fail every run, forever, until somebody decides what
+those mailboxes are for.
+
+**All eight are still marked `CONNECTED`.** That is not an inference — the batch
+query selects `connectionStatus: "CONNECTED"`, so a mailbox it processed was, by
+definition, marked connected. Eight mailboxes read "Connected" on screen while
+their credentials are dead. That is the proactive dead-token flip that has been
+on the list for a while, and it now has evidence and a named list behind it.
+
+**None of this is fixed.** Reconnecting mailboxes touches live client
+credentials and is Greg's call, not something to do at the end of a session that
+was about proving an alert.
+
+## What sending it caught that reading it did not
+
+Each round of actually receiving the email found a defect that reading the code
+had not:
+
+1. The subject named a partial job with no counts — `PARTIAL — sending failed
+   for 0 items` — while the body said `9 of 35`. Fixed in `bbd94af`.
+2. The batch could report a count but never a reason. Fixed in `7d922e2`.
+3. Adding reasons made `jobOutcome` sum both shapes: 8 failures would have
+   alerted as **16 of 35**. Caught by a test before it shipped.
+4. The annotation parser took the first number pair it saw, and the API returns
+   annotations in REVERSE order. It worked only because no reason string
+   happened to contain "N of M". Against two reporting jobs it gave **2** where
+   the answer was **8** — an alert quietly under-reporting the thing it exists
+   to report. Now parsed by shape, tested against the real live annotations.
+
+Every one of those was invisible from the code and obvious from the inbox.
+
