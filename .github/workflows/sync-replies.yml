@@ -39,8 +39,19 @@ jobs:
           else
             echo "Reply sync response body was not written."
           fi
+          # The body is checked as well as the status, and that is not belt and
+          # braces. A PARTIAL run answers 207, which IS a 2xx, so a status-only
+          # check would pass it — and a status-only check is exactly how a run
+          # went green while 8 of 35 mailboxes were failing.
+          ok=$(jq -r 'try .ok catch "" ' "$response_file" 2>/dev/null || echo "")
+          failed=$(jq -r 'try .failedCount catch 0' "$response_file" 2>/dev/null || echo 0)
+          total=$(jq -r 'try .processed catch 0' "$response_file" 2>/dev/null || echo 0)
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             exit 1
+          fi
+          if [ "$ok" != "true" ]; then
+            echo "Reply sync reported a PARTIAL run: ${failed} item(s) failed."
+            echo "reply sync partial: ${failed} of ${total} mailboxes failed" >> /tmp/run-problems.txt
           fi
 
       # Re-sync every configured do-not-contact sheet so staff additions to
@@ -67,3 +78,19 @@ jobs:
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             echo "DNC sheet sync did not succeed (status ${status}); continuing."
           fi
+
+      # A PARTIAL run fails HERE, in a step whose name contains the word, so the
+      # alerting can tell "ran and part of it failed" from "did not run at all".
+      # Those are different emails and different actions: act today versus act
+      # now. Without a distinct step name the alert can only read the run's
+      # overall conclusion, which is just "failure", and the PARTIAL subject line
+      # — the one that matters — could never be emitted.
+      - name: Fail run — PARTIAL
+        if: always()
+        run: |
+          if [ -s /tmp/run-problems.txt ]; then
+            echo "This run completed but part of it failed:"
+            cat /tmp/run-problems.txt
+            exit 1
+          fi
+          echo "No partial failures recorded."

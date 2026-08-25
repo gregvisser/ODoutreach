@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
+
 import { syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
 
 export const runtime = "nodejs";
@@ -29,5 +31,11 @@ export async function POST(req: NextRequest) {
       : 50;
 
   const result = await syncActiveClientMailboxInboxes({ perMailboxTop, maxMailboxes });
-  return NextResponse.json({ ok: true, ...result });
+  // `ok` is DERIVED from the result, not asserted. This line used to read
+    // `{ ok: true, ...result }` — a literal written before anyone looked at
+    // `result` — which is how a run went green while 8 of 35 mailboxes were
+    // failing. A partial batch now answers 207 and `ok: false`.
+    return NextResponse.json(jobResponseBody(result), {
+      status: jobOutcome(result).status,
+    });
 }

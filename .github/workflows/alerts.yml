@@ -1,0 +1,75 @@
+# Tell Greg when it breaks — and tell him every day when it does not.
+#
+# Runs in GitHub Actions, deliberately OUTSIDE the app. An alert route that runs
+# inside the thing that breaks is not a route: if ODoutreach is down, ODoutreach
+# cannot email. This reads the run history from GitHub's own API and treats an
+# unreachable app as the loudest thing it can report.
+#
+# ONE RECIPIENT — Greg. His decision, made explicitly. It means nothing is
+# noticed while he is away; no fallback recipient is built, because he did not
+# ask for one.
+#
+# THE DEAD MAN'S SWITCH: the digest sends EVERY day, including when everything
+# is fine. Silence then becomes the signal — nothing by 09:00 means either the
+# system or the alerting is broken, and there is no way to tell which, which is
+# exactly the point.
+name: Alerts
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compose and print without sending"
+        type: boolean
+        default: true
+  schedule:
+    # 07:00 UTC, EVERY day. Greg's decision, 2026-08-25: sending is a weekday
+    # activity, but reply sync runs daily, so a weekend failure would otherwise
+    # go unreported until Monday. Seven emails a week, no blind spot — and the
+    # dead man's switch keeps working at weekends, which it would not if the
+    # weekend digest were sent only when something was wrong.
+    - cron: "0 7 * * *"
+  # Immediate alert the moment a watched job finishes badly. The digest would
+  # catch it tomorrow; this catches it now.
+  workflow_run:
+    workflows:
+      - "Process outbound queue"
+      - "Sync replies"
+      - "Signature link audit (production)"
+      - "Support agent"
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    # On a workflow_run trigger, only speak when something went wrong. On the
+    # schedule, always speak — that is the whole point of the digest.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion != 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Compose and send
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          ALERT_FROM_EMAIL: ${{ vars.ALERT_FROM_EMAIL }}
+          ALERT_APP_URL: https://opensdoors.bidlow.co.uk
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            npm run ops:alert -- --dry-run
+          else
+            npm run ops:alert
+          fi

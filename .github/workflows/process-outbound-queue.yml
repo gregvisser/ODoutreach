@@ -36,6 +36,12 @@ jobs:
             --data '{"perMailboxTop":15,"maxMailboxes":50}') || status="000"
           echo "Pre-advance reply sync HTTP status: ${status}"
           cat /tmp/pre-advance-replies.json 2>/dev/null || true
+          ok=$(jq -r 'try .ok catch ""' /tmp/pre-advance-replies.json 2>/dev/null || echo "")
+          failed=$(jq -r 'try .failedCount catch 0' /tmp/pre-advance-replies.json 2>/dev/null || echo 0)
+          if [ "$ok" = "false" ]; then
+            echo "Pre-advance reply sync was PARTIAL: ${failed} item(s) failed; continuing."
+            echo "pre-advance reply sync partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
+          fi
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             echo "Reply sync did not succeed (status ${status}); continuing."
           fi
@@ -61,8 +67,18 @@ jobs:
             --data '{}') || status="000"
           echo "Follow-up advancer HTTP status: ${status}"
           cat /tmp/advance-response.json 2>/dev/null || true
+          # Deliberately does NOT stop the queue drain — a follow-up problem must
+          # not block sending. But it is recorded, so the RUN still ends red.
+          # "Continue anyway" and "pretend it worked" are different things, and
+          # conflating them is what let a green tick hide eight broken mailboxes.
+          ok=$(jq -r 'try .ok catch ""' /tmp/advance-response.json 2>/dev/null || echo "")
+          failed=$(jq -r 'try .failedCount catch 0' /tmp/advance-response.json 2>/dev/null || echo 0)
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             echo "Follow-up advance did not succeed (status ${status}); continuing to queue drain."
+            echo "follow-up advance failed (HTTP ${status})" >> /tmp/run-problems.txt
+          elif [ "$ok" != "true" ]; then
+            echo "Follow-up advance was PARTIAL: ${failed} item(s) failed; continuing to queue drain."
+            echo "follow-up advance partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
           fi
 
       - name: Call outbound queue processor
@@ -81,6 +97,26 @@ jobs:
             --data '{"limit":25}')
           echo "Queue processor HTTP status: ${status}"
           cat /tmp/queue-response.json
+          # A PARTIAL run answers 207, which IS a 2xx — a status-only check
+          # would wave it through.
+          ok=$(jq -r 'try .ok catch ""' /tmp/queue-response.json 2>/dev/null || echo "")
+          failed=$(jq -r 'try .failedCount catch 0' /tmp/queue-response.json 2>/dev/null || echo 0)
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             exit 1
           fi
+          if [ "$ok" != "true" ]; then
+            echo "Queue drain reported a PARTIAL run: ${failed} item(s) failed."
+            echo "queue drain partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
+          fi
+
+      # Anything recorded by a deliberately non-blocking step above still ends
+      # the run red. A job that carried on is not a job that succeeded.
+      - name: Fail run — PARTIAL
+        if: always()
+        run: |
+          if [ -s /tmp/run-problems.txt ]; then
+            echo "This run had problems that did not stop it:"
+            cat /tmp/run-problems.txt
+            exit 1
+          fi
+          echo "No problems recorded."

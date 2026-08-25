@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
+
 import { advanceDueSequenceFollowUps } from "@/server/email-sequences/advance-due-followups";
 
 export const runtime = "nodejs";
@@ -44,7 +46,13 @@ export async function POST(req: NextRequest) {
     const result = await advanceDueSequenceFollowUps(
       clientId ? { clientId } : undefined,
     );
-    return NextResponse.json({ ok: true, ...result });
+    // `ok` is DERIVED from the result, not asserted. This line used to read
+    // `{ ok: true, ...result }` — a literal written before anyone looked at
+    // `result` — which is how a run went green while 8 of 35 mailboxes were
+    // failing. A partial batch now answers 207 and `ok: false`.
+    return NextResponse.json(jobResponseBody(result), {
+      status: jobOutcome(result).status,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Follow-up advance failed";
     return NextResponse.json({ error: msg }, { status: 500 });
