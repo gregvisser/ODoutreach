@@ -106,12 +106,12 @@ jobs:
           fi
           if [ "$ok" != "true" ]; then
             echo "Queue drain reported a PARTIAL run: ${failed} item(s) failed."
-            exit 1
+            echo "queue drain partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
           fi
 
       # Anything recorded by a deliberately non-blocking step above still ends
       # the run red. A job that carried on is not a job that succeeded.
-      - name: Report run outcome
+      - name: Fail run — PARTIAL
         if: always()
         run: |
           if [ -s /tmp/run-problems.txt ]; then

@@ -32,8 +32,12 @@ on:
     types: [opened, synchronize]
 
   schedule:
-    # 07:00 UTC on weekdays — in Greg's inbox before 08:00 UK either way.
-    - cron: "0 7 * * 1-5"
+    # 07:00 UTC, EVERY day. Greg's decision, 2026-08-25: sending is a weekday
+    # activity, but reply sync runs daily, so a weekend failure would otherwise
+    # go unreported until Monday. Seven emails a week, no blind spot — and the
+    # dead man's switch keeps working at weekends, which it would not if the
+    # weekend digest were sent only when something was wrong.
+    - cron: "0 7 * * *"
   # Immediate alert the moment a watched job finishes badly. The digest would
   # catch it tomorrow; this catches it now.
   workflow_run:

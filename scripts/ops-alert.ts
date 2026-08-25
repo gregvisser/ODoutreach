@@ -42,11 +42,25 @@ const WATCHED: { file: string; label: string; expectedPerDay: number }[] = [
 ];
 
 type GhRun = {
+  id?: number;
   name?: string;
   conclusion?: string | null;
   status?: string | null;
   created_at?: string;
 };
+
+/**
+ * The marker a workflow uses to say "I ran, and part of me failed".
+ *
+ * GitHub only reports a run as success or failure. It has no idea a batch was
+ * partial — but PARTIAL and FAILED are different emails and different actions,
+ * act today versus act now. So the workflows fail a partial in a step whose
+ * NAME carries this word, and this reads it back.
+ *
+ * Without it the PARTIAL subject line is unreachable in production, which is
+ * exactly what it was until this was checked rather than assumed.
+ */
+const PARTIAL_STEP_MARKER = "PARTIAL";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -87,12 +101,62 @@ async function runsSince(
   return json.workflow_runs ?? [];
 }
 
-function concludeFrom(runs: GhRun[]): JobConclusion {
+/** Did this failed run fail because a batch was partial, or because it broke? */
+async function failedBecausePartial(
+  repo: string,
+  token: string,
+  runId: number,
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=50`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (!res.ok) return false;
+    const json = (await res.json()) as {
+      jobs?: { steps?: { name?: string; conclusion?: string | null }[] }[];
+    };
+    for (const job of json.jobs ?? []) {
+      for (const step of job.steps ?? []) {
+        if (step.conclusion === "failure" && (step.name ?? "").includes(PARTIAL_STEP_MARKER)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch {
+    // Cannot tell — report the harsher of the two. Under-reporting a failure is
+    // the mistake that started all this.
+    return false;
+  }
+}
+
+async function concludeFrom(
+  repo: string,
+  token: string,
+  runs: GhRun[],
+): Promise<JobConclusion> {
   const finished = runs.filter((r) => r.status === "completed");
   if (finished.length === 0) return "success";
   // Any failure in the window is a failure to report. A job that failed at 09:00
   // and recovered at 09:05 still failed, and Greg should know it is flapping.
-  return finished.some((r) => r.conclusion !== "success") ? "failure" : "success";
+  const bad = finished.filter((r) => r.conclusion !== "success");
+  if (bad.length === 0) return "success";
+
+  // If EVERY failure was a partial batch, this is PARTIAL — act today. If any
+  // of them was an outright break, it is FAILED — act now.
+  for (const run of bad) {
+    if (typeof run.id !== "number") return "failure";
+    if (!(await failedBecausePartial(repo, token, run.id))) return "failure";
+  }
+  return "partial";
 }
 
 async function appIsReachable(baseUrl: string): Promise<boolean> {
@@ -122,7 +186,7 @@ async function main(): Promise<void> {
     let conclusion: JobConclusion = "success";
     try {
       runs = await runsSince(repo, token, watched.file, since);
-      conclusion = concludeFrom(runs);
+      conclusion = await concludeFrom(repo, token, runs);
     } catch (error) {
       // Cannot read the run history — report it rather than assume health.
       conclusion = "failure";
