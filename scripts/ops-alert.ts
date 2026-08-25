@@ -101,12 +101,62 @@ async function runsSince(
   return json.workflow_runs ?? [];
 }
 
+type PartialDetail = { failedCount?: number; totalCount?: number; reasons: string[] };
+
+/**
+ * Pull the numbers out of a run's check annotations.
+ *
+ * The jobs API gives step names but not their output, so the workflow emits an
+ * `::error title=PARTIAL::` line, which becomes an annotation the REST API
+ * exposes. Without this the subject could only say "failed for 0 items", which
+ * is a PARTIAL alert that tells Greg nothing — and the brief's whole point is
+ * that the subject alone must say whether to act.
+ */
+async function partialDetail(
+  repo: string,
+  token: string,
+  jobId: number,
+): Promise<PartialDetail> {
+  const detail: PartialDetail = { reasons: [] };
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/check-runs/${jobId}/annotations?per_page=50`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (!res.ok) return detail;
+    const annotations = (await res.json()) as { title?: string; message?: string }[];
+    for (const a of annotations) {
+      if (a.title !== "PARTIAL" || !a.message) continue;
+      detail.reasons.push(a.message);
+      // "reply sync partial: 9 of 35 mailboxes failed"
+      const pair = a.message.match(/(\d+)\s+of\s+(\d+)/);
+      if (pair) {
+        detail.failedCount = Number(pair[1]);
+        detail.totalCount = Number(pair[2]);
+        continue;
+      }
+      const single = a.message.match(/(\d+)\s+item/);
+      if (single) detail.failedCount = Number(single[1]);
+    }
+  } catch {
+    /* annotations are a nicety — never fail the alert for want of them */
+  }
+  return detail;
+}
+
 /** Did this failed run fail because a batch was partial, or because it broke? */
 async function failedBecausePartial(
   repo: string,
   token: string,
   runId: number,
-): Promise<boolean> {
+): Promise<{ partial: boolean; jobId?: number }> {
   try {
     const res = await fetch(
       `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=50`,
@@ -119,22 +169,22 @@ async function failedBecausePartial(
         signal: AbortSignal.timeout(30_000),
       },
     );
-    if (!res.ok) return false;
+    if (!res.ok) return { partial: false };
     const json = (await res.json()) as {
-      jobs?: { steps?: { name?: string; conclusion?: string | null }[] }[];
+      jobs?: { id?: number; steps?: { name?: string; conclusion?: string | null }[] }[];
     };
     for (const job of json.jobs ?? []) {
       for (const step of job.steps ?? []) {
         if (step.conclusion === "failure" && (step.name ?? "").includes(PARTIAL_STEP_MARKER)) {
-          return true;
+          return { partial: true, jobId: job.id };
         }
       }
     }
-    return false;
+    return { partial: false };
   } catch {
     // Cannot tell — report the harsher of the two. Under-reporting a failure is
     // the mistake that started all this.
-    return false;
+    return { partial: false };
   }
 }
 
@@ -142,21 +192,26 @@ async function concludeFrom(
   repo: string,
   token: string,
   runs: GhRun[],
-): Promise<JobConclusion> {
+): Promise<{ conclusion: JobConclusion; detail?: PartialDetail }> {
   const finished = runs.filter((r) => r.status === "completed");
-  if (finished.length === 0) return "success";
+  if (finished.length === 0) return { conclusion: "success" };
   // Any failure in the window is a failure to report. A job that failed at 09:00
   // and recovered at 09:05 still failed, and Greg should know it is flapping.
   const bad = finished.filter((r) => r.conclusion !== "success");
-  if (bad.length === 0) return "success";
+  if (bad.length === 0) return { conclusion: "success" };
 
   // If EVERY failure was a partial batch, this is PARTIAL — act today. If any
   // of them was an outright break, it is FAILED — act now.
+  let detail: PartialDetail | undefined;
   for (const run of bad) {
-    if (typeof run.id !== "number") return "failure";
-    if (!(await failedBecausePartial(repo, token, run.id))) return "failure";
+    if (typeof run.id !== "number") return { conclusion: "failure" };
+    const verdict = await failedBecausePartial(repo, token, run.id);
+    if (!verdict.partial) return { conclusion: "failure" };
+    if (!detail && typeof verdict.jobId === "number") {
+      detail = await partialDetail(repo, token, verdict.jobId);
+    }
   }
-  return "partial";
+  return { conclusion: "partial", detail };
 }
 
 async function appIsReachable(baseUrl: string): Promise<boolean> {
@@ -184,9 +239,12 @@ async function main(): Promise<void> {
   for (const watched of WATCHED) {
     let runs: GhRun[] = [];
     let conclusion: JobConclusion = "success";
+    let detail: PartialDetail | undefined;
     try {
       runs = await runsSince(repo, token, watched.file, since);
-      conclusion = await concludeFrom(repo, token, runs);
+      const verdict = await concludeFrom(repo, token, runs);
+      conclusion = verdict.conclusion;
+      detail = verdict.detail;
     } catch (error) {
       // Cannot read the run history — report it rather than assume health.
       conclusion = "failure";
@@ -199,6 +257,9 @@ async function main(): Promise<void> {
       runs: runs.length,
       // Nothing is scheduled at the weekend, so nothing is missing.
       expectedRuns: isWeekend ? 0 : watched.expectedPerDay,
+      failedCount: detail?.failedCount,
+      totalCount: detail?.totalCount,
+      reasons: detail?.reasons,
     });
   }
 

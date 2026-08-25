@@ -91,6 +91,13 @@ jobs:
           if [ -s /tmp/run-problems.txt ]; then
             echo "This run completed but part of it failed:"
             cat /tmp/run-problems.txt
+            # An ::error:: becomes a check annotation, which the REST API
+            # exposes. The jobs API gives step NAMES but not their output, so
+            # this is how the counts reach the alert — otherwise the subject
+            # could only say "failed for 0 items", which tells Greg nothing.
+            while IFS= read -r line; do
+              echo "::error title=PARTIAL::${line}"
+            done < /tmp/run-problems.txt
             exit 1
           fi
           echo "No partial failures recorded."

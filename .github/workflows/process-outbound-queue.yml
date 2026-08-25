@@ -117,6 +117,9 @@ jobs:
           if [ -s /tmp/run-problems.txt ]; then
             echo "This run had problems that did not stop it:"
             cat /tmp/run-problems.txt
+            while IFS= read -r line; do
+              echo "::error title=PARTIAL::${line}"
+            done < /tmp/run-problems.txt
             exit 1
           fi
           echo "No problems recorded."
