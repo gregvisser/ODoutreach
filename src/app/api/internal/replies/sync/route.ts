@@ -30,7 +30,25 @@ export async function POST(req: NextRequest) {
       ? Math.min(body.maxMailboxes, 100)
       : 50;
 
-  const result = await syncActiveClientMailboxInboxes({ perMailboxTop, maxMailboxes });
+  let result = await syncActiveClientMailboxInboxes({ perMailboxTop, maxMailboxes });
+
+  // ===================================================================
+  // TEMPORARY PROOF SCAFFOLD — DELETE THIS BLOCK. NOT A FEATURE.
+  //
+  // Exists only to prove the PARTIAL alert path end to end: one forced
+  // failure makes this route answer 207 with ok:false, which makes the
+  // workflow fail in its "Fail run — PARTIAL" step, which makes the alert
+  // send "ODoutreach PARTIAL — ..." rather than "FAILED".
+  //
+  // It changes NO mailbox, NO client data and NO send. It only adds 1 to a
+  // reported count. The env var name is deliberately unusable by accident and
+  // must be removed from Azure in the same session it was added.
+  // ===================================================================
+  if (process.env.ALERT_PROOF_FORCE_ONE_PARTIAL_FAILURE === "yes-delete-me") {
+    console.warn("[ALERT PROOF] forcing one reported failure — this must not be enabled");
+    result = { ...result, failed: result.failed + 1 };
+  }
+  // =============== END TEMPORARY PROOF SCAFFOLD ======================
   // `ok` is DERIVED from the result, not asserted. This line used to read
     // `{ ok: true, ...result }` — a literal written before anyone looked at
     // `result` — which is how a run went green while 8 of 35 mailboxes were
