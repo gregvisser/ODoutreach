@@ -87,3 +87,7 @@ MERGE-AND-MEASURE.md
 DNC-AUTOMATED.md
 DNC-PROPOSALS.md
 DNC-APPROVED.md
+ALERTS-AND-CLAIMING.md
+
+# Backups written by the standards tooling — never committed.
+*.bak

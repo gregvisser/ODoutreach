@@ -1,6 +1,6 @@
 {
   "_comment": "STAGE 2 — CLASSIFY. Types declared 2026-08-20 from evidence in the codebase, NOT from assumption: the repo sends on clients' behalf via sequences and mailboxes (email_infrastructure), holds contacts/clients/campaigns with membership-scoped access (crm, multi_tenancy, identity_auth), advances sequences on a schedule via GitHub Actions (background_processing), and carries a do-not-contact suppression list (regulated_data).",
-  "_answers_note": "2026-08-22: the questions tagged `research` in standards/saas-types.json are drafted below from DOMAIN-BRIEF-cold-email.md (written 30 July 2026, cited) and from what the code actually does, verified by reading it on this date. The questions tagged `decision` and `fact` are DELIBERATELY still blank — the catalogue says only Greg can answer those, and inventing them here is the exact failure this stage exists to prevent. They are listed for him in the session report. A partially answered domain still blocks, and that is correct.",
+  "_answers_note": "2026-08-22: the questions tagged `research` in standards/saas-types.json are drafted below from DOMAIN-BRIEF-cold-email.md (written 30 July 2026, cited) and from what the code actually does, verified by reading it on this date. The questions tagged `decision` and `fact` are DELIBERATELY still blank — the catalogue says only Greg can answer those, and inventing them here is the exact failure this stage exists to prevent. They are listed for him in the session report. A partially answered domain still blocks, and that is correct. | 2026-08-25: the RESEARCH and FACT questions above were answered from the code at deployed commit de864b3, each with the file that proves it. The DECISION questions remain deliberately blank — they are Greg's to make and inventing them is the `inherited-artefact-answer` defect this project already carries.",
   "types": [
     "cold_outreach"
   ],
@@ -124,6 +124,111 @@
         "confidence": "SP",
         "source": "Code read 2026-08-22/23: src/server/tenant/access.ts (canDeleteWorkspace, deletedAt filter), prisma/schema.prisma (Client.deletedAt, F2 comments), listSoftDeletedClients super-admin gating",
         "expires": "2026-11-23"
+      },
+      "0": {
+        "answer": "YES. OpensDoors employees work across multiple clients and see all of the ones they are assigned to. So 'a user belongs to one tenant' is FALSE here and must never be assumed. Isolation is a property of the DATA, enforced per client id on every read and write — it is not a property of the person. CONSEQUENCE: if OpensDoors ever takes on two competing companies, the same employee may see both prospect lists. That is a confidentiality question for their client contracts, not something code can solve.",
+        "confidence": "V",
+        "source": "Greg Visser, 2026-08-25, Bidlow account knowledge."
+      },
+      "2": {
+        "answer": "YES. Prospect records move between clients, because Greg confirmed OpensDoors sources most prospects and treats the contact as its own asset rather than the client's. CONSEQUENCE, and it must be designed for deliberately: do-not-contact records are client specific and MUST NOT travel with the record. A prospect suppressed for client A becomes contactable again once moved to client B. That follows correctly from the client-specific suppression rule, but it will look like a bug the first time somebody sees it, so it needs to be visible on screen at the moment of the move.",
+        "confidence": "V",
+        "source": "Greg Visser, 2026-08-25, Bidlow account knowledge."
+      }
+    },
+    "identity_auth": {
+      "0": {
+        "answer": "Their work Microsoft account, and nothing else. NextAuth is configured with MicrosoftEntraID as the ONLY provider — there is no username-and-password path and no local account to steal. Client MAILBOXES connect separately via Microsoft Graph or Gmail OAuth; that is a different thing from staff login.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. src/auth.ts lines 1-34 (MicrosoftEntraID sole entry in providers[])."
+      },
+      "1": {
+        "answer": "Single sign-on is not a future requirement — it is already the only way in. Signing in with the work Microsoft account IS single sign-on, so joiners and leavers are governed by OpensDoors' own Microsoft tenant rather than by a separate user list in this app.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. src/auth.ts."
+      },
+      "2": {
+        "answer": "Three roles on the staff record — ADMIN, OPERATOR, VIEWER — layered with workspace-scoped access (requireOpensDoorsStaff / requireStaffUser) so a person only reaches the clients they are assigned. Sending is a SEPARATE permission from viewing: PR #194 brought the last ungoverned send path (/contacts) under the same check after it was found bypassing it.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. prisma/schema.prisma StaffRole enum; src/server/auth/staff.ts; src/lib/clients/client-send-governance.ts."
+      },
+      "3": {
+        "answer": "Greg's answer: 'nothing stops them at the moment, the operations team must block their access.' HALF RIGHT, and the half he did not know matters. Because login is Microsoft Entra ID scoped to the OpensDoors tenant, disabling the leaver's Microsoft account blocks every NEW sign-in immediately — no separate action needed in this system. BUT: no session maxAge is configured, so NextAuth's 30-day JWT default applies and the token is not re-checked against a staff record per request. An already-open browser session can therefore survive for up to 30 days after the Microsoft account is disabled. GAP, HIGH: shorten the session lifetime and re-check the staff record is active on each request.",
+        "confidence": "V",
+        "source": "src/auth.ts — MicrosoftEntraID sole provider, signIn callback gates on tenant id via isEntraSignInAllowed; no session.maxAge set, so the NextAuth 30-day default applies. Plus Greg Visser, 2026-08-25, Bidlow account knowledge."
+      }
+    },
+    "background_processing": {
+      "1": {
+        "answer": "It reported SUCCESS anyway, and that is a recorded burn on this project, not a hypothetical. A scheduled run completed green while 8 of 35 mailboxes were failing reply sync, the errors sitting inside an HTTP 200 response body where nothing looked. The capability 'recurring work on a schedule via GitHub Actions' is marked BURNED for exactly this. Partial failure must surface as failure.",
+        "confidence": "V",
+        "source": "Recorded in .bidlow/STATE.md and CLASSIFY.json capability notes; four scheduled workflows exist: process-outbound-queue, sync-replies, signature-link-audit, support-agent."
+      },
+      "2": {
+        "answer": "No. The send path claims each queued email with a claimedAt timestamp before dispatch and carries an idempotency key, so a second concurrent or repeated run cannot pick up an email another run already claimed. This is covered by integration tests, not only unit tests.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. src/server/email/outbound/execute-one.ts (claimedAt at lines 161/194/309/347, idempotency at 258/284); execute-one.integration.test.ts asserts the idempotent path."
+      },
+      "0": {
+        "answer": "Four things run on a schedule: sending, reply sync, the signature link audit, and the support agent. A missed run is a delay, not a loss — queued work stays queued and is picked up on the next run. Greg additionally asked for near-live screen updates so one employee sees another's changes; that is a SEPARATE concern from scheduled work and is recorded as an open product decision, not a timer.",
+        "confidence": "V",
+        "source": "Four scheduled workflows under .github/workflows/. Plus Greg Visser, 2026-08-25, Bidlow account knowledge."
+      },
+      "3": {
+        "answer": "OPEN — and the fact that the question needed re-explaining is itself the finding. Nobody is alerted today when a scheduled run fails, which is precisely how a job reported SUCCESS while 8 of 35 mailboxes were failing reply sync and nobody noticed for weeks. Sentry is wired but was never verified as RECEIVING events in production. Until a named person gets a message by a tested route, this stays open.",
+        "confidence": "V",
+        "source": "Recorded burn in STATE.md; GRADES.json engineering not_met: 'Sentry is configured but I did not verify it is RECEIVING events in production.'"
+      }
+    },
+    "integrations": {
+      "0": {
+        "answer": "Microsoft Graph and the Gmail API for sending and reply sync. Azure App Service and Azure PostgreSQL Flexible Server for runtime. GitHub Actions for scheduled work and deployment. Sentry for errors. RocketReach for enrichment. Resend for transactional mail. Google Sheets for suppression-list sync — being replaced by CSV import.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. .github/workflows/, src/server/integrations/, package.json."
+      },
+      "1": {
+        "answer": "Per-client mailbox access is an OAuth grant owned by the CLIENT, held as a refreshable token and revoked when they disconnect. Application-level secrets live in Azure App Service configuration, never in the repository; .env.example is the committed template. When a client's grant expires or is withdrawn, the mailbox surfaces an auth-failure state on screen rather than failing silently.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. src/lib/mailboxes/mailbox-auth-failure-overlay.ts; src/server/mailbox/mailbox-oauth-*.ts; .env.example."
+      },
+      "3": {
+        "answer": "Microsoft 365: 30 messages per minute, 10,000 recipients per day. Google Workspace: 2,000 recipients per day. These are the providers' own published limits and they are the reason the fleet cap is 30 per mailbox per day rather than a number we chose.",
+        "confidence": "V",
+        "source": "Microsoft and Google published sending limits, verified 2026-08-23. Google bulk sender guidance: https://support.google.com/a/answer/81126"
+      },
+      "2": {
+        "answer": "Carry on, queue the work, and do NOT dump the backlog when the provider returns. CONSEQUENCE: send pacing must be ON before the first outage, not after it. It is currently unset — a deliberate choice for go-live day when there was no burst to spread — but a provider outage creates exactly the burst it exists to prevent, and a catch-up flood is the pattern that gets a domain blocked.",
+        "confidence": "V",
+        "source": "Greg Visser, 2026-08-25, Bidlow account knowledge."
+      }
+    },
+    "crud_workflow": {
+      "0": {
+        "answer": "Seven, and they are written out in full in .bidlow/DATAMODEL.json rather than duplicated here: Client, Mailbox, Contact, Suppression record, Domain family, Sent email, Reply. Each records what it is, what it deliberately is not, when it stops mattering and what happens then. Confirmed by Greg Visser 2026-08-25 on Bidlow account knowledge.",
+        "confidence": "V",
+        "source": "See .bidlow/DATAMODEL.json — the single source for this, carried forward rather than re-answered."
+      },
+      "1": {
+        "answer": "A Client moves ACTIVE / PAUSED / ARCHIVED, and sending excludes PAUSED and ARCHIVED while reply sync requires ACTIVE. An outbound email moves queued to claimed to sent, or to a failure state; a bounce or an opt-out reply then suppresses the address permanently. Only staff with the send permission may move anything into sending; status changes are audit-logged.",
+        "confidence": "V",
+        "source": "Code read 2026-08-25 against deployed commit de864b3. prisma/schema.prisma status enums; src/server/email/outbound/execute-one.ts."
+      }
+    },
+    "reporting_analytics": {
+      "0": {
+        "answer": "No number in here invoices anybody — this system deliberately handles no money. But the deliverability numbers are close to regulatory: complaint rate and bounce rate are the evidence that sending is being run lawfully and within provider rules, and the suppression record is the evidence that an objection under PECR reg 22 was honoured. They are not billing figures; they are the ones you would be asked to produce.",
+        "confidence": "V",
+        "source": "COVERAGE.json areas 10_money (no payment handling) and 15_insight; PECR reg 22."
+      },
+      "1": {
+        "answer": "YES — a historical report must show the numbers it showed at the time, consolidated rather than line by line. CONSEQUENCE, and it collides with another answer: contacts are DELETED when a person moves company, so a past report cannot be recalculated from live data — the rows it counted may no longer exist. Report figures must therefore be SNAPSHOTTED at the time of reporting, not recomputed on demand. Two reasonable answers that are incompatible unless this is built deliberately.",
+        "confidence": "V",
+        "source": "Greg Visser, 2026-08-25, Bidlow account knowledge."
+      },
+      "2": {
+        "answer": "Anyone with a login may export, but every export must record who took it, when, and which client's data it was. CONSEQUENCE: because staff see multiple clients and records move between them, the export log must name the CLIENT whose data left, not only the person who took it. 'Greg exported 4,000 contacts' is not an audit record; 'Greg exported 4,000 Train Hugger contacts at 21:40' is.",
+        "confidence": "V",
+        "source": "Greg Visser, 2026-08-25, Bidlow account knowledge."
       }
     }
   },
