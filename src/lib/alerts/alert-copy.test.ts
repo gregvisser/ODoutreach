@@ -222,3 +222,60 @@ describe("the body earns its place", () => {
     expect(email.body).toMatch(/ODoutreach/);
   });
 });
+
+describe("a partial with no count never claims zero", () => {
+  /**
+   * Seen live on 2026-08-25:
+   *
+   *   process-outbound-queue: PARTIAL — 0 failed (21 runs)
+   *
+   * which is a sentence contradicting itself. It does not mean nothing failed.
+   * It means the job reported a problem and attached no number to it — that
+   * run was in fact reporting the SAME eight failing mailboxes, via a
+   * pre-advance reply sync whose message carried no count the parser could
+   * read.
+   *
+   * "0 failed" is the most dangerous thing this could print: it is the
+   * reassuring reading of a line that exists because something went wrong.
+   */
+  it("says part of it failed, rather than 0 failed, in the body", () => {
+    const email = buildAlertEmail({
+      jobs: [job({ name: "Process outbound queue", label: "sending", conclusion: "partial" })],
+      emailsSent: 0,
+    });
+    expect(email.body).not.toContain("0 failed");
+    expect(email.body).toContain("part of it failed");
+  });
+
+  it("says the same in the subject when nothing else can be said", () => {
+    const email = buildAlertEmail({
+      jobs: [job({ label: "sending", conclusion: "partial" })],
+      emailsSent: 0,
+    });
+    expect(email.subject).not.toContain("0 items");
+    expect(email.subject).toBe("ODoutreach PARTIAL — sending partly failed");
+  });
+
+  it("still prefers a job that HAS a number", () => {
+    const email = buildAlertEmail({
+      jobs: [
+        job({ label: "sending", conclusion: "partial" }),
+        job({ name: "Sync replies", label: "reply sync", conclusion: "partial", failedCount: 8, totalCount: 35 }),
+      ],
+      emailsSent: 0,
+    });
+    expect(email.subject).toBe("ODoutreach PARTIAL — reply sync failed for 8 of 35 mailboxes");
+    expect(email.body).toContain("part of it failed");
+    expect(email.body).toContain("8 of 35 failed");
+  });
+
+  it("a genuine zero is still reported as a zero", () => {
+    // failedCount: 0 EXPLICITLY set is different from absent. Keep them apart.
+    const email = buildAlertEmail({
+      jobs: [job({ label: "sending", conclusion: "partial", failedCount: 0, totalCount: 40 })],
+      emailsSent: 0,
+    });
+    expect(email.subject).toContain("0 of 40");
+  });
+});
+
