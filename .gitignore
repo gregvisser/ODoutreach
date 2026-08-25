@@ -87,3 +87,10 @@ MERGE-AND-MEASURE.md
 DNC-AUTOMATED.md
 DNC-PROPOSALS.md
 DNC-APPROVED.md
+
+# Work briefs handed over for a piece of work. Code repositories contain code —
+# briefs, decks, pricing and scope artefacts live in C:\Bidlowbusiness. Two of
+# these were committed by accident during the alerting work and removed again.
+/ALERTS-AND-CLAIMING.md
+/PROVE-THE-ALERT.md
+/MONDAY-PROMPT.md

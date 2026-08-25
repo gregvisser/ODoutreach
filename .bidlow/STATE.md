@@ -1979,3 +1979,92 @@ Nothing schedules it now either.
 
 The screen PR is open and unmerged. No staff member can see or answer a
 proposal. No re-resolution is scheduled.
+
+---
+
+# The alert was proven by receiving it — 2026-08-25
+
+Not "the alert path executed". **Arrived**, in an inbox, with a subject that
+said what to do. All three shapes were sent as real email through Resend to
+Greg, the only recipient, and every one is recorded below with its Resend id.
+
+## 1. The happy path — the one that proves silence means something
+
+| | |
+|---|---|
+| Subject | `ODoutreach OK — 4/4 jobs, 0 sent` |
+| Sent | **19:31:13 UK** |
+| Resend id | `e146550b-fc1d-4731-8137-928d26330929` |
+| Landed in | **Inbox — confirmed by Greg** |
+
+This one matters most and is the easiest to skip. The daily digest is the dead
+man's switch: it sends every day *including when everything is fine*, so
+silence is the signal. If it had quietly landed in Junk, the whole design would
+have been worthless while appearing to work — and nobody would have found out
+on the morning it was needed.
+
+## 2. Broken on purpose — FAILED
+
+**What was broken:** `signature-link-audit.yml` was dispatched against a
+deliberately wrong production URL so the job would genuinely fail. Nothing was
+faked; a real workflow really failed.
+
+| | |
+|---|---|
+| Subject | `ODoutreach FAILED — signature audit failed` |
+| Sent | **19:39:19 UK** |
+| Resend id | `b4c8c97e-1942-4228-9344-7730a270264e` |
+
+**The break found a real config gap.** That workflow had *never once run*, and
+depended on `vars.PRODUCTION_APP_URL`, which was **not set**. It would have sat
+there looking healthy indefinitely. The variable is now set and the workflow
+has since run green (run `32889436099`). The deliberate failure run was deleted
+afterwards, once its cause was fixed, so the 24-hour window tells the truth.
+
+## 3. PARTIAL — the one that actually matters
+
+FAILED is loud and would be noticed anyway. PARTIAL is the shape that was
+invisible for months, and it is the exact shape of the recorded burn.
+
+| | |
+|---|---|
+| Subject | `ODoutreach PARTIAL — reply sync failed for 9 of 35 mailboxes` |
+| Sent | **19:38:45 UK** |
+| Resend id | `7241f46b-f2e8-4c94-a523-d1b37902b9b1` |
+
+The route answered **HTTP 207** with `ok:false`; the workflow failed in its
+`Fail run — PARTIAL` step; the alert read the counts back off the check
+annotation and put them in the subject line.
+
+**Sending it caught a bug that reading it did not.** Two jobs were partial at
+once, and taking the first match produced
+`ODoutreach PARTIAL — sending failed for 0 items` while the body said
+`9 of 35`. A subject carrying no message is the one thing this must not do.
+Fixed in `bbd94af`; the test now carries the real subject line.
+
+## The scaffold is gone — same session, as promised
+
+One forced failure was needed to make a partial happen on demand. It changed no
+mailbox, no client data and no send — it added 1 to a reported count, behind an
+env var that could not be set by accident.
+
+| | |
+|---|---|
+| Azure app setting `ALERT_PROOF_FORCE_ONE_PARTIAL_FAILURE` | **deleted** — `az ... appsettings list` returns nothing |
+| The code block | **deleted** — repo-wide search for `ALERT_PROOF` returns nothing |
+
+## What the proof uncovered, which is not a test result
+
+The forced failure added **one**. The route reported **nine**.
+
+**Eight mailboxes are genuinely failing reply sync in production right now** —
+`{"processed":35,"succeeded":27,"failed":9}`. That is the recorded burn,
+happening today, and it has been invisible behind `ok: true` the whole time.
+The alerting now reports it every morning. **Nobody has fixed the eight
+mailboxes** — that is real work, not covered by this, and it is the open item.
+
+## Also decided
+
+Cron is now **daily including weekends** (Greg's call): a weekend outage
+otherwise stays silent until Monday, and the digest is the dead man's switch.
+
