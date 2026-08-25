@@ -90,7 +90,13 @@ export function buildAlertEmail(input: {
 
   // FAILED outranks PARTIAL: act now beats act today.
   const failed = jobs.find((j) => j.conclusion === "failure" || scheduleLooksBroken(j));
-  const partial = jobs.find((j) => j.conclusion === "partial");
+  // Of several partial jobs, name the one that can SAY something. Taking the
+  // first match produced "sending failed for 0 items" in the subject while the
+  // body said "reply sync: 9 of 35 failed" — a subject that carries no message
+  // is the one thing this must not do.
+  const partial = jobs
+    .filter((j) => j.conclusion === "partial")
+    .sort((a, b) => (b.failedCount ?? -1) - (a.failedCount ?? -1))[0];
 
   const total = jobs.length;
   const healthy = jobs.filter(
