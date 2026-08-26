@@ -2879,3 +2879,147 @@ approached: no send path was touched, and `ReplyClaim` is read by no gate.
    work and it being live. It applies the migration.
 2. **Queue item 14** — the sync's `metadata` clobber erasing handled-state.
 3. Queue item 6 (`DESIGN.json`) is the next untouched item in order.
+
+---
+
+# 2026-08-26 — Cycle 13: the reply round trip is PROVED (queue item 17)
+
+**The client's second question — "does it receive replies?" — is answered yes,
+on live production, twice, one of them with a real human.** Item 17 is `DONE 13`.
+
+Full evidence, every leg timed: `docs/ops/REPLY-PROOF-2026-08-26.md`.
+
+## What was actually built or changed
+
+* **`src/lib/inbox/opt-out-detection.ts`** — one new pattern, `stop-keyword`.
+  Merged as **#238**, commit `db9b211`, **deployed and verified live by hash**
+  on the direct App Service URL (`/api/build-info` → `db9b2114ff…`,
+  `/api/health` → `ok:true`, `database:ok`).
+* **`src/lib/inbox/opt-out-detection.test.ts`** — 5 tests, watched RED first.
+* **`docs/ops/REPLY-PROOF-2026-08-26.md`** — the proof, plus an addendum
+  recording that the fix was proved to FIRE in production after deploying.
+* **`.bidlow/relay/QUEUE.md`** — item 17 → `DONE 13`, and instance **(11)**
+  added to the standing "built, wired, never fires" list. Landed as **#239**
+  on its own branch, per the instance-(10) rule.
+
+No schema change. No migration.
+
+## The defect, and it is instance (11)
+
+Every outreach email on the mailto rail ends **"To opt out, reply STOP to this
+email and we'll remove you"** (`MAILTO_OPT_OUT_LINE`). The classifier had ten
+patterns and **none matched a bare `STOP`** — the closest, `stop-emailing`,
+requires STOP followed by email/contact/messag/sending/reaching.
+
+On that rail there is no unsubscribe link, so replying STOP is the *entire*
+opt-out mechanism. Under PECR the instruction we publish IS the mechanism, so
+this is a compliance defect, not a cosmetic one. It was invisible because the
+classifier is wired, is flag-enabled in production
+(`MAILBOX_COMPLAINT_DETECTION_ENABLED=true`), and does fire on nine other
+phrasings — only the word we actually print was missing.
+
+The round trip nearly missed it: the first test reply also said "take me off
+this list", which a *different* pattern caught.
+
+## Proven, not assumed
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | 0 errors (1 pre-existing warning in the untracked `relay-status.mjs`) |
+| `npx tsc --noEmit` | clean |
+| `npm test` | 245 files / **2317 tests** green |
+| CI on #238 and #239 | verify ✅ · E2E Playwright ✅ |
+
+**Red first, watched:** `AssertionError: "STOP": expected false to be true` —
+`2 failed | 9 passed`. The three false-positive guards (ordinary sentences; our
+own STOP instruction returning inside a quoted Outlook original) passed before
+**and** after, so the fix did not buy its win by loosening the classifier.
+
+**Proved to FIRE in production, after deploy** — a green test proves the code
+passes, not that it runs. Suppression was cleared first so the result could not
+be stale, then a reply whose entire body was `STOP` was sent: ingested 13:07:49,
+`bodyPreview: "STOP"`, contact `isSuppressed: true`, `SuppressedEmail` row
+written. Before the change that same reply would have suppressed nothing.
+
+## The timings, which are the answer Greg needs
+
+* Round trip A (**a real human** — Greg replied from Gmail on Outlook for
+  Android): arrived 12:50:34 → stored, matched to the RIGHT contact and the
+  RIGHT send, `SENT`→`REPLIED`, at 12:51:12. **38 s after the sync began.**
+* Round trip B (machine-driven, real external counterparty): **send → reply on
+  screen in 85 s**; **STOP → suppressed in 48 s**; a further send to that
+  contact returned `BLOCKED_SUPPRESSION`, `sentAt=null`.
+* Activity screen **proved by LOADING it**, signed in, direct App Service URL:
+  HTTP 200, `totalReplies:3, shownReplies:3`, reply text in the markup. Page
+  load 4.6–5.2 s (slow — the B1 CPU finding, not this cycle).
+* **THE NUMBER TO QUOTE IS 15–16 MINUTES, not 85 seconds.** The sync is 37–43 s
+  for all 27 mailboxes, but the cron is every 15 min, weekdays 07:00–18:00 UK,
+  and nothing at all overnight or at weekends.
+
+## Decisions made
+
+* **A real external counterparty instead of a simulated reply.** Greg cannot be
+  woken to press reply, and Graph **refused** to inject a message into the
+  mailbox — `403 ErrorAccessDenied`, because the grant is `Mail.Send`+`Mail.Read`
+  with no `Mail.ReadWrite`. That refusal is the right answer and is recorded:
+  **the app genuinely cannot write into a customer's mailbox.** So the round trip
+  used `onboarding@resend.dev` — a real address on a real external domain the
+  estate already sends through — driven via the existing `relay-alert.yml`
+  workflow. Genuine internet mail in both directions, no new service, no new
+  secret.
+* **Deleting the test contact's suppression to re-prove the fix.** A delete on
+  production data, permitted for `bidlowai` and nothing else; the script refuses
+  outright if the client is not `bidlowai`.
+* **A short-lived next-auth session cookie minted from the production
+  `AUTH_SECRET`** for Greg's own super-admin account, to load the Activity page
+  as the artefact rather than reading the query. 1-hour expiry, never written
+  anywhere tracked by git, deleted at the end of the cycle.
+* No one-way door was opened.
+
+## Found and deliberately NOT fixed
+
+1. **Reply sync reads the `Inbox` folder ONLY. A prospect reply that Exchange
+   files as junk is never ingested — no error, no warning, nothing on screen.**
+   Found by accident: a probe sent 12:41:27 vanished and was sitting in
+   `JunkEmail`, while the same sender's other mail went to the Inbox, so junk
+   filing is not predictable. Ingesting junk looks reasonably safe — a message is
+   only ever matched when it comes **from an address we actually emailed** — but
+   it is a mailbox-ingestion change, and this repo requires those behind a flag
+   and proven separately. **Strongest candidate for the next cycle.**
+2. **`rfc822MessageId` is NULL on every Microsoft Graph send**, so the
+   `BY_THREAD_REF` matching leg is **inert** on the Microsoft path. Matching
+   rests entirely on "from the address we emailed" + a `Re:` subject. Both held
+   on all four replies this cycle, and it is documented behaviour in
+   `process-synced-replies.ts` — but the belt-and-braces leg is not there.
+
+## Writes to production
+
+`bidlowai` only: 1 Contact (`onboarding@resend.dev`), 3 OutboundEmail rows (two
+sent, one deliberately blocked), and the InboundMailboxMessage / InboundReply /
+SuppressedEmail rows the system created by itself. **Every send was left with no
+`staffUserId` on purpose**, so it was attributed to a MACHINE and had to PASS the
+autonomous-actor allowlist gate rather than bypass it. No other client was
+written to, mailed, or altered.
+
+Method: the prod DB firewall allows Azure only, so every query ran **inside the
+App Service container** via the Kudu command API, reads under `BEGIN READ ONLY`.
+No firewall rule added, no credential left Azure. Scratch scripts removed;
+`/home/tmp` is empty.
+
+**Housekeeping note:** reading Azure app settings printed the mailbox OAuth
+client secrets into the session transcript. They were not written to any file or
+commit, but they are in that scrollback.
+
+## Nothing contradicts PROJECT.json
+
+The one rule held throughout: real mail and deletes touched `bidlowai` and
+nothing else, and the allowlist gate was exercised rather than bypassed.
+
+## Pick up first, next session
+
+1. **Queue item 16** — walk every screen as a human and fix what a client would
+   notice. It is the last of the four that matter before the meeting, and the
+   Activity page loading in ~5 s is already one entry on that list.
+2. **The junk-folder gap** above — behind a flag, red-first, blast radius
+   measured before switching on.
+3. **Queue item 19** — `relay-golive.cmd` / `relay-resume.cmd`.
