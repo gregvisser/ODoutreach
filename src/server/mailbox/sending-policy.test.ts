@@ -10,6 +10,7 @@ import {
   eligibleWorkspaceMailboxPool,
   mailboxIneligibleForGovernedSendExecution,
   mailboxIneligibleReasonFromStaticState,
+  resolveGovernedSendingMailboxFromRows,
   resolveSendingGovernance,
   tryReserveSendSlotInTransaction,
 } from "./sending-policy";
@@ -303,5 +304,44 @@ describe("countBookedSendSlotsInUtcWindow", () => {
     });
     const c = await countBookedSendSlotsInUtcWindow(tx, "m1", "2026-06-01");
     expect(c).toBe(7);
+  });
+});
+
+/**
+ * The pick, separated from the fetch (queue item 3) so `loadClientWorkspaceBundle`
+ * can resolve governance from the mailbox rows it ALREADY holds instead of
+ * re-reading them. These assert the pick is unchanged by that split — this
+ * function decides which mailbox a workspace is shown as sending from.
+ */
+describe("resolveGovernedSendingMailboxFromRows", () => {
+  it("is legacy mode when the workspace has no mailbox rows at all", () => {
+    expect(resolveGovernedSendingMailboxFromRows([])).toEqual({ mode: "legacy" });
+  });
+
+  it("prefers the primary connected mailbox over an earlier non-primary one", () => {
+    const other = baseMailbox({ id: "m-other", isPrimary: false, email: "other@b.co" });
+    const primary = baseMailbox({ id: "m-primary", isPrimary: true, email: "primary@b.co" });
+    const r = resolveGovernedSendingMailboxFromRows([other, primary]);
+    expect(r.mode).toBe("governed");
+    expect(r.mode === "governed" && r.mailbox.id).toBe("m-primary");
+  });
+
+  it("falls back to any sendable mailbox when the primary cannot send", () => {
+    const deadPrimary = baseMailbox({ id: "m-dead", isPrimary: true, canSend: false });
+    const usable = baseMailbox({ id: "m-usable", isPrimary: false });
+    const r = resolveGovernedSendingMailboxFromRows([deadPrimary, usable]);
+    expect(r.mode).toBe("governed");
+    expect(r.mode === "governed" && r.mailbox.id).toBe("m-usable");
+  });
+
+  it("is ineligible — NOT legacy — when mailboxes exist but none can send", () => {
+    // The distinction that makes the `rows` argument required to be the
+    // COMPLETE, unfiltered set: a pre-filtered empty list would read as
+    // "this workspace has no mailboxes" and fall through to legacy mode.
+    const r = resolveGovernedSendingMailboxFromRows([
+      baseMailbox({ connectionStatus: "DISCONNECTED" }),
+    ]);
+    expect(r.mode).toBe("ineligible");
+    expect(r.mode === "ineligible" && r.reason).toBe("no_connected_sending_mailbox");
   });
 });

@@ -24,8 +24,9 @@ import {
 } from "@/server/mailbox/oauth-env";
 import {
   isMailboxExecutionEligible,
-  loadGovernedSendingMailbox,
+  resolveGovernedSendingMailboxFromRows,
 } from "@/server/mailbox/sending-policy";
+import { internalDomainsFromMailboxEmails } from "@/server/inbox/internal-domains";
 import { chooseSignatureForSend } from "@/lib/mailboxes/sender-signature";
 import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
@@ -88,20 +89,28 @@ export async function loadClientWorkspaceBundle(
   const client = await getClientByIdForStaff(clientId, accessibleClientIds);
   if (!client) return { client: null as typeof client };
 
+  // `client.mailboxIdentities` is already the client's COMPLETE, unfiltered
+  // mailbox set (see `getClientByIdForStaff`). Two helpers below used to re-read
+  // exactly those rows — measured as 2 of the 5 ClientMailboxIdentity round-trips
+  // a workspace page cost (docs/ops/LOAD-SPEED-MEASUREMENT.md). Both now take the
+  // rows we hold. The DB-reading variants stay for callers that hold nothing.
+  const governedMailbox = resolveGovernedSendingMailboxFromRows(client.mailboxIdentities);
+  const internalDomains = internalDomainsFromMailboxEmails(
+    client.mailboxIdentities.map((m) => m.email),
+  );
+
   const [
     graphInbox,
     sendingReadiness,
     recentGovernedSends,
     pilotContactSummary,
-    governedMailbox,
     canMutateMailboxes,
     recentMailboxAuthFailures,
   ] = await Promise.all([
-    getRecentInboundMailboxMessagesForClient(clientId, 50),
+    getRecentInboundMailboxMessagesForClient(clientId, 50, { internalDomains }),
     getMailboxSendingReadinessForClient(clientId, client.mailboxIdentities),
     getRecentGovernedSendsForClient(clientId, 25),
     getPilotContactSummaryForClient(clientId),
-    loadGovernedSendingMailbox(clientId),
     getClientMailboxMutationAllowed(staff, client.id),
     getRecentMailboxAuthFailuresForClient(clientId),
   ]);

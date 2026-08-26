@@ -144,14 +144,19 @@ export function resolveSendingGovernance(
 
 /**
  * Picks: primary+active+connected first, else any active+connected+can send.
+ *
+ * Pure, and separated from the fetch below so a caller that ALREADY holds every
+ * mailbox row for the client (`loadClientWorkspaceBundle` does — the workspace
+ * query includes `mailboxIdentities`) can resolve governance without asking the
+ * database for the same rows a second time. `rows` must be the client's COMPLETE
+ * mailbox set, unfiltered: the `rows.length > 0` test below is what distinguishes
+ * "this workspace has no mailboxes at all" (legacy mode) from "it has mailboxes
+ * but none can send" (ineligible), and a pre-filtered list would answer that
+ * question wrongly.
  */
-export async function loadGovernedSendingMailbox(
-  clientId: string,
-): Promise<SendingMailboxResolve> {
-  const rows = await prisma.clientMailboxIdentity.findMany({
-    where: { clientId },
-  });
-
+export function resolveGovernedSendingMailboxFromRows(
+  rows: ClientMailboxIdentity[],
+): SendingMailboxResolve {
   const canSend = (r: ClientMailboxIdentity) =>
     !isMailboxRemovedFromWorkspace(r) &&
     r.isActive &&
@@ -166,6 +171,16 @@ export async function loadGovernedSendingMailbox(
     primaryConnected,
     anyConnected,
   });
+}
+
+/** Fetches the client's mailbox rows, then applies the pick above. */
+export async function loadGovernedSendingMailbox(
+  clientId: string,
+): Promise<SendingMailboxResolve> {
+  const rows = await prisma.clientMailboxIdentity.findMany({
+    where: { clientId },
+  });
+  return resolveGovernedSendingMailboxFromRows(rows);
 }
 
 export async function countBookedSendSlotsInUtcWindow(

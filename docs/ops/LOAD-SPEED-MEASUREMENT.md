@@ -3,6 +3,12 @@
 **Measured 2026-08-26, cycle 4. Nothing was changed.** Queue item 2 says measure
 first and report before touching a line. This is that report.
 
+> **Cycle 5 addendum (2026-08-26).** The two tidy-ups in section 3 have since
+> been done, and section 3 now records what changed. **The headline finding is
+> untouched: the bottleneck is still the single Basic B1 CPU core**, and the two
+> open decisions below (Always On, and moving off B1) are still Greg's and still
+> the only changes that will actually make the app feel faster.
+
 ---
 
 ## The short answer
@@ -95,17 +101,51 @@ has recorded, because a slot swap is atomic.
 **This is a cost decision, so it is Greg's, not the relay's.** It is the single
 highest-impact change available and no amount of query tuning substitutes for it.
 
-### 3. Then, and only then, look at the queries
+### 3. Then, and only then, look at the queries — DONE, cycle 5
 
-Two things are worth a look once the CPU ceiling is gone. Neither is urgent and
-neither was changed:
+Two things were worth a look once the CPU ceiling is dealt with. Both are now
+done. **Neither was the cause, and neither will be noticeable on its own** —
+they are recorded here as tidy-ups, not as a fix for the slowness.
 
-* **`getAccessibleClientIds` scans the whole `Client` table** on every workspace
-  page — `SELECT "id" FROM "Client" WHERE "deletedAt" IS NULL` with no limit.
-  At 17 clients this is trivial. It is unbounded, so it is worth knowing about.
-* **`ClientMailboxIdentity` is queried four times per page load** (two distinct
-  statements, each twice), even though the bundle already holds
-  `client.mailboxIdentities` from the first query. Redundant, not expensive.
+One correction to the cycle-4 count first: this section said
+`ClientMailboxIdentity` was queried **four** times per page load. Re-measuring
+showed **five**. The undercount came from reading the grouped table (two
+statements marked "runs 2x") and missing a third, single-run statement.
+
+* **`getAccessibleClientIds` scanned the whole `Client` table** on every
+  workspace page — `SELECT "id" FROM "Client" WHERE "deletedAt" IS NULL`, no
+  limit — and twice per page, because the mailbox-mutation gate inside the
+  bundle asked again. The list form still exists for callers that genuinely want
+  every client (the clients index, cross-client reports). What changed is that
+  "may this staff member touch THIS one client?" is now a new
+  `canAccessClient`, a single indexed row lookup. Both build their `where` from
+  one shared `accessibleClientWhere` predicate, so the tenant wall cannot drift
+  between them if it is ever narrowed to `ClientMembership`.
+* **`ClientMailboxIdentity` was read five times per page load**, though the
+  bundle already holds `client.mailboxIdentities` from the first query. Two of
+  the five re-fetched exactly those rows (`loadGovernedSendingMailbox` and
+  `resolveInternalDomainsForClient`); both now take the rows the bundle holds.
+  Three remain and are legitimate: the workspace query's own include, plus the
+  two `mailbox` joins on the governed-send ledger and the inbox preview.
+
+Measured before and after, same harness, same database:
+
+| | before | after |
+|---|---|---|
+| SQL round-trips per workspace page | 19 | **17** |
+| `ClientMailboxIdentity` reads | 5 | **3** |
+| Whole-table "every live client" scans | 1 | **0** |
+
+Still constant at 1, 6 and 20 mailboxes — there was no N+1 before and there is
+none now. The perf test asserts all three numbers, so a regression fails CI
+rather than being noticed later.
+
+**One deliberate behaviour change, recorded because it is not a pure
+refactor.** When a workspace has several sendable mailboxes and *none* is marked
+primary, the "which mailbox is this workspace sending from?" display now picks
+deterministically (primary first, then lowest email alphabetically) instead of
+in whatever order Postgres happened to return rows. The send path is unaffected
+— it calls `loadGovernedSendingMailbox` itself, which is unchanged.
 
 ---
 
