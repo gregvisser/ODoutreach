@@ -1,0 +1,84 @@
+# Tell Greg the RELAY died - the relay cannot tell him itself.
+#
+# The relay runs on Greg's laptop. When a cycle hangs, fails, or the whole
+# watcher stops, the only record is a line in a PowerShell window he is not
+# looking at. He already learns about a failed job from his inbox; this makes
+# the relay work the same way.
+#
+# ## Why the send happens here and not on the laptop
+#
+# RESEND_API_KEY and ALERT_TO_EMAIL are GitHub Secrets and are deliberately not
+# on any laptop. Rather than copy a production secret onto a machine, the
+# watcher asks Actions to send, using the SAME key and the SAME recipient as
+# `alerts.yml`. Nothing about the alerting configuration changes.
+#
+# It also means every alert leaves a run in the history, so "did Greg actually
+# get told?" is a question with an answer rather than an assumption. That is not
+# a small thing in a repository that has recorded eight separate cases of
+# something reporting success while never firing.
+name: Relay alert
+
+on:
+  workflow_dispatch:
+    inputs:
+      subject:
+        description: "Subject line"
+        required: true
+        type: string
+      body:
+        description: "What happened, in plain English"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout and no npm install. This job exists to be fast and to have
+      # as little between the relay dying and Greg knowing as possible.
+      - name: Refuse to run half-configured
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          ALERT_FROM_EMAIL: ${{ vars.ALERT_FROM_EMAIL }}
+        run: |
+          missing=""
+          [ -z "$RESEND_API_KEY" ]   && missing="$missing RESEND_API_KEY"
+          [ -z "$ALERT_TO_EMAIL" ]   && missing="$missing ALERT_TO_EMAIL"
+          [ -z "$ALERT_FROM_EMAIL" ] && missing="$missing ALERT_FROM_EMAIL"
+          if [ -n "$missing" ]; then
+            echo "REFUSING TO RUN: missing$missing."
+            echo "An alerting job that skips quietly produces exactly the same"
+            echo "silence as a dead relay, which is the one thing it must never do."
+            exit 1
+          fi
+
+      - name: Send
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          ALERT_FROM_EMAIL: ${{ vars.ALERT_FROM_EMAIL }}
+          SUBJECT: ${{ inputs.subject }}
+          BODY: ${{ inputs.body }}
+        run: |
+          set -euo pipefail
+          # jq builds the JSON so a quote or a newline in the body cannot break
+          # the request or inject fields into it.
+          payload=$(jq -n \
+            --arg from "$ALERT_FROM_EMAIL" \
+            --arg to "$ALERT_TO_EMAIL" \
+            --arg subject "$SUBJECT" \
+            --arg text "$BODY" \
+            '{from: $from, to: [$to], subject: $subject, text: $text}')
+
+          # --fail-with-body: a 4xx from Resend must fail this job, not scroll
+          # past as a 200-shaped log line.
+          curl --fail-with-body -sS -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
+          echo
+          echo "Sent to the configured alert address."

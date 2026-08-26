@@ -24,6 +24,19 @@
 # success, and never firing. Do not paste typographic punctuation in here.
 # ---------------------------------------------------------------------------
 
+# -LoadOnly loads the functions below WITHOUT starting the loop, so the
+# self-test can exercise them.
+#
+# 2026-08-26: this guard is not a convenience. Before it existed, dot-sourcing
+# this file to get at one function STARTED THE RELAY - PowerShell runs a script
+# it is asked to dot-source, and a script with no param() block silently
+# swallows the switch that was meant to prevent exactly that. It self-queued the
+# next item, overwrote CURRENT.md and launched a live cycle before anyone
+# noticed. Removing this param block re-arms that trap.
+param(
+    [switch]$LoadOnly
+)
+
 $ErrorActionPreference = "Stop"
 
 # Read the agent's output as UTF-8, and write files as UTF-8.
@@ -57,6 +70,21 @@ $LogDir     = Join-Path $RelayDir "log"
 $MaxCycles  = 40
 $SleepSecs  = 60
 
+# How long one cycle may take before it is killed.
+#
+# Before this existed, a hung `claude -p` blocked the watcher forever and only a
+# human closing the window could clear it - which is the whole difference
+# between a relay that runs overnight and a window Greg has to watch.
+#
+# 45 minutes is well above any cycle this repository has recorded (the longest
+# so far is about 20) and well below "Greg is asleep", so a hang costs one item
+# rather than the night.
+$CycleTimeoutMinutes = 45
+
+# The workflow that does the actual emailing. See Send-RelayAlert.
+$AlertWorkflow = "relay-alert.yml"
+$AlertRef      = "main"
+
 # The DIRECT App Service URL, deliberately NOT the custom domain.
 #
 # 2026-08-26: this check read https://opensdoors.bidlow.co.uk/api/health, which
@@ -84,9 +112,6 @@ building for them. This is enforced in ``autonomous-actor-guard.ts``, not by
 your good intentions. If a task seems to need a real send for anyone else,
 that task is wrong - stop and write down why.
 "@
-
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-Set-Location $RepoRoot
 
 function Write-Line($text) {
     $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -117,10 +142,110 @@ function Save-Status($cycle, $outcome, $lastSelfQueued) {
     $status | ConvertTo-Json | Set-Content -Path $StatusFile -Encoding utf8
 }
 
+# ===========================================================================
+# TELLING GREG - from his inbox, not from a window
+#
+# The relay is only autonomous if its death reaches him without him looking.
+# The alerting he already has works exactly this way: a job fails, an email
+# arrives. This is the same idea pointed at the relay itself.
+#
+# WHY IT GOES THROUGH GITHUB ACTIONS RATHER THAN CALLING RESEND DIRECTLY
+#
+# The queue item said to use "the same Resend key and ALERT_TO_EMAIL the job
+# alerting already uses". Both of those are GitHub SECRETS. Neither is on this
+# laptop - `.env` has no RESEND_API_KEY, and `.env.example` has never carried
+# ALERT_TO_EMAIL at all.
+#
+# So the choice was: copy a production secret onto a laptop, or send from the
+# place that already holds it. Sending from Actions uses the identical key and
+# the identical recipient, puts no secret on disk, and has one property a local
+# call does not: every alert leaves a run in the history, so "did it actually
+# send?" is a question with an answer.
+#
+# The cost is honest and worth stating: if GitHub is unreachable, or the `gh`
+# login expires, the alert does not send. That is why the self-test checks the
+# login on every start, and why a failure to dispatch is shouted rather than
+# swallowed - a silent alerting layer produces the same silence as a healthy
+# relay, which is the one thing it must never do.
+# ===========================================================================
+
+function Test-AlertPathArmed {
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        return [pscustomobject]@{ Ok = $false; Detail = "the GitHub CLI (gh) is not installed, so nothing can be emailed" }
+    }
+    $workflow = Join-Path $RepoRoot ".github\workflows\$AlertWorkflow"
+    if (-not (Test-Path $workflow)) {
+        return [pscustomobject]@{ Ok = $false; Detail = "$AlertWorkflow is missing, so there is nothing to dispatch" }
+    }
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $null = & gh auth status 2>&1
+        $authed = ($LASTEXITCODE -eq 0)
+    } catch {
+        $authed = $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if (-not $authed) {
+        return [pscustomobject]@{ Ok = $false; Detail = "gh is installed but not signed in, so a dispatch would be rejected" }
+    }
+    return [pscustomobject]@{ Ok = $true; Detail = "gh is signed in and $AlertWorkflow is present" }
+}
+
+function Send-RelayAlert($subject, $body) {
+    $armed = Test-AlertPathArmed
+    if (-not $armed.Ok) {
+        Write-Line "COULD NOT EMAIL GREG: $($armed.Detail). The alert was: $subject"
+        return $false
+    }
+
+    # workflow_dispatch inputs are not a place to put a whole cycle log. The
+    # email is a nudge to go and look, so it carries the headline and says where
+    # the detail is.
+    $trimmed = $body
+    if ($trimmed.Length -gt 1500) {
+        $trimmed = $trimmed.Substring(0, 1500) + "`n`n[cut short here - the whole story is in the cycle log]"
+    }
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $out = & gh workflow run $AlertWorkflow --ref $AlertRef -f "subject=$subject" -f "body=$trimmed" 2>&1 | Out-String
+        $ok  = ($LASTEXITCODE -eq 0)
+    } catch {
+        $out = $_.Exception.Message
+        $ok  = $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if ($ok) {
+        Write-Line "Emailed Greg: $subject"
+    } else {
+        Write-Line "COULD NOT EMAIL GREG. gh refused the dispatch: $($out.Trim())"
+    }
+    return $ok
+}
+
 function Stop-Relay($why) {
     Set-Content -Path $HaltFile -Value $why -Encoding utf8
     Write-Line "STOPPED: $why"
     Write-Line "The HALT file now exists. Delete it before starting again."
+    # The relay stopping IS the news. Waiting for him to notice a closed window
+    # is the failure this cycle exists to remove.
+    Send-RelayAlert "ODoutreach relay STOPPED" @"
+The relay has stopped and will not pick up any more work until it is started again.
+
+Why it stopped:
+$why
+
+To restart it: run relay-start.cmd in the repository folder. It clears the HALT
+file for you. If it stopped because the safety gate was off, check that first -
+it will simply stop again otherwise.
+"@ | Out-Null
 }
 
 # 2026-08-26: a cycle that DIES leaves STATUS.json reading "running" forever.
@@ -157,6 +282,170 @@ function Resolve-InterruptedCycle {
     } catch {
         # Correcting the record must never be the thing that stops the relay.
         Write-Line "Could not record the interrupted cycle: $($_.Exception.Message)"
+    }
+}
+
+# ===========================================================================
+# RUNNING ONE CYCLE, WITH A DEADLINE
+#
+# The old version was `$prompt | claude -p ... | Out-String`. It was correct
+# right up until the agent hung, at which point the watcher blocked on the pipe
+# with no handle on the process and no way out except a human.
+#
+# This runs the same command with a deadline and, crucially, kills the whole
+# PROCESS TREE. `claude.exe` is a launcher: killing it and leaving its children
+# alive would look identical in the log to a clean recovery, while the machine
+# quietly filled up with dead cycles. The self-test asserts the descendants are
+# gone, not just the parent.
+#
+# Exe/ExeArgs are parameters rather than hard-coded so the self-test can point
+# this at a process that is guaranteed to hang. Testing a 45-minute timeout by
+# waiting 45 minutes is not a test anyone runs twice.
+# ===========================================================================
+
+# Every process descended from $rootPid, parent first.
+#
+# Windows reuses PIDs, so an old PID could name an unrelated process that is
+# now somebody else's. Only processes started at or after the root are counted,
+# which cannot happen for a genuine descendant and rules out killing a stranger.
+function Get-ProcessTreePids([int]$rootPid, [datetime]$startedNoEarlierThan) {
+    $found = New-Object System.Collections.Generic.List[int]
+    $found.Add($rootPid)
+
+    $byParent = @{}
+    try {
+        foreach ($p in Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate) {
+            if ($null -ne $p.CreationDate -and $p.CreationDate -lt $startedNoEarlierThan) { continue }
+            $parent = [int]$p.ParentProcessId
+            if (-not $byParent.ContainsKey($parent)) {
+                $byParent[$parent] = New-Object System.Collections.Generic.List[int]
+            }
+            $byParent[$parent].Add([int]$p.ProcessId)
+        }
+    } catch {
+        # Cannot enumerate - fall back to the one PID we know for certain.
+        return $found
+    }
+
+    $stack = New-Object System.Collections.Generic.Stack[int]
+    $stack.Push($rootPid)
+    while ($stack.Count -gt 0) {
+        $current = $stack.Pop()
+        if ($byParent.ContainsKey($current)) {
+            foreach ($child in $byParent[$current]) {
+                if (-not $found.Contains($child)) {
+                    $found.Add($child)
+                    $stack.Push($child)
+                }
+            }
+        }
+    }
+    return $found
+}
+
+function Invoke-CycleAgent {
+    param(
+        [Parameter(Mandatory = $true)][string]$PromptPath,
+        [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+        [Parameter(Mandatory = $true)][string]$Exe,
+        [string[]]$ExeArgs = @()
+    )
+
+    $stamp   = [guid]::NewGuid().ToString('N')
+    $outFile = Join-Path $env:TEMP "relay-agent-$stamp.out"
+    $errFile = Join-Path $env:TEMP "relay-agent-$stamp.err"
+
+    $startArgs = @{
+        FilePath               = $Exe
+        RedirectStandardInput  = $PromptPath
+        RedirectStandardOutput = $outFile
+        RedirectStandardError  = $errFile
+        NoNewWindow            = $true
+        PassThru               = $true
+    }
+    if ($ExeArgs.Count -gt 0) { $startArgs['ArgumentList'] = $ExeArgs }
+
+    $launchedAt = Get-Date
+    try {
+        $proc = Start-Process @startArgs
+        # Touching the handle makes ExitCode readable later. Without it
+        # Start-Process -PassThru can hand back a process whose exit code is
+        # permanently $null, and a cycle that failed would report nothing.
+        $null = $proc.Handle
+    } catch {
+        return [pscustomobject]@{
+            Started  = $false
+            TimedOut = $false
+            ExitCode = $null
+            Output   = "The cycle could not be started at all: $($_.Exception.Message)"
+            Pids     = @()
+            Seconds  = 0
+        }
+    }
+
+    $deadline = $launchedAt.AddSeconds($TimeoutSeconds)
+    $timedOut = $false
+    while (-not $proc.HasExited) {
+        if ((Get-Date) -ge $deadline) { $timedOut = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+
+    $treePids = @()
+    if ($timedOut) {
+        # Take the census BEFORE killing, or there is nothing left to name.
+        $treePids = Get-ProcessTreePids $proc.Id $launchedAt
+
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $null = & taskkill.exe /T /F /PID $proc.Id 2>&1
+        } catch {
+            # taskkill missing or refused - at least take the parent down.
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        } finally {
+            $ErrorActionPreference = $previous
+        }
+
+        # Killing is asynchronous. Do not report a kill until the processes are
+        # actually gone, because "we asked it to die" is not the same sentence.
+        $killDeadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $killDeadline) {
+            $alive = @($treePids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+            if ($alive.Count -eq 0) { break }
+            foreach ($stubborn in $alive) {
+                try { Stop-Process -Id $stubborn -Force -ErrorAction SilentlyContinue } catch {}
+            }
+            Start-Sleep -Milliseconds 300
+        }
+    }
+
+    $exitCode = $null
+    if (-not $timedOut) {
+        try {
+            $proc.WaitForExit()
+            $exitCode = $proc.ExitCode
+        } catch { $exitCode = $null }
+    }
+
+    $output = ""
+    foreach ($file in @($outFile, $errFile)) {
+        if (-not (Test-Path $file)) { continue }
+        try {
+            $text = Get-Content $file -Raw -Encoding UTF8
+            if (-not [string]::IsNullOrWhiteSpace($text)) { $output += $text }
+        } catch {
+            $output += "`n[could not read $file]`n"
+        }
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
+    }
+
+    return [pscustomobject]@{
+        Started  = $true
+        TimedOut = $timedOut
+        ExitCode = $exitCode
+        Output   = $output
+        Pids     = $treePids
+        Seconds  = [math]::Round(((Get-Date) - $launchedAt).TotalSeconds, 1)
     }
 }
 
@@ -422,8 +711,17 @@ margin. Whatever you build this cycle, prove it FIRES - not that it exists.
 # MAIN
 # ===========================================================================
 
+# Everything above is definitions. Everything below DOES something, so this is
+# where -LoadOnly stops. Nothing that changes a file, moves the working
+# directory or starts a cycle may go above this line.
+if ($LoadOnly) { return }
+
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+Set-Location $RepoRoot
+
 Write-Line "Relay watcher started. Repo: $RepoRoot"
 Write-Line "Checking for work every $SleepSecs seconds. Stop it by creating: $HaltFile"
+Write-Line "A cycle that runs longer than $CycleTimeoutMinutes minutes will be killed and the next item taken."
 
 # Before anything else, and BEFORE the HALT check - a stale "running" is a lie
 # whether or not this watcher goes on to do any work.
@@ -434,8 +732,63 @@ if (Test-Path $HaltFile) {
     exit 0
 }
 
-if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+$claudeCommand = Get-Command claude -ErrorAction SilentlyContinue
+if (-not $claudeCommand) {
     Write-Line "Cannot find the 'claude' command, so no work could be run. Nothing started."
+    exit 1
+}
+$ClaudeExe = $claudeCommand.Source
+
+# ---------------------------------------------------------------------------
+# THE STARTUP GATE
+#
+# The timeout and the alerting only matter on the night something goes wrong,
+# which is exactly the shape of a thing that rots unnoticed. So they are proven
+# on every single start, against the real code on the real machine, and the
+# relay refuses to run if the proof fails. A relay with a broken timeout is the
+# thing this cycle set out to abolish.
+# ---------------------------------------------------------------------------
+$selfTestScript = Join-Path $RepoRoot "relay-selftest.ps1"
+$selfTestFailed = Join-Path $RelayDir "SELFTEST-FAILED.md"
+if (Test-Path $selfTestFailed) { Remove-Item $selfTestFailed -Force -ErrorAction SilentlyContinue }
+
+if (-not (Test-Path $selfTestScript)) {
+    Write-Line "relay-selftest.ps1 is missing. Refusing to run unproven. Nothing started."
+    exit 1
+}
+
+Write-Line "Proving the timeout and the alert path before taking any work..."
+try {
+    $host_exe = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+} catch {
+    $host_exe = "powershell.exe"
+}
+$selfTestOutput = & $host_exe -NoProfile -ExecutionPolicy Bypass -File $selfTestScript 2>&1 | Out-String
+Write-Host $selfTestOutput
+if ($LASTEXITCODE -ne 0) {
+    @(
+        "# The relay refused to start"
+        ""
+        "Written $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')."
+        ""
+        "Its own safety machinery failed its self-test, so it did not take any work."
+        "Nothing was run and nothing was changed."
+        ""
+        "``````"
+        $selfTestOutput.Trim()
+        "``````"
+    ) | Set-Content -Path $selfTestFailed -Encoding utf8
+
+    Send-RelayAlert "ODoutreach relay REFUSED TO START" @"
+The relay did not start. Its own self-test failed, which means the timeout that
+kills a hung cycle, or the path that sends you this email, is not working.
+
+Nothing was run and nothing was changed.
+
+$($selfTestOutput.Trim())
+"@ | Out-Null
+
+    Write-Line "Self-test FAILED. Refusing to run. Details written to $selfTestFailed"
     exit 1
 }
 
@@ -495,34 +848,88 @@ while ($true) {
     $namedFiles = Get-NamedFiles $prompt
     $before     = Get-RepoEvidence $namedFiles
 
-    try {
-        # 2026-08-26: cycle 1 ran the whole loop correctly and did NO work, because a
-        # non-interactive `claude -p` cannot answer a permission prompt. It refused
-        # every Write and reported honestly that it could not ask.
-        #
-        # `dontAsk` auto-DENIES anything not on the list, rather than allowing
-        # everything. Deliberately narrower than --dangerously-skip-permissions.
-        #
-        # This does NOT weaken the operating system's own gates. PreToolUse hooks
-        # fire in every permission mode, before permission rules are evaluated, and
-        # a hook exiting 2 blocks the call outright. gate-build.mjs still guards
-        # Write/Edit, gate-ship.mjs still guards Bash, and deny-irreversible-hook.mjs
-        # refuses anything that cannot be undone. The Bidlow-only send rule is
-        # enforced in production code, not here.
-        $output = $prompt | claude -p --permission-mode dontAsk --allowedTools "Write,Edit,Read,Glob,Grep,Bash" 2>&1 | Out-String
-        $ranClean = $true
-    } catch {
-        $output   = $_.Exception.Message
-        $ranClean = $false
-    }
+    # The prompt goes in as a FILE rather than down a pipe, because a redirected
+    # pipe gives no handle on the child and therefore no way to kill it.
+    #
+    # It is written without a byte-order mark on purpose: CURRENT.md carries one
+    # (PowerShell 5.1 adds it), and those three bytes would arrive as the first
+    # characters of the brief.
+    $stdinPath = Join-Path $RelayDir "CURRENT.stdin.txt"
+    [System.IO.File]::WriteAllText($stdinPath, $prompt, (New-Object System.Text.UTF8Encoding($false)))
+
+    # 2026-08-26: cycle 1 ran the whole loop correctly and did NO work, because a
+    # non-interactive `claude -p` cannot answer a permission prompt. It refused
+    # every Write and reported honestly that it could not ask.
+    #
+    # `dontAsk` auto-DENIES anything not on the list, rather than allowing
+    # everything. Deliberately narrower than --dangerously-skip-permissions.
+    #
+    # This does NOT weaken the operating system's own gates. PreToolUse hooks
+    # fire in every permission mode, before permission rules are evaluated, and
+    # a hook exiting 2 blocks the call outright. gate-build.mjs still guards
+    # Write/Edit, gate-ship.mjs still guards Bash, and deny-irreversible-hook.mjs
+    # refuses anything that cannot be undone. The Bidlow-only send rule is
+    # enforced in production code, not here.
+    $run = Invoke-CycleAgent `
+        -PromptPath     $stdinPath `
+        -TimeoutSeconds ($CycleTimeoutMinutes * 60) `
+        -Exe            $ClaudeExe `
+        -ExeArgs        @("-p", "--permission-mode", "dontAsk", "--allowedTools", "Write,Edit,Read,Glob,Grep,Bash")
+
+    Remove-Item $stdinPath -Force -ErrorAction SilentlyContinue
+
+    $output = $run.Output
 
     $after   = Get-RepoEvidence $namedFiles
     $verdict = Get-EvidenceVerdict $before $after $namedFiles
 
-    # The outcome comes from the evidence, not from the exit code.
-    if (-not $ranClean) {
-        $outcome = "failed to run"
-        $headline = "The cycle did not run to completion. It threw before finishing, so treat anything below as partial."
+    # The outcome comes from the evidence, not from the exit code - EXCEPT for
+    # the three ways a cycle can end badly, which the evidence cannot see.
+    # A cycle that was killed may well have changed files on its way down; that
+    # is not the same as having finished, and must never be logged as though it
+    # were.
+    $alertSubject = $null
+    $alertBody    = $null
+
+    if (-not $run.Started) {
+        $outcome  = "failed to run"
+        $headline = "The cycle never started. $($run.Output)"
+        $alertSubject = "ODoutreach relay: cycle $cycle could not start"
+        $alertBody    = "Cycle $cycle never got as far as running.`n`n$($run.Output)`n`nThe relay is still going and has moved on to the next item."
+    } elseif ($run.TimedOut) {
+        $outcome  = "timed-out"
+        $headline = @"
+KILLED. This cycle was still running after $CycleTimeoutMinutes minutes, so it
+was stopped, along with every process it had started ($($run.Pids.Count) in
+total). The relay did NOT wait for it and has carried on to the next item.
+
+Anything it had already written to disk is still there - a kill does not undo
+work - so read the evidence below before assuming this item is untouched.
+"@
+        $alertSubject = "ODoutreach relay: cycle $cycle timed out"
+        $alertBody    = @"
+Cycle $cycle ran for more than $CycleTimeoutMinutes minutes and was killed.
+$($run.Pids.Count) process(es) were stopped.
+
+The relay is STILL RUNNING and has moved on to the next item by itself - you do
+not need to do anything tonight.
+
+What it was working on:
+$(($prompt -split "`n" | Select-Object -First 3) -join "`n")
+
+The full record is in .bidlow\relay\log\cycle-$('{0:d3}' -f $cycle).md
+"@
+    } elseif ($null -ne $run.ExitCode -and $run.ExitCode -ne 0) {
+        $outcome  = "failed"
+        $headline = "The cycle ran but ended badly (exit code $($run.ExitCode)). Anything below is partial. The relay has carried on to the next item."
+        $alertSubject = "ODoutreach relay: cycle $cycle failed"
+        $alertBody    = @"
+Cycle $cycle ended with exit code $($run.ExitCode) after $($run.Seconds) seconds.
+
+The relay is STILL RUNNING and has moved on to the next item by itself.
+
+The full record is in .bidlow\relay\log\cycle-$('{0:d3}' -f $cycle).md
+"@
     } elseif ($verdict.didSomething) {
         $outcome = "finished"
         $headline = "Work happened. Evidence: " + ($verdict.reasons -join "; ") + "."
@@ -551,6 +958,7 @@ either way.
         $headline
         ""
         "Started $($started.ToString('yyyy-MM-dd HH:mm:ss')), took about $minutes minutes."
+        "How it ended: $(if (-not $run.Started) { 'it never started' } elseif ($run.TimedOut) { "killed at the $CycleTimeoutMinutes minute deadline" } else { "exit code $($run.ExitCode)" })."
         ""
         "Evidence checked: git refs on every branch, the working tree, and these"
         "files named in the brief: $checkedList"
@@ -566,6 +974,12 @@ either way.
 
     Save-Status $cycle $outcome $lastSelfQueued
     Write-Line "Cycle $cycle $outcome. Written to $logFile"
+
+    # Tell Greg AFTER the log exists, so the email can point at something that
+    # is already there to read.
+    if ($alertSubject) {
+        Send-RelayAlert $alertSubject $alertBody | Out-Null
+    }
 
     Start-Sleep -Seconds $SleepSecs
 }
