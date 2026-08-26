@@ -1,6 +1,71 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-24 · Tier P (Client Production)**
+**Updated 2026-08-26 · Tier P (Client Production)**
+
+## Session 2026-08-26 — Relay cycle 11, queue item 20. Open tracking VERIFIED off.
+
+Production serves **`9ef2de9`** (verified by hash against the direct App Service
+URL, not the CDN domain). PR **#235** merged, deployed, health check green.
+
+### The answer: `OPEN_TRACKING_PIXEL` is exactly `off` in production
+Read 2026-08-26 via `az webapp config appsettings list` on
+`app-opensdoors-outreach-prod`: lower-case, no whitespace, no quotes. So
+`isOpenTrackingPixelEnabled()` returns false and **the written promise to Sam and
+James at OpensDoors holds.** `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN` is unset,
+which is moot while the pixel is off globally.
+
+Did not stop at the config value, because a correct setting is not a pixel that
+stops firing:
+- **No bypass** — only two call sites embed a pixel (`execute-one.ts`, Gmail and
+  Graph legs); both route through `buildOpenTrackingPixelUrl`.
+- **Not inlined at build time** — the real risk. The build runs in GitHub Actions
+  where the var is NOT set; had webpack baked it in, the Azure setting would have
+  been cosmetic and the pixel live regardless. The emitted server chunk keeps a
+  genuine runtime read. Re-checked after the fix against the new code shape:
+  `if(void 0!==(c=process.env.OPEN_TRACKING_PIXEL)&&e.has(c.trim().toLowerCase()))return null`.
+
+### Defect found while verifying, FIXED — the kill-switch failed OPEN
+`isOpenTrackingPixelEnabled()` compared `!== "off"`, so `OFF`, `Off`, `off `
+(trailing space), `false`, `0`, `no`, `disabled` all silently **resumed**
+tracking — no error, no log line, nothing on screen. Azure's app-settings editor
+has no validation, so the single point the client cares most about sat one
+keystroke from being quietly broken, in the direction that breaks the promise.
+Now trimmed + lower-cased against an off-set, failing closed. Change only ever
+WIDENS what counts as off, so it cannot enable tracking for anyone.
+11 red-first tests, watched failing before the fix. Files: `src/lib/tracking/open-pixel.ts`,
+`src/lib/tracking/open-pixel.test.ts`. Gates: lint 0 errors, typecheck clean, **2312 tests**.
+
+### Decisions made
+- **Did NOT open the production DB firewall.** Wanted opens-stopped evidence from
+  the live database (opens ceasing at the switch-off date) as empirical rather
+  than inferential proof. The firewall allows Azure services only. Opening a live
+  client database to a workstation IP is a security-boundary call on the client's
+  data and is Greg's, not the relay's. **The evidence chain is therefore inference
+  at its last step** — stated plainly rather than rounded up.
+- **Item 20 was rewritten mid-cycle by the Cowork side.** It is no longer "verify
+  the Azure value" but a larger build: tracking off BY DEFAULT, per-client opt-in,
+  gated on verified DNS, env var demoted to a global backstop. Adopted the new
+  text verbatim rather than working around it; left status **TODO**.
+- No schema change, no migration, no config change, no send. One-way doors: none.
+
+### Half-done / where it was left
+**Item 20 is TODO.** Cycle 11 completed only its "report the live Azure value"
+clause and made the backstop trustworthy enough to BE a backstop. **Still unbuilt:
+the per-client setting defaulting to OFF, the verified-DNS gate, and the
+link-rewriting half.** This is a 31 August client commitment.
+
+### Next session should pick up first
+**Item 18** (added to QUEUE.md by Cowork during this cycle, sits above item 20):
+can Greg actually send tonight? Nothing has left this system since 3 July —
+seven weeks — and he has a client meeting. Checks whether the `bidlowai` mailbox
+has live credentials (8 mailboxes elsewhere are dead), then one real send to an
+address he controls (`bidlowai` is the allowlisted client), then RAW source
+inspection of every link and image host against the sending domain. An early no
+is far more useful than a late surprise. Then item 20's per-client half.
+
+### Nothing found contradicting .bidlow/PROJECT.json
+CLASSIFY.json's 2026-08-23 note that prod reads `OPEN_TRACKING_PIXEL=off` was
+re-confirmed live today and remains accurate.
 
 ## Session 2026-08-24f — BUILD-6. NDR tail SETTLED. Real bounces found.
 
