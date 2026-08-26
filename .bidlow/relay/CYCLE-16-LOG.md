@@ -77,14 +77,44 @@ corrections are the strongest evidence the behaviour genuinely changed.
 
 ### Gates — run, not assumed
 
+All run **locally**, on a clean tree, on `dc5de45`, with `.next` cleared first:
+
 | Gate | Result |
 |---|---|
 | `npm run lint` | 0 errors (1 warning, pre-existing, in untracked `relay-status.mjs`) |
 | `npm run typecheck` | clean |
-| `npm test` | **2354 passed / 248 files** |
+| `npm test` | **2351 passed / 247 files** |
 | `npm run build` | green |
+| **CI** | ❌ **NOT MET — never scheduled. See below.** |
 
 No schema change, no migration, no send-path change.
+
+#### Two corrections to my own earlier numbers
+
+1. I first quoted **2354 tests / 248 files**. That run was measured on a
+   working tree still carrying a test file from
+   `feat/related-domain-discovery-wiring`. The honest figure for this branch is
+   **2351 / 247**. Commit message and PR body both corrected.
+2. A typecheck run reported three errors in
+   `.next/types/.../discover-families/route.ts`. That was a stale build cache
+   resolving types from the other branch, not a real failure. Clearing `.next`
+   and re-running gave a clean result.
+
+#### CI never ran — and I did not merge
+
+GitHub Actions created **no workflow run** for this PR. Verified rather than
+assumed: `check-runs` for `dc5de45` returns `total_count: 0`, and the
+`actions/runs` list filtered to this branch is empty, after **three pushes, a
+close/reopen cycle, and a further six-minute wait**.
+
+Repo-wide this afternoon: two CI runs on the other branch stuck `queued` for
+50+ minutes, plus several `startup_failure` entries across `CI`, `Alerts` and
+`Relay alert`. Runners are alive — the scheduled `Process outbound queue` job
+succeeded at 16:04Z — so this is GitHub-side scheduling, not this change.
+
+`mergeStateStatus` is `BLOCKED`. **PR #245 is open and unmerged.** Per the
+tier-verification rule, a gate that cannot be run is NOT met, so this cycle
+does not claim a green CI gate. Unsticking Actions and merging is a human step.
 
 ---
 
