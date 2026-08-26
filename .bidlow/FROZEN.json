@@ -9,6 +9,7 @@
     "e2e/fixtures.ts": "8f5344a6b07ea23b76e0510a27eba21f30b1374c070706ec2d7be087ebc5a28d",
     "e2e/global-setup.ts": "126ed83da826a7a9a920fd5ec75cb71f2f1dc07456a110a211b42e9a3cd400a1",
     "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
+    "e2e/mailboxes-table-first.spec.ts": "1b54d0bcdefa2740fc8a5f281696da3c5efc494a38894d585293a93517edce07",
     "e2e/safe-database.test.ts": "79d8a0d1ea23b892535dc2ccb60bc55413db2f236b52112ada5cdd2f04483dee",
     "e2e/safe-database.ts": "4a8d42275c899ca1771cd51600a7445ae351d0a50e81dd8611d0e31c6e3197b6",
     "e2e/screen-walk.spec.ts": "ac5feebd802c8676293e25a4c760ca9f9333d2c53547194466777e21b290fde6",
@@ -80,6 +81,27 @@
       "authorised_by": "relay cycle 23 (autonomous, queue item 27 part 7) — NOT Greg-authorised",
       "what": "Seeds 250 blocked addresses + 3 blocked domains on the E2E workspace so the /suppression truncation defect is reproducible in a browser test. Additive upserts/createMany with skipDuplicates against the E2E client only; no existing seed row or assertion changed. Test-database only (assertSafeTestDatabase guards it).",
       "sha256_after": "bd81d4862666b1f4d590eb0cb67a4f21741790ecd1b22d76e7016d2564a9225a"
+    },
+    {
+      "file": "e2e/fixtures.ts",
+      "date": "2026-08-26",
+      "authorised_by": "relay cycle 25 (autonomous, queue item 27 defect 6) — NOT Greg-authorised",
+      "what": "Adds E2E_MAILBOXES / E2E_MAILBOX_SIGNATURE_HTML / E2E_CONNECTED_MAILBOX_COUNT: five sending mailboxes shaped like the live opensdoors workspace (four CONNECTED carrying a full branded signature, one never connected), so 'the Mailboxes screen buries the mailboxes' and the identical-advice-on-every-row defect are reproducible in a browser test. Purely additive; no existing fixture changed. Send-safe: no MailboxIdentitySecret is seeded, so the connected rows hold no token and fail closed, provider credentials are blanked in e2e/env.ts, and no spec submits a send.",
+      "sha256_after": "aa3aaeee5ca4ca1f5dc2aa25d13c21ddca7a6d5b68822ceeed5cb67b47ca6f2b"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-26",
+      "authorised_by": "relay cycle 25 (autonomous, queue item 27 defect 6) — NOT Greg-authorised",
+      "what": "Seeds the five E2E_MAILBOXES rows on the E2E workspace so the Mailboxes screen has mailboxes to render and the 'help buries the table' / 'same paragraph on every row' defects are reproducible in a browser test. Additive idempotent upserts at fixed ids against the throwaway e2e database (assertSafeTestDatabase still guards it); no existing seed row changed. Send-safe: no MailboxIdentitySecret is created, so the CONNECTED rows hold no token and any send attempt fails closed.",
+      "sha256_after": "e89ff5aaca81deda7a9ddec3b7fbe4d40ba98fc04f6d4d8ee8edd96d0ecf24d8"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-26",
+      "authorised_by": "relay cycle 25 (autonomous, queue item 27 defect 6) — NOT Greg-authorised",
+      "what": "Supersedes the entry above it, which was recorded before the import line was added and so froze a half-finished hash. Same change: seeds the five E2E_MAILBOXES rows on the E2E workspace so the Mailboxes screen has mailboxes to render and the 'help buries the table' / 'same paragraph on every row' defects are reproducible in a browser test. Additive idempotent upserts at fixed ids against the throwaway e2e database (assertSafeTestDatabase still guards it); no existing seed row changed. Send-safe: no MailboxIdentitySecret is created, so the CONNECTED rows hold no token and any send attempt fails closed.",
+      "sha256_after": "59a3763def7a27c69ed97e95a053127de298f0a48a04a331b065a28ae8392875"
     }
   ]
 }

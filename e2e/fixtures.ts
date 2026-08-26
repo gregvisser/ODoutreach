@@ -112,6 +112,41 @@ export const E2E_SUPPRESSION_NEEDLE = e2eSuppressedEmail(
   E2E_SUPPRESSION.emailCount - 1,
 );
 
+/**
+ * Sending mailboxes for /clients/[id]/mailboxes (queue item 27, defect 6).
+ *
+ * Deliberately shaped like the live opensdoors workspace measured on
+ * 2026-08-26: FOUR connected Microsoft mailboxes that all carry a full branded
+ * signature — so `getOperatorSignatureState` returns the same `ready_od`
+ * template for every one of them, and the table printed the identical ~50-word
+ * paragraph four times — plus ONE that never connected, whose advice really is
+ * different and must survive. A fixture where every row is identical would pass
+ * even if the fix wrongly hoisted advice that belongs to a single row.
+ *
+ * SEND SAFETY: `connectionStatus: CONNECTED` is a display state only. No
+ * `MailboxIdentitySecret` row is seeded, so `sendViaConnectedMailboxOrFail` has
+ * no token and fails closed; the app under test also runs with every provider
+ * credential blanked (`e2e/env.ts`), and no spec submits a send.
+ */
+const E2E_SIGNATURE_HTML =
+  "<p>Kind regards,<br/>E2E Sender<br/>E2E Test Workspace<br/>Something long enough to count as a full branded signature.</p>";
+
+export const E2E_MAILBOXES = [
+  { id: "e2e-mailbox-0000000000000001", email: "sender-one@example.test", connected: true },
+  { id: "e2e-mailbox-0000000000000002", email: "sender-two@example.test", connected: true },
+  { id: "e2e-mailbox-0000000000000003", email: "sender-three@example.test", connected: true },
+  { id: "e2e-mailbox-0000000000000004", email: "sender-four@example.test", connected: true },
+  { id: "e2e-mailbox-0000000000000005", email: "sender-offline@example.test", connected: false },
+] as const;
+
+/** The signature HTML every connected fixture mailbox carries. */
+export const E2E_MAILBOX_SIGNATURE_HTML = E2E_SIGNATURE_HTML;
+
+/** How many of the fixtures are connected — the count the hoisted advice names. */
+export const E2E_CONNECTED_MAILBOX_COUNT = E2E_MAILBOXES.filter(
+  (m) => m.connected,
+).length;
+
 export const E2E_STORAGE_STATE = {
   superAdmin: "e2e/.auth/super-admin.json",
   staff: "e2e/.auth/staff.json",
