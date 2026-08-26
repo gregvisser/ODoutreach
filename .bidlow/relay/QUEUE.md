@@ -27,7 +27,7 @@ leaves the building for them. Enforced in `autonomous-actor-guard.ts`, not here.
 | # | Item | Status |
 |---|---|---|
 | 1 | Relay proven end to end; commit the out-of-band watcher fixes | DONE 3 |
-| 13 | **THE RELAY MUST SURVIVE ITS OWN FAILURES WITHOUT GREG.** This is now top priority — it is the difference between autonomous and "Greg watches a window". Three parts, all in `relay-watch.ps1`: (a) a per-cycle TIMEOUT — a hung `claude -p` currently blocks the watcher forever and only a human can clear it; kill the child after 45 minutes, record the cycle as `timed-out`, and CARRY ON to the next; (b) on failure or timeout, EMAIL GREG using the same Resend key and `ALERT_TO_EMAIL` the job alerting already uses — he should learn the relay died from his inbox, exactly as he learns a job failed, not by looking at a window; (c) a Windows Scheduled Task that starts the watcher at logon so a reboot does not silently end the run. Write the task registration as a small script he runs once, and explain it in `RELAY-README.md` in plain English. | IN PROGRESS 6 |
+| 13 | **THE RELAY MUST SURVIVE ITS OWN FAILURES WITHOUT GREG.** This is now top priority — it is the difference between autonomous and "Greg watches a window". Three parts, all in `relay-watch.ps1`: (a) a per-cycle TIMEOUT — a hung `claude -p` currently blocks the watcher forever and only a human can clear it; kill the child after 45 minutes, record the cycle as `timed-out`, and CARRY ON to the next; (b) on failure or timeout, EMAIL GREG using the same Resend key and `ALERT_TO_EMAIL` the job alerting already uses — he should learn the relay died from his inbox, exactly as he learns a job failed, not by looking at a window; (c) a Windows Scheduled Task that starts the watcher at logon so a reboot does not silently end the run. Write the task registration as a small script he runs once, and explain it in `RELAY-README.md` in plain English. **All three shipped in #227 and all three were PROVEN TO FIRE, not just built:** (a) timeout kills the whole process TREE (a parent-only kill leaves `claude.exe`'s children alive and looks identical in the log) — `relay-selftest.ps1` 11/11, watched RED first by breaking the kill; (b) a real alert was sent end to end, Resend id `d6435f90`, via `relay-alert.yml` — **deviation, deliberate: `RESEND_API_KEY`/`ALERT_TO_EMAIL` are GitHub Secrets and are on NO laptop, so the watcher dispatches Actions instead of copying a production secret onto this machine; same key, same recipient, and every alert now leaves a run in the history**; (c) task registered, read back, and `-Prove` ran an inert twin → result 0. The self-test runs at EVERY start and the relay refuses to run if it fails. **GREG MUST RESTART THE RELAY ONCE** — PowerShell loaded the old script into memory at 08:30, so the running watcher keeps the old no-timeout behaviour until it is restarted. | DONE 6 |
 | 2 | **Load speed — MEASURE first.** Which pages, how slow, where the time goes. Chrome extension approved. `loadClientWorkspaceBundle` (8 parallel queries) is a suspect, not a cause. Report before changing anything. | DONE 4 |
 | 3 | **Load speed — fix (code side only).** Both tidy-ups done, measured before and after on the same harness: workspace page **19 → 17** round-trips, `ClientMailboxIdentity` reads **5 → 3**, whole-table `Client` scans **1 → 0**; still constant at 1/6/20 mailboxes. New `canAccessClient` (one indexed row) replaces "read every client, compare in JS" for single-client checks; the bundle now reuses the mailbox rows it already holds. The perf test asserts all three numbers and was **watched RED first** (`expected 5 to be less than or equal to 3`). **Correction: the count was 5, not the 4 this row claimed** — cycle 4 read its own grouped table and missed a third statement. **These were tidy-ups and are NOT the cause; nobody will feel them.** The cause is still the B1 CPU — see the standing finding below. | DONE 5 |
 | 4 | **The eight dead mailboxes** — see `EIGHT-DEAD-MAILBOXES.md`. Answer the SENDING question first. Six need the client to sign in (blocked, prepare only); two Chevron accounts are deleted and can never reconnect. Make the screen stop saying "Connected" when credentials are dead. | TODO |
@@ -69,6 +69,19 @@ leaves the building for them. Enforced in `autonomous-actor-guard.ts`, not here.
   checkbox), move off B1 (a cost decision, the highest-impact change
   available), and look at Sentry Performance — `tracesSampleRate: 1` means every
   production request is already traced and nobody has opened it.**
+* **A running PowerShell script does not change when its file changes.** The
+  watcher loads `relay-watch.ps1` into memory once, at start. Editing it, merging
+  it, even deploying it does nothing to the process already running — it must be
+  restarted. Cycle 6 shipped the timeout and the alerting to `main` and the
+  watcher carried on without either, exactly as designed and exactly as easy to
+  mistake for "it is live now". Ship a change to the relay, then RESTART it.
+* **Dot-sourcing a PowerShell script RUNS it.** Cycle 6 dot-sourced
+  `relay-watch.ps1` to reach one function and started a live relay: it
+  self-queued item 4, marked its row `IN PROGRESS 7`, overwrote `CURRENT.md` and
+  launched a real cycle. A script with no `param()` block silently swallows the
+  switch meant to prevent that. `-LoadOnly` now exists and is load-bearing; do
+  not remove it. (Left behind: row 4 wrongly `IN PROGRESS 7`, which would have
+  made the relay skip the dead-mailboxes item permanently. Restored to `TODO`.)
 * Eight mailboxes read `CONNECTED` while their credentials are dead.
 * The Google OAuth app is in Testing mode — 7-day token expiry, recurring
   weekly, until it is published.
