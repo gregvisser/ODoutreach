@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 
 import type { LaunchReadinessPanelInput } from "./client-launch-state";
 import {
-  buildClientWorkflowSteps,
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "./client-launch-state";
@@ -73,31 +72,32 @@ describe("deriveLaunchStageLabel", () => {
   });
 });
 
-describe("buildClientWorkflowSteps", () => {
-  it("returns seven steps with client-scoped hrefs", () => {
-    const steps = buildClientWorkflowSteps(baseInput({ clientId: "abc" }));
-    expect(steps).toHaveLength(7);
-    expect(steps[0]?.href).toBe("/clients/abc/brief");
-    expect(steps.map((s) => s.label).join("|")).toContain("Sources");
-  });
-
-  it("does not embed env key names in steps", () => {
-    const steps = buildClientWorkflowSteps(
-      baseInput({ rocketReachEnvReady: true, clientId: "x" }),
+describe("buildLaunchReadinessRows does not embed env key names", () => {
+  // Was asserted against the numbered Workflow pill strip too, until the strip
+  // was removed as a third copy of the same seven destinations. The rule it
+  // protects — never put an env var name on a client-facing screen — still
+  // applies to the rows that remain.
+  it("keeps ROCKETREACH_API / GOOGLE_SERVICE_ACCOUNT out of the rendered rows", () => {
+    const rows = buildLaunchReadinessRows(
+      basePanel({ rocketReachEnvReady: true, clientId: "x" }),
     );
-    const blob = JSON.stringify(steps);
-    expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
+    expect(JSON.stringify(rows)).not.toMatch(
+      /ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i,
+    );
   });
 });
 
 /**
  * ONE NAME PER DESTINATION.
  *
- * The Overview shows the same seven destinations three times: the subnav tab
- * row, the numbered Workflow strip, and the Launch readiness panel. Two of them
- * disagreed on the words - the tab row said "Do-not-contact" and "Lists" where
- * the other two said "Suppression" and "Contacts" - so one page offered two
- * different names for the same place.
+ * The Overview USED TO show the same seven destinations three times: the subnav
+ * tab row, the numbered Workflow strip, and the Launch readiness panel. Two of
+ * them disagreed on the words - the tab row said "Do-not-contact" and "Lists"
+ * where the other two said "Suppression" and "Contacts" - so one page offered
+ * two different names for the same place.
+ *
+ * The Workflow strip is now GONE (queue item 27, defect 4), so there are two
+ * lists, not three. The naming rule still binds the two that remain.
  *
  * PR #138 already decided this, renaming Contacts -> Lists in the subnav while
  * holding the href stable. The decision simply never reached these two
@@ -124,17 +124,10 @@ describe("one name per destination", () => {
     }
   });
 
-  it("every workflow step label is a name the tab row also uses", () => {
-    for (const step of buildClientWorkflowSteps(baseInput({ clientId: "abc" }))) {
-      expect(subnavLabels).toContain(step.label);
-    }
-  });
-
-  it("neither builder reintroduces the two names the tab row rejected", () => {
-    const all = [
-      ...buildLaunchReadinessRows(basePanel({ clientId: "abc" })).map((r) => r.label),
-      ...buildClientWorkflowSteps(baseInput({ clientId: "abc" })).map((s) => s.label),
-    ];
+  it("the readiness rows do not reintroduce the two names the tab row rejected", () => {
+    const all = buildLaunchReadinessRows(basePanel({ clientId: "abc" })).map(
+      (r) => r.label,
+    );
     expect(all).not.toContain("Suppression");
     expect(all).not.toContain("Contacts");
     expect(all).toContain("Do-not-contact");
