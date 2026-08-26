@@ -209,3 +209,35 @@ The mailbox grant is `Mail.Send` + `Mail.Read` only, with no `Mail.ReadWrite`, s
 the application genuinely cannot write into a customer's mailbox. That is the
 right answer, and it is why the round trip was run with a real external
 counterparty instead.
+
+---
+
+## Addendum — the STOP fix was proved to FIRE in production, not just in tests
+
+A green test proves the code passes. It does not prove the code is running, and
+this repository has recorded eleven cases of something that was built, wired,
+reported success and never fired. So after the fix deployed, the round trip was
+run once more with a reply whose entire body was the single word our email asks
+for.
+
+Deployed commit verified by hash against the **direct** App Service URL before
+starting: `/api/build-info` → `db9b2114ff7a577fa0d4fe19a109596c1bb659a6`,
+`/api/health` → `ok: true`, `database: ok`.
+
+| Leg | When (UTC) |
+|---|---|
+| Existing suppression cleared so the test could not pass on stale state | 13:05 |
+| Fresh outbound sent to the contact through the real worker | 13:06:5x |
+| Reply sent, body exactly `STOP` and nothing else | 13:07:10 |
+| Landed in the Exchange Inbox | 13:07:23 |
+| **Reply ingested, matched, and the contact SUPPRESSED** | **13:07:49** |
+
+The stored reply reads `bodyPreview: "STOP"` — no other words, nothing else for
+a different pattern to catch — and the contact came out with
+`isSuppressed: true` and a `SuppressedEmail` row. **Before this change that same
+reply would have been filed as a reply and suppressed nothing**, and the next
+campaign would have emailed them again.
+
+The suppression state was cleared first, deliberately, so the result could not be
+a leftover from the earlier round trip. That delete touched the `bidlowai`
+workspace only, and the script refuses to run against any other client.
