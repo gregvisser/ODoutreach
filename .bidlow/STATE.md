@@ -2317,3 +2317,113 @@ corrects a cycle that DIED; it does nothing about a cycle that completes having
 achieved nothing, which is exactly what cycle 1 did. The relay still has no
 notion of whether the work was done. Nothing in this session changed that.
 
+
+---
+
+# The eight dead mailboxes - cycle 7, 2026-08-26
+
+Queue item 4. `EIGHT-DEAD-MAILBOXES.md` items 1, 2 and 3. Merged as #229,
+commit `823dc31`, live and verified by hash on the direct App Service URL.
+
+## 1. Can the eight still SEND? No. Not one of them.
+
+Answered first, read-only, no test send - as the brief demanded.
+
+`executeOutboundSend` calls `getGoogleGmailAccessTokenForMailbox` and
+`getMicrosoftGraphAccessTokenForMailbox` at `execute-one.ts:544` and `:714`.
+Those are the SAME two functions `mailbox-inbox-sync.ts` calls. One
+refresh-token grant serves both jobs, so a grant that fails for reply sync
+fails for send. No inference required beyond reading both call sites.
+
+It fails CLOSED, which is the only good news here: there is no ESP fallback on
+a row carrying a `mailboxIdentityId`, so a send does not quietly leave from
+some other address - the row fails terminally.
+
+**Five of the eight are Train Hugger.** The ramp Greg is waiting on would have
+launched, queued, and failed every row for the largest client. This confirms
+the earlier STATE.md reading and adds nothing to contradict it.
+
+## 2 and 3. What shipped
+
+A new pure classifier, `src/server/mailbox/mailbox-credential-failure.ts`, read
+by BOTH the sync path and the send path. Shared deliberately: they stand on one
+grant, so they must not drift into disagreeing about whether a mailbox is alive.
+
+| failure | status written | what staff read |
+|---|---|---|
+| expired sign-in (`invalid_grant`) | `CONNECTION_ERROR` | reconnect this mailbox |
+| deleted account (`AADSTS500341`) | `DISCONNECTED` | **cannot be reconnected** |
+| transient 5xx / timeout | *unchanged* | nothing |
+
+**The ORDER of the first two checks was the bug.** Entra returns
+`AADSTS500341` wrapped inside an `invalid_grant` response. Testing
+`invalid_grant` first classified two permanently deleted Chevron Security
+accounts as "just reconnect it", and the screen told staff to complete MFA for
+accounts that no longer exist. The deleted-account check now runs first, in the
+classifier AND in `mailboxes-operator-model.ts`, with a comment at both sites
+saying why the order is load-bearing.
+
+Retrying the dead forever stops for FREE: `syncActiveMailboxRepliesBatch`
+selects on `connectionStatus: "CONNECTED"`, so a flipped mailbox drops out of
+the batch until a human reconnects it. No new query, no scheduler change.
+
+A transient provider failure deliberately changes NOTHING. One bad afternoon at
+Microsoft must not become thirty-five manual reconnects.
+
+No schema change and no migration - the existing enum and `lastError` carry it.
+
+## It FIRED. This is not "built and wired".
+
+The queue's worst defect class, now at eight instances, is code that ships,
+reports success and never actually runs. So this was proved from OUTSIDE the
+app, in the public Actions history, with no access to the production database:
+
+| run | payload | conclusion |
+|---|---|---|
+| `32947374171` 08:22 baseline | `processed 35, succeeded 27, failed 8` | failure |
+| `32951281767` 09:07 pre-deploy | same eight | failure |
+| `32952093501` 09:16 **after deploy** | `processed 35, failed 8` - the run that DOES the flip | failure |
+| `32952551643` 09:21 **next run** | **`processed 27, succeeded 27, failed 0, ok true`** | **success** |
+
+**35 to 27.** Exactly eight mailboxes stopped being selected, and the workflow
+went green for the first time. A mailbox can only leave that batch by leaving
+`CONNECTED`. Code that merely exists cannot move that number.
+
+Red-first was watched, not assumed: four failing tests before the fix, and the
+send-path test was separately proven capable of failing by deleting the
+deleted-account branch and re-running. The classifier is tested against the
+VERBATIM production error strings from run `32947374171` - em dash,
+`{EUII Hidden}` redaction, trace ids and all - rather than a paraphrase, which
+is how a classifier ends up tested against its author's assumptions.
+
+## The one thing INFERRED rather than observed
+
+The run history proves all eight left `CONNECTED`. It does NOT distinguish which
+landed in `CONNECTION_ERROR` (the six Google) from which landed in
+`DISCONNECTED` (the two Chevron) - the batch excludes both alike, so the count
+cannot tell them apart. That split rests on the unit tests over the exact
+production strings, not on a live observation. `PROCESS_QUEUE_SECRET` is a
+GitHub Secret and is on no laptop, so a direct read-only prod query was not
+available without writing a workflow to print client mailbox state into a log,
+which was judged not worth it.
+
+**Greg can settle it in ten seconds on screen:** Chevron Security's two
+mailboxes should read "Cannot be reconnected", Train Hugger's five should read
+"Connection failed".
+
+## What did NOT happen, deliberately
+
+**Nothing was reconnected.** That touches live client credentials, needs the
+client's own sign-in, and is Greg's call - as the brief instructed.
+
+**Publishing the Google OAuth app is still the only real fix for the six.**
+They will expire again in seven days, and the week after, forever, until it is
+published. This cycle made the expiry VISIBLE; it did not stop it.
+
+## Expected visible change - not a regression
+
+Train Hugger and Chevron will now show mailboxes needing attention where they
+previously showed "Connected", and Train Hugger's primary mailbox will have
+been cleared by `reconcilePrimaryMailboxForClient` because none of its
+mailboxes is connected. That is the screen telling the truth for the first
+time, and it reverses the moment anyone reconnects.
