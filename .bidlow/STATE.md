@@ -2427,3 +2427,152 @@ previously showed "Connected", and Train Hugger's primary mailbox will have
 been cleared by `reconcilePrimaryMailboxForClient` because none of its
 mailboxes is connected. That is the screen telling the truth for the first
 time, and it reverses the moment anyone reconnects.
+
+---
+
+# A design direction, made load-bearing - cycle 9, 2026-08-26
+
+Queue item 6, the third PLAN artefact. **PR #232, branched from `main`.**
+Not merged at the time of writing.
+
+## The direction, proposed rather than waited for
+
+**"Ledger & Rail."** An outreach console is a record of things that have left
+the building and cannot be recalled, so it should read like a well-kept
+ledger, and anything capable of leaving the building should be visibly marked
+as such.
+
+Three principles follow: consequence is drawn, not merely confirmed in a
+dialog nobody reads; a record, not a dashboard; calm chrome and loud state, so
+that the few saturated pixels on screen are always something needing a
+decision.
+
+`.bidlow/DESIGN.json` carries the direction, the full token set for both
+themes, typography, elevation and motion rules, six signature elements each
+with an honest build status, ten anti-goals, and WCAG 2.2 AA with all eleven
+success criteria named - including the four that are NEW in 2.2 (2.4.11,
+2.5.7, 2.5.8, 3.3.8). Naming only the 2.1 criteria while writing "2.2" would
+have been a claim the artefact did not meet. Plain-English companion for a
+non-coder at `docs/DESIGN.md`.
+
+## Why it is a gate and not a document
+
+A design document nobody reads and nothing enforces is this project's worst
+defect class in its easiest possible form. So `design-system.test.ts` (55
+tests) reads DESIGN.json AND the real `globals.css` and fails the build on
+drift in either direction, on any declared contrast pair below AA, on a
+violet/indigo hue, on pure black on pure white, or on a button under the 24px
+target minimum.
+
+Contrast is computed, not eyeballed. **OKLCH lightness is NOT WCAG
+luminance** - two colours with identical `L` can differ substantially in
+contrast - so a gate comparing `L` values would wave failures through.
+`oklch.ts` does the full OKLab to LMS to linear sRGB conversion with an
+in-gamut clip, checked against two independent known answers: black on white
+comes out at exactly 21:1, and #ff0000 recovers a relative luminance of
+0.21260, which is the WCAG red coefficient by definition. Neither number was
+put there by hand.
+
+## It FIRED, on real ground, before any fix
+
+Five genuine WCAG 2.2 AA failures that were **already live in production** and
+had never been noticed:
+
+* `--input` at **1.21:1** on the light canvas and 1.30 on a card, against a
+  required 3:1; 1.51 and 1.38 in dark. This is not a decorative hairline - it
+  is the SOLE identifier of every text field, textarea and select trigger,
+  all three of which are `bg-transparent`. There was nothing on screen saying
+  a control was there until you clicked it.
+* `--destructive` text at **4.44:1** against a required 4.5.
+
+Both fixed by token value. One line fixed all **34 `border-input` call sites
+across 15 files** - which is also why the token was changed rather than a
+cleaner `--input-border` token introduced: that would have been a 15-file diff
+through most of the product's forms, which is item 7's size, not this cycle's.
+
+## Then it found a defect in ITSELF - the NINTH instance
+
+All five arms were then broken deliberately and watched fire: a drifted
+colour, an undeclared colour, a violet colour, a 20px button, pure black on
+white.
+
+Painting `--primary` violet in the stylesheet produced only ONE red - the
+parity test. The anti-goal check that exists specifically to ban the
+default-template violet stayed green. It was reading `DESIGN.json` instead of
+`globals.css`: **it compared the document against itself and could never have
+failed on a violet in the shipped CSS.** The pure-black check had the same
+flaw. Both fixed to read the stylesheet, both re-proven.
+
+That is the **ninth** instance of "built, wired, reports success, never
+fires", and it was inside the gate written to prevent the ninth. The
+generalisable lesson, now a standing finding in QUEUE.md:
+
+> **A check that reads the SPEC rather than the ARTEFACT is vacuous, and it
+> looks identical to a working one in a green test run. The only thing that
+> tells them apart is deliberately breaking the artefact and watching the
+> alarm go off.**
+
+Worth noting the same flaw was present in the contrast block when first
+written, and was caught by reasoning rather than by sabotage. The sabotage
+caught the two the reasoning missed. Both passes were needed.
+
+## What did NOT happen, and this is the important paragraph
+
+**The two signature elements that actually stop it looking generic - the send
+rail and live/dry banding - are SPECIFIED, NOT BUILT.** Nothing in the app
+looks different today except the two colour fixes. Both are blocked behind
+item 7 (PR #196), which moves the surfaces they would attach to.
+
+Greg has asked three times that systems stop looking generic. This cycle
+answers the "what should it be, and who will hold us to it" half. It does not
+answer the "and now it looks like that" half. Reading DESIGN.json's existence
+as a redesign would be exactly the overclaim this file exists to prevent.
+
+## Three more real defects, measured and deliberately left
+
+Left with their numbers in `open_defects` so the next person starts from
+evidence rather than from scratch:
+
+* **The destructive BUTTON still fails, at 3.72:1 at rest and 3.31 on hover.**
+  Its label sits on a 10% tint of its own colour, not on the page, so the
+  token pair passing does not save it. Reaching 4.5 by token alone needs
+  roughly 0.46 lightness - a visibly different, much deeper red everywhere.
+  The real fix is a solid-red variant with a light label, which is a component
+  change. It is an AA text failure on a control that deletes things.
+* **Chart series 3 and 4 at 2.51 and 2.39** against 3:1, light mode only
+  (dark passes at 8.63 and 8.98). NOT fixed, deliberately: darkening chart-4
+  to pass puts it within 0.07 lightness of chart-1 at the SAME hue, so the two
+  series become hard to tell apart. That trades a measured defect for an
+  unmeasured one. It needs a real pass over the palette including colour-blind
+  distinguishability.
+* **In-flow shadows** on cards and tabs, inherited from the shadcn defaults
+  and against the elevation rule this artefact sets. Removing them changes
+  every screen.
+
+## Judgement call worth being able to argue with
+
+`--border` measures about 1.2:1 and was deliberately NOT changed. 1.4.11
+requires 3:1 for visual information required to IDENTIFY a component or its
+state; a card edge, a table rule and a divider are decorative - delete them
+and every component is still identifiable. Darkening every hairline in the
+product to satisfy a criterion that does not apply would have cost the
+calm-chrome principle for no accessibility gain. Recorded in DESIGN.json with
+the reasoning, and if a future reviewer disagrees it is one line in
+`contrast_pairs` to enforce it.
+
+## What Greg will actually see
+
+Form fields across the whole app now carry a clearly visible outline instead
+of a nearly invisible one, disabled fields read as properly greyed rather than
+near-white, and warning red is a shade deeper. Nothing moved and nothing was
+rearranged.
+
+## Safety
+
+No schema change, no migration, no send path, no client data, nothing sent.
+Branched from `main` and deliberately NOT from `feat/reply-claiming`: building
+on that branch would have put item 5's unrun migration inside this PR and made
+QUEUE.md record reply-claiming as shipped on main while its DDL had not run.
+
+Gates: lint 0 errors, typecheck clean, 2299 tests green (main's 2225 plus 74
+new), build compiled.
