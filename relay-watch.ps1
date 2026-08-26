@@ -26,6 +26,24 @@
 
 $ErrorActionPreference = "Stop"
 
+# Read the agent's output as UTF-8, and write files as UTF-8.
+#
+# Without this, every em-dash in a cycle log arrives as three garbage letters.
+# That is the UTF-8 byte sequence for an em-dash (E2 80 94) being decoded with
+# the console's OEM code page. `claude -p` emits UTF-8; PowerShell read it as
+# CP850. (The garbled form is not reproduced here on purpose - this file is
+# plain ASCII, and pasting the corruption in would have broken that rule.)
+#
+# It matters more than it looks. The plain-English cycle log is the whole point
+# of the evidence work - it is what Greg actually reads - and a corrupted log is
+# a log nobody trusts. Setting this at the source fixes every future cycle.
+# (Repairing the EXISTING corrupted logs is queue item 11, and is separate.)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Out-File:Encoding']    = 'utf8'
+
 $RepoRoot   = $PSScriptRoot
 $RelayDir   = Join-Path $RepoRoot ".bidlow\relay"
 $NextFile   = Join-Path $RelayDir "NEXT.md"
