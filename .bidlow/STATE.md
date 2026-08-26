@@ -2430,135 +2430,167 @@ time, and it reverses the moment anyone reconnects.
 
 ---
 
-# 2026-08-26 — Cycle 8: reply claiming (queue item 5)
+# A design direction, made load-bearing - cycle 9, 2026-08-26
 
-Part 2 of `ALERTS-AND-CLAIMING.md`, never started before today. Built, proven,
-and **left unmerged on purpose** — see the one-way-door note below.
+Queue item 6, the third PLAN artefact. **Merged as PR #232, commit `fd97441`,
+deployed and verified live.**
 
-## What was built
+Verified the way this project requires and not by liveness alone:
+`/api/build-info` on the DIRECT App Service URL (never the CDN-cached custom
+domain) returns `fd97441b64a48f076f32e780d51c806b97c5aeec`, matching `main`
+exactly. The served stylesheet was then read back to confirm the fix reached
+real users rather than only the build: it carries
+`--input:oklch(62% .013 165)` and `oklch(53% .013 165)`, plus
+`--destructive:oklch(55% .245 27.325)`, with **zero** occurrences of the old
+`91.2%` / `57.7%` values.
 
-"Sarah Okafor opened this 2 minutes ago." on both reply detail pages.
+## The direction, proposed rather than waited for
 
-**Advisory, NOT a lock**, exactly as the brief specified. Every button stays
-enabled; no send gate, suppression check or governance decision reads a claim.
-A hard lock creates a worse problem than it solves: somebody opens a reply,
-goes to lunch, and a waiting prospect goes unanswered.
+**"Ledger & Rail."** An outreach console is a record of things that have left
+the building and cannot be recalled, so it should read like a well-kept
+ledger, and anything capable of leaving the building should be visibly marked
+as such.
 
-* Opening a reply detail records who and when.
-* The next person is told, above everything else on the page — including the
-  compliance banner, because the notice applies to the one-click suppress
-  inside it.
-* You are never shown your own claim.
-* A claim stops showing after 30 minutes.
-* Replying / suppressing / marking handled clears **every** claim on the
-  conversation, including other people's. The thing is dealt with, so nobody
-  should still be told "Sarah is handling this". Who actually did it is already
-  recorded permanently (outbound initiator, `handledByStaffUserId`, the DNC
-  audit row), so the claim itself is simply deleted.
+Three principles follow: consequence is drawn, not merely confirmed in a
+dialog nobody reads; a record, not a dashboard; calm chrome and loud state, so
+that the few saturated pixels on screen are always something needing a
+decision.
 
-`activity/messages/[messageId]` and `activity/replies/[replyId]` are two routes
-to the same prospect conversation. Both resolve to the **same** claim subject
-wherever the mailbox sync correlated them, so one claim covers both.
+`.bidlow/DESIGN.json` carries the direction, the full token set for both
+themes, typography, elevation and motion rules, six signature elements each
+with an honest build status, ten anti-goals, and WCAG 2.2 AA with all eleven
+success criteria named - including the four that are NEW in 2.2 (2.4.11,
+2.5.7, 2.5.8, 3.3.8). Naming only the 2.1 criteria while writing "2.2" would
+have been a claim the artefact did not meet. Plain-English companion for a
+non-coder at `docs/DESIGN.md`.
 
-New files: `src/lib/inbox/reply-claim.ts` (pure), `src/server/inbox/reply-claim.ts`
-(DB), `src/components/activity/reply-claim-notice.tsx`,
-`src/app/(app)/clients/[clientId]/activity/claim-actions.ts`.
+## Why it is a gate and not a document
 
-## The decision that mattered: a new table, not `metadata`
+A design document nobody reads and nothing enforces is this project's worst
+defect class in its easiest possible form. So `design-system.test.ts` (55
+tests) reads DESIGN.json AND the real `globals.css` and fails the build on
+drift in either direction, on any declared contrast pair below AA, on a
+violet/indigo hue, on pure black on pure white, or on a button under the 24px
+target minimum.
 
-The obvious home was `InboundMailboxMessage.metadata`, where the neighbouring
-handled-state already lives (PR J). **That would have been the seventh instance
-of "built, wired, reports success, never fires."** `mailbox-inbox-sync.ts`
-upserts with `metadata: meta` in its update branch — a wholesale overwrite —
-over the newest `top` messages, every 15 minutes. A claim stored there is
-erased minutes after it is written, with nothing on screen to say so.
+Contrast is computed, not eyeballed. **OKLCH lightness is NOT WCAG
+luminance** - two colours with identical `L` can differ substantially in
+contrast - so a gate comparing `L` values would wave failures through.
+`oklch.ts` does the full OKLab to LMS to linear sRGB conversion with an
+in-gamut clip, checked against two independent known answers: black on white
+comes out at exactly 21:1, and #ff0000 recovers a relative luminance of
+0.21260, which is the WCAG red coefficient by definition. Neither number was
+put there by hand.
 
-`AuditLog` was the other candidate and was rejected too: the client Activity
-timeline reads audit rows `take: PER_SOURCE_LIMIT` by recency, so a row per
-page-open would push real events out of the feed.
+## It FIRED, on real ground, before any fix
 
-So: new `ReplyClaim` table + `ReplyClaimSubjectType` enum, migration
-`20260826120000_reply_claims`. Additive only — nothing altered, dropped, or
-made non-nullable; no existing row read or rewritten.
+Five genuine WCAG 2.2 AA failures that were **already live in production** and
+had never been noticed:
 
-Second design call: the claim is **written from a client-side effect on mount**,
-not during the server render, so a Next.js link prefetch cannot claim a reply
-nobody opened. The read stays on the server.
+* `--input` at **1.21:1** on the light canvas and 1.30 on a card, against a
+  required 3:1; 1.51 and 1.38 in dark. This is not a decorative hairline - it
+  is the SOLE identifier of every text field, textarea and select trigger,
+  all three of which are `bg-transparent`. There was nothing on screen saying
+  a control was there until you clicked it.
+* `--destructive` text at **4.44:1** against a required 4.5.
 
-## ONE-WAY DOOR — the merge is Greg's, and was NOT taken
+Both fixed by token value. One line fixed all **34 `border-input` call sites
+across 15 files** - which is also why the token was changed rather than a
+cleaner `--input-border` token introduced: that would have been a 15-file diff
+through most of the product's forms, which is item 7's size, not this cycle's.
 
-**PR #231 is open, both CI checks green (verify + E2E Playwright), and
-deliberately NOT merged.** `PRODUCTION_PRISMA_MIGRATE` is `true`, so merging
-runs DDL against a paying client's live database. The standing working
-agreement puts one approval gate before any schema change, and the one prior
-migration this engagement (`0c988fb`, signature phones) was Greg-approved.
+## Then it found a defect in ITSELF - the NINTH instance
 
-The migration is additive and reversible, so this is caution rather than doubt
-— but an unattended overnight cycle is the wrong thing to be executing DDL on
-a client's production database.
+All five arms were then broken deliberately and watched fire: a drifted
+colour, an undeclared colour, a violet colour, a 20px button, pure black on
+white.
 
-**Nothing from this cycle is live. Do not read the queue's `DONE 8` as
-deployed.** Merging #231 ships the code AND applies the migration.
+Painting `--primary` violet in the stylesheet produced only ONE red - the
+parity test. The anti-goal check that exists specifically to ban the
+default-template violet stayed green. It was reading `DESIGN.json` instead of
+`globals.css`: **it compared the document against itself and could never have
+failed on a violet in the shipped CSS.** The pure-black check had the same
+flaw. Both fixed to read the stylesheet, both re-proven.
 
-Note for whoever picks this up: this STATE.md entry and the QUEUE.md update
-also live on `feat/reply-claiming`, so they land on `main` only when #231 merges.
+That is the **ninth** instance of "built, wired, reports success, never
+fires", and it was inside the gate written to prevent the ninth. The
+generalisable lesson, now a standing finding in QUEUE.md:
 
-## Proven, not assumed
+> **A check that reads the SPEC rather than the ARTEFACT is vacuous, and it
+> looks identical to a working one in a green test run. The only thing that
+> tells them apart is deliberately breaking the artefact and watching the
+> alarm go off.**
 
-| Gate | Result |
-|---|---|
-| `npm run lint` | 0 errors |
-| `npm run typecheck` | clean |
-| `npm test` | 246 files / **2260 tests** green |
-| `npm run test:integration` | 7 files / **100 tests** green (real Postgres) |
-| `npm run build` | compiled successfully |
-| CI on #231 | verify ✅ · E2E Playwright ✅ |
+Worth noting the same flaw was present in the contrast block when first
+written, and was caught by reasoning rather than by sabotage. The sabotage
+caught the two the reasoning missed. Both passes were needed.
 
-* **25 unit tests watched RED first** — 16 pure, 9 mocked-Prisma asserting every
-  read and write carries `clientId` rather than assuming it.
-* **6 integration tests against real Postgres**, two real staff rows: Bob is
-  shown Sarah's claim, Sarah is shown nothing, a back-dated row stops showing,
-  a release clears both, no cross-workspace leak, cascade on workspace delete.
-* Migration applied to a real database; `prisma migrate diff` reports
-  **"No difference detected"** against the schema.
-* `reply-claim-wiring.test.ts` locks the three ways this could go quiet, and
-  **all three were deliberately broken and watched go red**: the `useEffect`
-  moving below `if (!claim) return null` (which would mean the *first* person
-  never claims, so the second is never told, while every other test stayed
-  green); a page dropping the component; an action dropping `releaseReplyClaims`.
+## What did NOT happen, and this is the important paragraph
 
-That exercise earned its keep. Break 2 initially **passed**, because
-`toContain("<ReplyClaimNotice")` also matches `<ReplyClaimNoticeDISABLED>`.
-Assertion tightened to a boundary match, re-broken, confirmed red. A guard test
-that has never been watched fail is not a guard.
+**The two signature elements that actually stop it looking generic - the send
+rail and live/dry banding - are SPECIFIED, NOT BUILT.** Nothing in the app
+looks different today except the two colour fixes. Both are blocked behind
+item 7 (PR #196), which moves the surfaces they would attach to.
 
-## Found and deliberately NOT fixed — logged as queue item 14
+Greg has asked three times that systems stop looking generic. This cycle
+answers the "what should it be, and who will hold us to it" half. It does not
+answer the "and now it looks like that" half. Reading DESIGN.json's existence
+as a redesign would be exactly the overclaim this file exists to prevent.
 
-The same wholesale `metadata` overwrite in the reply sync **also erases
-`handledAt` / `handledByStaffUserId` / `lastRepliedAt` / reply history** for
-recently-synced messages. The "Handled by X" badge silently reverts to
-"Unhandled" within 15 minutes and nothing reports an error.
+## Three more real defects, measured and deliberately left
 
-Pre-existing, separate concern, on the sync path. It needs its own change with
-a red-first test that syncs twice over a handled message, and the blast radius
-(how many messages fall inside `top` on a real run) verified first.
-`mergeHandlingIntoMetadata` already exists and does exactly the right thing.
+Left with their numbers in `open_defects` so the next person starts from
+evidence rather than from scratch:
 
-## Also in here
+* **The destructive BUTTON still fails, at 3.72:1 at rest and 3.31 on hover.**
+  Its label sits on a 10% tint of its own colour, not on the page, so the
+  token pair passing does not save it. Reaching 4.5 by token alone needs
+  roughly 0.46 lightness - a visibly different, much deeper red everywhere.
+  The real fix is a solid-red variant with a light label, which is a component
+  change. It is an AA text failure on a control that deletes things.
+* **Chart series 3 and 4 at 2.51 and 2.39** against 3:1, light mode only
+  (dark passes at 8.63 and 8.98). NOT fixed, deliberately: darkening chart-4
+  to pass puts it within 0.07 lightness of chart-1 at the SAME hue, so the two
+  series become hard to tell apart. That trades a measured defect for an
+  unmeasured one. It needs a real pass over the palette including colour-blind
+  distinguishability.
+* **In-flow shadows** on cards and tabs, inherited from the shadcn defaults
+  and against the elevation rule this artefact sets. Removing them changes
+  every screen.
 
-`family-proposal-schema.test.ts` pinned "the newest migration" to a literal
-directory name, so it failed on **any** new migration regardless of merit.
-Restated as the property it actually meant: nothing back-dated ahead of its
-dependencies, and timestamps strictly increasing and unique.
+## Judgement call worth being able to argue with
 
-## Nothing contradicts PROJECT.json
+`--border` measures about 1.2:1 and was deliberately NOT changed. 1.4.11
+requires 3:1 for visual information required to IDENTIFY a component or its
+state; a card edge, a table rule and a divider are decorative - delete them
+and every component is still identifiable. Darkening every hairline in the
+product to satisfy a criterion that does not apply would have cost the
+calm-chrome principle for no accessibility gain. Recorded in DESIGN.json with
+the reasoning, and if a future reviewer disagrees it is one line in
+`contrast_pairs` to enforce it.
 
-No real email was sent by anything in this cycle. The one rule was not
-approached: no send path was touched, and `ReplyClaim` is read by no gate.
+## What Greg will actually see
 
-## Pick up first, next session
+Form fields across the whole app now carry a clearly visible outline instead
+of a nearly invisible one, disabled fields read as properly greyed rather than
+near-white, and warning red is a shade deeper. Nothing moved and nothing was
+rearranged.
 
-1. **Merge PR #231** (or walk it first) — that is the only thing between this
-   work and it being live. It applies the migration.
-2. **Queue item 14** — the sync's `metadata` clobber erasing handled-state.
-3. Queue item 6 (`DESIGN.json`) is the next untouched item in order.
+## Safety
+
+No schema change, no migration, no send path, no client data, nothing sent.
+Branched from `main` and deliberately NOT from `feat/reply-claiming`: building
+on that branch would have put item 5's unrun migration inside this PR and made
+QUEUE.md record reply-claiming as shipped on main while its DDL had not run.
+
+Gates: lint 0 errors, typecheck clean, 2299 tests green (main's 2225 plus 74
+new), build compiled. Both CI checks green on the PR before merge.
+
+Merging was judged to be within the brief's explicit authorisation rather than
+Greg's call: no schema change, no migration, nothing destructive, no send path
+and no client data - none of the things the standing working agreement puts an
+approval gate in front of. It is a CSS token change that fixes live
+accessibility failures and is revertible with one commit. Cycle 8 held its
+merge because that one ran DDL against a paying client's live database; this
+one does not, and holding it would have left a measured WCAG failure in front
+of users for no reason.
