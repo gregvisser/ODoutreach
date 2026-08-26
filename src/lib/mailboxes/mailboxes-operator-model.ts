@@ -38,6 +38,7 @@ export type OperatorMailboxStatusKind =
   | "needs_connection"
   | "needs_approval"
   | "connection_failed"
+  | "account_deleted"
   | "disconnected"
   | "sending_paused"
   | "removed"
@@ -56,6 +57,39 @@ export const MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC =
   "Connection did not complete. Reconnect and approve access in Microsoft 365." as const;
 
 /**
+ * The one status in this product that must not offer a next step, because
+ * there isn't one on our side.
+ */
+export const MAILBOX_ACCOUNT_DELETED_SUBLABEL =
+  "This account no longer exists in the client's Microsoft directory, so it cannot be reconnected. Someone at the client has to recreate the mailbox, or it should be removed from this workspace." as const;
+
+/** True when `lastError` says the underlying account has been deleted. */
+export function isMailboxAccountDeletedError(
+  lastError: string | null | undefined,
+): boolean {
+  return /AADSTS500341/i.test(lastError?.trim() ?? "");
+}
+
+/**
+ * Concise table sublabel for a Google `CONNECTION_ERROR`.
+ *
+ * The old text said "Connection did not complete" for every Google failure,
+ * which reads as "someone abandoned the sign-in window". The commonest cause
+ * by far is the opposite: a sign-in that completed fine and then expired,
+ * because the OAuth app is in Testing mode and Google expires those refresh
+ * tokens weekly. Six production mailboxes were in exactly that state.
+ */
+export function googleConnectionErrorSublabel(
+  lastError: string | null | undefined,
+): string {
+  const err = lastError?.trim() ?? "";
+  if (/invalid_grant|refresh token/i.test(err)) {
+    return "The Google sign-in for this mailbox has expired. Press Reconnect and approve access — Google expires these weekly until the app is published.";
+  }
+  return "Connection did not complete. Reconnect and approve access in Google.";
+}
+
+/**
  * Concise table sublabel for Microsoft `CONNECTION_ERROR` from stored `lastError` (set by OAuth/callback).
  * Full provider text remains under Advanced details.
  */
@@ -65,6 +99,14 @@ export function microsoftConnectionErrorSublabel(
   const err = lastError?.trim() ?? "";
   if (!err) {
     return MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC;
+  }
+  // MUST stay above the `invalid_grant` branch. Entra returns AADSTS500341
+  // inside an invalid_grant response, so the order of these two checks decides
+  // whether a deleted account is told to reconnect (impossible) or told the
+  // truth. Two Chevron Security mailboxes read "reconnect and complete MFA"
+  // for weeks for accounts that had been deleted from the directory.
+  if (/AADSTS500341/i.test(err)) {
+    return MAILBOX_ACCOUNT_DELETED_SUBLABEL;
   }
   if (err.includes("AADSTS50020")) {
     return "This Microsoft account is in the wrong tenant for the mailbox app, or sign-in is restricted. Use the mailbox owner or M365 admin in the correct organisation, or use a multi-tenant OAuth app/authority (see runbook).";
@@ -104,6 +146,16 @@ export function mailboxRowOperatorStatus(
   if (!row.isActive) {
     return { kind: "inactive", label: "Inactive" };
   }
+  // Checked ahead of the status branches: a deleted account is the same answer
+  // whichever status it currently carries, and it is the only one where the
+  // honest label is "cannot be reconnected" rather than "reconnect".
+  if (isMailboxAccountDeletedError(row.lastError)) {
+    return {
+      kind: "account_deleted",
+      label: "Cannot be reconnected",
+      sublabel: MAILBOX_ACCOUNT_DELETED_SUBLABEL,
+    };
+  }
   if (row.connectionStatus === "CONNECTION_ERROR") {
     return {
       kind: "connection_failed",
@@ -111,7 +163,7 @@ export function mailboxRowOperatorStatus(
       sublabel:
         row.provider === "MICROSOFT"
           ? microsoftConnectionErrorSublabel(row.lastError)
-          : "Connection did not complete. Reconnect and approve access in Google.",
+          : googleConnectionErrorSublabel(row.lastError),
     };
   }
   if (row.connectionStatus === "DISCONNECTED") {

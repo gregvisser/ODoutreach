@@ -9,6 +9,12 @@ import {
   mapGraphInboxMessageToRow,
 } from "@/server/mailbox/microsoft-graph-inbox";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
+import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
+import {
+  classifyMailboxCredentialFailure,
+  mailboxCredentialFailureMessage,
+  type MailboxProviderKind,
+} from "@/server/mailbox/mailbox-credential-failure";
 import { processSyncedMessageForReply } from "@/server/mailbox/process-synced-replies";
 import { processSyncedMessageForBounce } from "@/server/mailbox/bounce-detection";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
@@ -18,6 +24,81 @@ import {
 } from "@/server/inbox/internal-domains";
 
 const DEFAULT_TOP = 25;
+
+/**
+ * Records a failed sync against the mailbox row — and, when the failure is the
+ * credentials rather than the weather, takes the mailbox OUT of CONNECTED.
+ *
+ * This function is the fix for the worst thing in EIGHT-DEAD-MAILBOXES.md.
+ * Before it, both failure paths below wrote `lastError` and nothing else, so a
+ * mailbox with a dead refresh token went on reading "Connected" on screen
+ * indefinitely — which is what eight production mailboxes did, unnoticed, while
+ * failing every fifteen minutes.
+ *
+ * Reply sync is the only thing that exercises these tokens between campaigns,
+ * so it is the only place that can discover the truth. It now writes it down.
+ *
+ * Two deliberate restraints:
+ *
+ *  - A non-credential failure (a Graph 503, a timeout) NEVER changes the
+ *    status. One bad afternoon at Microsoft must not become thirty-five manual
+ *    reconnects.
+ *  - The status change and the primary-mailbox reconcile happen in ONE
+ *    transaction, because a workspace whose primary mailbox is not CONNECTED
+ *    cannot send.
+ */
+async function recordMailboxSyncFailure(input: {
+  mailboxId: string;
+  clientId: string;
+  provider: MailboxProviderKind;
+  staffUserId: string | null;
+  error: string;
+  /** Fetch failures have already reached the provider, so they count as a check. */
+  stampLastSyncAt: boolean;
+}): Promise<void> {
+  const failure = classifyMailboxCredentialFailure(input.provider, input.error);
+  const lastSyncAt = input.stampLastSyncAt ? { lastSyncAt: new Date() } : {};
+  // Pulled into a local so it stays narrowed inside the transaction closure.
+  const nextStatus = failure.connectionStatus;
+
+  if (!nextStatus) {
+    await prisma.clientMailboxIdentity.update({
+      where: { id: input.mailboxId },
+      data: { lastError: input.error.slice(0, 4000), ...lastSyncAt },
+    });
+    return;
+  }
+
+  const message = mailboxCredentialFailureMessage(input.provider, failure, input.error);
+  await prisma.$transaction(async (tx) => {
+    await tx.clientMailboxIdentity.update({
+      where: { id: input.mailboxId },
+      data: {
+        connectionStatus: nextStatus,
+        lastError: message.slice(0, 4000),
+        ...lastSyncAt,
+      },
+    });
+    await reconcilePrimaryMailboxForClient(tx, input.clientId);
+  });
+
+  // The status change is a real state change to a client's sending capability.
+  // It goes in the audit log so "why did this mailbox stop sending?" has an
+  // answer with a timestamp, rather than being inferred from a column.
+  await auditMailboxConnectionChange({
+    staffUserId: input.staffUserId,
+    clientId: input.clientId,
+    mailboxId: input.mailboxId,
+    metadata: {
+      kind: "mailbox_credential_failure",
+      provider: input.provider,
+      failureKind: failure.kind,
+      isPermanent: failure.isPermanent,
+      connectionStatus: nextStatus,
+      error: input.error.slice(0, 500),
+    },
+  });
+}
 
 export type InboxSyncResult = {
   ok: true;
@@ -81,9 +162,13 @@ export async function syncMicrosoftInboxForMailbox(input: {
     access = await getMicrosoftGraphAccessTokenForMailbox(mailboxIdentityId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Token error";
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: { lastError: msg.slice(0, 4000) },
+    await recordMailboxSyncFailure({
+      mailboxId: mailbox.id,
+      clientId,
+      provider: "MICROSOFT",
+      staffUserId,
+      error: msg,
+      stampLastSyncAt: false,
     });
     return { ok: false, error: msg };
   }
@@ -93,10 +178,15 @@ export async function syncMicrosoftInboxForMailbox(input: {
     items = await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, { top });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Graph fetch failed";
-    const now = new Date();
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: { lastError: msg.slice(0, 4000), lastSyncAt: now },
+    // A 401 from Graph can be the credentials, not the request — so this path
+    // classifies too, and flips the mailbox out of CONNECTED when it is.
+    await recordMailboxSyncFailure({
+      mailboxId: mailbox.id,
+      clientId,
+      provider: "MICROSOFT",
+      staffUserId,
+      error: msg,
+      stampLastSyncAt: true,
     });
     await auditMailboxConnectionChange({
       staffUserId,
@@ -269,9 +359,13 @@ export async function syncGoogleInboxForMailbox(input: {
     access = await getGoogleGmailAccessTokenForMailbox(mailboxIdentityId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Token error";
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: { lastError: msg.slice(0, 4000) },
+    await recordMailboxSyncFailure({
+      mailboxId: mailbox.id,
+      clientId,
+      provider: "GOOGLE",
+      staffUserId,
+      error: msg,
+      stampLastSyncAt: false,
     });
     return { ok: false, error: msg };
   }
@@ -281,10 +375,14 @@ export async function syncGoogleInboxForMailbox(input: {
     rows = await fetchGmailInboxMessagesForSync(access, { maxResults: top });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Gmail fetch failed";
-    const now = new Date();
-    await prisma.clientMailboxIdentity.update({
-      where: { id: mailbox.id },
-      data: { lastError: msg.slice(0, 4000), lastSyncAt: now },
+    // See the Graph path above — a 401 here can be the credentials too.
+    await recordMailboxSyncFailure({
+      mailboxId: mailbox.id,
+      clientId,
+      provider: "GOOGLE",
+      staffUserId,
+      error: msg,
+      stampLastSyncAt: true,
     });
     await auditMailboxConnectionChange({
       staffUserId,

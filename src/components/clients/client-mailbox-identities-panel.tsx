@@ -39,6 +39,8 @@ import {
   computePoolDailyMax,
   countConnectedMailboxes,
   countMailboxNeedsAttention,
+  isMailboxAccountDeletedError,
+  MAILBOX_ACCOUNT_DELETED_SUBLABEL,
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
   MAX_CONNECTED_MAILBOXES,
@@ -211,6 +213,11 @@ function providerConnectionHint(
 ): string {
   if (!oauthOk) {
     return "This provider isn't connected yet. Ask an administrator to finish setup in Settings.";
+  }
+  // Before every status branch: nothing below can be done for an account that
+  // has been deleted, so none of their instructions should be offered.
+  if (isMailboxAccountDeletedError(row.lastError)) {
+    return MAILBOX_ACCOUNT_DELETED_SUBLABEL;
   }
   switch (row.connectionStatus) {
     case "DRAFT":

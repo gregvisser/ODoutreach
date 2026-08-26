@@ -7,6 +7,24 @@ Do these in order. Question 1 first, before anything is touched.
 
 ---
 
+> ## ANSWERED — cycle 7, 2026-08-26
+>
+> **1. Can they send? No. None of the eight.** Determined read-only from the
+> code, as instructed — no test send. `executeOutboundSend` calls
+> `getGoogleGmailAccessTokenForMailbox` / `getMicrosoftGraphAccessTokenForMailbox`
+> (`execute-one.ts:544` and `:714`) — the *same two functions* reply sync calls.
+> One refresh-token grant, both jobs. A grant that fails for sync fails for send.
+>
+> It fails **closed**, which is the one piece of good news: there is no ESP
+> fallback, so a send does not quietly leave from the wrong address — the row
+> fails terminally. **Five of the eight are Train Hugger, so the ramp would have
+> queued and then failed for the largest client.**
+>
+> **2. Done.** Reply sync now flips a mailbox out of CONNECTED when the failure
+> is the credentials. **3. Done** — permanent and temporary are now different
+> statuses, different sentences, and the dead ones stop being retried.
+> **4. Honoured** — nothing was reconnected.
+
 ## 1. FIRST — can these mailboxes still SEND? Answer before doing anything else.
 
 Reply sync fails on all eight with `invalid_grant` or `AADSTS500341`. Both are
