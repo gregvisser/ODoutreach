@@ -55,6 +55,19 @@ describe("related-domain discovery is wired to a caller and a screen", () => {
     expect(src).toContain("discoverFamilyProposalsAction");
   });
 
+  it("shows a failure on screen with a retry, instead of failing silently", () => {
+    const src = readFileSync(panel, "utf8");
+    // A shed request REJECTS — it does not resolve with `{ ok: false }`. The
+    // panel handled only the second case, so when production 503'd the POST
+    // the operator saw nothing at all. See panel-action-outcome.test.ts.
+    expect(src).toContain("resolveActionOutcome");
+    expect(src).toContain("Try again");
+    expect(src).toContain('role="alert"');
+    // Every press must go through the guard; a raw `await ...Action(` in a
+    // transition is the silent-failure shape this replaced.
+    expect(src).not.toMatch(/await\s+(confirm|reject|discover)\w*Action\(/);
+  });
+
   it("no longer tells the customer the system cannot detect related domains", () => {
     const src = readFileSync(page, "utf8");
     // The live page said this to the owner while working detection sat unused.
