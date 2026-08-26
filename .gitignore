@@ -94,3 +94,12 @@ DNC-APPROVED.md
 /ALERTS-AND-CLAIMING.md
 /PROVE-THE-ALERT.md
 /MONDAY-PROMPT.md
+
+# Relay runtime state. The folder, its README and the watcher are tracked; what
+# the relay is doing right now is not — it is local, transient, and can contain
+# a half-finished instruction.
+/.bidlow/relay/NEXT.md
+/.bidlow/relay/CURRENT.md
+/.bidlow/relay/HALT
+/.bidlow/relay/STATUS.json
+/.bidlow/relay/log/
