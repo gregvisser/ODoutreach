@@ -2430,6 +2430,91 @@ time, and it reverses the moment anyone reconnects.
 
 ---
 
+# 2026-08-26 — Cycle 10: the queue was lying, and it cost a cycle (item 5)
+
+**Nothing was built this cycle. That was the right outcome.**
+
+The relay dispatched cycle 10 to build reply claiming, describing it as "never
+started". It had been finished in cycle 8, and PR #231 was open and green.
+
+**Why the relay could not see that — instance (10) of this project's worst
+defect class.** Cycle 8 wrote `DONE 8` into `QUEUE.md` **on
+`feat/reply-claiming`**, a branch that cannot merge until Greg approves a
+migration. The relay reads `main`. So `main` still said "never started".
+Nothing errored, every log said "finished", and cycles 11, 12, 13 would each
+have rebuilt the same finished feature. An unbounded loop with no alarm on it.
+
+**The structural cause, which generalises beyond the relay:** the queue and the
+work rode in the same commit, so the plan of record was a hostage of the thing
+it described. **A status change and the work it describes must be able to land
+separately.** If a cycle's work is blocked, its *record* is not — push the
+record to `main` on its own branch, that day.
+
+**The same defect fired a second time in the same cycle, and that one costs
+money.** An uncommitted `PRIORITY OVERRIDE` block sat in the working-tree
+`QUEUE.md`, written by the Cowork side and never committed: eight things
+promised in writing to Sam and James **by 31 August**, payment dependent, five
+days left. The relay could not see it and was dispatching internal quality work
+against a live client deadline. Cycle 10 committed it; items 20-25 are now on
+`main` and outrank everything.
+
+## What cycle 10 did instead of rebuilding
+
+**Proved the feature fires by sabotage, not by a green tick.** Cycle 8's green
+run proves the code passes; it does not prove the tests can fail. That is
+precisely what bit cycle 9. Four deliberate breaks, run against real Postgres:
+letting a viewer see their own claim went **RED**; making `releaseReplyClaims`
+a no-op went **RED** twice; deleting `<ReplyClaimNotice>` from the linked-reply
+page went **RED** on the wiring test — and that test reads the *page source*,
+not the spec, so it is not the vacuous kind cycle 9 shipped.
+
+The fourth break is the one worth remembering. Making a claim **never go
+stale** — the 30-minute rule that is the headline of this queue item — left the
+integration suite **green**. That looked like a real hole. It is not: staleness
+is filtered twice on purpose, once in SQL and once in `selectVisibleClaim`, and
+the unit suite caught it in two places, including a test named *"drops a stale
+row even if the database hands one back"*. Correct layering, both layers
+independently tested. **Recorded as a negative result so nobody re-checks it.**
+
+**Made #231 a single decision.** It carried the feature, its migration *and*
+two doc files. Current `main` merged in cleanly (only the two docs conflicted;
+no code conflicts) and their `main` versions were taken. #231 is now nothing
+but the feature and its migration.
+
+**Gates re-run on the merged tree:** lint **0 errors**, typecheck **clean**,
+unit **2334 passed** (main's 2299 + this branch's 35), integration **100
+passed** against real PostgreSQL.
+
+## Left undone, deliberately
+
+**#231 is not merged.** It runs DDL on the live client database
+(`PRODUCTION_PRISMA_MIGRATE` is true) and the house rule is one approval gate
+before any schema change. Cycle 8 asked and got no answer; asking again and
+stopping would burn another cycle, so this cycle delivered everything except
+the press of the button.
+
+The migration is about as safe as they get: **one new table, one new enum, zero
+`ALTER`s on any existing table**, nothing existing read or rewritten, and
+dropping the table restores today's behaviour exactly. Nothing reads
+`ReplyClaim` for sending, suppression or governance — an empty or stale table
+degrades to "say nothing", never to a wrong send. CI already applied it to a
+clean Postgres and ran the feature against it (run `32956843118`).
+
+**The one risk not checked:** whether production's migration history has
+drifted from the repo — the only realistic way `migrate deploy` fails here.
+That needs production credentials.
+
+## Pick up here
+
+1. **The 31 August deadline is the priority, not this.** Items 20-25. Item 21
+   (live domain check) and item 22 (batched sending) are *not built* rather
+   than not finished, and are the least likely to be honestly finishable in
+   five days alongside the rest.
+2. **Merge #231** when ready — one green, code-only button.
+3. Queue item 14 — the sync's `metadata` clobber erasing handled-state.
+
+---
+
 # A design direction, made load-bearing - cycle 9, 2026-08-26
 
 Queue item 6, the third PLAN artefact. **Merged as PR #232, commit `fd97441`,
@@ -2594,3 +2679,138 @@ accessibility failures and is revertible with one commit. Cycle 8 held its
 merge because that one ran DDL against a paying client's live database; this
 one does not, and holding it would have left a measured WCAG failure in front
 of users for no reason.
+
+---
+
+# 2026-08-26 — Cycle 8: reply claiming (queue item 5)
+
+Part 2 of `ALERTS-AND-CLAIMING.md`, never started before today. Built, proven,
+and **left unmerged on purpose** — see the one-way-door note below.
+
+## What was built
+
+"Sarah Okafor opened this 2 minutes ago." on both reply detail pages.
+
+**Advisory, NOT a lock**, exactly as the brief specified. Every button stays
+enabled; no send gate, suppression check or governance decision reads a claim.
+A hard lock creates a worse problem than it solves: somebody opens a reply,
+goes to lunch, and a waiting prospect goes unanswered.
+
+* Opening a reply detail records who and when.
+* The next person is told, above everything else on the page — including the
+  compliance banner, because the notice applies to the one-click suppress
+  inside it.
+* You are never shown your own claim.
+* A claim stops showing after 30 minutes.
+* Replying / suppressing / marking handled clears **every** claim on the
+  conversation, including other people's. The thing is dealt with, so nobody
+  should still be told "Sarah is handling this". Who actually did it is already
+  recorded permanently (outbound initiator, `handledByStaffUserId`, the DNC
+  audit row), so the claim itself is simply deleted.
+
+`activity/messages/[messageId]` and `activity/replies/[replyId]` are two routes
+to the same prospect conversation. Both resolve to the **same** claim subject
+wherever the mailbox sync correlated them, so one claim covers both.
+
+New files: `src/lib/inbox/reply-claim.ts` (pure), `src/server/inbox/reply-claim.ts`
+(DB), `src/components/activity/reply-claim-notice.tsx`,
+`src/app/(app)/clients/[clientId]/activity/claim-actions.ts`.
+
+## The decision that mattered: a new table, not `metadata`
+
+The obvious home was `InboundMailboxMessage.metadata`, where the neighbouring
+handled-state already lives (PR J). **That would have been the seventh instance
+of "built, wired, reports success, never fires."** `mailbox-inbox-sync.ts`
+upserts with `metadata: meta` in its update branch — a wholesale overwrite —
+over the newest `top` messages, every 15 minutes. A claim stored there is
+erased minutes after it is written, with nothing on screen to say so.
+
+`AuditLog` was the other candidate and was rejected too: the client Activity
+timeline reads audit rows `take: PER_SOURCE_LIMIT` by recency, so a row per
+page-open would push real events out of the feed.
+
+So: new `ReplyClaim` table + `ReplyClaimSubjectType` enum, migration
+`20260826120000_reply_claims`. Additive only — nothing altered, dropped, or
+made non-nullable; no existing row read or rewritten.
+
+Second design call: the claim is **written from a client-side effect on mount**,
+not during the server render, so a Next.js link prefetch cannot claim a reply
+nobody opened. The read stays on the server.
+
+## ONE-WAY DOOR — the merge is Greg's, and was NOT taken
+
+**PR #231 is open, both CI checks green (verify + E2E Playwright), and
+deliberately NOT merged.** `PRODUCTION_PRISMA_MIGRATE` is `true`, so merging
+runs DDL against a paying client's live database. The standing working
+agreement puts one approval gate before any schema change, and the one prior
+migration this engagement (`0c988fb`, signature phones) was Greg-approved.
+
+The migration is additive and reversible, so this is caution rather than doubt
+— but an unattended overnight cycle is the wrong thing to be executing DDL on
+a client's production database.
+
+**Nothing from this cycle is live. Do not read the queue's `DONE 8` as
+deployed.** Merging #231 ships the code AND applies the migration.
+
+Note for whoever picks this up: this STATE.md entry and the QUEUE.md update
+also live on `feat/reply-claiming`, so they land on `main` only when #231 merges.
+
+## Proven, not assumed
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | 0 errors |
+| `npm run typecheck` | clean |
+| `npm test` | 246 files / **2260 tests** green |
+| `npm run test:integration` | 7 files / **100 tests** green (real Postgres) |
+| `npm run build` | compiled successfully |
+| CI on #231 | verify ✅ · E2E Playwright ✅ |
+
+* **25 unit tests watched RED first** — 16 pure, 9 mocked-Prisma asserting every
+  read and write carries `clientId` rather than assuming it.
+* **6 integration tests against real Postgres**, two real staff rows: Bob is
+  shown Sarah's claim, Sarah is shown nothing, a back-dated row stops showing,
+  a release clears both, no cross-workspace leak, cascade on workspace delete.
+* Migration applied to a real database; `prisma migrate diff` reports
+  **"No difference detected"** against the schema.
+* `reply-claim-wiring.test.ts` locks the three ways this could go quiet, and
+  **all three were deliberately broken and watched go red**: the `useEffect`
+  moving below `if (!claim) return null` (which would mean the *first* person
+  never claims, so the second is never told, while every other test stayed
+  green); a page dropping the component; an action dropping `releaseReplyClaims`.
+
+That exercise earned its keep. Break 2 initially **passed**, because
+`toContain("<ReplyClaimNotice")` also matches `<ReplyClaimNoticeDISABLED>`.
+Assertion tightened to a boundary match, re-broken, confirmed red. A guard test
+that has never been watched fail is not a guard.
+
+## Found and deliberately NOT fixed — logged as queue item 14
+
+The same wholesale `metadata` overwrite in the reply sync **also erases
+`handledAt` / `handledByStaffUserId` / `lastRepliedAt` / reply history** for
+recently-synced messages. The "Handled by X" badge silently reverts to
+"Unhandled" within 15 minutes and nothing reports an error.
+
+Pre-existing, separate concern, on the sync path. It needs its own change with
+a red-first test that syncs twice over a handled message, and the blast radius
+(how many messages fall inside `top` on a real run) verified first.
+`mergeHandlingIntoMetadata` already exists and does exactly the right thing.
+
+## Also in here
+
+`family-proposal-schema.test.ts` pinned "the newest migration" to a literal
+directory name, so it failed on **any** new migration regardless of merit.
+Restated as the property it actually meant: nothing back-dated ahead of its
+dependencies, and timestamps strictly increasing and unique.
+
+## Nothing contradicts PROJECT.json
+
+No real email was sent by anything in this cycle. The one rule was not
+approached: no send path was touched, and `ReplyClaim` is read by no gate.
+
+## Pick up first, next session
+
+1. **Merge PR #231** (or walk it first) — that is the only thing between this
+   work and it being live. It applies the migration.
+2. **Queue item 14** — the sync's `metadata` clobber erasing handled-state.
+3. Queue item 6 (`DESIGN.json`) is the next untouched item in order.
