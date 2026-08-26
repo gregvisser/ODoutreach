@@ -18,7 +18,9 @@ import { loadServiceAccountCredentials } from "./auth";
 import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
 import {
   formatSuppressionSyncUserError,
+  isRangeInvalidMessage,
   SUPPRESSION_SYNC_MESSAGES,
+  withSheetTabNames,
 } from "./suppression-sync-errors";
 
 export type SuppressionSyncInput = {
@@ -44,6 +46,33 @@ function flattenSheetValues(values: string[][] | null | undefined): string[] {
     }
   }
   return out;
+}
+
+/**
+ * The tab titles of a spreadsheet, for the failure message only.
+ *
+ * Deliberately swallows its own errors and returns `[]`. This runs while we are
+ * already reporting a failure; a second failure here must not replace the first
+ * one, and an empty list makes `withSheetTabNames` leave the message alone
+ * rather than claim we looked and found nothing.
+ */
+async function readSheetTabTitles(spreadsheetId: string): Promise<string[]> {
+  try {
+    const auth = new google.auth.GoogleAuth({
+      credentials: loadServiceAccountCredentials(),
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const sheets = google.sheets({ version: "v4", auth });
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets.properties.title",
+    });
+    return (meta.data.sheets ?? [])
+      .map((s) => s.properties?.title)
+      .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -92,14 +121,15 @@ export async function syncSuppressionSourceFromGoogle(
     data: { syncStatus: "SYNCING", lastError: null },
   });
 
+  // Hoisted out of the try so the failure path can say WHICH range it tried.
+  const range = sheetRange?.trim() || "Sheet1!A1:Z50000";
+
   try {
     const auth = new google.auth.GoogleAuth({
       credentials: loadServiceAccountCredentials(),
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
     const sheets = google.sheets({ version: "v4", auth });
-
-    const range = sheetRange?.trim() || "Sheet1!A1:Z50000";
 
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
@@ -150,7 +180,18 @@ export async function syncSuppressionSourceFromGoogle(
     return { ok: true, rowsWritten: written, warning };
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
-    const friendly = formatSuppressionSyncUserError(raw, saDisplay.clientEmail);
+    let friendly = formatSuppressionSyncUserError(raw, saDisplay.clientEmail);
+    // A range error is the one failure we can diagnose the rest of the way
+    // ourselves: the Sheet is readable (a sharing problem answers 403), so the
+    // real tab names are one call away. Best-effort — if that call fails too,
+    // the original instruction stands unchanged.
+    if (isRangeInvalidMessage(friendly)) {
+      friendly = withSheetTabNames(
+        friendly,
+        range,
+        await readSheetTabTitles(spreadsheetId),
+      );
+    }
     await prisma.suppressionSource.update({
       where: { id: source.id },
       data: {
