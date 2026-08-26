@@ -2432,8 +2432,17 @@ time, and it reverses the moment anyone reconnects.
 
 # A design direction, made load-bearing - cycle 9, 2026-08-26
 
-Queue item 6, the third PLAN artefact. **PR #232, branched from `main`.**
-Not merged at the time of writing.
+Queue item 6, the third PLAN artefact. **Merged as PR #232, commit `fd97441`,
+deployed and verified live.**
+
+Verified the way this project requires and not by liveness alone:
+`/api/build-info` on the DIRECT App Service URL (never the CDN-cached custom
+domain) returns `fd97441b64a48f076f32e780d51c806b97c5aeec`, matching `main`
+exactly. The served stylesheet was then read back to confirm the fix reached
+real users rather than only the build: it carries
+`--input:oklch(62% .013 165)` and `oklch(53% .013 165)`, plus
+`--destructive:oklch(55% .245 27.325)`, with **zero** occurrences of the old
+`91.2%` / `57.7%` values.
 
 ## The direction, proposed rather than waited for
 
@@ -2575,4 +2584,13 @@ on that branch would have put item 5's unrun migration inside this PR and made
 QUEUE.md record reply-claiming as shipped on main while its DDL had not run.
 
 Gates: lint 0 errors, typecheck clean, 2299 tests green (main's 2225 plus 74
-new), build compiled.
+new), build compiled. Both CI checks green on the PR before merge.
+
+Merging was judged to be within the brief's explicit authorisation rather than
+Greg's call: no schema change, no migration, nothing destructive, no send path
+and no client data - none of the things the standing working agreement puts an
+approval gate in front of. It is a CSS token change that fixes live
+accessibility failures and is revertible with one commit. Cycle 8 held its
+merge because that one ran DDL against a paying client's live database; this
+one does not, and holding it would have left a measured WCAG failure in front
+of users for no reason.
