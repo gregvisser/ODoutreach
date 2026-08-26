@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
 import { ManualDncAddForm } from "@/components/suppression/add-to-dnc";
 import { DomainFamilyPanel } from "@/components/suppression/domain-family-panel";
+import { FamilyProposalPanel } from "@/components/suppression/family-proposal-panel";
 import { listDomainFamiliesForClient } from "@/server/suppression/domain-families";
+import { listPendingFamilyProposals } from "@/server/suppression/family-proposals";
 import {
   Card,
   CardContent,
@@ -68,6 +70,12 @@ export default async function ClientSuppressionPage({ params }: Props) {
   // the family blocks anything at all.
   const domainFamilies = await listDomainFamiliesForClient(client.id);
 
+  // Machine-found links awaiting a yes or no. These are QUESTIONS: a pending
+  // proposal blocks nothing until someone confirms it, which is what keeps
+  // Ruling 3 (membership is a human-confirmed fact) intact while removing the
+  // requirement that a human first NOTICE the relationship.
+  const familyProposals = await listPendingFamilyProposals(client.id);
+
   return (
     <div className="space-y-8">
       <div>
@@ -110,14 +118,36 @@ export default async function ClientSuppressionPage({ params }: Props) {
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Related company domains</CardTitle>
+          <CardTitle className="text-base">
+            Related domains we found for you
+          </CardTitle>
           <CardDescription>
-            Some companies use more than one domain. Blocking{" "}
+            Some companies use more than one domain, and blocking{" "}
             <span className="font-mono">bt.com</span> does not block{" "}
-            <span className="font-mono">bteurope.com</span> on its own — nothing
-            can tell they are the same company without being told. List them
-            here and blocking any one of them blocks them all, for this client
-            only.
+            <span className="font-mono">bteurope.com</span> by itself. We check
+            every company on this client&apos;s lists against what those
+            companies publish about their own email, and bring you anything that
+            looks like the same business. Nothing is blocked until you say yes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FamilyProposalPanel
+            clientId={client.id}
+            proposals={familyProposals}
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">
+            Related company domains you have confirmed
+          </CardTitle>
+          <CardDescription>
+            Every domain approved above appears here, alongside any you add
+            yourself. Blocking any one domain in a group blocks them all, for
+            this client only. Adding one by hand is a fallback — the check above
+            is the intended route.
           </CardDescription>
         </CardHeader>
         <CardContent>
