@@ -40,7 +40,25 @@ function Check($name, $condition, $detail) {
 $Sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("relay-verify-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 New-Item -ItemType Directory -Force -Path (Join-Path $Sandbox ".bidlow\relay\log") | Out-Null
 
-Copy-Item (Join-Path $PSScriptRoot "..\..\.bidlow\relay\QUEUE.md") (Join-Path $Sandbox ".bidlow\relay\QUEUE.md")
+# A FIXTURE queue, not a copy of the live one.
+#
+# The first version of this script copied the real QUEUE.md. That felt more
+# realistic and was actually a bug: the moment cycle 4 marked item 2 as DONE,
+# four checks went red - not because the watcher broke, but because the plan
+# had moved on. A test that fails whenever real work progresses is worse than
+# no test, because the fix is to weaken it.
+#
+# The ORDERING logic is what needs proving, and that needs a queue whose
+# contents are known. The real QUEUE.md is still checked at the end, but only
+# for FORMAT - that it parses and its statuses are recognisable.
+@(
+    "| # | Item | Status |"
+    "|---|---|---|"
+    "| 1 | An item that is already finished | DONE 3 |"
+    "| 2 | Load speed - MEASURE first. loadClientWorkspaceBundle is a suspect, not a cause. | TODO |"
+    "| 3 | Load speed - fix what the measurement actually found | TODO |"
+    "| 4 | A later item that must not be jumped to | TODO |"
+) | Set-Content -Path (Join-Path $Sandbox ".bidlow\relay\QUEUE.md") -Encoding utf8
 
 # Load the real script's functions, stopping before the main loop.
 $lines = Get-Content $RealScript
@@ -81,11 +99,11 @@ Write-Host ""
 Write-Host "=== Reading the queue ==="
 
 $rows = Get-QueueRows
-Check "reads every row of the real QUEUE.md" ($rows.Count -ge 10) "got $($rows.Count)"
+Check "reads every row of the table" ($rows.Count -eq 4) "got $($rows.Count)"
 $item1 = $rows | Where-Object { $_.Number -eq "1" }
 $item2 = $rows | Where-Object { $_.Number -eq "2" }
-Check "item 1 reads DONE" ($item1.Status -match '^DONE') "got '$($item1.Status)'"
-Check "item 2 reads TODO" ($item2.Status -eq "TODO") "got '$($item2.Status)'"
+Check "reads a DONE status" ($item1.Status -match '^DONE') "got '$($item1.Status)'"
+Check "reads a TODO status" ($item2.Status -eq "TODO") "got '$($item2.Status)'"
 
 Write-Host ""
 Write-Host "=== Self-queueing ==="
@@ -162,6 +180,30 @@ $files = Get-NamedFiles "Change ``src/server/queries/client-workspace.ts`` and a
 Check "finds a backticked path" ($files -contains "src/server/queries/client-workspace.ts") "got: $($files -join ', ')"
 Check "finds a bare path" ($files -contains "src/lib/thing.test.ts") "got: $($files -join ', ')"
 Check "does not mistake a hostname for a file" (-not ($files -contains "opensdoors.bidlow.co.uk")) "got: $($files -join ', ')"
+
+Write-Host ""
+Write-Host "=== The REAL QUEUE.md - format only, never specific content ==="
+
+# Content checks belong on the fixture above. This only proves the live file is
+# still SHAPED like something the watcher can read, so a formatting mistake in
+# the queue is caught here rather than at 3am by a watcher that silently idles.
+$QueueFile = (Resolve-Path (Join-Path $PSScriptRoot "..\..\.bidlow\relay\QUEUE.md")).Path
+$realRows = Get-QueueRows
+Check "the live queue parses at all" ($realRows.Count -ge 1) "got $($realRows.Count) rows"
+Check "the live queue has more than a couple of items" ($realRows.Count -ge 5) "got $($realRows.Count)"
+
+$unreadable = $realRows | Where-Object {
+    $_.Status -notmatch '^(TODO|DONE|IN PROGRESS|BLOCKED)'
+}
+Check "every status is one the watcher recognises" ($unreadable.Count -eq 0) `
+    "unrecognised: $((($unreadable | ForEach-Object { "#$($_.Number)='$($_.Status)'" }) -join ', '))"
+
+$actionable = $realRows | Where-Object { $_.Status -notmatch '^DONE' -and $_.Status -notmatch '^IN PROGRESS' } | Select-Object -First 1
+if ($actionable) {
+    Write-Host "      next item the relay would take: #$($actionable.Number) [$($actionable.Status)]"
+} else {
+    Write-Host "      the live queue is exhausted; the relay would idle and say so"
+}
 
 # --- tidy up ---------------------------------------------------------------
 Set-Location $PSScriptRoot
