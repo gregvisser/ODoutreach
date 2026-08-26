@@ -9,6 +9,7 @@ import {
 } from "@/app/(app)/clients/do-not-contact-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { resolveActionOutcome } from "@/lib/suppression/panel-action-outcome";
 import type { PendingProposalView } from "@/server/suppression/family-proposals";
 
 /**
@@ -31,67 +32,69 @@ export function FamilyProposalPanel({
   const [isError, setIsError] = useState(false);
   const [decided, setDecided] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  // Set whenever an attempt failed, so the operator can re-run the exact thing
+  // they pressed rather than having to work out what to press again.
+  const [retry, setRetry] = useState<(() => void) | null>(null);
 
   function markDecided(id: string) {
     setDecided((prev) => new Set(prev).add(id));
   }
 
-  function confirm(p: PendingProposalView) {
+  /**
+   * Every press goes through here. `resolveActionOutcome` also catches a
+   * REJECTED action — a request production shed with 503 never resolves, and
+   * before this the panel said nothing at all in that case.
+   */
+  function attempt<R extends { ok: true } | { ok: false; error: string }>(
+    again: () => void,
+    run: () => Promise<R>,
+    describeSuccess: (result: Extract<R, { ok: true }>) => string,
+  ) {
     if (pending) return;
+    setRetry(null);
     startTransition(async () => {
-      const r = await confirmFamilyProposalAction({
-        clientId,
-        proposalId: p.id,
-      });
-      if (!r.ok) {
-        setIsError(true);
-        setMessage(r.error);
-        return;
-      }
-      setIsError(false);
-      markDecided(p.id);
-      setMessage(
-        `${r.proposedDomain} is now blocked as part of the same company. Nobody there will be contacted.`,
-      );
+      const outcome = await resolveActionOutcome(run, describeSuccess);
+      setIsError(outcome.isError);
+      setMessage(outcome.message);
+      setRetry(outcome.retryable ? () => again : null);
     });
   }
 
+  function confirm(p: PendingProposalView) {
+    attempt(
+      () => {
+        confirm(p);
+      },
+      () => confirmFamilyProposalAction({ clientId, proposalId: p.id }),
+      (r) => {
+        markDecided(p.id);
+        return `${r.proposedDomain} is now blocked as part of the same company. Nobody there will be contacted.`;
+      },
+    );
+  }
+
   function reject(p: PendingProposalView) {
-    if (pending) return;
-    startTransition(async () => {
-      const r = await rejectFamilyProposalAction({
-        clientId,
-        proposalId: p.id,
-      });
-      if (!r.ok) {
-        setIsError(true);
-        setMessage(r.error);
-        return;
-      }
-      setIsError(false);
-      markDecided(p.id);
-      setMessage(`Noted — ${r.proposedDomain} is a different company. We won't ask again.`);
-    });
+    attempt(
+      () => {
+        reject(p);
+      },
+      () => rejectFamilyProposalAction({ clientId, proposalId: p.id }),
+      (r) => {
+        markDecided(p.id);
+        return `Noted — ${r.proposedDomain} is a different company. We won't ask again.`;
+      },
+    );
   }
 
   function runDiscovery() {
     if (pending) return;
     setMessage("Checking every company on this client's lists — this takes about a minute.");
     setIsError(false);
-    startTransition(async () => {
-      const r = await discoverFamilyProposalsAction({ clientId });
-      if (!r.ok) {
-        setIsError(true);
-        setMessage(r.error);
-        return;
-      }
-      setIsError(false);
-      setMessage(
-        r.created === 0
-          ? `Checked ${String(r.contactDomainsChecked)} company domains. Nothing new to ask about — anything already answered is not asked twice.`
-          : `Checked ${String(r.contactDomainsChecked)} company domains and found ${String(r.created)} new suggestion${r.created === 1 ? "" : "s"}. Refresh to see ${r.created === 1 ? "it" : "them"}.`,
-      );
-    });
+    attempt(runDiscovery, () => discoverFamilyProposalsAction({ clientId }), (r) =>
+      r.created === 0
+        ? `Checked ${String(r.contactDomainsChecked)} company domains. Nothing new to ask about — anything already answered is not asked twice.`
+        : `Checked ${String(r.contactDomainsChecked)} company domains and found ${String(r.created)} new suggestion${r.created === 1 ? "" : "s"}. Refresh to see ${r.created === 1 ? "it" : "them"}.`,
+    );
   }
 
   const outstanding = proposals.filter((p) => !decided.has(p.id));
@@ -108,9 +111,28 @@ export function FamilyProposalPanel({
       </div>
 
       {message ? (
-        <p className={isError ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
-          {message}
-        </p>
+        isError ? (
+          // role="alert" so the failure is announced, not just coloured.
+          <div
+            role="alert"
+            className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3"
+          >
+            <p className="text-sm text-destructive">{message}</p>
+            {retry ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={retry}
+              >
+                Try again
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{message}</p>
+        )
       ) : null}
 
       {outstanding.length === 0 ? (

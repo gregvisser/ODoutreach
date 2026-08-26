@@ -85,6 +85,10 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
           <Link
             key={item.label}
             href={item.href}
+            // See app-sidebar.tsx: these nine tabs are the other half of the
+            // prefetch burst production sheds with 503. Prefetching them was
+            // not making navigation faster, it was making the page load fail.
+            prefetch={false}
             className={cn(
               "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
               active
