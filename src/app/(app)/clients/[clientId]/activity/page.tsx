@@ -108,21 +108,27 @@ export default async function ClientActivityPage({ params, searchParams }: Props
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Outreach metrics</CardTitle>
+          <CardTitle className="text-base">Rates and delivery detail</CardTitle>
           <CardDescription>
-            All-time metrics for this client, based on verified send proof only.
+            The rest of the picture behind the figures above — rates, and the
+            states that are not a completed send. All-time, based on verified
+            send proof only.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/*
+            No count that already appears in the strip above is repeated here.
+            Replies, unsubscribes and bounces earn their place as RATES; their
+            raw counts are the strip's job. Showing both made one client ask
+            which of the two numbers was the real one.
+          */}
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
-            <MetricRow label="Total sent (with proof)" value={metrics.sent.toLocaleString()} />
             <MetricRow label="Queued" value={metrics.queued.toLocaleString()} tone={metrics.queued > 0 ? "warning" : undefined} />
             <MetricRow label="Send proof missing" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "error" : undefined} />
             <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
-            <MetricRow label="Replies" value={metrics.replies.toLocaleString()} sub={`Rate: ${formatRate(metrics.replyRate)}`} />
-            <MetricRow label="Opt-outs" value={metrics.unsubscribes.toLocaleString()} sub={`Rate: ${formatRate(metrics.unsubscribeRate)}`} />
-            <MetricRow label="Bounces" value={metrics.bounces.toLocaleString()} sub={`Rate: ${formatRate(metrics.bounceRate)}`} />
-            <MetricRow label="Failed" value={metrics.failed.toLocaleString()} />
+            <MetricRow label="Reply rate" value={formatRate(metrics.replyRate)} />
+            <MetricRow label="Unsubscribe rate" value={formatRate(metrics.unsubscribeRate)} />
+            <MetricRow label="Bounce rate" value={formatRate(metrics.bounceRate)} />
             <MetricRow label="Not reached" value={metrics.notReached.toLocaleString()} />
             <MetricRow label="Suppressed / skipped" value={metrics.suppressedOrSkipped.toLocaleString()} />
           </div>

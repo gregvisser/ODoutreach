@@ -495,7 +495,7 @@ const mailboxesModule: TrainingModule = {
   callout: {
     tone: "info",
     heading: "Test mode vs. live",
-    body: "For real prospect outreach, OpensDoors delivers through your **connected** Microsoft 365 or Google mailboxes — not through a single global email API. A `noreply@` placeholder and mock transport apply only to legacy or test rows without a mailbox. Connect mailboxes, complete the brief, Do-not-contact, and launch readiness, then you are live through your own domains.",
+    body: "For real prospect outreach, OpensDoors delivers through the client's own connected Microsoft 365 or Google mailboxes — never from one shared system address. The noreply@ placeholder and mock transport apply only to legacy or test rows that have no mailbox attached. Connect mailboxes, complete the brief, Do-not-contact, and launch readiness, then you are live through your own domains.",
   },
   outcomes: [
     "You know which five mailboxes OpensDoors sends from and their per-mailbox daily caps.",
@@ -693,7 +693,7 @@ const suppressionModule: TrainingModule = {
     "Do-not-contact is how we keep outreach safe. OpensDoors maintains one Google Sheet of blocked email addresses and one of blocked domains. The Do-not-contact tab on each client workspace stores those sheet URLs, triggers sync, and renders the last-sync status. Nothing ships without these sheets being present and healthy.",
   details: [
     "Each client has its own Do-not-contact sheets — we never share a do-not-contact list across clients. Admin-level Google service account credentials are already configured; staff only paste sheet URLs and click Sync.",
-    "The service account email shown on the page (the `...gserviceaccount.com` address) is the identity staff share each sheet with as Viewer. It is not a secret.",
+    "The service account email shown on the page (the one ending gserviceaccount.com) is the identity staff share each sheet with as Viewer. It is not a secret.",
   ],
   screenshots: [
     {
@@ -1313,7 +1313,7 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
     ],
     checklist: [
       "You are signed in as an OpensDoors staff member (not as an admin) for the first half.",
-      "Window is at 1440×900 so screenshots match those in `/public/training`.",
+      "Window is at 1440×900 so screenshots match those in /public/training.",
       "No PII (contact names, emails) is in the recording — use the test client.",
       "Voiceover does NOT claim Reports replaces Activity; it complements it.",
     ],

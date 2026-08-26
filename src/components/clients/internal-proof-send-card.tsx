@@ -142,8 +142,9 @@ export function InternalProofSendCard({
         </p>
       ) : eligibleRows.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          No mailbox is currently eligible for a verification send. Check connection,
-          OAuth readiness, signature status, and remaining daily capacity.
+          No mailbox is currently eligible for a verification send. Check that a mailbox
+          is connected, its sign-in has not expired, its signature is set, and it still
+          has daily capacity left.
         </p>
       ) : (
         <form onSubmit={onSubmit} className="mt-4 grid gap-4 lg:grid-cols-2">

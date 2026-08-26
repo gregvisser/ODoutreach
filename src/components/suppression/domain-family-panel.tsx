@@ -112,10 +112,8 @@ export function DomainFamilyPanel({
 
       {families.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No related companies listed yet. Add one when a client blocks a company
-          that uses more than one domain — blocking <span className="font-mono">bt.com</span>{" "}
-          does not block <span className="font-mono">bteurope.com</span> on its own,
-          because nothing can tell they are the same company without being told.
+          No related companies listed yet. Add one whenever a client blocks a
+          company that trades under more than one domain.
         </p>
       ) : (
         <ul className="space-y-3">

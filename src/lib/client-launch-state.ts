@@ -135,7 +135,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
       id: "sources",
       label: "Sources",
       pillStatus: ok ? "ready" : "needs_attention",
-      metric: ok ? "RocketReach ready" : "API missing",
+      metric: ok ? "RocketReach ready" : "RocketReach not connected",
       href: `${base}/sources`,
       actionLabel: "Open sources",
     };
@@ -157,7 +157,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         id: "suppression",
         label: "Do-not-contact",
         pillStatus: "needs_attention",
-        metric: "Google API missing",
+        metric: "Google Sheets not connected",
         href: `${base}/suppression`,
         actionLabel: "Open suppression",
       };
@@ -245,7 +245,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
       id: "outreach",
       label: "Outreach",
       pillStatus: "needs_attention",
-      metric: "Check mailboxes & OAuth",
+      metric: "Check mailbox connections",
       href: `${base}/outreach`,
       actionLabel: "Open outreach",
     };
