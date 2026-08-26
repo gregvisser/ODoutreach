@@ -85,6 +85,33 @@ export const E2E_CONTACT_B = {
   fullName: "E2E Recipient B",
 } as const;
 
+/**
+ * Blocked-contact fixtures for /suppression (queue item 27, part 7).
+ *
+ * The count is deliberately larger than one page (200). Before the fix the page
+ * loaded an arbitrary 200 rows, printed "Showing 200 of 200", and searched only
+ * those rows in the browser — so an address that was genuinely blocked but not
+ * in the window was reported as not blocked. `needle` is the alphabetically
+ * LAST address, which is therefore guaranteed not to be on the first page: if
+ * the search can find it, the search is running in the database.
+ */
+export const E2E_SUPPRESSION = {
+  sourceId: "e2e-suppression-src-0000000001",
+  domainSourceId: "e2e-suppression-src-0000000002",
+  emailCount: 250,
+  domainCount: 3,
+} as const;
+
+/** Zero-padded so alphabetical order and numeric order are the same. */
+export function e2eSuppressedEmail(index: number): string {
+  return `blocked-${String(index).padStart(3, "0")}@e2e-suppression.test`;
+}
+
+/** The last address alphabetically — never on page one of 200. */
+export const E2E_SUPPRESSION_NEEDLE = e2eSuppressedEmail(
+  E2E_SUPPRESSION.emailCount - 1,
+);
+
 export const E2E_STORAGE_STATE = {
   superAdmin: "e2e/.auth/super-admin.json",
   staff: "e2e/.auth/staff.json",
