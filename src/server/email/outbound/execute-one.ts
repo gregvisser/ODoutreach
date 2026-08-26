@@ -6,6 +6,11 @@ import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { resolveValidatedSenderForClient } from "@/server/email/sender-identity";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
+import { evaluateAutonomousActorGuard } from "@/lib/safety/autonomous-actor-guard";
+import {
+  autonomousRelayIsActive,
+  resolveAutonomousRelayState,
+} from "@/server/safety/autonomous-mode";
 import {
   buildRfc5322PlainTextEmail,
   findGmailMessageIdByRfc822MessageId,
@@ -148,6 +153,34 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
 
   if (row.status !== "PROCESSING") {
     return { ok: true };
+  }
+
+  // ── The autonomous-actor safety gate ──────────────────────────────────────
+  // Greg's rule: while an agent is running unattended, real email may leave
+  // this system for ONE client only. Enforced HERE, at the point of dispatch,
+  // rather than upstream, because upstream is where an agent writes code.
+  //
+  // A row carrying a `staffUserId` was launched by a signed-in person and is
+  // never touched — the business keeps working while an agent works beside it.
+  // A row with no staff behind it is treated as ours and must be allowlisted.
+  //
+  // The whole block is skipped when the relay is not running, so it costs
+  // nothing (not even the extra read) in ordinary operation.
+  if (autonomousRelayIsActive()) {
+    const client = await prisma.client.findUnique({
+      where: { id: row.clientId },
+      select: { slug: true },
+    });
+    const guard = evaluateAutonomousActorGuard({
+      action: "SEND",
+      actor: row.staffUserId ? "HUMAN_STAFF" : "MACHINE",
+      clientSlug: client?.slug ?? null,
+      relay: resolveAutonomousRelayState(),
+    });
+    if (!guard.allowed) {
+      await markFailed(row.id, guard.code.toUpperCase(), guard.reason);
+      return { ok: false, error: guard.reason };
+    }
   }
 
   const to = normalizeEmail(row.toEmail);
