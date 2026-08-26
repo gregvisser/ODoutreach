@@ -114,6 +114,9 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
       : null,
     hasProductionLaunchableSequence,
+    // Feeds isOutreachModuleReady — without it the readiness rail reports
+    // "Ready to launch" off a mailbox signal alone.
+    enrolledContactsCount,
   };
 
   const steps = buildClientWorkflowSteps(snapshot);

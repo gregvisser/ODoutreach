@@ -112,6 +112,9 @@ export async function loadClientLaunchApprovalSnapshot(
       ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
       : null,
     hasProductionLaunchableSequence,
+    // Feeds isOutreachModuleReady so the readiness rows this snapshot builds
+    // agree with the blockers evaluateClientLaunchApproval derives from them.
+    enrolledContactsCount,
   };
 
   const readinessRows = buildLaunchReadinessRows({
