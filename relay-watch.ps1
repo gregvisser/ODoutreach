@@ -70,6 +70,19 @@ $LogDir     = Join-Path $RelayDir "log"
 $MaxCycles  = 40
 $SleepSecs  = 60
 
+# How long to wait before re-reading QUEUE.md after the relay REFUSED to take an
+# item (a malformed row, a BLOCKED row, an exhausted queue).
+#
+# A refusal used to be permanent: the code set $lastSelfQueued = $cycle, which
+# made the guard `$lastSelfQueued -ge $cycle` true forever, and because that
+# number is persisted to STATUS.json, restarting the relay INHERITED the
+# deadlock. The relay looked alive - it logged, it self-tested, it slept - and
+# could never take another item. Seventh instance of the house defect.
+#
+# A refusal is temporary. The usual cause is a human fixing the queue row
+# moments later. So: back off, then look again.
+$RefusalRetryMins = 5
+
 # How long one cycle may take before it is killed.
 #
 # Before this existed, a hung `claude -p` blocked the watcher forever and only a
@@ -127,17 +140,24 @@ function Read-Status {
         if ($null -eq $s.lastSelfQueued) {
             $s | Add-Member -NotePropertyName lastSelfQueued -NotePropertyValue -1 -Force
         }
+        if ($null -eq $s.PSObject.Properties['refusedAt']) {
+            $s | Add-Member -NotePropertyName refusedAt -NotePropertyValue $null -Force
+        }
         return $s
     }
     catch { return [pscustomobject]@{ cycle = 0; lastOutcome = "status file unreadable"; updated = $null; lastSelfQueued = -1 } }
 }
 
-function Save-Status($cycle, $outcome, $lastSelfQueued) {
+function Save-Status($cycle, $outcome, $lastSelfQueued, $refusedAt) {
+    # $refusedAt is deliberately the LAST parameter and deliberately optional.
+    # Every call site that does not pass it clears it, which is what we want:
+    # any call that records real progress means the refusal is over.
     $status = [pscustomobject]@{
         cycle          = $cycle
         lastOutcome    = $outcome
         updated        = (Get-Date -Format "o")
         lastSelfQueued = $lastSelfQueued
+        refusedAt      = $refusedAt
     }
     $status | ConvertTo-Json | Set-Content -Path $StatusFile -Encoding utf8
 }
@@ -569,18 +589,126 @@ function Get-EvidenceVerdict($before, $after, $namedFiles) {
 # ===========================================================================
 
 # Rows look like: | 2 | Item text | TODO |
+#
+# ---------------------------------------------------------------------------
+# WHY THIS IS A REGEX AND NOT A SPLIT ON "|"
+#
+# It used to be `-split '\|'` with the status read as `$parts[$parts.Count - 2]`.
+# That is the status ONLY when the row contains exactly four pipes.
+#
+# 2026-08-26: item 31's status text quoted the Azure runtime string
+# "NODE|20-lts". That fifth pipe shifted every column, the status came back as
+# the fragment starting "20-lts", no branch recognised it, and the watcher wrote
+# a note saying the next item had an unrecognised status and idled for the rest
+# of the evening - with a fully green queue behind it. One cycle lost, silently.
+#
+# `Set-QueueRowStatus` had the same defect and was worse: it WROTE to that index,
+# so it would have overwritten the wrong half of the row.
+#
+# The cure is to stop counting fields. The id is anchored to the front of the
+# row and the status to the LAST cell boundary that is followed by a status the
+# relay actually recognises, so an inner pipe - in the item text or in the status
+# text - cannot move either one.
+#
+# Honest limit: a status cell that itself contained the literal text "| TODO"
+# would still be ambiguous, because at that point the row genuinely is. Nothing
+# short of escaping the delimiter fixes that, and no row has ever done it.
+# ---------------------------------------------------------------------------
+$QueueStatusKeywords = 'TODO|DONE|BLOCKED|PARTIAL|IN PROGRESS|WONTFIX'
+
+# Groups, identical in both patterns below:
+#   1 = "| id |" prefix, 2 = id, 3 = item cell, 4 = the boundary pipe,
+#   5 = status cell, 6 = the closing pipe and any trailing space.
+# Group 3 is greedy on purpose: that is what makes group 4 the LAST viable
+# boundary rather than the first.
+#
+# The leading "**" is matched but NOT captured. Rows in this queue are routinely
+# written with the status in markdown bold - "| **PARTIAL 17 - ...** |" - and
+# item 27 was exactly that. Capturing it would put "**" in front of the keyword
+# and break every `-match '^DONE'` test downstream, so the emphasis is stepped
+# over and group 5 always begins at the keyword itself. Leaving it out of the
+# capture also means Set-QueueRowStatus drops it cleanly on rewrite.
+#
+# ---------------------------------------------------------------------------
+# WHY THERE ARE TWO PATTERNS AND THE STRICT ONE IS TRIED FIRST
+#
+# "Last boundary followed by a status keyword" is not enough on its own, and this
+# cycle proved it the hard way. The status written for item 32 quoted the parser's
+# own keyword list - "TODO|DONE|BLOCKED|PARTIAL|IN PROGRESS|WONTFIX" - so the row
+# contained a pipe sitting immediately in front of the word WONTFIX. The loose
+# pattern anchored there, read the status as "WONTFIX), so an inner pipe...", and
+# the relay would have re-taken an item it had just finished.
+#
+# The discriminator is whitespace. A real cell boundary in this table is always
+# written " | " with a space on each side. The pipes that cause trouble never are:
+# "NODE|20-lts", "a|b", "TODO|DONE" are all written tight. So the STRICT pattern
+# requires whitespace on both sides of the boundary, which excludes every inline
+# pipe seen so far, and the LOOSE pattern is kept only as a fallback for a row
+# written compactly as "|32|item|TODO|".
+#
+# Honest limit: a status cell containing the literal text " | TODO " - spaces and
+# all - would still be ambiguous, because at that point the row genuinely is.
+# Nothing short of escaping the delimiter fixes that.
+# ---------------------------------------------------------------------------
+$QueueRowPatternStrict =
+    "^(\s*\|\s*(\d+)\s*\|)(.*\s)(\|)\s+(?:\*{1,2}|_{1,2})?\s*((?:$QueueStatusKeywords)\b.*?)\s*(\|\s*)$"
+
+$QueueRowPatternLoose =
+    "^(\s*\|\s*(\d+)\s*\|)(.*)(\|)\s*(?:\*{1,2}|_{1,2})?\s*((?:$QueueStatusKeywords)\b.*?)\s*(\|\s*)$"
+
+# One reader, so Get-QueueRows and Set-QueueRowStatus can never disagree about
+# where a row's columns are. They did once, and it wrote to the wrong half.
+function Get-QueueRowMatch([string]$line) {
+    $m = [regex]::Match($line, $QueueRowPatternStrict)
+    if ($m.Success) { return $m }
+    return [regex]::Match($line, $QueueRowPatternLoose)
+}
+
+# Anything that is shaped like a numbered row, whether or not its status parses.
+# Used to tell "this row is broken" apart from "this line is not a row at all" -
+# the distinction the lost cycle needed and did not have.
+$QueueRowShapePattern = '^\s*\|\s*(\d+)\s*\|.*\|\s*$'
+
 function Get-QueueRows {
     if (-not (Test-Path $QueueFile)) { return @() }
     $rows = New-Object System.Collections.Generic.List[object]
     $lines = Get-Content $QueueFile
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $parts = $lines[$i] -split '\|'
-        if ($parts.Count -lt 4) { continue }
-        $number = $parts[1].Trim()
-        if ($number -notmatch '^\d+$') { continue }
-        $status = $parts[$parts.Count - 2].Trim()
-        $item   = ($parts[2..($parts.Count - 3)] -join '|').Trim()
-        $rows.Add([pscustomobject]@{ Number = $number; Item = $item; Status = $status; LineIndex = $i })
+        # [string] strips the PSPath / PSDrive / PSProvider NoteProperties that
+        # Windows PowerShell 5.1 - the host relay-start.cmd actually uses - hangs
+        # off every line Get-Content returns. Without it, `Raw` below carries the
+        # whole filesystem-provider object graph, and anything that serialises a
+        # row balloons to hundreds of kilobytes. PowerShell 7 does not decorate
+        # its strings, so this is invisible until it runs on the real host.
+        $line = [string]$lines[$i]
+
+        $m = Get-QueueRowMatch $line
+        if ($m.Success) {
+            $rows.Add([pscustomobject]@{
+                Number    = $m.Groups[2].Value.Trim()
+                Item      = $m.Groups[3].Value.Trim()
+                Status    = $m.Groups[5].Value.Trim()
+                LineIndex = $i
+                Raw       = [string]$line
+                Parsed    = $true
+            })
+            continue
+        }
+
+        # Shaped like a row, but carrying no status the relay knows. It is
+        # RETURNED, flagged - never dropped. A dropped row reads downstream as
+        # "the queue ran out of work", which is the lie that cost the cycle.
+        $shape = [regex]::Match($line, $QueueRowShapePattern)
+        if ($shape.Success) {
+            $rows.Add([pscustomobject]@{
+                Number    = $shape.Groups[1].Value.Trim()
+                Item      = ""
+                Status    = $null
+                LineIndex = $i
+                Raw       = [string]$line
+                Parsed    = $false
+            })
+        }
     }
     return $rows
 }
@@ -588,11 +716,16 @@ function Get-QueueRows {
 function Set-QueueRowStatus($number, $newStatus) {
     $lines = Get-Content $QueueFile
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $parts = $lines[$i] -split '\|'
-        if ($parts.Count -lt 4) { continue }
-        if ($parts[1].Trim() -ne $number) { continue }
-        $parts[$parts.Count - 2] = " $newStatus "
-        $lines[$i] = ($parts -join '|')
+        $m = Get-QueueRowMatch ([string]$lines[$i])
+        if (-not $m.Success) { continue }
+        if ($m.Groups[2].Value.Trim() -ne $number) { continue }
+
+        # Rebuild from the SAME anchor the reader used: everything up to and
+        # including the boundary pipe is kept byte for byte, only the status cell
+        # is replaced. A row this function cannot parse is a row it refuses to
+        # touch - guessing at the columns is how the old version corrupted them.
+        $lines[$i] = $m.Groups[1].Value + $m.Groups[3].Value + $m.Groups[4].Value +
+                     " $newStatus " + $m.Groups[6].Value
         Set-Content -Path $QueueFile -Value $lines -Encoding utf8
         return $true
     }
@@ -618,15 +751,52 @@ function Invoke-SelfQueue($nextCycle) {
     }
 
     # "In order" means: the first row that is not already finished or running.
-    # Do not reorder, do not skip, do not invent.
-    $next = $rows | Where-Object { $_.Status -notmatch '^DONE' -and $_.Status -notmatch '^IN PROGRESS' } | Select-Object -First 1
+    # Do not reorder, do not skip, do not invent. A row that would not parse
+    # counts as "not finished" and stops the queue here, deliberately - skipping
+    # past it would hide the fault and run the wrong item.
+    $next = $rows | Where-Object {
+        (-not $_.Parsed) -or ($_.Status -notmatch '^DONE' -and $_.Status -notmatch '^IN PROGRESS')
+    } | Select-Object -First 1
 
     if ($null -eq $next) {
         Write-SelfQueueNote "Every item in QUEUE.md is DONE or IN PROGRESS. The queue is exhausted, so the relay is idling rather than inventing work. Greg needs to add the next item."
         return $false
     }
 
-    if ($next.Status -match 'BLOCKED') {
+    # The guard that makes a formatting fault LOUD.
+    #
+    # The lost cycle of 2026-08-26 read a mangled status, did not recognise it,
+    # and wrote a note that read like an ordinary exhausted queue. Nobody could
+    # tell from the note that the queue was fine and the PARSER was wrong. So
+    # when the relay cannot read a row, it now prints the row.
+    if (-not $next.Parsed) {
+        Write-SelfQueueNote @"
+The next row in order is #$($next.Number), and the relay could not read it.
+
+It is shaped like a queue row, but its status cell does not start with any status
+the relay recognises. Those are: TODO, DONE, BLOCKED, PARTIAL, IN PROGRESS, WONTFIX.
+
+This is the row exactly as it appears in QUEUE.md, line $($next.LineIndex + 1):
+
+    $($next.Raw)
+
+THE QUEUE IS NOT EMPTY - this is a formatting fault in one row, and there may be
+perfectly good work behind it. Fix that row's status cell and the relay will pick
+up again on its own within $RefusalRetryMins minutes. Nothing has been skipped and
+nothing has been changed.
+"@
+        return $false
+    }
+
+    # ANCHORED, and that anchor is load-bearing.
+    #
+    # This was `-match 'BLOCKED'`. PowerShell's -match is an unanchored,
+    # CASE-INSENSITIVE substring test, so a status that merely mentioned the word
+    # in passing halted the relay. Found by replaying the 2026-08-26 queue through
+    # the fixed parser: row 27's status read "PARTIAL 17 - ... (3) blocked on
+    # tooling ...", and the relay stopped dead on a row that was not blocked at
+    # all. Same defect class as the pipe - a status cell read by guesswork.
+    if ($next.Status -match '^BLOCKED') {
         Write-SelfQueueNote "The next item in order is #$($next.Number), and it is BLOCKED:`n`n> $($next.Item)`n`nThe relay does not skip past a blocked item, because the order is the plan. Idling until Greg unblocks it or reorders the queue."
         return $false
     }
@@ -637,7 +807,20 @@ function Invoke-SelfQueue($nextCycle) {
     }
 
     if ($next.Status -notmatch '^TODO') {
-        Write-SelfQueueNote "The next item in order is #$($next.Number) with status '$($next.Status)', which the relay does not recognise as ready. Only TODO is taken automatically. Idling."
+        # The row parsed cleanly - this is a real status the relay simply does
+        # not take automatically. The raw row goes in anyway, because the one
+        # thing the lost cycle proved is that a status quoted out of context is
+        # not enough to tell a deliberate hold from a broken cell.
+        Write-SelfQueueNote @"
+The next item in order is #$($next.Number), and its status is '$($next.Status)'.
+
+Only TODO is taken automatically, so the relay is idling rather than deciding for
+itself that this counts as ready.
+
+The row as it appears in QUEUE.md, line $($next.LineIndex + 1):
+
+    $($next.Raw)
+"@
         return $false
     }
 
@@ -816,14 +999,33 @@ while ($true) {
             continue
         }
 
+        # Did we refuse recently? If so, wait $RefusalRetryMins before looking
+        # at QUEUE.md again, so we do not rewrite the same note every minute.
+        # This is a COOLDOWN, not a stop. It always expires.
+        if ($status.refusedAt) {
+            $since = $null
+            try { $since = ((Get-Date) - [datetime]::Parse($status.refusedAt)).TotalMinutes } catch { $since = $null }
+            if ($null -ne $since -and $since -lt $RefusalRetryMins) {
+                Start-Sleep -Seconds $SleepSecs
+                continue
+            }
+            if ($null -ne $since) {
+                Write-Line ("Refusal cooldown of {0} min has expired. Re-reading QUEUE.md." -f $RefusalRetryMins)
+            }
+        }
+
         if (Invoke-SelfQueue ($cycle + 1)) {
             $lastSelfQueued = $cycle
+            # No $refusedAt argument: taking an item clears any refusal.
             Save-Status $cycle $status.lastOutcome $lastSelfQueued
         } else {
-            # Refused, and the note says why. Record the attempt so we do not
-            # rewrite the same note every 60 seconds.
-            $lastSelfQueued = $cycle
-            Save-Status $cycle $status.lastOutcome $lastSelfQueued
+            # Refused, and the note says why.
+            #
+            # DO NOT set $lastSelfQueued here. That is what deadlocked the relay
+            # permanently and survived restarts. Stamp the time instead and let
+            # the cooldown above expire on its own.
+            Write-Line ("Refused to take an item. Will re-read QUEUE.md in {0} min. See SELF-QUEUE-NOTE.md." -f $RefusalRetryMins)
+            Save-Status $cycle $status.lastOutcome $lastSelfQueued (Get-Date -Format "o")
             Start-Sleep -Seconds $SleepSecs
             continue
         }
