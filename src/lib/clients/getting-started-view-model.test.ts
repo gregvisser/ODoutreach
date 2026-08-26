@@ -78,17 +78,75 @@ describe("buildGettingStartedViewModel", () => {
     expect(byId.enrollments?.done).toBe(true);
   });
 
-  it("launch item reflects outreachPilotRunnable", () => {
-    expect(
-      buildGettingStartedViewModel(baseInput({ outreachPilotRunnable: false })).items.find(
-        (i) => i.id === "launch",
-      )?.done,
-    ).toBe(false);
-    expect(
-      buildGettingStartedViewModel(baseInput({ outreachPilotRunnable: true })).items.find(
-        (i) => i.id === "launch",
-      )?.done,
-    ).toBe(true);
+  /**
+   * CORRECTED 2026-08-26. This test used to be "launch item reflects
+   * outreachPilotRunnable" and asserted `done: true` for a client with NO
+   * launchable sequence and NO enrolments — because item 8 keyed off a mailbox
+   * signal alone. That is how the bidlowai overview came to say "5 / 8
+   * complete, workspace setup is incomplete" and "Ready to launch" on the same
+   * card. Item 8 is now the same predicate as the readiness rail and the
+   * launch gate.
+   */
+  describe("the launch checklist item cannot contradict the items above it", () => {
+    const outreachLive = {
+      briefStatus: "ready" as const,
+      connectedSendingCount: 1,
+      suppressionSheetCount: 1,
+      contactsTotal: 3,
+      outreachPilotRunnable: true,
+    };
+
+    it("is not done when there is no launchable sequence (the bidlowai case)", () => {
+      const vm = buildGettingStartedViewModel(
+        baseInput({
+          ...outreachLive,
+          hasProductionLaunchableSequence: false,
+          enrolledContactsCount: 0,
+        }),
+      );
+      const byId = Object.fromEntries(vm.items.map((i) => [i.id, i]));
+      expect(byId.sequences?.done).toBe(false);
+      expect(byId.enrollments?.done).toBe(false);
+      // The contradiction: item 8 must not tick while 6 and 7 are untickd.
+      expect(byId.launch?.done).toBe(false);
+    });
+
+    it("is not done when a sequence exists but nobody is enrolled", () => {
+      expect(
+        buildGettingStartedViewModel(
+          baseInput({
+            ...outreachLive,
+            hasProductionLaunchableSequence: true,
+            enrolledContactsCount: 0,
+          }),
+        ).items.find((i) => i.id === "launch")?.done,
+      ).toBe(false);
+    });
+
+    it("is not done when the mailboxes cannot send, even with a full sequence", () => {
+      expect(
+        buildGettingStartedViewModel(
+          baseInput({
+            ...outreachLive,
+            outreachPilotRunnable: false,
+            hasProductionLaunchableSequence: true,
+            enrolledContactsCount: 2,
+          }),
+        ).items.find((i) => i.id === "launch")?.done,
+      ).toBe(false);
+    });
+
+    it("is done when all three are genuinely true", () => {
+      expect(
+        buildGettingStartedViewModel(
+          baseInput({
+            ...outreachLive,
+            hasProductionLaunchableSequence: true,
+            enrolledContactsCount: 2,
+          }),
+        ).items.find((i) => i.id === "launch")?.done,
+      ).toBe(true);
+    });
   });
 
   it("always renders while client status is ONBOARDING even if all items happen to be done", () => {

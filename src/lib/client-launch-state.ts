@@ -32,11 +32,63 @@ export type ClientLaunchSnapshotInput = {
    */
   approvedIntroductionTemplatesCount?: number;
   /**
-   * When true, at least one sequence passes the production launch rail (same
-   * as Outreach). Preferred over approved* counts for UI metrics.
+   * True when at least one non-archived sequence passes the production launch
+   * rail (`evaluateSequenceLaunchReadiness`) — an introduction step on an
+   * active template, a list, recipients and compliance.
+   *
+   * REQUIRED, deliberately. It and `enrolledContactsCount` are the two signals
+   * {@link isOutreachModuleReady} needs, and both were previously optional and
+   * silently dropped by the caller. An optional field defaulting to "not
+   * ready" fails closed, but it fails closed SILENTLY — the screen would just
+   * be wrong in the other direction and nobody would know. Required means the
+   * compiler refuses to build a caller that forgets to wire it.
    */
-  hasProductionLaunchableSequence?: boolean;
+  hasProductionLaunchableSequence: boolean;
+  /**
+   * Count of `ClientEmailSequenceEnrollment` rows for this client. Required
+   * for the same reason as above.
+   */
+  enrolledContactsCount: number;
 };
+
+/**
+ * Is the Outreach module genuinely ready to launch?
+ *
+ * ## Why this predicate exists
+ *
+ * It used to be `outreachPilotRunnable` alone, in four separate places. That
+ * boolean is `hasGovernedMailbox && oauthReadyForGovernedTest &&
+ * poolCanSendPilot` — it is a fact about MAILBOXES. It asks "could a governed
+ * mailbox send something today?" and never looks at sequences, steps or
+ * enrolments.
+ *
+ * So on 2026-08-26 the `bidlowai` workspace showed a green "Ready to launch"
+ * badge, a "6 Outreach — complete" pill and a readiness row reading "Ready to
+ * launch", while its own Outreach tab said "No sequences yet." and its own
+ * Getting-started checklist said "5 / 8 complete" — one screen contradicting
+ * itself three ways.
+ *
+ * Meanwhile `evaluateClientLaunchApproval` — the gate that actually decides
+ * whether a client may go live — has always required a launchable sequence AND
+ * at least one enrolment. The rail was reporting Ready for clients the gate
+ * would have refused.
+ *
+ * This is that gate's condition, extracted so the display and the gate are the
+ * same boolean and cannot drift apart again. Fails closed: an omitted signal
+ * counts as not-ready.
+ */
+export function isOutreachModuleReady(
+  input: Pick<
+    ClientLaunchSnapshotInput,
+    "outreachPilotRunnable" | "hasProductionLaunchableSequence" | "enrolledContactsCount"
+  >,
+): boolean {
+  return (
+    input.outreachPilotRunnable &&
+    input.hasProductionLaunchableSequence === true &&
+    (input.enrolledContactsCount ?? 0) >= 1
+  );
+}
 
 /** Status pill for the compact Launch readiness panel (UI copy). */
 export type LaunchReadinessPillStatus =
@@ -192,53 +244,41 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
   const hasLaunchable = input.hasProductionLaunchableSequence === true;
 
   const outreachRow = ((): LaunchReadinessRow => {
-    const sequenceHint = hasLaunchable
-      ? " · launchable sequence"
-      : approvedSequences > 0
-        ? ` · ${String(approvedSequences)} approved sequence${approvedSequences === 1 ? "" : "s"}`
-        : approvedIntroTemplates > 0
-          ? " · sequence pending approval"
-          : "";
-    if (input.outreachPilotRunnable) {
-      return {
-        id: "outreach",
-        label: "Outreach",
-        pillStatus: "ready",
-        metric: hasLaunchable
-          ? "Ready to launch · launchable production sequence"
-          : `Ready to launch${sequenceHint}`,
-        href: `${base}/outreach`,
-        actionLabel: "Open outreach",
-      };
-    }
-    if (hasLaunchable) {
-      return {
-        id: "outreach",
-        label: "Outreach",
-        pillStatus: "ready",
-        metric: "Launchable production sequence",
-        href: `${base}/outreach`,
-        actionLabel: "Open outreach",
-      };
-    }
-    if (input.contactsEligible < 1) {
-      return {
-        id: "outreach",
-        label: "Outreach",
-        pillStatus: "needs_attention",
-        metric: "Needs eligible contact",
-        href: `${base}/outreach`,
-        actionLabel: "Open outreach",
-      };
-    }
-    return {
+    const row = (pillStatus: LaunchReadinessPillStatus, metric: string): LaunchReadinessRow => ({
       id: "outreach",
       label: "Outreach",
-      pillStatus: "needs_attention",
-      metric: "Check mailbox connections",
+      pillStatus,
+      metric,
       href: `${base}/outreach`,
       actionLabel: "Open outreach",
-    };
+    });
+
+    // Ready means ready: a mailbox that can send, a sequence that passes the
+    // launch rail, and somebody enrolled to receive it. See isOutreachModuleReady.
+    if (isOutreachModuleReady(input)) {
+      return row("ready", "Ready to launch · launchable production sequence");
+    }
+
+    // Not ready — say which of the three is missing, most-fundamental first,
+    // so the operator has somewhere to go rather than a bare "not ready".
+    if (input.contactsEligible < 1) {
+      return row("needs_attention", "Needs eligible contact");
+    }
+    if (!hasLaunchable) {
+      // Keep the approval-progress hint: "no launchable sequence" and "a
+      // sequence exists but hasn't passed the rail" are different situations.
+      const hint =
+        approvedSequences > 0
+          ? ` · ${String(approvedSequences)} approved sequence${approvedSequences === 1 ? "" : "s"}`
+          : approvedIntroTemplates > 0
+            ? " · sequence pending approval"
+            : "";
+      return row("needs_attention", `Needs a launchable sequence${hint}`);
+    }
+    if ((input.enrolledContactsCount ?? 0) < 1) {
+      return row("needs_attention", "Sequence ready · no recipients enrolled yet");
+    }
+    return row("needs_attention", "Check mailbox connections");
   })();
 
   const activityRow = ((): LaunchReadinessRow => {
@@ -260,7 +300,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
 
 /** One-line status for the command center header. */
 export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string {
-  if (input.brief.status === "ready" && input.outreachPilotRunnable) {
+  if (input.brief.status === "ready" && isOutreachModuleReady(input)) {
     return "Ready to launch";
   }
   if (input.brief.status === "empty") {
@@ -271,6 +311,14 @@ export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string
   }
   if (input.connectedSendingCount < 1) {
     return "Connect mailboxes";
+  }
+  // Setup is otherwise done — name the outreach work that is actually left,
+  // rather than the catch-all "In setup" that told bidlowai nothing.
+  if (input.hasProductionLaunchableSequence !== true) {
+    return "Build a sequence";
+  }
+  if ((input.enrolledContactsCount ?? 0) < 1) {
+    return "Enroll recipients";
   }
   return "In setup";
 }

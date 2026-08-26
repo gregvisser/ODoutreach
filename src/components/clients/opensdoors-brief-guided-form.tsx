@@ -121,37 +121,49 @@ export function OpensDoorsBriefGuidedForm({
     e.preventDefault();
     setMessage(null);
     startTransition(async () => {
-      const r = await saveClientBriefAction({
-        clientId,
-        website,
-        industry,
-        briefLinkedinUrl: linkedin,
-        briefInternalNotes: internalNotes,
-        briefAssignedAccountManagerId: accountManagerId || null,
-        briefBusinessAddress: addr,
-        briefMainContact: main,
-        brief: {
-          tradingName: form.tradingName,
-          businessAddress: form.businessAddress,
-          targetGeography: form.targetGeography,
-          targetCustomerProfile: form.targetCustomerProfile,
-          usps: form.usps,
-          offer: form.offer,
-          exclusions: form.exclusions,
-          complianceNotes: form.complianceNotes,
-          campaignObjective: form.campaignObjective,
-          valueProposition: form.valueProposition,
-          coreOffer: form.coreOffer,
-          differentiators: form.differentiators,
-          proofNotes: form.proofNotes,
-        },
-        taxonomy,
-      });
-      if (r.ok) {
-        setMessage({ type: "ok", text: "Brief saved." });
-        router.refresh();
-      } else {
-        setMessage({ type: "err", text: r.error });
+      try {
+        const r = await saveClientBriefAction({
+          clientId,
+          website,
+          industry,
+          briefLinkedinUrl: linkedin,
+          briefInternalNotes: internalNotes,
+          briefAssignedAccountManagerId: accountManagerId || null,
+          briefBusinessAddress: addr,
+          briefMainContact: main,
+          brief: {
+            tradingName: form.tradingName,
+            businessAddress: form.businessAddress,
+            targetGeography: form.targetGeography,
+            targetCustomerProfile: form.targetCustomerProfile,
+            usps: form.usps,
+            offer: form.offer,
+            exclusions: form.exclusions,
+            complianceNotes: form.complianceNotes,
+            campaignObjective: form.campaignObjective,
+            valueProposition: form.valueProposition,
+            coreOffer: form.coreOffer,
+            differentiators: form.differentiators,
+            proofNotes: form.proofNotes,
+          },
+          taxonomy,
+        });
+        if (r.ok) {
+          setMessage({ type: "ok", text: "Brief saved." });
+          router.refresh();
+        } else {
+          setMessage({ type: "err", text: r.error });
+        }
+      } catch {
+        // A server action call can reject for reasons outside its own
+        // try/catch (session expired, dropped connection, a DB blip before
+        // the transaction starts). Left uncaught, that rejection would
+        // bubble out of this transition and hit the app-wide error
+        // boundary, unmounting the form and losing everything typed here.
+        setMessage({
+          type: "err",
+          text: "Couldn't save the brief. Please try again — if this keeps happening, refresh the page and sign in again.",
+        });
       }
     });
   }
