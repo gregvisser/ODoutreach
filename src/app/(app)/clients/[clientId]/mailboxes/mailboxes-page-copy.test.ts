@@ -92,3 +92,64 @@ describe("Client Mailboxes page copy (PR #139, supersedes PR #117)", () => {
     expect(explainer).toMatch(/read replies/i);
   });
 });
+
+/**
+ * Queue item 27, defect (6) — "the Mailboxes screen buries the mailboxes".
+ *
+ * Measured in Chrome on the live site 2026-08-26: before reaching the list of
+ * mailboxes you scrolled past a "what happens when you connect" explainer, a
+ * Microsoft admin-approval card carrying a raw OAuth consent URL, a full
+ * SPF/DKIM/DMARC block, and a send-a-test-email form. Four screens of
+ * documentation ahead of the thing the page is named after.
+ *
+ * The content stays — it is some of the best writing in the app. Only the order
+ * changes. These assertions are on source order because the suite is
+ * `environment: "node"` with no DOM renderer; `e2e/mailboxes-table-first.spec.ts`
+ * is what proves it actually reaches the browser that way.
+ */
+describe("Mailboxes page puts the mailboxes first (queue item 27, defect 6)", () => {
+  const pageSrc = readFileSync(PAGE_PATH, "utf8");
+  const panelSrc = readFileSync(PANEL_PATH, "utf8");
+
+  /** Every help/setup block that used to sit above the table. */
+  const HELP_BLOCKS = [
+    "MAILBOXES_WHAT_HAPPENS_BULLETS.map",
+    "<MicrosoftAdminConsentHelp",
+    "<ClientDeliverabilityHelp",
+    "<InternalProofSendCard",
+  ] as const;
+
+  it("renders the mailbox table before every help and setup block", () => {
+    const tableAt = pageSrc.indexOf("<ClientMailboxIdentitiesPanel");
+    expect(tableAt).toBeGreaterThan(-1);
+
+    for (const block of HELP_BLOCKS) {
+      const helpAt = pageSrc.indexOf(block);
+      expect(helpAt, `${block} is not on the page any more`).toBeGreaterThan(-1);
+      expect(helpAt, `${block} still renders above the mailbox table`).toBeGreaterThan(
+        tableAt,
+      );
+    }
+  });
+
+  it("keeps the help behind one closed disclosure, not four open cards", () => {
+    const detailsAt = pageSrc.indexOf("Setup, deliverability and test sends");
+    expect(detailsAt).toBeGreaterThan(-1);
+    // Everything that was above the table is now inside that disclosure.
+    for (const block of HELP_BLOCKS) {
+      expect(pageSrc.indexOf(block)).toBeGreaterThan(detailsAt);
+    }
+    // `<details open>` would defeat the point — it renders expanded.
+    expect(pageSrc).not.toMatch(/<details[^>]*\sopen[\s>]/);
+  });
+
+  it("prints repeated signature advice once above the table, not on every row", () => {
+    // The defect was `{opState.recommendedAction}` inside the row map: six
+    // fixed templates, so mailboxes in the same state printed the same ~50-word
+    // paragraph once each. See src/lib/mailboxes/signature-row-guidance.ts.
+    expect(panelSrc).not.toContain("{opState.recommendedAction}");
+    expect(panelSrc).toContain("planSignatureRowGuidance");
+    expect(panelSrc).toContain("signatureGuidance.perRow");
+    expect(panelSrc).toContain("signatureGuidance.shared");
+  });
+});

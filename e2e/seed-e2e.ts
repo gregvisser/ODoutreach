@@ -19,6 +19,8 @@ import {
   E2E_CLIENT_B,
   E2E_CONTACT,
   E2E_CONTACT_B,
+  E2E_MAILBOX_SIGNATURE_HTML,
+  E2E_MAILBOXES,
   E2E_MEMBER_A,
   E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
@@ -107,6 +109,48 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
       },
       update: { status: "SENT", subject: E2E_OUTBOUND_EMAIL.subject },
     });
+
+    /**
+     * Sending mailboxes, so the Mailboxes screen has the thing it is named
+     * after. Four connected + one offline, matching the live shape — see
+     * `E2E_MAILBOXES` for why that mix matters, and for why it cannot send.
+     */
+    for (const mailbox of E2E_MAILBOXES) {
+      const signature = mailbox.connected
+        ? {
+            senderDisplayName: "E2E Sender",
+            senderSignatureHtml: E2E_MAILBOX_SIGNATURE_HTML,
+            senderSignatureSource: "manual",
+          }
+        : {
+            senderDisplayName: null,
+            senderSignatureHtml: null,
+            senderSignatureSource: null,
+          };
+      const connection = {
+        connectionStatus: mailbox.connected ? ("CONNECTED" as const) : ("DRAFT" as const),
+        connectedAt: mailbox.connected ? new Date("2026-01-01T09:00:00.000Z") : null,
+      };
+      await prisma.clientMailboxIdentity.upsert({
+        where: { id: mailbox.id },
+        create: {
+          id: mailbox.id,
+          clientId: E2E_CLIENT.id,
+          provider: "MICROSOFT",
+          email: mailbox.email,
+          emailNormalized: mailbox.email,
+          isActive: true,
+          ...connection,
+          ...signature,
+        },
+        update: {
+          isActive: true,
+          workspaceRemovedAt: null,
+          ...connection,
+          ...signature,
+        },
+      });
+    }
 
     // ---- cross-tenant isolation fixtures (BC-01) -----------------------
     // A second workspace, and one staff member scoped to each. Membership is

@@ -36,6 +36,10 @@ import {
   humanizeSignatureSource,
 } from "@/lib/mailboxes/signature-operator-state";
 import {
+  describeSignatureGuidanceScope,
+  planSignatureRowGuidance,
+} from "@/lib/mailboxes/signature-row-guidance";
+import {
   computePoolDailyMax,
   countConnectedMailboxes,
   countMailboxNeedsAttention,
@@ -399,6 +403,44 @@ export function ClientMailboxIdentitiesPanel({
         ),
       ),
     [activeRows, clientBriefFallback],
+  );
+
+  /**
+   * Signature state per row, computed once so the table and the guidance plan
+   * below cannot disagree about what a row says.
+   */
+  const signatureStates = useMemo(
+    () =>
+      activeRows.map((row, i) => {
+        const mailbox = toSenderMailbox(row);
+        const selection = chooseSignatureForSend({ mailbox, clientBrief: clientBriefFallback });
+        return {
+          selection,
+          operator: getOperatorSignatureState(
+            row,
+            signatureViewModels[i]!,
+            selection,
+            mailbox,
+          ),
+        };
+      }),
+    [activeRows, signatureViewModels, clientBriefFallback],
+  );
+
+  /**
+   * The six `recommendedAction` templates repeat across rows in the same state,
+   * so four connected mailboxes printed the same ~50-word paragraph four times.
+   * Anything identical on more than one row is hoisted above the table, once.
+   */
+  const signatureGuidance = useMemo(
+    () =>
+      planSignatureRowGuidance(
+        activeRows.map((row, i) => ({
+          key: row.email,
+          action: signatureStates[i]!.operator.recommendedAction,
+        })),
+      ),
+    [activeRows, signatureStates],
   );
 
   const poolDailyMax = useMemo(
@@ -962,6 +1004,18 @@ export function ClientMailboxIdentitiesPanel({
               </Button>
             </div>
           ) : null}
+          {signatureGuidance.shared.length > 0 ? (
+            <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+              {signatureGuidance.shared.map((s) => (
+                <p key={s.text} className="text-xs text-muted-foreground leading-relaxed">
+                  <span className="font-medium text-foreground">
+                    Next step for {describeSignatureGuidanceScope(s.keys)}:
+                  </span>{" "}
+                  {s.text}
+                </p>
+              ))}
+            </div>
+          ) : null}
           <div className="overflow-x-auto rounded-lg border border-border/80 -mx-1 px-1 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
@@ -975,16 +1029,8 @@ export function ClientMailboxIdentitiesPanel({
               <TableBody>
                 {activeRows.map((row, i) => {
                   const vm = signatureViewModels[i]!;
-                  const selection = chooseSignatureForSend({
-                    mailbox: toSenderMailbox(row),
-                    clientBrief: clientBriefFallback,
-                  });
-                  const opState = getOperatorSignatureState(
-                    row,
-                    vm,
-                    selection,
-                    toSenderMailbox(row),
-                  );
+                  const { selection, operator: opState } = signatureStates[i]!;
+                  const rowAdvice = signatureGuidance.perRow[i];
                   return (
                     <TableRow key={`sig-${row.id}`}>
                       <TableCell className="align-top text-sm break-all max-w-[14rem] min-w-[8rem]">
@@ -1012,9 +1058,11 @@ export function ClientMailboxIdentitiesPanel({
                             Sync error — use Preview or Advanced details to review.
                           </div>
                         ) : null}
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {opState.recommendedAction}
-                        </div>
+                        {rowAdvice ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {rowAdvice}
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell className="align-top text-sm text-muted-foreground">
                         {humanizeSignatureSource(selection.source)}
