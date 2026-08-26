@@ -75,3 +75,27 @@ describe("advance-due-followups wiring", () => {
     expect(route).toContain("status: 401");
   });
 });
+
+describe("the autonomous relay cannot generate follow-ups for other clients", () => {
+  /**
+   * The system-actor hole. This advancer attributes automated sends to the
+   * first ADMIN staff user, so its rows carry a `staffUserId` and look
+   * human-launched at dispatch — where the safety gate would let them through.
+   *
+   * The wiring below is what stops those rows existing at all. If a refactor
+   * drops it, an unattended agent poking this advancer would generate real
+   * outreach for every active client.
+   */
+  it("narrows the client query by the relay allowlist", () => {
+    expect(advancer).toContain("autonomousClientWhereFilter");
+    expect(advancer).toContain("relayClientFilter");
+    // Spread INTO the where clause, not computed and forgotten.
+    expect(advancer).toMatch(/\.\.\.relayClientFilter/);
+  });
+
+  it("reads the relay state from the server resolver, not an ad-hoc env read", () => {
+    expect(advancer).toContain("resolveAutonomousRelayState");
+    expect(advancer).not.toMatch(/process\.env\.AUTONOMOUS/);
+  });
+});
+

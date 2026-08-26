@@ -8,6 +8,8 @@ import {
 } from "@/lib/email-sequences/auto-followup-window";
 import { getSequenceStepSendConfirmationPhrase } from "@/lib/email-sequences/sequence-send-execution-constants";
 import { previousCategoryFor } from "@/lib/email-sequences/sequence-send-execution-policy";
+import { autonomousClientWhereFilter } from "@/lib/safety/autonomous-client-filter";
+import { resolveAutonomousRelayState } from "@/server/safety/autonomous-mode";
 
 import { sendSequenceStepBatch } from "./send-introduction";
 import { planSequenceStepSends } from "./step-sends";
@@ -111,12 +113,26 @@ export async function advanceDueSequenceFollowUps(opts?: {
     return result;
   }
 
+  // While an unattended agent is running, automated follow-ups are generated
+  // ONLY for allowlisted clients.
+  //
+  // This is not belt-and-braces with the dispatch gate — it closes a hole the
+  // dispatch gate cannot see. That gate lets a row through when it carries a
+  // `staffUserId`, so staff are never blocked; but the loop below runs with a
+  // SYSTEM ACTOR (the first ADMIN, resolved above), so every row it creates
+  // carries a staffUserId and looks human at dispatch. Stopping the rows being
+  // born is the only place this can be caught without a schema change.
+  //
+  // Resolves to `{}` when no relay is running, leaving the query untouched.
+  const relayClientFilter = autonomousClientWhereFilter(resolveAutonomousRelayState());
+
   const clients = await prisma.client.findMany({
     where: {
       status: "ACTIVE",
       // F2: a soft-deleted workspace stops advancing follow-ups (read-side; no rows mutated).
       deletedAt: null,
       ...(opts?.clientId ? { id: opts.clientId } : {}),
+      ...relayClientFilter,
     },
     select: { id: true },
   });
