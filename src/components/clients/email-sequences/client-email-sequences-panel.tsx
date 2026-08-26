@@ -212,19 +212,25 @@ export function ClientEmailSequencesPanel(props: Props) {
           </div>
         )}
 
-        <p className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{String(counts.total)}</span>{" "}
-          sequence{counts.total === 1 ? "" : "s"} for this client.
-          {launchReadyCount > 0 ? (
-            <>
-              {" "}
-              <span className="font-medium text-foreground">
-                {String(launchReadyCount)}
-              </span>{" "}
-              {launchReadyCount === 1 ? "is" : "are"} ready to launch.
-            </>
-          ) : null}
-        </p>
+        {/*
+          Suppressed at zero: "0 sequences for this client." sat directly above
+          the "No sequences yet." empty state, saying the same thing twice.
+        */}
+        {counts.total > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{String(counts.total)}</span>{" "}
+            sequence{counts.total === 1 ? "" : "s"} for this client.
+            {launchReadyCount > 0 ? (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">
+                  {String(launchReadyCount)}
+                </span>{" "}
+                {launchReadyCount === 1 ? "is" : "are"} ready to launch.
+              </>
+            ) : null}
+          </p>
+        ) : null}
 
         <details className="rounded-lg border border-border/70 bg-muted/10">
           <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold outline-none [&::-webkit-details-marker]:hidden">

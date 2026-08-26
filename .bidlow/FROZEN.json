@@ -10,6 +10,7 @@
     "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
     "e2e/safe-database.test.ts": "79d8a0d1ea23b892535dc2ccb60bc55413db2f236b52112ada5cdd2f04483dee",
     "e2e/safe-database.ts": "4a8d42275c899ca1771cd51600a7445ae351d0a50e81dd8611d0e31c6e3197b6",
+    "e2e/screen-walk.spec.ts": "ac5feebd802c8676293e25a4c760ca9f9333d2c53547194466777e21b290fde6",
     "e2e/seed-e2e.ts": "ffd3daca9181c9854ffc54b9afddf1fb449ef5c068609a8255b1614095d748fb",
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
     "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
