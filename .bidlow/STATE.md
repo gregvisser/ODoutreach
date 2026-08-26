@@ -2128,3 +2128,192 @@ had not:
 
 Every one of those was invisible from the code and obvious from the inbox.
 
+---
+
+# The autonomous relay, and what it forced us to check - 2026-08-26
+
+## Built and merged
+
+| PR | What |
+|---|---|
+| #221 | The safety gate. Refuses a machine-initiated send at DISPATCH unless the client is allowlisted. |
+| #222 | `relay-watch.ps1` + `RELAY-README.md`; `/api/health` now reports whether the gate is live. |
+| #223 | Closes the system-actor hole (below). |
+
+Live on `36b1ed9`. lint 0 / typecheck 0 / 2143 tests.
+
+## Decisions made
+
+**The gate keys on the ACTOR, not the action.** A row carrying a `staffUserId`
+is treated as human-launched and passes; a row with nobody behind it must be
+allowlisted. Gating the action alone would either stop the business or stop
+nothing.
+
+**The allowlisted slug is `bidlowai`** (Greg, this session), NOT `bidlow`.
+Matching is exact, so the near-miss would have refused every send.
+
+**Absent `AUTONOMOUS_RELAY_ACTIVE` means "no relay running", not "refuse".**
+The opposite would make a missing variable a second invisible reason production
+stopped sending. The fail-closed link is put in the WATCHER instead: it asks the
+live site whether the gate is on before every cycle and refuses to run if it is
+not, cannot reach the site, or nobody is allowlisted. The dangerous state is an
+agent running with the gate off, and only the watcher can see that.
+
+## The hole that was nearly missed
+
+`advance-due-followups.ts:99-106` runs the automated follow-up cron with a
+**system actor** - it picks the first ADMIN staff user and attributes the send
+to them. So every automated follow-up row carries a `staffUserId` and looks
+human AT DISPATCH. An agent that triggered the advancer would have generated
+real outreach for every active client and the gate would have waved it through
+while appearing to work.
+
+Fixed in #223 by stopping those rows being BORN for non-allowlisted clients -
+catching it at dispatch is impossible without a schema change. Verified
+separately that genuine human launches and follow-ups both carry a real staff
+user, so turning the gate on will NOT block normal sending.
+
+## Half-done - pick this up first
+
+**Step 3's happy path is NOT proven.** Three of four stop conditions are:
+gate-not-live refuses (and leaves `NEXT.md` in place, so no work is lost), HALT
+stops it, the 40-cycle cap stops it and writes HALT. The happy path needs two
+production app settings that were NOT set - deliberately left for Greg:
+
+    az webapp config appsettings set --name app-opensdoors-outreach-prod       --resource-group rg-opensdoors-outreach-prod       --settings AUTONOMOUS_RELAY_ACTIVE=1 AUTONOMOUS_SEND_ALLOWLIST=bidlowai
+
+Restarts the app; reversible by deleting the settings. `NEXT.md` is queued with
+a harmless hello-world instruction ready for the proof.
+
+**The watcher failed the first time it ran** - three em dashes in a BOM-less
+UTF-8 file, which Windows PowerShell 5.1 reads as ANSI. Parse error; it would
+never have run. Now pure ASCII. Fourth instance of built-wired-never-fired.
+
+## Contradicts nothing in PROJECT.json, but supersedes an assumption
+
+The earlier reading that "a dead mailbox is merely tolerated" is wrong: the
+sending pool is built from the STORED connection status, so the eight dead
+mailboxes are ACTIVELY CHOSEN to carry new outreach. A Train Hugger launch would
+succeed, queue, and then fail every row terminally. Sending is NOT possible for
+any of the eight - proven by the fact that reply sync and send call the same
+token function, and reply sync is failing with `invalid_grant` today.
+
+## Next session
+
+1. Set the two app settings (Greg's call), then finish Step 3's happy path.
+2. Then `EIGHT-DEAD-MAILBOXES.md` items 2 and 3 - both fully mapped, not started:
+   reply sync must flip `connectionStatus` (it writes only `lastError` today, at
+   `mailbox-inbox-sync.ts:84-89` and `:272-277`), and `AADSTS500341` needs its
+   own branch in `mailboxes-operator-model.ts` BEFORE the `invalid_grant` branch,
+   which currently tells a deleted account to "reconnect and complete MFA".
+3. The `built-wired-never-fired` defect class is committed to the standards repo
+   on branch `standards-cleanup` and NOT pushed - that branch carries unrelated
+   work in progress.
+
+---
+
+# The relay ran, and did nothing - 2026-08-26
+
+## Cycle 1: the loop worked perfectly and no work happened
+
+The happy path from the section above was run. Every mechanical part of it
+behaved: the gate check passed, `NEXT.md` was picked up and moved to
+`CURRENT.md`, the agent started, `cycle-001.md` was written, `STATUS.json`
+recorded `finished`. From the outside it was a clean, successful cycle.
+
+**Nothing was done.** The instruction was to append one line to a file. The
+agent could not write it. `claude -p` runs non-interactively, so it cannot
+answer a permission prompt, so every write was refused - and having no way to
+ask, it correctly reported that it was blocked and stopped.
+
+The log said `finished` because the process exited 0. `finished` was tracking
+whether the program ran, not whether the work happened.
+
+## The fifth instance, and the count now matters
+
+Two defects came out of cycle 1. **Both are the same shape as the four already
+recorded**: built, wired, merged, reporting success, doing nothing.
+
+**The safety check was pointed at a cached URL.** `Test-SafetyGateLive` read
+`https://opensdoors.bidlow.co.uk/api/health` - the CDN-cached custom domain. The
+gate had been switched on and was live; the cached domain still answered
+`active: false`, and the relay refused to start for a reason that was no longer
+true.
+
+That direction is harmless. **The other direction is not.** With the gate
+switched OFF, a cached `active: true` would let the relay run cycle after cycle
+with no protection, while the check that exists to prevent exactly that reported
+success. A safety check that can be answered from a cache is not a safety check.
+
+This repository had already written the same lesson down for deploy
+verification - *verify by commit against the DIRECT App Service URL, never the
+CDN-cached custom domain*. The rule was known and recorded, and the safety check
+was still pointed at the cached one.
+
+**This is the FIFTH instance of built-wired-never-fired on this project this
+week**, after the three in `defect-classes.json` and the em-dash parse failure
+above. **No other defect class on this project has as many.** The next two most
+common in `defect-classes.json` have two each. This is not a run of bad luck any
+more; it is the characteristic failure of how this project builds, and it should
+be treated as the default suspicion about any new guard here rather than as a
+recurring surprise.
+
+**Honest limitation:** by the time this was checked, the CDN had caught up -
+both URLs now return `active: true, allowlistedClients: 1`. The stale reading
+could not be re-observed, so the specific cached answer is reported from when it
+was seen, not re-proven. The fix does not depend on reproducing it: the reason
+to read the direct URL holds either way.
+
+## And a sixth, found by being killed
+
+Cycle 2 was killed mid-run when the watcher was restarted. `STATUS.json` was
+left reading `"lastOutcome": "running"` - and nothing would ever have corrected
+it. The status is written before the work starts and rewritten after it ends, so
+a cycle that dies in between never reaches the second write. The relay would
+have gone on claiming it was working with no process alive, and the interrupted
+cycle left no log file at all, so there was not even a record that it had been
+interrupted.
+
+Same shape again: a status reporting activity that is not happening.
+
+**Fixed.** `Resolve-InterruptedCycle` runs on startup, before the HALT check
+(a stale `running` is a lie whether or not this watcher goes on to do any work).
+On startup `running` can only be a corpse - this process has not begun a cycle,
+so whatever wrote it is gone. It records the cycle as `interrupted` and writes
+or appends a plain-English note to that cycle's log saying it was stopped
+part-way and that the note does NOT undo anything. It is wrapped in a catch:
+correcting the record must never become the thing that stops the relay.
+
+## What is now proven, and how
+
+Both fixes are proven by this cycle existing at all, not by reading them:
+
+- **The direct URL works.** The watcher only starts a cycle after
+  `Test-SafetyGateLive` returns true. This cycle started under the edited file
+  (edited 07:24, cycle began 07:33), so the new URL and its cache-buster were
+  exercised live.
+- **The permission fix works.** This cycle ran under
+  `--permission-mode dontAsk` with an explicit allowlist and successfully wrote
+  `.bidlow/relay/log/hello.txt`, which cycle 1 could not do. The denial half is
+  proven too: a PowerShell call in this cycle was refused because that tool is
+  not on the allowlist. `dontAsk` auto-DENIES what is not listed - it is not
+  `--dangerously-skip-permissions`.
+- **The hooks still bite.** A `Bash` call in this cycle was blocked by
+  `gate-ship.mjs` for using a computed program name. `PreToolUse` hooks fire in
+  every permission mode, so the standards gates are not weakened by the change.
+- **The script parses** under both PowerShell 5.1 and 7, 0 errors, and the file
+  is pure ASCII - the check the em-dash failure earned.
+
+## Carry forward
+
+**`Bash` is on the allowlist unrestricted.** That is what makes the relay useful
+(tests, git, lint) and it is also the widest remaining surface: an unattended
+agent can run any command a shell can, with only `gate-ship.mjs` in front of it.
+Deliberate, not overlooked. Narrowing it is a real piece of work, not a tweak,
+and it is Greg's call whether to spend it.
+
+**`finished` still means "the process exited 0".** The stale-`running` fix
+corrects a cycle that DIED; it does nothing about a cycle that completes having
+achieved nothing, which is exactly what cycle 1 did. The relay still has no
+notion of whether the work was done. Nothing in this session changed that.
+
