@@ -4,6 +4,9 @@ import {
   computePoolDailyMax,
   countConnectedMailboxes,
   countMailboxNeedsAttention,
+  googleConnectionErrorSublabel,
+  isMailboxAccountDeletedError,
+  MAILBOX_ACCOUNT_DELETED_SUBLABEL,
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
   MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC,
@@ -198,5 +201,93 @@ describe("operatorSignatureTableLabel", () => {
     );
     expect(t.label).toBe("Synced from Gmail");
     expect(t.isSyncedGmail).toBe(true);
+  });
+});
+
+/**
+ * The screen is where the eight dead mailboxes actually did their damage: all
+ * eight read "Connected", so nobody looked further. Two of them could never be
+ * repaired at all, and the screen offered a repair instruction anyway.
+ */
+describe("a mailbox that cannot be reconnected says so", () => {
+  const deletedAccountError =
+    "This mailbox cannot be reconnected — the account no longer exists. Microsoft token refresh failed: invalid_grant - AADSTS500341: The user account has been deleted from the directory.";
+
+  it("labels a deleted account 'Cannot be reconnected', not 'Connection failed'", () => {
+    const row = {
+      ...base(),
+      connectionStatus: "DISCONNECTED" as const,
+      lastError: deletedAccountError,
+    };
+    const status = mailboxRowOperatorStatus(row);
+    expect(status.kind).toBe("account_deleted");
+    expect(status.label).toBe("Cannot be reconnected");
+    expect(status.sublabel).toBe(MAILBOX_ACCOUNT_DELETED_SUBLABEL);
+  });
+
+  it("says so whichever status the row happens to carry", () => {
+    // The two Chevron rows were CONNECTED at discovery. The answer must not
+    // depend on which column the last write happened to reach.
+    for (const connectionStatus of [
+      "CONNECTED",
+      "CONNECTION_ERROR",
+      "DISCONNECTED",
+    ] as const) {
+      const status = mailboxRowOperatorStatus({
+        ...base(),
+        connectionStatus,
+        lastError: deletedAccountError,
+      });
+      expect(status.label).toBe("Cannot be reconnected");
+    }
+  });
+
+  it("never tells a deleted account to reconnect or complete MFA", () => {
+    // The exact wrong instruction the product gave for weeks: AADSTS500341
+    // arrives wrapped in invalid_grant, and the invalid_grant branch answered
+    // first. This asserts the ordering, not just the wording.
+    const sublabel = microsoftConnectionErrorSublabel(deletedAccountError);
+    expect(sublabel).toBe(MAILBOX_ACCOUNT_DELETED_SUBLABEL);
+    expect(sublabel).not.toMatch(/complete MFA/i);
+    expect(sublabel).not.toMatch(/reconnect this mailbox/i);
+  });
+
+  it("still tells an ordinary expired Microsoft sign-in to reconnect", () => {
+    expect(
+      microsoftConnectionErrorSublabel("Microsoft token refresh failed: invalid_grant"),
+    ).toMatch(/complete MFA/i);
+  });
+
+  it("isMailboxAccountDeletedError ignores unrelated errors", () => {
+    expect(isMailboxAccountDeletedError(null)).toBe(false);
+    expect(isMailboxAccountDeletedError("")).toBe(false);
+    expect(isMailboxAccountDeletedError("invalid_grant")).toBe(false);
+    expect(isMailboxAccountDeletedError("AADSTS50020: wrong tenant")).toBe(false);
+    expect(isMailboxAccountDeletedError("aadsts500341: gone")).toBe(true);
+  });
+});
+
+describe("googleConnectionErrorSublabel", () => {
+  it("names the real cause — an expired login, not an abandoned sign-in", () => {
+    const sublabel = googleConnectionErrorSublabel(
+      "Google token refresh failed: invalid_grant",
+    );
+    expect(sublabel).toMatch(/expired/i);
+    expect(sublabel).toMatch(/Reconnect/i);
+    expect(sublabel).not.toMatch(/did not complete/i);
+  });
+
+  it("falls back to the generic wording when the error says nothing useful", () => {
+    expect(googleConnectionErrorSublabel(null)).toMatch(/did not complete/i);
+  });
+
+  it("is what a Google CONNECTION_ERROR row actually shows", () => {
+    const status = mailboxRowOperatorStatus({
+      ...base(),
+      provider: "GOOGLE",
+      connectionStatus: "CONNECTION_ERROR",
+      lastError: "Google token refresh failed: invalid_grant",
+    });
+    expect(status.sublabel).toMatch(/expired/i);
   });
 });

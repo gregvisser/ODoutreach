@@ -209,4 +209,36 @@ describe("executeOutboundSend — Microsoft governed path", () => {
     expect(markReleased).toHaveBeenCalledWith("out1");
     expect(markConsumed).not.toHaveBeenCalled();
   });
+
+  it("marks a DELETED Microsoft account as unreconnectable, not as a reconnect job", async () => {
+    // Entra returns AADSTS500341 inside an invalid_grant response, so the send
+    // path used to classify a permanently deleted account as "expired sign-in"
+    // and write "Reconnect this mailbox and complete MFA" — an instruction for
+    // an account that no longer exists. Two Chevron Security mailboxes sat in
+    // that state. Sending and reply sync now share one classifier so they
+    // cannot disagree about whether a mailbox is alive.
+    getToken.mockRejectedValue(
+      new Error(
+        "Microsoft token refresh failed: invalid_grant - AADSTS500341: The user account has been deleted from the directory.",
+      ),
+    );
+
+    const r = await executeOutboundSend("out1");
+
+    expect(r.ok).toBe(false);
+    expect(updateManyMbox).toHaveBeenCalledWith({
+      where: { id: "m1" },
+      data: {
+        connectionStatus: "DISCONNECTED",
+        lastError: expect.stringContaining("cannot be reconnected"),
+      },
+    });
+    const written = updateManyMbox.mock.calls[0][0] as {
+      data: { lastError: string };
+    };
+    expect(written.data.lastError).not.toMatch(/complete MFA/i);
+    // Still fails closed: no mail leaves, and the reserved capacity goes back.
+    expect(markReleased).toHaveBeenCalledWith("out1");
+    expect(markConsumed).not.toHaveBeenCalled();
+  });
 });

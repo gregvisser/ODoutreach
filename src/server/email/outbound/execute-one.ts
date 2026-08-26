@@ -20,6 +20,10 @@ import {
 } from "@/server/mailbox/gmail-sendmail";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import {
+  classifyMailboxCredentialFailure,
+  mailboxCredentialFailureMessage,
+} from "@/server/mailbox/mailbox-credential-failure";
+import {
   findGraphSentMessageId,
   isMicrosoftMimeSendEnabled,
   sendMicrosoftGraphMimeSendMail,
@@ -93,38 +97,39 @@ function extractHostedListUnsubscribeUrl(listUnsubscribe: string): string | null
 }
 
 function isMailboxReauthRequiredError(provider: "MICROSOFT" | "GOOGLE", error: string): boolean {
-  const e = error.toLowerCase();
-  if (provider === "MICROSOFT") {
-    return (
-      e.includes("invalid_grant") ||
-      e.includes("aadsts50076") ||
-      e.includes("multi-factor authentication") ||
-      e.includes("use multi-factor authentication")
-    );
-  }
-  return e.includes("invalid_grant") || e.includes("refresh token");
+  return classifyMailboxCredentialFailure(provider, error).connectionStatus !== null;
 }
 
-function reauthMessage(provider: "MICROSOFT" | "GOOGLE", error: string): string {
-  const detail = error.slice(0, 1500);
-  if (provider === "MICROSOFT") {
-    return `Microsoft requires this mailbox to re-authenticate. Reconnect this mailbox and complete MFA. ${detail}`;
-  }
-  return `Google requires this mailbox to re-authenticate. Reconnect this mailbox and approve access. ${detail}`;
-}
-
+/**
+ * Takes a mailbox out of CONNECTED when a send proves its credentials are dead.
+ *
+ * The classification is shared with reply sync deliberately. Both paths call
+ * the same `getXAccessTokenForMailbox` and therefore stand or fall on the same
+ * refresh-token grant; if they disagreed about what a failure means, a mailbox
+ * could be "dead" to one and "connected" to the other.
+ *
+ * The change here is that a DELETED account no longer lands in the same bucket
+ * as an expired sign-in. Previously `AADSTS500341` matched on `invalid_grant`
+ * (Entra wraps it in one) and the mailbox was left in CONNECTION_ERROR telling
+ * staff to "reconnect and complete MFA" — an instruction that cannot be
+ * followed, for an account that no longer exists.
+ */
 async function markMailboxReauthRequired(
   mailboxIdentityId: string,
   clientId: string,
   provider: "MICROSOFT" | "GOOGLE",
   error: string,
 ) {
+  const failure = classifyMailboxCredentialFailure(provider, error);
+  // Pulled into a local so it stays narrowed inside the transaction closure.
+  const nextStatus = failure.connectionStatus;
+  if (!nextStatus) return;
   await prisma.$transaction(async (tx) => {
     await tx.clientMailboxIdentity.updateMany({
       where: { id: mailboxIdentityId },
       data: {
-        connectionStatus: "CONNECTION_ERROR",
-        lastError: reauthMessage(provider, error).slice(0, 4000),
+        connectionStatus: nextStatus,
+        lastError: mailboxCredentialFailureMessage(provider, failure, error).slice(0, 4000),
       },
     });
     await reconcilePrimaryMailboxForClient(tx, clientId);
