@@ -82,7 +82,15 @@ leaves the building for them. Enforced in `autonomous-actor-guard.ts`, not here.
   switch meant to prevent that. `-LoadOnly` now exists and is load-bearing; do
   not remove it. (Left behind: row 4 wrongly `IN PROGRESS 7`, which would have
   made the relay skip the dead-mailboxes item permanently. Restored to `TODO`.)
-* Eight mailboxes read `CONNECTED` while their credentials are dead.
+* ~~Eight mailboxes read `CONNECTED` while their credentials are dead.~~
+  **FIXED cycle 7 (#229) and PROVEN TO FIRE on production data**: reply sync
+  now flips a mailbox out of `CONNECTED` when the credentials fail. The live
+  Actions history shows `processed 35 / failed 8 / failure` on the run that did
+  the flip, then `processed 27 / failed 0 / ok true / SUCCESS` on the very next
+  run (`32952093501` → `32952551643`). Eight mailboxes left the batch. **None
+  of the eight could SEND either** — send and reply sync share one refresh-token
+  grant (`execute-one.ts:544`/`:714`), and it fails closed, so a Train Hugger
+  launch would have queued and failed every row. Nothing was reconnected.
 * The Google OAuth app is in Testing mode — 7-day token expiry, recurring
   weekly, until it is published.
 * `PRODUCTION_PRISMA_MIGRATE` is true: merging a migration applies it to the
