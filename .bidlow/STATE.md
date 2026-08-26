@@ -2210,3 +2210,110 @@ token function, and reply sync is failing with `invalid_grant` today.
    on branch `standards-cleanup` and NOT pushed - that branch carries unrelated
    work in progress.
 
+---
+
+# The relay ran, and did nothing - 2026-08-26
+
+## Cycle 1: the loop worked perfectly and no work happened
+
+The happy path from the section above was run. Every mechanical part of it
+behaved: the gate check passed, `NEXT.md` was picked up and moved to
+`CURRENT.md`, the agent started, `cycle-001.md` was written, `STATUS.json`
+recorded `finished`. From the outside it was a clean, successful cycle.
+
+**Nothing was done.** The instruction was to append one line to a file. The
+agent could not write it. `claude -p` runs non-interactively, so it cannot
+answer a permission prompt, so every write was refused - and having no way to
+ask, it correctly reported that it was blocked and stopped.
+
+The log said `finished` because the process exited 0. `finished` was tracking
+whether the program ran, not whether the work happened.
+
+## The fifth instance, and the count now matters
+
+Two defects came out of cycle 1. **Both are the same shape as the four already
+recorded**: built, wired, merged, reporting success, doing nothing.
+
+**The safety check was pointed at a cached URL.** `Test-SafetyGateLive` read
+`https://opensdoors.bidlow.co.uk/api/health` - the CDN-cached custom domain. The
+gate had been switched on and was live; the cached domain still answered
+`active: false`, and the relay refused to start for a reason that was no longer
+true.
+
+That direction is harmless. **The other direction is not.** With the gate
+switched OFF, a cached `active: true` would let the relay run cycle after cycle
+with no protection, while the check that exists to prevent exactly that reported
+success. A safety check that can be answered from a cache is not a safety check.
+
+This repository had already written the same lesson down for deploy
+verification - *verify by commit against the DIRECT App Service URL, never the
+CDN-cached custom domain*. The rule was known and recorded, and the safety check
+was still pointed at the cached one.
+
+**This is the FIFTH instance of built-wired-never-fired on this project this
+week**, after the three in `defect-classes.json` and the em-dash parse failure
+above. **No other defect class on this project has as many.** The next two most
+common in `defect-classes.json` have two each. This is not a run of bad luck any
+more; it is the characteristic failure of how this project builds, and it should
+be treated as the default suspicion about any new guard here rather than as a
+recurring surprise.
+
+**Honest limitation:** by the time this was checked, the CDN had caught up -
+both URLs now return `active: true, allowlistedClients: 1`. The stale reading
+could not be re-observed, so the specific cached answer is reported from when it
+was seen, not re-proven. The fix does not depend on reproducing it: the reason
+to read the direct URL holds either way.
+
+## And a sixth, found by being killed
+
+Cycle 2 was killed mid-run when the watcher was restarted. `STATUS.json` was
+left reading `"lastOutcome": "running"` - and nothing would ever have corrected
+it. The status is written before the work starts and rewritten after it ends, so
+a cycle that dies in between never reaches the second write. The relay would
+have gone on claiming it was working with no process alive, and the interrupted
+cycle left no log file at all, so there was not even a record that it had been
+interrupted.
+
+Same shape again: a status reporting activity that is not happening.
+
+**Fixed.** `Resolve-InterruptedCycle` runs on startup, before the HALT check
+(a stale `running` is a lie whether or not this watcher goes on to do any work).
+On startup `running` can only be a corpse - this process has not begun a cycle,
+so whatever wrote it is gone. It records the cycle as `interrupted` and writes
+or appends a plain-English note to that cycle's log saying it was stopped
+part-way and that the note does NOT undo anything. It is wrapped in a catch:
+correcting the record must never become the thing that stops the relay.
+
+## What is now proven, and how
+
+Both fixes are proven by this cycle existing at all, not by reading them:
+
+- **The direct URL works.** The watcher only starts a cycle after
+  `Test-SafetyGateLive` returns true. This cycle started under the edited file
+  (edited 07:24, cycle began 07:33), so the new URL and its cache-buster were
+  exercised live.
+- **The permission fix works.** This cycle ran under
+  `--permission-mode dontAsk` with an explicit allowlist and successfully wrote
+  `.bidlow/relay/log/hello.txt`, which cycle 1 could not do. The denial half is
+  proven too: a PowerShell call in this cycle was refused because that tool is
+  not on the allowlist. `dontAsk` auto-DENIES what is not listed - it is not
+  `--dangerously-skip-permissions`.
+- **The hooks still bite.** A `Bash` call in this cycle was blocked by
+  `gate-ship.mjs` for using a computed program name. `PreToolUse` hooks fire in
+  every permission mode, so the standards gates are not weakened by the change.
+- **The script parses** under both PowerShell 5.1 and 7, 0 errors, and the file
+  is pure ASCII - the check the em-dash failure earned.
+
+## Carry forward
+
+**`Bash` is on the allowlist unrestricted.** That is what makes the relay useful
+(tests, git, lint) and it is also the widest remaining surface: an unattended
+agent can run any command a shell can, with only `gate-ship.mjs` in front of it.
+Deliberate, not overlooked. Narrowing it is a real piece of work, not a tweak,
+and it is Greg's call whether to spend it.
+
+**`finished` still means "the process exited 0".** The stale-`running` fix
+corrects a cycle that DIED; it does nothing about a cycle that completes having
+achieved nothing, which is exactly what cycle 1 did. The relay still has no
+notion of whether the work was done. Nothing in this session changed that.
+
