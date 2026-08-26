@@ -2128,3 +2128,85 @@ had not:
 
 Every one of those was invisible from the code and obvious from the inbox.
 
+---
+
+# The autonomous relay, and what it forced us to check - 2026-08-26
+
+## Built and merged
+
+| PR | What |
+|---|---|
+| #221 | The safety gate. Refuses a machine-initiated send at DISPATCH unless the client is allowlisted. |
+| #222 | `relay-watch.ps1` + `RELAY-README.md`; `/api/health` now reports whether the gate is live. |
+| #223 | Closes the system-actor hole (below). |
+
+Live on `36b1ed9`. lint 0 / typecheck 0 / 2143 tests.
+
+## Decisions made
+
+**The gate keys on the ACTOR, not the action.** A row carrying a `staffUserId`
+is treated as human-launched and passes; a row with nobody behind it must be
+allowlisted. Gating the action alone would either stop the business or stop
+nothing.
+
+**The allowlisted slug is `bidlowai`** (Greg, this session), NOT `bidlow`.
+Matching is exact, so the near-miss would have refused every send.
+
+**Absent `AUTONOMOUS_RELAY_ACTIVE` means "no relay running", not "refuse".**
+The opposite would make a missing variable a second invisible reason production
+stopped sending. The fail-closed link is put in the WATCHER instead: it asks the
+live site whether the gate is on before every cycle and refuses to run if it is
+not, cannot reach the site, or nobody is allowlisted. The dangerous state is an
+agent running with the gate off, and only the watcher can see that.
+
+## The hole that was nearly missed
+
+`advance-due-followups.ts:99-106` runs the automated follow-up cron with a
+**system actor** - it picks the first ADMIN staff user and attributes the send
+to them. So every automated follow-up row carries a `staffUserId` and looks
+human AT DISPATCH. An agent that triggered the advancer would have generated
+real outreach for every active client and the gate would have waved it through
+while appearing to work.
+
+Fixed in #223 by stopping those rows being BORN for non-allowlisted clients -
+catching it at dispatch is impossible without a schema change. Verified
+separately that genuine human launches and follow-ups both carry a real staff
+user, so turning the gate on will NOT block normal sending.
+
+## Half-done - pick this up first
+
+**Step 3's happy path is NOT proven.** Three of four stop conditions are:
+gate-not-live refuses (and leaves `NEXT.md` in place, so no work is lost), HALT
+stops it, the 40-cycle cap stops it and writes HALT. The happy path needs two
+production app settings that were NOT set - deliberately left for Greg:
+
+    az webapp config appsettings set --name app-opensdoors-outreach-prod       --resource-group rg-opensdoors-outreach-prod       --settings AUTONOMOUS_RELAY_ACTIVE=1 AUTONOMOUS_SEND_ALLOWLIST=bidlowai
+
+Restarts the app; reversible by deleting the settings. `NEXT.md` is queued with
+a harmless hello-world instruction ready for the proof.
+
+**The watcher failed the first time it ran** - three em dashes in a BOM-less
+UTF-8 file, which Windows PowerShell 5.1 reads as ANSI. Parse error; it would
+never have run. Now pure ASCII. Fourth instance of built-wired-never-fired.
+
+## Contradicts nothing in PROJECT.json, but supersedes an assumption
+
+The earlier reading that "a dead mailbox is merely tolerated" is wrong: the
+sending pool is built from the STORED connection status, so the eight dead
+mailboxes are ACTIVELY CHOSEN to carry new outreach. A Train Hugger launch would
+succeed, queue, and then fail every row terminally. Sending is NOT possible for
+any of the eight - proven by the fact that reply sync and send call the same
+token function, and reply sync is failing with `invalid_grant` today.
+
+## Next session
+
+1. Set the two app settings (Greg's call), then finish Step 3's happy path.
+2. Then `EIGHT-DEAD-MAILBOXES.md` items 2 and 3 - both fully mapped, not started:
+   reply sync must flip `connectionStatus` (it writes only `lastError` today, at
+   `mailbox-inbox-sync.ts:84-89` and `:272-277`), and `AADSTS500341` needs its
+   own branch in `mailboxes-operator-model.ts` BEFORE the `invalid_grant` branch,
+   which currently tells a deleted account to "reconnect and complete MFA".
+3. The `built-wired-never-fired` defect class is committed to the standards repo
+   on branch `standards-cleanup` and NOT pushed - that branch carries unrelated
+   work in progress.
+
