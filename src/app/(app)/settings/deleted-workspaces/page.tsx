@@ -99,8 +99,8 @@ export default async function DeletedWorkspacesPage() {
                       {c.deletedByStaffUserId
                         ? ` by ${deleterEmail.get(c.deletedByStaffUserId) ?? "a former staff member"}`
                         : ""}{" "}
-                      · {c._count.contacts} contacts · {c._count.campaigns}{" "}
-                      campaigns
+                      · {c._count.contacts} contacts · {c._count.emailSequences}{" "}
+                      sequences
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex items-center justify-between gap-4">

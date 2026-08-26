@@ -70,7 +70,7 @@ export default async function ClientsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Contacts</TableHead>
-                <TableHead className="text-right">Campaigns</TableHead>
+                <TableHead className="text-right">Sequences</TableHead>
                 <TableHead className="w-[120px]" />
               </TableRow>
             </TableHeader>
@@ -97,7 +97,7 @@ export default async function ClientsPage() {
                     {c._count.contacts}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {c._count.campaigns}
+                    {c._count.emailSequences}
                   </TableCell>
                   <TableCell>
                     <Link

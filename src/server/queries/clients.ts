@@ -23,9 +23,12 @@ export async function listClientsForStaff(accessibleClientIds: string[]) {
         },
       },
       _count: {
+        // `campaigns` counted the `Campaign` table, which nothing in this
+        // product writes — outreach hangs off `ClientEmailSequence`. It read 0
+        // for every client on the front door. Count the real thing.
         select: {
           contacts: true,
-          campaigns: true,
+          emailSequences: true,
         },
       },
     },
@@ -87,7 +90,8 @@ export async function listSoftDeletedClients() {
       status: true,
       deletedAt: true,
       deletedByStaffUserId: true,
-      _count: { select: { contacts: true, campaigns: true } },
+      // Same correction as `listClientsForStaff` — `Campaign` is never written.
+      _count: { select: { contacts: true, emailSequences: true } },
     },
   });
 }
