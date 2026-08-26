@@ -431,7 +431,16 @@ export function buildClientWorkflowSteps(input: ClientLaunchSnapshotInput): Clie
     {
       id: "outreach",
       label: "Outreach",
-      status: stepStatus(outreachComplete, !outreachComplete, outreachStarted),
+      // `needsAttention` is gated on `outreachStarted` for the same reason as
+      // every other step above: a workspace where outreach has not begun is
+      // "not started", not "needs attention". Passing a bare `!complete` here
+      // would make the third argument unreachable and shout at a brand-new
+      // workspace for not having done anything yet.
+      status: stepStatus(
+        outreachComplete,
+        !outreachComplete && outreachStarted,
+        outreachStarted,
+      ),
       metric: outreachComplete ? "Ready to launch" : "Check prerequisites",
       href: `${base}/outreach`,
     },

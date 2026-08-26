@@ -369,6 +369,20 @@ describe("a workspace with no sequence is never reported ready", () => {
     });
   });
 
+  it("a brand-new workspace reads 'not started', not 'needs attention'", () => {
+    // Nothing connected, no contacts, nothing begun. All three stepStatus
+    // branches stay reachable for the Outreach step.
+    const step = buildClientWorkflowSteps(baseInput({})).find((s) => s.id === "outreach");
+    expect(step?.status).toBe("not_started");
+  });
+
+  it("a workspace part-way through reads 'needs attention'", () => {
+    const step = buildClientWorkflowSteps(
+      baseInput({ ...mailboxesFine, hasProductionLaunchableSequence: false }),
+    ).find((s) => s.id === "outreach");
+    expect(step?.status).toBe("needs_attention");
+  });
+
   it("a mailbox that cannot send is not covered up by a good sequence", () => {
     const row = buildLaunchReadinessRows(
       basePanel({
