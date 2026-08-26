@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { appendOpenTrackingPixel, buildOpenTrackingPixelUrl } from "./open-pixel";
+import {
+  appendOpenTrackingPixel,
+  buildOpenTrackingPixelUrl,
+  isOpenTrackingPixelEnabled,
+} from "./open-pixel";
 
 describe("buildOpenTrackingPixelUrl", () => {
   const prevAuth = process.env.AUTH_URL;
@@ -93,6 +97,35 @@ describe("buildOpenTrackingPixelUrl", () => {
     expect(
       buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
     ).toBeNull();
+  });
+
+  // The kill-switch must fail CLOSED. OpensDoors have been told in writing that
+  // open tracking is off, so a value that plainly MEANS off — typed by an
+  // operator in the Azure portal, where there is no validation and no feedback —
+  // must never silently resume tracking. An exact-match check made "OFF" and
+  // "off " (trailing space) turn the pixel back on with nothing to show for it.
+  describe("the off switch fails closed", () => {
+    const meansOff = ["off", "OFF", "Off", "oFf", " off", "off ", "  off  ", "false", "FALSE", "0", "no", "disabled"];
+
+    for (const value of meansOff) {
+      it(`treats ${JSON.stringify(value)} as off`, () => {
+        process.env.AUTH_URL = "https://app.example.com";
+        process.env.OPEN_TRACKING_PIXEL = value;
+        expect(isOpenTrackingPixelEnabled()).toBe(false);
+        expect(buildOpenTrackingPixelUrl("corr-123")).toBeNull();
+        // Even an aligned domain must not resurrect it.
+        expect(
+          buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
+        ).toBeNull();
+      });
+    }
+
+    it("still enables tracking when unset or explicitly on", () => {
+      process.env.AUTH_URL = "https://app.example.com";
+      expect(isOpenTrackingPixelEnabled()).toBe(true);
+      process.env.OPEN_TRACKING_PIXEL = "on";
+      expect(isOpenTrackingPixelEnabled()).toBe(true);
+    });
   });
 
   describe("OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN", () => {
