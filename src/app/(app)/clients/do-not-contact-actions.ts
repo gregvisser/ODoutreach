@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { normalizeManualDncEntry } from "@/lib/suppression/manual-dnc";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
+import { releaseReplyClaims } from "@/server/inbox/reply-claim";
 import { requireClientAccess } from "@/server/tenant/access";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 import {
@@ -18,6 +19,14 @@ const schema = z.object({
   clientId: z.string().min(1),
   kind: z.enum(["EMAIL", "DOMAIN"]),
   value: z.string().min(1).max(320),
+  /**
+   * Set only when the button was pressed from a reply detail page. Suppressing
+   * from there is one of the three ways of "acting on" a reply, so it clears
+   * the advisory claim. Absent everywhere else (the global suppression page,
+   * the DNC tab), where there is no reply to release.
+   */
+  replyClaimSubjectType: z.enum(["INBOUND_MESSAGE", "INBOUND_REPLY"]).optional(),
+  replyClaimSubjectId: z.string().min(1).optional(),
 });
 
 export type AddToDoNotContactResult =
@@ -124,6 +133,20 @@ export async function addToDoNotContactAction(
       },
     },
   });
+
+  // Pressed from a reply detail page: somebody has acted, so the advisory
+  // "X is looking at this" marker goes. Who suppressed it is recorded
+  // permanently in the audit row above.
+  const { replyClaimSubjectType, replyClaimSubjectId } = parsed.data;
+  if (replyClaimSubjectType && replyClaimSubjectId) {
+    await releaseReplyClaims({
+      clientId,
+      subject: {
+        subjectType: replyClaimSubjectType,
+        subjectId: replyClaimSubjectId,
+      },
+    });
+  }
 
   revalidatePath(`/clients/${clientId}/suppression`);
   revalidatePath(`/clients/${clientId}/activity`);

@@ -117,10 +117,30 @@ describe("the proposal states", () => {
 });
 
 describe("migration hygiene", () => {
-  it("is the newest migration, so it applies last", () => {
-    const all = readdirSync(join(process.cwd(), "prisma/migrations"))
-      .filter((d) => /^\d{14}_/.test(d))
-      .sort();
-    expect(all[all.length - 1]).toBe("20260824180000_suppressed_domain_family_proposals");
+  // The original form of this test asserted that the family-proposals
+  // migration was literally the LAST directory on disk. That caught the
+  // real hazard once — a migration back-dated ahead of its dependencies
+  // applies in the wrong order — but it also failed on the next migration
+  // anyone added, for no reason. Restated here as the property that was
+  // actually meant, so it keeps working as migrations accumulate.
+  const migrations = readdirSync(join(process.cwd(), "prisma/migrations"))
+    .filter((d) => /^\d{14}_/.test(d))
+    .sort();
+
+  it("applies after the schema-drift reconciliation it depends on", () => {
+    const proposals = migrations.indexOf(
+      "20260824180000_suppressed_domain_family_proposals",
+    );
+    const drift = migrations.indexOf(
+      "20260824090000_reconcile_schema_migration_drift",
+    );
+    expect(drift).toBeGreaterThanOrEqual(0);
+    expect(proposals).toBeGreaterThan(drift);
+  });
+
+  it("has strictly increasing, unique timestamps — nothing back-dated", () => {
+    const stamps = migrations.map((d) => d.slice(0, 14));
+    expect(new Set(stamps).size).toBe(stamps.length);
+    expect([...stamps].sort()).toEqual(stamps);
   });
 });

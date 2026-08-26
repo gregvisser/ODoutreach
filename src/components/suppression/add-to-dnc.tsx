@@ -6,6 +6,7 @@ import { addToDoNotContactAction } from "@/app/(app)/clients/do-not-contact-acti
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { ReplyClaimSubjectType } from "@/lib/inbox/reply-claim";
 
 function resultMessage(r: Awaited<ReturnType<typeof addToDoNotContactAction>>): string {
   if (!r.ok) return r.error;
@@ -26,9 +27,18 @@ function resultMessage(r: Awaited<ReturnType<typeof addToDoNotContactAction>>): 
 export function AddToDoNotContactButtons({
   clientId,
   email,
+  replyClaimSubjectType,
+  replyClaimSubjectId,
 }: {
   clientId: string;
   email: string;
+  /**
+   * Passed only from a reply detail page. Suppressing from there counts as
+   * acting on the reply, so it clears the advisory "somebody is looking at
+   * this" marker. Omitted on the suppression pages, which have no reply.
+   */
+  replyClaimSubjectType?: ReplyClaimSubjectType;
+  replyClaimSubjectId?: string;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -37,7 +47,14 @@ export function AddToDoNotContactButtons({
   function add(kind: "EMAIL" | "DOMAIN", value: string) {
     setMsg(null);
     startTransition(async () => {
-      const r = await addToDoNotContactAction({ clientId, kind, value });
+      const r = await addToDoNotContactAction({
+        clientId,
+        kind,
+        value,
+        ...(replyClaimSubjectType && replyClaimSubjectId
+          ? { replyClaimSubjectType, replyClaimSubjectId }
+          : {}),
+      });
       setMsg(resultMessage(r));
     });
   }

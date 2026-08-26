@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { InboundMessageFullBody } from "@/components/activity/inbound-message-full-body";
 import { InboundMessageReplyForm } from "@/components/activity/inbound-message-reply-form";
+import { ReplyClaimNotice } from "@/components/activity/reply-claim-notice";
 import { AddToDoNotContactButtons } from "@/components/suppression/add-to-dnc";
 import { detectRemovalIntent } from "@/lib/unsubscribe/detect-removal-intent";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import {
 import { buildReplySubject } from "@/lib/inbox/inbound-message-handling";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadInboundMessageDetailForClient } from "@/server/inbox/inbound-message-detail";
+import { loadVisibleReplyClaim } from "@/server/inbox/reply-claim";
 import { mailboxIneligibleForGovernedSendExecution, humanizeGovernanceRejection } from "@/server/mailbox/sending-policy";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -46,6 +48,14 @@ export default async function InboundMessageDetailPage({ params }: Props) {
   const detail = await loadInboundMessageDetailForClient(clientId, messageId);
   if (!detail) notFound();
 
+  // Advisory claiming — has anyone else opened this reply in the last 30
+  // minutes? Read here; written by <ReplyClaimNotice> on mount.
+  const replyClaim = await loadVisibleReplyClaim({
+    clientId,
+    subject: { subjectType: "INBOUND_MESSAGE", subjectId: messageId },
+    viewerStaffUserId: staff.id,
+  });
+
   const { message, mailbox, handling, replyHistory, linkedReply } = detail;
   const replySubject = buildReplySubject(message.subject);
   // F6 (b) — flag (don't auto-act on) inbound mail that reads as an
@@ -71,6 +81,14 @@ export default async function InboundMessageDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-8">
+      {/* First on the page on purpose: it applies to everything below it,
+          including the one-click suppress inside the compliance banner. */}
+      <ReplyClaimNotice
+        clientId={clientId}
+        subjectType="INBOUND_MESSAGE"
+        subjectId={messageId}
+        claim={replyClaim}
+      />
       {removalIntent.detected ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-4">
           <p className="text-sm font-semibold text-destructive">
@@ -85,6 +103,8 @@ export default async function InboundMessageDetailPage({ params }: Props) {
             <AddToDoNotContactButtons
               clientId={clientId}
               email={message.fromEmail}
+              replyClaimSubjectType="INBOUND_MESSAGE"
+              replyClaimSubjectId={messageId}
             />
           </div>
         </div>
@@ -271,6 +291,8 @@ export default async function InboundMessageDetailPage({ params }: Props) {
         <AddToDoNotContactButtons
           clientId={clientId}
           email={message.fromEmail}
+          replyClaimSubjectType="INBOUND_MESSAGE"
+          replyClaimSubjectId={messageId}
         />
       )}
     </div>
