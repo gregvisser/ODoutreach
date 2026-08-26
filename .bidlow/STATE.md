@@ -1,6 +1,109 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-26 · Tier P (Client Production)**
+**Updated 2026-08-27 · Tier P (Client Production)**
+
+## Session 2026-08-27 — Relay cycle 24, queue item 27 defect (3). The landing page was an N+1, not a render problem.
+
+Production serves **`8557398`** (verified by hash against the direct App Service
+URL `app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`, not the CDN
+domain, not liveness alone). It contains the fix, which merged as **`c51b06a`**.
+
+### Built this session
+
+**PR #253 — `/reporting` cost 239 database round-trips to draw one screen.**
+The brief said *"profile the render, not the database — `loadClientWorkspaceBundle`
+is a constant 19 round-trips, so this is CPU/render, not N+1."* That is a true
+fact about a **different page**. `/reporting` never calls
+`loadClientWorkspaceBundle`. It calls `loadGlobalOutreachMetrics`, which fanned
+**13 `count()` queries out per client** across 17 production clients.
+
+Measured on the real e2e Postgres (port 5434) by instrumenting the `pg` driver:
+
+| clients | round-trips before | after |
+|---:|---:|---:|
+| 1 | 15 | 15 |
+| 5 | 71 | **15** |
+| 17 | **239** | **15** |
+
+Total DB time at 17 clients 556.6 ms → 37.5 ms, on empty tables — production
+adds row scanning on top of each of those 239 queries. The 13 predicates now run
+once each as `GROUP BY "clientId"` aggregates over the whole scope, and the
+internal-seed allowlist read (once per client whenever its flag is on) is hoisted
+out of the loop. **Every predicate is byte-for-byte unchanged** — this changed
+how many times the database is asked, never the answer.
+
+New file `src/server/queries/outreach-metrics.perf.integration.test.ts`, watched
+RED first (`expected 239 to be less than or equal to 15`). Its second test seeds
+a workspace where all fourteen raw counts are non-zero **and distinct**, asserts
+every number the Reports card shows, asserts a neighbouring workspace never
+bleeds in, and asserts the global total is a sum rather than one client repeated.
+
+**PR #254 / #255 — queue bookkeeping, and a self-inflicted defect.** See below.
+
+### Decisions made
+
+* **Left the metric predicates alone.** The seed exposed that the
+  suppressed/skipped count excludes cooldown rows with `NOT contains`, and in SQL
+  that is NULL — hence false — for a row with a **null** `blockedReason`, so a
+  reason-less `SUPPRESSED` row would silently vanish. Not reachable today (only
+  the `READY` path in `sequence-send-policy.ts` returns a null detail), so the
+  seed sets a realistic reason and the trap is documented at the seed. Changing
+  what a metric *means* inside a performance fix is how a regression hides.
+* **Corrected the brief rather than working around it.** Defect (5) — Activity
+  printing the same five numbers twice — was **already fixed** in `a93ec19`
+  (#241) at 15:36 on 2026-08-26, *after* the UX walk that recorded it the same
+  day. Verified at HEAD, not assumed. QUEUE.md now says so.
+* No schema change, no migration, no send-path change. **No mail was sent for any
+  client**, and nothing was deleted. No one-way door was opened.
+
+### The self-inflicted defect, and the rule it produced
+
+My first QUEUE.md edit **prepended a UTF-8 BOM and re-encoded 60 lines I never
+touched**, turning a one-row change into a 61-line diff. `.bidlow/relay/QUEUE.md`
+is already mojibake (UTF-8 written, cp1252 read, repeatedly), so a normal text
+tool adds another encoding layer. It still parsed, which is the dangerous part —
+caught only by reading my own diff. Repaired in **PR #255** by restoring the exact
+bytes from `921dc86` and re-applying the row via a byte-preserving `latin1`
+round-trip with an ASCII-only payload: 61 lines → 1, no BOM, 24 PowerShell
+relay-parser tests green.
+
+**RULE: edit `.bidlow/relay/QUEUE.md` byte-safely and write ASCII only. Do not
+open it with a tool that will re-encode it.** `.bidlow/STATE.md` is clean UTF-8
+and has no such problem.
+
+### Half-done / the honest limit
+
+**The live page was never re-measured.** This relay has no browser, and the
+production `AUTH_SECRET` is not available here, so `/reporting` cannot be loaded
+signed-in. What is proven is the *mechanism* and its size in the lab. The UX
+walk's 2,464 ms TTFB / 6,027 ms load figure stands unrefuted until someone opens
+it in Chrome. That is the single most useful thing a human could do next.
+
+### Gates
+
+`lint` 0 errors · `tsc --noEmit` 0 · `npm test` **2428 passed** (254 files) ·
+`npm run test:integration` **98 passed** (8 files). CI green on all three PRs;
+all three merged via branch → PR → green CI → merge.
+
+### Nothing contradicts PROJECT.json
+
+Tier P held. The one rule held: nothing left the building for any client, and no
+client data was written or deleted this cycle.
+
+### Pick up first, next session
+
+1. **Queue item 27 is still `TODO`** with three defects open, in the brief's
+   order: **(6)** Mailboxes buries the table under four screens of setup help and
+   repeats a 60-word paragraph verbatim on all four signature rows — table first,
+   help collapsed; **(8)** jargon on customer-facing screens; **(9)** `/contacts`
+   19,265 ms / 2,977 KB and `/operations/outbound` 8,564 ms.
+2. **Inside (8) there is an arithmetic defect, not a wording one, and it is
+   Greg's call:** BidlowAI shows a **133.3% reply rate** because `replyRate`
+   divides raw `InboundReply` rows by sends, so two replies to one email exceed
+   100%. Deciding the honest denominator (distinct contacts who replied?) changes
+   a number on a client-facing screen. Same table shows Idverde as "4 sent, 20
+   not reached" because sends and contacts are counted into one row.
+3. **Re-measure `/reporting` live in Chrome** to confirm the TTFB actually moved.
 
 ## Session 2026-08-26 — Relay cycle 11, queue item 20. Open tracking VERIFIED off.
 
