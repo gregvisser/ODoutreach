@@ -10,10 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  suppressionKindLabel,
-  suppressionKindShortLabel,
-} from "@/lib/suppression/staff-labels";
+import { suppressionKindLabel } from "@/lib/suppression/staff-labels";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
 import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
@@ -36,8 +33,18 @@ type Props = {
     sync?: string;
     rows?: string;
     message?: string;
+    emailQ?: string;
+    emailFrom?: string;
+    domainQ?: string;
+    domainFrom?: string;
   }>;
 };
+
+/** A `?...From=` param is a row offset; anything that is not a whole number is 0. */
+function parseOffset(raw: string | undefined): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
 
 export default async function SuppressionPage({ searchParams }: Props) {
   const staff = await requireStaffUser();
@@ -46,12 +53,46 @@ export default async function SuppressionPage({ searchParams }: Props) {
   const rawFilter = sp.client;
   const clientFilter =
     rawFilter && accessible.includes(rawFilter) ? rawFilter : undefined;
+
+  const emailSearch = sp.emailQ?.trim() ?? "";
+  const domainSearch = sp.domainQ?.trim() ?? "";
+  const emailOffset = parseOffset(sp.emailFrom);
+  const domainOffset = parseOffset(sp.domainFrom);
+
   const [sources, emails, domains, clients] = await Promise.all([
     listSuppressionSourcesForStaff(accessible, clientFilter),
-    listSuppressedEmailsForStaff(accessible, clientFilter),
-    listSuppressedDomainsForStaff(accessible, clientFilter),
+    listSuppressedEmailsForStaff({
+      accessibleClientIds: accessible,
+      filterClientId: clientFilter,
+      search: emailSearch,
+      offset: emailOffset,
+    }),
+    listSuppressedDomainsForStaff({
+      accessibleClientIds: accessible,
+      filterClientId: clientFilter,
+      search: domainSearch,
+      offset: domainOffset,
+    }),
     listClientsForStaff(accessible),
   ]);
+
+  /**
+   * Each table's links and search form must carry the page's other state, or
+   * paging the domain list would silently clear a search running on the email
+   * list. Built once here so the two tables cannot disagree.
+   */
+  function carryParamsFor(table: "email" | "domain"): Record<string, string> {
+    const carried: Record<string, string> = {};
+    if (clientFilter) carried.client = clientFilter;
+    if (table === "email") {
+      if (domainSearch) carried.domainQ = domainSearch;
+      if (domainOffset > 0) carried.domainFrom = String(domainOffset);
+    } else {
+      if (emailSearch) carried.emailQ = emailSearch;
+      if (emailOffset > 0) carried.emailFrom = String(emailOffset);
+    }
+    return carried;
+  }
 
   const googleReady = hasGoogleServiceAccountConfig();
   const googleSaDisplay = getGoogleServiceAccountDisplayInfo();
@@ -224,12 +265,21 @@ export default async function SuppressionPage({ searchParams }: Props) {
           <CardContent>
             <SuppressionRowsInspectableTable
               valueLabel="Email"
-              rowKindShort={suppressionKindShortLabel("EMAIL")}
-              rows={emails.map((e) => ({
+              noun={{
+                one: "blocked email address",
+                many: "blocked email addresses",
+              }}
+              rows={emails.rows.map((e) => ({
                 id: e.id,
                 value: e.email,
                 clientName: e.client.name,
               }))}
+              total={emails.total}
+              pageSize={emails.pageSize}
+              offset={emails.offset}
+              search={emailSearch}
+              paramPrefix="email"
+              carryParams={carryParamsFor("email")}
             />
           </CardContent>
         </Card>
@@ -244,12 +294,18 @@ export default async function SuppressionPage({ searchParams }: Props) {
           <CardContent>
             <SuppressionRowsInspectableTable
               valueLabel="Domain"
-              rowKindShort={suppressionKindShortLabel("DOMAIN")}
-              rows={domains.map((d) => ({
+              noun={{ one: "blocked domain", many: "blocked domains" }}
+              rows={domains.rows.map((d) => ({
                 id: d.id,
                 value: d.domain,
                 clientName: d.client.name,
               }))}
+              total={domains.total}
+              pageSize={domains.pageSize}
+              offset={domains.offset}
+              search={domainSearch}
+              paramPrefix="domain"
+              carryParams={carryParamsFor("domain")}
             />
           </CardContent>
         </Card>

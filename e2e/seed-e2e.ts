@@ -24,6 +24,8 @@ import {
   E2E_OUTBOUND_EMAIL,
   E2E_STAFF,
   E2E_SUPER_ADMIN,
+  E2E_SUPPRESSION,
+  e2eSuppressedEmail,
 } from "./fixtures";
 import { assertSafeTestDatabase } from "./safe-database";
 
@@ -157,7 +159,54 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         emailDomain: "example.test",
       },
       update: { email: E2E_CONTACT_B.email, isSuppressed: false },
-    });  } finally {
+    });
+
+    /**
+     * Enough blocked addresses to exceed one page of /suppression, so the
+     * "Showing 200 of 200 while there are really 30,229" defect has something
+     * to reproduce against. Domains stay under one page so the other branch of
+     * the count sentence ("Showing all 3") is exercised too.
+     */
+    await prisma.suppressionSource.upsert({
+      where: { id: E2E_SUPPRESSION.sourceId },
+      create: {
+        id: E2E_SUPPRESSION.sourceId,
+        clientId: E2E_CLIENT.id,
+        kind: "EMAIL",
+        label: "E2E blocked addresses",
+        syncStatus: "SUCCESS",
+      },
+      update: { syncStatus: "SUCCESS" },
+    });
+    await prisma.suppressionSource.upsert({
+      where: { id: E2E_SUPPRESSION.domainSourceId },
+      create: {
+        id: E2E_SUPPRESSION.domainSourceId,
+        clientId: E2E_CLIENT.id,
+        kind: "DOMAIN",
+        label: "E2E blocked domains",
+        syncStatus: "SUCCESS",
+      },
+      update: { syncStatus: "SUCCESS" },
+    });
+
+    await prisma.suppressedEmail.createMany({
+      data: Array.from({ length: E2E_SUPPRESSION.emailCount }, (_, i) => ({
+        clientId: E2E_CLIENT.id,
+        sourceId: E2E_SUPPRESSION.sourceId,
+        email: e2eSuppressedEmail(i),
+      })),
+      skipDuplicates: true,
+    });
+    await prisma.suppressedDomain.createMany({
+      data: Array.from({ length: E2E_SUPPRESSION.domainCount }, (_, i) => ({
+        clientId: E2E_CLIENT.id,
+        sourceId: E2E_SUPPRESSION.domainSourceId,
+        domain: `blocked-${i}.e2e-suppression.test`,
+      })),
+      skipDuplicates: true,
+    });
+  } finally {
     await prisma.$disconnect();
     await pool.end();
   }

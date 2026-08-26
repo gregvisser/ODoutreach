@@ -14,6 +14,7 @@
     "e2e/screen-walk.spec.ts": "ac5feebd802c8676293e25a4c760ca9f9333d2c53547194466777e21b290fde6",
     "e2e/seed-e2e.ts": "ffd3daca9181c9854ffc54b9afddf1fb449ef5c068609a8255b1614095d748fb",
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
+    "e2e/suppression-search.spec.ts": "29a1b77cab16d3c9b09252d1d21bcdb5e035317896d2fd8a986648f47870b642",
     "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
   },
   "amendments": [
@@ -58,6 +59,27 @@
       "authorised_by": "Greg",
       "what": "Positive control asserts DOM presence, not visibility: the activity feed sits in a collapsed <details>, and data delivered to another workspace's browser is disclosed whether or not CSS is painting it",
       "sha256_after": "f7c6f2ad8fd0151c67d5142f402d233a011fe573ea113e0011139f61a65da132"
+    },
+    {
+      "file": "e2e/fixtures.ts",
+      "date": "2026-08-26",
+      "authorised_by": "relay cycle 23 (autonomous, queue item 27 part 7) — NOT Greg-authorised",
+      "what": "Adds E2E_SUPPRESSION / e2eSuppressedEmail / E2E_SUPPRESSION_NEEDLE: 250 blocked-address fixtures exceeding one 200-row page, so the 'Showing 200 of 200 while truncating' defect has something to reproduce against. Additive only - no existing fixture or assertion was weakened.",
+      "sha256_after": "02bc704299493b78414861ef48048283071af14aef437bc08f0eb5b4de7bc69c"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-26",
+      "authorised_by": "relay cycle 23 (autonomous, queue item 27 part 7) — NOT Greg-authorised",
+      "what": "Seeds 250 blocked addresses + 3 blocked domains on the E2E workspace so the /suppression truncation defect is reproducible in a browser test. Additive upserts/createMany with skipDuplicates against the E2E client only; no existing seed row or assertion changed. Test-database only (assertSafeTestDatabase guards it).",
+      "sha256_after": "2ca39c2fd2e5e87d8cf6869f385a44766842fac7af34b51d4c2e42c5a57e4afd"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-26",
+      "authorised_by": "relay cycle 23 (autonomous, queue item 27 part 7) — NOT Greg-authorised",
+      "what": "Seeds 250 blocked addresses + 3 blocked domains on the E2E workspace so the /suppression truncation defect is reproducible in a browser test. Additive upserts/createMany with skipDuplicates against the E2E client only; no existing seed row or assertion changed. Test-database only (assertSafeTestDatabase guards it).",
+      "sha256_after": "bd81d4862666b1f4d590eb0cb67a4f21741790ecd1b22d76e7016d2564a9225a"
     }
   ]
 }
