@@ -103,6 +103,7 @@ describe("what a client workspace page costs in database round-trips", () => {
     const SIZES = [1, 6, 20];
     const results: { mailboxes: number; queries: number; dbMs: number; wallMs: number }[] = [];
     let lastRanked: [string, { n: number; totalMs: number }][] = [];
+    let lastRecorded: Recorded[] = [];
 
     for (const mailboxCount of SIZES) {
       const client = await prisma.client.create({
@@ -140,6 +141,7 @@ describe("what a client workspace page costs in database round-trips", () => {
         byStatement.set(key, existing);
       }
       lastRanked = [...byStatement.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
+      lastRecorded = [...recorded];
 
       results.push({
         mailboxes: mailboxCount,
@@ -177,6 +179,20 @@ describe("what a client workspace page costs in database round-trips", () => {
       );
       lines.push(`           ${sql}`);
     }
+    // Queue item 3 fixed two specific redundancies the item-2 measurement found.
+    // These are the two numbers that prove the fix FIRED, rather than merely
+    // shipped, so they are printed next to the table a human reads.
+    const mailboxReads = lastRecorded.filter((r) =>
+      /FROM "public"\."ClientMailboxIdentity"/.test(r.sql),
+    );
+    const unboundedClientScans = lastRecorded.filter((r) =>
+      /FROM "public"\."Client" WHERE "public"\."Client"\."deletedAt" IS NULL/.test(r.sql),
+    );
+    lines.push("");
+    lines.push(`ClientMailboxIdentity reads per page: ${String(mailboxReads.length)}  (was 5)`);
+    lines.push(
+      `Whole-table "every live client" scans:  ${String(unboundedClientScans.length)}  (was 1)`,
+    );
     lines.push("=".repeat(80));
     // This printed table IS the deliverable for queue item 2.
     console.log(lines.join("\n"));
@@ -191,6 +207,24 @@ describe("what a client workspace page costs in database round-trips", () => {
     // Ratchet. Set above what was measured so this fails on a regression in
     // SHAPE (a new N+1), not on a slow laptop.
     for (const r of results) expect(r.queries).toBeLessThan(60);
+
+    // --- queue item 3: the two redundancies, held closed -------------------
+    //
+    // Measured BEFORE the fix: 5 reads of ClientMailboxIdentity per page. Two of
+    // them re-fetched rows the workspace query had already returned
+    // (`loadGovernedSendingMailbox` and `resolveInternalDomainsForClient`). Three
+    // remain and are legitimate: the workspace query's own `mailboxIdentities`
+    // include, plus the two `mailbox` joins on the governed-send ledger and the
+    // inbox preview. If this goes back to 4+, something is re-reading the set the
+    // bundle already holds.
+    expect(mailboxReads.length).toBeLessThanOrEqual(3);
+
+    // Measured BEFORE the fix: 1 unbounded `SELECT id FROM Client WHERE
+    // deletedAt IS NULL` inside the bundle, from the mailbox-mutation gate
+    // asking "may I touch this client?" by dragging back every client. That is
+    // now a single indexed row lookup, so the whole-table form must not appear
+    // here at all.
+    expect(unboundedClientScans).toHaveLength(0);
 
     await prisma.staffUser.delete({ where: { id: staff.id } });
   });

@@ -14,8 +14,18 @@ import { resolveInternalDomainsForClient } from "@/server/inbox/internal-domains
 export async function getRecentInboundMailboxMessagesForClient(
   clientId: string,
   take = 50,
+  options: {
+    /**
+     * Pre-resolved internal domains, for a caller that already holds the
+     * client's mailbox addresses. Must come from
+     * `internalDomainsFromMailboxEmails` so the F4 kill-switch still applies —
+     * passing a hand-built list would bypass it.
+     */
+    internalDomains?: string[];
+  } = {},
 ) {
-  const internalDomains = await resolveInternalDomainsForClient(clientId);
+  const internalDomains =
+    options.internalDomains ?? (await resolveInternalDomainsForClient(clientId));
   const rows = await prisma.inboundMailboxMessage.findMany({
     where: { clientId },
     orderBy: { receivedAt: "desc" },

@@ -46,24 +46,60 @@ export function canDeleteWorkspace(staff: { isSuperAdmin: boolean }): boolean {
 }
 
 /**
+ * THE tenant wall, in one place. Both the list form (`getAccessibleClientIds`)
+ * and the single-id form (`canAccessClient`) build their query from this, so the
+ * two can never drift apart — if the wall is ever narrowed (e.g. scoped to
+ * `ClientMembership`, which `specs/BC-01-tenant-isolation.md` records as the
+ * likely future), narrowing it here narrows both at once.
+ *
+ * Roles removed: every active staff member may access every LIVE client. The
+ * `deletedAt: null` filter is the wall that survives — soft-deleted workspaces
+ * stay invisible to all normal paths (only `listSoftDeletedClients`, which is
+ * super-admin-gated, can see them).
+ */
+function accessibleClientWhere(staff: StaffIdentity) {
+  void staff;
+  return { deletedAt: null } as const;
+}
+
+/**
  * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
  * from the client without intersecting with this list.
  *
- * Roles removed: every active staff member may access every LIVE client. The
- * `deletedAt: null` filter is the tenant wall that survives — soft-deleted
- * workspaces stay invisible to all normal paths (only `listSoftDeletedClients`,
- * which is super-admin-gated, can see them), so `requireClientAccess` still
- * rejects a deleted or non-existent client id.
+ * This reads every live client row, so use it ONLY when the caller genuinely
+ * needs the whole list (a clients index, a cross-client report). To answer
+ * "may this staff member touch THIS one client?", call `canAccessClient` /
+ * `requireClientAccess` instead — they ask the database about one indexed row
+ * rather than dragging the table back to compare in JavaScript.
  */
 export async function getAccessibleClientIds(
   staff: StaffIdentity,
 ): Promise<string[]> {
-  void staff;
   const rows = await prisma.client.findMany({
-    where: { deletedAt: null },
+    where: accessibleClientWhere(staff),
     select: { id: true },
   });
   return rows.map((r) => r.id);
+}
+
+/**
+ * "May this staff member access this ONE workspace?" — the same wall as
+ * `getAccessibleClientIds`, asked about a single primary-key row.
+ *
+ * Semantically identical to `(await getAccessibleClientIds(staff)).includes(id)`
+ * and deliberately built from the same `accessibleClientWhere` predicate; the
+ * difference is only that it does not read every other client to answer.
+ */
+export async function canAccessClient(
+  staff: StaffIdentity,
+  clientId: string,
+): Promise<boolean> {
+  if (!clientId) return false;
+  const row = await prisma.client.findFirst({
+    where: { ...accessibleClientWhere(staff), id: clientId },
+    select: { id: true },
+  });
+  return row !== null;
 }
 
 /**
@@ -73,8 +109,7 @@ export async function requireClientAccess(
   staff: StaffIdentity,
   clientId: string,
 ): Promise<void> {
-  const allowed = await getAccessibleClientIds(staff);
-  if (!allowed.includes(clientId)) {
+  if (!(await canAccessClient(staff, clientId))) {
     throw new Error("FORBIDDEN_CLIENT");
   }
 }

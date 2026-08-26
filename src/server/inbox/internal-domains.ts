@@ -46,5 +46,17 @@ export async function resolveInternalDomainsForClient(
     where: { clientId },
     select: { email: true },
   });
-  return deriveInternalDomains(mailboxes.map((m) => m.email));
+  return internalDomainsFromMailboxEmails(mailboxes.map((m) => m.email));
+}
+
+/**
+ * The same answer as `resolveInternalDomainsForClient`, for a caller that already
+ * holds the client's mailbox addresses (`loadClientWorkspaceBundle` does). The
+ * kill-switch is honoured here too, so routing round the query cannot
+ * accidentally route round the flag. `emails` must be EVERY mailbox address on
+ * the workspace, matching the unfiltered `where: { clientId }` above.
+ */
+export function internalDomainsFromMailboxEmails(emails: string[]): string[] {
+  if (!isInternalMailFilterEnabled()) return [];
+  return deriveInternalDomains(emails);
 }
