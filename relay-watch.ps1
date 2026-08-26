@@ -27,7 +27,22 @@ $LogDir     = Join-Path $RelayDir "log"
 
 $MaxCycles  = 40
 $SleepSecs  = 60
-$HealthUrl  = "https://opensdoors.bidlow.co.uk/api/health"
+# The DIRECT App Service URL, deliberately NOT the custom domain.
+#
+# 2026-08-26: this check read https://opensdoors.bidlow.co.uk/api/health, which
+# is CDN-cached. The gate had been switched on and was live, and the cached
+# custom domain still answered "active: false" - so the relay refused to start
+# for a reason that was no longer true.
+#
+# The blocking direction was harmless. The OTHER direction is not: if the gate
+# were switched OFF, a cached "active: true" would let the relay run cycles with
+# no protection at all. A safety check that can answer from a cache is not a
+# safety check.
+#
+# This repository already recorded the same lesson for deploy verification -
+# compare the running commit against the DIRECT App Service URL, never the
+# CDN-cached custom domain. The safety check was pointed at the cached one.
+$HealthUrl  = "https://app-opensdoors-outreach-prod.azurewebsites.net/api/health"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
@@ -59,11 +74,51 @@ function Stop-Relay($why) {
     Write-Line "The HALT file now exists. Delete it before starting again."
 }
 
+# 2026-08-26: a cycle that DIES leaves STATUS.json reading "running" forever.
+# The status is written before the work starts and rewritten after it ends, so a
+# cycle killed in between - window closed, machine slept, watcher restarted -
+# never reaches the second write. Nothing else ever corrects it. The relay then
+# claims it is working when no process exists, and the cycle leaves no log file
+# at all, so there is not even a record that it was interrupted.
+#
+# That is the same defect this project has now found five times in a week:
+# something reporting activity that is not happening.
+#
+# On startup, "running" can only be a corpse. This process has not started a
+# cycle yet, so whatever wrote "running" is gone.
+function Resolve-InterruptedCycle {
+    try {
+        $status = Read-Status
+        if ($status.lastOutcome -ne "running") { return }
+
+        $cycle = [int]$status.cycle
+        Write-Line "Cycle $cycle was still marked 'running' when this watcher started, so it never finished. Recording it as interrupted."
+
+        $logFile = Join-Path $LogDir ("cycle-{0:d3}.md" -f $cycle)
+        if (-not (Test-Path $logFile)) {
+            Set-Content -Path $logFile -Value "# Cycle $cycle - interrupted" -Encoding utf8
+        }
+        @(
+            ""
+            "## Interrupted"
+            ""
+            "This cycle was still marked 'running' when the watcher started again at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), so it was stopped part-way through."
+            ""
+            "Whatever it had already done on disk is done; whatever it had not is not. This note records that the cycle ended without finishing - it does NOT undo anything."
+        ) | Add-Content -Path $logFile -Encoding utf8
+
+        Save-Status $cycle "interrupted"
+    } catch {
+        # Correcting the record must never be the thing that stops the relay.
+        Write-Line "Could not record the interrupted cycle: $($_.Exception.Message)"
+    }
+}
+
 # Is the safety gate actually live on the deployed site? If we cannot tell,
 # we assume it is NOT and refuse - never the other way round.
 function Test-SafetyGateLive {
     try {
-        $r = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 20 -Method Get
+        $r = Invoke-RestMethod -Uri "$HealthUrl`?nocache=$([guid]::NewGuid().ToString('N'))" -TimeoutSec 20 -Method Get -Headers @{ "Cache-Control" = "no-cache" }
     } catch {
         Write-Line "Could not reach the site to check the safety gate: $($_.Exception.Message)"
         return $false
@@ -85,6 +140,10 @@ function Test-SafetyGateLive {
 
 Write-Line "Relay watcher started. Repo: $RepoRoot"
 Write-Line "Checking for work every $SleepSecs seconds. Stop it by creating: $HaltFile"
+
+# Before anything else, and BEFORE the HALT check - a stale "running" is a lie
+# whether or not this watcher goes on to do any work.
+Resolve-InterruptedCycle
 
 if (Test-Path $HaltFile) {
     Write-Line "HALT already exists, so there is nothing to do. Delete it first if you want to run."
@@ -134,7 +193,19 @@ while ($true) {
     $prompt = Get-Content $CurrentFile -Raw
 
     try {
-        $output = $prompt | claude -p 2>&1 | Out-String
+        # 2026-08-26: cycle 1 ran the whole loop correctly and did NO work, because a
+        # non-interactive `claude -p` cannot answer a permission prompt. It refused
+        # every Write and reported honestly that it could not ask.
+        #
+        # `dontAsk` auto-DENIES anything not on the list, rather than allowing
+        # everything. Deliberately narrower than --dangerously-skip-permissions.
+        #
+        # This does NOT weaken the operating system's own gates. PreToolUse hooks
+        # fire in every permission mode, before permission rules are evaluated, and
+        # a hook exiting 2 blocks the call outright. gate-build.mjs still guards
+        # Write/Edit and gate-ship.mjs still guards Bash. The Bidlow-only send rule
+        # is enforced in production code, not here.
+        $output = $prompt | claude -p --permission-mode dontAsk --allowedTools "Write,Edit,Read,Glob,Grep,Bash" 2>&1 | Out-String
         $outcome = "finished"
     } catch {
         $output  = $_.Exception.Message
