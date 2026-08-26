@@ -10,6 +10,15 @@ const overviewPageSource = readFileSync(
   join(__dirname, "[clientId]", "page.tsx"),
   "utf8",
 );
+const repoRoot = join(__dirname, "..", "..", "..", "..");
+const commandCentreSource = readFileSync(
+  join(repoRoot, "src/components/clients/client-workspace-command-center.tsx"),
+  "utf8",
+);
+const launchStateSource = readFileSync(
+  join(repoRoot, "src/lib/client-launch-state.ts"),
+  "utf8",
+);
 
 describe("client Overview UI policy (source)", () => {
   it("does not mount internal team or launch-approval panels", () => {
@@ -44,5 +53,45 @@ describe("client Overview UI policy (source)", () => {
     expect(overviewPageSource).not.toContain(
       "Day-to-day outreach work happens in Brief",
     );
+  });
+});
+
+/**
+ * ONE LIST OF DESTINATIONS, NOT THREE.
+ *
+ * The Overview offered the same seven destinations three times on one screen:
+ * the subnav tab row, a numbered "Workflow" pill strip, and the Launch
+ * readiness rows. `client-launch-state.test.ts` already documents the mess this
+ * created — two of the three disagreed on the words for the same place.
+ *
+ * Greg's instruction, verbatim: "this needs to be consolidated into one tab
+ * list? i need the UI clean".
+ *
+ * The pills are the ones that go. They carried no information the readiness
+ * rows do not already carry — the readiness rows show the same seven
+ * destinations WITH a status pill and a reason, where a pill showed a coloured
+ * dot whose meaning was only in a screen-reader string. The tab row stays
+ * (it is the navigation) and the readiness rows stay (they are the status).
+ */
+describe("the client Overview lists its destinations once", () => {
+  it("no longer renders the numbered Workflow pill strip", () => {
+    expect(commandCentreSource).not.toContain("ClientWorkflowStrip");
+    expect(commandCentreSource).not.toContain("Client setup workflow");
+  });
+
+  it("does not pass workflow steps into the workspace header", () => {
+    expect(overviewPageSource).not.toContain("buildClientWorkflowSteps");
+    expect(overviewPageSource).not.toContain("steps={steps}");
+  });
+
+  it("leaves no orphaned builder behind for the strip", () => {
+    // Dead exported code is how a "removed" feature quietly comes back.
+    expect(launchStateSource).not.toContain("buildClientWorkflowSteps");
+    expect(launchStateSource).not.toContain("ClientWorkflowStep");
+  });
+
+  it("keeps the two lists that earn their place", () => {
+    expect(overviewPageSource).toContain("buildLaunchReadinessRows");
+    expect(overviewPageSource).toContain("LaunchReadinessPanel");
   });
 });

@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 
 import type { LaunchReadinessPanelInput } from "./client-launch-state";
 import {
-  buildClientWorkflowSteps,
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "./client-launch-state";
@@ -79,31 +78,32 @@ describe("deriveLaunchStageLabel", () => {
   });
 });
 
-describe("buildClientWorkflowSteps", () => {
-  it("returns seven steps with client-scoped hrefs", () => {
-    const steps = buildClientWorkflowSteps(baseInput({ clientId: "abc" }));
-    expect(steps).toHaveLength(7);
-    expect(steps[0]?.href).toBe("/clients/abc/brief");
-    expect(steps.map((s) => s.label).join("|")).toContain("Sources");
-  });
-
-  it("does not embed env key names in steps", () => {
-    const steps = buildClientWorkflowSteps(
-      baseInput({ rocketReachEnvReady: true, clientId: "x" }),
+describe("buildLaunchReadinessRows does not embed env key names", () => {
+  // Was asserted against the numbered Workflow pill strip too, until the strip
+  // was removed as a third copy of the same seven destinations. The rule it
+  // protects — never put an env var name on a client-facing screen — still
+  // applies to the rows that remain.
+  it("keeps ROCKETREACH_API / GOOGLE_SERVICE_ACCOUNT out of the rendered rows", () => {
+    const rows = buildLaunchReadinessRows(
+      basePanel({ rocketReachEnvReady: true, clientId: "x" }),
     );
-    const blob = JSON.stringify(steps);
-    expect(blob).not.toMatch(/ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i);
+    expect(JSON.stringify(rows)).not.toMatch(
+      /ROCKETREACH_API|GOOGLE_SERVICE_ACCOUNT/i,
+    );
   });
 });
 
 /**
  * ONE NAME PER DESTINATION.
  *
- * The Overview shows the same seven destinations three times: the subnav tab
- * row, the numbered Workflow strip, and the Launch readiness panel. Two of them
- * disagreed on the words - the tab row said "Do-not-contact" and "Lists" where
- * the other two said "Suppression" and "Contacts" - so one page offered two
- * different names for the same place.
+ * The Overview USED TO show the same seven destinations three times: the subnav
+ * tab row, the numbered Workflow strip, and the Launch readiness panel. Two of
+ * them disagreed on the words - the tab row said "Do-not-contact" and "Lists"
+ * where the other two said "Suppression" and "Contacts" - so one page offered
+ * two different names for the same place.
+ *
+ * The Workflow strip is now GONE (queue item 27, defect 4), so there are two
+ * lists, not three. The naming rule still binds the two that remain.
  *
  * PR #138 already decided this, renaming Contacts -> Lists in the subnav while
  * holding the href stable. The decision simply never reached these two
@@ -130,17 +130,10 @@ describe("one name per destination", () => {
     }
   });
 
-  it("every workflow step label is a name the tab row also uses", () => {
-    for (const step of buildClientWorkflowSteps(baseInput({ clientId: "abc" }))) {
-      expect(subnavLabels).toContain(step.label);
-    }
-  });
-
-  it("neither builder reintroduces the two names the tab row rejected", () => {
-    const all = [
-      ...buildLaunchReadinessRows(basePanel({ clientId: "abc" })).map((r) => r.label),
-      ...buildClientWorkflowSteps(baseInput({ clientId: "abc" })).map((s) => s.label),
-    ];
+  it("the readiness rows do not reintroduce the two names the tab row rejected", () => {
+    const all = buildLaunchReadinessRows(basePanel({ clientId: "abc" })).map(
+      (r) => r.label,
+    );
     expect(all).not.toContain("Suppression");
     expect(all).not.toContain("Contacts");
     expect(all).toContain("Do-not-contact");
@@ -308,14 +301,6 @@ describe("a workspace with no sequence is never reported ready", () => {
       expect(row?.metric).toMatch(/sequence/i);
     });
 
-    it("does not mark the Outreach workflow pill complete", () => {
-      const step = buildClientWorkflowSteps(baseInput(noSequence)).find(
-        (s) => s.id === "outreach",
-      );
-      expect(step?.status).not.toBe("complete");
-      expect(step?.metric).not.toBe("Ready to launch");
-    });
-
     it("does not put 'Ready to launch' in the header badge", () => {
       expect(deriveLaunchStageLabel(baseInput(noSequence))).not.toBe("Ready to launch");
     });
@@ -336,13 +321,6 @@ describe("a workspace with no sequence is never reported ready", () => {
       expect(row?.metric).toMatch(/enrol/i);
     });
 
-    it("does not mark the Outreach workflow pill complete", () => {
-      const step = buildClientWorkflowSteps(baseInput(nobodyEnrolled)).find(
-        (s) => s.id === "outreach",
-      );
-      expect(step?.status).not.toBe("complete");
-    });
-
     it("does not put 'Ready to launch' in the header badge", () => {
       expect(deriveLaunchStageLabel(baseInput(nobodyEnrolled))).not.toBe("Ready to launch");
     });
@@ -361,26 +339,41 @@ describe("a workspace with no sequence is never reported ready", () => {
       );
       expect(row?.pillStatus).toBe("ready");
       expect(row?.metric).toBe("Ready to launch · launchable production sequence");
-      expect(
-        buildClientWorkflowSteps(baseInput(genuinelyReady)).find((s) => s.id === "outreach")
-          ?.status,
-      ).toBe("complete");
       expect(deriveLaunchStageLabel(baseInput(genuinelyReady))).toBe("Ready to launch");
     });
   });
 
-  it("a brand-new workspace reads 'not started', not 'needs attention'", () => {
-    // Nothing connected, no contacts, nothing begun. All three stepStatus
-    // branches stay reachable for the Outreach step.
-    const step = buildClientWorkflowSteps(baseInput({})).find((s) => s.id === "outreach");
-    expect(step?.status).toBe("not_started");
+  /*
+   * These two were written against the numbered Workflow pill strip, which was
+   * removed as a third copy of the same seven destinations (queue item 27,
+   * defect 4). Retargeting them at the surviving Launch readiness row surfaced
+   * a real difference, recorded here rather than papered over:
+   *
+   *   the Outreach READINESS ROW HAS NO "not started" BRANCH. It is "ready" or
+   *   "needs_attention", nothing else. So a brand-new, untouched workspace
+   *   reads amber "Needs attention · Needs eligible contact" where the pill
+   *   read grey "not started".
+   *
+   * That is pre-existing behaviour of the row, unchanged by removing the pill —
+   * the two surfaces simply always disagreed, which is the same class of
+   * problem the "one name per destination" block above documents. It is
+   * defensible as it stands (the message is specific and actionable, not
+   * alarming), and readiness semantics were only just reworked by #245, so
+   * changing them here would be a second uncoordinated edit to the same rail.
+   * Asserted as-is; flagged for the queue.
+   */
+  it("a brand-new workspace reads needs-attention, naming the first missing thing", () => {
+    const row = buildLaunchReadinessRows(basePanel({})).find((r) => r.id === "outreach");
+    expect(row?.pillStatus).toBe("needs_attention");
+    expect(row?.metric).toBe("Needs eligible contact");
   });
 
-  it("a workspace part-way through reads 'needs attention'", () => {
-    const step = buildClientWorkflowSteps(
-      baseInput({ ...mailboxesFine, hasProductionLaunchableSequence: false }),
-    ).find((s) => s.id === "outreach");
-    expect(step?.status).toBe("needs_attention");
+  it("a workspace part-way through names the sequence as what is missing", () => {
+    const row = buildLaunchReadinessRows(
+      basePanel({ ...mailboxesFine, hasProductionLaunchableSequence: false }),
+    ).find((r) => r.id === "outreach");
+    expect(row?.pillStatus).toBe("needs_attention");
+    expect(row?.metric).toMatch(/launchable sequence/i);
   });
 
   it("a mailbox that cannot send is not covered up by a good sequence", () => {

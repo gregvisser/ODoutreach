@@ -15,7 +15,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  buildClientWorkflowSteps,
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
@@ -119,7 +118,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     enrolledContactsCount,
   };
 
-  const steps = buildClientWorkflowSteps(snapshot);
   const launchStage = deriveLaunchStageLabel(snapshot);
 
   const readinessRows = buildLaunchReadinessRows({
@@ -246,7 +244,6 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         clientSlug={client.slug}
         clientStatus={clientStatusLabel(client.status)}
         launchStageLabel={launchStage}
-        steps={steps}
         logoUrl={client.logoUrl}
         logoAltText={client.logoAltText}
       />
