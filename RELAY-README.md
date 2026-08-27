@@ -27,6 +27,46 @@ file in `.bidlow\relay\log\` describing what changed and what was decided.
 
 ---
 
+# Before a client meeting: two commands
+
+**Double-click `relay-golive.cmd`.** It stops the relay, waits until it really
+has stopped, switches scheduled sending on for **every** client, and then reads
+that back off the live site to prove it. It prints in plain English what is now
+possible. It takes a minute or two, most of which is waiting for the site to
+restart.
+
+**Double-click `relay-resume.cmd`** afterwards. It switches the safety rail back
+on, confirms it against the live site, and only then starts the relay again.
+
+Neither leaves you half-way. If anything cannot be confirmed, the command
+changes nothing, puts back anything it had already changed, and tells you why.
+In particular: go-live will **not** switch the rail off if the relay has not
+actually stopped, because an agent running with the rail off is the one state
+this whole design exists to forbid.
+
+**You clicking send in the app was always allowed, rail or no rail.** The rail
+only ever stopped the machine sending by itself, so a demo you drive by hand
+never needed any of this. These two commands are about the job that runs every
+five minutes being genuinely live.
+
+### What actually changes
+
+Only one Azure setting: `AUTONOMOUS_RELAY_ACTIVE` goes to `0` and back to `1`.
+The list of clients the machine may send for (`AUTONOMOUS_SEND_ALLOWLIST`) is
+never touched, so going back is one flag rather than remembering a value nobody
+wrote down. Mailboxes, queues, templates and sign-in are all untouched.
+
+### Proving it still works
+
+`.\relay-gate.ps1 -Mode proof` runs the whole pipeline for real — signs in,
+writes a setting, waits for the site to restart, reads it back, removes it —
+against a throwaway setting that no code reads, then checks the two safety
+values are exactly as it found them. Run it if you have not used go-live in a
+while and want to know it will work when it matters. It restarts the site
+twice, so do it outside sending hours.
+
+---
+
 # You should not have to watch it
 
 Three things changed on 2026-08-26 so that the relay looks after itself. The
@@ -178,6 +218,9 @@ And in the repository folder itself:
 | `relay-watch.ps1` | The relay itself. |
 | `relay-selftest.ps1` | Proves the timeout and the alerting work. Runs at every start. |
 | `relay-install-task.ps1` | Run once so the relay restarts after a reboot. |
+| `relay-golive.cmd` | Double-click before a client meeting. Stops the relay, then switches scheduled sending on for every client. |
+| `relay-resume.cmd` | Double-click afterwards. Switches the safety rail back on, confirms it, then restarts the relay. |
+| `relay-gate.ps1` | What those two actually run. Also `-Mode proof`, which proves the switch works without switching anything. |
 
 ## If something looks wrong
 
