@@ -117,10 +117,18 @@ describe("the proposal states", () => {
 });
 
 describe("migration hygiene", () => {
-  it("is the newest migration, so it applies last", () => {
+  // Written as "is the newest migration" while it WAS the newest. That form
+  // fails the moment any unrelated migration is added, which says nothing about
+  // this one. What actually matters is the ordering it depends on: this
+  // migration must apply AFTER the drift reconcile, never before it.
+  it("applies after the schema-drift reconcile", () => {
     const all = readdirSync(join(process.cwd(), "prisma/migrations"))
       .filter((d) => /^\d{14}_/.test(d))
       .sort();
-    expect(all[all.length - 1]).toBe("20260824180000_suppressed_domain_family_proposals");
+    const self = all.indexOf("20260824180000_suppressed_domain_family_proposals");
+    const reconcile = all.indexOf("20260824090000_reconcile_schema_migration_drift");
+    expect(self).toBeGreaterThan(-1);
+    expect(reconcile).toBeGreaterThan(-1);
+    expect(self).toBeGreaterThan(reconcile);
   });
 });

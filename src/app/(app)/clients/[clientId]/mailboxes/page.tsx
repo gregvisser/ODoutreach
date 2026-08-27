@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { ClientOpenTrackingCard } from "@/components/clients/client-open-tracking-card";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
   MicrosoftAdminConsentHelp,
@@ -25,6 +26,9 @@ import {
   MAILBOXES_WHAT_HAPPENS_BULLETS,
 } from "@/lib/mailboxes/mailbox-workspace-model";
 import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
+import { deriveGoLinkDomain } from "@/lib/clients/client-link-domain";
+import { CLIENT_OPEN_TRACKING_SELECT } from "@/lib/tracking/client-open-tracking";
+import { isOpenTrackingPixelEnabled } from "@/lib/tracking/open-pixel";
 import { prisma } from "@/lib/db";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -99,6 +103,22 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const deliverabilityEntries: ClientDeliverabilityEntry[] = Array.from(
     providerByDomain.entries(),
   ).map(([domain, provider]) => ({ domain, provider }));
+
+  // Open tracking is per-client and OFF by default. Read the client's own
+  // setting rather than inferring anything from the environment: the env var is
+  // only a global backstop now, reported here so staff can see when it is what
+  // is actually holding tracking off.
+  const trackingClient = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: CLIENT_OPEN_TRACKING_SELECT,
+  });
+  const candidateGoDomains = Array.from(
+    new Set(
+      bundle.mailboxRows
+        .map((m) => deriveGoLinkDomain(m.email))
+        .filter((d): d is string => Boolean(d)),
+    ),
+  ).sort();
 
   /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
   let oauthMailboxVerifiedConnected = false;
@@ -246,6 +266,22 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           {deliverabilityEntries.length > 0 ? (
             <ClientDeliverabilityHelp entries={deliverabilityEntries} />
           ) : null}
+
+          {/*
+            Shown to every staff member, not just setup-tool holders: whether a
+            customer's emails are tracked is something anyone supporting that
+            customer may be asked. The buttons are driven by canMutate and the
+            server action re-checks permission regardless.
+          */}
+          <ClientOpenTrackingCard
+            clientId={client.id}
+            canMutate={bundle.canMutateMailboxes}
+            linkDomain={trackingClient?.outreachLinkDomain ?? null}
+            linkDomainVerified={trackingClient?.outreachLinkDomainVerifiedAt != null}
+            trackingEnabled={trackingClient?.openTrackingEnabledAt != null}
+            candidateGoDomains={candidateGoDomains}
+            globalKillSwitchEngaged={!isOpenTrackingPixelEnabled()}
+          />
 
           {showMailboxSetupTools ? (
             <InternalProofSendCard
