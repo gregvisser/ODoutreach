@@ -1,6 +1,76 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 44) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 45) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 45, queue item 12. The load-bearing artefacts are in git, and a guard now fails if one is not.
+
+Queue row 12 is `DONE 45`. Merged as **`14e8e1d`** (PR #288), then **`b0490c0`**
+(PR #289, queue note only). **Both deployed and verified by hash on the DIRECT
+App Service URL** - production is running `b0490c0f85d8...`. **No app code
+changed**: artefacts, a test, `.gitignore`, queue rows. No schema, no migration,
+no send, no client data touched.
+
+### What was changed
+
+Seven load-bearing files were sitting UNTRACKED in the working tree and are now
+committed: `.bidlow/COVERAGE.json`, `.bidlow/DATAMODEL.json`,
+`.bidlow/relay/PROVE-CLOSE-OUT.md`, `.bidlow/relay/RESTART-REQUIRED.md`,
+`relay-start.cmd`, `relay-status.cmd`, `relay-status.mjs` - plus the pending
+edits to `BLUEPRINT.json`, `CLASSIFY.json` and `relay-watch.ps1`. **The working
+tree is now completely clean.** This closes the failure where a rebase silently
+wiped the promoted ASK answers and the 21 CLASSIFY answers earlier the same day
+(deck green 06:50, amber 08:58, nobody having changed anything on purpose).
+
+`relay/tracked-artefacts.test.ts` is the new guard: it fails if any of the 11
+named artefacts is not tracked by git.
+
+### The decision worth knowing, because the obvious version is wrong
+
+The guard asserts **tracked**, deliberately NOT "no uncommitted changes". The
+stronger assertion would go red every time somebody is halfway through editing a
+brief, and a gate that cries wolf gets ignored - which is how this happened. What
+"tracked" buys is exactly the two failure modes that killed these files:
+`git clean -fd` skips tracked files, and a rebase surfaces them as a loud
+CONFLICT instead of a silent wipe. It is a named list, not a glob, so the fix for
+a red line is "commit the artefact", not "add another ignore rule".
+
+**PROVEN TO FIRE, not merely present** (the house defect this project is worst
+at): red 7-of-12 before staging, naming the 7 real untracked files; and
+untracking `COVERAGE.json` again turned exactly 1 test red before re-adding
+returned 12/12.
+
+### Checked before committing, and it mattered
+
+All 11 files were diffed against `_bidlow-safe/2026-08-27` FIRST. Nothing had
+reverted: 8 were byte-identical and 2 were **strictly NEWER** than the safe copy
+(`PROVE-CLOSE-OUT.md` had gained the cycle-43 closure, `relay-watch.ps1` the
+mid-run orphan fix). **Blindly "restoring from safe" as a precaution would have
+destroyed both.** The safe folder was deleted only after verifying git holds
+equal-or-newer content for every file it contained.
+
+### Discovered, not looked for - and NOT fixed
+
+* **`main` is intermittently RED.** Commit `2de37ff` (cycle 44) FAILED CI:
+  `relay/queue-parser.test.ts` had 2 tests exceed vitest's 5000ms default with
+  `Test timed out in 5000ms` - a timeout, NOT an assertion failure. The next
+  commit ran the same tests green on the same runner. Cause is almost certainly
+  process-spawn cost (the relay specs shell out to real `pwsh` AND `powershell`
+  per assertion). Recorded as **queue row 35** with the correct fix (per-suite
+  `testTimeout` on the two relay specs) and the two wrong ones (a global timeout
+  bump; deleting the PowerShell-driving tests). A CI that reds for no reason
+  trains people to ignore it.
+* **`.bidlow/DATAMODEL.json.bak` was TRACKED while the real `DATAMODEL.json`
+  beside it was not** - the whole failure in one line. Left alone as out of
+  scope; untracking the stale `.bak` files is Greg's call and is the one open
+  question from this cycle.
+
+### Next session picks up
+
+Row 9 (PROVE) and row 10 (customer-ready) remain the priority - **the sell gate
+is still shut on customer-ready**, and cycle 44's CR-06 finding (prospect
+personal data going to Sentry right now, two commented-out lines in
+`sentry.*.config.ts`) is unchanged by this cycle. Nothing here contradicts
+`.bidlow/PROJECT.json`.
 
 ## Session 2026-08-27 - Relay cycle 44, queue item 10. Re-graded by WALKING. PROVE does NOT close.
 
