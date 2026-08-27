@@ -6,10 +6,13 @@
 import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
-  dsn: "https://4f4b773c808d7f68a13f7fabde04855c@o4511767741071360.ingest.de.sentry.io/4511767773642832",
+  // Env-driven, never hardcoded — see `src/instrumentation-client.ts` for why.
+  // Empty or absent disables the SDK, which is how e2e stays silent.
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
+  // Performance traces only; error events are always captured. See the client
+  // config — 100% sampling is what exhausted the ingest quota.
+  tracesSampleRate: 0.1,
 
   // Enable logs to be sent to Sentry
   enableLogs: true,
