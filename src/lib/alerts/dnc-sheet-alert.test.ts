@@ -17,11 +17,18 @@ import { readPartialAnnotations } from "./partial-annotations";
  * both stopped updating.
  *
  * Asserting that the YAML contains the right words would be the same mistake
- * one level up. So the strings below are not invented for the test: they are
- * the annotations the fixed step actually emitted when its shell was run
- * against that captured production response body. This test carries them the
- * rest of the way — annotations → parsed detail → composed email — and asserts
- * that a person reading the email learns WHICH clients stopped and WHAT to do.
+ * one level up. So the strings below are not invented for the test. They are
+ * the annotations the fixed step emitted in production, copied verbatim out of
+ * the check-runs API for run 33045022987 on 2026-08-27 — the first run of this
+ * workflow after the fix went live — via the same endpoint `ops-alert.ts`
+ * reads. This test carries them the rest of the way — annotations → parsed
+ * detail → composed email — and asserts that a person reading the email learns
+ * WHICH clients stopped and WHAT to do.
+ *
+ * The tab names below are the real ones, and they are the whole diagnosis:
+ * both sheets were being read at `Sheet1!A1:Z50000` and neither has a tab
+ * called Sheet1. Keep these strings in sync with production rather than
+ * tidying them — their value is that nobody made them up.
  */
 const ANNOTATIONS_THE_STEP_EMITS = [
   {
@@ -31,12 +38,12 @@ const ANNOTATIONS_THE_STEP_EMITS = [
   {
     title: "PARTIAL",
     message:
-      'do-not-contact sheet: Train Hugger — Whole domains: Check the Sheet tab name and range (e.g. Sheet1!A:Z). Update the range if your data is on another tab. We looked in Sheet1!A1:Z50000. This Sheet\'s tabs are: "DNC List", "Notes".',
+      'do-not-contact sheet: Train Hugger — Whole domains: Check the Sheet tab name and range (e.g. Sheet1!A:Z). Update the range if your data is on another tab. We looked in Sheet1!A1:Z50000. This Sheet\'s tabs are: "Domains", "Company Names".',
   },
   {
     title: "PARTIAL",
     message:
-      'do-not-contact sheet: Pareto FM — Whole domains: Check the Sheet tab name and range (e.g. Sheet1!A:Z). Update the range if your data is on another tab. We looked in Sheet1!A1:Z50000. This Sheet\'s tabs are: "Do Not Contact".',
+      'do-not-contact sheet: Pareto FM — Whole domains: Check the Sheet tab name and range (e.g. Sheet1!A:Z). Update the range if your data is on another tab. We looked in Sheet1!A1:Z50000. This Sheet\'s tabs are: "Domains".',
   },
 ];
 
@@ -80,8 +87,12 @@ describe("a dead do-not-contact sheet becomes an email that names it", () => {
   it("carries the count and the fix instruction through to the body", () => {
     expect(email.body).toContain("2 of 34 sheet(s) failed to update");
     expect(email.body).toContain("Check the Sheet tab name and range");
-    // The diagnosis that makes it actionable without opening the Sheet.
-    expect(email.body).toContain('This Sheet\'s tabs are: "DNC List", "Notes"');
+    // The diagnosis that makes it actionable without opening the Sheet: the
+    // range we tried, beside the tabs that actually exist. Read together they
+    // say "there is no tab called Sheet1" without anyone opening the Sheet.
+    expect(email.body).toContain(
+      'This Sheet\'s tabs are: "Domains", "Company Names"',
+    );
     expect(email.body).toContain("We looked in Sheet1!A1:Z50000");
   });
 
