@@ -1,6 +1,100 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 28) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 30) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 30, queue item 19. One command to go live for a client meeting, and one to go back.
+
+Production serves **`6e980eb`** (verified by hash against the DIRECT App Service
+URL `/api/build-info`, not the CDN domain). Merged as PR #266. Queue row 19 is
+`DONE 30`.
+
+### What was built
+
+`relay-golive.cmd` and `relay-resume.cmd` at the repo root, both
+double-clickable, backed by a new `relay-gate.ps1`. Go-live stops the relay,
+waits until it has genuinely stopped, turns the gate off, reads the result back
+off the direct App Service URL, and prints plain English. Resume turns the gate
+on, confirms it against the live site, and only then starts the relay.
+
+New files: `relay-gate.ps1`, `relay-golive.cmd`, `relay-resume.cmd`,
+`relay/gate-switch.test.ts` (30 tests). Changed: `RELAY-README.md`,
+`.bidlow/relay/QUEUE.md`. **No app code, no schema, no migration, no
+send-pipeline change.**
+
+### Decisions
+
+1. **The gate is written to `0`, never unset.** The queue item's diagnosis was
+   right: unsetting `AUTONOMOUS_RELAY_ACTIVE` also discarded
+   `AUTONOMOUS_SEND_ALLOWLIST`. Writing `0` leaves the allowlist intact, so the
+   two are decoupled and going back is one flag rather than a remembered value.
+   **`AUTONOMOUS_SEND_ALLOWLIST` is never touched by either script.**
+2. **The safe half always goes first.** Go-live refuses to turn the gate off
+   unless the relay has demonstrably stopped — "agent running with the gate off"
+   is the state the whole design forbids. Resume confirms the gate before
+   starting any agent.
+3. **Process table, not `STATUS.json`, decides whether the relay is running.**
+   An idle watcher between cycles has a finished `lastOutcome` and is very much
+   alive. An unreadable process table is treated as "it IS running".
+4. **An abort removes a `HALT` file only if it created that file itself.**
+   Deleting someone else's would kill the relay behind their back.
+
+### Proven, not assumed
+
+Red-first: 30 tests watched failing against a deliberately optimistic stub, then
+green. They dot-source the *shipped* `relay-gate.ps1` and drive its real
+functions under **both** PowerShell hosts, following the `queue-parser.test.ts`
+pattern. Gates: lint 0 errors, typecheck clean, **2493 tests / 257 files**, CI
+verify + E2E green.
+
+Every link was then fired for real. The one a read cannot prove — whether `az`
+can WRITE an app setting on this machine — was exercised by new
+**`relay-gate.ps1 -Mode proof`**, which runs the whole pipeline against a
+throwaway `RELAY_GATE_WRITE_PROOF` setting no code reads, then asserts both
+safety variables are unchanged. It passed against production.
+
+`relay-resume.cmd` was then run end-to-end from the merged `main` checkout. That
+mattered: `.gitattributes` rewrites tracked files to LF, so merging changed the
+batch files from what had been tested. Resume writes
+`AUTONOMOUS_RELAY_ACTIVE=1`, identical to the live value, so the entire path ran
+with zero behaviour change — and it correctly declined to spawn a second relay.
+
+### What was deliberately NOT done
+
+**Go-live itself was never run.** Turning the gate off makes real scheduled
+sending live for clients other than `bidlowai`, and that mail cannot be
+recalled. The hard rule binds the agent, not Greg. Every link in the trigger is
+proven; pulling it is his call before the meeting.
+
+### Writes to production
+
+None to any client database. Two Azure app-setting writes, both reversed and
+verified: the throwaway proof key (added, then deleted) and
+`AUTONOMOUS_RELAY_ACTIVE=1` written over its own identical value. Final state
+matches the starting state exactly — gate `1`, allowlist `bidlowai`, no leftover
+key, no `HALT`, relay still running. **No mail was sent for any client.**
+
+Operational note: `-Mode proof` restarts the App Service twice. It was run at
+03:07 UTC; the send/reply crons are `*/5 7-18 * * 1-5` UTC, so it hit nothing.
+Keep it outside sending hours — recorded in `RELAY-README.md`.
+
+### Nothing contradicts PROJECT.json
+
+The one rule held: no client was mailed, and the allowlist gate was left exactly
+as found rather than bypassed or widened.
+
+### Pick up first, next session
+
+1. **The next unfinished QUEUE.md row** — items 16/17/18 were the others flagged
+   as mattering before the meeting; check their current status rather than
+   trusting this note.
+2. **Cosmetic**: resume prints "The background agent is running again in its own
+   window" even when it found the relay already running and left it alone. True
+   but reads as though it started something. Fix next time that file is open;
+   not worth a deploy on its own.
+3. **The junk-folder reply-sync gap** from cycle 28 below is still open and is
+   still the strongest product-side candidate.
+
+---
 
 ## Session 2026-08-27 - Relay cycle 28, queue item 33. The prefetch fix was reported done and 70 prefetches were still firing.
 
