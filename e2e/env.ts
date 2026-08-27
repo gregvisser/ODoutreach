@@ -43,6 +43,14 @@ export const E2E_APP_ENV: Record<string, string> = {
   // Empty = no domain filter, so the `.example` fixture addresses are allowed.
   STAFF_EMAIL_DOMAINS: "",
 
+  // Error monitoring off: an empty DSN disables the Sentry SDK outright, so a
+  // test run reports nothing into the client's production project. Covers the
+  // server and edge SDKs, which read this at runtime. The BROWSER bundle is
+  // handled at build time instead — Next.js inlines `NEXT_PUBLIC_*`, so the
+  // browser is silent because CI's build never sets the DSN, not because of this
+  // line. Guarded by `e2e/no-third-party-telemetry.spec.ts`.
+  NEXT_PUBLIC_SENTRY_DSN: "",
+
   // --- send kill-switches: nothing may leave the machine ---
   EMAIL_PROVIDER: "mock",
   RESEND_API_KEY: "",
