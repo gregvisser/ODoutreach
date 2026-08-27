@@ -109,8 +109,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     contactsSuppressedCount: bundle.pilotContactSummary.suppressedCount,
     rocketReachEnvReady: bundle.rocketReachEnvReady,
     outreachPilotRunnable,
-    latestActivityLabel: bundle.latestGovernedAt
-      ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
+    // Any provably-sent email, not just governed proof/pilot sends — see
+    // `proven-send.ts`. The Activity tab's "Emails sent" card counts from the
+    // same predicate, so this row and that number cannot disagree.
+    latestActivityLabel: bundle.latestProvenSendAtIso
+      ? new Date(bundle.latestProvenSendAtIso).toISOString().slice(0, 16).replace("T", " ")
       : null,
     hasProductionLaunchableSequence,
     // Feeds isOutreachModuleReady — without it the readiness rail reports
