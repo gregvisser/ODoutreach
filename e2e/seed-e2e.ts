@@ -17,8 +17,12 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import {
   E2E_CLIENT,
   E2E_CLIENT_B,
+  E2E_CLIENT_BULK,
   E2E_CONTACT,
   E2E_CONTACT_B,
+  E2E_CONTACT_BULK,
+  e2eBulkContactEmail,
+  e2eBulkContactId,
   E2E_MAILBOX_SIGNATURE_HTML,
   E2E_MAILBOXES,
   E2E_MEMBER_A,
@@ -247,6 +251,36 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         clientId: E2E_CLIENT.id,
         sourceId: E2E_SUPPRESSION.domainSourceId,
         domain: `blocked-${i}.e2e-suppression.test`,
+      })),
+      skipDuplicates: true,
+    });
+
+    /**
+     * Enough contacts to exceed one page of /contacts (queue item 27, defect 9).
+     * Before the fix the page rendered every row it was given, up to 500, each
+     * with a `SendToContactForm` client component — 2,977 KB and 19,265 ms on
+     * the live site. `e2e/contacts-pagination.spec.ts` counts the rows that are
+     * actually painted, so there has to be more than one page of them.
+     */
+    await prisma.client.upsert({
+      where: { id: E2E_CLIENT_BULK.id },
+      create: {
+        id: E2E_CLIENT_BULK.id,
+        name: E2E_CLIENT_BULK.name,
+        slug: E2E_CLIENT_BULK.slug,
+        status: "ACTIVE",
+      },
+      update: { name: E2E_CLIENT_BULK.name, status: "ACTIVE", deletedAt: null },
+    });
+    await prisma.contact.createMany({
+      data: Array.from({ length: E2E_CONTACT_BULK.count }, (_, i) => ({
+        // Fixed id — `Contact` has no unique (clientId, email), so without this
+        // `skipDuplicates` dedupes nothing and every seed run adds another 260.
+        id: e2eBulkContactId(i),
+        clientId: E2E_CLIENT_BULK.id,
+        email: e2eBulkContactEmail(i),
+        fullName: `Bulk Contact ${String(i).padStart(4, "0")}`,
+        emailDomain: "e2e-contacts.test",
       })),
       skipDuplicates: true,
     });

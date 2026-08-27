@@ -67,6 +67,58 @@ export async function listContactListsForClient(
 }
 
 /**
+ * The same thing for MANY clients, in one round-trip.
+ *
+ * Queue item 27, defect (9): /contacts preloaded the list picker by calling
+ * `listContactListsForClient` inside `clients.map(...)`. That is one query per
+ * workspace — seventeen on production — every time the page opened, purely so a
+ * dropdown could be populated before anyone had chosen a workspace. Same rows,
+ * one query.
+ *
+ * Per-client `take: 50` is preserved by trimming after the fetch rather than in
+ * SQL: a `LIMIT` here would apply to the whole result set, not to each client,
+ * which would silently drop workspaces off the end of the picker.
+ */
+export async function listContactListsForClients(
+  clientIds: string[],
+): Promise<Record<string, ContactListSummary[]>> {
+  const byClient: Record<string, ContactListSummary[]> = {};
+  for (const id of clientIds) {
+    byClient[id] = [];
+  }
+  if (clientIds.length === 0) return byClient;
+
+  const rows = await prisma.contactList.findMany({
+    where: { clientId: { in: clientIds }, archivedAt: null },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      clientId: true,
+      updatedAt: true,
+      _count: { select: { members: true } },
+    },
+  });
+
+  for (const r of rows) {
+    // `clientId` is nullable on the model; the filter above means every row
+    // here has one, but narrow rather than assert.
+    const key = r.clientId;
+    if (!key) continue;
+    const bucket = byClient[key];
+    if (!bucket || bucket.length >= 50) continue;
+    bucket.push({
+      id: r.id,
+      name: r.name,
+      clientId: r.clientId,
+      memberCount: r._count.members,
+      updatedAt: r.updatedAt,
+    });
+  }
+  return byClient;
+}
+
+/**
  * Find-or-create a client-scoped list by normalized name. Returns the list row.
  * Name matches are case-insensitive + trimmed; stored casing is whatever the
  * operator typed the first time.
