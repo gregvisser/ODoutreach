@@ -117,10 +117,20 @@ describe("the proposal states", () => {
 });
 
 describe("migration hygiene", () => {
-  it("is the newest migration, so it applies last", () => {
+  /**
+   * This asserted "is the NEWEST migration" until 2026-08-27, which made it a
+   * tripwire that fired on every unrelated migration anyone added afterwards
+   * rather than on the thing it was protecting. What actually matters is the
+   * ORDER: this migration must apply after the drift reconcile that precedes
+   * it, or it lands against a schema it was not written for.
+   */
+  it("applies after the schema-drift reconcile it depends on", () => {
     const all = readdirSync(join(process.cwd(), "prisma/migrations"))
       .filter((d) => /^\d{14}_/.test(d))
       .sort();
-    expect(all[all.length - 1]).toBe("20260824180000_suppressed_domain_family_proposals");
+    const reconcile = all.indexOf("20260824090000_reconcile_schema_migration_drift");
+    const proposals = all.indexOf("20260824180000_suppressed_domain_family_proposals");
+    expect(reconcile).toBeGreaterThanOrEqual(0);
+    expect(proposals).toBeGreaterThan(reconcile);
   });
 });

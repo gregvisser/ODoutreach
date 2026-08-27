@@ -42,12 +42,7 @@ import { prisma } from "@/lib/db";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
-import {
-  isSendPacingEnabled,
-  minuteOfDayUtc,
-  pacingDateKey,
-  sendsPermittedByNow,
-} from "@/lib/mailboxes/send-pacing";
+import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -505,6 +500,8 @@ export async function sendSequenceStepBatch(input: {
         launchApprovalMode: true,
         outreachLinkDomain: true,
         outreachLinkDomainVerifiedAt: true,
+        // Drives send pacing — how many go out together before the next gap.
+        sendBatchSize: true,
         onboarding: { select: { formData: true } },
       },
     }),
@@ -911,26 +908,28 @@ export async function sendSequenceStepBatch(input: {
     await prisma.$transaction(
       async (tx) => {
         const localRemaining = new Map<string, number>();
+        // Set when pacing — not the daily cap — is what is holding mail back, so
+        // the operator is told "the next batch is later today" rather than the
+        // untrue "no capacity left".
+        let heldByPacing = false;
         for (const m of pool) {
           // Warm-up ramp: caps cold-outreach volume until a mailbox has a
           // history of sending. No-op once warmed, or when the flag is off.
           // An absent entry means it has never sent — 0, never "allow".
           const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
-          // Pacing: spread the day allowance instead of emptying it into the
-          // first cron run. It never RAISES the cap - it only withholds part of
-          // it until later in the day, and yields the full cap once the window
-          // has closed, so nothing is ever stranded by pacing alone.
-          const allowedNow = isSendPacingEnabled()
-            ? Math.min(
-                cap,
-                sendsPermittedByNow({
-                  mailboxId: m.id,
-                  dateKey: pacingDateKey(at),
-                  dailyCap: cap,
-                  nowMinuteOfDay: minuteOfDayUtc(at),
-                }),
-              )
-            : cap;
+          // Pacing: release the day's allowance in batches of the client's
+          // configured size with a gap between them, instead of emptying it
+          // into the first cron run. It never RAISES the cap - it only
+          // withholds part of it until later in the day, and yields the full
+          // cap once the window has closed, so nothing is ever stranded by
+          // pacing alone.
+          const allowedNow = pacedAllowanceForMailbox({
+            mailboxId: m.id,
+            dailyCap: cap,
+            batchSize: client.sendBatchSize,
+            at,
+          });
+          if (allowedNow < cap) heldByPacing = true;
           const booked = await countBookedSendSlotsInUtcWindow(
             tx,
             m.id,
@@ -1205,18 +1204,18 @@ export async function sendSequenceStepBatch(input: {
           }
 
           if (!placed) {
+            const reason = heldByPacing
+              ? "Held back by send pacing — the next batch for this workspace goes out later today."
+              : "No mailbox capacity remaining in this UTC day.";
             blocked.push({
               stepSendId: pr.stepSend.id,
               contactEmail: toEmail,
-              reason: "No mailbox capacity remaining in this UTC day.",
+              reason,
               decisionReason: "blocked_plan_classifier",
             });
             await tx.clientEmailSequenceStepSend.update({
               where: { id: pr.stepSend.id },
-              data: {
-                blockedReason:
-                  "No mailbox capacity remaining in this UTC day.",
-              },
+              data: { blockedReason: reason },
             });
           }
         }

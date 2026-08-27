@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
   MicrosoftAdminConsentHelp,
@@ -211,6 +212,16 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           />
         </CardContent>
       </Card>
+
+      {/*
+        How fast this workspace's mail leaves. Sits directly under the mailboxes
+        because it is a property of how they send, not of the sequences.
+      */}
+      <ClientSendPacingCard
+        clientId={client.id}
+        sendBatchSize={client.sendBatchSize ?? null}
+        canMutate={bundle.canMutateMailboxes}
+      />
 
       <details className="group rounded-lg border border-border/80 bg-card px-4 py-3 shadow-sm">
         <summary className="cursor-pointer text-base font-semibold text-foreground">
