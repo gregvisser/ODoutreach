@@ -21,7 +21,7 @@ export default async function StaffAccessPage() {
           Only the owner account can add or remove staff. Contact the owner if
           you need someone&rsquo;s access adjusted.
         </p>
-        <Link
+        <Link prefetch={false}
           href="/settings"
           className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}
         >
@@ -64,7 +64,7 @@ export default async function StaffAccessPage() {
             to add someone to a tenant as a guest first.
           </p>
         </div>
-        <Link
+        <Link prefetch={false}
           href="/settings"
           className={cn(buttonVariants({ variant: "ghost" }), "text-sm shrink-0")}
         >

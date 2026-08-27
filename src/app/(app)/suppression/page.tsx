@@ -118,7 +118,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
+          <Link prefetch={false}
             href="/suppression"
             className={cn(
               buttonVariants({
@@ -130,7 +130,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
             All
           </Link>
           {clients.map((c) => (
-            <Link
+            <Link prefetch={false}
               key={c.id}
               href={`/suppression?client=${c.id}`}
               className={cn(

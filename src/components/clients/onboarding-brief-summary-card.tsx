@@ -88,7 +88,7 @@ export function OnboardingBriefSummaryCard({ clientId, completion }: Props) {
           </p>
         )}
 
-        <Link href={href} className={buttonVariants()}>
+        <Link prefetch={false} href={href} className={buttonVariants()}>
           Open brief
         </Link>
       </CardContent>

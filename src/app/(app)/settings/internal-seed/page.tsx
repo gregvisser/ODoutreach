@@ -32,7 +32,7 @@ export default async function InternalSeedPage() {
         <p className="text-muted-foreground">
           Only the owner account can manage internal test addresses.
         </p>
-        <Link
+        <Link prefetch={false}
           href="/settings"
           className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}
         >
@@ -60,7 +60,7 @@ export default async function InternalSeedPage() {
             also excluded from real campaign analytics.
           </p>
         </div>
-        <Link
+        <Link prefetch={false}
           href="/settings"
           className={cn(buttonVariants({ variant: "ghost" }), "text-sm shrink-0")}
         >

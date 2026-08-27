@@ -141,7 +141,7 @@ export function RecentGovernedSendsPanel({
                     {ts(r.sentAtIso)}
                   </TableCell>
                   <TableCell className="align-top text-right">
-                    <Link
+                    <Link prefetch={false}
                       href={`/activity/outbound/${r.outboundId}`}
                       className={cn(buttonVariants({ variant: "ghost", size: "xs" }))}
                     >

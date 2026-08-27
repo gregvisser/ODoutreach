@@ -169,7 +169,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
               <Badge variant={mode === "outreach" ? "default" : "outline"}>
                 {mode === "all" ? "Full history" : "Outreach view"}
               </Badge>
-              <Link
+              <Link prefetch={false}
                 href={
                   mode === "all"
                     ? `/clients/${bundle.client.id}/activity`

@@ -138,14 +138,14 @@ function MailboxGroupRow({
                   </p>
                 )}
                 <div className="flex items-center gap-3 pt-1">
-                  <Link
+                  <Link prefetch={false}
                     href={`/clients/${clientId}/activity/replies/${r.id}`}
                     className="text-xs font-medium underline-offset-4 hover:underline"
                   >
                     Open reply →
                   </Link>
                   {canViewSendDetail && r.linkedOutboundEmailId && (
-                    <Link
+                    <Link prefetch={false}
                       href={`/activity/outbound/${r.linkedOutboundEmailId}`}
                       className="text-xs text-muted-foreground underline-offset-4 hover:underline"
                     >

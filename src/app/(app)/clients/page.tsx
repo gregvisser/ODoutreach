@@ -53,7 +53,7 @@ export default async function ClientsPage() {
             contacts, mailboxes, and outreach.
           </p>
         </div>
-        <Link href="/clients/new" className={cn(buttonVariants())}>
+        <Link prefetch={false} href="/clients/new" className={cn(buttonVariants())}>
           Add client
         </Link>
       </div>
@@ -100,7 +100,7 @@ export default async function ClientsPage() {
                     {c._count.emailSequences}
                   </TableCell>
                   <TableCell>
-                    <Link
+                    <Link prefetch={false}
                       href={`/clients/${c.id}`}
                       className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                     >
@@ -120,7 +120,7 @@ export default async function ClientsPage() {
                     Add your first client to start onboarding mailboxes, contacts,
                     and outreach.
                   </p>
-                  <Link
+                  <Link prefetch={false}
                     href="/clients/new"
                     className={cn(buttonVariants(), "mt-2 inline-flex")}
                   >

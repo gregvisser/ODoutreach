@@ -307,7 +307,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                           ) : null}
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          <Link
+                          <Link prefetch={false}
                             href={`/clients/${clientId}/lists/${seq.contactList.id}`}
                             className="line-clamp-2 underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
                           >
@@ -330,7 +330,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
-                            <Link
+                            <Link prefetch={false}
                               href={outreachSequenceHref(clientId, seq.id)}
                               className={buttonVariants({
                                 size: "sm",
@@ -341,14 +341,14 @@ export function ClientEmailSequencesPanel(props: Props) {
                             </Link>
                             {(seq.status === "DRAFT" || seq.status === "READY_FOR_REVIEW") &&
                             canMutate ? (
-                              <Link
+                              <Link prefetch={false}
                                 href={outreachSequenceHref(clientId, seq.id, { edit: true })}
                                 className={buttonVariants({ size: "sm", variant: "outline" })}
                               >
                                 Edit
                               </Link>
                             ) : null}
-                            <Link
+                            <Link prefetch={false}
                               href={outreachSequenceHref(clientId, seq.id)}
                               className={buttonVariants({ size: "sm", variant: "ghost" })}
                             >
@@ -411,7 +411,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                           ) : null}
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          <Link
+                          <Link prefetch={false}
                             href={`/clients/${clientId}/lists/${seq.contactList.id}`}
                             className="line-clamp-2 underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
                           >
@@ -423,7 +423,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
-                            <Link
+                            <Link prefetch={false}
                               href={outreachSequenceHref(clientId, seq.id)}
                               className={buttonVariants({
                                 size: "sm",
@@ -478,7 +478,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                   <span>
                     <span className="font-medium text-foreground">List</span>:{" "}
-                    <Link
+                    <Link prefetch={false}
                       href={`/clients/${clientId}/lists/${selected.contactList.id}`}
                       className="underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
                     >
@@ -578,7 +578,7 @@ export function ClientEmailSequencesPanel(props: Props) {
             <ActivationHint sequence={selected} />
 
             <div className="flex flex-wrap gap-2">
-              <Link
+              <Link prefetch={false}
                 href={outreachListHref(clientId)}
                 className={buttonVariants({ size: "sm", variant: "ghost" })}
               >

@@ -56,7 +56,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <Link
+        <Link prefetch={false}
           href="/support"
           className="text-sm text-muted-foreground underline-offset-2 hover:underline"
         >

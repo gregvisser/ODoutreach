@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -81,5 +81,109 @@ describe("navigation does not prefetch every route on page load", () => {
     // Ten or more simultaneous prefetches is what production shed. If the nav
     // ever grows past that again without opting out, the tests above fail.
     expect(total).toBeGreaterThanOrEqual(2);
+  });
+});
+
+/**
+ * The two files above are not the whole burst, and believing they were is how
+ * this defect survived being "fixed".
+ *
+ * `11a9a93` opted the sidebar and the workspace tabs out of prefetching and the
+ * tests above went green. On 2026-08-27 the browser guard
+ * (`e2e/nav-prefetch-burst.spec.ts`) was run for the first time and measured
+ * **70 route prefetches on `/reporting`** and 15 on the client overview — every
+ * one from a `<Link>` in a file these tests never looked at. `/reporting`
+ * renders a filter chip per client and two links per table row, so the count
+ * grows with the customer's own data.
+ *
+ * A guard scoped to two files cannot see that, so this one is scoped to the app.
+ */
+
+/** Every `.tsx` under `src/`, so a new screen cannot opt itself out by existing. */
+function tsxFilesUnder(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return tsxFilesUnder(full);
+    return entry.isFile() && entry.name.endsWith(".tsx") ? [full] : [];
+  });
+}
+
+/**
+ * Return the attributes of every `<Link>` opening tag.
+ *
+ * Counting `<Link` and `prefetch={false}` separately (what the tests above do
+ * for two known files) cannot say WHICH link is missing the prop, and a file
+ * carrying both a prefetching link and an unrelated `prefetch={false}` would
+ * tally clean. This walks each tag instead, tracking brace depth and quotes so
+ * a `>` inside `href={`...`}` or a className does not end the tag early.
+ */
+function linkTagAttributes(src: string): string[] {
+  const attrs: string[] = [];
+  const openings = /<Link(?=[\s/>])/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = openings.exec(src))) {
+    let i = match.index + "<Link".length;
+    let depth = 0;
+    let quote: string | null = null;
+
+    for (; i < src.length; i++) {
+      const char = src[i];
+      if (quote !== null) {
+        if (char === "\\") i++;
+        else if (char === quote) quote = null;
+      } else if (char === '"' || char === "'" || char === "`") {
+        quote = char;
+      } else if (char === "{") {
+        depth++;
+      } else if (char === "}") {
+        depth--;
+      } else if (char === ">" && depth === 0) {
+        break;
+      }
+    }
+
+    attrs.push(src.slice(match.index + "<Link".length, i));
+  }
+
+  return attrs;
+}
+
+describe("no <Link> anywhere in the app prefetches on page load", () => {
+  const root = join(process.cwd(), "src");
+  const files = tsxFilesUnder(root);
+
+  it("finds the app's components to check", () => {
+    // Without this, a broken walker would report zero offenders and look green.
+    expect(files.length).toBeGreaterThan(50);
+  });
+
+  it("every <Link> opts out of prefetch", () => {
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      const tags = linkTagAttributes(stripComments(readFileSync(file, "utf8")));
+      const missing = tags.filter((a) => !/prefetch=\{false\}/.test(a)).length;
+      if (missing > 0) {
+        offenders.push(`${relative(process.cwd(), file)} (${String(missing)})`);
+      }
+    }
+
+    expect(
+      offenders,
+      "these <Link>s prefetch their route as soon as they scroll into view; " +
+        "on a single App Service worker that burst is shed with 503s — " +
+        `add prefetch={false}:\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("guards a meaningful number of links", () => {
+    const total = files.reduce(
+      (n, f) => n + linkTagAttributes(readFileSync(f, "utf8")).length,
+      0,
+    );
+    // 122 at the time of writing. A collapse to near-zero means the walker or
+    // the tag parser broke, not that the app stopped linking anywhere.
+    expect(total).toBeGreaterThan(80);
   });
 });

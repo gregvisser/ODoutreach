@@ -67,7 +67,7 @@ export function AppBrandLogo({
   }
 
   return (
-    <Link
+    <Link prefetch={false}
       href={href}
       aria-label={`${resolvedBrand} ${resolvedProduct} home`}
       className={cn(

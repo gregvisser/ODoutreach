@@ -57,7 +57,7 @@ export function ClientLaunchBlockersCard({ clientId, blockers }: Props) {
                 {item.text}
               </span>
               {item.hrefSuffix ? (
-                <Link
+                <Link prefetch={false}
                   href={`/clients/${clientId}${item.hrefSuffix}`}
                   className="text-xs font-medium text-foreground underline underline-offset-4 hover:no-underline"
                 >

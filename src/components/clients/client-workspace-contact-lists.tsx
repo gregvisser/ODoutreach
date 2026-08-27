@@ -42,7 +42,7 @@ export function ClientWorkspaceContactLists({ clientId, lists }: Props) {
               className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
-                <Link
+                <Link prefetch={false}
                   href={`/clients/${clientId}/lists/${l.id}`}
                   className="truncate font-medium underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
                 >

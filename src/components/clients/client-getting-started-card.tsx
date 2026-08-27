@@ -65,7 +65,7 @@ export function ClientGettingStartedCard({ viewModel, clientStatus }: Props) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <Link
+                    <Link prefetch={false}
                       href={item.href}
                       className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
                     >

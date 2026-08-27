@@ -169,7 +169,7 @@ export default async function ContactsPage({ searchParams }: Props) {
       <p className="rounded-lg border border-amber-400/40 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
         <span className="font-medium">Admin-only legacy tools.</span>{" "}
         The day-to-day contact directory lives on{" "}
-        <Link
+        <Link prefetch={false}
           href="/universe"
           className="font-medium underline-offset-2 hover:underline"
         >
@@ -191,7 +191,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">Filter:</span>
-          <Link
+          <Link prefetch={false}
             href={directoryHref({ search, offset: 0 })}
             className={cn(
               buttonVariants({
@@ -203,7 +203,7 @@ export default async function ContactsPage({ searchParams }: Props) {
             All (in scope)
           </Link>
           {clients.map((c) => (
-            <Link
+            <Link prefetch={false}
               key={c.id}
               // Carry the search, reset the page — switching workspace while
               // looking someone up should keep looking for that person.
@@ -231,7 +231,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         </p>
         <p className="text-xs text-muted-foreground">
           Cross-client directory and send tools are below.{" "}
-          <Link href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
+          <Link prefetch={false} href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
             Universe
           </Link>{" "}
           lists every imported person you can filter and attach to client lists.
@@ -252,7 +252,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {sendBanner.id ? (
             <>
               {" "}
-              <Link
+              <Link prefetch={false}
                 className="font-medium underline underline-offset-2"
                 href={`/activity/outbound/${sendBanner.id}`}
               >
@@ -271,7 +271,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {sendBanner.id ? (
             <>
               .{" "}
-              <Link
+              <Link prefetch={false}
                 className="font-medium underline underline-offset-2"
                 href={`/activity/outbound/${sendBanner.id}`}
               >
@@ -287,7 +287,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {sendBanner.id ? (
             <>
               {" "}
-              <Link
+              <Link prefetch={false}
                 className="font-medium underline underline-offset-2"
                 href={`/activity/outbound/${sendBanner.id}`}
               >
@@ -343,7 +343,7 @@ export default async function ContactsPage({ searchParams }: Props) {
               Search
             </button>
             {search ? (
-              <Link
+              <Link prefetch={false}
                 href={directoryHref({ clientFilter, search: "", offset: 0 })}
                 className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
               >
@@ -440,7 +440,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {hasPrev || hasNext ? (
             <div className="flex items-center justify-between gap-2">
               {hasPrev ? (
-                <Link
+                <Link prefetch={false}
                   href={directoryHref({
                     clientFilter,
                     search,
@@ -454,7 +454,7 @@ export default async function ContactsPage({ searchParams }: Props) {
                 <span />
               )}
               {hasNext ? (
-                <Link
+                <Link prefetch={false}
                   href={directoryHref({
                     clientFilter,
                     search,

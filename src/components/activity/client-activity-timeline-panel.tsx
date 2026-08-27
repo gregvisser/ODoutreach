@@ -224,7 +224,7 @@ function TimelineRow({ event }: { event: TimelineEvent }) {
             {severityLabel(event.severity)}
           </Badge>
           {event.href ? (
-            <Link
+            <Link prefetch={false}
               href={event.href}
               className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
             >
@@ -234,7 +234,7 @@ function TimelineRow({ event }: { event: TimelineEvent }) {
             <p className="text-sm font-medium text-foreground">{event.title}</p>
           )}
           {event.href && event.type === "inbound_message" ? (
-            <Link
+            <Link prefetch={false}
               href={event.href}
               className="text-xs text-muted-foreground underline-offset-4 hover:underline"
             >

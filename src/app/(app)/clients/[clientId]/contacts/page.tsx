@@ -156,7 +156,7 @@ export default async function ClientContactsPage({ params }: Props) {
             Each import creates a list, every sequence sends to one list, and
             the readiness counts below tell you how many people can actually
             be reached. To add people use{" "}
-            <Link
+            <Link prefetch={false}
               href={`${base}/sources`}
               className="font-medium text-primary underline underline-offset-2"
             >
@@ -166,19 +166,19 @@ export default async function ClientContactsPage({ params }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link
+          <Link prefetch={false}
             href={`${base}/sources`}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
             Open sources
           </Link>
-          <Link
+          <Link prefetch={false}
             href={`${base}/outreach`}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
             Open outreach
           </Link>
-          <Link
+          <Link prefetch={false}
             href={`${base}/suppression`}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
@@ -230,13 +230,13 @@ export default async function ClientContactsPage({ params }: Props) {
             {rocketReachStatus.description}
           </p>
           <div className="flex flex-wrap gap-2">
-            <Link
+            <Link prefetch={false}
               href={`${base}/sources#rocketreach-import`}
               className={cn(buttonVariants({ variant: "default", size: "sm" }))}
             >
               Import from RocketReach
             </Link>
-            <Link
+            <Link prefetch={false}
               href={`/contacts?client=${client.id}`}
               className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
             >
@@ -261,7 +261,7 @@ export default async function ClientContactsPage({ params }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link
+            <Link prefetch={false}
               href={`${base}/sources`}
               className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
             >
@@ -295,7 +295,7 @@ export default async function ClientContactsPage({ params }: Props) {
                   return (
                     <tr key={list.id} className="align-top hover:bg-muted/40">
                       <td className="px-4 py-3">
-                        <Link
+                        <Link prefetch={false}
                           href={`${base}/lists/${list.id}`}
                           className="font-medium text-foreground underline-offset-2 hover:underline"
                         >
@@ -342,19 +342,19 @@ export default async function ClientContactsPage({ params }: Props) {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex justify-end gap-1.5 whitespace-nowrap">
-                          <Link
+                          <Link prefetch={false}
                             href={`${base}/lists/${list.id}`}
                             className={cn(buttonVariants({ variant: "default", size: "xs" }))}
                           >
                             Open
                           </Link>
-                          <Link
+                          <Link prefetch={false}
                             href={`${base}/sources`}
                             className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
                           >
                             Sources
                           </Link>
-                          <Link
+                          <Link prefetch={false}
                             href={`${base}/outreach`}
                             className={cn(buttonVariants({ variant: "outline", size: "xs" }))}
                           >
@@ -391,7 +391,7 @@ export default async function ClientContactsPage({ params }: Props) {
             </li>
             <li>
               This page is read-only. Import contacts from the{" "}
-              <Link
+              <Link prefetch={false}
                 href={`${base}/sources`}
                 className="underline underline-offset-2"
               >

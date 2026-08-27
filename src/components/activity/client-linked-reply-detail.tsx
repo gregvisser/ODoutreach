@@ -138,7 +138,7 @@ export function ClientLinkedReplyDetail({ clientId, detail }: Props) {
     <div className="space-y-8">
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <Link
+          <Link prefetch={false}
             href={`/clients/${clientId}/activity`}
             className="underline-offset-4 hover:underline"
           >
@@ -238,7 +238,7 @@ export function ClientLinkedReplyDetail({ clientId, detail }: Props) {
                 handles threading and the daily send cap.
               </p>
               <div>
-                <Link
+                <Link prefetch={false}
                   href={replyHref}
                   className={cn(buttonVariants({ variant: "default" }))}
                 >
