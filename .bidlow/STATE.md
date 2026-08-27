@@ -3315,3 +3315,84 @@ nothing else, and the allowlist gate was exercised rather than bypassed.
 2. **The junk-folder gap** above — behind a flag, red-first, blast radius
    measured before switching on.
 3. **Queue item 19** — `relay-golive.cmd` / `relay-resume.cmd`.
+
+---
+
+# Cycle 32: the tracking opt-in was verified, not rebuilt - 2026-08-27
+
+Queue item 20 (open tracking OFF by default, per-client opt-in). The brief said
+**DO NOT REBUILD** - cycle 31 had already built it as PR #268 - so this cycle
+was verification, and it held up.
+
+## What changed this session
+
+Nothing in `src/`. One line of `.bidlow/relay/QUEUE.md` (row 20's status cell),
+committed as `c6cf018` on `docs/relay-cycle-32` and opened as **PR #269**.
+
+## Gates re-run rather than trusted
+
+`npm run lint` 0 errors (1 warning, in untracked `relay-status.mjs`, not in the
+PR) - `npm run typecheck` 0 errors - `npm test` **2511 passed, 260 files**.
+PR #268 is MERGEABLE / CLEAN with both CI checks green.
+
+## Proved it FIRES
+
+The house defect is code that exists, reports success and never fires, so the
+`openTrackingEnabledAt == null` guard was deliberately deleted. The integration
+test `execute-one-open-tracking.test.ts` went genuinely red with the real pixel
+in the HTML handed to the transport
+(`<img src="https://go.workspace.test/api/track/open/corr-9" ...>`) - it reads
+the send boundary, not a mocked boolean. The suite also carries a POSITIVE case,
+so it cannot pass vacuously. Guard restored; `src/` and `prisma/` confirmed
+clean BEFORE the gates were run.
+
+Wiring traced end to end and is real: `mailboxes/page.tsx:276` renders the card
+-> card:54 calls `verifyLinkDomainAction` (confirmed: its first caller ever,
+as cycle 31 reported) -> card:66 calls `setClientOpenTrackingAction`. Exactly
+two pixel call sites exist in prod code (`execute-one.ts:593` Gmail, `:715`
+Graph), both behind the per-client decision. `isOpenTrackingPixelEnabled` has
+one prod caller, the backstop. No bypass path.
+
+## The finding that decides the merge
+
+**Merging PR #268 changes ZERO live email behaviour.** Live Azure
+`OPEN_TRACKING_PIXEL` reads exactly `off`, and `off` is in `OFF_VALUES`, so the
+kill switch is engaged in production today - no client gets a pixel before or
+after. The only live effect is two nullable columns. Migration reviewed:
+additive, no backfill, no existing row read or rewritten, rollback SQL in the
+file.
+
+## Half-done, and exactly where
+
+**PR #268 is built, gated and proven, but NOT MERGED.** It is left open on
+branch `feat/per-client-open-tracking-opt-in` (commit `a6e853c`).
+
+## Decisions
+
+* **The one-way door was NOT opened.** Merging applies a migration to the live
+  client database. `PRODUCTION_PRISMA_MIGRATE` is true, so the merge IS the
+  apply. That is Greg's call alone and was left to him.
+* Row 20 marked `DONE 32` **with an explicit "NOT MERGED" note** rather than
+  `TODO` (which would trigger the forbidden rebuild) or a bare `DONE` (which
+  would overclaim). Follows the row 30 precedent and avoids the row 14 deadlock.
+* Checkout deliberately left on `docs/relay-cycle-32`: the watcher reads
+  QUEUE.md from the WORKING TREE, so switching branches would hide the status
+  update and make the relay re-take row 20.
+
+## Writes to production
+
+None. No send, no delete, no schema change, no Azure setting altered. The only
+production contact was a read of the App Service app settings.
+
+## Nothing contradicts PROJECT.json
+
+The one rule was not exercised - nothing left the building for any client.
+
+## Pick up first, next session
+
+1. **Greg's answer on PR #268.** If approved, merge and then verify the running
+   commit by HASH against `app-opensdoors-outreach-prod.azurewebsites.net`,
+   never the CDN domain, and confirm the migrate-deploy step went green.
+2. **Queue item 22** - paced sending, batches of 4, per client. Next TODO row.
+3. **Queue item 28** - the two failing DNC sheet syncs; PR #250's CI run
+   `33017266904` FAILED. Start by reading that run, not by rebuilding.
