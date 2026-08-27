@@ -33,7 +33,43 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// EVERY test in this file starts a real PowerShell host, so none of them can
+// live inside vitest's 5000ms default.
+//
+// This is not a guess about cost. On 2026-08-27 commits `2de37ff` and `b7ef2a4`
+// both failed CI here with `Test timed out in 5000ms` at 5864ms and 5558ms - not
+// an assertion failure, just the clock - and the commit either side ran the same
+// tests green on the same runner. In both runs the test that blew the budget was
+// the FIRST `it()` in the file, which is the tell: the module-load probe below
+// only runs `-Command exit 0`, so the first test is the first time the host has
+// to load the .NET runtime, JIT, and parse the whole of relay-watch.ps1. Later
+// spawns in this file average ~1.2s; that first one costs ~5.9s cold.
+//
+// File-wide rather than on the one slow test, because "the first spawn" is a
+// property of whichever test happens to run first, not of that test's name -
+// reordering the file would move the failure to a different line.
+//
+// 30s is ~5x the worst first-spawn measured on CI, which leaves room for a
+// loaded runner while still failing loudly if a host ever genuinely hangs (one
+// blocked on stdin would burn the whole 30s and fail). It is set here and NOT in
+// vitest.config.ts on purpose: the other ~2700 tests are pure and finish in
+// single-digit milliseconds, and blunting their timeout to accommodate this file
+// would mean a real hang anywhere else stops failing fast.
+//
+// `relay/powershell-timeout-budget.test.ts` fails if this line is removed, or if
+// a new relay spec starts a PowerShell host without one of its own.
+vi.setConfig({ testTimeout: 30_000 });
+
+// The budget above is a claim; this is the receipt. `ctx.task.timeout` is the
+// value vitest RESOLVED for this test, so it goes red if `vi.setConfig` stops
+// taking effect - on a vitest upgrade, say. Asserting the source text says 30_000
+// would only prove somebody typed it, which is this repository's house defect:
+// built, wired, reporting success, and never firing.
+it("runs under the raised time budget, not vitest's 5s default", (ctx) => {
+  expect(ctx.task.timeout).toBe(30_000);
+});
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const WATCHER = path.join(REPO_ROOT, "relay-watch.ps1");
