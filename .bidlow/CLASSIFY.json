@@ -124,6 +124,111 @@
         "confidence": "SP",
         "source": "Code read 2026-08-22/23: src/server/tenant/access.ts (canDeleteWorkspace, deletedAt filter), prisma/schema.prisma (Client.deletedAt, F2 comments), listSoftDeletedClients super-admin gating",
         "expires": "2026-11-23"
+      },
+      "0": {
+        "answer": "YES. [stated] Greg: an employee can belong to more than one client. This is not a theoretical case - OpensDoors is an agency and the same person legitimately appears on more than one customer's list. Import deduplication is therefore PER CLIENT: the same prospect on two clients' lists is not a duplicate.",
+        "confidence": "V",
+        "source": "Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
+      },
+      "2": {
+        "answer": "YES. [stated] Greg: a record can move between tenants. The related case he settled separately: when a CONTACT moves company, the record is REMOVED rather than re-pointed at the new employer.",
+        "confidence": "V",
+        "source": "Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
+      }
+    },
+    "identity_auth": {
+      "0": {
+        "answer": "The CLIENT'S OWN DIRECTORY, via Microsoft Entra ID. NextAuth is configured with MicrosoftEntraID as the SOLE provider - there is no password login and no social provider anywhere in the app.",
+        "confidence": "V",
+        "source": "NextAuth configuration in the repo, read 2026-08-23"
+      },
+      "1": {
+        "answer": "SSO is required NOW, not later, and it is already the only way in: OAuth/OIDC through Microsoft Entra ID. There is no second路 to add later because there is no first one to migrate off.",
+        "confidence": "V",
+        "source": "NextAuth configuration in the repo, read 2026-08-23"
+      },
+      "2": {
+        "answer": "Two effective roles. STAFF: can see, create, edit and export in EVERY client workspace - there is deliberately no isolation between staff, because OpensDoors is an agency doing outreach for its customers (recorded in BLUEPRINT.json not_handling item 1). SUPER-ADMIN: additionally can soft-delete and hard-purge a client workspace, which is the only deletion event in the system. ClientMembership exists in the schema, inert, as the mechanism if per-client scoping is ever required.",
+        "confidence": "V",
+        "source": "prisma/schema.prisma and src/server/tenant/access.ts, with tenant isolation tests in server/tenant/access.test.ts; confirmed live 2026-08-22"
+      },
+      "3": {
+        "answer": "NOTHING IN THE PRODUCT STOPS THEM. [stated] Greg, verbatim: \"Nothing stops them at the moment, the operations team must block their access?\" Access ends when the person's Microsoft Entra account is disabled by the client's own IT - the product has no leaver path of its own. Recorded as a real gap, not as a design.",
+        "confidence": "V",
+        "source": "Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
+      }
+    },
+    "background_processing": {
+      "0": {
+        "answer": "GitHub Actions on a schedule, weekdays 07:00-18:00 UK: process-outbound-queue every 5 minutes (dispatches queued sends through the connected mailbox) and sync-replies every 15 minutes (pulls the inbox, detects NDR/DSN bounces, links replies). A MISSED RUN IS SAFE BY DESIGN: nothing is time-critical to the minute, the next run picks up whatever is still queued, and suppression and hard bounces are RE-CHECKED at dispatch time rather than trusted from queue time. [stated] Greg on a provider outage: \"carry on but avoid burst sends when they come back online again\" - which is why paced sending (four at a time with gaps, per client) was built and switched on.",
+        "confidence": "V",
+        "source": "the workflow files in .github/workflows plus src/server/email/outbound/dispatch-recheck.ts; pacing shipped in PR #270, and Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
+      },
+      "1": {
+        "answer": "NO, AND THAT IS THE RECORDED FAULT. Errors are returned INSIDE an HTTP 200 body, so the workflow goes green while real faults accumulate - 8 of 35 mailboxes failing reply sync, a long errors array, and one mailbox not eligible for sending, all inside a successful response. This is logged in the capability register as BURNED for 'recurring work on a schedule via GitHub Actions'. It is the house defect in its purest form: built, wired, reporting success, never firing.",
+        "confidence": "V",
+        "source": "observed in the client's own GitHub Actions job logs, 2026-08-20; recorded in DOMAIN.json and on the deck's capability rail"
+      },
+      "2": {
+        "answer": "YES for the paths that matter, and it is enforced rather than assumed. Suppression is APPEND-ONLY and idempotent (suppressRecipientForHardBounce refreshes a timestamp on an existing row rather than duplicating, and audits only the first time). Dispatch re-checks suppression and bounces before sending, so a repeated run cannot re-send a suppressed address. The known exception is sheet-sourced suppression, which is REPLACE-ON-SYNC rather than append-only - removing a row from the client's sheet makes that address sendable again.",
+        "confidence": "V",
+        "source": "src/server/email/bounce-suppression.ts and src/server/email/outbound/dispatch-recheck.ts, read 2026-08-27"
+      },
+      "3": {
+        "answer": "GREG, AND ONLY GREG. [stated] his decision, verbatim: \"you make the decision here, and if anyone is to be notified it will only be me.\" The route is email via the relay-alert GitHub workflow. IT HAS BEEN TESTED, not merely wired: the relay's own start-up self-test asserts the alert path is armed and the alarm is not muted, and it fires a simulated stall to prove the subject line carries both STALLED and the count of waiting jobs. 24 checks passed on the 2026-08-27 08:16 start.",
+        "confidence": "V",
+        "source": ".github/workflows/relay-alert.yml and the self-test block in relay-watch.ps1; run output 2026-08-27 08:16:51"
+      }
+    },
+    "integrations": {
+      "0": {
+        "answer": "Microsoft Graph and the Gmail API by OAuth, for sending as the client and reading their inbox - this is the whole zero-DNS architecture. Google Sheets by OAuth for each client's do-not-contact list. RocketReach by API for contact enrichment. Resend by API and webhook for system mail only - a transport guard REFUSES to route prospect outreach through it. Sentry by SDK for error monitoring.",
+        "confidence": "V",
+        "source": "src/server/mailbox/*, src/server/email/providers/*, src/server/email/outbound/prospect-send-transport-guard.ts, read 2026-08-27"
+      },
+      "1": {
+        "answer": "THE CLIENT owns the mailbox credentials: OAuth tokens are issued against the client's own Microsoft 365 or Google Workspace tenant and stored per ClientMailboxIdentity. When they expire or are revoked the mailbox stops sending and the row FAILS rather than rerouting - there is no ESP fallback. The honest gap: how often that happens, and who notices, is recorded as UNKNOWN rather than as zero, and one such failure was visible today as mailbox_oauth=error&reason=callback_failed.",
+        "confidence": "V",
+        "source": "prisma/schema.prisma, src/server/mailbox/oauth-env.ts, and BLUEPRINT.json answers.frequency"
+      },
+      "2": {
+        "answer": "IT CARRIES ON, DELIBERATELY, AND DOES NOT CATCH UP IN A BURST. [stated] Greg, verbatim: \"carry on but avoid burst sends when they come back online again.\" Implemented as paced sending - four at a time with gaps, configured per client - so a backlog drains at a human rate instead of arriving as a spike that damages the sending reputation.",
+        "confidence": "V",
+        "source": "PR #270 'Paced sending: four at a time with gaps, set per client, and switched on', with the property pinned by a test in PR #272; and Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
+      },
+      "3": {
+        "answer": "WHAT IS ENFORCED IN THE PRODUCT, cited: a per-mailbox DAILY CAP with a warm-up ramp starting at 5 a day and rising by 5 every 5 days by mailbox age, with a slot reserved against that cap before an OutboundEmail row is written. Target steady state is 30 a day per mailbox. THE HONEST GAP, stated rather than invented: the PROVIDER-side ceilings for Microsoft Graph and the Gmail API are NOT cited with a date anywhere in this repo, and the '<2% bounce' figure that GRADES.json calls non-negotiable was checked on 2026-08-24 and has no primary source - Google publishes no bounce threshold at all, only a complaint rate below 0.10%. Recorded in _open_obligations rather than filled in with a number nobody checked.",
+        "confidence": "V",
+        "source": "src/server/email-sequences/send-introduction.ts and src/lib/mailboxes/send-pacing.ts, read 2026-08-27"
+      }
+    },
+    "crud_workflow": {
+      "0": {
+        "answer": "Recorded in full in BLUEPRINT.json entities - eight entities, each with its states and its ending. The headline: ONLY ONE THING HAS AN ENDING OF ITS OWN. A Client is soft-deleted then hard-purged, and everything scoped to it dies by cascade. ContactUniverse and the suppression tables do not die with it.",
+        "confidence": "V",
+        "source": "BLUEPRINT.json entities, promoted from prisma/schema.prisma read 2026-08-23"
+      },
+      "1": {
+        "answer": "An OutboundEmail moves QUEUED -> SENT -> DELIVERED / REPLIED / BOUNCED / FAILED / BLOCKED_SUPPRESSION, and the mover is the system, not a person: the scheduled dispatcher sends it, the reply sync links replies and bounces. A sequence is moved Draft -> Approved -> Launched -> Archived by a STAFF member. A contact is moved to Suppressed by the system (bounce, unsubscribe, sheet sync) or by a staff member manually. Archiving a sequence stops it sending and deletes nothing.",
+        "confidence": "V",
+        "source": "src/server/email/outbound/lifecycle.ts and prisma/schema.prisma, read 2026-08-27"
+      }
+    },
+    "reporting_analytics": {
+      "0": {
+        "answer": "NOT FOR BILLING - nothing in the product bills anyone. FOR COMPLIANCE, YES, and that is why it matters: the bounce rate is the number a client judges deliverability by, and send proof (providerMessageId + sentAt) is the record that an email was really sent. That is exactly why the bounce rate reading a flat 0% across 1,209 sends was treated as a customer-ready blocker rather than a cosmetic bug, and fixed on 2026-08-27.",
+        "confidence": "V",
+        "source": "GRADES.json customer_ready.top_blockers, and commit b358dcd"
+      },
+      "1": {
+        "answer": "YES, BUT CONSOLIDATED. [stated] Greg, verbatim: \"yes buyt consoludated\" - a historical report must still show the numbers as they were at the time, presented consolidated rather than as a separate report per client.",
+        "confidence": "V",
+        "source": "Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
+      },
+      "2": {
+        "answer": "ANYONE WITH A LOGIN MAY EXPORT, AND EVERY EXPORT MUST BE ATTRIBUTABLE. [stated] Greg, verbatim: \"Anyone with a login but it has to be visible who downloads what, prefereable a time stamp?\" So: no role restriction on export, but an audit record naming the person and the time is required.",
+        "confidence": "V",
+        "source": "Greg Visser, recorded verbatim during classification, 2026-08-24. Re-entered 2026-08-27 after a rebase reverted the working tree; the wording is his, not a paraphrase."
       }
     }
   },
@@ -136,6 +241,9 @@
     }
   },
   "_open_obligations": {
-    "dpa_gap": "Art.28 DPAs NOT verified with Sentry, RocketReach and Resend (Greg, 2026-08-23). Outstanding NOW, not at a later milestone. RocketReach also raises a controller-side lawful-basis question about bought prospect data."
-  }
+    "dpa_gap": "Art.28 DPAs NOT verified with Sentry, RocketReach and Resend (Greg, 2026-08-23). Outstanding NOW, not at a later milestone. RocketReach also raises a controller-side lawful-basis question about bought prospect data.",
+    "provider_rate_limits": "The provider-side sending ceilings for Microsoft Graph and the Gmail API are not cited with a date anywhere in this repo, and the '<2% bounce' non-negotiable in GRADES.json has no primary source (checked 2026-08-24; Google publishes only a complaint rate below 0.10%). Cite the real published figures or drop the claim - confidence V requires a primary source."
+  },
+  "_restored_note": "These answers were first recorded on 2026-08-24 and LOST on 2026-08-27 when a rebase reverted the working tree - they had never been committed. Re-entered the same day from Greg's verbatim words and from the code, and immediately copied to _bidlow-safe. Committing them is queue item 12.",
+  "last_edited": "2026-08-27"
 }
