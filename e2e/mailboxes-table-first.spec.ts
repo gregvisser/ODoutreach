@@ -16,6 +16,14 @@
  * reported success and never fired. This file exists so that cannot be a
  * seventh.
  *
+ * LOCATOR SCOPE — text assertions run against `main`, not the whole document.
+ * This route streams: React parks the finished page inside a
+ * `<div hidden id="S:n">` at the END of `<body>` and only moves it into `<main>`
+ * a frame later, so for one frame the document holds TWO copies of every string
+ * on the page and an unscoped `getByText` is a strict-mode violation. Measured
+ * 2026-08-27: "Use Connect on the mailbox row, then return here." failed that
+ * way in 5 of 68 CI runs. See the same note in `e2e/journeys.spec.ts`.
+ *
  * SEND SAFETY: navigation and one disclosure click. Nothing here submits a form.
  * The fixture mailboxes hold no stored credential (see `E2E_MAILBOXES`).
  */
@@ -41,16 +49,17 @@ test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 test.describe("Mailboxes shows the mailboxes first", () => {
   test("the mailbox table is painted above the setup help", async ({ page }) => {
     await page.goto(MAILBOXES_URL);
+    const content = page.getByRole("main");
 
     // Positive control: the fixture mailboxes really are on this page. Without
     // it, every assertion below would pass just as happily on an empty page.
-    const firstMailbox = page.getByText(E2E_MAILBOXES[0]!.email).first();
+    const firstMailbox = content.getByText(E2E_MAILBOXES[0]!.email).first();
     await expect(firstMailbox).toBeVisible();
 
     const tableBox = await firstMailbox.boundingBox();
     expect(tableBox, "the mailbox table has no position on the page").not.toBeNull();
 
-    const setup = page.getByText(SETUP_SUMMARY, { exact: false }).first();
+    const setup = content.getByText(SETUP_SUMMARY, { exact: false }).first();
     await expect(setup).toBeVisible();
     const setupBox = await setup.boundingBox();
     expect(setupBox, "the setup disclosure has no position on the page").not.toBeNull();
@@ -66,17 +75,18 @@ test.describe("Mailboxes shows the mailboxes first", () => {
     page,
   }) => {
     await page.goto(MAILBOXES_URL);
+    const content = page.getByRole("main");
 
     await expect(
-      page.getByText(HELP_HEADING, { exact: false }).first(),
+      content.getByText(HELP_HEADING, { exact: false }).first(),
       `"${HELP_HEADING}" is expanded on arrival — the help is still in the way`,
     ).toBeHidden();
 
     // ...and it is genuinely still reachable, not deleted. If this half fails,
     // the fix threw content away instead of moving it.
-    await page.getByText(SETUP_SUMMARY, { exact: false }).first().click();
+    await content.getByText(SETUP_SUMMARY, { exact: false }).first().click();
     await expect(
-      page.getByText(HELP_HEADING, { exact: false }).first(),
+      content.getByText(HELP_HEADING, { exact: false }).first(),
       `"${HELP_HEADING}" cannot be opened — the help was lost, not collapsed`,
     ).toBeVisible();
   });
@@ -85,7 +95,8 @@ test.describe("Mailboxes shows the mailboxes first", () => {
     page,
   }) => {
     await page.goto(MAILBOXES_URL);
-    await expect(page.getByText(E2E_MAILBOXES[0]!.email).first()).toBeVisible();
+    const content = page.getByRole("main");
+    await expect(content.getByText(E2E_MAILBOXES[0]!.email).first()).toBeVisible();
 
     // Every connected fixture mailbox carries a full branded signature, so
     // `getOperatorSignatureState` hands all four the same `ready_od` template.
@@ -108,7 +119,7 @@ test.describe("Mailboxes shows the mailboxes first", () => {
     // And it must say which mailboxes it applies to — hoisting it out of the
     // table without naming them would trade duplication for ambiguity.
     await expect(
-      page.getByText(`Next step for ${E2E_CONNECTED_MAILBOX_COUNT} mailboxes`, {
+      content.getByText(`Next step for ${E2E_CONNECTED_MAILBOX_COUNT} mailboxes`, {
         exact: false,
       }),
     ).toBeVisible();
@@ -122,7 +133,7 @@ test.describe("Mailboxes shows the mailboxes first", () => {
     // One fixture mailbox never connected. Its advice is shared with no other
     // row, so the dedupe must leave it exactly where it was.
     await expect(
-      page.getByText("Use Connect on the mailbox row, then return here.", {
+      page.getByRole("main").getByText("Use Connect on the mailbox row, then return here.", {
         exact: false,
       }),
     ).toBeVisible();
