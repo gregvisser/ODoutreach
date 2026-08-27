@@ -1,6 +1,95 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 30) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 35) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 35, queue item 24. The deliverability review exists as a document the client can read.
+
+Queue row 24 is `DONE 35`. **No app code, no schema, no migration, no config
+change, no send.** Production is untouched and still serves `237986b`.
+
+### What was built
+
+`docs/client/2026-08-27-deliverability-review.md` - the client-facing review Greg
+can send to Sam and James. Plain English, no jargon, three sections in the order
+the queue item demanded: what was wrong, what has been fixed, what is still
+outstanding. Six findings, each with the mechanism explained rather than named:
+the link-misalignment quarantine cause, the 0% bounce figure that was reading the
+wrong field, the 426 unread bounce notifications, the ~4-5% real bounce rate, the
+eight dead mailboxes, the warm-up anchor.
+
+The findings existed across STATE.md and `docs/audits/`. The two existing audit
+documents (`2026-08-06-deliverability-root-cause.md`,
+`odoutreach-deliverability-findings.md`) are engineering-facing, predate five of
+the six findings, and are not sendable. The queue item was accurate: there was no
+client document.
+
+### The guard, and why a document needed one
+
+`src/lib/docs/deliverability-review.test.ts` (12 tests). Every load-bearing
+sentence in that document is a claim about this codebase, and the failure mode
+that matters for a document we SEND to a client is a sentence that says "fixed"
+about something that has since changed. So the claims are pinned to the real
+code - it calls `resolveUnsubscribeRail`, `warmupDailyCap` and
+`resolveSendBatchSize` for real, and asserts the bounce status write is STILL
+absent.
+
+That last one is the ratchet worth keeping: when someone fixes the bounce status
+write, the test goes RED and its message names the section of the client document
+that must be corrected before it is sent again. A "what remains" claim that
+silently rots into a lie is the same defect class as the six the queue records.
+
+**Proven, not assumed.** Red-first watched: 4 document assertions failed before
+the document existed. Then both ratchets were fired deliberately - a
+`status: "BOUNCED"` write added to `bounce-detection.ts`, and
+`resolvePublicBaseUrl` re-imported into `send-introduction.ts` - and both went
+red with the correct message, then were reverted (`git checkout --`, working tree
+verified clean). Gates: lint 0 errors (1 pre-existing warning in the untracked
+`relay-status.mjs`), typecheck clean, **2549 tests / 261 files**.
+
+### One test bug found and fixed before it could pass vacuously
+
+The first version tested for the app-domain import with a multi-line regex, and
+it FALSELY reported the quarantine root cause was back - it was matching the
+comment in `send-introduction.ts:75` that deliberately NAMES
+`resolvePublicBaseUrl` to explain why it must never be imported. Replaced with
+comment-stripping plus an absence check, which asks the stronger question (does
+executable code reference it at all?), and carries a sanity assertion so the
+check cannot pass vacuously if comment-stripping ever eats the file.
+
+### Verified live before writing, read-only
+
+Production `237986b` by hash against the DIRECT App Service URL.
+`OPEN_TRACKING_PIXEL=off`, `MAILBOX_WARMUP_RAMP=on`,
+`MAILBOX_BOUNCE_DETECTION_ENABLED=true`,
+`MAILBOX_COMPLAINT_DETECTION_ENABLED=true`,
+`OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` unset. The eight dead mailboxes are still
+out: `sync-replies` run `33002377746` (2026-08-26 18:55 UTC) reads
+`processed 27, succeeded 27, failed 0, ok true` - so nothing has been reconnected
+since cycle 7, and the document says so.
+
+### Confirmed still open, by reading the code rather than trusting STATE.md
+
+`src/server/mailbox/bounce-detection.ts` suppresses the address via
+`suppressRecipientForHardBounce` and never writes `OutboundEmail.status`. **The
+bounce status write is still not done**, so the reported bounce rate still reads
+zero. This is item 1 of the document's outstanding list.
+
+### Encoding note on QUEUE.md
+
+`sed -i` rewrote the working copy from CRLF to LF. The BOM and the existing
+mojibake are untouched and the committed diff is **exactly one line**, because
+`.gitattributes` (`* text=auto eol=lf`) normalises anyway - LF is what a checkout
+produces, so the CRLF was the anomaly, written by the PowerShell watcher. Worth
+knowing while cycle 28's "something is still rewriting that file" is open.
+
+### Pick up first, next session
+
+1. **The bounce status write.** It is small, understood, blocked on nothing, and
+   it is the first item on a list now written down for a client.
+2. Nobody has reconnected the six expired Google mailboxes or resolved the two
+   deleted Chevron Security accounts. The reporting is fixed; the mailboxes are
+   not.
+3. The junk-folder reply-sync gap from cycle 28 is still open.
 
 ## Session 2026-08-27 - Relay cycle 30, queue item 19. One command to go live for a client meeting, and one to go back.
 
