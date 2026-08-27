@@ -33,7 +33,15 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Every test in this file SPAWNS A REAL POWERSHELL PROCESS - that is the whole
+// point of it (see the note above). Vitest's 5s default is a bound on pure
+// functions, and on a cold CI runner `pwsh` alone takes longer than that to
+// start, so the FIRST test of each host was failing on GitHub Actions while
+// passing locally against a warm shell. That is a flaky gate, and a gate that
+// cries wolf is how a real failure gets waved through.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const WATCHER = path.join(REPO_ROOT, "relay-watch.ps1");
