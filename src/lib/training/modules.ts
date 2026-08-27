@@ -198,9 +198,9 @@ const onboardingModule: TrainingModule = {
     },
     {
       src: "/training/training-overview.png",
-      alt: "Client workspace overview with the 7-step workflow strip and Getting started checklist",
+      alt: "Client workspace overview showing the module tab row, the workspace header, and the Getting started checklist",
       caption:
-        "Overview — the 7-step workflow strip and Getting started checklist. Every other module is one click from here.",
+        "Overview — where you land. The tab row along the top reaches every module; the Getting started checklist tracks what is still outstanding, and Launch readiness (checklist item 8) sits just below it. Captured against a test workspace, so the name differs from your client's.",
       width: FULL_W,
       height: FULL_H,
     },
@@ -224,17 +224,17 @@ const onboardingModule: TrainingModule = {
     {
       title: "Click Create workspace",
       detail:
-        "You land on the Overview. The workflow strip shows Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity. The client stays in ONBOARDING until every required step is complete.",
+        "You land on the Overview. Launch readiness lists the seven setup modules — Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity — each with its own status and a link into it. The client stays in ONBOARDING until every required step is complete.",
     },
     {
       title: "Bookmark the Overview",
       detail:
-        "The Overview is the control centre for this client. Every other module links back here via the breadcrumb and the workflow strip.",
+        "The Overview is the control centre for this client. Every other module is one click away on the tab row at the top, and Launch readiness links straight into whichever one still needs work.",
     },
   ],
   whatGoodLooksLike: [
     "The workspace appears in the Clients list with the correct name and slug.",
-    "Overview loads with the 7-step workflow strip visible and the Getting started checklist filled with pending items.",
+    "Overview loads with the Getting started checklist filled with pending items, and Launch readiness showing a status for all seven modules.",
     "Internal notes name the account manager (Samantha) and the main client contact (James Munro).",
     "The status pill on Overview reads ONBOARDING (or ACTIVE only after launch approval).",
   ],
@@ -1321,13 +1321,13 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
   {
     id: "client-overview",
     title: "Client overview",
-    subtitle: "Workflow strip, Getting started checklist, and where to go from here.",
+    subtitle: "Getting started checklist, Launch readiness, and where to go from here.",
     status: "to record",
     portalHref: "/clients",
     durationGuidance: "2 minutes",
     script: [
       "Open Clients, then open the OpensDoors test client.",
-      "Show the 7-step workflow strip: Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity.",
+      "Show Launch readiness: Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity, each with its own status pill.",
       "Explain that the status pill (ONBOARDING / ACTIVE) tells you whether the client is launchable.",
       "Click one tab (Brief) and explain that each tab is a self-contained module.",
       "Return to Overview and bookmark it as the control centre.",

@@ -79,11 +79,16 @@ describe("Training content alignment (PR #139)", () => {
     expect(detail).not.toMatch(/\bEMAIL · SUCCESS\b/);
   });
 
-  it("Onboarding module workflow strip uses the post-PR-138 sub-nav names", () => {
+  it("Onboarding module names the seven modules via Launch readiness, not the deleted strip", () => {
+    // The seven and their order are unchanged — they are the Launch readiness
+    // rows now (`buildLaunchReadinessRows`), not the workflow strip that PR
+    // #247 deleted. Only the surface staff are pointed at moved.
     const m = getTrainingModule("onboarding");
     expect(m).not.toBeNull();
     const workflowStep = m!.steps.find((s) => s.title === "Click Create workspace");
     expect(workflowStep?.detail).toContain("Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity");
+    expect(workflowStep?.detail).toContain("Launch readiness");
+    expect(workflowStep?.detail).not.toMatch(/workflow strip/i);
   });
 
   it("Mailboxes module no longer carries 'authorised operator' dev jargon (PR #117 superseded)", () => {

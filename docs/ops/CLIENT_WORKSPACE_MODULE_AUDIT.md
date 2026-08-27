@@ -548,8 +548,18 @@ remain open for a future pass; they are not blockers for the PR sequence in
   of operational actions live there (e.g. “Sync suppression”, “Queue pilot”)?
   **Open** — deferred.
 - Q3. Should the workflow strip stay, become a breadcrumb-style progress
-  indicator, or go away entirely now that readiness rows exist? **Open** —
-  deferred; strip stays as in-page nav.
+  indicator, or go away entirely now that readiness rows exist?
+  **Answered — it went away entirely.** Shipped in PR #247 (`96849b2`), which
+  deleted `ClientWorkflowStrip`, `buildClientWorkflowSteps` and `stepStatus`.
+  The reasoning: the strip listed the same seven destinations the tab row
+  already linked and the Launch readiness rows already scored, so the Overview
+  offered one list of destinations three times. The strip was the weakest of
+  the three — a coloured dot whose meaning existed only in a screen-reader
+  string, against readiness rows that carry a status pill, a metric and the
+  same link. Nothing was lost with it.
+  The decision is locked by `client-overview-ui-policy.test.ts`, which fails if
+  the strip, its builder or its types come back — **and, since the training
+  fix, if the staff training starts naming it again.**
 
 ### Brief
 - Q4. What fields are **mandatory before a client can launch**?

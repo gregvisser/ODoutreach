@@ -46,8 +46,8 @@ If you see "Staff access" / "Inactive" / "Email blocked", stop and contact Greg.
 2. Pick a client (e.g. **OpensDoors**).
 3. You land on the client **Overview**.
 
-**Expected:** Client name, status badge, workflow strip, getting-started card,
-launch readiness, operational snapshot.
+**Expected:** Client name, status badge, getting-started card, launch
+readiness, operational snapshot.
 
 (Pre-#135 there was a duplicate "Workspace status" card here — that is
 removed in #135.)
@@ -336,7 +336,7 @@ The audit programme commits to the following end-to-end checklist for
 the first staff-led campaign run without developer presence.
 
 1. **Create or check the client.** Open Clients, open the target
-   workspace, confirm the workflow strip shows the right status pill
+   workspace, confirm the workspace header shows the right status pill
    (ONBOARDING vs ACTIVE).
 2. **Connect mailboxes.** Mailboxes tab. Confirm at least one
    mailbox is **Connected**; do not touch Connect / Reconnect /
