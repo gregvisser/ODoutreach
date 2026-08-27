@@ -1,6 +1,101 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 · Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 28) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 28, queue item 33. The prefetch fix was reported done and 70 prefetches were still firing.
+
+Production serves **`e39614c`** (verified by hash against the DIRECT App Service
+URL `app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`, not the CDN
+domain). Merged as PR #263.
+
+### Assigned item was row 30, and it was declined - correctly
+
+Row 30 (a launchable `bidlowai` demo sequence) instructs the relay to leave it
+and take the next item, because it is being done by a person signed in to the
+live site. **Nothing was built, nothing was sent, no sequence exists.** Greg
+still owes that walkthrough.
+
+It was closed `DONE 28` with the truth written into the cell, NOT because it is
+delivered. Mechanical reason, and it matters: the watcher idles at the first row
+that is not DONE or IN PROGRESS, and row 30 sits ABOVE row 33, so `TODO`,
+`BLOCKED` or `WONTFIX` there deadlocks the whole relay (the row 14 defect).
+Also worth knowing: the committed status already read `TODO - handled outside
+the relay, in a browser` and the watcher took it anyway, because the parser only
+tests `^TODO` and ignores the qualifier.
+
+### What was actually built (row 33)
+
+An e2e spec written alongside the prefetch fix (#248) was never committed, so it
+had **never run once**. Run for the first time it FAILED: **70 route prefetches
+on `/reporting`, 15 on the client overview.**
+
+`11a9a93` opted the sidebar and workspace tabs out of prefetching and its unit
+guard went green and STAYED green - because that guard only read
+`app-sidebar.tsx` and `client-workspace-subnav.tsx`. The burst came from **43
+other files**. On `/reporting` it is a filter chip per client plus two links per
+table row, so the prefetch count **grows with the customer own data**. That is
+the measured cause behind "the system takes very long to load", and it had been
+reported fixed since 2026-08-26. Seventh instance of the house defect.
+
+- adopted `e2e/nav-prefetch-burst.spec.ts` + `.bidlow/FROZEN.json` freeze entry
+- `prefetch={false}` on the remaining 119 `<Link>`s across 43 files (one prop
+  each, no logic change)
+- widened `nav-prefetch.test.ts` from 2 named files to every `.tsx` under `src/`,
+  walking each tag attributes rather than counting props file-wide
+
+Evidence: red-proved by removing one prop (guard went red and NAMED the file,
+while the old two-file tests stayed green - that contrast IS the defect); lint 0
+errors, typecheck 0, 2463 unit tests, 61/61 e2e; the new spec ran BY NAME in CI
+(tests #24/#25 of run 33032248570).
+
+**Boundary, do not overstate it:** 70->0 was measured in a real browser against a
+PRODUCTION build (prefetching only runs in production), and the identical code is
+confirmed live by hash. It was NOT re-measured against the live signed-in site -
+that needs a session this cycle did not have.
+
+### Decision recorded: prefetch off app-wide
+
+Per the SHIPPED Next 16 docs (`node_modules/next/dist/docs/01-app/03-api-reference/02-components/link.md`,
+App Router section), `prefetch={false}` disables prefetching outright - the
+"still prefetches on hover" caveat is the PAGES router. Reversible one prop at a
+time, not a one-way door. **If the App Service plan is ever scaled beyond B1 /
+one instance, re-measure before relaxing this.**
+
+### Found, not fixed
+
+1. **`QUEUE.md` had been re-encoded whole-file** - double mojibake plus a BOM
+   (queue item 11). Restored from HEAD and only the two status cells re-applied,
+   rather than commit another round of corruption. **Something is still rewriting
+   that file in the wrong encoding, and it is doing it repeatedly.**
+2. **Flaky e2e** on the first CI run: `journeys.spec.ts:47` asserts
+   `getByText("Routing")` with no `.first()` and hit a strict-mode violation -
+   two identical `card-title` nodes when the source has ONE. Did NOT recur on the
+   next run of identical code (1-in-2). Recorded as **queue row 34** with both
+   samples so nobody chases a ghost. `e2e/journeys.spec.ts` is FROZEN, so
+   changing it needs a `.bidlow/FROZEN.json` amendment.
+3. **PR #262 is still open** but its commit was folded into `main` by this squash
+   merge - it should probably be closed.
+
+### Writes to production
+
+**None.** No schema change, no migration, no send-path change, no mail sent, no
+data deleted, no client record touched. Code deploy only. The e2e run used the
+throwaway :5434 database with every provider credential blanked.
+
+### Nothing contradicts PROJECT.json
+
+The one rule held: nothing left the building for any client.
+
+### Pick up first, next session
+
+1. **Queue row 15** - the relay must shout when it stops. It is the next `TODO`
+   in table order and the watcher will take it.
+2. **Queue item 11 / the `QUEUE.md` re-encoder** - this has now corrupted the
+   plan of record more than once and is silently degrading it every cycle.
+3. **Row 34** only if the flaky returns; it is 1-in-2 and may be runner timing.
+
+---
+
 
 ## Session 2026-08-27 — Relay cycle 24, queue item 27 defect (3). The landing page was an N+1, not a render problem.
 
