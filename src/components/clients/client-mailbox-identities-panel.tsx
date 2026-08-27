@@ -1276,11 +1276,11 @@ export function ClientMailboxIdentitiesPanel({
       {showAdvancedDiagnostics ? (
       <details className="rounded-lg border border-dashed border-border/80 bg-muted/10 px-3 py-2 text-sm">
         <summary className="cursor-pointer font-medium text-foreground">
-          Connection diagnostics (owner only)
+          Connection troubleshooting (owner only)
         </summary>
         <p className="text-xs text-muted-foreground mt-1 mb-3">
-          For administrators and troubleshooting. Includes transport notes, internal ids, and
-          connection diagnostics.
+          For administrators fixing a connection problem. Includes transport notes,
+          internal ids and raw provider messages.
         </p>
         <SenderReadinessPanel report={senderReport} viewContext="mailboxesClient" />
         <div className="mt-4 space-y-4 text-xs">

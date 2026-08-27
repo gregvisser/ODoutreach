@@ -124,7 +124,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
           */}
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
             <MetricRow label="Queued" value={metrics.queued.toLocaleString()} tone={metrics.queued > 0 ? "warning" : undefined} />
-            <MetricRow label="Send proof missing" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "error" : undefined} />
+            <MetricRow label="Sent, not confirmed" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "warning" : undefined} />
             <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
             <MetricRow label="Reply rate" value={formatRate(metrics.replyRate)} />
             <MetricRow label="Unsubscribe rate" value={formatRate(metrics.unsubscribeRate)} />
@@ -191,7 +191,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
       {isAdmin && (
         <details className="rounded-lg border border-border/60 bg-muted/20">
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
-            Admin diagnostics
+            Troubleshooting tools (owner only)
           </summary>
           <div className="space-y-6 px-4 pb-4 pt-2">
             <Card className="border-border/80 shadow-sm">

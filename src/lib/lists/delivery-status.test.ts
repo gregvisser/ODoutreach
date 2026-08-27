@@ -87,17 +87,17 @@ describe("deriveDeliveryStatus", () => {
 
   // --- PR #132 send-proof tests ---
 
-  it("returns 'Send proof missing' when step-send SENT but no OutboundEmail", () => {
+  it("returns 'Sent, not confirmed' when step-send SENT but no OutboundEmail", () => {
     expect(
       deriveDeliveryStatus({
         ...base(),
         stepSendStatus: "SENT",
         hasOutboundEmail: false,
       }),
-    ).toBe("Send proof missing");
+    ).toBe("Sent, not confirmed");
   });
 
-  it("returns 'Send proof missing' when step-send SENT with OutboundEmail but no proof", () => {
+  it("returns 'Sent, not confirmed' when step-send SENT with OutboundEmail but no proof", () => {
     expect(
       deriveDeliveryStatus({
         ...base(),
@@ -106,7 +106,7 @@ describe("deriveDeliveryStatus", () => {
         hasProviderProof: false,
         sentAt: null,
       }),
-    ).toBe("Send proof missing");
+    ).toBe("Sent, not confirmed");
   });
 
   it("returns 'Sent — time unavailable' when step-send SENT with providerProof but no sentAt", () => {
@@ -286,7 +286,7 @@ describe("deriveDeliveryStatus", () => {
       stepSendStatus: "SENT",
     });
     expect(result).not.toBe("Sent from mailbox");
-    expect(result).toBe("Send proof missing");
+    expect(result).toBe("Sent, not confirmed");
   });
 
   it("outbound SENT with sentAt but no providerProof still shows 'Sent from mailbox' because sentAt is proof", () => {
@@ -320,7 +320,7 @@ describe("summarizeDelivery", () => {
     const statuses = [
       "Sent from mailbox" as const,
       "Sent — time unavailable" as const,
-      "Send proof missing" as const,
+      "Sent, not confirmed" as const,
       "Failed" as const,
       "Bounced" as const,
       "Replied" as const,

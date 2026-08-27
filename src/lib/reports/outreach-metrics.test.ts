@@ -17,6 +17,7 @@ function emptyRaw(): RawMetricsCounts {
     opens: 0,
     opensTracked: false,
     replies: 0,
+    repliedEmails: 0,
     unsubscribes: 0,
     bounces: 0,
     failed: 0,
@@ -77,8 +78,15 @@ describe("deriveOutreachMetrics", () => {
     expect(m.sendProofMissing).toBe(5);
   });
 
-  it("computes replyRate = replies / sent", () => {
-    const raw = { ...emptyRaw(), sentWithProof: 100, replies: 12 };
+  it("computes replyRate = emails replied to / sent", () => {
+    // 12 messages on 12 distinct emails — the ordinary case, where the old
+    // and new numerators agree. The rate is unchanged at 12%.
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 100,
+      replies: 12,
+      repliedEmails: 12,
+    };
     const m = deriveOutreachMetrics(raw);
     expect(m.replyRate).toBe(12);
   });
@@ -186,6 +194,7 @@ describe("deriveOutreachMetrics", () => {
       ...emptyRaw(),
       sentWithProof: 80,
       replies: 8,
+      repliedEmails: 8,
       // Even if the system has 999 unlinked inbox messages, the metric must
       // never inflate. The server query already filters to linked rows.
     };
@@ -266,5 +275,68 @@ describe("formatTrackedMetric", () => {
 
   it("shows formatted number when tracked", () => {
     expect(formatTrackedMetric(42, true)).toBe("42");
+  });
+});
+
+/**
+ * Queue item 27, defect (8) — the UX walk of 2026-08-26 recorded, on the live
+ * /reporting page, "BidlowAI: reply rate 133.3% (3 sent, 4 replies)".
+ *
+ * A percentage above 100 is not a rounding artefact and not a wording problem.
+ * It is the wrong numerator: `replyRate` divided raw InboundReply ROWS by
+ * emails SENT. Those are different units. Four reply messages arriving on two
+ * of the three emails we sent is a 66.7% reply rate and a message count of 4 —
+ * it is not 133% of anything, and a client shown that number learns not to
+ * trust the page it is printed on.
+ *
+ * The message count stays: "4 replies came in" is true and useful. What
+ * changes is the rate's numerator — how many of the emails we sent were
+ * replied to at least once.
+ */
+describe("replyRate — a share of emails sent, not a count of messages received", () => {
+  it("four messages landing on two of three sent emails is 66.7%, not 133.3%", () => {
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 3,
+      replies: 4,
+      repliedEmails: 2,
+    };
+    const m = deriveOutreachMetrics(raw);
+    // The raw message count is untouched — it was never the wrong number.
+    expect(m.replies).toBe(4);
+    // 2 of 3 emails got a reply. The shipped code returned 133.3 here.
+    expect(m.replyRate).toBe(66.7);
+    expect(m.repliedEmails).toBe(2);
+  });
+
+  it("cannot exceed 100% no matter how many messages arrive", () => {
+    // One email, replied to nine times. The old numerator made this 900%.
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 1,
+      replies: 9,
+      repliedEmails: 1,
+    };
+    const m = deriveOutreachMetrics(raw);
+    expect(m.replies).toBe(9);
+    expect(m.replyRate).toBe(100);
+  });
+
+  it("is null when nothing was sent, rather than dividing by zero", () => {
+    const raw = { ...emptyRaw(), sentWithProof: 0, replies: 2, repliedEmails: 1 };
+    expect(deriveOutreachMetrics(raw).replyRate).toBeNull();
+  });
+
+  it("reports the ordinary case unchanged — one reply per email is still one rate", () => {
+    // The overwhelming majority of real rows: every reply on a distinct email.
+    // This case must NOT move, or the fix would be a silent restatement of
+    // every historical reply rate in the product.
+    const raw = {
+      ...emptyRaw(),
+      sentWithProof: 200,
+      replies: 25,
+      repliedEmails: 25,
+    };
+    expect(deriveOutreachMetrics(raw).replyRate).toBe(12.5);
   });
 });

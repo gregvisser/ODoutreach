@@ -16,6 +16,13 @@ export type OutreachMetrics = {
   opensTracked: boolean;
   openRate: number | null;
   replies: number;
+  /**
+   * How many SENT EMAILS drew at least one reply. This is the numerator of
+   * `replyRate`; `replies` is the count of reply MESSAGES, which can be
+   * larger (one prospect replying three times is three messages on one
+   * email). See the note on `replyRate`.
+   */
+  repliedEmails: number;
   replyRate: number | null;
   unsubscribes: number;
   unsubscribeRate: number | null;
@@ -38,6 +45,7 @@ export type RawMetricsCounts = {
   opens: number;
   opensTracked: boolean;
   replies: number;
+  repliedEmails: number;
   unsubscribes: number;
   bounces: number;
   failed: number;
@@ -71,7 +79,15 @@ export function deriveOutreachMetrics(raw: RawMetricsCounts): OutreachMetrics {
       ? safeRate(raw.opens, raw.delivered > 0 ? raw.delivered : sent)
       : null,
     replies: raw.replies,
-    replyRate: safeRate(raw.replies, sent),
+    repliedEmails: raw.repliedEmails,
+    // Queue item 27, defect (8). This used to be `replies / sent` — reply
+    // MESSAGES over emails SENT, which are different units. Live production
+    // showed "reply rate 133.3%" for BidlowAI on 3 sends and 4 messages, and
+    // a percentage over 100 teaches a client to distrust the whole page.
+    // The numerator is now the count of sent emails that drew at least one
+    // reply, which the query layer derives as a strict subset of the same
+    // rows that make up `sent` — so this cannot exceed 100%.
+    replyRate: safeRate(raw.repliedEmails, sent),
     unsubscribes: raw.unsubscribes,
     unsubscribeRate: safeRate(raw.unsubscribes, sent),
     bounces: raw.bounces,

@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { createLimiter, type TaskGate } from "@/lib/concurrency";
 import { prisma } from "@/lib/db";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
@@ -115,6 +116,7 @@ export async function loadGlobalOutreachMetrics(
     totals.delivered += raw.delivered;
     totals.opens += raw.opens;
     totals.replies += raw.replies;
+    totals.repliedEmails += raw.repliedEmails;
     totals.unsubscribes += raw.unsubscribes;
     totals.bounces += raw.bounces;
     totals.failed += raw.failed;
@@ -145,6 +147,7 @@ function emptyRawCounts(): RawMetricsCounts {
     opens: 0,
     opensTracked: false,
     replies: 0,
+    repliedEmails: 0,
     unsubscribes: 0,
     bounces: 0,
     failed: 0,
@@ -224,6 +227,25 @@ async function gatherRawCountsByClient(
   const seedEmails = await listActiveInternalSeedEmails();
   const seedExclusion =
     seedEmails.length > 0 ? { toEmail: { notIn: seedEmails } } : {};
+  // The definition of "an email we can prove we sent". Declared ONCE because
+  // it is the denominator of every rate on the Reports page AND the base of
+  // the replied-emails numerator: if the two ever drifted apart, the reply
+  // rate could exceed 100% again, which is the defect this shape exists to
+  // make impossible. Windowed: a sentAt inside the window is itself the send
+  // proof. All-time: sentAt OR providerMessageId proves the send.
+  const sentWithProofWhere: Prisma.OutboundEmailWhereInput = {
+    clientId: clientScope,
+    ...seedExclusion,
+    status: { in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] },
+    ...(w
+      ? { sentAt: w }
+      : {
+          OR: [
+            { sentAt: { not: null } },
+            { providerMessageId: { not: null } },
+          ],
+        }),
+  };
   const [
     sentWithProofBy,
     allStepSendsSentBy,
@@ -233,6 +255,7 @@ async function gatherRawCountsByClient(
     failedBy,
     suppressedOrSkippedBy,
     repliesBy,
+    repliedEmailsBy,
     unsubscribesBy,
     totalContactsBy,
     emailSendableBy,
@@ -242,21 +265,7 @@ async function gatherRawCountsByClient(
     run(() => prisma.outboundEmail.groupBy({
       by: ["clientId"],
       _count: { _all: true },
-      where: {
-        clientId: clientScope,
-        ...seedExclusion,
-        status: { in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] },
-        // Windowed: a sentAt inside the window is itself the send proof.
-        // All-time: sentAt OR providerMessageId proves the send.
-        ...(w
-          ? { sentAt: w }
-          : {
-              OR: [
-                { sentAt: { not: null } },
-                { providerMessageId: { not: null } },
-              ],
-            }),
-      },
+      where: sentWithProofWhere,
     })),
     run(() => prisma.clientEmailSequenceStepSend.groupBy({
       by: ["clientId"],
@@ -339,6 +348,26 @@ async function gatherRawCountsByClient(
         ...(w ? { receivedAt: w } : {}),
       },
     })),
+    // Queue item 27, defect (8) — the NUMERATOR of the reply rate: how many
+    // of the emails above drew at least one reply. Counted on OutboundEmail
+    // with `sentWithProofWhere` verbatim, so the result is a strict subset of
+    // `sentWithProofBy` and the rate is arithmetically incapable of exceeding
+    // 100%. Counting InboundReply rows instead — which is what shipped — made
+    // BidlowAI report 133.3%, because one prospect replying twice to one
+    // email is two messages but still only one email that got a reply.
+    //
+    // Windowed on the SEND, not on the reply: "of the emails sent in this
+    // period, how many were replied to". Windowing the reply instead would
+    // drop replies that arrived after the window closed and silently
+    // understate the cohort.
+    run(() => prisma.outboundEmail.groupBy({
+      by: ["clientId"],
+      _count: { _all: true },
+      where: {
+        ...sentWithProofWhere,
+        inboundReplies: { some: { matchMethod: { not: "UNLINKED" } } },
+      },
+    })),
     run(() => prisma.unsubscribeToken.groupBy({
       by: ["clientId"],
       _count: { _all: true },
@@ -406,6 +435,7 @@ async function gatherRawCountsByClient(
       // by nature — Apple MPP inflates, image-blocking clients suppress.
       opensTracked: true,
       replies: countFor(repliesBy, clientId),
+      repliedEmails: countFor(repliedEmailsBy, clientId),
       unsubscribes: countFor(unsubscribesBy, clientId),
       bounces: countFor(bouncesBy, clientId),
       failed: countFor(failedBy, clientId),
