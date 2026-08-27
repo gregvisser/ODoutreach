@@ -15,6 +15,12 @@ export function isRetryableSendFailure(code?: string, message?: string): boolean
   if (c === "429" || c === "408" || c === "503" || c === "502" || c === "504") {
     return true;
   }
+  // The recipient-verification gate could not reach a resolver. That is a fact
+  // about DNS, not about the recipient, so the row goes back on the queue
+  // rather than being failed — the whole point of the gate's "defer" verdict.
+  if (c === "RECIPIENT_VERIFICATION_UNAVAILABLE") {
+    return true;
+  }
   const m = (message ?? "").toLowerCase();
   if (
     m.includes("timeout") ||
