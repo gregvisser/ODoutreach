@@ -7,7 +7,12 @@ export default defineConfig({
     environment: "node",
     // `e2e/*.test.ts` covers the e2e harness's own logic (the safe-database
     // guard). Playwright only claims `*.spec.ts`, so the two do not overlap.
-    include: ["src/**/*.test.ts", "e2e/**/*.test.ts"],
+    //
+    // `relay/*.test.ts` covers the relay watcher's own queue parser by driving
+    // the real `relay-watch.ps1`. It lives in the main suite on purpose: the
+    // parser bug it guards against cost a whole overnight cycle silently, and a
+    // test nobody runs would not have caught it.
+    include: ["src/**/*.test.ts", "e2e/**/*.test.ts", "relay/**/*.test.ts"],
     // `*.integration.test.ts` needs a real database and runs via
     // `vitest.integration.config.ts` / `npm run test:integration`. This suite
     // must stay DB-free and fast (AGENTS.md), so it never claims them.

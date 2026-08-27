@@ -97,7 +97,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">Workspace:</span>
-        <Link
+        <Link prefetch={false}
           href="/operations/outbound"
           className={cn(
             buttonVariants({ variant: !clientFilter ? "secondary" : "outline", size: "sm" }),
@@ -106,7 +106,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
           All in scope
         </Link>
         {clients.map((c) => (
-          <Link
+          <Link prefetch={false}
             key={c.id}
             href={`/operations/outbound?client=${c.id}`}
             className={cn(
@@ -155,7 +155,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                       </TableCell>
                       <TableCell className="font-mono text-xs">{r.effectiveFrom}</TableCell>
                       <TableCell className="text-right">
-                        <Link
+                        <Link prefetch={false}
                           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                           href={`/operations/outbound?client=${c.id}`}
                         >
@@ -269,7 +269,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                   </TableCell>
                   <TableCell>
                     {ev.outbound ? (
-                      <Link
+                      <Link prefetch={false}
                         className="underline-offset-2 hover:underline"
                         href={`/activity/outbound/${ev.outbound.id}`}
                       >
@@ -365,7 +365,7 @@ function OpsTable({
                   <Badge variant="outline">{row.status}</Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Link
+                  <Link prefetch={false}
                     className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
                     href={`/activity/outbound/${row.id}`}
                   >

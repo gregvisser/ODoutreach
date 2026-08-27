@@ -344,7 +344,7 @@ describe("loadClientContactListDetail", () => {
 
   // --- PR #132 send-proof tests ---
 
-  it("returns 'Send proof missing' when step-send SENT but no OutboundEmail", async () => {
+  it("returns 'Sent, not confirmed' when step-send SENT but no OutboundEmail", async () => {
     contactListFindFirst.mockResolvedValueOnce(makeList());
     contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
     stepSendFindMany.mockResolvedValueOnce([
@@ -356,7 +356,7 @@ describe("loadClientContactListDetail", () => {
     ]);
 
     const result = await loadClientContactListDetail(CLIENT, LIST);
-    expect(result!.contacts[0].sendStatus).toBe("Send proof missing");
+    expect(result!.contacts[0].sendStatus).toBe("Sent, not confirmed");
     expect(result!.contacts[0].hasOutboundEmail).toBe(false);
     expect(result!.summary.sentProofMissing).toBe(1);
     expect(result!.summary.sent).toBe(0);
@@ -412,7 +412,7 @@ describe("loadClientContactListDetail", () => {
 
   // --- PR #133 QUEUED status tests ---
 
-  it("returns 'Queued' when outbound status is QUEUED (not 'Send proof missing')", async () => {
+  it("returns 'Queued' when outbound status is QUEUED (not 'Sent, not confirmed')", async () => {
     contactListFindFirst.mockResolvedValueOnce(makeList());
     contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
     stepSendFindMany.mockResolvedValueOnce([

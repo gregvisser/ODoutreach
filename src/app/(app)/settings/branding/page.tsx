@@ -97,7 +97,7 @@ export default async function SettingsBrandingPage() {
               logo is set yet.
             </p>
             <p>
-              <Link
+              <Link prefetch={false}
                 href="/clients"
                 className="font-medium text-primary underline-offset-4 hover:underline"
               >

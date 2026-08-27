@@ -152,7 +152,7 @@ export default async function ClientOutreachPage({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          <Link
+          <Link prefetch={false}
             href={`/clients/${client.id}/templates`}
             className={buttonVariants({ variant: "secondary" })}
           >

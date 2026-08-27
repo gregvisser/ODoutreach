@@ -4,16 +4,6 @@ import {
   getOutreachMailboxCapacityTier,
 } from "@/lib/outreach-mailbox-model";
 
-export type WorkflowStepStatus = "not_started" | "needs_attention" | "ready" | "complete";
-
-export type ClientWorkflowStep = {
-  id: string;
-  label: string;
-  status: WorkflowStepStatus;
-  metric: string;
-  href: string;
-};
-
 export type ClientLaunchSnapshotInput = {
   clientId: string;
   brief: OnboardingBriefCompletion;
@@ -42,11 +32,63 @@ export type ClientLaunchSnapshotInput = {
    */
   approvedIntroductionTemplatesCount?: number;
   /**
-   * When true, at least one sequence passes the production launch rail (same
-   * as Outreach). Preferred over approved* counts for UI metrics.
+   * True when at least one non-archived sequence passes the production launch
+   * rail (`evaluateSequenceLaunchReadiness`) — an introduction step on an
+   * active template, a list, recipients and compliance.
+   *
+   * REQUIRED, deliberately. It and `enrolledContactsCount` are the two signals
+   * {@link isOutreachModuleReady} needs, and both were previously optional and
+   * silently dropped by the caller. An optional field defaulting to "not
+   * ready" fails closed, but it fails closed SILENTLY — the screen would just
+   * be wrong in the other direction and nobody would know. Required means the
+   * compiler refuses to build a caller that forgets to wire it.
    */
-  hasProductionLaunchableSequence?: boolean;
+  hasProductionLaunchableSequence: boolean;
+  /**
+   * Count of `ClientEmailSequenceEnrollment` rows for this client. Required
+   * for the same reason as above.
+   */
+  enrolledContactsCount: number;
 };
+
+/**
+ * Is the Outreach module genuinely ready to launch?
+ *
+ * ## Why this predicate exists
+ *
+ * It used to be `outreachPilotRunnable` alone, in four separate places. That
+ * boolean is `hasGovernedMailbox && oauthReadyForGovernedTest &&
+ * poolCanSendPilot` — it is a fact about MAILBOXES. It asks "could a governed
+ * mailbox send something today?" and never looks at sequences, steps or
+ * enrolments.
+ *
+ * So on 2026-08-26 the `bidlowai` workspace showed a green "Ready to launch"
+ * badge, a "6 Outreach — complete" pill and a readiness row reading "Ready to
+ * launch", while its own Outreach tab said "No sequences yet." and its own
+ * Getting-started checklist said "5 / 8 complete" — one screen contradicting
+ * itself three ways.
+ *
+ * Meanwhile `evaluateClientLaunchApproval` — the gate that actually decides
+ * whether a client may go live — has always required a launchable sequence AND
+ * at least one enrolment. The rail was reporting Ready for clients the gate
+ * would have refused.
+ *
+ * This is that gate's condition, extracted so the display and the gate are the
+ * same boolean and cannot drift apart again. Fails closed: an omitted signal
+ * counts as not-ready.
+ */
+export function isOutreachModuleReady(
+  input: Pick<
+    ClientLaunchSnapshotInput,
+    "outreachPilotRunnable" | "hasProductionLaunchableSequence" | "enrolledContactsCount"
+  >,
+): boolean {
+  return (
+    input.outreachPilotRunnable &&
+    input.hasProductionLaunchableSequence === true &&
+    (input.enrolledContactsCount ?? 0) >= 1
+  );
+}
 
 /** Status pill for the compact Launch readiness panel (UI copy). */
 export type LaunchReadinessPillStatus =
@@ -135,7 +177,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
       id: "sources",
       label: "Sources",
       pillStatus: ok ? "ready" : "needs_attention",
-      metric: ok ? "RocketReach ready" : "API missing",
+      metric: ok ? "RocketReach ready" : "RocketReach not connected",
       href: `${base}/sources`,
       actionLabel: "Open sources",
     };
@@ -157,7 +199,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         id: "suppression",
         label: "Do-not-contact",
         pillStatus: "needs_attention",
-        metric: "Google API missing",
+        metric: "Google Sheets not connected",
         href: `${base}/suppression`,
         actionLabel: "Open suppression",
       };
@@ -202,53 +244,41 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
   const hasLaunchable = input.hasProductionLaunchableSequence === true;
 
   const outreachRow = ((): LaunchReadinessRow => {
-    const sequenceHint = hasLaunchable
-      ? " · launchable sequence"
-      : approvedSequences > 0
-        ? ` · ${String(approvedSequences)} approved sequence${approvedSequences === 1 ? "" : "s"}`
-        : approvedIntroTemplates > 0
-          ? " · sequence pending approval"
-          : "";
-    if (input.outreachPilotRunnable) {
-      return {
-        id: "outreach",
-        label: "Outreach",
-        pillStatus: "ready",
-        metric: hasLaunchable
-          ? "Ready to launch · launchable production sequence"
-          : `Ready to launch${sequenceHint}`,
-        href: `${base}/outreach`,
-        actionLabel: "Open outreach",
-      };
-    }
-    if (hasLaunchable) {
-      return {
-        id: "outreach",
-        label: "Outreach",
-        pillStatus: "ready",
-        metric: "Launchable production sequence",
-        href: `${base}/outreach`,
-        actionLabel: "Open outreach",
-      };
-    }
-    if (input.contactsEligible < 1) {
-      return {
-        id: "outreach",
-        label: "Outreach",
-        pillStatus: "needs_attention",
-        metric: "Needs eligible contact",
-        href: `${base}/outreach`,
-        actionLabel: "Open outreach",
-      };
-    }
-    return {
+    const row = (pillStatus: LaunchReadinessPillStatus, metric: string): LaunchReadinessRow => ({
       id: "outreach",
       label: "Outreach",
-      pillStatus: "needs_attention",
-      metric: "Check mailboxes & OAuth",
+      pillStatus,
+      metric,
       href: `${base}/outreach`,
       actionLabel: "Open outreach",
-    };
+    });
+
+    // Ready means ready: a mailbox that can send, a sequence that passes the
+    // launch rail, and somebody enrolled to receive it. See isOutreachModuleReady.
+    if (isOutreachModuleReady(input)) {
+      return row("ready", "Ready to launch · launchable production sequence");
+    }
+
+    // Not ready — say which of the three is missing, most-fundamental first,
+    // so the operator has somewhere to go rather than a bare "not ready".
+    if (input.contactsEligible < 1) {
+      return row("needs_attention", "Needs eligible contact");
+    }
+    if (!hasLaunchable) {
+      // Keep the approval-progress hint: "no launchable sequence" and "a
+      // sequence exists but hasn't passed the rail" are different situations.
+      const hint =
+        approvedSequences > 0
+          ? ` · ${String(approvedSequences)} approved sequence${approvedSequences === 1 ? "" : "s"}`
+          : approvedIntroTemplates > 0
+            ? " · sequence pending approval"
+            : "";
+      return row("needs_attention", `Needs a launchable sequence${hint}`);
+    }
+    if ((input.enrolledContactsCount ?? 0) < 1) {
+      return row("needs_attention", "Sequence ready · no recipients enrolled yet");
+    }
+    return row("needs_attention", "Check mailbox connections");
   })();
 
   const activityRow = ((): LaunchReadinessRow => {
@@ -270,7 +300,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
 
 /** One-line status for the command center header. */
 export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string {
-  if (input.brief.status === "ready" && input.outreachPilotRunnable) {
+  if (input.brief.status === "ready" && isOutreachModuleReady(input)) {
     return "Ready to launch";
   }
   if (input.brief.status === "empty") {
@@ -282,116 +312,14 @@ export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string
   if (input.connectedSendingCount < 1) {
     return "Connect mailboxes";
   }
+  // Setup is otherwise done — name the outreach work that is actually left,
+  // rather than the catch-all "In setup" that told bidlowai nothing.
+  if (input.hasProductionLaunchableSequence !== true) {
+    return "Build a sequence";
+  }
+  if ((input.enrolledContactsCount ?? 0) < 1) {
+    return "Enroll recipients";
+  }
   return "In setup";
 }
 
-function stepStatus(
-  complete: boolean,
-  needsAttention: boolean,
-  started: boolean,
-): WorkflowStepStatus {
-  if (complete) return "complete";
-  if (needsAttention) return "needs_attention";
-  if (started) return "ready";
-  return "not_started";
-}
-
-/**
- * Maps production metrics to the seven-step client operating pathway (UI only).
- */
-export function buildClientWorkflowSteps(input: ClientLaunchSnapshotInput): ClientWorkflowStep[] {
-  const base = `/clients/${input.clientId}`;
-  const brief = input.brief;
-
-  const briefComplete = brief.status === "ready";
-  const briefStarted = brief.status !== "empty";
-
-  const mailboxesComplete =
-    input.connectedSendingCount >= input.recommendedMailboxCount;
-  const mailboxesStarted = input.connectedSendingCount >= 1;
-
-  const sourcesOk = input.rocketReachEnvReady;
-  const sourcesStarted = sourcesOk;
-
-  const suppressionComplete =
-    input.suppressionSheetCount > 0 && input.googleSheetsEnvReady;
-  const suppressionStarted = input.suppressionSheetCount > 0;
-
-  const contactsComplete = input.contactsTotal > 0 && input.contactsEligible >= 1;
-  const contactsStarted = input.contactsTotal > 0;
-
-  const outreachComplete =
-    input.outreachPilotRunnable || input.hasProductionLaunchableSequence === true;
-  const outreachStarted =
-    input.outreachPilotRunnable ||
-    input.hasProductionLaunchableSequence === true ||
-    (input.connectedSendingCount >= 1 && input.contactsTotal > 0);
-
-  const activityComplete = input.latestActivityLabel != null;
-  const activityStarted = activityComplete;
-
-  return [
-    {
-      id: "brief",
-      label: "Brief",
-      status: stepStatus(briefComplete, brief.status === "partial", briefStarted),
-      metric: briefComplete
-        ? "Brief complete"
-        : `${String(brief.completedCount)}/${String(brief.totalCount)} fields`,
-      href: `${base}/brief`,
-    },
-    {
-      id: "mailboxes",
-      label: "Mailboxes",
-      status: stepStatus(
-        mailboxesComplete,
-        !mailboxesStarted || input.connectedSendingCount < input.recommendedMailboxCount,
-        mailboxesStarted,
-      ),
-      metric: `${String(input.connectedSendingCount)}/${String(input.recommendedMailboxCount)} sending`,
-      href: `${base}/mailboxes`,
-    },
-    {
-      id: "sources",
-      label: "Sources",
-      status: stepStatus(sourcesOk, !sourcesOk, sourcesStarted),
-      metric: input.rocketReachEnvReady ? "Import provider ready" : "Env not configured",
-      href: `${base}/sources`,
-    },
-    {
-      id: "suppression",
-      label: "Do-not-contact",
-      status: stepStatus(
-        suppressionComplete,
-        input.suppressionSheetCount === 0 || !input.googleSheetsEnvReady,
-        suppressionStarted,
-      ),
-      metric:
-        input.suppressionSheetCount > 0
-          ? `${String(input.suppressionSheetCount)} Sheet source(s)`
-          : "No Sheet ids",
-      href: `${base}/suppression`,
-    },
-    {
-      id: "contacts",
-      label: "Lists",
-      status: stepStatus(contactsComplete, input.contactsTotal === 0, contactsStarted),
-      metric: `${String(input.contactsEligible)} eligible · ${String(input.contactsSuppressedCount)} suppressed`,
-      href: `${base}/contacts`,
-    },
-    {
-      id: "outreach",
-      label: "Outreach",
-      status: stepStatus(outreachComplete, !input.outreachPilotRunnable, outreachStarted),
-      metric: input.outreachPilotRunnable ? "Ready to launch" : "Check prerequisites",
-      href: `${base}/outreach`,
-    },
-    {
-      id: "activity",
-      label: "Activity",
-      status: stepStatus(activityComplete, false, activityStarted),
-      metric: input.latestActivityLabel ?? "No recent sends",
-      href: `${base}/activity`,
-    },
-  ];
-}

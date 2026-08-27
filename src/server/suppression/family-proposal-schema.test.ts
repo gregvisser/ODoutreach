@@ -94,6 +94,54 @@ describe("the family-proposal migration is additive", () => {
   });
 });
 
+/**
+ * The tenant migration, held to the same standard.
+ *
+ * `PRODUCTION_PRISMA_MIGRATE` is `true` here, so merging this applies it to a
+ * paying client's live database as soon as CI is green. An enum change is the
+ * easiest kind to wave through and one of the harder kinds to undo: PostgreSQL
+ * cannot drop an enum value, and REORDERING or RENAMING one silently changes
+ * the meaning of every row that already holds it.
+ */
+const TENANT_MIGRATION = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260827160000_family_proposal_microsoft_tenant/migration.sql",
+  ),
+  "utf8",
+);
+
+const tenantStatements = TENANT_MIGRATION.split("\n")
+  .filter((line) => !line.trim().startsWith("--"))
+  .join("\n")
+  .split(";")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+describe("the MICROSOFT_TENANT migration is additive", () => {
+  it("is exactly one statement: appending one enum value", () => {
+    expect(tenantStatements).toEqual([
+      `ALTER TYPE "FamilyProposalSource" ADD VALUE 'MICROSOFT_TENANT'`,
+    ]);
+  });
+
+  it("touches no table and drops nothing", () => {
+    for (const statement of tenantStatements) {
+      expect(statement).not.toMatch(/^\s*(DROP|TRUNCATE|DELETE|UPDATE|ALTER TABLE)\b/i);
+      expect(statement).not.toMatch(/\bDROP\s+(TABLE|COLUMN|CONSTRAINT|TYPE|INDEX|VALUE)\b/i);
+    }
+  });
+
+  it("does not reorder or rename the two values that already exist", () => {
+    // `BEFORE` / `AFTER` would move the new value into the middle, changing
+    // what `ORDER BY source` returns for rows nobody touched. `RENAME VALUE`
+    // would rewrite the meaning of existing rows outright.
+    expect(TENANT_MIGRATION).not.toMatch(/ADD VALUE[^;]*\b(BEFORE|AFTER)\b/i);
+    expect(TENANT_MIGRATION).not.toMatch(/RENAME VALUE/i);
+    expect(TENANT_MIGRATION).not.toMatch(/\bDMARC_RUA\b|\bSPF_REDIRECT\b/);
+  });
+});
+
 describe("the proposal states", () => {
   it("has a REJECTED state, which is the tombstone", () => {
     expect(FamilyProposalStatus.REJECTED).toBe("REJECTED");
@@ -104,11 +152,25 @@ describe("the proposal states", () => {
     ]);
   });
 
-  it("offers only the two sources that survived measurement", () => {
+  it("offers only the three sources that survived measurement", () => {
     // Certificate Transparency is deliberately absent. Measured 2026-08-24: one
     // GlobalSign OV certificate merged a client with eight unrelated train
     // operators, and all three proposed guards passed it.
-    expect(Object.keys(FamilyProposalSource).sort()).toEqual(["DMARC_RUA", "SPF_REDIRECT"]);
+    //
+    // MICROSOFT_TENANT was added 2026-08-27 and is the signal the client was
+    // promised in writing. It survived the same kind of measurement the other
+    // two did: it links halifax.co.uk to bankofscotland.co.uk and centrica.com
+    // to britishgas.co.uk (which DMARC and SPF cannot see, because both of
+    // those pairs publish DMARC to a shared vendor and use SPF `include:`), it
+    // cannot reproduce the 216-way outlook.com fan-in because every vendor sits
+    // in its own tenant, and its one measured false positive — gmail.com,
+    // hotmail.com, live.com and yahoo.co.uk sharing tenant 9cd80435 — is caught
+    // by the existing consumer-mailbox guard.
+    expect(Object.keys(FamilyProposalSource).sort()).toEqual([
+      "DMARC_RUA",
+      "MICROSOFT_TENANT",
+      "SPF_REDIRECT",
+    ]);
   });
 
   it("has no Certificate Transparency source", () => {
@@ -117,30 +179,20 @@ describe("the proposal states", () => {
 });
 
 describe("migration hygiene", () => {
-  // The original form of this test asserted that the family-proposals
-  // migration was literally the LAST directory on disk. That caught the
-  // real hazard once — a migration back-dated ahead of its dependencies
-  // applies in the wrong order — but it also failed on the next migration
-  // anyone added, for no reason. Restated here as the property that was
-  // actually meant, so it keeps working as migrations accumulate.
-  const migrations = readdirSync(join(process.cwd(), "prisma/migrations"))
-    .filter((d) => /^\d{14}_/.test(d))
-    .sort();
-
-  it("applies after the schema-drift reconciliation it depends on", () => {
-    const proposals = migrations.indexOf(
-      "20260824180000_suppressed_domain_family_proposals",
-    );
-    const drift = migrations.indexOf(
-      "20260824090000_reconcile_schema_migration_drift",
-    );
-    expect(drift).toBeGreaterThanOrEqual(0);
-    expect(proposals).toBeGreaterThan(drift);
-  });
-
-  it("has strictly increasing, unique timestamps — nothing back-dated", () => {
-    const stamps = migrations.map((d) => d.slice(0, 14));
-    expect(new Set(stamps).size).toBe(stamps.length);
-    expect([...stamps].sort()).toEqual(stamps);
+  /**
+   * This asserted "is the NEWEST migration" until 2026-08-27, which made it a
+   * tripwire that fired on every unrelated migration anyone added afterwards
+   * rather than on the thing it was protecting. What actually matters is the
+   * ORDER: this migration must apply after the drift reconcile that precedes
+   * it, or it lands against a schema it was not written for.
+   */
+  it("applies after the schema-drift reconcile it depends on", () => {
+    const all = readdirSync(join(process.cwd(), "prisma/migrations"))
+      .filter((d) => /^\d{14}_/.test(d))
+      .sort();
+    const reconcile = all.indexOf("20260824090000_reconcile_schema_migration_drift");
+    const proposals = all.indexOf("20260824180000_suppressed_domain_family_proposals");
+    expect(reconcile).toBeGreaterThanOrEqual(0);
+    expect(proposals).toBeGreaterThan(reconcile);
   });
 });

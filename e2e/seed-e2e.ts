@@ -17,13 +17,21 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import {
   E2E_CLIENT,
   E2E_CLIENT_B,
+  E2E_CLIENT_BULK,
   E2E_CONTACT,
   E2E_CONTACT_B,
+  E2E_CONTACT_BULK,
+  e2eBulkContactEmail,
+  e2eBulkContactId,
+  E2E_MAILBOX_SIGNATURE_HTML,
+  E2E_MAILBOXES,
   E2E_MEMBER_A,
   E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
   E2E_STAFF,
   E2E_SUPER_ADMIN,
+  E2E_SUPPRESSION,
+  e2eSuppressedEmail,
 } from "./fixtures";
 import { assertSafeTestDatabase } from "./safe-database";
 
@@ -106,6 +114,48 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
       update: { status: "SENT", subject: E2E_OUTBOUND_EMAIL.subject },
     });
 
+    /**
+     * Sending mailboxes, so the Mailboxes screen has the thing it is named
+     * after. Four connected + one offline, matching the live shape — see
+     * `E2E_MAILBOXES` for why that mix matters, and for why it cannot send.
+     */
+    for (const mailbox of E2E_MAILBOXES) {
+      const signature = mailbox.connected
+        ? {
+            senderDisplayName: "E2E Sender",
+            senderSignatureHtml: E2E_MAILBOX_SIGNATURE_HTML,
+            senderSignatureSource: "manual",
+          }
+        : {
+            senderDisplayName: null,
+            senderSignatureHtml: null,
+            senderSignatureSource: null,
+          };
+      const connection = {
+        connectionStatus: mailbox.connected ? ("CONNECTED" as const) : ("DRAFT" as const),
+        connectedAt: mailbox.connected ? new Date("2026-01-01T09:00:00.000Z") : null,
+      };
+      await prisma.clientMailboxIdentity.upsert({
+        where: { id: mailbox.id },
+        create: {
+          id: mailbox.id,
+          clientId: E2E_CLIENT.id,
+          provider: "MICROSOFT",
+          email: mailbox.email,
+          emailNormalized: mailbox.email,
+          isActive: true,
+          ...connection,
+          ...signature,
+        },
+        update: {
+          isActive: true,
+          workspaceRemovedAt: null,
+          ...connection,
+          ...signature,
+        },
+      });
+    }
+
     // ---- cross-tenant isolation fixtures (BC-01) -----------------------
     // A second workspace, and one staff member scoped to each. Membership is
     // what getAccessibleClientIds reads, so without these rows the isolation
@@ -157,7 +207,84 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         emailDomain: "example.test",
       },
       update: { email: E2E_CONTACT_B.email, isSuppressed: false },
-    });  } finally {
+    });
+
+    /**
+     * Enough blocked addresses to exceed one page of /suppression, so the
+     * "Showing 200 of 200 while there are really 30,229" defect has something
+     * to reproduce against. Domains stay under one page so the other branch of
+     * the count sentence ("Showing all 3") is exercised too.
+     */
+    await prisma.suppressionSource.upsert({
+      where: { id: E2E_SUPPRESSION.sourceId },
+      create: {
+        id: E2E_SUPPRESSION.sourceId,
+        clientId: E2E_CLIENT.id,
+        kind: "EMAIL",
+        label: "E2E blocked addresses",
+        syncStatus: "SUCCESS",
+      },
+      update: { syncStatus: "SUCCESS" },
+    });
+    await prisma.suppressionSource.upsert({
+      where: { id: E2E_SUPPRESSION.domainSourceId },
+      create: {
+        id: E2E_SUPPRESSION.domainSourceId,
+        clientId: E2E_CLIENT.id,
+        kind: "DOMAIN",
+        label: "E2E blocked domains",
+        syncStatus: "SUCCESS",
+      },
+      update: { syncStatus: "SUCCESS" },
+    });
+
+    await prisma.suppressedEmail.createMany({
+      data: Array.from({ length: E2E_SUPPRESSION.emailCount }, (_, i) => ({
+        clientId: E2E_CLIENT.id,
+        sourceId: E2E_SUPPRESSION.sourceId,
+        email: e2eSuppressedEmail(i),
+      })),
+      skipDuplicates: true,
+    });
+    await prisma.suppressedDomain.createMany({
+      data: Array.from({ length: E2E_SUPPRESSION.domainCount }, (_, i) => ({
+        clientId: E2E_CLIENT.id,
+        sourceId: E2E_SUPPRESSION.domainSourceId,
+        domain: `blocked-${i}.e2e-suppression.test`,
+      })),
+      skipDuplicates: true,
+    });
+
+    /**
+     * Enough contacts to exceed one page of /contacts (queue item 27, defect 9).
+     * Before the fix the page rendered every row it was given, up to 500, each
+     * with a `SendToContactForm` client component — 2,977 KB and 19,265 ms on
+     * the live site. `e2e/contacts-pagination.spec.ts` counts the rows that are
+     * actually painted, so there has to be more than one page of them.
+     */
+    await prisma.client.upsert({
+      where: { id: E2E_CLIENT_BULK.id },
+      create: {
+        id: E2E_CLIENT_BULK.id,
+        name: E2E_CLIENT_BULK.name,
+        slug: E2E_CLIENT_BULK.slug,
+        status: "ACTIVE",
+      },
+      update: { name: E2E_CLIENT_BULK.name, status: "ACTIVE", deletedAt: null },
+    });
+    await prisma.contact.createMany({
+      data: Array.from({ length: E2E_CONTACT_BULK.count }, (_, i) => ({
+        // Fixed id — `Contact` has no unique (clientId, email), so without this
+        // `skipDuplicates` dedupes nothing and every seed run adds another 260.
+        id: e2eBulkContactId(i),
+        clientId: E2E_CLIENT_BULK.id,
+        email: e2eBulkContactEmail(i),
+        fullName: `Bulk Contact ${String(i).padStart(4, "0")}`,
+        emailDomain: "e2e-contacts.test",
+      })),
+      skipDuplicates: true,
+    });
+  } finally {
     await prisma.$disconnect();
     await pool.end();
   }

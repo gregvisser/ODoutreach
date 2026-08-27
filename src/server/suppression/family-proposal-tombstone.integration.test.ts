@@ -33,6 +33,14 @@ const DNS: Record<string, string[]> = {
 };
 const lookupTxt = async (name: string): Promise<string[]> => DNS[name] ?? [];
 
+/**
+ * The tenant leg, stubbed to silence. These specs pin the DNS sources, and a
+ * real lookup here would put an unauthenticated HTTPS call to Microsoft inside
+ * a suite that must stay offline. `null` is what a domain outside Microsoft 365
+ * genuinely returns, so this is the quiet case, not a fake one.
+ */
+const lookupTenant = async (): Promise<string | null> => null;
+
 let clientId = "";
 let staffUserId = "";
 
@@ -76,7 +84,7 @@ afterAll(async () => {
 describe("a rejected proposal survives re-resolution", () => {
   it("raises the proposal, is rejected, and is never raised again", async () => {
     // --- Run 1: the link is found and a question is raised.
-    const first = await planClientFamilyProposals({ clientId, lookupTxt });
+    const first = await planClientFamilyProposals({ clientId, lookupTxt, lookupTenant });
     expect(first.plans).toHaveLength(1);
     expect(first.plans[0]?.kind).toBe("create");
     await persistProposalPlans({ clientId, plans: first.plans });
@@ -103,7 +111,7 @@ describe("a rejected proposal survives re-resolution", () => {
     expect(afterReject?.status).toBe("REJECTED");
 
     // --- Run 2: thirty days later. Same DNS, same link, same answer.
-    const second = await planClientFamilyProposals({ clientId, lookupTxt });
+    const second = await planClientFamilyProposals({ clientId, lookupTxt, lookupTenant });
     expect(second.plans).toHaveLength(1);
     expect(second.plans[0]?.kind).toBe("skip");
     if (second.plans[0]?.kind === "skip") {

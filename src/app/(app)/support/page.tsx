@@ -107,7 +107,7 @@ export default async function SupportPage() {
                 {sorted.map((t) => (
                   <tr key={t.id} className="align-top hover:bg-muted/40">
                     <td className="px-4 py-3">
-                      <Link
+                      <Link prefetch={false}
                         href={`/support/${t.id}`}
                         className="font-medium text-foreground underline-offset-2 hover:underline"
                       >

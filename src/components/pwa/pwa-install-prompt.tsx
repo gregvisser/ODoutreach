@@ -6,9 +6,16 @@
    the mount effect is intentional here. */
 
 import { Download, Share, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  isInstallPromptDismissed,
+  recordInstallPromptDismissed,
+  resolveDismissStorageKind,
+  type InstallDismissStorageKind,
+  type InstallDismissStores,
+} from "@/lib/pwa/install-dismissal";
 
 /** The Chrome/Android `beforeinstallprompt` event (not in the standard DOM lib). */
 type BeforeInstallPromptEvent = Event & {
@@ -16,9 +23,30 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
-// Per-session only — a dismiss hides it for this visit but it reappears next
-// visit, so it keeps prompting until the app is actually installed.
-const DISMISS_KEY = "odoutreach:pwa-install-dismissed";
+/**
+ * Reading `localStorage` / `sessionStorage` can itself throw (Safari private
+ * browsing, enterprise policy), so probe once and hand null to the pure module.
+ */
+function readStores(): InstallDismissStores {
+  const safely = (get: () => Storage): Storage | null => {
+    try {
+      return get();
+    } catch {
+      return null;
+    }
+  };
+  if (typeof window === "undefined") return { local: null, session: null };
+  return {
+    local: safely(() => window.localStorage),
+    session: safely(() => window.sessionStorage),
+  };
+}
+
+/** Phones and tablets report a coarse primary pointer; a desktop mouse does not. */
+function isTouchPrimary(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+}
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
@@ -55,14 +83,17 @@ export function PwaInstallPrompt() {
     useState<BeforeInstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
   const [iosHint, setIosHint] = useState(false);
+  const dismissKind = useRef<InstallDismissStorageKind>("session");
 
   useEffect(() => {
     if (isStandalone()) return; // already installed — never prompt
-    try {
-      if (sessionStorage.getItem(DISMISS_KEY) === "1") return; // dismissed this session
-    } catch {
-      // sessionStorage unavailable — carry on
-    }
+
+    // On a desktop this resolves to localStorage, so "no" survives a new tab
+    // and a browser restart. On a phone it stays per-visit, which is what the
+    // standing PWA rule requires.
+    const kind = resolveDismissStorageKind({ isTouchPrimary: isTouchPrimary() });
+    dismissKind.current = kind;
+    if (isInstallPromptDismissed(readStores(), kind)) return;
 
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault(); // suppress Chrome's mini-infobar; we drive the prompt
@@ -96,11 +127,7 @@ export function PwaInstallPrompt() {
   if (!visible) return null;
 
   const dismiss = () => {
-    try {
-      sessionStorage.setItem(DISMISS_KEY, "1");
-    } catch {
-      // ignore
-    }
+    recordInstallPromptDismissed(readStores(), dismissKind.current);
     setVisible(false);
   };
 
@@ -116,11 +143,15 @@ export function PwaInstallPrompt() {
     setVisible(false);
   };
 
+  // Full-width along the bottom on a phone (where it is the whole point); on
+  // anything wider it tucks into the bottom-RIGHT corner instead of sitting
+  // centred over the page, which is how it came to cover the client-name
+  // column of the /reporting table.
   return (
     <div
       role="dialog"
       aria-label="Install ODoutreach"
-      className="fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-md p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+      className="fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-md p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:inset-x-auto sm:right-4 sm:bottom-4 sm:mx-0 sm:w-[22rem] sm:p-0"
     >
       <div className="flex items-start gap-3 rounded-xl border border-border bg-background/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="min-w-0 flex-1">

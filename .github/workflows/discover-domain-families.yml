@@ -1,0 +1,94 @@
+# Find domains that belong to a company already on a client's do-not-contact
+# list, and raise them as questions for an operator to answer.
+#
+# This writes PENDING proposals only. It cannot block a send and cannot send
+# anything — a proposal becomes a block when a human clicks confirm, never
+# before. Nightly, because published DMARC/SPF records change on the order of
+# months, and a full DNS pass takes about a minute.
+name: Discover related domains
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 02:20 UTC daily — off the hour, and clear of the weekday send crons.
+    - cron: "20 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  discover-domain-families:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call related-domain discovery endpoint
+        env:
+          DISCOVER_URL: https://opensdoors.bidlow.co.uk/api/internal/suppression/discover-families
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; skipping discovery."
+            exit 0
+          fi
+          response_file="/tmp/discover-families.json"
+          status="000"
+          if ! status=$(curl -sS -o "$response_file" -w "%{http_code}" \
+            --max-time 600 \
+            -X POST "$DISCOVER_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{}'); then
+            curl_exit=$?
+            echo "Discovery curl failed before a valid HTTP response. curl_exit=${curl_exit}"
+            status="000"
+          fi
+          echo "Discovery HTTP status: ${status}"
+          if [ -f "$response_file" ]; then
+            cat "$response_file"
+          else
+            echo "Discovery response body was not written."
+          fi
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            exit 1
+          fi
+          # 207 IS a 2xx, so the status check above passes a partial run. The
+          # body is what distinguishes "checked every client" from "checked
+          # three and gave up" — a status-only check is how a job went green
+          # while 8 of 35 mailboxes were failing.
+          ok=$(jq -r 'try .ok catch ""' "$response_file" 2>/dev/null || echo "")
+          created=$(jq -r 'try .created catch 0' "$response_file" 2>/dev/null || echo 0)
+          checked=$(jq -r 'try .contactDomainsChecked catch 0' "$response_file" 2>/dev/null || echo 0)
+          blocked=$(jq -r 'try .autoBlocked catch 0' "$response_file" 2>/dev/null || echo 0)
+          tenant=$(jq -r 'try .tenantLookups catch 0' "$response_file" 2>/dev/null || echo 0)
+          echo "Checked ${checked} contact domains; raised ${created} new suggestion(s)."
+          echo "Microsoft tenant lookups: ${tenant}."
+          # An automatic block removes prospects from a paying client's universe
+          # without anyone being asked. It must never be something you have to
+          # go looking for in a log, so it is called out on its own line.
+          if [ "${blocked}" != "0" ]; then
+            echo "::warning title=AUTO-BLOCKED::${blocked} domain(s) were blocked automatically as related to a do-not-contact company. Review them on the client's do-not-contact page."
+          fi
+          if [ "$ok" != "true" ]; then
+            echo "Discovery reported a PARTIAL run."
+            echo "related-domain discovery partial" >> /tmp/run-problems.txt
+            jq -r 'try (.errors // [])[] catch empty' "$response_file" 2>/dev/null \
+              | head -5 \
+              | while IFS= read -r reason; do
+                  echo "  ${reason}"
+                  echo "discovery: ${reason}" >> /tmp/run-problems.txt
+                done
+          fi
+
+      # A PARTIAL run fails HERE, in a step whose name carries the word, so the
+      # alerting can tell "ran and part of it failed" from "never ran".
+      - name: Fail run — PARTIAL
+        if: always()
+        run: |
+          if [ -s /tmp/run-problems.txt ]; then
+            echo "This run completed but part of it failed:"
+            cat /tmp/run-problems.txt
+            while IFS= read -r line; do
+              echo "::error title=PARTIAL::${line}"
+            done < /tmp/run-problems.txt
+            exit 1
+          fi
+          echo "No partial failures recorded."

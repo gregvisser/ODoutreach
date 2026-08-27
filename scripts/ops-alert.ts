@@ -37,7 +37,11 @@ const DRY_RUN = process.argv.includes("--dry-run");
  */
 const WATCHED: { file: string; label: string; expectedPerDay: number }[] = [
   { file: "process-outbound-queue.yml", label: "sending", expectedPerDay: 1 },
-  { file: "sync-replies.yml", label: "reply sync", expectedPerDay: 1 },
+  // This workflow does two jobs: it ingests replies AND re-syncs every
+  // do-not-contact sheet. The label reads out in the alert subject, and
+  // "reply sync partly failed" sent someone to the mailbox screen when what
+  // had actually stopped was two clients' blocklists.
+  { file: "sync-replies.yml", label: "reply & do-not-contact sync", expectedPerDay: 1 },
   { file: "signature-link-audit.yml", label: "signature audit", expectedPerDay: 0 },
   { file: "support-agent.yml", label: "support agent", expectedPerDay: 0 },
 ];

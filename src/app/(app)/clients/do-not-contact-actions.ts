@@ -14,6 +14,14 @@ import {
   normalizeFamilyDomain,
   normalizeFamilyLabel,
 } from "@/server/suppression/domain-families";
+import {
+  persistProposalPlans,
+  planClientFamilyProposals,
+} from "@/server/suppression/family-discovery-run";
+import {
+  confirmFamilyProposal,
+  rejectFamilyProposal,
+} from "@/server/suppression/family-proposals";
 
 const schema = z.object({
   clientId: z.string().min(1),
@@ -326,4 +334,174 @@ export async function removeDomainFromFamilyAction(input: {
   revalidatePath(`/clients/${clientId}/suppression`);
   revalidatePath("/suppression");
   return { ok: true };
+}
+
+/* -------------------------------------------------------------------------
+ * AUTOMATIC related-domain detection — the operator's route to it.
+ *
+ * The detection itself (`family-discovery-run.ts`, `family-proposals.ts`) was
+ * built, migrated and tested on 2026-08-24 and then had no caller but an ops
+ * script and no screen at all, so in practice the only way to record a related
+ * domain was to type it by hand. These three actions are the missing wiring.
+ *
+ * The division of labour is deliberate and unchanged:
+ *   - discovery WRITES QUESTIONS (`PENDING` proposals). It cannot block a send.
+ *   - confirming is the ONLY path from a machine guess to something the send
+ *     gate reads, and it is a human clicking. RULING 3 stands.
+ *   - rejecting is a permanent tombstone, so a later run cannot re-ask.
+ *
+ * Nothing here can send an email. Confirming only ever blocks more mail.
+ * ------------------------------------------------------------------------- */
+
+async function requireFamilyProposalAccess(
+  clientId: string,
+): Promise<{ ok: true; staffId: string } | { ok: false; error: string }> {
+  const staff = await requireOpensDoorsStaff();
+  if (!clientId) return { ok: false, error: "Invalid form." };
+  try {
+    await requireClientAccess(staff, clientId);
+  } catch {
+    return { ok: false, error: "Access denied." };
+  }
+  if (!(await getClientEmailSequenceMutationAllowed(staff, clientId))) {
+    return {
+      ok: false,
+      error:
+        "You do not have permission to change the do-not-contact list for this client.",
+    };
+  }
+  return { ok: true, staffId: staff.id };
+}
+
+export type FamilyProposalDecisionResult =
+  | { ok: true; proposedDomain: string; contactsFlagged: number }
+  | { ok: false; error: string };
+
+/**
+ * "Yes, same company" — promote a machine-found link to a real family member.
+ *
+ * The cached `Contact.isSuppressed` flags are refreshed afterwards for the same
+ * reason `addDomainToFamilyAction` does it: the send gate re-reads families on
+ * every send regardless, but if the screen still showed those contacts as
+ * sendable the operator would be looking at a lie.
+ */
+export async function confirmFamilyProposalAction(input: {
+  clientId: string;
+  proposalId: string;
+}): Promise<FamilyProposalDecisionResult> {
+  const clientId = String(input?.clientId ?? "");
+  const proposalId = String(input?.proposalId ?? "");
+  const access = await requireFamilyProposalAccess(clientId);
+  if (!access.ok) return access;
+  if (!proposalId) return { ok: false, error: "Invalid form." };
+
+  const result = await confirmFamilyProposal({
+    clientId,
+    proposalId,
+    staffUserId: access.staffId,
+  });
+  if (!result.ok) return result;
+
+  const refresh = await refreshContactSuppressionFlagsForClient(clientId);
+
+  await prisma.auditLog.create({
+    data: {
+      staffUserId: access.staffId,
+      clientId,
+      action: "CREATE",
+      entityType: "SuppressedDomainFamily",
+      entityId: proposalId,
+      metadata: {
+        kind: "domain_family_proposal_confirmed",
+        proposedDomain: result.proposedDomain,
+        contactsSuppressedAfter: refresh.suppressed,
+      },
+    },
+  });
+
+  revalidatePath(`/clients/${clientId}/suppression`);
+  revalidatePath("/suppression");
+  return {
+    ok: true,
+    proposedDomain: result.proposedDomain,
+    contactsFlagged: refresh.suppressed,
+  };
+}
+
+/** "No, different company" — final, and recorded so it is never asked again. */
+export async function rejectFamilyProposalAction(input: {
+  clientId: string;
+  proposalId: string;
+}): Promise<FamilyProposalDecisionResult> {
+  const clientId = String(input?.clientId ?? "");
+  const proposalId = String(input?.proposalId ?? "");
+  const access = await requireFamilyProposalAccess(clientId);
+  if (!access.ok) return access;
+  if (!proposalId) return { ok: false, error: "Invalid form." };
+
+  const result = await rejectFamilyProposal({
+    clientId,
+    proposalId,
+    staffUserId: access.staffId,
+  });
+  if (!result.ok) return result;
+
+  await prisma.auditLog.create({
+    data: {
+      staffUserId: access.staffId,
+      clientId,
+      action: "UPDATE",
+      entityType: "SuppressedDomainFamilyProposal",
+      entityId: proposalId,
+      metadata: {
+        kind: "domain_family_proposal_rejected",
+        proposedDomain: result.proposedDomain,
+      },
+    },
+  });
+
+  revalidatePath(`/clients/${clientId}/suppression`);
+  revalidatePath("/suppression");
+  return { ok: true, proposedDomain: result.proposedDomain, contactsFlagged: 0 };
+}
+
+export type DiscoverFamilyProposalsResult =
+  | { ok: true; created: number; refreshed: number; contactDomainsChecked: number }
+  | { ok: false; error: string };
+
+/**
+ * "Find related domains now" — read every contact domain's published DNS and
+ * raise questions.
+ *
+ * There is a scheduled run as well (`/api/internal/suppression/discover-families`);
+ * this exists so the answer to "has it looked at the list I just uploaded?" is
+ * not "wait until tomorrow". It writes PENDING rows only, so pressing it can
+ * never send, unsend, or block anything on its own.
+ */
+export async function discoverFamilyProposalsAction(input: {
+  clientId: string;
+}): Promise<DiscoverFamilyProposalsResult> {
+  const clientId = String(input?.clientId ?? "");
+  const access = await requireFamilyProposalAccess(clientId);
+  if (!access.ok) return access;
+
+  try {
+    const plan = await planClientFamilyProposals({ clientId });
+    const written = await persistProposalPlans({
+      clientId,
+      plans: plan.plans,
+    });
+    revalidatePath(`/clients/${clientId}/suppression`);
+    return {
+      ok: true,
+      created: written.created,
+      refreshed: written.refreshed,
+      contactDomainsChecked: plan.contactDomainsChecked,
+    };
+  } catch (e) {
+    // A DNS run that dies must say so. Reporting success on a run that found
+    // nothing because it crashed is the failure this whole cycle is about.
+    const msg = e instanceof Error ? e.message : "Could not check domains.";
+    return { ok: false, error: `Could not finish the check: ${msg}` };
+  }
 }

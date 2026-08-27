@@ -32,6 +32,7 @@ export function AppSidebar({
     >
       <Link
         href="/reporting"
+        prefetch={false}
         className="flex h-20 items-center gap-3 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
         aria-label={`${brand.brandName} ${brand.productName} home`}
       >
@@ -52,6 +53,20 @@ export function AppSidebar({
           <p className="text-xs text-muted-foreground">{brand.productName}</p>
         </div>
       </Link>
+      {/*
+        `prefetch={false}` on every link here is deliberate and load-bearing.
+
+        Next.js prefetches each Link as it enters the viewport, so the whole
+        sidebar plus the client subnav fired ~18 server-rendered `?_rsc=`
+        requests the moment a client screen opened. Measured against production
+        on 2026-08-26, App Service answered most of them 503 — it sheds under
+        that burst — so the prefetch cache stayed EMPTY and every tab click was
+        a cold render anyway. Worse, the burst also shed a real server-action
+        POST from the do-not-contact panel.
+
+        We give up nothing that was working: the prefetches were failing. Revisit
+        if the App Service plan is scaled up (it is B1, single instance).
+      */}
       <nav className="flex-1 space-y-0.5 p-3">
         {mainNav.map((item) => {
           const active =
@@ -61,6 +76,7 @@ export function AppSidebar({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active

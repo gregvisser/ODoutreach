@@ -111,7 +111,7 @@ export default async function InboundMessageDetailPage({ params }: Props) {
       ) : null}
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <Link
+          <Link prefetch={false}
             href={`/clients/${clientId}/activity`}
             className="underline-offset-4 hover:underline"
           >
@@ -274,7 +274,7 @@ export default async function InboundMessageDetailPage({ params }: Props) {
                   <span className="text-muted-foreground break-words">
                     {r.subject ?? "(no subject)"}
                   </span>
-                  <Link
+                  <Link prefetch={false}
                     href={`/activity/outbound/${r.id}`}
                     className="ml-auto text-xs underline-offset-4 hover:underline"
                   >

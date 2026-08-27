@@ -239,7 +239,7 @@ export function UniversePageClient({
           <Button type="submit" size="sm" disabled={pending}>
             Apply filters
           </Button>
-          <Link
+          <Link prefetch={false}
             href="/universe"
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
@@ -445,7 +445,7 @@ export function UniversePageClient({
             No contacts match these filters yet. If you expected rows here, confirm a recent import ran for
             this environment — older workspace contacts are not auto-copied into Universe. Import from a
             client workspace{" "}
-            <Link href="/clients" className="font-medium text-primary underline-offset-2 hover:underline">
+            <Link prefetch={false} href="/clients" className="font-medium text-primary underline-offset-2 hover:underline">
               Sources
             </Link>{" "}
             tab, or use the main Contacts page.

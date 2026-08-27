@@ -62,3 +62,43 @@ export function formatSuppressionSyncUserError(
   }
   return `${msg.slice(0, 240)}…`;
 }
+
+/** Is this one of ours, and specifically the range one? */
+export function isRangeInvalidMessage(message: string): boolean {
+  return message.startsWith(SUPPRESSION_SYNC_MESSAGES.rangeInvalid);
+}
+
+/** More than this in one sentence stops being a hint and starts being a dump. */
+const MAX_TABS_NAMED = 12;
+/** Matches the `lastError` column budget in the sync, so nothing is truncated twice. */
+const MAX_MESSAGE = 2000;
+
+/**
+ * Append the range we actually tried and the tabs the Sheet actually has.
+ *
+ * "Check the Sheet tab name and range (e.g. Sheet1!A:Z)" is true but unusable:
+ * it asks someone to open the Sheet and compare it against a range they cannot
+ * see. Both halves of that comparison are ours to state, so state them — the
+ * range comes off the source row, and the titles come from a `spreadsheets.get`
+ * on a Sheet we are demonstrably able to read.
+ *
+ * Appends; never replaces. If the tab titles could not be read, the caller gets
+ * the original message back unchanged rather than a message implying we looked.
+ */
+export function withSheetTabNames(
+  message: string,
+  attemptedRange: string,
+  tabTitles: readonly string[],
+): string {
+  const titles = tabTitles.map((t) => t.trim()).filter(Boolean);
+  if (titles.length === 0) return message;
+
+  const shown = titles.slice(0, MAX_TABS_NAMED).map((t) => `"${t}"`).join(", ");
+  const more =
+    titles.length > MAX_TABS_NAMED
+      ? ` …and ${titles.length - MAX_TABS_NAMED} more`
+      : "";
+
+  const detail = ` We looked in ${attemptedRange}. This Sheet's tabs are: ${shown}${more}.`;
+  return `${message}${detail}`.slice(0, MAX_MESSAGE);
+}

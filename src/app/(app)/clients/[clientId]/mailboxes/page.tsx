@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
   MicrosoftAdminConsentHelp,
@@ -169,41 +170,12 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         ) : null}
       </div>
 
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-lg">What happens when you connect a mailbox?</CardTitle>
-          <CardDescription>
-            Plain-English summary. Use this before you click Connect on a row.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
-            {MAILBOXES_WHAT_HAPPENS_BULLETS.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-
-      {adminConsentEntries.length > 0 ? (
-        <MicrosoftAdminConsentHelp entries={adminConsentEntries} />
-      ) : null}
-
-      {deliverabilityEntries.length > 0 ? (
-        <ClientDeliverabilityHelp entries={deliverabilityEntries} />
-      ) : null}
-
-      {showMailboxSetupTools ? (
-        <InternalProofSendCard
-          clientId={client.id}
-          rows={bundle.mailboxRows}
-          sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
-          canMutate={bundle.canMutateMailboxes}
-          oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
-          oauthGoogleConfigured={bundle.oauthGoogleReady}
-        />
-      ) : null}
-
+      {/*
+        The mailboxes come first. Until 2026-08-27 this page opened with four
+        screens of setup and DNS documentation — good writing, wrong order — and
+        you had to scroll past all of it to reach the thing the page is named
+        after. The help is all still here, one screen down, closed by default.
+      */}
       <Card className="border-border/80 shadow-sm">
         <CardContent className="pt-6">
           <ClientMailboxIdentitiesPanel
@@ -240,6 +212,64 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           />
         </CardContent>
       </Card>
+
+      {/*
+        How fast this workspace's mail leaves. Sits directly under the mailboxes
+        because it is a property of how they send, not of the sequences.
+      */}
+      <ClientSendPacingCard
+        clientId={client.id}
+        sendBatchSize={client.sendBatchSize ?? null}
+        canMutate={bundle.canMutateMailboxes}
+      />
+
+      <details className="group rounded-lg border border-border/80 bg-card px-4 py-3 shadow-sm">
+        <summary className="cursor-pointer text-base font-semibold text-foreground">
+          Setup, deliverability and test sends
+        </summary>
+        <p className="mt-1 text-sm text-muted-foreground">
+          What connecting a mailbox does, how to get a Microsoft admin to approve
+          it, the SPF/DKIM/DMARC steps for each sending domain, and the
+          verification-send tool. Open this when you are setting a mailbox up or
+          something is not working.
+        </p>
+        <div className="mt-4 space-y-6">
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">What happens when you connect a mailbox?</CardTitle>
+              <CardDescription>
+                Plain-English summary. Use this before you click Connect on a row.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+                {MAILBOXES_WHAT_HAPPENS_BULLETS.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+
+          {adminConsentEntries.length > 0 ? (
+            <MicrosoftAdminConsentHelp entries={adminConsentEntries} />
+          ) : null}
+
+          {deliverabilityEntries.length > 0 ? (
+            <ClientDeliverabilityHelp entries={deliverabilityEntries} />
+          ) : null}
+
+          {showMailboxSetupTools ? (
+            <InternalProofSendCard
+              clientId={client.id}
+              rows={bundle.mailboxRows}
+              sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
+              canMutate={bundle.canMutateMailboxes}
+              oauthMicrosoftConfigured={bundle.oauthMicrosoftReady}
+              oauthGoogleConfigured={bundle.oauthGoogleReady}
+            />
+          ) : null}
+        </div>
+      </details>
     </div>
   );
 }

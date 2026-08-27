@@ -58,7 +58,7 @@ export function LaunchReadinessPanel({
                 </Badge>
                 <span className="min-w-0 text-sm text-muted-foreground">{row.metric}</span>
               </div>
-              <Link
+              <Link prefetch={false}
                 href={row.href}
                 className="shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline sm:text-right"
               >

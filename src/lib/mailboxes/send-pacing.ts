@@ -60,12 +60,55 @@ const PEAK_RADIUS = 1;
  */
 const JITTER_FRACTION = 0.28;
 /**
- * Never let two sends fall closer than this. Judgement, and the one number with
- * a real ceiling behind it: Microsoft's limit is 30 per minute, so anything
- * measured in minutes is comfortably clear — this exists to stop jitter
- * collapsing two slots together, not to satisfy a provider.
+ * Never let two BATCHES fall closer than this. Judgement, and the one number
+ * with a real ceiling behind it: Microsoft's limit is 30 per minute, so a batch
+ * of four in a single minute is comfortably clear — this exists to stop jitter
+ * collapsing two batches together, not to satisfy a provider.
  */
 const MIN_GAP_MINUTES = 5;
+
+/**
+ * Four at a time. This is the number the client was promised, and it is
+ * JUDGEMENT, not a standard — no provider publishes a batch size, and anyone
+ * who tells you 4 is the safe number is repeating folklore.
+ *
+ * The argument for a batch at all is human appearance: a person clears a
+ * handful of emails and then does something else for an hour. They do not emit
+ * one message every twenty-two minutes all day, which is what an even drip
+ * looks like from the outside. The gap BETWEEN batches still does the spreading
+ * work the sourced guidance actually asks for.
+ */
+export const DEFAULT_SEND_BATCH_SIZE = 4;
+
+/**
+ * Ceiling on the per-client batch size. A batch is a burst by design, and this
+ * setting is operator-editable, so it needs a hard stop that is not a typo away
+ * from a mailbox's whole daily allowance leaving in one minute. 25 sits under
+ * Microsoft's 30-per-minute hard limit with room to spare.
+ */
+export const MAX_SEND_BATCH_SIZE = 25;
+
+/**
+ * Turn whatever is on `Client.sendBatchSize` into a number that is safe to send
+ * real email with.
+ *
+ * Null is the common case, not an error: every client predating the column has
+ * one, and it means "use the house default". Everything else is clamped rather
+ * than trusted — this value decides how much mail leaves at once, so a bad row
+ * must land somewhere sane instead of opening the taps.
+ */
+export function resolveSendBatchSize(
+  configured: number | null | undefined,
+): number {
+  if (configured === null || configured === undefined) {
+    return DEFAULT_SEND_BATCH_SIZE;
+  }
+  if (Number.isNaN(configured)) return DEFAULT_SEND_BATCH_SIZE;
+  if (configured > MAX_SEND_BATCH_SIZE) return MAX_SEND_BATCH_SIZE;
+  const n = Math.floor(configured);
+  if (n < 1) return 1;
+  return n;
+}
 
 /** FNV-1a. Small, stable, and dependency-free — the values must not drift. */
 function hashString(s: string): number {
@@ -106,40 +149,63 @@ export type PacingInput = {
   /** UTC date key, e.g. "2026-09-01". Changes the schedule day to day. */
   dateKey: string;
   dailyCap: number;
+  /**
+   * How many sends leave together, from `Client.sendBatchSize`. Null/undefined
+   * means the client has not set one — see `resolveSendBatchSize`.
+   */
+  batchSize?: number | null;
 };
 
 /**
- * The minutes-of-day this mailbox is scheduled to send on, ascending.
+ * The minutes-of-day this mailbox is scheduled to send on, ascending. One entry
+ * per send, so a batch of four appears as the same minute four times.
  *
- * Base cadence is the window divided by the allowance — even spread, which is
- * the sourced part. Each slot then gets modest seeded jitter and a per-mailbox
- * offset so two mailboxes never march in step, and is nudged off the ISP peak
- * marks. Slots are clamped into the window and separated by MIN_GAP_MINUTES.
+ * The day is divided into BATCHES, not individual sends: base cadence is the
+ * window divided by the batch COUNT — even spread, which is the sourced part.
+ * Each batch anchor then gets modest seeded jitter and a per-mailbox offset so
+ * two mailboxes never march in step, and is nudged off the ISP peak marks.
+ * Anchors are clamped into the window and separated by MIN_GAP_MINUTES; the
+ * whole batch then fires on its anchor minute.
+ *
+ * A batch size of 1 degenerates to the original one-at-a-time drip exactly,
+ * including the random draw order, so that setting is not a new code path.
  */
 export function sendSlotsForDay(input: PacingInput): number[] {
   const cap = Math.floor(input.dailyCap);
   if (!Number.isFinite(cap) || cap <= 0) return [];
+
+  const batchSize = resolveSendBatchSize(input.batchSize);
+  const batchCount = Math.ceil(cap / batchSize);
 
   const windowMinutes = PACING_WINDOW_END_MINUTE - PACING_WINDOW_START_MINUTE;
   const rng = makeRng(hashString(`${input.mailboxId}|${input.dateKey}`));
 
   // Per-mailbox, per-day offset — two mailboxes starting at 07:00 together is
   // exactly the lockstep this is meant to avoid.
-  const spacing = windowMinutes / cap;
+  const spacing = windowMinutes / batchCount;
   const offset = rng() * Math.min(spacing, 20);
 
   const slots: number[] = [];
-  for (let i = 0; i < cap; i += 1) {
+  let previousAnchor: number | null = null;
+  for (let i = 0; i < batchCount; i += 1) {
     const base = PACING_WINDOW_START_MINUTE + offset + i * spacing;
     const jitter = (rng() * 2 - 1) * spacing * JITTER_FRACTION;
     let m = Math.round(base + jitter);
 
     // Keep inside the window, keep a real gap, keep off the peak marks.
-    const floor = slots.length ? slots[slots.length - 1] + MIN_GAP_MINUTES : PACING_WINDOW_START_MINUTE;
+    const floor =
+      previousAnchor === null
+        ? PACING_WINDOW_START_MINUTE
+        : previousAnchor + MIN_GAP_MINUTES;
     m = Math.max(floor, Math.min(PACING_WINDOW_END_MINUTE, m));
     m = avoidPeak(m);
     m = Math.max(floor, Math.min(PACING_WINDOW_END_MINUTE, m));
-    slots.push(m);
+    previousAnchor = m;
+
+    // The last batch of the day carries the remainder — never a full batch of
+    // invented sends. `slots.length` can only reach `cap`.
+    const thisBatch = Math.min(batchSize, cap - slots.length);
+    for (let k = 0; k < thisBatch; k += 1) slots.push(m);
   }
   return slots;
 }
@@ -177,15 +243,56 @@ export function minuteOfDayUtc(at: Date): number {
 }
 
 /**
- * Pacing is flag-gated by `MAILBOX_SEND_PACING` and DEFAULTS OFF.
+ * Pacing DEFAULTS ON. `MAILBOX_SEND_PACING` is now an off-switch, not an
+ * on-switch.
  *
- * Default-off is exactly how the NDR bounce detector ended up never running for
- * 36 days, so this one is documented in `.env.example` and called out in the PR
- * rather than left to be discovered later. It is off by default because it
- * changes WHEN real email leaves a live system, and that should be a deliberate
- * act — but it is meant to be turned ON before volume rises. At 5/day it barely
- * bites; at 30/day it is the difference between a person and a machine.
+ * It shipped default-off in PR #192, was never set in production, and therefore
+ * never ran — the same shape as the NDR bounce detector that sat unused for 36
+ * days, and the sixth instance this project has recorded of something built,
+ * wired, reported as done, and never fired. A flag nobody sets is not a feature.
+ *
+ * Default-on is the safe direction to fail: pacing only ever WITHHOLDS part of a
+ * cap until later in the day and never raises one, and it releases the full
+ * allowance once the window shuts at 18:00 UTC — the outbound cron runs until
+ * 18:55, so nothing is stranded overnight by pacing alone.
+ *
+ * Set `MAILBOX_SEND_PACING=false` to turn it off. Anything else, including
+ * unset, means on.
  */
+const PACING_OFF_VALUES = new Set(["false", "off", "0", "no"]);
+
 export function isSendPacingEnabled(): boolean {
-  return (process.env.MAILBOX_SEND_PACING ?? "").trim().toLowerCase() === "true";
+  const raw = (process.env.MAILBOX_SEND_PACING ?? "").trim().toLowerCase();
+  return !PACING_OFF_VALUES.has(raw);
+}
+
+/**
+ * How many of a mailbox's daily allowance may have gone by now — THE gate both
+ * send paths use.
+ *
+ * This lived as a copy-pasted twelve-line block in `send-introduction.ts` and
+ * `controlled-pilot-send.ts`, which is why nothing could assert that either one
+ * actually called it. It is one function now so the wiring is testable.
+ *
+ * It never RAISES a cap. The most it can do is hold some of it back.
+ */
+export function pacedAllowanceForMailbox(input: {
+  mailboxId: string;
+  /** The mailbox's effective cap for the day, warm-up ramp already applied. */
+  dailyCap: number;
+  /** `Client.sendBatchSize` — null when the client has not set one. */
+  batchSize: number | null | undefined;
+  at: Date;
+}): number {
+  if (!isSendPacingEnabled()) return input.dailyCap;
+  return Math.min(
+    input.dailyCap,
+    sendsPermittedByNow({
+      mailboxId: input.mailboxId,
+      dateKey: pacingDateKey(input.at),
+      dailyCap: input.dailyCap,
+      batchSize: input.batchSize,
+      nowMinuteOfDay: minuteOfDayUtc(input.at),
+    }),
+  );
 }

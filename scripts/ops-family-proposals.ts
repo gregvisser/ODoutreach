@@ -20,6 +20,7 @@ import {
   persistProposalPlans,
   planClientFamilyProposals,
 } from "@/server/suppression/family-discovery-run";
+import { isTenantAutoBlockEnabled } from "@/server/suppression/family-tenant";
 
 const WRITE = process.argv.includes("--write");
 
@@ -31,6 +32,7 @@ type Row = {
   evidence: string;
   fanIn: number;
   contacts: number;
+  autoBlock: boolean;
 };
 
 async function main(): Promise<void> {
@@ -83,6 +85,7 @@ async function main(): Promise<void> {
         evidence: plan.link.evidence,
         fanIn: plan.fanIn,
         contacts: byDomain.get(plan.link.proposedDomain) ?? 0,
+        autoBlock: plan.kind === "create" && plan.autoBlock,
       });
     }
 
@@ -90,6 +93,11 @@ async function main(): Promise<void> {
       const written = await persistProposalPlans({
         clientId: client.id,
         plans: result.plans,
+        // This script's documented promise is that it writes questions and
+        // nothing else, and the assertion at the end holds it to that. Pinned
+        // to false rather than read from the environment, so turning automatic
+        // blocking on in production cannot quietly change what this tool does.
+        autoBlockEnabled: false,
       });
       created += written.created;
     }
@@ -103,7 +111,30 @@ async function main(): Promise<void> {
     `Contacts they would suppress in total : ${raised.reduce((a, r) => a + r.contacts, 0)}`,
   );
   console.log(`Proposals refused                     : ${skipped.length}`);
+
+  // THE NUMBER THIS SCRIPT EXISTS TO PRODUCE. The client was promised that
+  // near-certain matches block automatically. This says how many would, and how
+  // many prospects that would cost, BEFORE the switch is flipped — so the
+  // decision is made on a measurement rather than on this code's self-esteem.
+  const autoBlockable = raised.filter((r) => r.autoBlock);
+  const autoBlockContacts = autoBlockable.reduce((a, r) => a + r.contacts, 0);
+  console.log(`${"-".repeat(70)}`);
+  console.log(`Would block AUTOMATICALLY if enabled  : ${autoBlockable.length}`);
+  console.log(`Contacts that would remove            : ${autoBlockContacts}`);
+  console.log(
+    `Automatic blocking is currently        : ${isTenantAutoBlockEnabled() ? "ON" : "OFF"}`,
+  );
   console.log(`${"=".repeat(70)}`);
+
+  if (autoBlockable.length > 0) {
+    console.log(`\nWOULD BLOCK AUTOMATICALLY (review these before enabling)`);
+    for (const r of autoBlockable) {
+      console.log(
+        `  [${r.client}] ${r.proposedDomain}  belongs to  ${r.seedDomain}  (${r.contacts} contacts)`,
+      );
+      console.log(`      evidence: ${r.evidence}`);
+    }
+  }
 
   if (raised.length > 0) {
     console.log(`\nPROPOSALS`);

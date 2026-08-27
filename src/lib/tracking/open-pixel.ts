@@ -12,9 +12,27 @@
 
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 
-/** Deliverability kill-switch: set OPEN_TRACKING_PIXEL=off to stop embedding the pixel. */
+/**
+ * Values an operator may reasonably type into the Azure portal to mean "off".
+ * Compared after trimming and lower-casing.
+ */
+const OFF_VALUES = new Set(["off", "false", "0", "no", "disabled"]);
+
+/**
+ * Deliverability kill-switch: set OPEN_TRACKING_PIXEL=off to stop embedding the pixel.
+ *
+ * This switch FAILS CLOSED on purpose. OpensDoors have been told in writing that
+ * open tracking is off, so anything that plainly means off turns it off. The
+ * previous exact-match check (`!== "off"`) silently RESUMED tracking if the
+ * setting was ever typed as "OFF" or picked up a trailing space — a broken
+ * written promise with no error, no log line and nothing on screen to catch it.
+ * Azure's app-settings editor offers no validation, so the value is only ever
+ * one careless keystroke away from that.
+ */
 export function isOpenTrackingPixelEnabled(): boolean {
-  return process.env.OPEN_TRACKING_PIXEL !== "off";
+  const raw = process.env.OPEN_TRACKING_PIXEL;
+  if (raw === undefined) return true;
+  return !OFF_VALUES.has(raw.trim().toLowerCase());
 }
 
 /**

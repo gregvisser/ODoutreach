@@ -19,7 +19,7 @@ export type DeliveryStatusLabel =
   | "Queued"
   | "Sent from mailbox"
   | "Sent — time unavailable"
-  | "Send proof missing"
+  | "Sent, not confirmed"
   | "Failed"
   | "Bounced"
   | "Replied"
@@ -112,9 +112,9 @@ export function deriveDeliveryStatus(
       return "Sent — time unavailable";
     }
     if (!input.hasOutboundEmail) {
-      return "Send proof missing";
+      return "Sent, not confirmed";
     }
-    return "Send proof missing";
+    return "Sent, not confirmed";
   }
 
   // The contact is enrolled and prepared to send (step-send READY or
@@ -188,7 +188,7 @@ export function summarizeDelivery(
       case "Queued":
         summary.queued++;
         break;
-      case "Send proof missing":
+      case "Sent, not confirmed":
         summary.sentProofMissing++;
         break;
       case "Failed":

@@ -106,7 +106,7 @@ describe("list-detail search/filter/sort helpers (PR #140)", () => {
         matchesStatus(row({ sendStatus: "Awaiting send" }), "Awaiting send"),
       ).toBe(true);
       expect(
-        matchesStatus(row({ sendStatus: "Send proof missing" }), "Send proof missing"),
+        matchesStatus(row({ sendStatus: "Sent, not confirmed" }), "Sent, not confirmed"),
       ).toBe(true);
       expect(matchesStatus(row({ sendStatus: "Failed" }), "Failed")).toBe(true);
       expect(matchesStatus(row({ sendStatus: "Unsubscribed" }), "Unsubscribed")).toBe(
@@ -202,7 +202,7 @@ describe("list-detail search/filter/sort helpers (PR #140)", () => {
         "All",
         "Sent from mailbox",
         "Queued",
-        "Send proof missing",
+        "Sent, not confirmed",
         "Failed",
         "Bounced",
         "Replied",

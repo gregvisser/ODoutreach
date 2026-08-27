@@ -152,6 +152,111 @@ Write-Host "4. The alert path is armed (nothing is sent)"
 $armed = Test-AlertPathArmed
 Assert-True $armed.Ok "Greg can actually be emailed if a cycle fails ($($armed.Detail))"
 
+# The mute that exists for the test suite must never be in force on the real
+# relay. Because this self-test is a STARTUP GATE, failing here refuses to start
+# the watcher at all - so a stray RELAY_ALERT_SUPPRESS cannot produce a relay
+# that runs all night with its alarm disconnected. It stops it, loudly, instead.
+Assert-True ([string]::IsNullOrEmpty($env:RELAY_ALERT_SUPPRESS)) `
+    "the alarm is not muted (RELAY_ALERT_SUPPRESS is not set)"
+
+# ===========================================================================
+# 5. A SILENT RELAY SHOUTS
+#
+# The failure this guards against, twice on 2026-08-26: the relay went quiet
+# with a full queue behind it and only a human happening to look noticed. Once
+# because a cycle hung, once because one malformed row made it idle for 30
+# minutes. Overnight, either costs the whole night.
+#
+# The decision is tested here, not the send. If the self-test actually emailed,
+# Greg would get one every time the relay started, and an alert that arrives
+# when nothing is wrong is one he learns to ignore. The SEND is proved
+# separately and deliberately, by relay-stall-proof.ps1.
+#
+# Time is injected rather than waited for. A test that takes 20 minutes to run
+# is a test that runs once and then gets commented out.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "5. Going quiet with work still waiting raises the alarm"
+
+$now = Get-Date
+
+# The case that cost the night: idle well past the threshold, jobs waiting.
+$stalled = Get-StallVerdict -IdleSince $now.AddMinutes(-25) -Now $now `
+    -ThresholdMinutes 20 -AlreadyAlerted $false -TodoCount 5
+Assert-True ($stalled.ShouldAlert -eq $true) `
+    "25 minutes idle with 5 jobs waiting raises the alarm"
+Assert-True ($stalled.Subject -match 'STALLED') `
+    "the subject line says STALLED so it is obvious in a phone notification"
+Assert-True ($stalled.Subject -match '5') `
+    "the subject says how many jobs are waiting (got: $($stalled.Subject))"
+
+# Not yet idle enough. A relay between items is not a broken relay.
+$young = Get-StallVerdict -IdleSince $now.AddMinutes(-3) -Now $now `
+    -ThresholdMinutes 20 -AlreadyAlerted $false -TodoCount 5
+Assert-True ($young.ShouldAlert -eq $false) `
+    "3 minutes between items is normal and stays quiet"
+
+# An empty queue is not a stall. The relay has finished, which is good news.
+$empty = Get-StallVerdict -IdleSince $now.AddMinutes(-90) -Now $now `
+    -ThresholdMinutes 20 -AlreadyAlerted $false -TodoCount 0
+Assert-True ($empty.ShouldAlert -eq $false) `
+    "idle with an EMPTY queue stays quiet - finishing the work is not a fault"
+
+# "Send once per stall, not every 20 minutes" - verbatim from the queue item.
+$repeat = Get-StallVerdict -IdleSince $now.AddMinutes(-300) -Now $now `
+    -ThresholdMinutes 20 -AlreadyAlerted $true -TodoCount 5
+Assert-True ($repeat.ShouldAlert -eq $false) `
+    "a stall already reported is not reported again every 20 minutes"
+
+# ===========================================================================
+# 6. THE COUNT IN THE SUBJECT IS REAL
+#
+# The subject line promises a number of waiting jobs. If that number came from
+# a parser that quietly returned zero, the alert would never fire at all - the
+# exact defect class this repository has recorded eight times.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "6. The waiting-jobs count is read from a real queue file"
+
+$fixture = Join-Path $env:TEMP "relay-selftest-queue.md"
+@(
+    "| 1 | done thing | DONE 4 |"
+    "| 2 | waiting thing | TODO |"
+    "| 3 | running thing | IN PROGRESS 29 |"
+    "| 4 | another waiting thing | TODO |"
+    "| 5 | held thing | BLOCKED waiting on Greg |"
+) | Set-Content -Path $fixture -Encoding utf8
+
+Assert-True ((Get-QueueTodoCount $fixture) -eq 2) `
+    "exactly the TODO rows are counted, not DONE / IN PROGRESS / BLOCKED (got $(Get-QueueTodoCount $fixture))"
+
+# The 2026-08-26 fault, reproduced: a row whose status cell cannot be read.
+# It must be REPORTED, and reported ONCE per distinct broken row.
+$broken = Join-Path $env:TEMP "relay-selftest-queue-broken.md"
+@(
+    "| 1 | done thing | DONE 4 |"
+    "| 2 | a row whose status nobody can read | ?????? |"
+    "| 3 | waiting thing | TODO |"
+) | Set-Content -Path $broken -Encoding utf8
+
+$badRows = @(Get-QueueRows $broken | Where-Object { -not $_.Parsed })
+Assert-True ($badRows.Count -eq 1) `
+    "an unreadable row is found and kept, never silently dropped (found $($badRows.Count))"
+Assert-True ($badRows[0].Number -eq "2") `
+    "the alert can say WHICH row is broken - that is exactly what bit us (got row $($badRows[0].Number))"
+
+Assert-True ((Register-BadRowAlert "row-2-version-a") -eq $true) `
+    "a newly broken row is reported"
+Assert-True ((Register-BadRowAlert "row-2-version-a") -eq $false) `
+    "the same broken row is not reported again on every retry"
+Assert-True ((Register-BadRowAlert "row-2-version-b") -eq $true) `
+    "but a DIFFERENT broken row is reported, so a second fault is never masked"
+
+Remove-Item $fixture -Force -ErrorAction SilentlyContinue
+Remove-Item $broken  -Force -ErrorAction SilentlyContinue
+
 # ===========================================================================
 
 Write-Host ""

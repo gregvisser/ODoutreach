@@ -1,0 +1,30 @@
+-- Related-domain detection by shared Microsoft 365 tenant.
+--
+-- ADDITIVE. One new value on an existing enum. No table, column, constraint or
+-- row is touched, nothing is dropped, and no existing value is renamed or
+-- reordered — every row already in "SuppressedDomainFamilyProposal" keeps the
+-- source it was written with, and every existing query still matches.
+--
+-- WHY IT IS SAFE TO ADD A VALUE AND NOT TO REMOVE ONE: PostgreSQL enum values
+-- cannot be dropped, so this migration is one-way. That is acceptable here
+-- because an unused enum value costs nothing; the reverse (removing a value
+-- some row still holds) is the dangerous direction and is not what this does.
+--
+-- ORDERING NOTE: the value is appended rather than placed with `BEFORE`/`AFTER`.
+-- Enum ordering is what `ORDER BY` on the column would use, and appending keeps
+-- the existing two in the order they already had.
+--
+-- WHAT THIS ENABLES: reading a link that DMARC and SPF cannot see. Measured
+-- 2026-08-27 against live records — halifax.co.uk and bankofscotland.co.uk both
+-- publish their DMARC reports to a shared vendor (rua.agari.com) and neither
+-- uses SPF `redirect=`, so the existing two sources find nothing; both are
+-- verified domains of Microsoft tenant 3ded2960-214a-46ff-8cf4-611f125e2398.
+--
+-- WHAT IT CANNOT DO ON ITS OWN: block anything. A row in the proposal table is
+-- a question. Automatic blocking is additionally gated on the
+-- SUPPRESSION_TENANT_AUTO_BLOCK_ENABLED environment flag, which is unset — and
+-- therefore off — in production at the time this migration was written.
+--
+-- ROLLBACK: none needed. Leaving the value in place with no rows using it is
+-- inert; if the feature is abandoned, stop writing the value.
+ALTER TYPE "FamilyProposalSource" ADD VALUE 'MICROSOFT_TENANT';

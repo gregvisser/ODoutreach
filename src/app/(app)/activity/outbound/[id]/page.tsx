@@ -36,7 +36,7 @@ export default async function OutboundDetailPage({ params }: Props) {
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link
+          <Link prefetch={false}
             href="/activity"
             className="text-sm text-muted-foreground underline-offset-2 hover:underline"
           >
@@ -230,7 +230,7 @@ export default async function OutboundDetailPage({ params }: Props) {
 
       <div className="flex flex-wrap gap-2">
         {row.contact ? (
-          <Link
+          <Link prefetch={false}
             href={`/contacts?client=${row.clientId}`}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >

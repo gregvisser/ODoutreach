@@ -70,6 +70,19 @@ $LogDir     = Join-Path $RelayDir "log"
 $MaxCycles  = 40
 $SleepSecs  = 60
 
+# How long to wait before re-reading QUEUE.md after the relay REFUSED to take an
+# item (a malformed row, a BLOCKED row, an exhausted queue).
+#
+# A refusal used to be permanent: the code set $lastSelfQueued = $cycle, which
+# made the guard `$lastSelfQueued -ge $cycle` true forever, and because that
+# number is persisted to STATUS.json, restarting the relay INHERITED the
+# deadlock. The relay looked alive - it logged, it self-tested, it slept - and
+# could never take another item. Seventh instance of the house defect.
+#
+# A refusal is temporary. The usual cause is a human fixing the queue row
+# moments later. So: back off, then look again.
+$RefusalRetryMins = 5
+
 # How long one cycle may take before it is killed.
 #
 # Before this existed, a hung `claude -p` blocked the watcher forever and only a
@@ -84,6 +97,46 @@ $CycleTimeoutMinutes = 45
 # The workflow that does the actual emailing. See Send-RelayAlert.
 $AlertWorkflow = "relay-alert.yml"
 $AlertRef      = "main"
+
+# WHICH repository that workflow lives in, named explicitly.
+#
+# 2026-08-27: `gh workflow run` works out the repository from the CURRENT
+# DIRECTORY's git remote. That is an invisible dependency on the working
+# directory, and the stall proof tripped over it on its first run: the relay
+# detected its own silence perfectly, then could not report it, because gh had
+# been started somewhere that was not a git checkout.
+#
+# In normal operation the watcher does Set-Location $RepoRoot first, so this has
+# never bitten the live relay. But an alarm whose delivery depends on where it
+# was launched from is an alarm with a hidden way to fail, and the entire point
+# of this machinery is that the failure of last resort must still get through.
+#
+# Resolved ONCE, from this script's own folder, so the answer does not change
+# with the working directory.
+function Resolve-AlertRepo {
+    # An explicit override wins, which is what lets relay-stall-proof.ps1 run the
+    # real watcher from a sandbox that is deliberately not a git checkout.
+    if ($env:RELAY_ALERT_REPO) { return $env:RELAY_ALERT_REPO }
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $url = (& git -C $PSScriptRoot remote get-url origin 2>$null | Out-String).Trim()
+    } catch {
+        $url = ""
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if ([string]::IsNullOrWhiteSpace($url)) { return "" }
+
+    # Handles both https://github.com/owner/repo.git and git@github.com:owner/repo
+    $m = [regex]::Match($url, 'github\.com[:/]+([^/\s]+/[^/\s]+?)(?:\.git)?\s*$')
+    if ($m.Success) { return $m.Groups[1].Value }
+    return ""
+}
+
+$AlertRepo = Resolve-AlertRepo
 
 # The DIRECT App Service URL, deliberately NOT the custom domain.
 #
@@ -127,17 +180,24 @@ function Read-Status {
         if ($null -eq $s.lastSelfQueued) {
             $s | Add-Member -NotePropertyName lastSelfQueued -NotePropertyValue -1 -Force
         }
+        if ($null -eq $s.PSObject.Properties['refusedAt']) {
+            $s | Add-Member -NotePropertyName refusedAt -NotePropertyValue $null -Force
+        }
         return $s
     }
     catch { return [pscustomobject]@{ cycle = 0; lastOutcome = "status file unreadable"; updated = $null; lastSelfQueued = -1 } }
 }
 
-function Save-Status($cycle, $outcome, $lastSelfQueued) {
+function Save-Status($cycle, $outcome, $lastSelfQueued, $refusedAt) {
+    # $refusedAt is deliberately the LAST parameter and deliberately optional.
+    # Every call site that does not pass it clears it, which is what we want:
+    # any call that records real progress means the refusal is over.
     $status = [pscustomobject]@{
         cycle          = $cycle
         lastOutcome    = $outcome
         updated        = (Get-Date -Format "o")
         lastSelfQueued = $lastSelfQueued
+        refusedAt      = $refusedAt
     }
     $status | ConvertTo-Json | Set-Content -Path $StatusFile -Encoding utf8
 }
@@ -192,10 +252,33 @@ function Test-AlertPathArmed {
     if (-not $authed) {
         return [pscustomobject]@{ Ok = $false; Detail = "gh is installed but not signed in, so a dispatch would be rejected" }
     }
-    return [pscustomobject]@{ Ok = $true; Detail = "gh is signed in and $AlertWorkflow is present" }
+    if ([string]::IsNullOrWhiteSpace($AlertRepo)) {
+        return [pscustomobject]@{ Ok = $false; Detail = "the GitHub repository could not be worked out, so gh would not know where to send the alert" }
+    }
+    return [pscustomobject]@{ Ok = $true; Detail = "gh is signed in, $AlertWorkflow is present, and the repo is $AlertRepo" }
 }
 
 function Send-RelayAlert($subject, $body) {
+    # ---------------------------------------------------------------------
+    # THE TEST-SUITE MUTE, AND WHY IT CANNOT BE USED TO BUY SILENCE
+    #
+    # 2026-08-27: adding the unparseable-row alert made `npm test` send two real
+    # emails, because relay/queue-parser.test.ts dot-sources this very file and
+    # drives Invoke-SelfQueue across a deliberately broken row. A test suite that
+    # emails a human is a test suite people stop running.
+    #
+    # The obvious fix - an env var that switches alerting off - is also the
+    # obvious way to defeat the entire point of this machinery. So it is paired
+    # with a check in relay-selftest.ps1 that REFUSES TO START THE RELAY while
+    # this variable is set. The mute therefore cannot be applied to the process
+    # that matters: setting it stops the relay loudly rather than letting it run
+    # deaf. The only thing it can silence is a test harness.
+    # ---------------------------------------------------------------------
+    if ($env:RELAY_ALERT_SUPPRESS) {
+        Write-Line "ALERT SUPPRESSED because RELAY_ALERT_SUPPRESS is set (test harness only). Would have sent: $subject"
+        return $false
+    }
+
     $armed = Test-AlertPathArmed
     if (-not $armed.Ok) {
         Write-Line "COULD NOT EMAIL GREG: $($armed.Detail). The alert was: $subject"
@@ -213,7 +296,7 @@ function Send-RelayAlert($subject, $body) {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $out = & gh workflow run $AlertWorkflow --ref $AlertRef -f "subject=$subject" -f "body=$trimmed" 2>&1 | Out-String
+        $out = & gh workflow run $AlertWorkflow --repo $AlertRepo --ref $AlertRef -f "subject=$subject" -f "body=$trimmed" 2>&1 | Out-String
         $ok  = ($LASTEXITCODE -eq 0)
     } catch {
         $out = $_.Exception.Message
@@ -236,7 +319,19 @@ function Stop-Relay($why) {
     Write-Line "The HALT file now exists. Delete it before starting again."
     # The relay stopping IS the news. Waiting for him to notice a closed window
     # is the failure this cycle exists to remove.
-    Send-RelayAlert "ODoutreach relay STOPPED" @"
+    #
+    # The subject carries the count of waiting jobs because on a phone it may be
+    # the only part he sees, and "STOPPED" alone does not say whether the night
+    # still has work in it. This is the path the 40-cycle cap arrives on.
+    $waiting = 0
+    try { $waiting = Get-QueueTodoCount } catch { $waiting = 0 }
+    $stopSubject = if ($waiting -gt 0) {
+        "ODoutreach relay STOPPED - $waiting jobs still waiting, restart it"
+    } else {
+        "ODoutreach relay STOPPED - queue empty, nothing left waiting"
+    }
+
+    Send-RelayAlert $stopSubject @"
 The relay has stopped and will not pick up any more work until it is started again.
 
 Why it stopped:
@@ -569,18 +664,130 @@ function Get-EvidenceVerdict($before, $after, $namedFiles) {
 # ===========================================================================
 
 # Rows look like: | 2 | Item text | TODO |
-function Get-QueueRows {
-    if (-not (Test-Path $QueueFile)) { return @() }
+#
+# ---------------------------------------------------------------------------
+# WHY THIS IS A REGEX AND NOT A SPLIT ON "|"
+#
+# It used to be `-split '\|'` with the status read as `$parts[$parts.Count - 2]`.
+# That is the status ONLY when the row contains exactly four pipes.
+#
+# 2026-08-26: item 31's status text quoted the Azure runtime string
+# "NODE|20-lts". That fifth pipe shifted every column, the status came back as
+# the fragment starting "20-lts", no branch recognised it, and the watcher wrote
+# a note saying the next item had an unrecognised status and idled for the rest
+# of the evening - with a fully green queue behind it. One cycle lost, silently.
+#
+# `Set-QueueRowStatus` had the same defect and was worse: it WROTE to that index,
+# so it would have overwritten the wrong half of the row.
+#
+# The cure is to stop counting fields. The id is anchored to the front of the
+# row and the status to the LAST cell boundary that is followed by a status the
+# relay actually recognises, so an inner pipe - in the item text or in the status
+# text - cannot move either one.
+#
+# Honest limit: a status cell that itself contained the literal text "| TODO"
+# would still be ambiguous, because at that point the row genuinely is. Nothing
+# short of escaping the delimiter fixes that, and no row has ever done it.
+# ---------------------------------------------------------------------------
+$QueueStatusKeywords = 'TODO|DONE|BLOCKED|PARTIAL|IN PROGRESS|WONTFIX'
+
+# Groups, identical in both patterns below:
+#   1 = "| id |" prefix, 2 = id, 3 = item cell, 4 = the boundary pipe,
+#   5 = status cell, 6 = the closing pipe and any trailing space.
+# Group 3 is greedy on purpose: that is what makes group 4 the LAST viable
+# boundary rather than the first.
+#
+# The leading "**" is matched but NOT captured. Rows in this queue are routinely
+# written with the status in markdown bold - "| **PARTIAL 17 - ...** |" - and
+# item 27 was exactly that. Capturing it would put "**" in front of the keyword
+# and break every `-match '^DONE'` test downstream, so the emphasis is stepped
+# over and group 5 always begins at the keyword itself. Leaving it out of the
+# capture also means Set-QueueRowStatus drops it cleanly on rewrite.
+#
+# ---------------------------------------------------------------------------
+# WHY THERE ARE TWO PATTERNS AND THE STRICT ONE IS TRIED FIRST
+#
+# "Last boundary followed by a status keyword" is not enough on its own, and this
+# cycle proved it the hard way. The status written for item 32 quoted the parser's
+# own keyword list - "TODO|DONE|BLOCKED|PARTIAL|IN PROGRESS|WONTFIX" - so the row
+# contained a pipe sitting immediately in front of the word WONTFIX. The loose
+# pattern anchored there, read the status as "WONTFIX), so an inner pipe...", and
+# the relay would have re-taken an item it had just finished.
+#
+# The discriminator is whitespace. A real cell boundary in this table is always
+# written " | " with a space on each side. The pipes that cause trouble never are:
+# "NODE|20-lts", "a|b", "TODO|DONE" are all written tight. So the STRICT pattern
+# requires whitespace on both sides of the boundary, which excludes every inline
+# pipe seen so far, and the LOOSE pattern is kept only as a fallback for a row
+# written compactly as "|32|item|TODO|".
+#
+# Honest limit: a status cell containing the literal text " | TODO " - spaces and
+# all - would still be ambiguous, because at that point the row genuinely is.
+# Nothing short of escaping the delimiter fixes that.
+# ---------------------------------------------------------------------------
+$QueueRowPatternStrict =
+    "^(\s*\|\s*(\d+)\s*\|)(.*\s)(\|)\s+(?:\*{1,2}|_{1,2})?\s*((?:$QueueStatusKeywords)\b.*?)\s*(\|\s*)$"
+
+$QueueRowPatternLoose =
+    "^(\s*\|\s*(\d+)\s*\|)(.*)(\|)\s*(?:\*{1,2}|_{1,2})?\s*((?:$QueueStatusKeywords)\b.*?)\s*(\|\s*)$"
+
+# One reader, so Get-QueueRows and Set-QueueRowStatus can never disagree about
+# where a row's columns are. They did once, and it wrote to the wrong half.
+function Get-QueueRowMatch([string]$line) {
+    $m = [regex]::Match($line, $QueueRowPatternStrict)
+    if ($m.Success) { return $m }
+    return [regex]::Match($line, $QueueRowPatternLoose)
+}
+
+# Anything that is shaped like a numbered row, whether or not its status parses.
+# Used to tell "this row is broken" apart from "this line is not a row at all" -
+# the distinction the lost cycle needed and did not have.
+$QueueRowShapePattern = '^\s*\|\s*(\d+)\s*\|.*\|\s*$'
+
+# $Path is a parameter, defaulting to the real queue, ONLY so the self-test can
+# point the parser at a fixture. The loop never passes it. A parser that can only
+# be run against the live file is a parser that never gets tested until the night
+# it matters, which is how the malformed row of 2026-08-26 reached production.
+function Get-QueueRows([string]$Path = $QueueFile) {
+    if (-not (Test-Path $Path)) { return @() }
     $rows = New-Object System.Collections.Generic.List[object]
-    $lines = Get-Content $QueueFile
+    $lines = Get-Content $Path
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $parts = $lines[$i] -split '\|'
-        if ($parts.Count -lt 4) { continue }
-        $number = $parts[1].Trim()
-        if ($number -notmatch '^\d+$') { continue }
-        $status = $parts[$parts.Count - 2].Trim()
-        $item   = ($parts[2..($parts.Count - 3)] -join '|').Trim()
-        $rows.Add([pscustomobject]@{ Number = $number; Item = $item; Status = $status; LineIndex = $i })
+        # [string] strips the PSPath / PSDrive / PSProvider NoteProperties that
+        # Windows PowerShell 5.1 - the host relay-start.cmd actually uses - hangs
+        # off every line Get-Content returns. Without it, `Raw` below carries the
+        # whole filesystem-provider object graph, and anything that serialises a
+        # row balloons to hundreds of kilobytes. PowerShell 7 does not decorate
+        # its strings, so this is invisible until it runs on the real host.
+        $line = [string]$lines[$i]
+
+        $m = Get-QueueRowMatch $line
+        if ($m.Success) {
+            $rows.Add([pscustomobject]@{
+                Number    = $m.Groups[2].Value.Trim()
+                Item      = $m.Groups[3].Value.Trim()
+                Status    = $m.Groups[5].Value.Trim()
+                LineIndex = $i
+                Raw       = [string]$line
+                Parsed    = $true
+            })
+            continue
+        }
+
+        # Shaped like a row, but carrying no status the relay knows. It is
+        # RETURNED, flagged - never dropped. A dropped row reads downstream as
+        # "the queue ran out of work", which is the lie that cost the cycle.
+        $shape = [regex]::Match($line, $QueueRowShapePattern)
+        if ($shape.Success) {
+            $rows.Add([pscustomobject]@{
+                Number    = $shape.Groups[1].Value.Trim()
+                Item      = ""
+                Status    = $null
+                LineIndex = $i
+                Raw       = [string]$line
+                Parsed    = $false
+            })
+        }
     }
     return $rows
 }
@@ -588,15 +795,154 @@ function Get-QueueRows {
 function Set-QueueRowStatus($number, $newStatus) {
     $lines = Get-Content $QueueFile
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $parts = $lines[$i] -split '\|'
-        if ($parts.Count -lt 4) { continue }
-        if ($parts[1].Trim() -ne $number) { continue }
-        $parts[$parts.Count - 2] = " $newStatus "
-        $lines[$i] = ($parts -join '|')
+        $m = Get-QueueRowMatch ([string]$lines[$i])
+        if (-not $m.Success) { continue }
+        if ($m.Groups[2].Value.Trim() -ne $number) { continue }
+
+        # Rebuild from the SAME anchor the reader used: everything up to and
+        # including the boundary pipe is kept byte for byte, only the status cell
+        # is replaced. A row this function cannot parse is a row it refuses to
+        # touch - guessing at the columns is how the old version corrupted them.
+        $lines[$i] = $m.Groups[1].Value + $m.Groups[3].Value + $m.Groups[4].Value +
+                     " $newStatus " + $m.Groups[6].Value
         Set-Content -Path $QueueFile -Value $lines -Encoding utf8
         return $true
     }
     return $false
+}
+
+# ===========================================================================
+# GOING QUIET IS ITSELF A FAULT
+#
+# 2026-08-26, twice in one day: the relay went silent with a full queue behind
+# it, and both times a human noticed rather than the machine reporting it. Once
+# a cycle hung; once a single malformed row made it idle for thirty minutes.
+# Overnight, unattended, either one costs the entire night.
+#
+# The hard part is not detecting it. It is that a stalled relay and a healthy
+# relay produce EXACTLY THE SAME OBSERVABLE: nothing. Silence cannot be
+# distinguished from success by looking, which is why this has to push.
+#
+# WHY THE STALL STATE LIVES IN MEMORY AND NOT IN STATUS.json
+#
+# Save-Status rebuilds the whole status object on every call, and the refusal
+# path calls it once a minute. A stall clock stored there would be reset by an
+# unrelated write every sixty seconds and could never reach twenty minutes - the
+# alert would be built, wired, report success, and never fire. That is the house
+# defect, and putting this field in that file would be walking straight into it.
+#
+# A stall is a property of a RUNNING watcher, so it is held by the running
+# watcher. The honest cost: if the watcher process itself dies - window closed,
+# machine asleep - nothing here can email, because nothing here is executing.
+# That case is NOT covered and must not be claimed as covered.
+# ===========================================================================
+
+# How long the loop may go round without starting a cycle before it shouts.
+# Twenty minutes is from the queue item. It is comfortably longer than the
+# 5-minute refusal cooldown, so an ordinary retry never trips it.
+$StallAlertAfterMinutes = 20
+
+# RELAY_STALL_MINUTES exists so the alarm can be PROVEN without waiting twenty
+# real minutes for it - relay-stall-proof.ps1 sets it to 1 and stalls the relay
+# on purpose. An alarm that is too slow to test is an alarm nobody ever tests.
+#
+# It is CLAMPED to 1..20, so this knob can only ever make the relay shout
+# SOONER. A typo, a stale variable left in a shell, or someone trying to quieten
+# it cannot push the alarm out past twenty minutes or switch it off. The one
+# thing this must never become is a way to buy silence.
+if ($env:RELAY_STALL_MINUTES) {
+    $requested = 0
+    if ([int]::TryParse($env:RELAY_STALL_MINUTES, [ref]$requested) -and $requested -ge 1 -and $requested -le 20) {
+        $StallAlertAfterMinutes = $requested
+    }
+}
+
+function Get-QueueTodoCount([string]$Path = $QueueFile) {
+    # Only rows that parsed AND say TODO. An unreadable row is deliberately not
+    # counted here - it gets its own, louder alert that names the row.
+    return @(Get-QueueRows $Path | Where-Object { $_.Parsed -and $_.Status -match '^TODO' }).Count
+}
+
+# Pure decision, so the self-test can drive it with injected time instead of
+# waiting twenty real minutes for an answer.
+function Get-StallVerdict {
+    param(
+        [Parameter(Mandatory = $true)][datetime]$IdleSince,
+        [Parameter(Mandatory = $true)][datetime]$Now,
+        [Parameter(Mandatory = $true)][int]$ThresholdMinutes,
+        [Parameter(Mandatory = $true)][bool]$AlreadyAlerted,
+        [Parameter(Mandatory = $true)][int]$TodoCount
+    )
+
+    $minutes = [math]::Round(($Now - $IdleSince).TotalMinutes, 1)
+
+    $verdict = [pscustomobject]@{
+        ShouldAlert = $false
+        Minutes     = $minutes
+        Reason      = ""
+        Subject     = ""
+        Body        = ""
+    }
+
+    # An empty queue is not a stall, it is a finished night. Emailing about it
+    # would teach Greg that these alerts are noise, and the one that matters
+    # would be ignored with the rest.
+    if ($TodoCount -lt 1) {
+        $verdict.Reason = "idle for $minutes min, but no job is waiting - the relay has run out of work, which is not a fault"
+        return $verdict
+    }
+
+    if ($minutes -lt $ThresholdMinutes) {
+        $verdict.Reason = "idle for $minutes min, which is under the $ThresholdMinutes min threshold - a gap between items is normal"
+        return $verdict
+    }
+
+    # "Send once per stall, not every 20 minutes" - verbatim from the queue item.
+    if ($AlreadyAlerted) {
+        $verdict.Reason = "idle for $minutes min with $TodoCount waiting, but Greg has already been told about THIS stall"
+        return $verdict
+    }
+
+    $jobWord = if ($TodoCount -eq 1) { "job" } else { "jobs" }
+
+    $verdict.ShouldAlert = $true
+    $verdict.Reason      = "idle for $minutes min with $TodoCount $jobWord waiting"
+    # The subject has to work as a phone notification, where it may be all he
+    # ever sees. So it says what happened and how much is at stake, not "alert".
+    $verdict.Subject     = "ODoutreach relay STALLED - $TodoCount $jobWord waiting, nothing running"
+    $verdict.Body        = @"
+The relay has not started a cycle for $minutes minutes, and $TodoCount $jobWord in
+QUEUE.md are still waiting. Nothing is running. Nothing will run until this is
+cleared, so the rest of the night is being lost while you read this.
+
+WHAT TO DO, in order:
+
+1. Look at the PowerShell window running relay-watch.ps1. The last few lines say
+   what it decided and why.
+2. Read .bidlow\relay\SELF-QUEUE-NOTE.md. If the relay refused to take an item,
+   that file names the item and the reason - most often one row in QUEUE.md whose
+   status cell it cannot read.
+3. If the window is gone, the watcher itself has died. Run relay-start.cmd in the
+   repository folder to bring it back; it clears the HALT file for you.
+
+Nothing has been skipped, nothing has been changed, and no work has been lost.
+The queue is exactly where it was.
+"@
+    return $verdict
+}
+
+# True the FIRST time this exact broken row is seen, false on every retry after.
+#
+# The relay re-reads QUEUE.md every five minutes after a refusal, so without this
+# a single bad row would email Greg twelve times an hour and train him to filter
+# the alert that was supposed to save the night. Keying on the row's full text
+# rather than its number is deliberate: if someone edits the row and it is STILL
+# broken, that is a new fault and it gets a new email.
+$script:LastBadRowAlerted = $null
+function Register-BadRowAlert([string]$rowKey) {
+    if ($script:LastBadRowAlerted -eq $rowKey) { return $false }
+    $script:LastBadRowAlerted = $rowKey
+    return $true
 }
 
 function Write-SelfQueueNote($text) {
@@ -618,15 +964,80 @@ function Invoke-SelfQueue($nextCycle) {
     }
 
     # "In order" means: the first row that is not already finished or running.
-    # Do not reorder, do not skip, do not invent.
-    $next = $rows | Where-Object { $_.Status -notmatch '^DONE' -and $_.Status -notmatch '^IN PROGRESS' } | Select-Object -First 1
+    # Do not reorder, do not skip, do not invent. A row that would not parse
+    # counts as "not finished" and stops the queue here, deliberately - skipping
+    # past it would hide the fault and run the wrong item.
+    $next = $rows | Where-Object {
+        (-not $_.Parsed) -or ($_.Status -notmatch '^DONE' -and $_.Status -notmatch '^IN PROGRESS')
+    } | Select-Object -First 1
 
     if ($null -eq $next) {
         Write-SelfQueueNote "Every item in QUEUE.md is DONE or IN PROGRESS. The queue is exhausted, so the relay is idling rather than inventing work. Greg needs to add the next item."
         return $false
     }
 
-    if ($next.Status -match 'BLOCKED') {
+    # The guard that makes a formatting fault LOUD.
+    #
+    # The lost cycle of 2026-08-26 read a mangled status, did not recognise it,
+    # and wrote a note that read like an ordinary exhausted queue. Nobody could
+    # tell from the note that the queue was fine and the PARSER was wrong. So
+    # when the relay cannot read a row, it now prints the row.
+    if (-not $next.Parsed) {
+        Write-SelfQueueNote @"
+The next row in order is #$($next.Number), and the relay could not read it.
+
+It is shaped like a queue row, but its status cell does not start with any status
+the relay recognises. Those are: TODO, DONE, BLOCKED, PARTIAL, IN PROGRESS, WONTFIX.
+
+This is the row exactly as it appears in QUEUE.md, line $($next.LineIndex + 1):
+
+    $($next.Raw)
+
+THE QUEUE IS NOT EMPTY - this is a formatting fault in one row, and there may be
+perfectly good work behind it. Fix that row's status cell and the relay will pick
+up again on its own within $RefusalRetryMins minutes. Nothing has been skipped and
+nothing has been changed.
+"@
+
+        # This is the fault that cost thirty minutes on 2026-08-26, and the note
+        # above is exactly what was written that day - into a file nobody was
+        # reading, while the relay sat silent. A note is a record, not an alarm.
+        # So this one pushes, and it names the row, because "the queue is broken"
+        # without saying WHICH row is the message that wasted the evening.
+        $rowKey = "$($next.Number)|$($next.Raw)"
+        if (Register-BadRowAlert $rowKey) {
+            $waiting = Get-QueueTodoCount
+            Send-RelayAlert "ODoutreach relay STUCK - QUEUE.md row $($next.Number) cannot be read, $waiting jobs behind it" @"
+The relay has stopped taking work because it cannot read one row in QUEUE.md.
+It will not skip past it, because the order of the queue is the plan.
+
+THE ROW IS #$($next.Number), on line $($next.LineIndex + 1) of .bidlow\relay\QUEUE.md:
+
+    $($next.Raw)
+
+The status cell - the last column - must START with one of these words:
+TODO, DONE, BLOCKED, PARTIAL, IN PROGRESS, WONTFIX.
+
+Fix that one cell and the relay picks up again BY ITSELF within $RefusalRetryMins
+minutes. You do not need to restart anything.
+
+$waiting other job(s) are waiting behind this row. Nothing has been skipped,
+nothing has been changed, and no work has been lost.
+"@ | Out-Null
+        }
+
+        return $false
+    }
+
+    # ANCHORED, and that anchor is load-bearing.
+    #
+    # This was `-match 'BLOCKED'`. PowerShell's -match is an unanchored,
+    # CASE-INSENSITIVE substring test, so a status that merely mentioned the word
+    # in passing halted the relay. Found by replaying the 2026-08-26 queue through
+    # the fixed parser: row 27's status read "PARTIAL 17 - ... (3) blocked on
+    # tooling ...", and the relay stopped dead on a row that was not blocked at
+    # all. Same defect class as the pipe - a status cell read by guesswork.
+    if ($next.Status -match '^BLOCKED') {
         Write-SelfQueueNote "The next item in order is #$($next.Number), and it is BLOCKED:`n`n> $($next.Item)`n`nThe relay does not skip past a blocked item, because the order is the plan. Idling until Greg unblocks it or reorders the queue."
         return $false
     }
@@ -637,7 +1048,20 @@ function Invoke-SelfQueue($nextCycle) {
     }
 
     if ($next.Status -notmatch '^TODO') {
-        Write-SelfQueueNote "The next item in order is #$($next.Number) with status '$($next.Status)', which the relay does not recognise as ready. Only TODO is taken automatically. Idling."
+        # The row parsed cleanly - this is a real status the relay simply does
+        # not take automatically. The raw row goes in anyway, because the one
+        # thing the lost cycle proved is that a status quoted out of context is
+        # not enough to tell a deliberate hold from a broken cell.
+        Write-SelfQueueNote @"
+The next item in order is #$($next.Number), and its status is '$($next.Status)'.
+
+Only TODO is taken automatically, so the relay is idling rather than deciding for
+itself that this counts as ready.
+
+The row as it appears in QUEUE.md, line $($next.LineIndex + 1):
+
+    $($next.Raw)
+"@
         return $false
     }
 
@@ -792,11 +1216,39 @@ $($selfTestOutput.Trim())
     exit 1
 }
 
+# The stall clock. See "GOING QUIET IS ITSELF A FAULT" above.
+#
+# It starts at NOW rather than at zero: a watcher that has only just started has
+# not been idle for twenty minutes, and an alert on every start is an alert Greg
+# learns to delete unread.
+$idleSince    = Get-Date
+$stallAlerted = $false
+
 while ($true) {
 
     if (Test-Path $HaltFile) {
         Write-Line "HALT file found. Stopping cleanly."
         exit 0
+    }
+
+    # Has the loop gone quiet with work still waiting?
+    #
+    # This sits at the top, before every branch, on purpose. The two stalls of
+    # 2026-08-26 happened in two DIFFERENT idle paths, and a check bolted onto
+    # each path individually would have missed the third one nobody predicted.
+    # Everything passes through here, so everything is covered.
+    $stall = Get-StallVerdict -IdleSince $idleSince -Now (Get-Date) `
+        -ThresholdMinutes $StallAlertAfterMinutes `
+        -AlreadyAlerted   $stallAlerted `
+        -TodoCount        (Get-QueueTodoCount)
+
+    if ($stall.ShouldAlert) {
+        Write-Line "STALLED: $($stall.Reason). Emailing Greg."
+        Send-RelayAlert $stall.Subject $stall.Body | Out-Null
+        # Marked as told even if the dispatch failed. Send-RelayAlert already
+        # shouts in the window when it cannot send, and re-trying a broken
+        # dispatch every sixty seconds would bury that message under itself.
+        $stallAlerted = $true
     }
 
     $status         = Read-Status
@@ -816,14 +1268,33 @@ while ($true) {
             continue
         }
 
+        # Did we refuse recently? If so, wait $RefusalRetryMins before looking
+        # at QUEUE.md again, so we do not rewrite the same note every minute.
+        # This is a COOLDOWN, not a stop. It always expires.
+        if ($status.refusedAt) {
+            $since = $null
+            try { $since = ((Get-Date) - [datetime]::Parse($status.refusedAt)).TotalMinutes } catch { $since = $null }
+            if ($null -ne $since -and $since -lt $RefusalRetryMins) {
+                Start-Sleep -Seconds $SleepSecs
+                continue
+            }
+            if ($null -ne $since) {
+                Write-Line ("Refusal cooldown of {0} min has expired. Re-reading QUEUE.md." -f $RefusalRetryMins)
+            }
+        }
+
         if (Invoke-SelfQueue ($cycle + 1)) {
             $lastSelfQueued = $cycle
+            # No $refusedAt argument: taking an item clears any refusal.
             Save-Status $cycle $status.lastOutcome $lastSelfQueued
         } else {
-            # Refused, and the note says why. Record the attempt so we do not
-            # rewrite the same note every 60 seconds.
-            $lastSelfQueued = $cycle
-            Save-Status $cycle $status.lastOutcome $lastSelfQueued
+            # Refused, and the note says why.
+            #
+            # DO NOT set $lastSelfQueued here. That is what deadlocked the relay
+            # permanently and survived restarts. Stamp the time instead and let
+            # the cooldown above expire on its own.
+            Write-Line ("Refused to take an item. Will re-read QUEUE.md in {0} min. See SELF-QUEUE-NOTE.md." -f $RefusalRetryMins)
+            Save-Status $cycle $status.lastOutcome $lastSelfQueued (Get-Date -Format "o")
             Start-Sleep -Seconds $SleepSecs
             continue
         }
@@ -980,6 +1451,12 @@ either way.
     if ($alertSubject) {
         Send-RelayAlert $alertSubject $alertBody | Out-Null
     }
+
+    # A cycle ran, so the relay is demonstrably alive: restart the stall clock.
+    # Clearing $stallAlerted too means a LATER stall is a new stall and gets its
+    # own email - "once per stall", not "once per night".
+    $idleSince    = Get-Date
+    $stallAlerted = $false
 
     Start-Sleep -Seconds $SleepSecs
 }

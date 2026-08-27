@@ -29,7 +29,7 @@ function statusBadge(status: string) {
       return <span className={`${base} bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300`}>{status}</span>;
     case "Sent — time unavailable":
       return <span className={`${base} bg-emerald-50/60 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400`}>{status}</span>;
-    case "Send proof missing":
+    case "Sent, not confirmed":
       return <span className={`${base} bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300`}>{status}</span>;
     case "Failed":
       return <span className={`${base} bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300`}>{status}</span>;
@@ -72,7 +72,7 @@ const STATUS_FILTER_LABELS = [
   "Sent — time unavailable",
   "Awaiting send",
   "Queued",
-  "Send proof missing",
+  "Sent, not confirmed",
   "Failed",
   "Bounced",
   "Replied",
@@ -137,7 +137,7 @@ function matchesStatus(row: ContactDeliveryRow, filter: StatusFilterLabel): bool
       row.sendStatus !== "Sent — time unavailable" &&
       row.sendStatus !== "Awaiting send" &&
       row.sendStatus !== "Queued" &&
-      row.sendStatus !== "Send proof missing" &&
+      row.sendStatus !== "Sent, not confirmed" &&
       row.sendStatus !== "Failed" &&
       row.sendStatus !== "Bounced" &&
       row.sendStatus !== "Replied" &&
@@ -332,7 +332,7 @@ export function ListDetailContactTable({ contacts }: Props) {
                 {expanded === c.contactId && (
                   <tr key={`${c.contactId}-detail`} className="bg-muted/30">
                     <td colSpan={9} className="px-6 py-3">
-                      {c.sendStatus === "Send proof missing" && (
+                      {c.sendStatus === "Sent, not confirmed" && (
                         <p className="mb-2 text-xs font-medium text-red-600 dark:text-red-400">
                           Marked sent, but no provider send proof was found.
                         </p>

@@ -14,7 +14,13 @@ import { Label } from "@/components/ui/label";
 export type FamilyView = {
   label: string;
   isBlocking: boolean;
-  members: { id: string; domain: string; isSuppressed: boolean }[];
+  members: {
+    id: string;
+    domain: string;
+    isSuppressed: boolean;
+    /** The system blocked this itself. Nobody agreed to it, so the row says so. */
+    addedAutomatically: boolean;
+  }[];
 };
 
 /**
@@ -112,10 +118,8 @@ export function DomainFamilyPanel({
 
       {families.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No related companies listed yet. Add one when a client blocks a company
-          that uses more than one domain — blocking <span className="font-mono">bt.com</span>{" "}
-          does not block <span className="font-mono">bteurope.com</span> on its own,
-          because nothing can tell they are the same company without being told.
+          No related companies listed yet. Add one whenever a client blocks a
+          company that trades under more than one domain.
         </p>
       ) : (
         <ul className="space-y-3">
@@ -143,6 +147,15 @@ export function DomainFamilyPanel({
                       {m.isSuppressed ? (
                         <span className="ml-2 font-sans text-xs text-muted-foreground">
                           on the do-not-contact list
+                        </span>
+                      ) : null}
+                      {/* Nobody agreed to this one. Say so where it is, next to
+                          the Remove button that undoes it. */}
+                      {m.addedAutomatically ? (
+                        <span className="ml-2 font-sans text-xs text-muted-foreground">
+                          added automatically — we found it shares a Microsoft
+                          365 account with a blocked company. Remove it if that
+                          is wrong.
                         </span>
                       ) : null}
                     </span>

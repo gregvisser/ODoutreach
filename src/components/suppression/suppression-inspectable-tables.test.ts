@@ -121,31 +121,59 @@ describe("Connected sheets filter helpers (PR #140)", () => {
   });
 });
 
-describe("Email / domain row filter helpers (PR #140)", () => {
-  const rows = [
-    { id: "r1", value: "alpha@example.test", clientName: "Alpha Client" },
-    { id: "r2", value: "bravo@example.test", clientName: "Bravo Client" },
-    { id: "r3", value: "charlie@other.test", clientName: "Alpha Client" },
-  ];
+/**
+ * Queue item 27 (7) — the blocked-rows table no longer filters or sorts in the
+ * browser, so the PR #140 `applyFilters` tests that used to live here have gone
+ * with the helper they covered.
+ *
+ * They were not weakened, they were superseded: filtering 200 already-loaded
+ * rows out of 30,229 answered "no matches" for addresses that WERE blocked, so
+ * the search moved into the database. What replaces them is stronger — the
+ * query-layer tests in `src/server/queries/suppression-rows.test.ts` and the
+ * browser test in `e2e/suppression-search.spec.ts`, which searches for an
+ * address that is provably not on the loaded page.
+ *
+ * What remains testable in this component is the paging/search URL it builds.
+ * That is worth pinning: if it drops the carried params, paging one table
+ * silently clears the other table's search, and a staff member is once again
+ * looking at a filtered list they did not ask for.
+ */
+describe("Blocked-row table paging links (queue item 27)", () => {
+  const { hrefWithOffset } = rowsTest;
 
-  it("matches against both value and client", () => {
-    expect(
-      rowsTest.applyFilters(rows, "alpha", "value", "asc").map((r) => r.id),
-    ).toEqual(["r1", "r3"]);
-    expect(
-      rowsTest.applyFilters(rows, "bravo", "value", "asc").map((r) => r.id),
-    ).toEqual(["r2"]);
+  it("keeps the client filter and the other table's state when paging", () => {
+    const href = hrefWithOffset(
+      { client: "client-a", domainQ: "bt.com" },
+      "email",
+      "",
+      200,
+    );
+    expect(href).toContain("client=client-a");
+    // The domain table's search must survive paging the email table.
+    expect(href).toContain("domainQ=bt.com");
+    expect(href).toContain("emailFrom=200");
   });
 
-  it("sorts ascending and descending by value and client", () => {
-    expect(
-      rowsTest.applyFilters(rows, "", "value", "asc").map((r) => r.id),
-    ).toEqual(["r1", "r2", "r3"]);
-    expect(
-      rowsTest.applyFilters(rows, "", "value", "desc").map((r) => r.id),
-    ).toEqual(["r3", "r2", "r1"]);
-    expect(
-      rowsTest.applyFilters(rows, "", "client", "asc").map((r) => r.id),
-    ).toEqual(["r1", "r3", "r2"]);
+  it("carries this table's own search across to the next page", () => {
+    const href = hrefWithOffset({}, "email", "joe@opensdoors.co.uk", 400);
+    expect(href).toContain("emailQ=joe%40opensdoors.co.uk");
+    expect(href).toContain("emailFrom=400");
+  });
+
+  it("omits the offset entirely on the first page", () => {
+    const href = hrefWithOffset({}, "domain", "bt", 0);
+    expect(href).not.toContain("domainFrom");
+    expect(href).toContain("domainQ=bt");
+  });
+
+  it("returns a bare path when there is nothing to carry", () => {
+    expect(hrefWithOffset({}, "email", "", 0)).toBe("/suppression");
+  });
+
+  it("builds the Clear link so it drops the search but keeps the filter", () => {
+    // This is exactly how the component renders "Clear": same params, no term.
+    const href = hrefWithOffset({ client: "client-a" }, "email", "", 0);
+    expect(href).toBe("/suppression?client=client-a");
+    expect(href).not.toContain("emailQ");
   });
 });

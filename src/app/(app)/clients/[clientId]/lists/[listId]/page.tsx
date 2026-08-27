@@ -78,7 +78,7 @@ export default async function ListDetailPage({ params }: Props) {
     <div className="space-y-8">
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <Link
+          <Link prefetch={false}
             href={`/clients/${clientId}/sources`}
             className="underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground/60"
           >
@@ -108,7 +108,7 @@ export default async function ListDetailPage({ params }: Props) {
           tone={summary.queued > 0 ? "warning" : undefined}
         />
         <SummaryCard
-          label="Proof missing"
+          label="Not confirmed"
           value={summary.sentProofMissing}
           tone={summary.sentProofMissing > 0 ? "error" : undefined}
         />

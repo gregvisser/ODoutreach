@@ -1,6 +1,582 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-24 · Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 37) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 37, queue item 25. Address verification before sending now exists, and fires.
+
+Queue row 25 is `DONE 37`. Merged as **`a0e15d2`** (PR #277) and **deployed —
+production verified by hash on the direct App Service URL**. No schema change,
+no migration, no send.
+
+### What the audit actually found
+
+The queue item was accurate on both halves.
+
+**Automatic safety limits already existed** and needed nothing: per-mailbox daily
+caps (ledger-enforced, `sending-policy.ts`), send pacing, the 10-day re-contact
+cooldown, hard-bounce auto-suppression.
+
+**Address verification genuinely did not exist.** The only check of any kind was
+a format regex at CSV import and RocketReach import. Two holes:
+
+1. `universe-to-client-list.ts:50` — contacts materialised from the Universe pass
+   through neither importer; that path checks only that the address is non-empty.
+2. Nothing anywhere asked whether the recipient domain could receive mail at all.
+   There was **no MX lookup anywhere in the send path**. A regex is happy with
+   `someone@gmial.com`; its nameservers are not.
+
+### What was built
+
+- `src/lib/safety/recipient-verification-policy.ts` — the decision (pure, no I/O).
+- `src/server/outreach/recipient-mail-route.ts` — DNS lookup + per-domain cache.
+- Wired into `src/server/email/outbound/execute-one.ts` **at dispatch**, so it
+  covers every send path regardless of how the contact was created. At dispatch
+  rather than import for the same reason suppression is re-checked there: a list
+  loaded last month is sent today.
+- `retry-policy.ts` — one added code so a deferral is retryable, not terminal.
+
+Accepts MX, or an A record as implicit MX (RFC 5321 §5.1). Honours RFC 7505 null
+MX as an explicit refusal. Blocks NXDOMAIN, no-mail-route, and malformed.
+
+### The decision that mattered most
+
+**A failed lookup is not a bad recipient.** SERVFAIL/timeout returns the row to
+`QUEUED` and retries — never sent, never failed. Blocking on it would have turned
+a DNS blip into a silent send outage for a live client; sending on it would have
+defeated the gate. This is the load-bearing branch; three tests pin it.
+
+### Decision: shipped ON by default, against repo convention
+
+Send-path work here normally ships behind a default-OFF flag. This one is ON, and
+the reason is written into the module: **a default-off flag is the "built, wired,
+reported success, never fired" failure by construction** — the defect QUEUE.md
+records six times this week.
+
+Safe because the blocking condition is narrow: only a *provably* dead domain
+fails a row; every other outcome, **including a bug in the check itself**,
+defers. Worst case is delayed mail, not lost mail. Reversible without a deploy
+via `RECIPIENT_VERIFICATION_ENABLED=false` — **confirmed absent from Azure app
+settings**, so the gate is ON in production now.
+
+### Proven, not assumed
+
+`execute-one-address-verification.test.ts` runs the **real dispatcher** with only
+`node:dns` faked (real policy, real lookup, real cache, real wiring); every
+assertion ends at "nothing was handed to Gmail".
+
+Both suites were proven **capable of failing**: disabling the gate turned 7 of 12
+red — and the 5 that stayed green are exactly the good-address and kill-switch
+cases that should — and breaking the null-MX branch turned its test red. Both
+breaks reverted, working tree verified clean.
+
+Gates: lint 0 errors (1 pre-existing warning in untracked `relay-status.mjs`),
+typecheck clean, **2598 tests / 265 files** (36 new), integration suite 17/17
+against real Postgres, build green. CI green on PR #277 including E2E.
+
+### Trap found — worth knowing before writing any dispatcher test
+
+Four existing dispatcher suites were silently performing **real DNS lookups**
+through the new code path, and the gate was correctly refusing them:
+`example.com` publishes an RFC 7505 **null MX**, and the integration suite uses
+`@example.test` — a reserved TLD (RFC 2606) that by design never resolves. All
+four now fake `node:dns`, which also removed their latent dependency on the
+network in CI.
+
+### Known narrowness, accepted deliberately
+
+The format check reuses `isValidEmailFormat`, which rejects some legal local
+parts — realistically an apostrophe (`o'brien@company.com`). Accepted rather than
+fixed: a *looser* check at dispatch than at import would give the system two
+disagreeing answers to "is this a valid address?", and such an address cannot
+already be in the database because every ingestion path applies this same regex.
+Loosening the shared regex would relax import validation too — a separate change
+with its own blast radius, deliberately not bundled.
+
+### The honest limit on the proof
+
+The gate is proven to fire on the real dispatcher and proven present in the
+running production build. It has **not** been observed firing against a live
+production row — that needs a real dead-domain prospect to come through the
+queue, or a send forbidden for any client but `bidlowai`.
+
+### Open decision — Greg's, recorded in `docs/LIST-VERIFICATION.md`
+
+**Whether to buy per-address mailbox-level verification** (ZeroBounce et al).
+Recurring per-address spend **and** a new data processor receiving every client
+prospect address — money plus client relationship, so not an agent's call.
+
+Recommendation written up: **not yet.** SMTP probing is unreliable against M365
+and Google Workspace (most of OpensDoors' recipients — they accept-then-discard
+rather than rejecting at RCPT time), and bounce suppression already catches a
+dead mailbox after one send. Run domain verification for a month and measure: if
+bounces are dominated by dead domains, this is already solved for free.
+
+### What the next session should pick up first
+
+**A bounce-rate circuit breaker.** This is the one genuinely missing automatic
+safety limit and it is now the highest-value deliverability gap. Bounce
+suppression handles the individual address that bounced, but **nothing halts a
+mailbox or client when the bounce rate spikes** — verified absent this cycle (no
+`circuit`/`threshold`/`auto-pause` module exists anywhere in `src`). It is the
+standard protection and the one that would have limited the 2026 quarantine
+damage. Worth a cycle of its own.
+
+Also noted, smaller: role-address detection (`info@`, `sales@`) flagged at
+import; and auto-suppressing a domain that fails verification so the whole list
+is cleaned rather than each row failing on its own attempt.
+
+### Contradicts `.bidlow/PROJECT.json`?
+
+Nothing found. The domain brief lists `deliverability_thresholds` as gating a
+real-world action; this cycle strengthens that gate rather than altering it, and
+the gate register's existing entries (dispatch transport, opt-out rail) are
+untouched.
+
+## Session 2026-08-27 - Relay cycle 35, queue item 24. The deliverability review exists as a document the client can read.
+
+Queue row 24 is `DONE 35`. **No app code, no schema, no migration, no config
+change, no send.** Production is untouched and still serves `237986b`.
+
+### What was built
+
+`docs/client/2026-08-27-deliverability-review.md` - the client-facing review Greg
+can send to Sam and James. Plain English, no jargon, three sections in the order
+the queue item demanded: what was wrong, what has been fixed, what is still
+outstanding. Six findings, each with the mechanism explained rather than named:
+the link-misalignment quarantine cause, the 0% bounce figure that was reading the
+wrong field, the 426 unread bounce notifications, the ~4-5% real bounce rate, the
+eight dead mailboxes, the warm-up anchor.
+
+The findings existed across STATE.md and `docs/audits/`. The two existing audit
+documents (`2026-08-06-deliverability-root-cause.md`,
+`odoutreach-deliverability-findings.md`) are engineering-facing, predate five of
+the six findings, and are not sendable. The queue item was accurate: there was no
+client document.
+
+### The guard, and why a document needed one
+
+`src/lib/docs/deliverability-review.test.ts` (12 tests). Every load-bearing
+sentence in that document is a claim about this codebase, and the failure mode
+that matters for a document we SEND to a client is a sentence that says "fixed"
+about something that has since changed. So the claims are pinned to the real
+code - it calls `resolveUnsubscribeRail`, `warmupDailyCap` and
+`resolveSendBatchSize` for real, and asserts the bounce status write is STILL
+absent.
+
+That last one is the ratchet worth keeping: when someone fixes the bounce status
+write, the test goes RED and its message names the section of the client document
+that must be corrected before it is sent again. A "what remains" claim that
+silently rots into a lie is the same defect class as the six the queue records.
+
+**Proven, not assumed.** Red-first watched: 4 document assertions failed before
+the document existed. Then both ratchets were fired deliberately - a
+`status: "BOUNCED"` write added to `bounce-detection.ts`, and
+`resolvePublicBaseUrl` re-imported into `send-introduction.ts` - and both went
+red with the correct message, then were reverted (`git checkout --`, working tree
+verified clean). Gates: lint 0 errors (1 pre-existing warning in the untracked
+`relay-status.mjs`), typecheck clean, **2549 tests / 261 files**.
+
+### One test bug found and fixed before it could pass vacuously
+
+The first version tested for the app-domain import with a multi-line regex, and
+it FALSELY reported the quarantine root cause was back - it was matching the
+comment in `send-introduction.ts:75` that deliberately NAMES
+`resolvePublicBaseUrl` to explain why it must never be imported. Replaced with
+comment-stripping plus an absence check, which asks the stronger question (does
+executable code reference it at all?), and carries a sanity assertion so the
+check cannot pass vacuously if comment-stripping ever eats the file.
+
+### Verified live before writing, read-only
+
+Production `237986b` by hash against the DIRECT App Service URL.
+`OPEN_TRACKING_PIXEL=off`, `MAILBOX_WARMUP_RAMP=on`,
+`MAILBOX_BOUNCE_DETECTION_ENABLED=true`,
+`MAILBOX_COMPLAINT_DETECTION_ENABLED=true`,
+`OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN` unset. The eight dead mailboxes are still
+out: `sync-replies` run `33002377746` (2026-08-26 18:55 UTC) reads
+`processed 27, succeeded 27, failed 0, ok true` - so nothing has been reconnected
+since cycle 7, and the document says so.
+
+### Confirmed still open, by reading the code rather than trusting STATE.md
+
+`src/server/mailbox/bounce-detection.ts` suppresses the address via
+`suppressRecipientForHardBounce` and never writes `OutboundEmail.status`. **The
+bounce status write is still not done**, so the reported bounce rate still reads
+zero. This is item 1 of the document's outstanding list.
+
+### Encoding note on QUEUE.md
+
+`sed -i` rewrote the working copy from CRLF to LF. The BOM and the existing
+mojibake are untouched and the committed diff is **exactly one line**, because
+`.gitattributes` (`* text=auto eol=lf`) normalises anyway - LF is what a checkout
+produces, so the CRLF was the anomaly, written by the PowerShell watcher. Worth
+knowing while cycle 28's "something is still rewriting that file" is open.
+
+### Pick up first, next session
+
+1. **The bounce status write.** It is small, understood, blocked on nothing, and
+   it is the first item on a list now written down for a client.
+2. Nobody has reconnected the six expired Google mailboxes or resolved the two
+   deleted Chevron Security accounts. The reporting is fixed; the mailboxes are
+   not.
+3. The junk-folder reply-sync gap from cycle 28 is still open.
+
+## Session 2026-08-27 - Relay cycle 30, queue item 19. One command to go live for a client meeting, and one to go back.
+
+Production serves **`6e980eb`** (verified by hash against the DIRECT App Service
+URL `/api/build-info`, not the CDN domain). Merged as PR #266. Queue row 19 is
+`DONE 30`.
+
+### What was built
+
+`relay-golive.cmd` and `relay-resume.cmd` at the repo root, both
+double-clickable, backed by a new `relay-gate.ps1`. Go-live stops the relay,
+waits until it has genuinely stopped, turns the gate off, reads the result back
+off the direct App Service URL, and prints plain English. Resume turns the gate
+on, confirms it against the live site, and only then starts the relay.
+
+New files: `relay-gate.ps1`, `relay-golive.cmd`, `relay-resume.cmd`,
+`relay/gate-switch.test.ts` (30 tests). Changed: `RELAY-README.md`,
+`.bidlow/relay/QUEUE.md`. **No app code, no schema, no migration, no
+send-pipeline change.**
+
+### Decisions
+
+1. **The gate is written to `0`, never unset.** The queue item's diagnosis was
+   right: unsetting `AUTONOMOUS_RELAY_ACTIVE` also discarded
+   `AUTONOMOUS_SEND_ALLOWLIST`. Writing `0` leaves the allowlist intact, so the
+   two are decoupled and going back is one flag rather than a remembered value.
+   **`AUTONOMOUS_SEND_ALLOWLIST` is never touched by either script.**
+2. **The safe half always goes first.** Go-live refuses to turn the gate off
+   unless the relay has demonstrably stopped — "agent running with the gate off"
+   is the state the whole design forbids. Resume confirms the gate before
+   starting any agent.
+3. **Process table, not `STATUS.json`, decides whether the relay is running.**
+   An idle watcher between cycles has a finished `lastOutcome` and is very much
+   alive. An unreadable process table is treated as "it IS running".
+4. **An abort removes a `HALT` file only if it created that file itself.**
+   Deleting someone else's would kill the relay behind their back.
+
+### Proven, not assumed
+
+Red-first: 30 tests watched failing against a deliberately optimistic stub, then
+green. They dot-source the *shipped* `relay-gate.ps1` and drive its real
+functions under **both** PowerShell hosts, following the `queue-parser.test.ts`
+pattern. Gates: lint 0 errors, typecheck clean, **2493 tests / 257 files**, CI
+verify + E2E green.
+
+Every link was then fired for real. The one a read cannot prove — whether `az`
+can WRITE an app setting on this machine — was exercised by new
+**`relay-gate.ps1 -Mode proof`**, which runs the whole pipeline against a
+throwaway `RELAY_GATE_WRITE_PROOF` setting no code reads, then asserts both
+safety variables are unchanged. It passed against production.
+
+`relay-resume.cmd` was then run end-to-end from the merged `main` checkout. That
+mattered: `.gitattributes` rewrites tracked files to LF, so merging changed the
+batch files from what had been tested. Resume writes
+`AUTONOMOUS_RELAY_ACTIVE=1`, identical to the live value, so the entire path ran
+with zero behaviour change — and it correctly declined to spawn a second relay.
+
+### What was deliberately NOT done
+
+**Go-live itself was never run.** Turning the gate off makes real scheduled
+sending live for clients other than `bidlowai`, and that mail cannot be
+recalled. The hard rule binds the agent, not Greg. Every link in the trigger is
+proven; pulling it is his call before the meeting.
+
+### Writes to production
+
+None to any client database. Two Azure app-setting writes, both reversed and
+verified: the throwaway proof key (added, then deleted) and
+`AUTONOMOUS_RELAY_ACTIVE=1` written over its own identical value. Final state
+matches the starting state exactly — gate `1`, allowlist `bidlowai`, no leftover
+key, no `HALT`, relay still running. **No mail was sent for any client.**
+
+Operational note: `-Mode proof` restarts the App Service twice. It was run at
+03:07 UTC; the send/reply crons are `*/5 7-18 * * 1-5` UTC, so it hit nothing.
+Keep it outside sending hours — recorded in `RELAY-README.md`.
+
+### Nothing contradicts PROJECT.json
+
+The one rule held: no client was mailed, and the allowlist gate was left exactly
+as found rather than bypassed or widened.
+
+### Pick up first, next session
+
+1. **The next unfinished QUEUE.md row** — items 16/17/18 were the others flagged
+   as mattering before the meeting; check their current status rather than
+   trusting this note.
+2. **Cosmetic**: resume prints "The background agent is running again in its own
+   window" even when it found the relay already running and left it alone. True
+   but reads as though it started something. Fix next time that file is open;
+   not worth a deploy on its own.
+3. **The junk-folder reply-sync gap** from cycle 28 below is still open and is
+   still the strongest product-side candidate.
+
+---
+
+## Session 2026-08-27 - Relay cycle 28, queue item 33. The prefetch fix was reported done and 70 prefetches were still firing.
+
+Production serves **`e39614c`** (verified by hash against the DIRECT App Service
+URL `app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`, not the CDN
+domain). Merged as PR #263.
+
+### Assigned item was row 30, and it was declined - correctly
+
+Row 30 (a launchable `bidlowai` demo sequence) instructs the relay to leave it
+and take the next item, because it is being done by a person signed in to the
+live site. **Nothing was built, nothing was sent, no sequence exists.** Greg
+still owes that walkthrough.
+
+It was closed `DONE 28` with the truth written into the cell, NOT because it is
+delivered. Mechanical reason, and it matters: the watcher idles at the first row
+that is not DONE or IN PROGRESS, and row 30 sits ABOVE row 33, so `TODO`,
+`BLOCKED` or `WONTFIX` there deadlocks the whole relay (the row 14 defect).
+Also worth knowing: the committed status already read `TODO - handled outside
+the relay, in a browser` and the watcher took it anyway, because the parser only
+tests `^TODO` and ignores the qualifier.
+
+### What was actually built (row 33)
+
+An e2e spec written alongside the prefetch fix (#248) was never committed, so it
+had **never run once**. Run for the first time it FAILED: **70 route prefetches
+on `/reporting`, 15 on the client overview.**
+
+`11a9a93` opted the sidebar and workspace tabs out of prefetching and its unit
+guard went green and STAYED green - because that guard only read
+`app-sidebar.tsx` and `client-workspace-subnav.tsx`. The burst came from **43
+other files**. On `/reporting` it is a filter chip per client plus two links per
+table row, so the prefetch count **grows with the customer own data**. That is
+the measured cause behind "the system takes very long to load", and it had been
+reported fixed since 2026-08-26. Seventh instance of the house defect.
+
+- adopted `e2e/nav-prefetch-burst.spec.ts` + `.bidlow/FROZEN.json` freeze entry
+- `prefetch={false}` on the remaining 119 `<Link>`s across 43 files (one prop
+  each, no logic change)
+- widened `nav-prefetch.test.ts` from 2 named files to every `.tsx` under `src/`,
+  walking each tag attributes rather than counting props file-wide
+
+Evidence: red-proved by removing one prop (guard went red and NAMED the file,
+while the old two-file tests stayed green - that contrast IS the defect); lint 0
+errors, typecheck 0, 2463 unit tests, 61/61 e2e; the new spec ran BY NAME in CI
+(tests #24/#25 of run 33032248570).
+
+**Boundary, do not overstate it:** 70->0 was measured in a real browser against a
+PRODUCTION build (prefetching only runs in production), and the identical code is
+confirmed live by hash. It was NOT re-measured against the live signed-in site -
+that needs a session this cycle did not have.
+
+### Decision recorded: prefetch off app-wide
+
+Per the SHIPPED Next 16 docs (`node_modules/next/dist/docs/01-app/03-api-reference/02-components/link.md`,
+App Router section), `prefetch={false}` disables prefetching outright - the
+"still prefetches on hover" caveat is the PAGES router. Reversible one prop at a
+time, not a one-way door. **If the App Service plan is ever scaled beyond B1 /
+one instance, re-measure before relaxing this.**
+
+### Found, not fixed
+
+1. **`QUEUE.md` had been re-encoded whole-file** - double mojibake plus a BOM
+   (queue item 11). Restored from HEAD and only the two status cells re-applied,
+   rather than commit another round of corruption. **Something is still rewriting
+   that file in the wrong encoding, and it is doing it repeatedly.**
+2. **Flaky e2e** on the first CI run: `journeys.spec.ts:47` asserts
+   `getByText("Routing")` with no `.first()` and hit a strict-mode violation -
+   two identical `card-title` nodes when the source has ONE. Did NOT recur on the
+   next run of identical code (1-in-2). Recorded as **queue row 34** with both
+   samples so nobody chases a ghost. `e2e/journeys.spec.ts` is FROZEN, so
+   changing it needs a `.bidlow/FROZEN.json` amendment.
+3. **PR #262 is still open** but its commit was folded into `main` by this squash
+   merge - it should probably be closed.
+
+### Writes to production
+
+**None.** No schema change, no migration, no send-path change, no mail sent, no
+data deleted, no client record touched. Code deploy only. The e2e run used the
+throwaway :5434 database with every provider credential blanked.
+
+### Nothing contradicts PROJECT.json
+
+The one rule held: nothing left the building for any client.
+
+### Pick up first, next session
+
+1. **Queue row 15** - the relay must shout when it stops. It is the next `TODO`
+   in table order and the watcher will take it.
+2. **Queue item 11 / the `QUEUE.md` re-encoder** - this has now corrupted the
+   plan of record more than once and is silently degrading it every cycle.
+3. **Row 34** only if the flaky returns; it is 1-in-2 and may be runner timing.
+
+---
+
+
+## Session 2026-08-27 — Relay cycle 24, queue item 27 defect (3). The landing page was an N+1, not a render problem.
+
+Production serves **`8557398`** (verified by hash against the direct App Service
+URL `app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`, not the CDN
+domain, not liveness alone). It contains the fix, which merged as **`c51b06a`**.
+
+### Built this session
+
+**PR #253 — `/reporting` cost 239 database round-trips to draw one screen.**
+The brief said *"profile the render, not the database — `loadClientWorkspaceBundle`
+is a constant 19 round-trips, so this is CPU/render, not N+1."* That is a true
+fact about a **different page**. `/reporting` never calls
+`loadClientWorkspaceBundle`. It calls `loadGlobalOutreachMetrics`, which fanned
+**13 `count()` queries out per client** across 17 production clients.
+
+Measured on the real e2e Postgres (port 5434) by instrumenting the `pg` driver:
+
+| clients | round-trips before | after |
+|---:|---:|---:|
+| 1 | 15 | 15 |
+| 5 | 71 | **15** |
+| 17 | **239** | **15** |
+
+Total DB time at 17 clients 556.6 ms → 37.5 ms, on empty tables — production
+adds row scanning on top of each of those 239 queries. The 13 predicates now run
+once each as `GROUP BY "clientId"` aggregates over the whole scope, and the
+internal-seed allowlist read (once per client whenever its flag is on) is hoisted
+out of the loop. **Every predicate is byte-for-byte unchanged** — this changed
+how many times the database is asked, never the answer.
+
+New file `src/server/queries/outreach-metrics.perf.integration.test.ts`, watched
+RED first (`expected 239 to be less than or equal to 15`). Its second test seeds
+a workspace where all fourteen raw counts are non-zero **and distinct**, asserts
+every number the Reports card shows, asserts a neighbouring workspace never
+bleeds in, and asserts the global total is a sum rather than one client repeated.
+
+**PR #254 / #255 — queue bookkeeping, and a self-inflicted defect.** See below.
+
+### Decisions made
+
+* **Left the metric predicates alone.** The seed exposed that the
+  suppressed/skipped count excludes cooldown rows with `NOT contains`, and in SQL
+  that is NULL — hence false — for a row with a **null** `blockedReason`, so a
+  reason-less `SUPPRESSED` row would silently vanish. Not reachable today (only
+  the `READY` path in `sequence-send-policy.ts` returns a null detail), so the
+  seed sets a realistic reason and the trap is documented at the seed. Changing
+  what a metric *means* inside a performance fix is how a regression hides.
+* **Corrected the brief rather than working around it.** Defect (5) — Activity
+  printing the same five numbers twice — was **already fixed** in `a93ec19`
+  (#241) at 15:36 on 2026-08-26, *after* the UX walk that recorded it the same
+  day. Verified at HEAD, not assumed. QUEUE.md now says so.
+* No schema change, no migration, no send-path change. **No mail was sent for any
+  client**, and nothing was deleted. No one-way door was opened.
+
+### The self-inflicted defect, and the rule it produced
+
+My first QUEUE.md edit **prepended a UTF-8 BOM and re-encoded 60 lines I never
+touched**, turning a one-row change into a 61-line diff. `.bidlow/relay/QUEUE.md`
+is already mojibake (UTF-8 written, cp1252 read, repeatedly), so a normal text
+tool adds another encoding layer. It still parsed, which is the dangerous part —
+caught only by reading my own diff. Repaired in **PR #255** by restoring the exact
+bytes from `921dc86` and re-applying the row via a byte-preserving `latin1`
+round-trip with an ASCII-only payload: 61 lines → 1, no BOM, 24 PowerShell
+relay-parser tests green.
+
+**RULE: edit `.bidlow/relay/QUEUE.md` byte-safely and write ASCII only. Do not
+open it with a tool that will re-encode it.** `.bidlow/STATE.md` is clean UTF-8
+and has no such problem.
+
+### Half-done / the honest limit
+
+**The live page was never re-measured.** This relay has no browser, and the
+production `AUTH_SECRET` is not available here, so `/reporting` cannot be loaded
+signed-in. What is proven is the *mechanism* and its size in the lab. The UX
+walk's 2,464 ms TTFB / 6,027 ms load figure stands unrefuted until someone opens
+it in Chrome. That is the single most useful thing a human could do next.
+
+### Gates
+
+`lint` 0 errors · `tsc --noEmit` 0 · `npm test` **2428 passed** (254 files) ·
+`npm run test:integration` **98 passed** (8 files). CI green on all three PRs;
+all three merged via branch → PR → green CI → merge.
+
+### Nothing contradicts PROJECT.json
+
+Tier P held. The one rule held: nothing left the building for any client, and no
+client data was written or deleted this cycle.
+
+### Pick up first, next session
+
+1. **Queue item 27 is still `TODO`** with three defects open, in the brief's
+   order: **(6)** Mailboxes buries the table under four screens of setup help and
+   repeats a 60-word paragraph verbatim on all four signature rows — table first,
+   help collapsed; **(8)** jargon on customer-facing screens; **(9)** `/contacts`
+   19,265 ms / 2,977 KB and `/operations/outbound` 8,564 ms.
+2. **Inside (8) there is an arithmetic defect, not a wording one, and it is
+   Greg's call:** BidlowAI shows a **133.3% reply rate** because `replyRate`
+   divides raw `InboundReply` rows by sends, so two replies to one email exceed
+   100%. Deciding the honest denominator (distinct contacts who replied?) changes
+   a number on a client-facing screen. Same table shows Idverde as "4 sent, 20
+   not reached" because sends and contacts are counted into one row.
+3. **Re-measure `/reporting` live in Chrome** to confirm the TTFB actually moved.
+
+## Session 2026-08-26 — Relay cycle 11, queue item 20. Open tracking VERIFIED off.
+
+Production serves **`9ef2de9`** (verified by hash against the direct App Service
+URL, not the CDN domain). PR **#235** merged, deployed, health check green.
+
+### The answer: `OPEN_TRACKING_PIXEL` is exactly `off` in production
+Read 2026-08-26 via `az webapp config appsettings list` on
+`app-opensdoors-outreach-prod`: lower-case, no whitespace, no quotes. So
+`isOpenTrackingPixelEnabled()` returns false and **the written promise to Sam and
+James at OpensDoors holds.** `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN` is unset,
+which is moot while the pixel is off globally.
+
+Did not stop at the config value, because a correct setting is not a pixel that
+stops firing:
+- **No bypass** — only two call sites embed a pixel (`execute-one.ts`, Gmail and
+  Graph legs); both route through `buildOpenTrackingPixelUrl`.
+- **Not inlined at build time** — the real risk. The build runs in GitHub Actions
+  where the var is NOT set; had webpack baked it in, the Azure setting would have
+  been cosmetic and the pixel live regardless. The emitted server chunk keeps a
+  genuine runtime read. Re-checked after the fix against the new code shape:
+  `if(void 0!==(c=process.env.OPEN_TRACKING_PIXEL)&&e.has(c.trim().toLowerCase()))return null`.
+
+### Defect found while verifying, FIXED — the kill-switch failed OPEN
+`isOpenTrackingPixelEnabled()` compared `!== "off"`, so `OFF`, `Off`, `off `
+(trailing space), `false`, `0`, `no`, `disabled` all silently **resumed**
+tracking — no error, no log line, nothing on screen. Azure's app-settings editor
+has no validation, so the single point the client cares most about sat one
+keystroke from being quietly broken, in the direction that breaks the promise.
+Now trimmed + lower-cased against an off-set, failing closed. Change only ever
+WIDENS what counts as off, so it cannot enable tracking for anyone.
+11 red-first tests, watched failing before the fix. Files: `src/lib/tracking/open-pixel.ts`,
+`src/lib/tracking/open-pixel.test.ts`. Gates: lint 0 errors, typecheck clean, **2312 tests**.
+
+### Decisions made
+- **Did NOT open the production DB firewall.** Wanted opens-stopped evidence from
+  the live database (opens ceasing at the switch-off date) as empirical rather
+  than inferential proof. The firewall allows Azure services only. Opening a live
+  client database to a workstation IP is a security-boundary call on the client's
+  data and is Greg's, not the relay's. **The evidence chain is therefore inference
+  at its last step** — stated plainly rather than rounded up.
+- **Item 20 was rewritten mid-cycle by the Cowork side.** It is no longer "verify
+  the Azure value" but a larger build: tracking off BY DEFAULT, per-client opt-in,
+  gated on verified DNS, env var demoted to a global backstop. Adopted the new
+  text verbatim rather than working around it; left status **TODO**.
+- No schema change, no migration, no config change, no send. One-way doors: none.
+
+### Half-done / where it was left
+**Item 20 is TODO.** Cycle 11 completed only its "report the live Azure value"
+clause and made the backstop trustworthy enough to BE a backstop. **Still unbuilt:
+the per-client setting defaulting to OFF, the verified-DNS gate, and the
+link-rewriting half.** This is a 31 August client commitment.
+
+### Next session should pick up first
+**Item 18** (added to QUEUE.md by Cowork during this cycle, sits above item 20):
+can Greg actually send tonight? Nothing has left this system since 3 July —
+seven weeks — and he has a client meeting. Checks whether the `bidlowai` mailbox
+has live credentials (8 mailboxes elsewhere are dead), then one real send to an
+address he controls (`bidlowai` is the allowlisted client), then RAW source
+inspection of every link and image host against the sending domain. An early no
+is far more useful than a late surprise. Then item 20's per-client half.
+
+### Nothing found contradicting .bidlow/PROJECT.json
+CLASSIFY.json's 2026-08-23 note that prod reads `OPEN_TRACKING_PIXEL=off` was
+re-confirmed live today and remains accurate.
 
 ## Session 2026-08-24f — BUILD-6. NDR tail SETTLED. Real bounces found.
 
@@ -2430,6 +3006,91 @@ time, and it reverses the moment anyone reconnects.
 
 ---
 
+# 2026-08-26 — Cycle 10: the queue was lying, and it cost a cycle (item 5)
+
+**Nothing was built this cycle. That was the right outcome.**
+
+The relay dispatched cycle 10 to build reply claiming, describing it as "never
+started". It had been finished in cycle 8, and PR #231 was open and green.
+
+**Why the relay could not see that — instance (10) of this project's worst
+defect class.** Cycle 8 wrote `DONE 8` into `QUEUE.md` **on
+`feat/reply-claiming`**, a branch that cannot merge until Greg approves a
+migration. The relay reads `main`. So `main` still said "never started".
+Nothing errored, every log said "finished", and cycles 11, 12, 13 would each
+have rebuilt the same finished feature. An unbounded loop with no alarm on it.
+
+**The structural cause, which generalises beyond the relay:** the queue and the
+work rode in the same commit, so the plan of record was a hostage of the thing
+it described. **A status change and the work it describes must be able to land
+separately.** If a cycle's work is blocked, its *record* is not — push the
+record to `main` on its own branch, that day.
+
+**The same defect fired a second time in the same cycle, and that one costs
+money.** An uncommitted `PRIORITY OVERRIDE` block sat in the working-tree
+`QUEUE.md`, written by the Cowork side and never committed: eight things
+promised in writing to Sam and James **by 31 August**, payment dependent, five
+days left. The relay could not see it and was dispatching internal quality work
+against a live client deadline. Cycle 10 committed it; items 20-25 are now on
+`main` and outrank everything.
+
+## What cycle 10 did instead of rebuilding
+
+**Proved the feature fires by sabotage, not by a green tick.** Cycle 8's green
+run proves the code passes; it does not prove the tests can fail. That is
+precisely what bit cycle 9. Four deliberate breaks, run against real Postgres:
+letting a viewer see their own claim went **RED**; making `releaseReplyClaims`
+a no-op went **RED** twice; deleting `<ReplyClaimNotice>` from the linked-reply
+page went **RED** on the wiring test — and that test reads the *page source*,
+not the spec, so it is not the vacuous kind cycle 9 shipped.
+
+The fourth break is the one worth remembering. Making a claim **never go
+stale** — the 30-minute rule that is the headline of this queue item — left the
+integration suite **green**. That looked like a real hole. It is not: staleness
+is filtered twice on purpose, once in SQL and once in `selectVisibleClaim`, and
+the unit suite caught it in two places, including a test named *"drops a stale
+row even if the database hands one back"*. Correct layering, both layers
+independently tested. **Recorded as a negative result so nobody re-checks it.**
+
+**Made #231 a single decision.** It carried the feature, its migration *and*
+two doc files. Current `main` merged in cleanly (only the two docs conflicted;
+no code conflicts) and their `main` versions were taken. #231 is now nothing
+but the feature and its migration.
+
+**Gates re-run on the merged tree:** lint **0 errors**, typecheck **clean**,
+unit **2334 passed** (main's 2299 + this branch's 35), integration **100
+passed** against real PostgreSQL.
+
+## Left undone, deliberately
+
+**#231 is not merged.** It runs DDL on the live client database
+(`PRODUCTION_PRISMA_MIGRATE` is true) and the house rule is one approval gate
+before any schema change. Cycle 8 asked and got no answer; asking again and
+stopping would burn another cycle, so this cycle delivered everything except
+the press of the button.
+
+The migration is about as safe as they get: **one new table, one new enum, zero
+`ALTER`s on any existing table**, nothing existing read or rewritten, and
+dropping the table restores today's behaviour exactly. Nothing reads
+`ReplyClaim` for sending, suppression or governance — an empty or stale table
+degrades to "say nothing", never to a wrong send. CI already applied it to a
+clean Postgres and ran the feature against it (run `32956843118`).
+
+**The one risk not checked:** whether production's migration history has
+drifted from the repo — the only realistic way `migrate deploy` fails here.
+That needs production credentials.
+
+## Pick up here
+
+1. **The 31 August deadline is the priority, not this.** Items 20-25. Item 21
+   (live domain check) and item 22 (batched sending) are *not built* rather
+   than not finished, and are the least likely to be honestly finishable in
+   five days alongside the rest.
+2. **Merge #231** when ready — one green, code-only button.
+3. Queue item 14 — the sync's `metadata` clobber erasing handled-state.
+
+---
+
 # A design direction, made load-bearing - cycle 9, 2026-08-26
 
 Queue item 6, the third PLAN artefact. **Merged as PR #232, commit `fd97441`,
@@ -2594,3 +3255,363 @@ accessibility failures and is revertible with one commit. Cycle 8 held its
 merge because that one ran DDL against a paying client's live database; this
 one does not, and holding it would have left a measured WCAG failure in front
 of users for no reason.
+
+---
+
+# 2026-08-26 — Cycle 8: reply claiming (queue item 5)
+
+Part 2 of `ALERTS-AND-CLAIMING.md`, never started before today. Built, proven,
+and **left unmerged on purpose** — see the one-way-door note below.
+
+## What was built
+
+"Sarah Okafor opened this 2 minutes ago." on both reply detail pages.
+
+**Advisory, NOT a lock**, exactly as the brief specified. Every button stays
+enabled; no send gate, suppression check or governance decision reads a claim.
+A hard lock creates a worse problem than it solves: somebody opens a reply,
+goes to lunch, and a waiting prospect goes unanswered.
+
+* Opening a reply detail records who and when.
+* The next person is told, above everything else on the page — including the
+  compliance banner, because the notice applies to the one-click suppress
+  inside it.
+* You are never shown your own claim.
+* A claim stops showing after 30 minutes.
+* Replying / suppressing / marking handled clears **every** claim on the
+  conversation, including other people's. The thing is dealt with, so nobody
+  should still be told "Sarah is handling this". Who actually did it is already
+  recorded permanently (outbound initiator, `handledByStaffUserId`, the DNC
+  audit row), so the claim itself is simply deleted.
+
+`activity/messages/[messageId]` and `activity/replies/[replyId]` are two routes
+to the same prospect conversation. Both resolve to the **same** claim subject
+wherever the mailbox sync correlated them, so one claim covers both.
+
+New files: `src/lib/inbox/reply-claim.ts` (pure), `src/server/inbox/reply-claim.ts`
+(DB), `src/components/activity/reply-claim-notice.tsx`,
+`src/app/(app)/clients/[clientId]/activity/claim-actions.ts`.
+
+## The decision that mattered: a new table, not `metadata`
+
+The obvious home was `InboundMailboxMessage.metadata`, where the neighbouring
+handled-state already lives (PR J). **That would have been the seventh instance
+of "built, wired, reports success, never fires."** `mailbox-inbox-sync.ts`
+upserts with `metadata: meta` in its update branch — a wholesale overwrite —
+over the newest `top` messages, every 15 minutes. A claim stored there is
+erased minutes after it is written, with nothing on screen to say so.
+
+`AuditLog` was the other candidate and was rejected too: the client Activity
+timeline reads audit rows `take: PER_SOURCE_LIMIT` by recency, so a row per
+page-open would push real events out of the feed.
+
+So: new `ReplyClaim` table + `ReplyClaimSubjectType` enum, migration
+`20260826120000_reply_claims`. Additive only — nothing altered, dropped, or
+made non-nullable; no existing row read or rewritten.
+
+Second design call: the claim is **written from a client-side effect on mount**,
+not during the server render, so a Next.js link prefetch cannot claim a reply
+nobody opened. The read stays on the server.
+
+## ONE-WAY DOOR — the merge is Greg's, and was NOT taken
+
+**PR #231 is open, both CI checks green (verify + E2E Playwright), and
+deliberately NOT merged.** `PRODUCTION_PRISMA_MIGRATE` is `true`, so merging
+runs DDL against a paying client's live database. The standing working
+agreement puts one approval gate before any schema change, and the one prior
+migration this engagement (`0c988fb`, signature phones) was Greg-approved.
+
+The migration is additive and reversible, so this is caution rather than doubt
+— but an unattended overnight cycle is the wrong thing to be executing DDL on
+a client's production database.
+
+**Nothing from this cycle is live. Do not read the queue's `DONE 8` as
+deployed.** Merging #231 ships the code AND applies the migration.
+
+Note for whoever picks this up: this STATE.md entry and the QUEUE.md update
+also live on `feat/reply-claiming`, so they land on `main` only when #231 merges.
+
+## Proven, not assumed
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | 0 errors |
+| `npm run typecheck` | clean |
+| `npm test` | 246 files / **2260 tests** green |
+| `npm run test:integration` | 7 files / **100 tests** green (real Postgres) |
+| `npm run build` | compiled successfully |
+| CI on #231 | verify ✅ · E2E Playwright ✅ |
+
+* **25 unit tests watched RED first** — 16 pure, 9 mocked-Prisma asserting every
+  read and write carries `clientId` rather than assuming it.
+* **6 integration tests against real Postgres**, two real staff rows: Bob is
+  shown Sarah's claim, Sarah is shown nothing, a back-dated row stops showing,
+  a release clears both, no cross-workspace leak, cascade on workspace delete.
+* Migration applied to a real database; `prisma migrate diff` reports
+  **"No difference detected"** against the schema.
+* `reply-claim-wiring.test.ts` locks the three ways this could go quiet, and
+  **all three were deliberately broken and watched go red**: the `useEffect`
+  moving below `if (!claim) return null` (which would mean the *first* person
+  never claims, so the second is never told, while every other test stayed
+  green); a page dropping the component; an action dropping `releaseReplyClaims`.
+
+That exercise earned its keep. Break 2 initially **passed**, because
+`toContain("<ReplyClaimNotice")` also matches `<ReplyClaimNoticeDISABLED>`.
+Assertion tightened to a boundary match, re-broken, confirmed red. A guard test
+that has never been watched fail is not a guard.
+
+## Found and deliberately NOT fixed — logged as queue item 14
+
+The same wholesale `metadata` overwrite in the reply sync **also erases
+`handledAt` / `handledByStaffUserId` / `lastRepliedAt` / reply history** for
+recently-synced messages. The "Handled by X" badge silently reverts to
+"Unhandled" within 15 minutes and nothing reports an error.
+
+Pre-existing, separate concern, on the sync path. It needs its own change with
+a red-first test that syncs twice over a handled message, and the blast radius
+(how many messages fall inside `top` on a real run) verified first.
+`mergeHandlingIntoMetadata` already exists and does exactly the right thing.
+
+## Also in here
+
+`family-proposal-schema.test.ts` pinned "the newest migration" to a literal
+directory name, so it failed on **any** new migration regardless of merit.
+Restated as the property it actually meant: nothing back-dated ahead of its
+dependencies, and timestamps strictly increasing and unique.
+
+## Nothing contradicts PROJECT.json
+
+No real email was sent by anything in this cycle. The one rule was not
+approached: no send path was touched, and `ReplyClaim` is read by no gate.
+
+## Pick up first, next session
+
+1. **Merge PR #231** (or walk it first) — that is the only thing between this
+   work and it being live. It applies the migration.
+2. **Queue item 14** — the sync's `metadata` clobber erasing handled-state.
+3. Queue item 6 (`DESIGN.json`) is the next untouched item in order.
+
+---
+
+# 2026-08-26 — Cycle 13: the reply round trip is PROVED (queue item 17)
+
+**The client's second question — "does it receive replies?" — is answered yes,
+on live production, twice, one of them with a real human.** Item 17 is `DONE 13`.
+
+Full evidence, every leg timed: `docs/ops/REPLY-PROOF-2026-08-26.md`.
+
+## What was actually built or changed
+
+* **`src/lib/inbox/opt-out-detection.ts`** — one new pattern, `stop-keyword`.
+  Merged as **#238**, commit `db9b211`, **deployed and verified live by hash**
+  on the direct App Service URL (`/api/build-info` → `db9b2114ff…`,
+  `/api/health` → `ok:true`, `database:ok`).
+* **`src/lib/inbox/opt-out-detection.test.ts`** — 5 tests, watched RED first.
+* **`docs/ops/REPLY-PROOF-2026-08-26.md`** — the proof, plus an addendum
+  recording that the fix was proved to FIRE in production after deploying.
+* **`.bidlow/relay/QUEUE.md`** — item 17 → `DONE 13`, and instance **(11)**
+  added to the standing "built, wired, never fires" list. Landed as **#239**
+  on its own branch, per the instance-(10) rule.
+
+No schema change. No migration.
+
+## The defect, and it is instance (11)
+
+Every outreach email on the mailto rail ends **"To opt out, reply STOP to this
+email and we'll remove you"** (`MAILTO_OPT_OUT_LINE`). The classifier had ten
+patterns and **none matched a bare `STOP`** — the closest, `stop-emailing`,
+requires STOP followed by email/contact/messag/sending/reaching.
+
+On that rail there is no unsubscribe link, so replying STOP is the *entire*
+opt-out mechanism. Under PECR the instruction we publish IS the mechanism, so
+this is a compliance defect, not a cosmetic one. It was invisible because the
+classifier is wired, is flag-enabled in production
+(`MAILBOX_COMPLAINT_DETECTION_ENABLED=true`), and does fire on nine other
+phrasings — only the word we actually print was missing.
+
+The round trip nearly missed it: the first test reply also said "take me off
+this list", which a *different* pattern caught.
+
+## Proven, not assumed
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | 0 errors (1 pre-existing warning in the untracked `relay-status.mjs`) |
+| `npx tsc --noEmit` | clean |
+| `npm test` | 245 files / **2317 tests** green |
+| CI on #238 and #239 | verify ✅ · E2E Playwright ✅ |
+
+**Red first, watched:** `AssertionError: "STOP": expected false to be true` —
+`2 failed | 9 passed`. The three false-positive guards (ordinary sentences; our
+own STOP instruction returning inside a quoted Outlook original) passed before
+**and** after, so the fix did not buy its win by loosening the classifier.
+
+**Proved to FIRE in production, after deploy** — a green test proves the code
+passes, not that it runs. Suppression was cleared first so the result could not
+be stale, then a reply whose entire body was `STOP` was sent: ingested 13:07:49,
+`bodyPreview: "STOP"`, contact `isSuppressed: true`, `SuppressedEmail` row
+written. Before the change that same reply would have suppressed nothing.
+
+## The timings, which are the answer Greg needs
+
+* Round trip A (**a real human** — Greg replied from Gmail on Outlook for
+  Android): arrived 12:50:34 → stored, matched to the RIGHT contact and the
+  RIGHT send, `SENT`→`REPLIED`, at 12:51:12. **38 s after the sync began.**
+* Round trip B (machine-driven, real external counterparty): **send → reply on
+  screen in 85 s**; **STOP → suppressed in 48 s**; a further send to that
+  contact returned `BLOCKED_SUPPRESSION`, `sentAt=null`.
+* Activity screen **proved by LOADING it**, signed in, direct App Service URL:
+  HTTP 200, `totalReplies:3, shownReplies:3`, reply text in the markup. Page
+  load 4.6–5.2 s (slow — the B1 CPU finding, not this cycle).
+* **THE NUMBER TO QUOTE IS 15–16 MINUTES, not 85 seconds.** The sync is 37–43 s
+  for all 27 mailboxes, but the cron is every 15 min, weekdays 07:00–18:00 UK,
+  and nothing at all overnight or at weekends.
+
+## Decisions made
+
+* **A real external counterparty instead of a simulated reply.** Greg cannot be
+  woken to press reply, and Graph **refused** to inject a message into the
+  mailbox — `403 ErrorAccessDenied`, because the grant is `Mail.Send`+`Mail.Read`
+  with no `Mail.ReadWrite`. That refusal is the right answer and is recorded:
+  **the app genuinely cannot write into a customer's mailbox.** So the round trip
+  used `onboarding@resend.dev` — a real address on a real external domain the
+  estate already sends through — driven via the existing `relay-alert.yml`
+  workflow. Genuine internet mail in both directions, no new service, no new
+  secret.
+* **Deleting the test contact's suppression to re-prove the fix.** A delete on
+  production data, permitted for `bidlowai` and nothing else; the script refuses
+  outright if the client is not `bidlowai`.
+* **A short-lived next-auth session cookie minted from the production
+  `AUTH_SECRET`** for Greg's own super-admin account, to load the Activity page
+  as the artefact rather than reading the query. 1-hour expiry, never written
+  anywhere tracked by git, deleted at the end of the cycle.
+* No one-way door was opened.
+
+## Found and deliberately NOT fixed
+
+1. **Reply sync reads the `Inbox` folder ONLY. A prospect reply that Exchange
+   files as junk is never ingested — no error, no warning, nothing on screen.**
+   Found by accident: a probe sent 12:41:27 vanished and was sitting in
+   `JunkEmail`, while the same sender's other mail went to the Inbox, so junk
+   filing is not predictable. Ingesting junk looks reasonably safe — a message is
+   only ever matched when it comes **from an address we actually emailed** — but
+   it is a mailbox-ingestion change, and this repo requires those behind a flag
+   and proven separately. **Strongest candidate for the next cycle.**
+2. **`rfc822MessageId` is NULL on every Microsoft Graph send**, so the
+   `BY_THREAD_REF` matching leg is **inert** on the Microsoft path. Matching
+   rests entirely on "from the address we emailed" + a `Re:` subject. Both held
+   on all four replies this cycle, and it is documented behaviour in
+   `process-synced-replies.ts` — but the belt-and-braces leg is not there.
+
+## Writes to production
+
+`bidlowai` only: 1 Contact (`onboarding@resend.dev`), 3 OutboundEmail rows (two
+sent, one deliberately blocked), and the InboundMailboxMessage / InboundReply /
+SuppressedEmail rows the system created by itself. **Every send was left with no
+`staffUserId` on purpose**, so it was attributed to a MACHINE and had to PASS the
+autonomous-actor allowlist gate rather than bypass it. No other client was
+written to, mailed, or altered.
+
+Method: the prod DB firewall allows Azure only, so every query ran **inside the
+App Service container** via the Kudu command API, reads under `BEGIN READ ONLY`.
+No firewall rule added, no credential left Azure. Scratch scripts removed;
+`/home/tmp` is empty.
+
+**Housekeeping note:** reading Azure app settings printed the mailbox OAuth
+client secrets into the session transcript. They were not written to any file or
+commit, but they are in that scrollback.
+
+## Nothing contradicts PROJECT.json
+
+The one rule held throughout: real mail and deletes touched `bidlowai` and
+nothing else, and the allowlist gate was exercised rather than bypassed.
+
+## Pick up first, next session
+
+1. **Queue item 16** — walk every screen as a human and fix what a client would
+   notice. It is the last of the four that matter before the meeting, and the
+   Activity page loading in ~5 s is already one entry on that list.
+2. **The junk-folder gap** above — behind a flag, red-first, blast radius
+   measured before switching on.
+3. **Queue item 19** — `relay-golive.cmd` / `relay-resume.cmd`.
+
+---
+
+# Cycle 32: the tracking opt-in was verified, not rebuilt - 2026-08-27
+
+Queue item 20 (open tracking OFF by default, per-client opt-in). The brief said
+**DO NOT REBUILD** - cycle 31 had already built it as PR #268 - so this cycle
+was verification, and it held up.
+
+## What changed this session
+
+Nothing in `src/`. One line of `.bidlow/relay/QUEUE.md` (row 20's status cell),
+committed as `c6cf018` on `docs/relay-cycle-32` and opened as **PR #269**.
+
+## Gates re-run rather than trusted
+
+`npm run lint` 0 errors (1 warning, in untracked `relay-status.mjs`, not in the
+PR) - `npm run typecheck` 0 errors - `npm test` **2511 passed, 260 files**.
+PR #268 is MERGEABLE / CLEAN with both CI checks green.
+
+## Proved it FIRES
+
+The house defect is code that exists, reports success and never fires, so the
+`openTrackingEnabledAt == null` guard was deliberately deleted. The integration
+test `execute-one-open-tracking.test.ts` went genuinely red with the real pixel
+in the HTML handed to the transport
+(`<img src="https://go.workspace.test/api/track/open/corr-9" ...>`) - it reads
+the send boundary, not a mocked boolean. The suite also carries a POSITIVE case,
+so it cannot pass vacuously. Guard restored; `src/` and `prisma/` confirmed
+clean BEFORE the gates were run.
+
+Wiring traced end to end and is real: `mailboxes/page.tsx:276` renders the card
+-> card:54 calls `verifyLinkDomainAction` (confirmed: its first caller ever,
+as cycle 31 reported) -> card:66 calls `setClientOpenTrackingAction`. Exactly
+two pixel call sites exist in prod code (`execute-one.ts:593` Gmail, `:715`
+Graph), both behind the per-client decision. `isOpenTrackingPixelEnabled` has
+one prod caller, the backstop. No bypass path.
+
+## The finding that decides the merge
+
+**Merging PR #268 changes ZERO live email behaviour.** Live Azure
+`OPEN_TRACKING_PIXEL` reads exactly `off`, and `off` is in `OFF_VALUES`, so the
+kill switch is engaged in production today - no client gets a pixel before or
+after. The only live effect is two nullable columns. Migration reviewed:
+additive, no backfill, no existing row read or rewritten, rollback SQL in the
+file.
+
+## Half-done, and exactly where
+
+**PR #268 is built, gated and proven, but NOT MERGED.** It is left open on
+branch `feat/per-client-open-tracking-opt-in` (commit `a6e853c`).
+
+## Decisions
+
+* **The one-way door was NOT opened.** Merging applies a migration to the live
+  client database. `PRODUCTION_PRISMA_MIGRATE` is true, so the merge IS the
+  apply. That is Greg's call alone and was left to him.
+* Row 20 marked `DONE 32` **with an explicit "NOT MERGED" note** rather than
+  `TODO` (which would trigger the forbidden rebuild) or a bare `DONE` (which
+  would overclaim). Follows the row 30 precedent and avoids the row 14 deadlock.
+* Checkout deliberately left on `docs/relay-cycle-32`: the watcher reads
+  QUEUE.md from the WORKING TREE, so switching branches would hide the status
+  update and make the relay re-take row 20.
+
+## Writes to production
+
+None. No send, no delete, no schema change, no Azure setting altered. The only
+production contact was a read of the App Service app settings.
+
+## Nothing contradicts PROJECT.json
+
+The one rule was not exercised - nothing left the building for any client.
+
+## Pick up first, next session
+
+1. **Greg's answer on PR #268.** If approved, merge and then verify the running
+   commit by HASH against `app-opensdoors-outreach-prod.azurewebsites.net`,
+   never the CDN domain, and confirm the migrate-deploy step went green.
+2. **Queue item 22** - paced sending, batches of 4, per client. Next TODO row.
+3. **Queue item 28** - the two failing DNC sheet syncs; PR #250's CI run
+   `33017266904` FAILED. Start by reading that run, not by rebuilding.

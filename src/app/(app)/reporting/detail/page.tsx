@@ -55,7 +55,7 @@ export default async function ReportDetailPage({ searchParams }: Props) {
     : "/reporting";
 
   const backLink = (
-    <Link
+    <Link prefetch={false}
       href={backHref}
       className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
     >
@@ -161,7 +161,7 @@ export default async function ReportDetailPage({ searchParams }: Props) {
                     </td>
                     <td className="px-3 py-2 font-medium">
                       {row.href ? (
-                        <Link
+                        <Link prefetch={false}
                           href={row.href}
                           className="underline-offset-2 hover:underline"
                         >

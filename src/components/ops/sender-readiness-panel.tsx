@@ -141,7 +141,7 @@ export function SenderReadinessPanel({
             how sender and preview data fit together. Normal prospect outreach is meant to
             go through the connected mailboxes on this page. If your process still has extra
             governance in the <strong className="text-foreground">operations</strong> area, use{" "}
-            <Link className="underline" href="/operations/outbound">
+            <Link prefetch={false} className="underline" href="/operations/outbound">
               Outbound
             </Link>{" "}
             with an administrator. Per-mailbox work stays here in{" "}
@@ -166,7 +166,7 @@ export function SenderReadinessPanel({
             </p>
             <p>
               Mark client-level verification in the{" "}
-              <Link className="underline" href="/operations/outbound">
+              <Link prefetch={false} className="underline" href="/operations/outbound">
                 operations area
               </Link>{" "}
               when your process still uses that signal; per-mailbox setup is on{" "}

@@ -7,6 +7,8 @@
  * can be unit-tested and reused by any presenter.
  */
 
+import { isOutreachModuleReady } from "@/lib/client-launch-state";
+
 export type GettingStartedInput = {
   clientId: string;
   /** From `ClientLifecycleStatus`. */
@@ -130,7 +132,15 @@ export function buildGettingStartedViewModel(
       description:
         "Use the Launch readiness panel to confirm mailboxes, suppression, and contacts are all green. The client activates automatically once every section is ready.",
       href: `${base}`,
-      done: input.outreachPilotRunnable,
+      // Same predicate as the Launch readiness rail. Previously this was
+      // `outreachPilotRunnable` alone, so the checklist could tick item 8 while
+      // items 6 and 7 (sequence, enrolments) were plainly undone on the same
+      // card — the contradiction found on bidlowai, 2026-08-26.
+      done: isOutreachModuleReady({
+        outreachPilotRunnable: input.outreachPilotRunnable,
+        hasProductionLaunchableSequence: input.hasProductionLaunchableSequence,
+        enrolledContactsCount: input.enrolledContactsCount,
+      }),
     },
   ];
 

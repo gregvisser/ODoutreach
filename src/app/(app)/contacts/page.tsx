@@ -31,10 +31,14 @@ import {
 import { ContactImportResultBanner } from "@/components/contacts/contact-import-result-banner";
 import { SendToContactForm } from "@/app/(app)/contacts/send-to-contact-form";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { listContactListsForClient } from "@/server/contacts/contact-lists";
+import { listContactListsForClients } from "@/server/contacts/contact-lists";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { listContactsForStaff } from "@/server/queries/contacts";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+// Generic despite its path: it is the "Showing 1–50 of 261" sentence, and it
+// already exists because /suppression had this same defect. Reused rather than
+// rewritten so the two screens cannot drift into two different vocabularies.
+import { describeRowWindow } from "@/lib/suppression/row-window";
 
 export const dynamic = "force-dynamic";
 
@@ -67,8 +71,40 @@ type Props = {
     id?: string;
     reason?: string;
     list?: string;
+    /** Directory search term — run in the database, not over the current page. */
+    q?: string;
+    /** Directory row offset. */
+    from?: string;
   }>;
 };
+
+/** A `?from=` param is a row offset; anything that is not a whole number is 0. */
+function parseOffset(raw: string | undefined): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Build a /contacts URL that keeps the client filter and the search term.
+ * Losing the filter when you page is how a paged screen becomes a worse screen
+ * than the unpaged one it replaced.
+ */
+function directoryHref({
+  clientFilter,
+  search,
+  offset,
+}: {
+  clientFilter?: string;
+  search: string;
+  offset: number;
+}): string {
+  const params = new URLSearchParams();
+  if (clientFilter) params.set("client", clientFilter);
+  if (search) params.set("q", search);
+  if (offset > 0) params.set("from", String(offset));
+  const qs = params.toString();
+  return qs ? `/contacts?${qs}` : "/contacts";
+}
 
 export default async function ContactsPage({ searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
@@ -92,32 +128,48 @@ export default async function ContactsPage({ searchParams }: Props) {
             : sp.send === "error"
               ? { kind: "error" as const, message: sp.message }
               : null;
+  const search = sp.q?.trim() ?? "";
+  const offset = parseOffset(sp.from);
+
   const [contacts, clients] = await Promise.all([
-    listContactsForStaff(accessible, clientFilter),
+    listContactsForStaff({
+      accessibleClientIds: accessible,
+      filterClientId: clientFilter,
+      search,
+      offset,
+    }),
     listClientsForStaff(accessible),
   ]);
 
   // Preload per-client lists so the CSV form can surface an "existing list"
   // picker the moment an operator picks a client workspace in the dropdown.
-  const listsByClientIdEntries = await Promise.all(
-    clients.map(async (c) => {
-      const rows = await listContactListsForClient(c.id);
-      const options: ClientListOption[] = rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        memberCount: r.memberCount,
-      }));
-      return [c.id, options] as const;
-    }),
-  );
-  const listsByClientId = Object.fromEntries(listsByClientIdEntries);
+  // One query for every workspace — this used to be one query PER workspace.
+  const listsByClient = await listContactListsForClients(clients.map((c) => c.id));
+  const listsByClientId: Record<string, ClientListOption[]> = {};
+  for (const c of clients) {
+    listsByClientId[c.id] = (listsByClient[c.id] ?? []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      memberCount: r.memberCount,
+    }));
+  }
+
+  const summary = describeRowWindow({
+    total: contacts.total,
+    shown: contacts.rows.length,
+    offset: contacts.offset,
+    searching: search.length > 0,
+    noun: { one: "contact", many: "contacts" },
+  });
+  const hasPrev = contacts.offset > 0;
+  const hasNext = contacts.offset + contacts.rows.length < contacts.total;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <p className="rounded-lg border border-amber-400/40 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
         <span className="font-medium">Admin-only legacy tools.</span>{" "}
         The day-to-day contact directory lives on{" "}
-        <Link
+        <Link prefetch={false}
           href="/universe"
           className="font-medium underline-offset-2 hover:underline"
         >
@@ -139,8 +191,8 @@ export default async function ContactsPage({ searchParams }: Props) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">Filter:</span>
-          <Link
-            href="/contacts"
+          <Link prefetch={false}
+            href={directoryHref({ search, offset: 0 })}
             className={cn(
               buttonVariants({
                 variant: !clientFilter ? "secondary" : "outline",
@@ -151,9 +203,11 @@ export default async function ContactsPage({ searchParams }: Props) {
             All (in scope)
           </Link>
           {clients.map((c) => (
-            <Link
+            <Link prefetch={false}
               key={c.id}
-              href={`/contacts?client=${c.id}`}
+              // Carry the search, reset the page — switching workspace while
+              // looking someone up should keep looking for that person.
+              href={directoryHref({ clientFilter: c.id, search, offset: 0 })}
               className={cn(
                 buttonVariants({
                   variant: clientFilter === c.id ? "secondary" : "outline",
@@ -177,7 +231,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         </p>
         <p className="text-xs text-muted-foreground">
           Cross-client directory and send tools are below.{" "}
-          <Link href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
+          <Link prefetch={false} href="/universe" className="font-medium text-primary underline-offset-2 hover:underline">
             Universe
           </Link>{" "}
           lists every imported person you can filter and attach to client lists.
@@ -198,7 +252,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {sendBanner.id ? (
             <>
               {" "}
-              <Link
+              <Link prefetch={false}
                 className="font-medium underline underline-offset-2"
                 href={`/activity/outbound/${sendBanner.id}`}
               >
@@ -217,7 +271,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {sendBanner.id ? (
             <>
               .{" "}
-              <Link
+              <Link prefetch={false}
                 className="font-medium underline underline-offset-2"
                 href={`/activity/outbound/${sendBanner.id}`}
               >
@@ -233,7 +287,7 @@ export default async function ContactsPage({ searchParams }: Props) {
           {sendBanner.id ? (
             <>
               {" "}
-              <Link
+              <Link prefetch={false}
                 className="font-medium underline underline-offset-2"
                 href={`/activity/outbound/${sendBanner.id}`}
               >
@@ -258,7 +312,48 @@ export default async function ContactsPage({ searchParams }: Props) {
             before enqueue.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent data-testid="contacts-directory" className="space-y-3">
+          <form
+            method="GET"
+            action="/contacts"
+            className="flex flex-wrap items-end gap-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2"
+          >
+            {/* Carry the workspace filter through the submit. Deliberately NOT
+                the offset — a new search starts at the first page. */}
+            {clientFilter ? (
+              <input type="hidden" name="client" value={clientFilter} />
+            ) : null}
+            <label className="flex flex-col gap-1" htmlFor="contact-search">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Search every contact
+              </span>
+              <input
+                id="contact-search"
+                type="search"
+                name="q"
+                defaultValue={search}
+                placeholder="Name, email, or part of one"
+                className="w-64 rounded border border-border/60 bg-background px-2 py-1 text-xs"
+              />
+            </label>
+            <button
+              type="submit"
+              className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+            >
+              Search
+            </button>
+            {search ? (
+              <Link prefetch={false}
+                href={directoryHref({ clientFilter, search: "", offset: 0 })}
+                className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+              >
+                Clear
+              </Link>
+            ) : null}
+          </form>
+
+          <p className="text-[11px] text-muted-foreground">{summary}</p>
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -272,7 +367,7 @@ export default async function ContactsPage({ searchParams }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contacts.map((row) => {
+              {contacts.rows.map((row) => {
                 const nameLabel =
                   row.fullName ||
                   [row.firstName, row.lastName].filter(Boolean).join(" ");
@@ -334,10 +429,45 @@ export default async function ContactsPage({ searchParams }: Props) {
               })}
             </TableBody>
           </Table>
-          {contacts.length === 0 ? (
+          {contacts.rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No contacts in scope — import a CSV or adjust access.
+              {search
+                ? "No contacts match your search."
+                : "No contacts in scope — import a CSV or adjust access."}
             </p>
+          ) : null}
+
+          {hasPrev || hasNext ? (
+            <div className="flex items-center justify-between gap-2">
+              {hasPrev ? (
+                <Link prefetch={false}
+                  href={directoryHref({
+                    clientFilter,
+                    search,
+                    offset: Math.max(0, contacts.offset - contacts.pageSize),
+                  })}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                >
+                  ← Previous
+                </Link>
+              ) : (
+                <span />
+              )}
+              {hasNext ? (
+                <Link prefetch={false}
+                  href={directoryHref({
+                    clientFilter,
+                    search,
+                    offset: contacts.offset + contacts.pageSize,
+                  })}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                >
+                  Next →
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
           ) : null}
         </CardContent>
       </Card>

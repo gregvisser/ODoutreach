@@ -35,7 +35,7 @@ export default async function DeletedWorkspacesPage() {
         <p className="text-muted-foreground">
           Only a super-admin can view or restore deleted workspaces.
         </p>
-        <Link
+        <Link prefetch={false}
           href="/settings"
           className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}
         >
@@ -99,8 +99,8 @@ export default async function DeletedWorkspacesPage() {
                       {c.deletedByStaffUserId
                         ? ` by ${deleterEmail.get(c.deletedByStaffUserId) ?? "a former staff member"}`
                         : ""}{" "}
-                      · {c._count.contacts} contacts · {c._count.campaigns}{" "}
-                      campaigns
+                      · {c._count.contacts} contacts · {c._count.emailSequences}{" "}
+                      sequences
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex items-center justify-between gap-4">

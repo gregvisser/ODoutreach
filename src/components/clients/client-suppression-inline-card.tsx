@@ -139,7 +139,7 @@ export function ClientSuppressionInlineCard({
           <span className="font-medium text-foreground">{clientName}</span> that must never receive
           outreach. Each list is kept in its own
           Google Sheet and checked before sending.{" "}
-          <Link href={`/suppression?client=${clientId}`} className="underline underline-offset-2">
+          <Link prefetch={false} href={`/suppression?client=${clientId}`} className="underline underline-offset-2">
             See the full blocked list
           </Link>
           .

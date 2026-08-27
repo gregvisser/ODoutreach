@@ -45,6 +45,23 @@ export function stripQuotedReply(body: string | null | undefined): string {
  * risk), so the set leans toward catching genuine demands.
  */
 const OPT_OUT_PATTERNS: Array<{ key: string; re: RegExp }> = [
+  /**
+   * The word our own outreach asks for. Every email sent on the mailto rail
+   * ends "To opt out, reply STOP to this email and we'll remove you"
+   * (`MAILTO_OPT_OUT_LINE`), and on that rail there is no unsubscribe link —
+   * replying STOP is the entire opt-out mechanism. None of the patterns below
+   * matched a bare STOP: `stop-emailing` needs a following verb object, so the
+   * system asked for a word and then ignored it (found 2026-08-26).
+   *
+   * Anchored to a whole LINE, not a word boundary, so "we can stop the trial"
+   * and "non-stop" do not fire. An optional reply prefix is allowed because
+   * people also send it as the subject ("Re: STOP"), and a trailing `\r` is
+   * matched explicitly because Microsoft Graph hands us CRLF bodies.
+   */
+  {
+    key: "stop-keyword",
+    re: /^[ \t*_"']*(?:(?:re|fwd|fw|sv|aw)\s*:\s*)*stop[ \t.!?*_"']*\r?$/im,
+  },
   { key: "unsubscribe", re: /\bunsubscrib(e|ing)\b/i },
   { key: "stop-emailing", re: /\bstop\s+(email|contact|messag|sending|reaching)/i },
   { key: "remove-me", re: /\b(please\s+)?(remove|take)\s+me\s+(off|from|out)/i },

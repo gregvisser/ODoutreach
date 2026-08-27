@@ -401,6 +401,12 @@ model Client {
   /// one-click branded signature uses for every mailbox. A mailbox's own
   /// `senderPhone` overrides it when set.
   signaturePhone                String?
+  /// How many outreach emails leave a mailbox together, with a natural gap
+  /// before the next group — the "4 at a time" the client was promised. Null
+  /// means use the house default (see DEFAULT_SEND_BATCH_SIZE). Clamped to
+  /// 1..MAX_SEND_BATCH_SIZE on read; it can only re-shape a daily cap, never
+  /// raise one.
+  sendBatchSize                 Int?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes            String?                   @db.Text
   briefAssignedAccountManagerId String?
@@ -1017,6 +1023,15 @@ enum FamilyProposalSource {
   /// designates `redirect=` for the same administrative domain; `include:` is
   /// s5.2's mechanism for CROSSING one, and is deliberately not used here.
   SPF_REDIRECT
+  /// The two domains are verified domains of the SAME Microsoft 365 tenant.
+  ///
+  /// The strongest of the three, and the only one that may block on its own:
+  /// a domain enters a tenant only after somebody with control of it proved
+  /// that control to Microsoft and a directory administrator admitted it, so
+  /// this is common ownership asserted by the organisation, not inferred here.
+  /// Measured 2026-08-27 — it links halifax.co.uk to bankofscotland.co.uk and
+  /// centrica.com to britishgas.co.uk, none of which DMARC or SPF can see.
+  MICROSOFT_TENANT
 }
 
 enum FamilyProposalStatus {

@@ -210,7 +210,7 @@ export function ClientMailboxInboxPanel({
                       : "—"}
                   </TableCell>
                   <TableCell className="w-16 text-right">
-                    <Link
+                    <Link prefetch={false}
                       href={`/clients/${clientId}/activity/messages/${m.id}`}
                       className="text-xs underline-offset-4 hover:underline"
                     >
