@@ -30,7 +30,7 @@ export default async function StaffHandoverGuidePage() {
         </p>
         <p className="text-sm text-muted-foreground print:hidden">
           Back to{" "}
-          <Link href="/training" className="underline underline-offset-2">
+          <Link prefetch={false} href="/training" className="underline underline-offset-2">
             Training
           </Link>
         </p>

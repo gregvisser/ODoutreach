@@ -46,14 +46,14 @@ export default async function TrainingIndexPage() {
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-2">
           {firstModule ? (
-            <Link
+            <Link prefetch={false}
               href={`/training/${firstModule.id}`}
               className={buttonVariants({ size: "lg" })}
             >
               Start here — Module 1: {firstModule.title} →
             </Link>
           ) : null}
-          <Link
+          <Link prefetch={false}
             href="/clients"
             className={buttonVariants({ variant: "outline", size: "lg" })}
           >
@@ -154,7 +154,7 @@ export default async function TrainingIndexPage() {
             const isFirst = i === 0;
             return (
               <li key={m.id}>
-                <Link
+                <Link prefetch={false}
                   href={`/training/${m.id}`}
                   className="group block h-full rounded-lg border border-border/80 bg-card/50 p-4 shadow-sm transition-colors hover:border-primary/60 hover:bg-card"
                 >
@@ -229,7 +229,7 @@ export default async function TrainingIndexPage() {
                     {String(i + 1)}. {row.step}
                   </span>
                   {row.portalHref ? (
-                    <Link
+                    <Link prefetch={false}
                       href={row.portalHref}
                       className="text-xs font-medium text-primary underline-offset-2 hover:underline"
                     >
@@ -273,7 +273,7 @@ export default async function TrainingIndexPage() {
                   <Badge variant="secondary" className="text-[10px]">
                     {s.durationGuidance}
                   </Badge>
-                  <Link
+                  <Link prefetch={false}
                     href={s.portalHref}
                     className="text-xs font-medium text-primary underline-offset-2 hover:underline"
                   >

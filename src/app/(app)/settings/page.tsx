@@ -76,7 +76,7 @@ export default async function SettingsPage() {
               Editor with live previews. Per-client logos are managed
               separately in each client&rsquo;s brief.
             </p>
-            <Link
+            <Link prefetch={false}
               href="/settings/branding"
               className="text-sm font-medium text-primary underline-offset-4 hover:underline"
             >
@@ -106,7 +106,7 @@ export default async function SettingsPage() {
                 Sign-in is handled by Microsoft — invitations go out through your
                 Microsoft 365 tenant.
               </p>
-              <Link
+              <Link prefetch={false}
                 href="/settings/staff-access"
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
               >
@@ -170,7 +170,7 @@ export default async function SettingsPage() {
                 Soft-delete hides a workspace and stops its sending without
                 touching any email, sequence, or suppression data.
               </p>
-              <Link
+              <Link prefetch={false}
                 href="/settings/deleted-workspaces"
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
               >
@@ -193,7 +193,7 @@ export default async function SettingsPage() {
                 Manage the always-deliverable internal test inboxes used to
                 verify live sends without touching real prospect suppression.
               </p>
-              <Link
+              <Link prefetch={false}
                 href="/settings/internal-seed"
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
               >

@@ -61,7 +61,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
           <p className="mt-1 max-w-2xl text-muted-foreground">
             Create reusable email templates for {client.name}. Templates are saved here and
             picked when you build sequences on the{" "}
-            <Link
+            <Link prefetch={false}
               href={`/clients/${client.id}/outreach`}
               className="font-medium text-primary underline underline-offset-2"
             >
@@ -89,7 +89,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Link
+          <Link prefetch={false}
             href={`/clients/${client.id}/outreach`}
             className={buttonVariants()}
           >

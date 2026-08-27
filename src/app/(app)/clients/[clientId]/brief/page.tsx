@@ -88,7 +88,7 @@ export default async function ClientBriefPage({ params }: Props) {
             </p>
           </div>
         </div>
-        <Link
+        <Link prefetch={false}
           href={base}
           className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
         >
@@ -193,7 +193,7 @@ export default async function ClientBriefPage({ params }: Props) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <Link
+              <Link prefetch={false}
                 href={`${base}/mailboxes`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" }),
@@ -202,7 +202,7 @@ export default async function ClientBriefPage({ params }: Props) {
               >
                 Mailboxes
               </Link>
-              <Link
+              <Link prefetch={false}
                 href={`${base}/sources`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" }),
@@ -211,7 +211,7 @@ export default async function ClientBriefPage({ params }: Props) {
               >
                 Sources
               </Link>
-              <Link
+              <Link prefetch={false}
                 href={`${base}/suppression`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" }),
@@ -220,7 +220,7 @@ export default async function ClientBriefPage({ params }: Props) {
               >
                 Suppression
               </Link>
-              <Link
+              <Link prefetch={false}
                 href={`${base}/outreach`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" }),

@@ -131,7 +131,7 @@ export function SuppressionRowsInspectableTable({
           Search
         </button>
         {searching ? (
-          <Link
+          <Link prefetch={false}
             href={hrefWithOffset(carryParams, paramPrefix, "", 0)}
             className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
           >
@@ -164,7 +164,7 @@ export function SuppressionRowsInspectableTable({
       {hasPrev || hasNext ? (
         <div className="flex items-center justify-between gap-2">
           {hasPrev ? (
-            <Link
+            <Link prefetch={false}
               href={hrefWithOffset(
                 carryParams,
                 paramPrefix,
@@ -179,7 +179,7 @@ export function SuppressionRowsInspectableTable({
             <span />
           )}
           {hasNext ? (
-            <Link
+            <Link prefetch={false}
               href={hrefWithOffset(
                 carryParams,
                 paramPrefix,

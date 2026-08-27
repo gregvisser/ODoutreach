@@ -106,7 +106,7 @@ export default async function ReportingPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
+          <Link prefetch={false}
             href={range ? `/reporting?from=${range.fromIso}&to=${range.toIso}` : "/reporting"}
             className={cn(
               buttonVariants({
@@ -118,7 +118,7 @@ export default async function ReportingPage({ searchParams }: Props) {
             All accessible clients
           </Link>
           {clients.map((c) => (
-            <Link
+            <Link prefetch={false}
               key={c.id}
               href={`/reporting?client=${c.id}${rangeQuery}`}
               className={cn(
@@ -291,7 +291,7 @@ export default async function ReportingPage({ searchParams }: Props) {
                 {metricsData.byClient.map((row) => (
                   <tr key={row.clientId} className="hover:bg-muted/40">
                     <td className="px-3 py-2 font-medium">
-                      <Link
+                      <Link prefetch={false}
                         className="underline-offset-2 hover:underline"
                         href={`/reporting?client=${row.clientId}${rangeQuery}`}
                       >
@@ -370,7 +370,7 @@ function HeadlineMetric({
       <CardHeader className="pb-2">
         <CardDescription>
           {href ? (
-            <Link
+            <Link prefetch={false}
               href={href}
               className="underline-offset-2 hover:text-foreground hover:underline"
             >
@@ -382,7 +382,7 @@ function HeadlineMetric({
         </CardDescription>
         <CardTitle className={`text-3xl tabular-nums ${valueTone}`}>
           {href ? (
-            <Link href={href} className="hover:underline">
+            <Link prefetch={false} href={href} className="hover:underline">
               {value}
             </Link>
           ) : (
@@ -421,7 +421,7 @@ function MetricItem({
   return (
     <div>
       {href ? (
-        <Link
+        <Link prefetch={false}
           href={href}
           className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
@@ -442,7 +442,7 @@ function MetricItem({
 function DrillCell({ href, value }: { href: string; value: string }) {
   return (
     <td className="px-3 py-2 text-right tabular-nums">
-      <Link href={href} className="underline-offset-2 hover:underline">
+      <Link prefetch={false} href={href} className="underline-offset-2 hover:underline">
         {value}
       </Link>
     </td>

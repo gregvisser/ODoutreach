@@ -56,7 +56,7 @@ function ExampleGrid({ examples }: { examples: readonly TrainingExample[] }) {
               }
             >
               {e.href ? (
-                <Link
+                <Link prefetch={false}
                   href={e.href}
                   className="underline-offset-2 hover:underline"
                   target="_blank"
@@ -88,7 +88,7 @@ function NextStepLink({ step }: { step: TrainingNextStep }) {
     );
   }
   return (
-    <Link
+    <Link prefetch={false}
       href={href}
       className="group block rounded-md border border-border/60 bg-background p-3 transition-colors hover:border-primary/60 hover:bg-card"
     >
@@ -121,7 +121,7 @@ export default async function TrainingModulePage({ params }: Props) {
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
-        <Link href="/training" className="underline-offset-2 hover:underline">
+        <Link prefetch={false} href="/training" className="underline-offset-2 hover:underline">
           Training
         </Link>
         <span className="px-1.5" aria-hidden="true">/</span>
@@ -305,7 +305,7 @@ export default async function TrainingModulePage({ params }: Props) {
                 </p>
               ) : null}
             </div>
-            <Link
+            <Link prefetch={false}
               href={mod.portalLink.href}
               className={buttonVariants({ size: "sm" })}
             >
@@ -317,7 +317,7 @@ export default async function TrainingModulePage({ params }: Props) {
           <ul className="space-y-1 text-sm">
             {mod.relatedPortalLinks.map((p) => (
               <li key={p.href + p.label}>
-                <Link
+                <Link prefetch={false}
                   href={p.href}
                   className="font-medium text-primary underline-offset-4 hover:underline"
                 >
@@ -356,7 +356,7 @@ export default async function TrainingModulePage({ params }: Props) {
       >
         <div className="min-w-0">
           {prev ? (
-            <Link
+            <Link prefetch={false}
               href={`/training/${prev.id}`}
               className="group block max-w-sm text-sm"
             >
@@ -368,7 +368,7 @@ export default async function TrainingModulePage({ params }: Props) {
               </span>
             </Link>
           ) : (
-            <Link
+            <Link prefetch={false}
               href="/training"
               className="text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
             >
@@ -378,7 +378,7 @@ export default async function TrainingModulePage({ params }: Props) {
         </div>
         <div className="min-w-0 text-right">
           {next ? (
-            <Link
+            <Link prefetch={false}
               href={`/training/${next.id}`}
               className="group block max-w-sm text-sm"
             >
@@ -390,7 +390,7 @@ export default async function TrainingModulePage({ params }: Props) {
               </span>
             </Link>
           ) : (
-            <Link
+            <Link prefetch={false}
               href="/training"
               className="text-sm font-medium text-muted-foreground underline-offset-4 hover:underline"
             >

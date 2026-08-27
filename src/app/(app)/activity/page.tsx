@@ -64,7 +64,7 @@ export default async function ActivityPage({ searchParams }: Props) {
         <span className="font-medium">Admin-only legacy view.</span>{" "}
         The day-to-day Activity surface lives inside each client workspace —
         open a client from{" "}
-        <Link
+        <Link prefetch={false}
           href="/clients"
           className="font-medium underline-offset-2 hover:underline"
         >
@@ -83,7 +83,7 @@ export default async function ActivityPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
+          <Link prefetch={false}
             href="/activity"
             className={cn(
               buttonVariants({
@@ -95,7 +95,7 @@ export default async function ActivityPage({ searchParams }: Props) {
             All
           </Link>
           {clients.map((c) => (
-            <Link
+            <Link prefetch={false}
               key={c.id}
               href={`/activity?client=${c.id}`}
               className={cn(
@@ -132,7 +132,7 @@ export default async function ActivityPage({ searchParams }: Props) {
                 {outbound.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="max-w-[160px]">
-                      <Link
+                      <Link prefetch={false}
                         href={`/activity/outbound/${row.id}`}
                         className="block truncate font-medium underline-offset-2 hover:underline"
                       >
@@ -195,7 +195,7 @@ export default async function ActivityPage({ searchParams }: Props) {
                           {row.matchMethod.replace(/_/g, " ")}
                         </Badge>
                         {row.linkedOutbound ? (
-                          <Link
+                          <Link prefetch={false}
                             href={`/activity/outbound/${row.linkedOutbound.id}`}
                             className="text-xs underline-offset-2 hover:underline"
                           >

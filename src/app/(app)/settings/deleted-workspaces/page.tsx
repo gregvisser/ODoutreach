@@ -35,7 +35,7 @@ export default async function DeletedWorkspacesPage() {
         <p className="text-muted-foreground">
           Only a super-admin can view or restore deleted workspaces.
         </p>
-        <Link
+        <Link prefetch={false}
           href="/settings"
           className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}
         >

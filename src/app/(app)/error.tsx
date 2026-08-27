@@ -38,7 +38,7 @@ export default function AppError({
         <Button type="button" size="sm" onClick={() => reset()}>
           Try again
         </Button>
-        <Link
+        <Link prefetch={false}
           href="/support"
           className="text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
