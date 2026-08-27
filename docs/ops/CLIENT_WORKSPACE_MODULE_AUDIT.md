@@ -548,8 +548,22 @@ remain open for a future pass; they are not blockers for the PR sequence in
   of operational actions live there (e.g. “Sync suppression”, “Queue pilot”)?
   **Open** — deferred.
 - Q3. Should the workflow strip stay, become a breadcrumb-style progress
-  indicator, or go away entirely now that readiness rows exist? **Open** —
-  deferred; strip stays as in-page nav.
+  indicator, or go away entirely now that readiness rows exist?
+  **Answered (2026-08-27) — it went away entirely.** PR #247 deleted it: the
+  Overview was offering the same seven destinations three times (tab row,
+  numbered pill strip, readiness rows). The strip was the weakest of the three
+  — a coloured dot whose meaning existed only in a screen-reader string, and a
+  computed `metric` per step it never rendered. Nothing was lost: the tab row
+  is the navigation, the Launch readiness rows are the status, and they carry
+  the same seven destinations with a pill, a metric and the same link.
+  `client-overview-ui-policy.test.ts` holds that line, including the deletion
+  of the orphaned builder, so the strip cannot return by accident.
+  Not adopted: moving status dots onto the tab row. The seven statuses depend
+  on most of `loadClientWorkspaceBundle` (8 parallel queries), so that would
+  load the bundle on all nine workspace pages; a lighter approximation would
+  create a *third* source of truth for workspace status.
+  The training that taught this strip by name was corrected separately, three
+  months later — see the drift guard in `modules-staff-readiness.test.ts`.
 
 ### Brief
 - Q4. What fields are **mandatory before a client can launch**?
