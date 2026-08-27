@@ -11,6 +11,7 @@ import {
   mapEventTypeToKind,
   planWebhookMutation,
 } from "@/server/email/outbound/lifecycle";
+import { stampOutboundBounce } from "@/server/email/outbound/record-bounce";
 
 import { computeWebhookDedupeHash } from "./webhook-dedupe";
 
@@ -211,14 +212,15 @@ export async function applyNormalizedEmailEvent(
       },
     });
   } else if (kind === "bounced") {
-    await prisma.outboundEmail.update({
-      where: { id: outbound.id },
-      data: {
-        status: "BOUNCED",
-        bouncedAt: event.createdAt,
-        bounceCategory: event.bounceCategory ?? null,
-        ...baseMeta,
-      },
+    // Shared with the mailbox NDR path (`server/mailbox/bounce-detection.ts`)
+    // so one bounce produces one consistent record whichever channel saw it.
+    await stampOutboundBounce({
+      outbound: { id: outbound.id },
+      mode: "apply_status",
+      at: event.createdAt,
+      bounceCategory: event.bounceCategory ?? null,
+      providerEventType: event.eventType,
+      providerStatus: event.providerStatus,
     });
   } else if (kind === "failed" || kind === "complained") {
     await prisma.outboundEmail.update({

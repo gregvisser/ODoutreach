@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { outboundFindFirst, suppressMock } = vi.hoisted(() => ({
+const { outboundFindFirst, outboundUpdate, suppressMock } = vi.hoisted(() => ({
   outboundFindFirst: vi.fn(),
+  outboundUpdate: vi.fn(),
   suppressMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    outboundEmail: { findFirst: (...a: unknown[]) => outboundFindFirst(...a) },
+    outboundEmail: {
+      findFirst: (...a: unknown[]) => outboundFindFirst(...a),
+      update: (...a: unknown[]) => outboundUpdate(...a),
+    },
   },
 }));
 
@@ -34,6 +38,8 @@ const HARD_NDR = {
 
 beforeEach(() => {
   outboundFindFirst.mockReset();
+  outboundUpdate.mockReset();
+  outboundUpdate.mockResolvedValue({});
   suppressMock.mockReset();
   suppressMock.mockResolvedValue({ suppressed: true, newlyCreated: true });
 });
@@ -54,7 +60,12 @@ describe("processSyncedMessageForBounce (H2)", () => {
 
   it("suppresses a hard bounce for an address we actually sent to", async () => {
     process.env[FLAG] = "true";
-    outboundFindFirst.mockResolvedValue({ id: "out-1", contactId: "ct-1" });
+    outboundFindFirst.mockResolvedValue({
+      id: "out-1",
+      contactId: "ct-1",
+      status: "SENT",
+      lastProviderEventAt: null,
+    });
 
     const r = await processSyncedMessageForBounce(HARD_NDR);
 
@@ -104,5 +115,71 @@ describe("processSyncedMessageForBounce (H2)", () => {
     });
     expect(r.suppressed).toBe(false);
     expect(suppressMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BLOCKER 1 (customer-ready) — the reported bounce rate was structurally pinned
+ * at 0%. Reports counts `OutboundEmail.status == "BOUNCED"`, and the only writer
+ * of that status was the Resend webhook — a channel prospect outreach never uses,
+ * because every prospect send goes out through Microsoft Graph or Gmail. The NDR
+ * path below is the ONLY path that can see a Graph/Gmail bounce, and it suppressed
+ * the address (the safety half worked) without ever stamping the row the metric
+ * reads (the half the client judges deliverability by).
+ */
+describe("processSyncedMessageForBounce — stamps the row the report counts", () => {
+  it("marks the outbound row BOUNCED so the reported bounce rate can move", async () => {
+    process.env[FLAG] = "true";
+    outboundFindFirst.mockResolvedValue({
+      id: "out-1",
+      contactId: "ct-1",
+      status: "SENT",
+      lastProviderEventAt: null,
+    });
+
+    const r = await processSyncedMessageForBounce(HARD_NDR);
+
+    expect(r.suppressed).toBe(true);
+    expect(r.statusStamped).toBe(true);
+    expect(outboundUpdate).toHaveBeenCalledTimes(1);
+    const call = outboundUpdate.mock.calls[0][0] as {
+      where: { id: string };
+      data: Record<string, unknown>;
+    };
+    expect(call.where).toEqual({ id: "out-1" });
+    expect(call.data).toMatchObject({
+      status: "BOUNCED",
+      bouncedAt: AT,
+      bounceCategory: expect.stringContaining("ndr:"),
+      lastProviderEventType: "mailbox_sync_ndr",
+      lastProviderEventAt: AT,
+    });
+  });
+
+  it("never downgrades a REPLIED row — a human answered, that wins", async () => {
+    process.env[FLAG] = "true";
+    outboundFindFirst.mockResolvedValue({
+      id: "out-1",
+      contactId: "ct-1",
+      status: "REPLIED",
+      lastProviderEventAt: null,
+    });
+
+    const r = await processSyncedMessageForBounce(HARD_NDR);
+
+    // Still suppressed — the address is dead regardless of the milestone.
+    expect(r.suppressed).toBe(true);
+    expect(r.statusStamped).toBe(false);
+    expect(outboundUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not stamp when we never sent to that address", async () => {
+    process.env[FLAG] = "true";
+    outboundFindFirst.mockResolvedValue(null);
+
+    const r = await processSyncedMessageForBounce(HARD_NDR);
+
+    expect(r.statusStamped).toBe(false);
+    expect(outboundUpdate).not.toHaveBeenCalled();
   });
 });
