@@ -1,6 +1,136 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 35) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 37) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 37, queue item 25. Address verification before sending now exists, and fires.
+
+Queue row 25 is `DONE 37`. Merged as **`a0e15d2`** (PR #277) and **deployed —
+production verified by hash on the direct App Service URL**. No schema change,
+no migration, no send.
+
+### What the audit actually found
+
+The queue item was accurate on both halves.
+
+**Automatic safety limits already existed** and needed nothing: per-mailbox daily
+caps (ledger-enforced, `sending-policy.ts`), send pacing, the 10-day re-contact
+cooldown, hard-bounce auto-suppression.
+
+**Address verification genuinely did not exist.** The only check of any kind was
+a format regex at CSV import and RocketReach import. Two holes:
+
+1. `universe-to-client-list.ts:50` — contacts materialised from the Universe pass
+   through neither importer; that path checks only that the address is non-empty.
+2. Nothing anywhere asked whether the recipient domain could receive mail at all.
+   There was **no MX lookup anywhere in the send path**. A regex is happy with
+   `someone@gmial.com`; its nameservers are not.
+
+### What was built
+
+- `src/lib/safety/recipient-verification-policy.ts` — the decision (pure, no I/O).
+- `src/server/outreach/recipient-mail-route.ts` — DNS lookup + per-domain cache.
+- Wired into `src/server/email/outbound/execute-one.ts` **at dispatch**, so it
+  covers every send path regardless of how the contact was created. At dispatch
+  rather than import for the same reason suppression is re-checked there: a list
+  loaded last month is sent today.
+- `retry-policy.ts` — one added code so a deferral is retryable, not terminal.
+
+Accepts MX, or an A record as implicit MX (RFC 5321 §5.1). Honours RFC 7505 null
+MX as an explicit refusal. Blocks NXDOMAIN, no-mail-route, and malformed.
+
+### The decision that mattered most
+
+**A failed lookup is not a bad recipient.** SERVFAIL/timeout returns the row to
+`QUEUED` and retries — never sent, never failed. Blocking on it would have turned
+a DNS blip into a silent send outage for a live client; sending on it would have
+defeated the gate. This is the load-bearing branch; three tests pin it.
+
+### Decision: shipped ON by default, against repo convention
+
+Send-path work here normally ships behind a default-OFF flag. This one is ON, and
+the reason is written into the module: **a default-off flag is the "built, wired,
+reported success, never fired" failure by construction** — the defect QUEUE.md
+records six times this week.
+
+Safe because the blocking condition is narrow: only a *provably* dead domain
+fails a row; every other outcome, **including a bug in the check itself**,
+defers. Worst case is delayed mail, not lost mail. Reversible without a deploy
+via `RECIPIENT_VERIFICATION_ENABLED=false` — **confirmed absent from Azure app
+settings**, so the gate is ON in production now.
+
+### Proven, not assumed
+
+`execute-one-address-verification.test.ts` runs the **real dispatcher** with only
+`node:dns` faked (real policy, real lookup, real cache, real wiring); every
+assertion ends at "nothing was handed to Gmail".
+
+Both suites were proven **capable of failing**: disabling the gate turned 7 of 12
+red — and the 5 that stayed green are exactly the good-address and kill-switch
+cases that should — and breaking the null-MX branch turned its test red. Both
+breaks reverted, working tree verified clean.
+
+Gates: lint 0 errors (1 pre-existing warning in untracked `relay-status.mjs`),
+typecheck clean, **2598 tests / 265 files** (36 new), integration suite 17/17
+against real Postgres, build green. CI green on PR #277 including E2E.
+
+### Trap found — worth knowing before writing any dispatcher test
+
+Four existing dispatcher suites were silently performing **real DNS lookups**
+through the new code path, and the gate was correctly refusing them:
+`example.com` publishes an RFC 7505 **null MX**, and the integration suite uses
+`@example.test` — a reserved TLD (RFC 2606) that by design never resolves. All
+four now fake `node:dns`, which also removed their latent dependency on the
+network in CI.
+
+### Known narrowness, accepted deliberately
+
+The format check reuses `isValidEmailFormat`, which rejects some legal local
+parts — realistically an apostrophe (`o'brien@company.com`). Accepted rather than
+fixed: a *looser* check at dispatch than at import would give the system two
+disagreeing answers to "is this a valid address?", and such an address cannot
+already be in the database because every ingestion path applies this same regex.
+Loosening the shared regex would relax import validation too — a separate change
+with its own blast radius, deliberately not bundled.
+
+### The honest limit on the proof
+
+The gate is proven to fire on the real dispatcher and proven present in the
+running production build. It has **not** been observed firing against a live
+production row — that needs a real dead-domain prospect to come through the
+queue, or a send forbidden for any client but `bidlowai`.
+
+### Open decision — Greg's, recorded in `docs/LIST-VERIFICATION.md`
+
+**Whether to buy per-address mailbox-level verification** (ZeroBounce et al).
+Recurring per-address spend **and** a new data processor receiving every client
+prospect address — money plus client relationship, so not an agent's call.
+
+Recommendation written up: **not yet.** SMTP probing is unreliable against M365
+and Google Workspace (most of OpensDoors' recipients — they accept-then-discard
+rather than rejecting at RCPT time), and bounce suppression already catches a
+dead mailbox after one send. Run domain verification for a month and measure: if
+bounces are dominated by dead domains, this is already solved for free.
+
+### What the next session should pick up first
+
+**A bounce-rate circuit breaker.** This is the one genuinely missing automatic
+safety limit and it is now the highest-value deliverability gap. Bounce
+suppression handles the individual address that bounced, but **nothing halts a
+mailbox or client when the bounce rate spikes** — verified absent this cycle (no
+`circuit`/`threshold`/`auto-pause` module exists anywhere in `src`). It is the
+standard protection and the one that would have limited the 2026 quarantine
+damage. Worth a cycle of its own.
+
+Also noted, smaller: role-address detection (`info@`, `sales@`) flagged at
+import; and auto-suppressing a domain that fails verification so the whole list
+is cleaned rather than each row failing on its own attempt.
+
+### Contradicts `.bidlow/PROJECT.json`?
+
+Nothing found. The domain brief lists `deliverability_thresholds` as gating a
+real-world action; this cycle strengthens that gate rather than altering it, and
+the gate register's existing entries (dispatch transport, opt-out rail) are
+untouched.
 
 ## Session 2026-08-27 - Relay cycle 35, queue item 24. The deliverability review exists as a document the client can read.
 
