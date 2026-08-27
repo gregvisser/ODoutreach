@@ -113,6 +113,70 @@ export const E2E_SUPPRESSION_NEEDLE = e2eSuppressedEmail(
 );
 
 /**
+ * Bulk contacts for /contacts (queue item 27, defect 9).
+ *
+ * Measured in Chrome on the live site 2026-08-26: /contacts took 19,265 ms to
+ * load and shipped 2,977 KB of HTML, because `listContactsForStaff` takes 500
+ * rows and the page renders every one of them — each row carrying a
+ * `SendToContactForm`, which is a client component. The page had no paging and
+ * no total.
+ *
+ * 260 is chosen to sit just over any sane page size while staying cheap to seed:
+ * it is more than one page, so a page-one render provably cannot contain the
+ * last contact, and it is well under the old 500 cap, so the OLD code renders
+ * all 260 in one go and the spec can measure the difference.
+ */
+export const E2E_CONTACT_BULK = {
+  count: 260,
+} as const;
+
+/**
+ * The bulk contacts get their OWN workspace, and that is not tidiness.
+ *
+ * The first draft seeded them into `E2E_CLIENT`, and the existing journey
+ * "the compose sheet opens without sending" went red: it opens
+ * `/contacts?client=<E2E_CLIENT>` and expects `E2E_CONTACT` to be on screen,
+ * and 260 newer contacts had pushed it off page one. The right response to an
+ * existing spec failing is to stop changing what it was testing — not to edit
+ * it — so the volume lives somewhere the other specs never look. The
+ * unfiltered /contacts a super admin lands on still has more than one page,
+ * which is all this fixture is for.
+ */
+export const E2E_CLIENT_BULK = {
+  id: "e2e-client-000000000000000003",
+  name: "E2E Bulk Directory Workspace",
+  slug: "e2e-bulk-directory",
+} as const;
+
+/** Zero-padded so alphabetical order and numeric order are the same. */
+export function e2eBulkContactEmail(index: number): string {
+  return `bulk-${String(index).padStart(4, "0")}@e2e-contacts.test`;
+}
+
+/**
+ * Fixed ids, so re-seeding is idempotent. `Contact` has no unique constraint on
+ * (clientId, email), so a `createMany({ skipDuplicates })` keyed on nothing adds
+ * a fresh 260 rows every run — the first draft of this fixture did exactly that
+ * and the spec measured 524 rows on one run and 262 on the next. Keying on the
+ * primary key makes the seed mean the same thing every time.
+ */
+export function e2eBulkContactId(index: number): string {
+  return `e2e-bulk-contact-${String(index).padStart(11, "0")}`;
+}
+
+/**
+ * The last contact alphabetically. `listContactsForStaff` orders by
+ * `updatedAt desc`, so the spec seeds these in index order and this one is the
+ * NEWEST — which puts it FIRST under that ordering and last under an
+ * alphabetical one. The spec therefore pins its expectation to the rendered
+ * ROW COUNT rather than to which row is where, and uses this only as a
+ * positive control that the bulk seed really landed.
+ */
+export const E2E_CONTACT_BULK_NEEDLE = e2eBulkContactEmail(
+  E2E_CONTACT_BULK.count - 1,
+);
+
+/**
  * Sending mailboxes for /clients/[id]/mailboxes (queue item 27, defect 6).
  *
  * Deliberately shaped like the live opensdoors workspace measured on
