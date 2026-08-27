@@ -21,7 +21,8 @@ says exactly where it came from, so you can challenge any of it.
 2. **The bounce rate was being reported as 0%. That was never true.** The real
    figure is roughly **4-5%**. Bounced addresses *were* being blocked correctly
    the whole time — but the report was reading the wrong field, so it showed a
-   clean sheet while it happened.
+   clean sheet while it happened. That is now fixed and live; it will start
+   showing real numbers once sending resumes.
 3. **426 bounce notifications had been collected and never read.** For Gmail
    mailboxes we were only downloading the headline of each message and not the
    contents, and the contents are the part that says why it bounced. Fixed.
@@ -215,7 +216,7 @@ All of the following is live on production as of today.
 | **Sending is paced** — four emails at a time with natural gaps through the working day, rather than a burst. Adjustable per customer. | Default is four, switched on by default. |
 | **Dead mailboxes now tell the truth**, and distinguish "sign in again" from "this account no longer exists and cannot be reconnected". | See below — this one was proved by watching it happen. |
 | **Bounced addresses are blocked automatically** and permanently. This was already working. | Setting read back off the live server today: bounce detection and spam-complaint detection both `true`. |
-| **A bounce is now written against the original email**, so the reported bounce figure can move off zero. | Both routes a bounce arrives by share one piece of code, with automated tests that fail the build if the mailbox route stops marking the record. Verified live by commit hash — see the deployment note below. |
+| **A bounce is now written against the original email**, so the reported bounce figure can move off zero. | Both routes a bounce arrives by share one piece of code, with automated tests that fail the build if the mailbox route stops marking the record. Live on the production server on 27 August, confirmed by reading the running version back off the server itself rather than trusting the deployment — see the note below. |
 
 On the dead-mailbox fix specifically, we did not settle for "the code is
 deployed". The scheduled job that checks all the mailboxes publishes its results,
@@ -230,6 +231,20 @@ and we watched the number change at the moment the fix went out:
 Thirty-five became twenty-seven. Exactly eight mailboxes dropped out of the
 checks, which can only happen if they were genuinely marked as disconnected. As
 of the most recent run — 26 August, 18:55 — it still reads 27 of 27, 0 failed.
+
+On the bounce-recording fix, we applied the same standard rather than assuming a
+deployment worked. The live server publishes which version of the software it is
+actually running. After the change went out we read that back and confirmed it
+matched the change — version `b358dcd`, built 27 August. We also read the live
+server's own settings back to confirm bounce detection was switched on, which it
+was, and had been throughout.
+
+One honest limit on this fix: **it can only act on bounce notices that arrive
+from now on.** It has not been observed catching a real one yet, because sending
+is paused. The moment sending resumes, each mailbox check records how many
+bounces it wrote down, so the first real one is visible without anybody having to
+take our word for it. We would rather tell you that than describe a fix as proven
+when what has been proven is that it is correctly built and correctly installed.
 
 ---
 
