@@ -1,9 +1,12 @@
 import { notFound } from "next/navigation";
 
 import { ClientLinkedReplyDetail } from "@/components/activity/client-linked-reply-detail";
+import { ReplyClaimNotice } from "@/components/activity/reply-claim-notice";
 import { AddToDoNotContactButtons } from "@/components/suppression/add-to-dnc";
+import { resolveReplyClaimSubject } from "@/lib/inbox/reply-claim";
 import { detectRemovalIntent } from "@/lib/unsubscribe/detect-removal-intent";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { loadVisibleReplyClaim } from "@/server/inbox/reply-claim";
 import { loadClientLinkedReplyDetail } from "@/server/queries/client-linked-reply-detail";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -25,6 +28,20 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
   const detail = await loadClientLinkedReplyDetail({ clientId, replyId });
   if (!detail) notFound();
 
+  // Advisory claiming. This page and the inbound-message detail page are two
+  // routes to the same prospect conversation, so both key the claim on the
+  // correlated mailbox message where one exists — open it either way and you
+  // see the same "somebody is already on this".
+  const claimSubject = resolveReplyClaimSubject({
+    replyId,
+    inboundMailboxMessageId: detail.inboundMailboxMessageId,
+  });
+  const replyClaim = await loadVisibleReplyClaim({
+    clientId,
+    subject: claimSubject,
+    viewerStaffUserId: staff.id,
+  });
+
   // F6 (b) — flag, don't auto-act. If the prospect's own words read as an
   // unsubscribe/removal request, surface a loud compliance banner with the
   // existing one-click Do-not-contact action so staff can't miss it. The
@@ -37,6 +54,12 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-6">
+      <ReplyClaimNotice
+        clientId={clientId}
+        subjectType={claimSubject.subjectType}
+        subjectId={claimSubject.subjectId}
+        claim={replyClaim}
+      />
       {removalIntent.detected ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-4">
           <p className="text-sm font-semibold text-destructive">
@@ -51,6 +74,8 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
             <AddToDoNotContactButtons
               clientId={clientId}
               email={detail.reply.fromEmail}
+              replyClaimSubjectType={claimSubject.subjectType}
+              replyClaimSubjectId={claimSubject.subjectId}
             />
           </div>
         </div>
@@ -86,6 +111,8 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
         <AddToDoNotContactButtons
           clientId={clientId}
           email={detail.reply.fromEmail}
+          replyClaimSubjectType={claimSubject.subjectType}
+          replyClaimSubjectId={claimSubject.subjectId}
         />
       )}
     </div>
