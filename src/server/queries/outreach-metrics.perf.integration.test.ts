@@ -455,4 +455,64 @@ describe("what the Reports landing page costs in database round-trips", () => {
     expect(global.global.sent).toBe(9);
     expect(global.global.replies).toBe(2);
   });
+
+  /**
+   * Queue item 27, defect (8). The UX walk of 2026-08-26 read, off the live
+   * /reporting page: "BidlowAI: reply rate 133.3% (3 sent, 4 replies)".
+   *
+   * This seeds that exact shape — 3 emails sent, 4 reply messages, two of them
+   * on the SAME email, which is what a prospect who replies twice looks like
+   * in the database — and drives it through the real query, not through a
+   * hand-made count object. Against the shipped code it reports 133.3%.
+   */
+  it("a prospect replying twice does not push the reply rate over 100%", async () => {
+    const { prisma } = await import("@/lib/db");
+    const { loadClientOutreachMetrics } = await import(
+      "@/server/queries/outreach-metrics"
+    );
+
+    const client = await prisma.client.create({
+      data: { name: "Reply Rate Workspace", slug: "reply-rate-workspace" },
+    });
+    const sentAt = new Date("2026-08-01T09:00:00.000Z");
+
+    const emails = [];
+    for (let i = 0; i < 3; i += 1) {
+      emails.push(
+        await prisma.outboundEmail.create({
+          data: {
+            clientId: client.id,
+            toEmail: `prospect${String(i)}@example.test`,
+            status: "SENT",
+            sentAt,
+          } as never,
+        }),
+      );
+    }
+
+    // Four messages, on two emails: one prospect replied three times.
+    const landedOn = [emails[0].id, emails[0].id, emails[0].id, emails[1].id];
+    for (const [i, linkedOutboundEmailId] of landedOn.entries()) {
+      await prisma.inboundReply.create({
+        data: {
+          clientId: client.id,
+          linkedOutboundEmailId,
+          matchMethod: "BY_OUTBOUND_PROVIDER_ID",
+          fromEmail: `prospect-reply${String(i)}@example.test`,
+          receivedAt: sentAt,
+        },
+      });
+    }
+
+    const m = await loadClientOutreachMetrics(client.id, [client.id]);
+
+    // Four messages really did arrive — that number was never wrong.
+    expect(m.replies).toBe(4);
+    // But only two of the three emails we sent drew one.
+    expect(m.repliedEmails).toBe(2);
+    expect(m.replyRate).toBe(66.7);
+    // The invariant the whole shape exists to guarantee.
+    expect(m.repliedEmails).toBeLessThanOrEqual(m.sent);
+    expect(m.replyRate).toBeLessThanOrEqual(100);
+  });
 });

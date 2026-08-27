@@ -90,9 +90,9 @@ describe("/reporting UI policy (PR #136)", () => {
 
   it("renders the trustworthy outreach-metrics surface", () => {
     expect(reportingPageSource).toContain("Outreach metrics");
-    expect(reportingPageSource).toContain("Sent (with provider proof)");
+    expect(reportingPageSource).toContain("Sent, confirmed");
     expect(reportingPageSource).toContain("Queued / preparing");
-    expect(reportingPageSource).toContain("Send proof missing");
+    expect(reportingPageSource).toContain("Sent, not confirmed");
     expect(reportingPageSource).toContain("Not reached");
   });
 
@@ -129,7 +129,7 @@ describe("/reporting UI policy (PR #136)", () => {
     expect(reportingPageSource).toContain("Per-client breakdown");
     expect(reportingPageSource).toContain(">Reply rate<");
     expect(reportingPageSource).toContain(">Not reached<");
-    expect(reportingPageSource).toContain(">Proof missing<");
+    expect(reportingPageSource).toContain(">Not confirmed<");
     // Delivery columns removed — mailbox sends cannot be delivery-tracked.
     expect(reportingPageSource).not.toContain(">Delivery rate<");
   });

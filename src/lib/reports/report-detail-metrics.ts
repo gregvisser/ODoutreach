@@ -41,10 +41,10 @@ export const REPORT_DETAIL_METRICS: Record<
 > = {
   sent: {
     key: "sent",
-    label: "Sent (with provider proof)",
+    label: "Sent, confirmed",
     windowed: true,
     rowsDescription:
-      "Outbound emails the provider confirmed (a message id or a send time).",
+      "Emails the mailbox confirmed it took.",
   },
   queued: {
     key: "queued",

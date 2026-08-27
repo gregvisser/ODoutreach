@@ -1409,11 +1409,11 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
     durationGuidance: "3 minutes",
     script: [
       "Open the OpensDoors test client and click Lists.",
-      "Read the KPI strip aloud: Total contacts, Email-sendable, Sent, Queued, Proof missing, Failed, Bounced, Replies, Unsubscribed, Suppressed.",
+      "Read the KPI strip aloud: Total contacts, Email-sendable, Sent, Queued, Not confirmed, Failed, Bounced, Replies, Unsubscribed, Suppressed.",
       "Open one list (Open list button).",
       "Walk the table: name, employer, job title, status badge, sequence, mailbox, sent time, opens, latest event.",
       'Use the new search/filter/sort controls (PR #140): filter by "Sent from mailbox" and sort by Name A→Z.',
-      "Expand one row to show the send proof block. Explain what Send proof missing means.",
+      "Expand one row to show the send confirmation block. Explain what Sent, not confirmed means.",
     ],
     checklist: [
       "Use a test client — no real contact emails or company names on camera.",

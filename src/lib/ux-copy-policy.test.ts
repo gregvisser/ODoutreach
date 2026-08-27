@@ -141,3 +141,49 @@ describe("demo copy policy — one screen never says the same thing twice", () =
     expect(cardLabels.filter((label) => stripLabels.has(label))).toEqual([]);
   });
 });
+
+/**
+ * Queue item 27, defect (8) — "words a non-technical owner will stop on",
+ * recorded by opening the live site in Chrome on 2026-08-26.
+ *
+ * These are not typos. Each one is an internal implementation detail that
+ * escaped onto a screen a client reads: the name of a database condition
+ * ("send proof missing"), the FORMULA behind a number instead of its meaning,
+ * and a headline metric whose value is the words "Not tracked", which reads as
+ * a broken page rather than as "nobody reports this".
+ */
+describe("demo copy policy — no engineer vocabulary in the headline numbers", () => {
+  const reportingPage = source("src", "app", "(app)", "reporting", "page.tsx");
+  const mailboxPanel = source(
+    "src",
+    "components",
+    "clients",
+    "client-mailbox-identities-panel.tsx",
+  );
+
+  it("neither Reports nor Activity labels a number 'Send proof missing'", () => {
+    // "Proof" is our word for a provider message id. A client reading "Send
+    // proof missing: 204" in red cannot tell whether 204 emails failed.
+    expect(reportingPage).not.toContain('label="Send proof missing"');
+    expect(clientActivityPage).not.toContain('label="Send proof missing"');
+  });
+
+  it("does not print the formula behind 'Not reached' as its explanation", () => {
+    expect(reportingPage).not.toContain(
+      "failed + bounces + suppressed + proof missing",
+    );
+  });
+
+  it("never renders the words 'Not tracked' as a headline metric's value", () => {
+    // Small print may say a thing is not tracked. A 30px number may not BE
+    // the words "Not tracked" — on the live site that was the Delivered card.
+    expect(reportingPage).not.toContain(
+      'm.deliveryTracked ? m.delivered.toLocaleString() : "Not tracked"',
+    );
+  });
+
+  it("calls troubleshooting sections what they are, not 'diagnostics'", () => {
+    expect(clientActivityPage).not.toContain("Admin diagnostics");
+    expect(mailboxPanel).not.toContain("Connection diagnostics");
+  });
+});

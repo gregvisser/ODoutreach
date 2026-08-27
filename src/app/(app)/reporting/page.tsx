@@ -165,9 +165,11 @@ export default async function ReportingPage({ searchParams }: Props) {
         <CardContent className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <HeadlineMetric
-              label="Sent (with provider proof)"
+              // Renamed with its sibling below. The old hint quoted two of our
+              // own database column names at the client.
+              label="Sent, confirmed"
               value={m.sent.toLocaleString()}
-              hint="Provider returned a message id or sentAt"
+              hint="The mailbox confirmed it took the email"
               href={detailHref("sent")}
             />
             <HeadlineMetric
@@ -186,13 +188,14 @@ export default async function ReportingPage({ searchParams }: Props) {
             />
             <HeadlineMetric
               label="Delivered"
-              value={
-                m.deliveryTracked ? m.delivered.toLocaleString() : "Not tracked"
-              }
+              // A headline number may not BE the words "Not tracked" — at 30px
+              // that reads as a broken page, not as "nobody reports this".
+              // A dash reads as "no figure"; the hint says why.
+              value={m.deliveryTracked ? m.delivered.toLocaleString() : "—"}
               hint={
                 m.deliveryTracked
                   ? `Delivery rate: ${formatRate(m.deliveryRate)}`
-                  : "No provider delivery webhooks yet"
+                  : "Outlook and Gmail do not report this back"
               }
               tone={
                 m.deliveryTracked && m.delivered > 0 ? "positive" : undefined
@@ -203,9 +206,13 @@ export default async function ReportingPage({ searchParams }: Props) {
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
             <MetricItem
-              label="Send proof missing"
+              // Was "Send proof missing", in red. "Proof" is our word for a
+              // provider message id, and red says "these failed" when what we
+              // actually know is that we cannot tell either way.
+              label="Sent, not confirmed"
               value={m.sendProofMissing.toLocaleString()}
-              tone={m.sendProofMissing > 0 ? "error" : undefined}
+              sub="The mailbox never sent back a receipt"
+              tone={m.sendProofMissing > 0 ? "warning" : undefined}
             />
             <MetricItem
               label="Bounces"
@@ -234,7 +241,9 @@ export default async function ReportingPage({ searchParams }: Props) {
             <MetricItem
               label="Not reached"
               value={m.notReached.toLocaleString()}
-              sub="failed + bounces + suppressed + proof missing"
+              // Was the formula itself. A client wants to know what the number
+              // means, not how it was added up.
+              sub="Blocked, bounced, failed or unconfirmed"
               tone={m.notReached > 0 ? "warning" : undefined}
             />
             <MetricItem
@@ -275,7 +284,7 @@ export default async function ReportingPage({ searchParams }: Props) {
                   <th className="px-3 py-2 text-right">Bounces</th>
                   <th className="px-3 py-2 text-right">Failed</th>
                   <th className="px-3 py-2 text-right">Not reached</th>
-                  <th className="px-3 py-2 text-right">Proof missing</th>
+                  <th className="px-3 py-2 text-right">Not confirmed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
