@@ -400,6 +400,12 @@ model Client {
   /// one-click branded signature uses for every mailbox. A mailbox's own
   /// `senderPhone` overrides it when set.
   signaturePhone                String?
+  /// How many outreach emails leave a mailbox together, with a natural gap
+  /// before the next group — the "4 at a time" the client was promised. Null
+  /// means use the house default (see DEFAULT_SEND_BATCH_SIZE). Clamped to
+  /// 1..MAX_SEND_BATCH_SIZE on read; it can only re-shape a daily cap, never
+  /// raise one.
+  sendBatchSize                 Int?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes            String?                   @db.Text
   briefAssignedAccountManagerId String?
