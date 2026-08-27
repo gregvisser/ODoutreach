@@ -1,62 +1,152 @@
 {
-  "graded_at": "2026-08-09",
-  "commit": "fd1cffce854b8a1e1224665aa28011e36d80217b",
+  "graded_at": "2026-08-27",
+  "commit": "b15cfe4",
   "tier": "P",
   "target_band": "8.5-9.5",
+  "supersedes": "engineering 8.0 / customer-ready 6.8, graded 2026-08-23 against the integrate/monday-pilot build",
+  "how_this_was_graded": "Customer-ready was re-graded by WALKING the product in a real browser, not by counting closed blockers. Thirty staff-facing screens were opened as a signed-in super admin against a LOCAL PRODUCTION BUILD (npm run build, then npm run start) via e2e/screen-walk.spec.ts, which records each screen's rendered text, load time, console errors, page errors and failed requests to e2e/.artifacts/screen-walk/*.json. The grade below is read off those artefacts. Where a dimension cannot be seen from a browser (personal data leaving to a third party, absence of a privacy policy) the evidence is a named file, and it says so.",
+
   "engineering": {
-    "score": 8,
-    "verdict": "Real, tested, production software - but sitting just BELOW its own Tier P target band, and the reason is specific.",
+    "score": 8.5,
+    "band_position": "inside the Tier P target band (8.5-9.5), at its floor",
+    "verdict": "Real, tested, production software. Two of the three gaps that held this at 8.0 are now closed with named evidence; one remains and it cannot be checked from here.",
     "evidence_run_today": {
-      "lint": "npm run lint -> exit 0, no problems",
-      "typecheck": "npm run typecheck -> exit 0, no errors (strict)",
-      "tests": "npm test -> 1836 passed across 214 files, exit 0",
-      "build": "npm run build -> exit 0, webpack production build",
-      "health": "GET /api/health -> {ok:true, checks:{database:'ok'}}",
-      "deployed_commit": "GET /api/build-info -> b36e66e, built 2026-07-20, equals origin/main"
+      "lint": "npm run lint -> 0 errors, 1 warning (unused import in relay-status.mjs, an UNTRACKED relay helper, not app code)",
+      "typecheck": "npm run typecheck -> tsc --noEmit, 0 errors, strict",
+      "e2e": "npx playwright test -> 61 passed (37.2s) against a local production build",
+      "screen_walk": "30/30 staff screens render: every navigation < 400, zero page errors, zero console errors, zero failed requests, an <h1> on every screen, no error-boundary strings, no unrendered Markdown",
+      "build": "npm run build -> exit 0, webpack production build, TypeScript check passed"
     },
     "met": [
       "Strict typecheck at zero",
-      "Lint at zero",
-      "Real business-logic tests, not a smoke suite - 214 files covering suppression, send governance, per-mailbox caps, warm-up ramp, unsubscribe rails, bounce policy and reply matching, with genuine fail-closed assertions",
-      "Tenant isolation tests present (server/tenant/access.test.ts, contacts/csv-import-graph-isolation.test.ts)",
+      "Lint at zero errors",
+      "Real business-logic tests, not a smoke suite - genuine fail-closed assertions on suppression, send governance, per-mailbox caps, warm-up ramp, unsubscribe rails, bounce policy, recipient verification and reply matching",
+      "COVERAGE THRESHOLDS ARE ENFORCED - VERIFIED TODAY, and this closes an item that had been recorded as unproven since 2026-08-09. vitest.config.ts sets real thresholds (lines 56, functions 76, branches 78, statements 56) ratcheted to just under measured reality, and .github/workflows/ci.yml:45 runs `npm run test:coverage` in the merge-blocking verify job - so a drop below them fails the build rather than being reported and ignored.",
+      "e2e on critical journeys, merge-blocking: 61 specs including BC-01 workspace data isolation, the authentication wall, cross-tenant access, a failed-save path that keeps the operator's typed data, and the 30-screen walk",
+      "J5 - the whole journey the product is sold on (enrol, launch, send, reply, opt-out) - covered end to end by src/server/email-sequences/j5-journey.integration.test.ts against a real PostgreSQL database with the mailbox transport captured, merge-blocking in CI, and PROVEN CAPABLE OF FAILING twice by deliberate breakage",
+      "Tenant isolation tests present and proven capable of catching a real leak",
       "Merge-blocking CI gate, branch protection on main",
-      "Automated deploy via Entra OIDC with a post-deploy health check, verified by commit rather than liveness",
+      "Automated deploy via Entra OIDC with a post-deploy health check, verified by COMMIT HASH on the direct App Service URL rather than by liveness",
       "Secrets gitignored; .env.example is the committed template",
-      "Error monitoring wired (Sentry server + edge configs)"
+      "Error monitoring cannot be switched off by a missing setting - the Sentry DSN is hard-coded in sentry.server.config.ts, so the SDK is unambiguously initialised in production"
     ],
     "not_met": [
-      "CLOSED 2026-08-27 (cycle 43) - critical journey J5 (enrol, launch, send, reply, opt-out) now has end-to-end coverage: src/server/email-sequences/j5-journey.integration.test.ts walks one prospect through all five stages against a real PostgreSQL database with the mailbox transport CAPTURED (no credential, no network - fetch is stubbed to throw). It runs merge-blocking in CI via the 'Integration tests' step of the e2e job. It is an integration test rather than a Playwright spec on purpose: e2e/env.ts blanks every provider credential so a real send is impossible, and capturing the transport needs a module boundary a built production server does not expose - the reasoning is recorded in SCOPE.md §2. PROVEN CAPABLE OF FAILING, not merely observed to pass: breaking the planner's read of Contact.isSuppressed failed it with 'expected 1 to be +0', and breaking the inbound reply-to-contact matcher failed it with \"expected null to be 'itest-j5-contact'\".",
-      "Coverage thresholds are NOT verified as enforced. A test:coverage script exists; whether CI fails below a threshold was not checked today, so it is not claimed.",
-      "Sentry is configured but I did not verify it is RECEIVING events in production. Wired is not the same as live."
+      "SENTRY EVENT ARRIVAL IS STILL UNOBSERVED. The DSN is hard-coded so the SDK cannot be absent, but nobody has looked at the Sentry dashboard and seen an event land. 'Wired' is not 'receiving'. This is the ONLY remaining gap between this grade and a 9, and it needs one look at a dashboard that was in a partial outage on 2026-08-27."
     ],
-    "why_not_higher": "The standard is explicit that a 9 requires strict typecheck, lint, real tests AND enforced coverage, e2e on critical journeys, live error monitoring, gitignored secrets, a merge-blocking CI gate, and automated deploy plus health check - ALL present and passing. Three of those are unproven or absent. Rounding to 8.5 to land inside the tier band would be exactly the false-9 the protocol exists to prevent.",
-    "why_not_lower": "1836 genuine tests with fail-closed assertions on the send path is not a scaffold. Every gate that was run, passed."
+    "why_not_higher": "The standard requires every gate present AND passing, verified by running it. Observed error-monitoring arrival is not verified, so 9 would be a false 9.",
+    "why_not_lower": "Two gaps closed since the 8.0 with named, re-runnable evidence: J5 end-to-end coverage (cycle 43) and enforced coverage thresholds (verified today in both the config and the CI step). A grade is a claim about evidence, and the evidence moved.",
+    "why_this_is_not_grade_inflation": "The 8.0 was recorded with THREE unproven items and an explicit note that rounding to 8.5 to reach the tier band would be a false 9. Two of those three are now closed by artefacts a reader can go and run. The third is named above rather than absorbed."
   },
+
   "customer_ready": {
-    "score": 6.8,
-    "band": "Demo-able, not sale-ready (5.0-6.9)",
-    "status": "GRADED 2026-08-23 by walking the integrate/monday-pilot build in Chromium with a real session (13 pages, all HTTP 200, zero console errors)",
+    "score": 7.4,
+    "band": "Nearly ready (7.0-8.9)",
     "report": "CUSTOMER-READY-REPORT.md",
-    "weighted_total": 6.84,
+    "weighted_total": 7.42,
     "cap_applied": null,
-    "cap_note": "The previous 4.0 was CAPPED for a broken core journey - production minting unsubscribe links on the app domain. That defect is fixed and tested on this branch (e61cbde), so the cap no longer applies. Every other cap was checked and none applies: no leakage (BC-01 green and proven to catch one), no customer-facing dev-isms, no placeholder content, health check and monitoring present.",
-    "supersedes": "4.0 graded 2026-08-09 against production",
-    "limitation": "Walked a FIXTURE database of four near-empty workspaces, not production with seventeen real clients. Strong evidence about empty states, weak about data scale. Two prior findings (Campaigns column reading 0, and the sends contradiction at production scale) could be neither confirmed nor refuted.",
-    "top_blockers": [
-      "CLOSED 2026-08-27 (cycle 39) - Bounce rate was structurally pinned at 0%: MAILBOX_BOUNCE_DETECTION_ENABLED is true in production (verified by reading the App Service config, not assumed), but the mailbox NDR path suppressed the address without ever writing OutboundEmail.status = BOUNCED, which is what the metric counts. Both channels now write through src/server/email/outbound/record-bounce.ts. Red-first test shown failing before the fix. STILL OWED: the figure cannot move until live sending resumes and a real NDR arrives - prove it FIRED in production before treating this as measured. CORRECTION: the '<2% non-negotiable' in the previous wording had NO primary source - neither Google nor Microsoft publishes a bounce threshold. Google publishes a SPAM COMPLAINT limit only: below 0.10%, never above 0.30%.",
-      "The product shows two truths about one client - Overview reads \"Activity - not started\" while Activity reads \"EMAILS SENT 1\". Two sources of truth.",
-      "CLOSED 2026-08-27 (cycle 43) - the core job is now walked end to end by src/server/email-sequences/j5-journey.integration.test.ts (enrol, launch, send, reply, opt-out honoured), against a real database with a captured transport, merge-blocking in CI. STILL OWED: this is walked by a test, NOT by a human in a browser against production data. The customer-ready score is a WALKING grade and is not re-graded here - that remains queue item 10.",
-      "E-06: one mailbox on two workspaces duplicates raw inbound mail including body text.",
-      "OWED BY GREG, not by engineering - Art.28 data-processing agreements with Sentry, RocketReach and Resend. These are signatures on commercial contracts; no code change can close them, so from 2026-08-27 (cycle 43) they are recorded as a commercial action and no longer counted against the ENGINEERING grade. They still gate the customer-ready grade until signed. The line to forward to each supplier: 'We process personal data of EU/UK data subjects through your service and require a signed Article 28 GDPR data-processing agreement, including your current sub-processor list and the transfer mechanism you rely on for any processing outside the UK/EEA. Please send your standard DPA for signature.' Sentry and Resend both publish a self-serve DPA; RocketReach is the one likely to need a request through their account team."
+    "cap_note": "Each cap was checked against the walk. No broken core journey (all 30 screens render and navigate; the core job is covered end to end by a merge-blocking test AND was performed for real once on 2026-08-26). No cross-customer leakage (BC-01 green and proven capable of catching one; E-06 fixed in cycle 42). No placeholder content. Deployment, health check and monitoring all present. The dev-ism cap was CONSIDERED and deliberately NOT applied - see blocker CR-08 for the reasoning, which is recorded rather than buried.",
+    "scorecard": [
+      { "n": 1, "dimension": "Core journeys end-to-end", "weight": 18, "score": 8, "observed": "The core job is now proven twice over: a real email genuinely left the system on 2026-08-26 at 12:16:36 UTC through the real queue worker with its raw MIME inspected (docs/ops/SEND-PROOF-2026-08-26.md), and the full enrol-launch-send-reply-opt-out chain is covered by a merge-blocking integration test proven capable of failing. Was 5, graded down then for the unknown. Not 9 or 10: the browser walk is navigation-only, so no human has clicked compose-send-reply through the UI on this build." },
+      { "n": 2, "dimension": "Nothing half-built in the path", "weight": 12, "score": 8, "observed": "All 30 screens render real content with a real heading - no stubs, no 'coming soon', no placeholder text, no error-boundary strings, and zero failed requests across the whole walk. Held at 8 because two DESIGN.json signature elements (the send rail, live/dry banding) are specified and NOT built - absent rather than half-built, so a customer does not hit them." },
+      { "n": 3, "dimension": "No dev-isms / internal leakage", "weight": 10, "score": 7, "observed": "A pattern scan across all 30 rendered screens for raw enums, env-var names, cuids, stack traces and ISO timestamps returned exactly ONE hit - a raw correlation cuid on the outbound email detail page (CR-08). Everything else is clean. Down from 9 because the previous 13-page pass never opened that screen." },
+      { "n": 4, "dimension": "Professional polish & UX", "weight": 12, "score": 8, "observed": "Coherent and structured across the walk, real empty states, no layout breakage, zero console noise. The design system is now ENFORCED by 55 tests that compute WCAG 2.2 AA contrast properly and already caught five genuine live accessibility failures. Held at 8: three measured contrast defects remain open in DESIGN.json, and mobile/responsive was again not checked." },
+      { "n": 5, "dimension": "Copy & clarity", "weight": 8, "score": 8, "observed": "Up from 6. The contradiction that cost it those points is GONE - verified on this walk, not inferred: the client Overview's numbered workflow no longer makes an Activity claim at all. The copy is genuinely careful about what it does and does not promise: 'Sent from mailbox means ODoutreach handed the email to the connected mailbox/provider. It does not guarantee inbox placement', and Delivered reads '-' with 'Outlook and Gmail do not report this back'." },
+      { "n": 6, "dimension": "Onboarding / first-run", "weight": 10, "score": 8, "observed": "The client Overview walks a numbered 1-8 setup workflow with per-step status and a '2 / 8 complete' counter, each step explaining in plain English what to do and why. Empty workspaces give real empty states that name the next action." },
+      { "n": 7, "dimension": "Error handling & resilience", "weight": 10, "score": 7, "observed": "Up from 6. Off-happy-path is now actually tested rather than assumed: a failed brief save shows an inline error and KEEPS the operator's typed data instead of crashing (brief-save-session-expiry.spec.ts); an unknown id renders the 404 UI and discloses nothing; unauthenticated access redirects to sign-in with a callback. Zero console and page errors across 30 screens. Still unchecked: network failure mid-journey, form validation beyond the brief save, mobile." },
+      { "n": 8, "dimension": "Data safety & trust", "weight": 10, "score": 6, "observed": "DOWN from 7, and this is the finding of this pass. Isolation genuinely improved - E-06 is fixed, BC-01 is green and proven capable of catching a leak, and the hard rule is visible in production as allowlistedClients:1. But prospect personal data is leaving the building right now: sentry.server.config.ts and sentry.edge.config.ts still have userInfo and httpBodies commented out, so names, email addresses and the bodies of real outreach and real replies are collected into error reports sent to a third party whose Art.28 DPA is not yet accepted (CR-06)." },
+      { "n": 9, "dimension": "Reliability & operability", "weight": 6, "score": 7, "observed": "Up from 5. /api/health returns ok with database ok; monitoring cannot be off by a missing setting; docs/TEAM_RUNBOOK.md exists; CI is merge-blocking and deploys are verified by hash. The bounce rate finally has a real writer (record-bounce.ts) - but it has never been seen firing in production, because nothing has sent since 3 July (CR-01b)." },
+      { "n": 10, "dimension": "Commercial mechanics", "weight": 4, "score": 5, "observed": "DOWN from 6. Workspace creation, staff invite and access toggling, soft-delete with recovery and a working support-ticket form are all present and were walked. But there is NO terms of service and NO privacy policy anywhere in src/app - checked by search, not assumed - and this product processes third-party personal data under UK GDPR and PECR (CR-07)." }
+    ],
+    "arithmetic": "8*18 + 8*12 + 7*10 + 8*12 + 8*8 + 8*10 + 7*10 + 6*10 + 7*6 + 5*4 = 144+96+70+96+64+80+70+60+42+20 = 742. 742/100 = 7.42 -> 7.4",
+    "movement_from_6_8": "Net +0.58. Up: core journeys 5->8 (+54), copy 6->8 (+16), operability 5->7 (+12), error handling 6->7 (+10). Down: dev-isms 9->7 (-20), data safety 7->6 (-10), commercial 6->5 (-4). The rise is real but it is NOT the whole story - two dimensions fell, and both fell on findings this pass made rather than inherited.",
+    "limitation": "This walked a FIXTURE database of four near-empty workspaces on a LOCAL production build, not the live site with seventeen real clients. It is strong evidence about rendering, copy, empty states, leakage and error paths, and weak evidence about data scale. Load times (1.3-5.9s) are local numbers under eight parallel workers hitting a cold server and are a floor for production, not a prediction of it. Two long-standing data-scale questions remain neither confirmed nor refuted.",
+    "blockers": [
+      {
+        "id": "CR-06",
+        "summary": "Prospect personal data and email bodies are being sent to Sentry right now. sentry.server.config.ts and sentry.edge.config.ts are unchanged installer scaffolding with userInfo:false and httpBodies:[] left COMMENTED OUT, so the SDK defaults apply and collect user info and HTTP request bodies - on this product that is prospect names, addresses and the text of real outreach and real replies. The DSN is hard-coded so this cannot be off. tracesSampleRate is 1, sampling 100%. The fix is to uncomment two lines in two files and choose a real trace rate; it removes the personal data from error monitoring without removing the monitoring.",
+        "owner": "us",
+        "status": "OPEN",
+        "evidence": null
+      },
+      {
+        "id": "CR-07",
+        "summary": "There is no terms of service and no privacy policy anywhere in the product. Searched src/app for privacy, terms and legal routes: none exist. For a product processing third-party personal data under UK GDPR and PECR this is a genuine commercial-mechanics gap, and it is also the document a client asks for when they ask who else sees their prospects' data.",
+        "owner": "us",
+        "status": "OPEN",
+        "evidence": null
+      },
+      {
+        "id": "CR-08",
+        "summary": "A raw correlation cuid is shown ungated on the outbound email detail page (src/app/(app)/activity/outbound/[id]/page.tsx:66-67, a Routing card described as 'Workspace-scoped identifiers for provider correlation'). This is NOT super-admin gated - journeys.spec.ts:95 explicitly asserts that non-super-admin staff can open that page. The 6.0 dev-ism cap was considered and deliberately NOT applied: the scan found this one leak across 30 screens, it sits on a card whose stated purpose is diagnostics, and the page's only index (/activity) is itself super-admin gated - so an ordinary operator reaches it only by direct link. Recording the decision rather than burying it, so the next grader can disagree.",
+        "owner": "us",
+        "status": "OPEN",
+        "evidence": null
+      },
+      {
+        "id": "CR-01b",
+        "summary": "The bounce rate has never been OBSERVED firing in production. The structural defect is fixed - both channels now write the BOUNCED status through src/server/email/outbound/record-bounce.ts - but nothing has sent since 3 July, so no real NDR has arrived to move the number off zero. Until it does, the reported bounce rate is a fix that has not fired, which is this project's most repeated defect class. Separately unresolved: whether a bounce rate with no data behind it should render as 0% at all rather than 'no data yet'. A confident wrong number is worse than a blank.",
+        "owner": "us",
+        "status": "OPEN",
+        "evidence": null
+      },
+      {
+        "id": "CR-09",
+        "summary": "Mobile and responsive layout has never been checked, on this pass or either previous one. It is recorded as unproven rather than assumed fine.",
+        "owner": "us",
+        "status": "OPEN",
+        "evidence": null
+      },
+      {
+        "id": "CR-05",
+        "summary": "Art.28 data-processing agreements. Researched 2026-08-27 from each vendor's published DPA: RESEND binds automatically via its Terms of Service, including EU and UK SCCs (resend.com/legal/dpa) - nothing to do. ROCKETREACH forms part of its Terms of Service with no separate signature (rocketreach.co/dpa), though note the role split - it is an INDEPENDENT CONTROLLER for the prospect records it sells and a processor only for data we supply. SENTRY is the one real action and it is self-serve: Greg accepts it under Legal & Compliance in the Sentry org settings. Attempted 2026-08-27 at approximately 10:00 UTC and blocked by a Sentry platform outage, not by inaction. Record the who-and-when Sentry's page shows afterwards, not a bare assertion.",
+        "owner": "greg",
+        "status": "OPEN",
+        "evidence": null
+      },
+      {
+        "id": "CR-01",
+        "summary": "The bounce rate was structurally pinned at 0%: the metric counted OutboundEmail.status BOUNCED, which only the Resend webhook ever wrote, while all outreach goes out through Microsoft Graph or Gmail. Both channels now write through one function.",
+        "owner": "us",
+        "status": "CLOSED",
+        "evidence": "src/server/email/outbound/record-bounce.ts, closed in cycle 39 with a red-first test watched failing before the fix. Residual production observation tracked separately as CR-01b."
+      },
+      {
+        "id": "CR-02",
+        "summary": "The product showed two truths about one client - Overview read 'Activity - not started' while Activity read 'EMAILS SENT 1'. Two sources of truth for one fact.",
+        "owner": "us",
+        "status": "CLOSED",
+        "evidence": "Fixed in cycle 42 (PRs #281 and #282, the second proving the fix against a real database). RE-VERIFIED BY WALKING on 2026-08-27: e2e/.artifacts/screen-walk/client-overview.json shows the numbered workflow with no Activity claim in it at all, so the contradicting surface no longer exists."
+      },
+      {
+        "id": "CR-03",
+        "summary": "E-06 - one mailbox connected to two workspaces duplicated raw inbound mail, body text included, into both. A tenant-isolation defect on the receive side.",
+        "owner": "us",
+        "status": "CLOSED",
+        "evidence": "Fixed in cycle 42, PRs #283 and #284 (#284 repaired the isolation probe itself, which could not run because it imported a server-only module)."
+      },
+      {
+        "id": "CR-04",
+        "summary": "J5 - the core job, enrol through launch, send, reply and opt-out - had never been walked end to end. Every link was tested; the chain was not.",
+        "owner": "us",
+        "status": "CLOSED",
+        "evidence": "src/server/email-sequences/j5-journey.integration.test.ts, cycle 43 (PR #285), merge-blocking in CI via the Integration tests step. Proven capable of failing: breaking the planner's read of Contact.isSuppressed and breaking the inbound reply matcher each turned it red."
+      }
     ]
   },
+
   "sell_gate": {
+    "minimum": 8,
+    "result": "NOT SATISFIED",
     "requirement": "Engineering >= 8 AND Customer-Ready >= 8",
-    "engineering": "8.0 - meets the bar",
-    "customer_ready": "6.8 - FAILS the bar",
-    "result": "NOT SATISFIED. Fix the lower grade first: Customer-Ready. All FOUR engineering blockers are now closed - 1 (bounce rate pinned at 0%) in cycle 39, 2 (Overview vs Activity showing two truths) and 3 (E-06 duplicate raw inbound mail) in cycle 42, and 4 (J5 end to end) in cycle 43. Blocker 5 (Art.28 DPAs) is a commercial signature, recorded as owed-by-Greg. The score is still NOT re-graded here, and that is deliberate: re-grading means WALKING the product live as a customer, not counting closed blockers, and that is queue item 10. Closing every blocker is necessary for an 8, not sufficient - do not infer the new number from this list.",
-    "stale_text_corrected": "This block previously read 'customer_ready: 4.0 - FAILS the bar (6.0 even uncapped)', contradicting customer_ready.score of 6.8. The 4.0 was the capped score from 2026-08-09; cap_note above records that the cap was lifted. Corrected 2026-08-27 to match the recorded score - this is a transcription fix, not a re-grade."
+    "engineering": "8.5 - meets the bar",
+    "customer_ready": "7.4 - FAILS the bar",
+    "blocked_by": ["customer_ready"],
+    "note": "PROVE DOES NOT CLOSE. The instruction was to re-grade and record, and closing PROVE was conditional on both grades reaching 8. Customer-ready reached 7.4. Closing every named blocker was necessary for an 8 and was not sufficient - the walk found three things nobody had recorded before (CR-06, CR-07, CR-08), which is exactly what walking is for and exactly what counting closed rows would have missed. The distance to 8 is 0.6 and it is cheap: CR-06 is two commented-out lines in two files, CR-07 is two documents, CR-08 is one gated field. Together those three would move dimensions 8, 10 and 3 and land customer-ready at roughly 8.1."
   },
-  "open_questions": 5,
-  "graded_on": "2026-08-23"
+
+  "open_questions": 2,
+  "questions_for_greg": [
+    "Accept the Sentry Art.28 DPA when Sentry is back up (CR-05) - it is one self-serve acceptance under Legal & Compliance and it is the only DPA that needs an action.",
+    "Whose words go in the terms of service and privacy policy (CR-07)? The pages can be built, but what they promise a client about data retention and sub-processors is a commercial commitment, not an engineering one."
+  ]
 }
