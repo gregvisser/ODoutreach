@@ -98,6 +98,46 @@ $CycleTimeoutMinutes = 45
 $AlertWorkflow = "relay-alert.yml"
 $AlertRef      = "main"
 
+# WHICH repository that workflow lives in, named explicitly.
+#
+# 2026-08-27: `gh workflow run` works out the repository from the CURRENT
+# DIRECTORY's git remote. That is an invisible dependency on the working
+# directory, and the stall proof tripped over it on its first run: the relay
+# detected its own silence perfectly, then could not report it, because gh had
+# been started somewhere that was not a git checkout.
+#
+# In normal operation the watcher does Set-Location $RepoRoot first, so this has
+# never bitten the live relay. But an alarm whose delivery depends on where it
+# was launched from is an alarm with a hidden way to fail, and the entire point
+# of this machinery is that the failure of last resort must still get through.
+#
+# Resolved ONCE, from this script's own folder, so the answer does not change
+# with the working directory.
+function Resolve-AlertRepo {
+    # An explicit override wins, which is what lets relay-stall-proof.ps1 run the
+    # real watcher from a sandbox that is deliberately not a git checkout.
+    if ($env:RELAY_ALERT_REPO) { return $env:RELAY_ALERT_REPO }
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $url = (& git -C $PSScriptRoot remote get-url origin 2>$null | Out-String).Trim()
+    } catch {
+        $url = ""
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if ([string]::IsNullOrWhiteSpace($url)) { return "" }
+
+    # Handles both https://github.com/owner/repo.git and git@github.com:owner/repo
+    $m = [regex]::Match($url, 'github\.com[:/]+([^/\s]+/[^/\s]+?)(?:\.git)?\s*$')
+    if ($m.Success) { return $m.Groups[1].Value }
+    return ""
+}
+
+$AlertRepo = Resolve-AlertRepo
+
 # The DIRECT App Service URL, deliberately NOT the custom domain.
 #
 # 2026-08-26: this check read https://opensdoors.bidlow.co.uk/api/health, which
@@ -212,10 +252,33 @@ function Test-AlertPathArmed {
     if (-not $authed) {
         return [pscustomobject]@{ Ok = $false; Detail = "gh is installed but not signed in, so a dispatch would be rejected" }
     }
-    return [pscustomobject]@{ Ok = $true; Detail = "gh is signed in and $AlertWorkflow is present" }
+    if ([string]::IsNullOrWhiteSpace($AlertRepo)) {
+        return [pscustomobject]@{ Ok = $false; Detail = "the GitHub repository could not be worked out, so gh would not know where to send the alert" }
+    }
+    return [pscustomobject]@{ Ok = $true; Detail = "gh is signed in, $AlertWorkflow is present, and the repo is $AlertRepo" }
 }
 
 function Send-RelayAlert($subject, $body) {
+    # ---------------------------------------------------------------------
+    # THE TEST-SUITE MUTE, AND WHY IT CANNOT BE USED TO BUY SILENCE
+    #
+    # 2026-08-27: adding the unparseable-row alert made `npm test` send two real
+    # emails, because relay/queue-parser.test.ts dot-sources this very file and
+    # drives Invoke-SelfQueue across a deliberately broken row. A test suite that
+    # emails a human is a test suite people stop running.
+    #
+    # The obvious fix - an env var that switches alerting off - is also the
+    # obvious way to defeat the entire point of this machinery. So it is paired
+    # with a check in relay-selftest.ps1 that REFUSES TO START THE RELAY while
+    # this variable is set. The mute therefore cannot be applied to the process
+    # that matters: setting it stops the relay loudly rather than letting it run
+    # deaf. The only thing it can silence is a test harness.
+    # ---------------------------------------------------------------------
+    if ($env:RELAY_ALERT_SUPPRESS) {
+        Write-Line "ALERT SUPPRESSED because RELAY_ALERT_SUPPRESS is set (test harness only). Would have sent: $subject"
+        return $false
+    }
+
     $armed = Test-AlertPathArmed
     if (-not $armed.Ok) {
         Write-Line "COULD NOT EMAIL GREG: $($armed.Detail). The alert was: $subject"
@@ -233,7 +296,7 @@ function Send-RelayAlert($subject, $body) {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $out = & gh workflow run $AlertWorkflow --ref $AlertRef -f "subject=$subject" -f "body=$trimmed" 2>&1 | Out-String
+        $out = & gh workflow run $AlertWorkflow --repo $AlertRepo --ref $AlertRef -f "subject=$subject" -f "body=$trimmed" 2>&1 | Out-String
         $ok  = ($LASTEXITCODE -eq 0)
     } catch {
         $out = $_.Exception.Message
@@ -256,7 +319,19 @@ function Stop-Relay($why) {
     Write-Line "The HALT file now exists. Delete it before starting again."
     # The relay stopping IS the news. Waiting for him to notice a closed window
     # is the failure this cycle exists to remove.
-    Send-RelayAlert "ODoutreach relay STOPPED" @"
+    #
+    # The subject carries the count of waiting jobs because on a phone it may be
+    # the only part he sees, and "STOPPED" alone does not say whether the night
+    # still has work in it. This is the path the 40-cycle cap arrives on.
+    $waiting = 0
+    try { $waiting = Get-QueueTodoCount } catch { $waiting = 0 }
+    $stopSubject = if ($waiting -gt 0) {
+        "ODoutreach relay STOPPED - $waiting jobs still waiting, restart it"
+    } else {
+        "ODoutreach relay STOPPED - queue empty, nothing left waiting"
+    }
+
+    Send-RelayAlert $stopSubject @"
 The relay has stopped and will not pick up any more work until it is started again.
 
 Why it stopped:
@@ -669,10 +744,14 @@ function Get-QueueRowMatch([string]$line) {
 # the distinction the lost cycle needed and did not have.
 $QueueRowShapePattern = '^\s*\|\s*(\d+)\s*\|.*\|\s*$'
 
-function Get-QueueRows {
-    if (-not (Test-Path $QueueFile)) { return @() }
+# $Path is a parameter, defaulting to the real queue, ONLY so the self-test can
+# point the parser at a fixture. The loop never passes it. A parser that can only
+# be run against the live file is a parser that never gets tested until the night
+# it matters, which is how the malformed row of 2026-08-26 reached production.
+function Get-QueueRows([string]$Path = $QueueFile) {
+    if (-not (Test-Path $Path)) { return @() }
     $rows = New-Object System.Collections.Generic.List[object]
-    $lines = Get-Content $QueueFile
+    $lines = Get-Content $Path
     for ($i = 0; $i -lt $lines.Count; $i++) {
         # [string] strips the PSPath / PSDrive / PSProvider NoteProperties that
         # Windows PowerShell 5.1 - the host relay-start.cmd actually uses - hangs
@@ -732,6 +811,140 @@ function Set-QueueRowStatus($number, $newStatus) {
     return $false
 }
 
+# ===========================================================================
+# GOING QUIET IS ITSELF A FAULT
+#
+# 2026-08-26, twice in one day: the relay went silent with a full queue behind
+# it, and both times a human noticed rather than the machine reporting it. Once
+# a cycle hung; once a single malformed row made it idle for thirty minutes.
+# Overnight, unattended, either one costs the entire night.
+#
+# The hard part is not detecting it. It is that a stalled relay and a healthy
+# relay produce EXACTLY THE SAME OBSERVABLE: nothing. Silence cannot be
+# distinguished from success by looking, which is why this has to push.
+#
+# WHY THE STALL STATE LIVES IN MEMORY AND NOT IN STATUS.json
+#
+# Save-Status rebuilds the whole status object on every call, and the refusal
+# path calls it once a minute. A stall clock stored there would be reset by an
+# unrelated write every sixty seconds and could never reach twenty minutes - the
+# alert would be built, wired, report success, and never fire. That is the house
+# defect, and putting this field in that file would be walking straight into it.
+#
+# A stall is a property of a RUNNING watcher, so it is held by the running
+# watcher. The honest cost: if the watcher process itself dies - window closed,
+# machine asleep - nothing here can email, because nothing here is executing.
+# That case is NOT covered and must not be claimed as covered.
+# ===========================================================================
+
+# How long the loop may go round without starting a cycle before it shouts.
+# Twenty minutes is from the queue item. It is comfortably longer than the
+# 5-minute refusal cooldown, so an ordinary retry never trips it.
+$StallAlertAfterMinutes = 20
+
+# RELAY_STALL_MINUTES exists so the alarm can be PROVEN without waiting twenty
+# real minutes for it - relay-stall-proof.ps1 sets it to 1 and stalls the relay
+# on purpose. An alarm that is too slow to test is an alarm nobody ever tests.
+#
+# It is CLAMPED to 1..20, so this knob can only ever make the relay shout
+# SOONER. A typo, a stale variable left in a shell, or someone trying to quieten
+# it cannot push the alarm out past twenty minutes or switch it off. The one
+# thing this must never become is a way to buy silence.
+if ($env:RELAY_STALL_MINUTES) {
+    $requested = 0
+    if ([int]::TryParse($env:RELAY_STALL_MINUTES, [ref]$requested) -and $requested -ge 1 -and $requested -le 20) {
+        $StallAlertAfterMinutes = $requested
+    }
+}
+
+function Get-QueueTodoCount([string]$Path = $QueueFile) {
+    # Only rows that parsed AND say TODO. An unreadable row is deliberately not
+    # counted here - it gets its own, louder alert that names the row.
+    return @(Get-QueueRows $Path | Where-Object { $_.Parsed -and $_.Status -match '^TODO' }).Count
+}
+
+# Pure decision, so the self-test can drive it with injected time instead of
+# waiting twenty real minutes for an answer.
+function Get-StallVerdict {
+    param(
+        [Parameter(Mandatory = $true)][datetime]$IdleSince,
+        [Parameter(Mandatory = $true)][datetime]$Now,
+        [Parameter(Mandatory = $true)][int]$ThresholdMinutes,
+        [Parameter(Mandatory = $true)][bool]$AlreadyAlerted,
+        [Parameter(Mandatory = $true)][int]$TodoCount
+    )
+
+    $minutes = [math]::Round(($Now - $IdleSince).TotalMinutes, 1)
+
+    $verdict = [pscustomobject]@{
+        ShouldAlert = $false
+        Minutes     = $minutes
+        Reason      = ""
+        Subject     = ""
+        Body        = ""
+    }
+
+    # An empty queue is not a stall, it is a finished night. Emailing about it
+    # would teach Greg that these alerts are noise, and the one that matters
+    # would be ignored with the rest.
+    if ($TodoCount -lt 1) {
+        $verdict.Reason = "idle for $minutes min, but no job is waiting - the relay has run out of work, which is not a fault"
+        return $verdict
+    }
+
+    if ($minutes -lt $ThresholdMinutes) {
+        $verdict.Reason = "idle for $minutes min, which is under the $ThresholdMinutes min threshold - a gap between items is normal"
+        return $verdict
+    }
+
+    # "Send once per stall, not every 20 minutes" - verbatim from the queue item.
+    if ($AlreadyAlerted) {
+        $verdict.Reason = "idle for $minutes min with $TodoCount waiting, but Greg has already been told about THIS stall"
+        return $verdict
+    }
+
+    $jobWord = if ($TodoCount -eq 1) { "job" } else { "jobs" }
+
+    $verdict.ShouldAlert = $true
+    $verdict.Reason      = "idle for $minutes min with $TodoCount $jobWord waiting"
+    # The subject has to work as a phone notification, where it may be all he
+    # ever sees. So it says what happened and how much is at stake, not "alert".
+    $verdict.Subject     = "ODoutreach relay STALLED - $TodoCount $jobWord waiting, nothing running"
+    $verdict.Body        = @"
+The relay has not started a cycle for $minutes minutes, and $TodoCount $jobWord in
+QUEUE.md are still waiting. Nothing is running. Nothing will run until this is
+cleared, so the rest of the night is being lost while you read this.
+
+WHAT TO DO, in order:
+
+1. Look at the PowerShell window running relay-watch.ps1. The last few lines say
+   what it decided and why.
+2. Read .bidlow\relay\SELF-QUEUE-NOTE.md. If the relay refused to take an item,
+   that file names the item and the reason - most often one row in QUEUE.md whose
+   status cell it cannot read.
+3. If the window is gone, the watcher itself has died. Run relay-start.cmd in the
+   repository folder to bring it back; it clears the HALT file for you.
+
+Nothing has been skipped, nothing has been changed, and no work has been lost.
+The queue is exactly where it was.
+"@
+    return $verdict
+}
+
+# True the FIRST time this exact broken row is seen, false on every retry after.
+#
+# The relay re-reads QUEUE.md every five minutes after a refusal, so without this
+# a single bad row would email Greg twelve times an hour and train him to filter
+# the alert that was supposed to save the night. Keying on the row's full text
+# rather than its number is deliberate: if someone edits the row and it is STILL
+# broken, that is a new fault and it gets a new email.
+$script:LastBadRowAlerted = $null
+function Register-BadRowAlert([string]$rowKey) {
+    if ($script:LastBadRowAlerted -eq $rowKey) { return $false }
+    $script:LastBadRowAlerted = $rowKey
+    return $true
+}
+
 function Write-SelfQueueNote($text) {
     @(
         "# The relay did not queue anything"
@@ -785,6 +998,34 @@ perfectly good work behind it. Fix that row's status cell and the relay will pic
 up again on its own within $RefusalRetryMins minutes. Nothing has been skipped and
 nothing has been changed.
 "@
+
+        # This is the fault that cost thirty minutes on 2026-08-26, and the note
+        # above is exactly what was written that day - into a file nobody was
+        # reading, while the relay sat silent. A note is a record, not an alarm.
+        # So this one pushes, and it names the row, because "the queue is broken"
+        # without saying WHICH row is the message that wasted the evening.
+        $rowKey = "$($next.Number)|$($next.Raw)"
+        if (Register-BadRowAlert $rowKey) {
+            $waiting = Get-QueueTodoCount
+            Send-RelayAlert "ODoutreach relay STUCK - QUEUE.md row $($next.Number) cannot be read, $waiting jobs behind it" @"
+The relay has stopped taking work because it cannot read one row in QUEUE.md.
+It will not skip past it, because the order of the queue is the plan.
+
+THE ROW IS #$($next.Number), on line $($next.LineIndex + 1) of .bidlow\relay\QUEUE.md:
+
+    $($next.Raw)
+
+The status cell - the last column - must START with one of these words:
+TODO, DONE, BLOCKED, PARTIAL, IN PROGRESS, WONTFIX.
+
+Fix that one cell and the relay picks up again BY ITSELF within $RefusalRetryMins
+minutes. You do not need to restart anything.
+
+$waiting other job(s) are waiting behind this row. Nothing has been skipped,
+nothing has been changed, and no work has been lost.
+"@ | Out-Null
+        }
+
         return $false
     }
 
@@ -975,11 +1216,39 @@ $($selfTestOutput.Trim())
     exit 1
 }
 
+# The stall clock. See "GOING QUIET IS ITSELF A FAULT" above.
+#
+# It starts at NOW rather than at zero: a watcher that has only just started has
+# not been idle for twenty minutes, and an alert on every start is an alert Greg
+# learns to delete unread.
+$idleSince    = Get-Date
+$stallAlerted = $false
+
 while ($true) {
 
     if (Test-Path $HaltFile) {
         Write-Line "HALT file found. Stopping cleanly."
         exit 0
+    }
+
+    # Has the loop gone quiet with work still waiting?
+    #
+    # This sits at the top, before every branch, on purpose. The two stalls of
+    # 2026-08-26 happened in two DIFFERENT idle paths, and a check bolted onto
+    # each path individually would have missed the third one nobody predicted.
+    # Everything passes through here, so everything is covered.
+    $stall = Get-StallVerdict -IdleSince $idleSince -Now (Get-Date) `
+        -ThresholdMinutes $StallAlertAfterMinutes `
+        -AlreadyAlerted   $stallAlerted `
+        -TodoCount        (Get-QueueTodoCount)
+
+    if ($stall.ShouldAlert) {
+        Write-Line "STALLED: $($stall.Reason). Emailing Greg."
+        Send-RelayAlert $stall.Subject $stall.Body | Out-Null
+        # Marked as told even if the dispatch failed. Send-RelayAlert already
+        # shouts in the window when it cannot send, and re-trying a broken
+        # dispatch every sixty seconds would bury that message under itself.
+        $stallAlerted = $true
     }
 
     $status         = Read-Status
@@ -1182,6 +1451,12 @@ either way.
     if ($alertSubject) {
         Send-RelayAlert $alertSubject $alertBody | Out-Null
     }
+
+    # A cycle ran, so the relay is demonstrably alive: restart the stall clock.
+    # Clearing $stallAlerted too means a LATER stall is a new stall and gets its
+    # own email - "once per stall", not "once per night".
+    $idleSince    = Get-Date
+    $stallAlerted = $false
 
     Start-Sleep -Seconds $SleepSecs
 }

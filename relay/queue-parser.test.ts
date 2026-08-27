@@ -152,6 +152,12 @@ ${body}
     ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
     {
       stdio: "pipe",
+      // Invoke-SelfQueue emails Greg when it meets a row it cannot parse - which
+      // is precisely what several tests below feed it on purpose. Without this,
+      // `npm test` sends real email, and it did: two alerts landed on 2026-08-27
+      // before this line existed. The watcher refuses to START while this is
+      // set (relay-selftest.ps1 section 4), so it can only ever mute a harness.
+      env: { ...process.env, RELAY_ALERT_SUPPRESS: "1" },
     },
   );
 
