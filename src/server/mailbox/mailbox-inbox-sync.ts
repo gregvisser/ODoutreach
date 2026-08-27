@@ -17,6 +17,7 @@ import {
 } from "@/server/mailbox/mailbox-credential-failure";
 import { processSyncedMessageForReply } from "@/server/mailbox/process-synced-replies";
 import { processSyncedMessageForBounce } from "@/server/mailbox/bounce-detection";
+import { mayPersistRawInboundMail } from "@/server/mailbox/mailbox-address-exclusivity";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
 import {
   isReplyThreadRefSenderGuardEnabled,
@@ -204,10 +205,19 @@ export async function syncMicrosoftInboxForMailbox(input: {
 
   const internalDomains = await resolveInternalDomainsForClient(clientId);
   const replySenderGuard = isReplyThreadRefSenderGuardEnabled();
+  // E-06 — resolved once per sync, not per message. When this address is live
+  // on more than one workspace, only the workspace that had it first keeps a
+  // verbatim copy of the inbox; the rest still match their own replies and
+  // bounces, both of which are already scoped to their own client.
+  const rawStore = await mayPersistRawInboundMail({
+    mailboxIdentityId,
+    emailNormalized: mailbox.emailNormalized,
+  });
   let n = 0;
   let repliesLinked = 0;
   let skippedInternal = 0;
   let bouncesSuppressed = 0;
+  let rawCopiesWithheld = 0;
   // Proves the NDR path did not just suppress but also stamped the row the
   // reported bounce rate counts — the half that was silently missing.
   let bouncesStamped = 0;
@@ -241,54 +251,58 @@ export async function syncMicrosoftInboxForMailbox(input: {
       continue;
     }
     const meta: Record<string, string | null | boolean> = row.metadata;
-    await prisma.inboundMailboxMessage.upsert({
-      where: {
-        mailboxIdentityId_providerMessageId: {
+    if (rawStore.allowed) {
+      await prisma.inboundMailboxMessage.upsert({
+        where: {
+          mailboxIdentityId_providerMessageId: {
+            mailboxIdentityId,
+            providerMessageId: row.providerMessageId,
+          },
+        },
+        create: {
+          clientId,
           mailboxIdentityId,
           providerMessageId: row.providerMessageId,
+          fromEmail: row.fromEmail,
+          toEmail: row.toEmail,
+          subject: row.subject,
+          snippet: row.snippet,
+          bodyPreview: row.bodyPreview,
+          receivedAt: row.receivedAt,
+          conversationId: row.conversationId,
+          metadata: meta,
+          ingestionSource: "MICROSOFT_GRAPH",
+          ...(row.fullBody
+            ? {
+                bodyText: row.fullBody.bodyText,
+                bodyContentType: row.fullBody.bodyContentType,
+                fullBodySize: row.fullBody.fullBodySize,
+                fullBodySource: row.fullBody.fullBodySource,
+                fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+              }
+            : {}),
         },
-      },
-      create: {
-        clientId,
-        mailboxIdentityId,
-        providerMessageId: row.providerMessageId,
-        fromEmail: row.fromEmail,
-        toEmail: row.toEmail,
-        subject: row.subject,
-        snippet: row.snippet,
-        bodyPreview: row.bodyPreview,
-        receivedAt: row.receivedAt,
-        conversationId: row.conversationId,
-        metadata: meta,
-        ingestionSource: "MICROSOFT_GRAPH",
-        ...(row.fullBody
-          ? {
-              bodyText: row.fullBody.bodyText,
-              bodyContentType: row.fullBody.bodyContentType,
-              fullBodySize: row.fullBody.fullBodySize,
-              fullBodySource: row.fullBody.fullBodySource,
-              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
-            }
-          : {}),
-      },
-      update: {
-        toEmail: row.toEmail,
-        subject: row.subject,
-        bodyPreview: row.bodyPreview,
-        receivedAt: row.receivedAt,
-        conversationId: row.conversationId,
-        metadata: meta,
-        ...(row.fullBody
-          ? {
-              bodyText: row.fullBody.bodyText,
-              bodyContentType: row.fullBody.bodyContentType,
-              fullBodySize: row.fullBody.fullBodySize,
-              fullBodySource: row.fullBody.fullBodySource,
-              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
-            }
-          : {}),
-      },
-    });
+        update: {
+          toEmail: row.toEmail,
+          subject: row.subject,
+          bodyPreview: row.bodyPreview,
+          receivedAt: row.receivedAt,
+          conversationId: row.conversationId,
+          metadata: meta,
+          ...(row.fullBody
+            ? {
+                bodyText: row.fullBody.bodyText,
+                bodyContentType: row.fullBody.bodyContentType,
+                fullBodySize: row.fullBody.fullBodySize,
+                fullBodySource: row.fullBody.fullBodySource,
+                fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+              }
+            : {}),
+        },
+      });
+    } else {
+      rawCopiesWithheld += 1;
+    }
     const replyResult = await processSyncedMessageForReply({
       clientId,
       mailboxIdentityId,
@@ -331,6 +345,10 @@ export async function syncMicrosoftInboxForMailbox(input: {
       skippedInternal,
       bouncesSuppressed,
       bouncesStamped,
+      // Non-zero means this address is shared with another workspace and this
+      // one is not the owner. Recorded so the containment is visible rather
+      // than inferred from an absence of rows.
+      rawCopiesWithheld,
     },
   });
 
@@ -405,10 +423,16 @@ export async function syncGoogleInboxForMailbox(input: {
 
   const internalDomains = await resolveInternalDomainsForClient(clientId);
   const replySenderGuard = isReplyThreadRefSenderGuardEnabled();
+  // E-06 — see the Microsoft path above. Same rule, same one query per sync.
+  const rawStore = await mayPersistRawInboundMail({
+    mailboxIdentityId,
+    emailNormalized: mailbox.emailNormalized,
+  });
   let n = 0;
   let repliesLinked = 0;
   let skippedInternal = 0;
   let bouncesSuppressed = 0;
+  let rawCopiesWithheld = 0;
   // Proves the NDR path did not just suppress but also stamped the row the
   // reported bounce rate counts — the half that was silently missing.
   let bouncesStamped = 0;
@@ -441,55 +465,59 @@ export async function syncGoogleInboxForMailbox(input: {
       continue;
     }
     const meta = row.metadata;
-    await prisma.inboundMailboxMessage.upsert({
-      where: {
-        mailboxIdentityId_providerMessageId: {
+    if (rawStore.allowed) {
+      await prisma.inboundMailboxMessage.upsert({
+        where: {
+          mailboxIdentityId_providerMessageId: {
+            mailboxIdentityId,
+            providerMessageId: row.providerMessageId,
+          },
+        },
+        create: {
+          clientId,
           mailboxIdentityId,
           providerMessageId: row.providerMessageId,
+          fromEmail: row.fromEmail,
+          toEmail: row.toEmail,
+          subject: row.subject,
+          snippet: row.snippet,
+          bodyPreview: row.bodyPreview,
+          receivedAt: row.receivedAt,
+          conversationId: row.conversationId,
+          metadata: meta,
+          ingestionSource: "GMAIL_API",
+          ...(row.fullBody
+            ? {
+                bodyText: row.fullBody.bodyText,
+                bodyContentType: row.fullBody.bodyContentType,
+                fullBodySize: row.fullBody.fullBodySize,
+                fullBodySource: row.fullBody.fullBodySource,
+                fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+              }
+            : {}),
         },
-      },
-      create: {
-        clientId,
-        mailboxIdentityId,
-        providerMessageId: row.providerMessageId,
-        fromEmail: row.fromEmail,
-        toEmail: row.toEmail,
-        subject: row.subject,
-        snippet: row.snippet,
-        bodyPreview: row.bodyPreview,
-        receivedAt: row.receivedAt,
-        conversationId: row.conversationId,
-        metadata: meta,
-        ingestionSource: "GMAIL_API",
-        ...(row.fullBody
-          ? {
-              bodyText: row.fullBody.bodyText,
-              bodyContentType: row.fullBody.bodyContentType,
-              fullBodySize: row.fullBody.fullBodySize,
-              fullBodySource: row.fullBody.fullBodySource,
-              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
-            }
-          : {}),
-      },
-      update: {
-        toEmail: row.toEmail,
-        subject: row.subject,
-        snippet: row.snippet,
-        bodyPreview: row.bodyPreview,
-        receivedAt: row.receivedAt,
-        conversationId: row.conversationId,
-        metadata: meta,
-        ...(row.fullBody
-          ? {
-              bodyText: row.fullBody.bodyText,
-              bodyContentType: row.fullBody.bodyContentType,
-              fullBodySize: row.fullBody.fullBodySize,
-              fullBodySource: row.fullBody.fullBodySource,
-              fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
-            }
-          : {}),
-      },
-    });
+        update: {
+          toEmail: row.toEmail,
+          subject: row.subject,
+          snippet: row.snippet,
+          bodyPreview: row.bodyPreview,
+          receivedAt: row.receivedAt,
+          conversationId: row.conversationId,
+          metadata: meta,
+          ...(row.fullBody
+            ? {
+                bodyText: row.fullBody.bodyText,
+                bodyContentType: row.fullBody.bodyContentType,
+                fullBodySize: row.fullBody.fullBodySize,
+                fullBodySource: row.fullBody.fullBodySource,
+                fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+              }
+            : {}),
+        },
+      });
+    } else {
+      rawCopiesWithheld += 1;
+    }
     const replyResult = await processSyncedMessageForReply({
       clientId,
       mailboxIdentityId,
@@ -530,6 +558,8 @@ export async function syncGoogleInboxForMailbox(input: {
       skippedInternal,
       bouncesSuppressed,
       bouncesStamped,
+      // See the Microsoft path — non-zero means the raw copy was withheld.
+      rawCopiesWithheld,
     },
   });
 

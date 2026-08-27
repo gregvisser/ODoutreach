@@ -18,7 +18,7 @@
     "e2e/seed-e2e.ts": "ffd3daca9181c9854ffc54b9afddf1fb449ef5c068609a8255b1614095d748fb",
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
     "e2e/suppression-search.spec.ts": "29a1b77cab16d3c9b09252d1d21bcdb5e035317896d2fd8a986648f47870b642",
-    "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
+    "specs/BC-01-tenant-isolation.md": "fd5d97e41a9b9d873288b6e5716474d83e2e4ea0acdda14ffa1af79e401a0828"
   },
   "amendments": [
     {
@@ -146,6 +146,13 @@
       "authorised_by": "relay cycle 27 (autonomous) - NOT Greg-authorised",
       "what": "Queue item 27 defect (9): bulk contacts now seeded into their own E2E_CLIENT_BULK workspace instead of E2E_CLIENT, so the existing compose-sheet journey keeps finding E2E_CONTACT on page one.",
       "sha256_after": "1196ed56a6b569985074b1e7060df796a7ae01f8d393d1e072f3dd346fb4ac52"
+    },
+    {
+      "file": "specs/BC-01-tenant-isolation.md",
+      "date": "2026-08-27",
+      "authorised_by": "relay cycle 41 (autonomous), under queue item 9 / PROVE-CLOSE-OUT.md blocker 3 - NOT Greg-authorised",
+      "what": "E-06 changed from 'Permitted' to refused-and-contained. This is the inverse of the case the freeze gate exists to stop: the row was DOCUMENTING a defect rather than stating a rule - it recorded that one mailbox address on two workspaces duplicated every raw inbound message, body text included, into both, and closing that was named blocker 3 of the customer-ready gate. The code was written first and the row now describes it, which is why this is flagged rather than quietly rehashed. Adding or restoring an address that is live on another workspace is refused before any write; for pairs already in the database only the workspace that had the address first stores raw inbound mail. Replies and bounces were checked and found already isolated, and are deliberately unchanged.",
+      "sha256_after": "fd5d97e41a9b9d873288b6e5716474d83e2e4ea0acdda14ffa1af79e401a0828"
     }
   ]
 }
