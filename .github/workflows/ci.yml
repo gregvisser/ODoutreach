@@ -149,6 +149,13 @@ jobs:
       # Same contract as the unit job. `if: always()` matters more here: the e2e
       # suite is currently RED on BC-01 tenant isolation, and the whole point of
       # recording evidence is that a red run leaves a record saying so.
+      #
+      # FLAKY IS RECORDED AND ANNOUNCED. Playwright retries twice in CI, so a
+      # test that fails and then passes leaves the job green and the evidence
+      # file said `passed: true, failed: 0` with nothing else. That is how 14
+      # strict-mode failures across 68 runs (queue row 34) stayed invisible for
+      # three weeks: the only trace was in a job log nobody reads. A retry that
+      # was needed is now in the evidence AND on the run page as a warning.
       - name: Record e2e evidence
         if: always()
         run: |
@@ -160,14 +167,22 @@ jobs:
             const suite = st
               ? { name: "playwright (e2e)", command: "npm run test:e2e",
                   passed: (st.unexpected || 0) === 0,
-                  count: (st.expected || 0) + (st.unexpected || 0), failed: st.unexpected || 0 }
+                  count: (st.expected || 0) + (st.unexpected || 0), failed: st.unexpected || 0,
+                  flaky: st.flaky || 0 }
               : { name: "playwright (e2e)", command: "npm run test:e2e",
-                  passed: false, count: 0, failed: null,
+                  passed: false, count: 0, failed: null, flaky: null,
                   note: "no machine-readable result was produced - a check that cannot run is a failure, not a pass" };
             fs.writeFileSync("evidence-e2e.json", JSON.stringify(
               { commit: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID,
                 recorded_by: "github-actions", suites: [suite] }, null, 2));
             console.log(JSON.stringify(suite));
+            if (suite.flaky) {
+              console.log("::warning title=E2E flakiness::" + suite.flaky +
+                " e2e test(s) failed and only passed on a retry. Green here is not clean - read the E2E step log before merging.");
+              const summary = process.env.GITHUB_STEP_SUMMARY;
+              if (summary) fs.appendFileSync(summary,
+                "### E2E: " + suite.flaky + " flaky test(s)\n\nThe suite is green only because Playwright retried. See the E2E step log.\n");
+            }
           '
 
       - name: Upload e2e evidence
