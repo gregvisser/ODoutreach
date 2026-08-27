@@ -28,6 +28,21 @@ import { executeOutboundSend } from "./execute-one";
  * payload. Those are both the highest-value rules and provably send-free.
  */
 
+/**
+ * The dispatcher verifies the recipient's domain can receive mail before
+ * sending. These fixtures use `@example.test` — a reserved TLD (RFC 2606) that
+ * by design never resolves — so without this the gate would (correctly) refuse
+ * every row. Fake DNS to a deliverable answer; the gate itself is covered in
+ * execute-one-address-verification.test.ts.
+ */
+vi.mock("node:dns", () => ({
+  promises: {
+    resolveMx: async () => [{ exchange: "mx.deliverable.test", priority: 10 }],
+    resolve4: async () => [],
+    resolve6: async () => [],
+  },
+}));
+
 const gmailSend = vi.fn();
 const graphSend = vi.fn();
 const graphMimeSend = vi.fn();
