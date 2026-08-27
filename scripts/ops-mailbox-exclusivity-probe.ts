@@ -21,10 +21,13 @@
  */
 import { prisma } from "@/lib/db";
 
+// Imported from `@/lib`, not `@/server`: the server module is behind
+// `server-only`, which does not resolve outside Next and made an earlier
+// version of this probe die on startup. Same shipped rule either way.
 import {
   findSharedMailboxAddresses,
   type LiveMailboxRow,
-} from "@/server/mailbox/mailbox-address-exclusivity";
+} from "@/lib/mailbox/address-exclusivity";
 
 function maskAddress(email: string): string {
   const at = email.indexOf("@");
