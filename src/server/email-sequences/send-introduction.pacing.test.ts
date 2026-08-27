@@ -184,13 +184,15 @@ function mountReadyRow() {
  * step-send update, because a paced-out mailbox never reaches a reservation.
  */
 function runTransactionForReal() {
+  const stepSendUpdate = vi.fn().mockResolvedValue({});
   prismaMock.$transaction.mockImplementation(
     async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
         mailboxSendReservation: { count: vi.fn().mockResolvedValue(0) },
-        clientEmailSequenceStepSend: { update: vi.fn().mockResolvedValue({}) },
+        clientEmailSequenceStepSend: { update: stepSendUpdate },
       }),
   );
+  return { stepSendUpdate };
 }
 
 function dispatch() {
@@ -302,5 +304,38 @@ describe("send pacing fires inside the real dispatcher", () => {
 
     expect(result.counts.queued).toBe(0);
     expect(result.blocked[0].reason).toMatch(/held back by send pacing/i);
+  });
+
+  /**
+   * THE SAFETY PROPERTY THAT MATTERS MOST.
+   *
+   * Pacing DEFERS a send; it must never drop one. The follow-up advancer runs
+   * on cron every five minutes from 07:00 to 18:55 UTC, so a row held back at
+   * 09:14 is picked up again at 09:19 and goes out when its batch is due. If
+   * this path ever set `status: "BLOCKED"` the row would leave the READY pool
+   * permanently and a prospect would silently never be contacted — pacing would
+   * have turned into quiet data loss, discovered weeks later by a client
+   * counting emails that never arrived.
+   *
+   * The assertion is deliberately about what is NOT written.
+   */
+  it("defers the send rather than dropping it — the row stays READY for the next run", async () => {
+    delete process.env.MAILBOX_SEND_PACING;
+    mountClient(4);
+    const { stepSendUpdate } = runTransactionForReal();
+
+    await dispatch();
+
+    expect(stepSendUpdate).toHaveBeenCalledTimes(1);
+    const call = stepSendUpdate.mock.calls[0]![0] as {
+      where: { id: string };
+      data: Record<string, unknown>;
+    };
+    expect(call.where).toEqual({ id: "ss-pacing" });
+    // A reason is recorded so an operator can see why nothing moved...
+    expect(call.data.blockedReason).toMatch(/held back by send pacing/i);
+    // ...but the status is untouched, so the row is still READY next time.
+    expect(call.data).not.toHaveProperty("status");
+    expect(Object.keys(call.data)).toEqual(["blockedReason"]);
   });
 });
