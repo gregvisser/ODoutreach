@@ -18,6 +18,7 @@
     "e2e/seed-e2e.ts": "ffd3daca9181c9854ffc54b9afddf1fb449ef5c068609a8255b1614095d748fb",
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
     "e2e/suppression-search.spec.ts": "29a1b77cab16d3c9b09252d1d21bcdb5e035317896d2fd8a986648f47870b642",
+    "e2e/training-screenshots.spec.ts": "492323b6615bb35ba12279dc063aaed001a74b698cde738ef8a770b63fea036f",
     "specs/BC-01-tenant-isolation.md": "fd5d97e41a9b9d873288b6e5716474d83e2e4ea0acdda14ffa1af79e401a0828"
   },
   "amendments": [
