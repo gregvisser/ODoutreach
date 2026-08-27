@@ -15,9 +15,12 @@
     "Art.28 DPAs with Sentry, RocketReach and Resend are not verified. RocketReach also raises a lawful-basis question about bought prospect data."
   ],
   "grade_acknowledged": {
-    "engineering": 8,
-    "customer_ready": 6.8
+    "engineering": 8.5,
+    "customer_ready": 7.4
   },
+  "_grade_acknowledged_updated_on": "2026-08-27 (relay cycle 44)",
+  "_grade_acknowledged_updated_why": "Transcription of the re-grade recorded in .bidlow/GRADES.json on 2026-08-27, following the precedent set in _source, where the agent updated this same field to match a re-grade. This field states WHAT THE GRADE IS; it is not the authorisation. Greg's authorisation lives in scope, why, known_risks and expires, and NONE of those has been touched. The numbers moved UP (8 -> 8.5 and 6.8 -> 7.4), so this records a smaller shortfall than the one Greg accepted, not a larger one.",
+  "_AGENT_FLAG_THREE_RISKS_GREG_HAS_NOT_SEEN": "Greg authorised this on 2026-08-23 against the findings known then. The 2026-08-27 walk found THREE that were NOT in front of him, and they are deliberately NOT added to known_risks above, because known_risks is HIS list of accepted risks and the agent may not accept a risk on his behalf. He should see these before relying on this exception further: (1) CR-06, and this is the serious one - prospect personal data is being sent to Sentry right now. userInfo and httpBodies are left commented out in sentry.server.config.ts and sentry.edge.config.ts and the DSN is hard-coded, so prospect names, email addresses and the bodies of real outreach and real replies are collected into error reports sent to a third party whose Art.28 DPA is still unaccepted - which makes known_risks item 8 materially worse than it reads. (2) CR-07 - there is no terms of service and no privacy policy anywhere in the product. (3) CR-08 - a raw correlation id is shown ungated to ordinary staff on the outbound email detail page. Three of Greg's original known_risks are now CLOSED and can be struck when he next reviews this: the bounce-rate writer (item 1, structurally fixed - though still never observed firing), the two-truths reporting defect (item 2), and E-06 (item 3). expires is UNCHANGED at 2026-09-03 - extending it is his call, not the agent's.",
   "expires": "2026-09-03",
   "_agent_note_on_the_404": "One correction to risk 6, offered rather than edited into Greg's words: /operations 404s because there is no /operations/page.tsx. It is a route segment, not a page, it is linked from nowhere, and admin-gate.test.ts asserts it is absent from the nav. The real page is /operations/outbound, which returns 200 and renders. It is not reachable by clicking, so it is not in the operator's path.",
   "_agent_note_on_the_grade": "6.8 is not a pass and this exception does not make it one. It records who decided to ship below the bar and why. The shortfall still prints on every gate run, which is the point.",
