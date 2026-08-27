@@ -138,8 +138,8 @@ describe("CLAIM: sending is paced at four at a time by default", () => {
   });
 });
 
-describe("CLAIM (what REMAINS): bounce reporting still shows zero", () => {
-  it("the mailbox bounce path suppresses the address but never marks the row BOUNCED", () => {
+describe("CLAIM: a bounce is now written against the original email", () => {
+  it("the mailbox bounce path both blocks the address AND marks the row", () => {
     const source = readRepoFile("src/server/mailbox/bounce-detection.ts");
 
     expect(
@@ -148,9 +148,28 @@ describe("CLAIM (what REMAINS): bounce reporting still shows zero", () => {
     ).toBe(true);
 
     expect(
-      /BOUNCED/.test(source),
-      "the bounce STATUS WRITE has been fixed — good, but the document still tells the client the bounce figure reads zero. Update 'What is still outstanding' before sending it again.",
+      source.includes("recordOutboundBounce"),
+      "the mailbox bounce path no longer marks the original email. The document tells the client the reported bounce figure can move off zero — it cannot if this is reverted.",
+    ).toBe(true);
+  });
+
+  it("both routes a bounce arrives by end in the SAME writer", () => {
+    const webhook = readRepoFile(
+      "src/server/email/webhooks/outbound-provider-events.ts",
+    );
+    const recorder = readRepoFile(
+      "src/server/email/outbound/record-bounce.ts",
+    );
+
+    // The document's claim is specifically "one piece of code", not "two paths
+    // that happen to agree today". Both must import the shared writer, and the
+    // shared writer must be the only place BOUNCED is assigned.
+    expect(webhook.includes("stampOutboundBounce")).toBe(true);
+    expect(
+      /status:\s*"BOUNCED"/.test(webhook),
+      "the webhook path has grown its own BOUNCED write again — the two routes can now drift apart",
     ).toBe(false);
+    expect(/status:\s*"BOUNCED"/.test(recorder)).toBe(true);
   });
 });
 

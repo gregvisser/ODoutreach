@@ -43,7 +43,7 @@
     "supersedes": "4.0 graded 2026-08-09 against production",
     "limitation": "Walked a FIXTURE database of four near-empty workspaces, not production with seventeen real clients. Strong evidence about empty states, weak about data scale. Two prior findings (Campaigns column reading 0, and the sends contradiction at production scale) could be neither confirmed nor refuted.",
     "top_blockers": [
-      "Bounce rate cannot be trusted: detection is ON in production yet reports 0% across 1,209 sends. The domain brief makes <2% non-negotiable.",
+      "CLOSED 2026-08-27 (cycle 39) - Bounce rate was structurally pinned at 0%: MAILBOX_BOUNCE_DETECTION_ENABLED is true in production (verified by reading the App Service config, not assumed), but the mailbox NDR path suppressed the address without ever writing OutboundEmail.status = BOUNCED, which is what the metric counts. Both channels now write through src/server/email/outbound/record-bounce.ts. Red-first test shown failing before the fix. STILL OWED: the figure cannot move until live sending resumes and a real NDR arrives - prove it FIRED in production before treating this as measured. CORRECTION: the '<2% non-negotiable' in the previous wording had NO primary source - neither Google nor Microsoft publishes a bounce threshold. Google publishes a SPAM COMPLAINT limit only: below 0.10%, never above 0.30%.",
       "The product shows two truths about one client - Overview reads \"Activity - not started\" while Activity reads \"EMAILS SENT 1\". Two sources of truth.",
       "The core job (compose to send to reply) was never walked end to end on this build.",
       "E-06: one mailbox on two workspaces duplicates raw inbound mail including body text.",
@@ -53,8 +53,9 @@
   "sell_gate": {
     "requirement": "Engineering >= 8 AND Customer-Ready >= 8",
     "engineering": "8.0 - meets the bar",
-    "customer_ready": "4.0 - FAILS the bar (6.0 even uncapped)",
-    "result": "NOT SATISFIED. Fix the lower grade first: Customer-Ready. The single highest-impact action is to review, merge and deploy feat/zero-dns-send-profile, which removes the app-domain unsubscribe links from production. Push and deploy remain blocked."
+    "customer_ready": "6.8 - FAILS the bar",
+    "result": "NOT SATISFIED. Fix the lower grade first: Customer-Ready. Blocker 1 of 5 (bounce rate pinned at 0%) closed in cycle 39; blockers 2, 3 and 4 remain ours and blocker 5 (Art.28 DPAs) is Greg's to sign. The score is NOT re-graded here - re-grading means walking the product live, not counting closed blockers, and that is queue item 10.",
+    "stale_text_corrected": "This block previously read 'customer_ready: 4.0 - FAILS the bar (6.0 even uncapped)', contradicting customer_ready.score of 6.8. The 4.0 was the capped score from 2026-08-09; cap_note above records that the cap was lifted. Corrected 2026-08-27 to match the recorded score - this is a transcription fix, not a re-grade."
   },
   "open_questions": 5,
   "graded_on": "2026-08-23"

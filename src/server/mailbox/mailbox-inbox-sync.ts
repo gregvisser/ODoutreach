@@ -208,6 +208,9 @@ export async function syncMicrosoftInboxForMailbox(input: {
   let repliesLinked = 0;
   let skippedInternal = 0;
   let bouncesSuppressed = 0;
+  // Proves the NDR path did not just suppress but also stamped the row the
+  // reported bounce rate counts — the half that was silently missing.
+  let bouncesStamped = 0;
   for (const raw of items) {
     const row = mapGraphInboxMessageToRow(raw);
     if (!row) continue;
@@ -224,6 +227,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       receivedAt: row.receivedAt,
     });
     if (bounceResult.suppressed) bouncesSuppressed += 1;
+    if (bounceResult.statusStamped) bouncesStamped += 1;
     // F4 — internal staff mail (both ends on a workspace domain) is never a
     // prospect conversation: don't store it and don't try to match it.
     if (
@@ -326,6 +330,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       repliesLinked,
       skippedInternal,
       bouncesSuppressed,
+      bouncesStamped,
     },
   });
 
@@ -404,6 +409,9 @@ export async function syncGoogleInboxForMailbox(input: {
   let repliesLinked = 0;
   let skippedInternal = 0;
   let bouncesSuppressed = 0;
+  // Proves the NDR path did not just suppress but also stamped the row the
+  // reported bounce rate counts — the half that was silently missing.
+  let bouncesStamped = 0;
   for (const row of rows) {
     // H2 — NDR/DSN bounce detection (flag-gated, no-op when off). Runs before
     // the internal-mail skip since NDRs can come from an internal postmaster.
@@ -419,6 +427,7 @@ export async function syncGoogleInboxForMailbox(input: {
       receivedAt: row.receivedAt,
     });
     if (bounceResult.suppressed) bouncesSuppressed += 1;
+    if (bounceResult.statusStamped) bouncesStamped += 1;
     // F4 — internal staff mail (both ends on a workspace domain) is never a
     // prospect conversation: don't store it and don't try to match it.
     if (
@@ -520,6 +529,7 @@ export async function syncGoogleInboxForMailbox(input: {
       repliesLinked,
       skippedInternal,
       bouncesSuppressed,
+      bouncesStamped,
     },
   });
 

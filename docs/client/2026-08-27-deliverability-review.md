@@ -80,6 +80,16 @@ code that did write it down belonged to an older sending method we no longer use
 So: bounced addresses were being blocked all along, and the report was showing a
 clean sheet while it happened. Protection was real; the number was not.
 
+**This is now fixed.** Both routes a bounce can arrive by — the older sending
+method, and the bounce notice that lands back in your own mailbox — write the
+bounce down through one single piece of code, so one bounce produces one record
+whichever way we heard about it. A bounce notice arriving in a connected Outlook
+or Gmail mailbox now marks the original email as bounced, which is the record the
+report counts. Two safeguards came with it: a reply from a real person still wins
+over a late bounce notice, so a live conversation is never overwritten; and an
+address is still blocked even in that case, because the address is dead either
+way.
+
 ### 3. 426 bounce notifications were collected and never read
 
 There are 426 bounce-shaped messages sitting in the system — 43 in May, **217 in
@@ -205,6 +215,7 @@ All of the following is live on production as of today.
 | **Sending is paced** — four emails at a time with natural gaps through the working day, rather than a burst. Adjustable per customer. | Default is four, switched on by default. |
 | **Dead mailboxes now tell the truth**, and distinguish "sign in again" from "this account no longer exists and cannot be reconnected". | See below — this one was proved by watching it happen. |
 | **Bounced addresses are blocked automatically** and permanently. This was already working. | Setting read back off the live server today: bounce detection and spam-complaint detection both `true`. |
+| **A bounce is now written against the original email**, so the reported bounce figure can move off zero. | Both routes a bounce arrives by share one piece of code, with automated tests that fail the build if the mailbox route stops marking the record. Verified live by commit hash — see the deployment note below. |
 
 On the dead-mailbox fix specifically, we did not settle for "the code is
 deployed". The scheduled job that checks all the mailboxes publishes its results,
@@ -226,10 +237,11 @@ of the most recent run — 26 August, 18:55 — it still reads 27 of 27, 0 faile
 
 We would rather list these plainly than have you find them later.
 
-1. **The bounce figure in the reports still reads zero.** The protection works —
-   bounced addresses are blocked — but the number shown on screen is still
-   reading the wrong field. This is understood, it is small, and it is not done.
-   Until it is, the reported bounce rate should be ignored rather than trusted.
+1. **The reported bounce figure will read zero until sending resumes.** The
+   underlying defect is fixed (finding 2 above), but the fix applies to bounce
+   notices arriving from now on — it cannot go back and re-read the 426 already
+   stored, for the reason in finding 3. So the figure is now trustworthy in the
+   sense that it will move when a bounce happens; it is not yet a measurement.
 
 2. **The 4-5% figure stays an estimate until real sending resumes.** The 426
    stored bounce notifications cannot be read retrospectively, because the Gmail
