@@ -57,7 +57,16 @@ jobs:
           ok=$(jq -r 'try .ok catch ""' "$response_file" 2>/dev/null || echo "")
           created=$(jq -r 'try .created catch 0' "$response_file" 2>/dev/null || echo 0)
           checked=$(jq -r 'try .contactDomainsChecked catch 0' "$response_file" 2>/dev/null || echo 0)
+          blocked=$(jq -r 'try .autoBlocked catch 0' "$response_file" 2>/dev/null || echo 0)
+          tenant=$(jq -r 'try .tenantLookups catch 0' "$response_file" 2>/dev/null || echo 0)
           echo "Checked ${checked} contact domains; raised ${created} new suggestion(s)."
+          echo "Microsoft tenant lookups: ${tenant}."
+          # An automatic block removes prospects from a paying client's universe
+          # without anyone being asked. It must never be something you have to
+          # go looking for in a log, so it is called out on its own line.
+          if [ "${blocked}" != "0" ]; then
+            echo "::warning title=AUTO-BLOCKED::${blocked} domain(s) were blocked automatically as related to a do-not-contact company. Review them on the client's do-not-contact page."
+          fi
           if [ "$ok" != "true" ]; then
             echo "Discovery reported a PARTIAL run."
             echo "related-domain discovery partial" >> /tmp/run-problems.txt

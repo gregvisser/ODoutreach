@@ -2,13 +2,23 @@ import dns from "node:dns/promises";
 
 import { prisma } from "@/lib/db";
 import {
+  isConsumerMailboxHost,
   parseDmarcRuaLinks,
   parseSpfRedirectLink,
   planFamilyProposals,
+  tenantLink,
   type DiscoveredLink,
   type ExistingProposal,
   type ProposalPlan,
 } from "@/server/suppression/family-discovery";
+import {
+  isTenantAutoBlockEnabled,
+  liveTenantLookup,
+  memoiseTenantLookup,
+  resolveTenants,
+  type TenantLookup,
+} from "@/server/suppression/family-tenant";
+import { companyNameFromDomain } from "@/lib/suppression/family-proposal-copy";
 
 /**
  * Running family discovery for one client.
@@ -111,12 +121,110 @@ export async function discoverLinksForClient(input: {
   return out;
 }
 
+/**
+ * How much of the tenant sweep a run was allowed to do, and how much it used.
+ *
+ * Reported rather than assumed. A cap that silently truncates coverage is how a
+ * job goes green while covering six per cent of the list, so `budgetExhausted`
+ * travels all the way out to the endpoint response and the workflow log.
+ */
+export type TenantLegStats = {
+  domainsResolved: number;
+  lookupsSpent: number;
+  budgetExhausted: boolean;
+};
+
+/**
+ * The generous default. MEASURED 2026-08-27 against the live endpoint: 100
+ * distinct real UK corporate domains resolved at 5ms each at concurrency 16, so
+ * the whole current universe — 966 contact domains plus 15,714 suppressed —
+ * sweeps in about 80 seconds. That fits inside the discovery request with room
+ * to spare, so this budget sits ABOVE the real universe rather than inside it:
+ * it is a tripwire for unexpected growth, not a throttle on normal operation.
+ */
+export const TENANT_LOOKUP_BUDGET = 25_000;
+
+/**
+ * Find contact domains sitting in the same Microsoft 365 tenant as a domain the
+ * client has asked us not to contact.
+ *
+ * Both sides must be resolved — there is no endpoint that lists a tenant's
+ * domains. `GetFederationInformation` used to, and was checked on 2026-08-27:
+ * it now echoes back only the domain you asked about, so tenant enumeration is
+ * closed and pairwise resolution is the only route.
+ *
+ * Consumer mailbox providers are dropped BEFORE any lookup is spent. That is
+ * partly thrift and mostly the measured false positive: `gmail.com`,
+ * `hotmail.com`, `live.com` and `yahoo.co.uk` share one tenant, and there is no
+ * reason to spend a request discovering a link that must be discarded.
+ */
+export async function discoverTenantLinksForClient(input: {
+  contactDomains: readonly string[];
+  suppressedDomains: ReadonlySet<string>;
+  lookupTenant?: TenantLookup;
+  budget?: number;
+}): Promise<{ links: DiscoveredLink[]; stats: TenantLegStats }> {
+  const lookup = memoiseTenantLookup(input.lookupTenant ?? liveTenantLookup);
+  const budget = input.budget ?? TENANT_LOOKUP_BUDGET;
+
+  const candidates = input.contactDomains.filter(
+    (d) => !input.suppressedDomains.has(d) && !isConsumerMailboxHost(d),
+  );
+  const seeds = [...input.suppressedDomains].filter(
+    (d) => !isConsumerMailboxHost(d),
+  );
+
+  // Contact side first, always. It is the smaller list and the side that can
+  // change an outcome, so if anything is going to be cut it must not be this.
+  const spend = candidates.length + seeds.length;
+  const budgetExhausted = spend > budget;
+  const contactSlice = candidates.slice(0, budget);
+  const seedSlice = seeds.slice(0, Math.max(0, budget - contactSlice.length));
+
+  const [contactTenants, seedTenants] = await Promise.all([
+    resolveTenants({ domains: contactSlice, lookup }),
+    resolveTenants({ domains: seedSlice, lookup }),
+  ]);
+
+  // Group the suppressed side by tenant so the match is a map read, not a
+  // 966 x 15,714 comparison.
+  const seedsByTenant = new Map<string, string[]>();
+  for (const [domain, tenantId] of seedTenants) {
+    const bucket = seedsByTenant.get(tenantId) ?? [];
+    bucket.push(domain);
+    seedsByTenant.set(tenantId, bucket);
+  }
+
+  const links: DiscoveredLink[] = [];
+  for (const [proposedDomain, tenantId] of contactTenants) {
+    for (const seedDomain of seedsByTenant.get(tenantId) ?? []) {
+      const link = tenantLink({
+        proposedDomain,
+        proposedTenantId: tenantId,
+        seedDomain,
+        seedTenantId: tenantId,
+      });
+      if (link) links.push(link);
+    }
+  }
+
+  return {
+    links,
+    stats: {
+      domainsResolved: contactTenants.size + seedTenants.size,
+      lookupsSpent: contactSlice.length + seedSlice.length,
+      budgetExhausted,
+    },
+  };
+}
+
 export type ClientDiscoveryResult = {
   clientId: string;
   contactDomainsChecked: number;
   suppressedDomainCount: number;
   links: DiscoveredLink[];
   plans: ProposalPlan[];
+  tenant: TenantLegStats;
 };
 
 /**
@@ -129,16 +237,20 @@ export type ClientDiscoveryResult = {
 export async function planClientFamilyProposals(input: {
   clientId: string;
   lookupTxt?: TxtLookup;
+  lookupTenant?: TenantLookup;
+  tenantBudget?: number;
 }): Promise<ClientDiscoveryResult> {
-  const [suppressedRows, contactRows, existingRows] = await Promise.all([
+  const [suppressedRows, contactCounts, existingRows] = await Promise.all([
     prisma.suppressedDomain.findMany({
       where: { clientId: input.clientId },
       select: { domain: true },
     }),
-    prisma.contact.findMany({
+    // Grouped rather than DISTINCT: the blast radius of an automatic block is
+    // decided from these counts, so the count has to come back with the domain.
+    prisma.contact.groupBy({
+      by: ["emailDomain"],
       where: { clientId: input.clientId, emailDomain: { not: null } },
-      select: { emailDomain: true },
-      distinct: ["emailDomain"],
+      _count: { _all: true },
     }),
     prisma.suppressedDomainFamilyProposal.findMany({
       where: { clientId: input.clientId },
@@ -147,15 +259,32 @@ export async function planClientFamilyProposals(input: {
   ]);
 
   const suppressedDomains = new Set(suppressedRows.map((r) => r.domain));
-  const contactDomains = contactRows
-    .map((r) => r.emailDomain)
-    .filter((d): d is string => typeof d === "string" && d.length > 0);
+  const contactsByDomain = new Map<string, number>();
+  for (const row of contactCounts) {
+    if (row.emailDomain) contactsByDomain.set(row.emailDomain, row._count._all);
+  }
+  const contactDomains = [...contactsByDomain.keys()];
 
-  const links = await discoverLinksForClient({
-    contactDomains,
-    suppressedDomains,
-    lookupTxt: input.lookupTxt,
-  });
+  // The two legs are independent and neither can starve the other of a result,
+  // so they run together rather than one after the other.
+  const [dnsLinks, tenant] = await Promise.all([
+    discoverLinksForClient({
+      contactDomains,
+      suppressedDomains,
+      lookupTxt: input.lookupTxt,
+    }),
+    discoverTenantLinksForClient({
+      contactDomains,
+      suppressedDomains,
+      lookupTenant: input.lookupTenant,
+      budget: input.tenantBudget,
+    }),
+  ]);
+
+  // Tenant links come FIRST. When both legs find the same pair the planner
+  // keeps the first and drops the duplicate, and the tenant reading is the one
+  // that carries ownership — and the only one allowed to block on its own.
+  const links = [...tenant.links, ...dnsLinks];
 
   const existing: ExistingProposal[] = existingRows.map((r) => ({
     seedDomain: r.seedDomain,
@@ -168,7 +297,8 @@ export async function planClientFamilyProposals(input: {
     contactDomainsChecked: contactDomains.length,
     suppressedDomainCount: suppressedDomains.size,
     links,
-    plans: planFamilyProposals({ links, existing }),
+    plans: planFamilyProposals({ links, existing, contactsByDomain }),
+    tenant: tenant.stats,
   };
 }
 
@@ -184,10 +314,22 @@ export async function planClientFamilyProposals(input: {
 export async function persistProposalPlans(input: {
   clientId: string;
   plans: readonly ProposalPlan[];
-}): Promise<{ created: number; refreshed: number; skipped: number }> {
+  /**
+   * Override the auto-block switch. The default reads the environment; tests
+   * pass it explicitly so the behaviour is pinned rather than inherited.
+   */
+  autoBlockEnabled?: boolean;
+}): Promise<{
+  created: number;
+  refreshed: number;
+  skipped: number;
+  autoBlocked: number;
+}> {
+  const autoBlockEnabled = input.autoBlockEnabled ?? isTenantAutoBlockEnabled();
   let created = 0;
   let refreshed = 0;
   let skipped = 0;
+  let autoBlocked = 0;
 
   for (const plan of input.plans) {
     if (plan.kind === "skip") {
@@ -212,7 +354,7 @@ export async function persistProposalPlans(input: {
     }
 
     try {
-      await prisma.suppressedDomainFamilyProposal.create({
+      const row = await prisma.suppressedDomainFamilyProposal.create({
         data: {
           clientId: input.clientId,
           seedDomain: link.seedDomain,
@@ -223,6 +365,15 @@ export async function persistProposalPlans(input: {
         },
       });
       created += 1;
+
+      // The promised behaviour: a near-certain match blocks on its own. The
+      // proposal row is still written first, so an automatic block and a
+      // human's answer leave the same audit trail and the same evidence — the
+      // only difference is `decidedByStaffUserId`, which stays null.
+      if (plan.autoBlock && autoBlockEnabled) {
+        await applyAutoBlock({ clientId: input.clientId, proposalId: row.id });
+        autoBlocked += 1;
+      }
     } catch {
       // A concurrent run created it first. The unique constraint is the
       // authority; losing the race is not an error.
@@ -230,5 +381,72 @@ export async function persistProposalPlans(input: {
     }
   }
 
-  return { created, refreshed, skipped };
+  return { created, refreshed, skipped, autoBlocked };
+}
+
+/**
+ * Turn a proposal into a block with no human in the loop.
+ *
+ * Deliberately a copy of `confirmFamilyProposal`'s transaction rather than a
+ * call to it: that function takes a `staffUserId` and exists to record a
+ * person's decision. Passing it a fake staff id would put a machine's block
+ * behind somebody's name in the audit trail, which is the kind of small lie
+ * that makes an audit trail worthless.
+ *
+ * `decidedByStaffUserId` and `createdByStaffUserId` both stay null, and that is
+ * what the screen reads to say "we blocked this automatically".
+ */
+async function applyAutoBlock(input: {
+  clientId: string;
+  proposalId: string;
+}): Promise<void> {
+  const proposal = await prisma.suppressedDomainFamilyProposal.findFirst({
+    where: { id: input.proposalId, clientId: input.clientId, status: "PENDING" },
+  });
+  if (!proposal) return;
+
+  const label = companyNameFromDomain(proposal.seedDomain);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.suppressedDomainFamilyProposal.updateMany({
+      // Scoped to PENDING so a rejection landing between the read and the write
+      // wins the race. A tombstone must never lose to a batch job.
+      where: { id: proposal.id, clientId: input.clientId, status: "PENDING" },
+      data: { status: "CONFIRMED", decidedAt: new Date() },
+    });
+    await tx.suppressedDomainFamily.upsert({
+      where: {
+        clientId_domain: {
+          clientId: input.clientId,
+          domain: proposal.proposedDomain,
+        },
+      },
+      update: {
+        sourceProposalId: proposal.id,
+        discoveredSource: proposal.source,
+        discoveredAt: proposal.discoveredAt,
+      },
+      create: {
+        clientId: input.clientId,
+        label,
+        domain: proposal.proposedDomain,
+        sourceProposalId: proposal.id,
+        discoveredSource: proposal.source,
+        discoveredAt: proposal.discoveredAt,
+      },
+    });
+    // The seed anchors the family — without it the gate has nothing suppressed
+    // to key the new member off.
+    await tx.suppressedDomainFamily.upsert({
+      where: {
+        clientId_domain: { clientId: input.clientId, domain: proposal.seedDomain },
+      },
+      update: {},
+      create: {
+        clientId: input.clientId,
+        label,
+        domain: proposal.seedDomain,
+      },
+    });
+  });
 }

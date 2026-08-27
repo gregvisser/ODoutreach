@@ -55,7 +55,10 @@ export async function POST(req: NextRequest) {
     let processed = 0;
     let created = 0;
     let refreshed = 0;
+    let autoBlocked = 0;
     let contactDomainsChecked = 0;
+    let tenantLookups = 0;
+    let tenantBudgetExhausted = false;
 
     for (const client of clients) {
       try {
@@ -68,6 +71,8 @@ export async function POST(req: NextRequest) {
         }
         processed += 1;
         contactDomainsChecked += plan.contactDomainsChecked;
+        tenantLookups += plan.tenant.lookupsSpent;
+        if (plan.tenant.budgetExhausted) tenantBudgetExhausted = true;
 
         const written = await persistProposalPlans({
           clientId: client.id,
@@ -75,6 +80,7 @@ export async function POST(req: NextRequest) {
         });
         created += written.created;
         refreshed += written.refreshed;
+        autoBlocked += written.autoBlocked;
       } catch (e) {
         // One client's broken DNS must not silently shrink the run. Naming the
         // client is the difference between an alert and a scavenger hunt.
@@ -83,12 +89,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Discovery may now block, but only in one way and only within a budget it
+    // reported. The check is therefore tightened rather than removed: growth
+    // must be exactly attributable to auto-blocks this run performed.
+    //
+    // Two rows per auto-block is the ceiling — the newly blocked domain, plus
+    // the seed that anchors its family if that seed was not already listed.
+    // With the flag off `autoBlocked` is 0 and this is the original invariant,
+    // unchanged: the table must not move at all.
     const familyRowsAfter = await prisma.suppressedDomainFamily.count();
-    if (familyRowsAfter !== familyRowsBefore) {
-      // Discovery proposes; it never blocks. If that ever stops being true the
-      // run must fail loudly rather than quietly suppress a real company.
+    const growth = familyRowsAfter - familyRowsBefore;
+    if (growth < 0 || growth > autoBlocked * 2) {
       errors.push(
-        `discovery changed the confirmed-family table (${familyRowsBefore} -> ${familyRowsAfter}); it must only ever propose`,
+        `discovery changed the confirmed-family table by ${growth} row(s) after ${autoBlocked} automatic block(s) (${familyRowsBefore} -> ${familyRowsAfter}); it may only ever propose, or block within its own accounting`,
+      );
+    }
+
+    if (tenantBudgetExhausted) {
+      // A cap that silently truncates coverage is how a job goes green while
+      // checking a fraction of the list. Say it out loud.
+      errors.push(
+        `the Microsoft tenant sweep hit its lookup budget, so some domains were NOT checked (${tenantLookups} lookups spent)`,
       );
     }
 
@@ -97,6 +118,8 @@ export async function POST(req: NextRequest) {
       contactDomainsChecked,
       created,
       refreshed,
+      autoBlocked,
+      tenantLookups,
       errors,
     };
     return NextResponse.json(jobResponseBody(result), {
