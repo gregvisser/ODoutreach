@@ -108,8 +108,9 @@ export async function loadClientLaunchApprovalSnapshot(
       bundle.hasGovernedMailbox &&
       bundle.oauthReadyForGovernedTest &&
       bundle.poolCanSendPilot,
-    latestActivityLabel: bundle.latestGovernedAt
-      ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
+    // Same proven-send signal the Overview page renders — see `proven-send.ts`.
+    latestActivityLabel: bundle.latestProvenSendAtIso
+      ? new Date(bundle.latestProvenSendAtIso).toISOString().slice(0, 16).replace("T", " ")
       : null,
     hasProductionLaunchableSequence,
     // Feeds isOutreachModuleReady so the readiness rows this snapshot builds
