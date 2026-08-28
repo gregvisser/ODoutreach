@@ -138,6 +138,26 @@ describe("cycle logs reach git", () => {
     // every cycle, so cycle N+1 opens with a RED test naming cycle N's log and
     // cannot claim done until it has been added to a commit.
     //
+    // WHAT THIS FORCES YOU TO COMMIT IS NOT ONLY THE WATCHER'S WRITING, AND
+    // ASSUMING OTHERWISE COST A LOG.
+    //
+    // Until 2026-08-28 the watcher ended the cycle with `... | Set-Content -Path
+    // $logFile`, onto the same filename cycles use for their OWN account of
+    // themselves. Set-Content truncates, so the agent's log - the 130-230 line
+    // document Greg actually reads - was destroyed and replaced by boilerplate,
+    // the brief, and the agent's last stdout line. This assertion then did its
+    // job on the wreckage: it went red until cycle N+1 committed the stub, so a
+    // GREEN test actively pushed the loss into git. `cycle-056.md` on `main` is
+    // exactly that, and it was restored by cycle 63 from
+    // `feat/privacy-terms-pages`.
+    //
+    // The truncation is fixed in `relay-watch.ps1` (`Write-CycleLog` appends and
+    // never shortens) and held by `relay/cycle-log-preserved.test.ts`. So a
+    // cycle log is now TWO halves in one file: the cycle's own words first, the
+    // watcher's evidence underneath. If you are here because this test is red,
+    // `git add` the file - do NOT regenerate it, and do not replace it with
+    // something shorter.
+    //
     // That is deliberately not "the agent remembers to mirror it". Cycle 50
     // wrote "I'm queueing it as a new row" and exited without doing so, and
     // cycle 52 did the same with two hand-ups; a rule that leans on the author
