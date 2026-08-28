@@ -20,11 +20,17 @@ export type FamilyProposalCopyInput = {
   proposedDomain: string;
   /** The suppressed domain — already on the client's do-not-contact list. */
   seedDomain: string;
-  source: "DMARC_RUA" | "SPF_REDIRECT";
+  source: "DMARC_RUA" | "SPF_REDIRECT" | "MICROSOFT_TENANT";
   /** How many other contact domains also point at the seed. */
   fanIn: number;
   /** How many contacts confirming this would suppress. */
   contactsAffected: number;
+  /**
+   * True when the system applied this itself instead of asking. The screen must
+   * say so — an automatic block that reads like a question is a block nobody
+   * knows happened.
+   */
+  autoBlocked?: boolean;
 };
 
 export type FamilyProposalCopy = {
@@ -72,12 +78,15 @@ export function buildFamilyProposalCopy(
   const proposedName = companyNameFromDomain(input.proposedDomain);
   const seedName = companyNameFromDomain(input.seedDomain);
 
-  // Both sources are the company publishing something about its own mail. The
-  // wording says what was found, not which RFC it came from.
+  // Every source is the company publishing something about its own mail. The
+  // wording says what was found, not which RFC or API it came from — nobody
+  // reading this screen needs the word "tenant".
   const because =
     input.source === "DMARC_RUA"
       ? `${input.proposedDomain} sends its email security reports to ${input.seedDomain}, and you have asked us not to contact ${input.seedDomain}.`
-      : `${input.proposedDomain} hands its email settings over to ${input.seedDomain}, and you have asked us not to contact ${input.seedDomain}.`;
+      : input.source === "SPF_REDIRECT"
+        ? `${input.proposedDomain} hands its email settings over to ${input.seedDomain}, and you have asked us not to contact ${input.seedDomain}.`
+        : `${input.proposedDomain} and ${input.seedDomain} share one Microsoft 365 account, which only happens when the same organisation owns both — and you have asked us not to contact ${input.seedDomain}.`;
 
   const others = Math.max(0, input.fanIn - 1);
   const alsoPointHere =
@@ -86,6 +95,24 @@ export function buildFamilyProposalCopy(
       : others === 1
         ? `1 other company on your list also points to ${input.seedDomain}, so check this is not a shared supplier.`
         : `${others} other companies on your list also point to ${input.seedDomain}, so check this is not a shared supplier.`;
+
+  // An automatic block has ALREADY happened. Past tense, and the undo named
+  // plainly — the promise made to the client was that we block these, not that
+  // we block them permanently and quietly.
+  if (input.autoBlocked) {
+    return {
+      headline: `${proposedName} was blocked automatically — it belongs to ${seedName}.`,
+      because,
+      alsoPointHere,
+      ifYouConfirm:
+        input.contactsAffected === 0
+          ? `We have stopped contacting anyone at ${input.proposedDomain}. Nobody on your current lists is affected today.`
+          : `We have stopped contacting ${pluraliseContacts(input.contactsAffected)} at ${input.proposedDomain}.`,
+      ifYouReject: `If that is wrong, say so and we will contact ${input.proposedDomain} again and never block it this way.`,
+      confirmLabel: "That is right, keep it blocked",
+      rejectLabel: "That is wrong, unblock it",
+    };
+  }
 
   return {
     headline: `${proposedName} may belong to ${seedName}.`,

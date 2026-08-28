@@ -5,6 +5,9 @@ import type { StaffUser } from "@/generated/prisma/client";
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     clientMailboxIdentity: { findMany: vi.fn() },
+    // The pilot path reads the workspace's send batch size for pacing. Null =
+    // this client has not set one, so the house default applies.
+    client: { findUnique: vi.fn(async () => ({ sendBatchSize: null })) },
     // Warm-up now anchors on days actually sent on, resolved via a raw query
     // (countSendingDaysForPool). Default to "never sent" so these fixtures keep
     // exercising the bottom of the ramp rather than silently skipping it.

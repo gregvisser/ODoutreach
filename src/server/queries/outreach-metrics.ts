@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { createLimiter, type TaskGate } from "@/lib/concurrency";
 import { prisma } from "@/lib/db";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
+import { buildProvenSentWhere } from "@/server/queries/proven-send";
 import {
   deriveOutreachMetrics,
   type ClientMetricsRow,
@@ -227,25 +228,19 @@ async function gatherRawCountsByClient(
   const seedEmails = await listActiveInternalSeedEmails();
   const seedExclusion =
     seedEmails.length > 0 ? { toEmail: { notIn: seedEmails } } : {};
-  // The definition of "an email we can prove we sent". Declared ONCE because
-  // it is the denominator of every rate on the Reports page AND the base of
-  // the replied-emails numerator: if the two ever drifted apart, the reply
-  // rate could exceed 100% again, which is the defect this shape exists to
-  // make impossible. Windowed: a sentAt inside the window is itself the send
-  // proof. All-time: sentAt OR providerMessageId proves the send.
-  const sentWithProofWhere: Prisma.OutboundEmailWhereInput = {
-    clientId: clientScope,
-    ...seedExclusion,
-    status: { in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] },
-    ...(w
-      ? { sentAt: w }
-      : {
-          OR: [
-            { sentAt: { not: null } },
-            { providerMessageId: { not: null } },
-          ],
-        }),
-  };
+  // The definition of "an email we can prove we sent". Declared ONCE — in
+  // `proven-send.ts` — because it is the denominator of every rate on the
+  // Reports page, the base of the replied-emails numerator, AND the client
+  // Overview's activity signal.
+  //
+  // It used to be this literal. Two consequences of that, both real defects:
+  // if the denominator and the numerator drifted apart the reply rate could
+  // exceed 100% again; and the Overview, which had no access to this literal,
+  // answered the activity question with a metadata filter instead and told a
+  // paying customer "Activity — not started" about a client that had sent.
+  // `proven-send.test.ts` compares the two call sites and fails on any drift.
+  const sentWithProofWhere: Prisma.OutboundEmailWhereInput =
+    buildProvenSentWhere({ clientId: clientScope, seedEmails, window });
   const [
     sentWithProofBy,
     allStepSendsSentBy,

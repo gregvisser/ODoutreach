@@ -1,0 +1,177 @@
+{
+  "_what": "What this system stores, in the client's own words. Drafted 2026-08-24 from the live Prisma schema and the behaviour observed in production. NOT YET AGREED WITH OPENSDOORS — the agreement fields below are deliberately absent rather than ticked. A data model agreed with yourself is a guess with a filename.",
+  "drafted_on": "2026-08-24",
+  "drafted_from": "prisma/schema.prisma as deployed at de864b3, plus observed production behaviour",
+  "confirmed_by": "Greg Visser, Director, BIDLOW LTD",
+  "confirmed_on": "2026-08-25",
+  "confirmed_basis": "bidlow_account_knowledge",
+  "_caution": "Confirmed by Greg from working the OpensDoors account, not by OpensDoors themselves. That is a valid basis and does not block the build - it is recorded so that if a claim here later proves wrong, the record says who to go back to. This project already carries the `inherited-artefact-answer` defect class from exactly that pattern, which is why the basis is written down rather than assumed.",
+  "entities": [
+    {
+      "name": "Client",
+      "is": "A company OpensDoors does outreach for. Train Hugger, Chevron Security, Pareto FM.",
+      "is_not": "Not a prospect. Not a person. Not one of OpensDoors' own staff.",
+      "when_it_ends": "When OpensDoors stops working for them and the workspace is archived.",
+      "what_happens_then": "Sending stops immediately and reply sync stops. Their suppression records are kept — a company that told them to stop must stay stopped even after the contract ends. Prospect data is held for the contract period, then deleted.",
+      "who_can_see_it": "OpensDoors staff with access to that workspace. Never another client.",
+      "belongs_to": []
+    },
+    {
+      "name": "Mailbox",
+      "is": "A real email account belonging to the client, connected so email can be sent from it under their own name and domain.",
+      "is_not": "Not an OpensDoors address. Not a shared sending service. The email genuinely leaves the client's own mailbox.",
+      "when_it_ends": "When the client disconnects it, or the workspace is archived.",
+      "what_happens_then": "The stored access token is invalidated. Emails already sent from it stay in the record, because they happened.",
+      "who_can_see_it": "OpensDoors staff on that client's workspace.",
+      "belongs_to": [
+        {
+          "entity": "Client",
+          "cardinality": "one",
+          "challenged": true,
+          "answer": "Confirmed against production: no mailbox is shared across clients, and sharing one would break the promise that the email comes from the client's own domain.",
+          "resolved_cardinality": "one"
+        }
+      ]
+    },
+    {
+      "name": "Contact",
+      "is": "A person at a prospect company who may receive outreach.",
+      "is_not": "Not a customer. Not someone who has agreed to hear from anyone. Not a lead until they reply.",
+      "when_it_ends": "When their email address stops working, or when they move to a different company. NOT when a client contract ends — OpensDoors sources most prospects and treats the contact as theirs.",
+      "what_happens_then": "The contact record is removed. The suppression record is NOT: if that person ever opted out, the instruction survives the contact and keeps working. Removing somebody must never remove the reason we stopped emailing them.",
+      "who_can_see_it": "OpensDoors staff on that client's workspace only.",
+      "belongs_to": [
+        {
+          "entity": "Client",
+          "cardinality": "one",
+          "challenged": true,
+          "answer": "Deliberately one. The same human at the same company can exist twice, once under each client, because one client's do-not-contact decision must not silently suppress another client's prospect.",
+          "resolved_cardinality": "one"
+        }
+      ]
+    },
+    {
+      "name": "Suppression record",
+      "is": "A standing instruction never to email a particular address or domain for a particular client.",
+      "is_not": "Not a preference and not a soft signal. It is the strongest record in the system.",
+      "when_it_ends": "Never, in practice. Confirmed by Greg 2026-08-25: do-not-contact lists are client specific and are never shared between clients.",
+      "what_happens_then": "Nothing removes it. A list re-import must not clear it — doing so is how somebody who already said no gets emailed again, and it is a recorded burn on this project.",
+      "who_can_see_it": "OpensDoors staff on that client's workspace.",
+      "belongs_to": [
+        {
+          "entity": "Client",
+          "cardinality": "one",
+          "challenged": true,
+          "answer": "One. A company that asked Train Hugger to stop has said nothing at all to Chevron Security, and treating it otherwise would silently destroy another client's list.",
+          "resolved_cardinality": "one"
+        }
+      ]
+    },
+    {
+      "name": "Domain family",
+      "is": "A group of email domains belonging to one company, so that blocking bt.com also blocks openreach.co.uk.",
+      "is_not": "Not a guess. Only a human confirmation puts a domain in a family; the machine may propose, never decide.",
+      "when_it_ends": "When a member is removed by a person.",
+      "what_happens_then": "A refused proposal is remembered permanently, so the monthly re-check cannot quietly reinstate something an operator already rejected.",
+      "who_can_see_it": "OpensDoors staff on that client's workspace.",
+      "belongs_to": [
+        {
+          "entity": "Client",
+          "cardinality": "one",
+          "challenged": true,
+          "answer": "One. Corporate groupings are recorded per client because each client's do-not-contact instruction came from a different conversation.",
+          "resolved_cardinality": "one"
+        }
+      ]
+    },
+    {
+      "name": "Sent email",
+      "is": "A record that a specific message left a specific mailbox to a specific person at a specific moment.",
+      "is_not": "Not a draft, not an intention, not a queue entry. It records something irreversible that already happened.",
+      "when_it_ends": "It does not. It is the audit trail.",
+      "what_happens_then": "Retained even after the contact is deleted, because proving what was sent to whom is the thing you need when a prospect complains.",
+      "who_can_see_it": "OpensDoors staff on that client's workspace.",
+      "belongs_to": [
+        {
+          "entity": "Mailbox",
+          "cardinality": "one",
+          "challenged": true,
+          "answer": "One. An email leaves exactly one mailbox, and which one it was is the whole point of the record.",
+          "resolved_cardinality": "one"
+        }
+      ]
+    },
+    {
+      "name": "Reply",
+      "is": "Something a prospect sent back — an answer, a bounce notice, or a request to stop.",
+      "is_not": "Not automatically a lead. A bounce and an opt-out both arrive here and neither is interest.",
+      "when_it_ends": "Retained with the client's data.",
+      "what_happens_then": "An opt-out reply creates a suppression record that survives independently, so deleting the reply never un-does the instruction it carried.",
+      "who_can_see_it": "OpensDoors staff on that client's workspace.",
+      "belongs_to": [
+        {
+          "entity": "Contact",
+          "cardinality": "one",
+          "challenged": true,
+          "answer": "One where the sender can be matched. Mail arriving at a connected mailbox that matches nobody is deliberately not shown as outreach activity.",
+          "resolved_cardinality": "one"
+        }
+      ]
+    }
+  ],
+  "not_modelled": [
+    "Deals, pipeline stages and revenue. This system stops at the reply — what happens after is the client's own CRM, and modelling it here would make OpensDoors responsible for outcomes they do not control.",
+    "The prospect's employment history. A contact is a person at a company today; when they move, they are a new contact at a new company, not an edited old one.",
+    "Email engagement per recipient beyond reply and bounce. Open and click tracking pull in a foreign host, which is the exact pattern that got a client's domain quarantined.",
+    "Billing, invoices and payment. Deliberately outside this system.",
+    "Per-recipient consent evidence documents. Consent is recorded at list level today; per-recipient evidence is a known gap, not an oversight."
+  ],
+  "answers_recorded": {
+    "recorded_on": "2026-08-25",
+    "recorded_from": "Greg Visser (BIDLOW LTD)",
+    "status": "BIDLOW POSITION — not yet confirmed by OpensDoors. See caution below.",
+    "q1_retention": {
+      "question": "How long should we keep a prospect's details after a client contract ends?",
+      "answer": "Indefinitely. Prospect details stay in the system until the contact details are no longer in working order. OpensDoors obtains most of the prospects, so the contact belongs to OpensDoors, not to the client.",
+      "consequences": [
+        "Retention is event-based (address stops working), not time-based. There is no expiry date to implement.",
+        "Ending a client contract must NOT remove that client's contacts.",
+        "This makes the prospect list an OpensDoors asset that outlives any single client relationship."
+      ]
+    },
+    "q2_contact_moves": {
+      "question": "When a contact moves to a different company, keep the old record as history or remove it?",
+      "answer": "Removed.",
+      "consequences": [
+        "The old contact row is deleted, not archived.",
+        "Its suppression record survives independently — already true in the design, and it is what stops a stale list re-importing somebody who opted out.",
+        "Nothing currently DETECTS that a contact has moved. Removal is a manual action today. Automatic detection is not designed and is not assumed."
+      ]
+    },
+    "q3_shared_blocklist": {
+      "question": "Should one client's do-not-contact list ever be visible to another client as a shared block list?",
+      "answer": "No. Do-not-contact lists are client specific.",
+      "consequences": [
+        "Confirms what is already built. No change required. The deliberate 'no' is now a recorded decision rather than an assumption."
+      ]
+    }
+  },
+  "findings_from_the_answers": [
+    {
+      "id": "F-DM-01",
+      "severity": "MEDIUM",
+      "what": "Answer 1 says contacts belong to OpensDoors. The database says otherwise.",
+      "evidence": "prisma/schema.prisma - Contact.clientId with `onDelete: Cascade` on the Client relation. Deleting a Client row deletes every Contact under it.",
+      "why_it_matters": "Archiving a client is safe today because archive is a status, not a delete. But an actual client deletion would destroy prospect data that OpensDoors considers its own property. The shape on disk is 'contacts are per-client copies'; the answer describes 'contacts are an agency asset'.",
+      "recommendation": "Either block hard deletion of a Client that still has contacts, or move the prospect record up a level so it survives the client. Decide before anyone deletes a client for the first time."
+    },
+    {
+      "id": "F-DM-02",
+      "severity": "NEEDS A HUMAN, NOT A DEVELOPER",
+      "what": "Reusing an OpensDoors-owned prospect for a different client is a change of who is contacting them and why.",
+      "why_it_matters": "A prospect approached on behalf of Train Hugger has not necessarily been approached on behalf of Chevron Security. Under UK GDPR and PECR the lawful basis, the identity of the sender and the privacy information all attach to that specific approach.",
+      "recommendation": "This is a question for OpensDoors' contract wording and privacy notice, not something to settle in code. BIDLOW is not a law firm and this is not legal advice. Flagged so it is a deliberate decision rather than a silent one.",
+      "confidence": "Flagged, not researched. No primary source consulted."
+    }
+  ]
+}

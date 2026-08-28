@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ClientAccountGradeCard } from "@/components/clients/client-account-grade-card";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchBlockersCard } from "@/components/clients/client-launch-blockers-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
@@ -18,6 +19,7 @@ import {
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
+import { formatAccountGradeAttribution } from "@/lib/clients/client-account-grade";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
 import { prisma } from "@/lib/db";
 import {
@@ -109,8 +111,11 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
     contactsSuppressedCount: bundle.pilotContactSummary.suppressedCount,
     rocketReachEnvReady: bundle.rocketReachEnvReady,
     outreachPilotRunnable,
-    latestActivityLabel: bundle.latestGovernedAt
-      ? new Date(bundle.latestGovernedAt).toISOString().slice(0, 16).replace("T", " ")
+    // Any provably-sent email, not just governed proof/pilot sends — see
+    // `proven-send.ts`. The Activity tab's "Emails sent" card counts from the
+    // same predicate, so this row and that number cannot disagree.
+    latestActivityLabel: bundle.latestProvenSendAtIso
+      ? new Date(bundle.latestProvenSendAtIso).toISOString().slice(0, 16).replace("T", " ")
       : null,
     hasProductionLaunchableSequence,
     // Feeds isOutreachModuleReady — without it the readiness rail reports
@@ -262,6 +267,18 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       ) : null}
 
       <ClientLaunchBlockersCard clientId={client.id} blockers={launchBlockers} />
+
+      <ClientAccountGradeCard
+        clientId={client.id}
+        grade={client.accountGrade}
+        attributionLine={formatAccountGradeAttribution({
+          grade: client.accountGrade,
+          setByName:
+            client.accountGradeSetBy?.displayName ?? client.accountGradeSetBy?.email ?? null,
+          setAt: client.accountGradeSetAt,
+        })}
+        canMutate={bundle.canMutateMailboxes}
+      />
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}

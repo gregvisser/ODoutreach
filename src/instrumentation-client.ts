@@ -5,10 +5,26 @@
 import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
-  dsn: "https://4f4b773c808d7f68a13f7fabde04855c@o4511767741071360.ingest.de.sentry.io/4511767773642832",
+  // Read from the environment, never hardcoded. A DSN written into the source is
+  // a destination `e2e/env.ts` cannot blank, so every CI run and every local
+  // `npm run start` shipped browser telemetry into the client's PRODUCTION Sentry
+  // project — until its quota ran out and Sentry answered the browser with 429,
+  // which reds the screen walk's `console.error` assertion on every retry.
+  //
+  // An empty or absent DSN disables the SDK entirely; that is how the e2e build
+  // stays silent. The reference must stay a literal `process.env.NEXT_PUBLIC_*`
+  // so Next.js can inline it at build time — it cannot be routed via a helper.
+  // Set for production in `.github/workflows/deploy-production.yml`.
+  //
+  // Not a secret: a DSN is public by design and ships in the browser bundle. It
+  // is env-driven to control WHERE it is switched on, not to conceal it.
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
+  // Performance traces only — error events are always captured regardless of this
+  // value. It was 1 (100%), which sent seven envelopes per page load and is what
+  // exhausted the ingest quota; 10% keeps a representative sample of timings
+  // without spending the allowance that error reporting depends on.
+  tracesSampleRate: 0.1,
   // Enable logs to be sent to Sentry
   enableLogs: true,
 

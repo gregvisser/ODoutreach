@@ -101,6 +101,40 @@ DNC-APPROVED.md
 # a half-finished instruction.
 /.bidlow/relay/NEXT.md
 /.bidlow/relay/CURRENT.md
+/.bidlow/relay/CURRENT.stdin.txt
 /.bidlow/relay/HALT
 /.bidlow/relay/STATUS.json
-/.bidlow/relay/log/
+
+# Cycle logs USED to be ignored here, with the transient files above. That was a
+# deliberate call and it cost a cycle: cycle 50 wrote a hard E2E failure into its
+# log and nowhere else, and cycle 52 spent its whole reconnaissance re-deriving
+# it. Measured before changing this (cycle 53): ZERO secrets across all 55 logs,
+# FOUR findings that never reached QUEUE.md, and 360,677 bytes in total - about
+# 6.5 KB a cycle. So the markdown record of a cycle is now TRACKED, and
+# `relay/cycle-log-reaches-git.test.ts` fails if that is ever undone.
+#
+# Narrow on purpose: only the .md records are kept. Anything else dropped in the
+# same folder is scratch and stays ignored, so the fix for a red test is
+# "commit the log", never "add another ignore rule".
+/.bidlow/relay/log/*
+!/.bidlow/relay/log/*.md
+
+# Generated deck. `relay-status.mjs` writes it on every run; committing it means
+# a merge conflict in a build artefact nobody edits by hand.
+/relay-status.html
+
+# One-byte marker the bidlow-standards state-continuity hook drops to remember it
+# already nudged this session. Local and transient, like the relay runtime state
+# above.
+/.bidlow/.state-nudged
+
+# Scratch backups the relay drops beside a file before rewriting it
+# (QUEUE.md.bak-before-*, relay-watch.ps1.bak-*, …). These are local undo, not
+# history — git is the history. Ignoring them keeps `git status` readable enough
+# that a genuinely untracked load-bearing file stands out, which is the failure
+# `relay/tracked-artefacts.test.ts` guards against.
+#
+# Deliberately `*.bak*` and not `*.bak`: the names in the wild are
+# `QUEUE.md.bak5-before-cowork-supervision`, `relay-watch.ps1.bak-encoding` and
+# `relay-status.mjs.bak-parser`, so anchoring the end misses most of them.
+*.bak*

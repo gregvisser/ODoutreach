@@ -32,6 +32,7 @@ import { getClientByIdForStaff } from "@/server/queries/clients";
 import { getRecentInboundMailboxMessagesForClient } from "@/server/queries/mailbox-inbox";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
 import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-ledger";
+import { getLatestProvenSendAt } from "@/server/queries/proven-send";
 import { getPilotContactSummaryForClient } from "@/server/queries/pilot-contact-summary";
 import type { StaffUser } from "@/generated/prisma/client";
 import type { MailboxAuthFailureSignal } from "@/lib/mailboxes/mailbox-auth-failure-overlay";
@@ -106,6 +107,7 @@ export async function loadClientWorkspaceBundle(
     pilotContactSummary,
     canMutateMailboxes,
     recentMailboxAuthFailures,
+    latestProvenSendAt,
   ] = await Promise.all([
     getRecentInboundMailboxMessagesForClient(clientId, 50, { internalDomains }),
     getMailboxSendingReadinessForClient(clientId, client.mailboxIdentities),
@@ -113,6 +115,7 @@ export async function loadClientWorkspaceBundle(
     getPilotContactSummaryForClient(clientId),
     getClientMailboxMutationAllowed(staff, client.id),
     getRecentMailboxAuthFailuresForClient(clientId),
+    getLatestProvenSendAt(clientId),
   ]);
 
   const oauthMicrosoftReady = isMicrosoftMailboxOAuthConfigured();
@@ -329,8 +332,19 @@ export async function loadClientWorkspaceBundle(
     pilotAllocationMode: "mailbox_pool" as const,
   };
 
-  const latestGovernedAt =
-    recentGovernedSends.length > 0 ? recentGovernedSends[0]!.createdAtIso : null;
+  // The client's activity signal: when did this workspace last provably send
+  // an email — ANY email, through any channel.
+  //
+  // This used to be `recentGovernedSends[0]`, which only ever contained
+  // governed-proof and pilot sends. Real sequence outreach carries a different
+  // metadata kind, so it never appeared, and the Overview said "Activity — not
+  // started" about a client whose own Activity tab said "Emails sent 1". Both
+  // now read `proven-send.ts`, and a test fails if they part company again.
+  // Renamed deliberately: the old name was `latestGovernedAt`, and that name is
+  // what let two readers believe it meant "any activity" when it never did.
+  const latestProvenSendAtIso = latestProvenSendAt
+    ? latestProvenSendAt.toISOString()
+    : null;
 
   return {
     client,
@@ -362,7 +376,7 @@ export async function loadClientWorkspaceBundle(
     poolCanSendPilot,
     pilotPrerequisites,
     canMutateMailboxes,
-    latestGovernedAt,
+    latestProvenSendAtIso,
     controlledPilotHardMaxRecipients: CONTROLLED_PILOT_HARD_MAX_RECIPIENTS,
   };
 }

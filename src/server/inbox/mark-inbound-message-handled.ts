@@ -5,6 +5,7 @@ import {
   mergeHandlingIntoMetadata,
   readHandlingStateFromMetadata,
 } from "@/lib/inbox/inbound-message-handling";
+import { releaseReplyClaims } from "@/server/inbox/reply-claim";
 import { requireClientAccess } from "@/server/tenant/access";
 import type { StaffUser } from "@/generated/prisma/client";
 
@@ -51,6 +52,13 @@ export async function markInboundMailboxMessageHandled(input: {
   await prisma.inboundMailboxMessage.update({
     where: { id: row.id },
     data: { metadata: nextMetadata as object },
+  });
+
+  // Somebody acted — the advisory "X is looking at this" marker has served
+  // its purpose and goes. Who handled it is recorded permanently above.
+  await releaseReplyClaims({
+    clientId,
+    subject: { subjectType: "INBOUND_MESSAGE", subjectId: row.id },
   });
 
   return { ok: true, handledAt, handledByStaffUserId };

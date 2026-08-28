@@ -42,14 +42,14 @@ import { prisma } from "@/lib/db";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
-import {
-  isSendPacingEnabled,
-  minuteOfDayUtc,
-  pacingDateKey,
-  sendsPermittedByNow,
-} from "@/lib/mailboxes/send-pacing";
+import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
+import { startOfUtcDay, utcDateKeyForInstant } from "@/lib/sending-window";
+import {
+  MANUAL_SEND_COOLDOWN_MINUTES,
+  MANUAL_SEND_GROUP_SIZE,
+} from "@/lib/outreach/manual-send-window";
+import { loadCorporateReleaseAllowance } from "@/server/email-sequences/corporate-release-gate";
 import { requireClientAccess } from "@/server/tenant/access";
 import type {
   ClientMailboxIdentity,
@@ -505,6 +505,10 @@ export async function sendSequenceStepBatch(input: {
         launchApprovalMode: true,
         outreachLinkDomain: true,
         outreachLinkDomainVerifiedAt: true,
+        // Drives send pacing — how many go out together before the next gap.
+        sendBatchSize: true,
+        // Drives the corporate four-at-a-time release gate.
+        accountGrade: true,
         onboarding: { select: { formData: true } },
       },
     }),
@@ -907,36 +911,70 @@ export async function sendSequenceStepBatch(input: {
   // no extra query runs while the reservation lock is held.
   const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id));
 
+  // Corporate four-at-a-time release. Resolved here, outside the transaction,
+  // for the same reason as `sendingDays`: no extra query while the reservation
+  // lock is held. An empty map for every non-corporate client, so this is inert
+  // unless someone has deliberately graded the account.
+  const corporateAllowance = await loadCorporateReleaseAllowance({
+    clientId,
+    grade: client.accountGrade,
+    mailboxIds: pool.map((m) => m.id),
+    now: at,
+    // The group arithmetic is scoped to the current UTC day, matching the
+    // window the daily cap and the reservation ledger already use. A group
+    // part-finished at 23:58 does not hold the mailbox over midnight.
+    windowStart: startOfUtcDay(at),
+  });
+
   try {
     await prisma.$transaction(
       async (tx) => {
         const localRemaining = new Map<string, number>();
+        // Set when pacing — not the daily cap — is what is holding mail back, so
+        // the operator is told "the next batch is later today" rather than the
+        // untrue "no capacity left".
+        let heldByPacing = false;
+        // Set when the CORPORATE four-at-a-time gate — not the daily cap and
+        // not pacing — is what is holding mail back. Without this the operator
+        // is told "no capacity remaining", which is untrue: the mailbox has
+        // plenty of capacity and is simply waiting out the 45-minute gap.
+        let heldByCorporateGate = false;
         for (const m of pool) {
           // Warm-up ramp: caps cold-outreach volume until a mailbox has a
           // history of sending. No-op once warmed, or when the flag is off.
           // An absent entry means it has never sent — 0, never "allow".
           const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
-          // Pacing: spread the day allowance instead of emptying it into the
-          // first cron run. It never RAISES the cap - it only withholds part of
-          // it until later in the day, and yields the full cap once the window
-          // has closed, so nothing is ever stranded by pacing alone.
-          const allowedNow = isSendPacingEnabled()
-            ? Math.min(
-                cap,
-                sendsPermittedByNow({
-                  mailboxId: m.id,
-                  dateKey: pacingDateKey(at),
-                  dailyCap: cap,
-                  nowMinuteOfDay: minuteOfDayUtc(at),
-                }),
-              )
-            : cap;
+          // Pacing: release the day's allowance in batches of the client's
+          // configured size with a gap between them, instead of emptying it
+          // into the first cron run. It never RAISES the cap - it only
+          // withholds part of it until later in the day, and yields the full
+          // cap once the window has closed, so nothing is ever stranded by
+          // pacing alone.
+          const allowedNow = pacedAllowanceForMailbox({
+            mailboxId: m.id,
+            dailyCap: cap,
+            batchSize: client.sendBatchSize,
+            at,
+          });
+          if (allowedNow < cap) heldByPacing = true;
           const booked = await countBookedSendSlotsInUtcWindow(
             tx,
             m.id,
             windowKey,
           );
-          localRemaining.set(m.id, Math.max(0, allowedNow - booked));
+          // Corporate release gate. A `Math.min`, never a raise: for a graded
+          // CORPORATE client this holds each mailbox to a group of four with a
+          // 45-minute wait between groups. Absent for every other client, in
+          // which case `remaining` is exactly what it was before.
+          const remaining = Math.max(0, allowedNow - booked);
+          const corporateCap = corporateAllowance.get(m.id);
+          if (corporateCap !== undefined && corporateCap < remaining) {
+            heldByCorporateGate = true;
+          }
+          localRemaining.set(
+            m.id,
+            corporateCap === undefined ? remaining : Math.min(remaining, corporateCap),
+          );
         }
 
         for (const pr of dispatchable) {
@@ -1205,18 +1243,26 @@ export async function sendSequenceStepBatch(input: {
           }
 
           if (!placed) {
+            // Order matters: the corporate gate is the most specific and the
+            // most temporary of the three, so it is named first. Telling an
+            // operator "no capacity remaining" when a mailbox is 40 minutes
+            // into a 45-minute wait sends them looking for a problem that does
+            // not exist.
+            const reason = heldByCorporateGate
+              ? `Held back by the ${String(MANUAL_SEND_GROUP_SIZE)}-at-a-time release for corporate accounts — ` +
+                `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent.`
+              : heldByPacing
+                ? "Held back by send pacing — the next batch for this workspace goes out later today."
+                : "No mailbox capacity remaining in this UTC day.";
             blocked.push({
               stepSendId: pr.stepSend.id,
               contactEmail: toEmail,
-              reason: "No mailbox capacity remaining in this UTC day.",
+              reason,
               decisionReason: "blocked_plan_classifier",
             });
             await tx.clientEmailSequenceStepSend.update({
               where: { id: pr.stepSend.id },
-              data: {
-                blockedReason:
-                  "No mailbox capacity remaining in this UTC day.",
-              },
+              data: { blockedReason: reason },
             });
           }
         }

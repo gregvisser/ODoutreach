@@ -1,0 +1,111 @@
+{
+  "status": "complete",
+  "shape": "multi_tenant",
+  "route": "build",
+  "planes_checked": true,
+  "generated_from": "standards/system-types/cold_outreach.json",
+  "generated_on": "2026-08-24",
+  "_how_to_read_this": "Every area was PRE-FILLED from the published cold_outreach standard. Where the entry says 'observed', it records what the system verifiably does today, checked against the code on 2026-08-24. Where it says 'not yet confirmed with OpensDoors', the default stands but the customer has not agreed it out loud. That distinction is the point: nobody invented this map, and nothing here claims agreement that has not happened.",
+  "areas": {
+    "1_engagement": {
+      "state": "decided",
+      "decision": "Named contact per client; anything touching their sending reputation is reported the same working day. Standard default — not yet confirmed with OpensDoors.",
+      "confidence": "SP"
+    },
+    "2_operation": {
+      "state": "decided",
+      "decision": "Observed: list imported, deduplicated, checked against suppression, sequenced, replies land in the per-client Activity view, a human decides. Reply classification suppresses opt-outs automatically.",
+      "confidence": "V"
+    },
+    "3_field_rules": {
+      "state": "decided",
+      "decision": "B2B corporate addresses under legitimate interest; sender identified; objection honoured immediately and permanently. PECR reg 22 and UK GDPR Art 21. Per-list provenance is not yet recorded for every existing list — that gap is real and belongs to OpensDoors.",
+      "confidence": "V"
+    },
+    "4_safety_harm": {
+      "state": "decided",
+      "decision": "Per-client and per-mailbox pause effective on the next dispatch cycle. Blast radius written down after the 2026 quarantine, which damaged a client's sending domain and took weeks to recover.",
+      "confidence": "V"
+    },
+    "5_shape_tenancy": {
+      "state": "decided",
+      "decision": "Multi-tenant. Every read and write scoped by client id in the query layer, asserted by tests including server/tenant/access.test.ts and the CSV import isolation tests. One agency runs outreach for companies that may compete.",
+      "confidence": "V"
+    },
+    "6_tenant_lifecycle": {
+      "state": "decided",
+      "decision": "Clients move ACTIVE / PAUSED / ARCHIVED. Send excludes PAUSED and ARCHIVED; reply sync requires ACTIVE. Token invalidation on disconnect is implemented. Contractual retention period not yet confirmed with OpensDoors.",
+      "confidence": "V"
+    },
+    "7_identity_access": {
+      "state": "decided",
+      "decision": "Named staff accounts, no shared logins. Sending is a distinct permission from viewing, and the internal /contacts send path was brought under the same governance in PR #194 after it was found ungoverned.",
+      "confidence": "V"
+    },
+    "8_security": {
+      "state": "decided",
+      "decision": "Secrets held in Azure App Service configuration, gitignored locally, .env.example is the committed template. OAuth tokens for client mailboxes are the highest-value asset here and are rotatable without redeploy. Aligned to OWASP ASVS 5.0.0.",
+      "confidence": "V"
+    },
+    "9_data_lifecycle": {
+      "state": "decided",
+      "decision": "Suppression records are permanent and are never removed by a list re-import — this is the defect that caused people who had opted out to be contacted again. Prospect retention period itself is still to be confirmed with OpensDoors per client contract.",
+      "confidence": "V"
+    },
+    "10_money": {
+      "state": "decided",
+      "decision": "No payment handling. OpensDoors invoices its clients outside this system. Decided before code exists because adding billing later rewrites the data model.",
+      "confidence": "SP"
+    },
+    "11_messaging": {
+      "state": "decided",
+      "decision": "SPF, DKIM and DMARC required before first send. One-click unsubscribe per RFC 8058. Complaint rate target below 0.10%, hard ceiling 0.30%. Bounce suppression after two consecutive failures. Ramp counted in days actually sent, reaching 30 per mailbox per day. Every link — body AND signature — must resolve to the sending domain; signature link alignment became a blocking gate on 2026-08-24.",
+      "confidence": "V"
+    },
+    "12_integration": {
+      "state": "decided",
+      "decision": "Microsoft Graph and Gmail API. Partial failure is surfaced as failure — the scheduled job that reported SUCCESS while 8 of 35 mailboxes failed reply sync is a recorded burn and the reason this area is not left to convention.",
+      "confidence": "V"
+    },
+    "13_ai_capability": {
+      "state": "decided",
+      "decision": "No autonomous generation on the send path. Templates are human-authored and human-approved. Nothing a model writes reaches a prospect unreviewed.",
+      "confidence": "V"
+    },
+    "14_experience": {
+      "state": "decided",
+      "decision": "Operational density for non-technical outreach staff. Status carried by icon and word, never colour alone. Plain English, no severity codes on screen. WCAG 2.2 AA. The duplicated workflow strip is a known open defect held back only because staff training references it by name.",
+      "confidence": "V"
+    },
+    "15_insight": {
+      "state": "decided",
+      "decision": "Sent, delivered, bounced, replied, opted out, complaint rate — each traceable to a stored provider event, never self-reported. A zero that came from a missing detector reads exactly like a real zero; this is why the bounce detector's 37-day absence is recorded rather than smoothed over.",
+      "confidence": "V"
+    },
+    "16_operator_plane": {
+      "state": "decided",
+      "decision": "OpensDoors staff screens carry the same send governance as everything else. No internal shortcut may skip a check — the ungoverned /contacts send button proved what happens otherwise.",
+      "confidence": "V"
+    },
+    "17_runtime": {
+      "state": "decided",
+      "decision": "Azure App Service, PostgreSQL Flexible Server. A deploy is proven by comparing the running commit hash at /api/build-info against origin/main via the direct App Service URL, not by a green workflow and not through the CDN-cached custom domain.",
+      "confidence": "V"
+    },
+    "18_reliability": {
+      "state": "decided",
+      "decision": "Point-in-time restore is in place. Geo-redundant backup is OFF and cannot be enabled after server creation — a migration runbook exists and is unexecuted, awaiting a window Greg picks. Acceptable data loss window not yet confirmed with OpensDoors.",
+      "confidence": "V"
+    },
+    "19_verification": {
+      "state": "decided",
+      "decision": "Red-first on every behavioural change; a test written after the fix proves only that the fix compiles. 2,056 tests plus Playwright end-to-end. The gap is honest: no end-to-end coverage of the full journey that reaches a third party's inbox, and that is the single largest reason the engineering grade is 8 and not 9.",
+      "confidence": "V"
+    },
+    "20_delivery": {
+      "state": "decided",
+      "decision": "Merge-blocking CI, branch protection on main, automated deploy with a post-deploy health check. Migrations are additive, reviewed as SQL and approved by a named person before merge — PRODUCTION_PRISMA_MIGRATE is true, so a merge applies the migration to the live client database.",
+      "confidence": "V"
+    }
+  }
+}

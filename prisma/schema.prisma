@@ -33,6 +33,16 @@ enum ClientLifecycleStatus {
   ARCHIVED
 }
 
+/// Commercial handling tier for a client account. CORPORATE is the VIP tier and
+/// is the only one that changes behaviour today: its outreach is released to
+/// staff four recipients at a time (see `@/lib/outreach/manual-send-window`).
+/// MID and STANDARD are recorded for commercial reporting and behave alike.
+enum ClientAccountGrade {
+  CORPORATE
+  MID
+  STANDARD
+}
+
 /// PR K — Launch approval mode recorded alongside `Client.launchApprovedAt`.
 /// CONTROLLED_INTERNAL: approved for staff/allowlisted recipient pilots only
 /// (current operational mode; does not require one-click unsubscribe).
@@ -289,12 +299,14 @@ model StaffUser {
   sequenceEnrollmentsCreated      ClientEmailSequenceEnrollment[]  @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
+  clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsAsBriefAccountManager    Client[]                         @relation("ClientBriefAccountManager")
   clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
   supportTicketsCreated           SupportTicket[]                  @relation("SupportTicketCreatedBy")
   supportTicketsApproved          SupportTicket[]                  @relation("SupportTicketApprovedBy")
   suppressedDomainFamiliesCreated SuppressedDomainFamily[]         @relation("SuppressedDomainFamilyCreatedBy")
   familyProposalsDecided          SuppressedDomainFamilyProposal[] @relation("FamilyProposalDecidedBy")
+  replyClaims                     ReplyClaim[]
 
   @@index([invitedById])
 }
@@ -400,6 +412,24 @@ model Client {
   /// one-click branded signature uses for every mailbox. A mailbox's own
   /// `senderPhone` overrides it when set.
   signaturePhone                String?
+  /// How many outreach emails leave a mailbox together, with a natural gap
+  /// before the next group — the "4 at a time" the client was promised. Null
+  /// means use the house default (see DEFAULT_SEND_BATCH_SIZE). Clamped to
+  /// 1..MAX_SEND_BATCH_SIZE on read; it can only re-shape a daily cap, never
+  /// raise one.
+  sendBatchSize                 Int?
+  /// Commercial handling tier — CORPORATE (VIP) / MID / STANDARD. Drives the
+  /// four-at-a-time release gate on the send screen (corporate only). Null =
+  /// nobody has graded this account yet, which is handled as STANDARD: the
+  /// grade can only ever slow sending down, so defaulting an ungraded client
+  /// into the slow path would silently change live behaviour for every
+  /// existing client.
+  accountGrade                  ClientAccountGrade?
+  /// Who last set `accountGrade`, shown ON SCREEN next to the control. A change
+  /// that decides how a client's outreach is released must have a name against
+  /// it; the full history is appended to AuditLog as well.
+  accountGradeSetByStaffUserId  String?
+  accountGradeSetAt             DateTime?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes            String?                   @db.Text
   briefAssignedAccountManagerId String?
@@ -448,6 +478,8 @@ model Client {
   mailboxIdentities               ClientMailboxIdentity[]
   /// Microsoft Graph–ingested inbox rows (idempotent by mailbox + Graph message id)
   inboundMailboxMessages          InboundMailboxMessage[]
+  /// Advisory "someone is looking at this reply" markers. Ephemeral by design.
+  replyClaims                     ReplyClaim[]
   mailboxSendReservations         MailboxSendReservation[]
   emailTemplates                  ClientEmailTemplate[]
   emailSequences                  ClientEmailSequence[]
@@ -455,6 +487,7 @@ model Client {
   sequenceStepSends               ClientEmailSequenceStepSend[]
   unsubscribeTokens               UnsubscribeToken[]
   launchApprovedBy                StaffUser?                       @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
+  accountGradeSetBy               StaffUser?                       @relation("ClientAccountGradeSetBy", fields: [accountGradeSetByStaffUserId], references: [id], onDelete: SetNull)
   briefAccountManager             StaffUser?                       @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
   briefTaxonomyLinks              ClientBriefTermLink[]
   complianceAttachments           ClientComplianceAttachment[]
@@ -466,6 +499,7 @@ model Client {
   @@index([status])
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
+  @@index([accountGradeSetByStaffUserId])
 }
 
 /// Reusable brief vocabulary: service areas, ICP industries, company sizes, target titles
@@ -657,6 +691,52 @@ model InboundMailboxMessage {
   @@unique([mailboxIdentityId, providerMessageId])
   @@index([clientId, receivedAt])
   @@index([mailboxIdentityId, receivedAt])
+}
+
+/// Which conversation a `ReplyClaim` is attached to. A prospect's reply is
+/// reachable by two routes — the inbound message detail page and the
+/// linked-reply page — and both resolve to INBOUND_MESSAGE whenever the
+/// mailbox sync correlated them, so one claim is visible from either route.
+/// Webhook-ingested replies have no correlated mailbox message and use
+/// INBOUND_REPLY with their own id.
+enum ReplyClaimSubjectType {
+  INBOUND_MESSAGE
+  INBOUND_REPLY
+}
+
+/// ADVISORY "someone is looking at this reply" marker — NOT a lock. Nothing
+/// in the codebase reads this to decide whether an action may proceed; it
+/// only decides what the second operator is TOLD before they act.
+///
+/// Deliberately its own table rather than a key on
+/// `InboundMailboxMessage.metadata`, where the neighbouring handling state
+/// lives. The reply sync's upsert writes `metadata` wholesale on every run
+/// (`mailbox-inbox-sync.ts`), so anything stored there is erased for recent
+/// messages every 15 minutes — a claim written into that column would stop
+/// being shown minutes after it was made, while still looking wired up.
+///
+/// Rows are ephemeral: written when a reply detail page is opened, deleted
+/// the moment anyone acts on the conversation, and ignored once older than
+/// `REPLY_CLAIM_STALE_AFTER_MS` (30 minutes). Nothing downstream depends on
+/// them, so a stale row is inert rather than wrong, and no sweeper job is
+/// required for correctness.
+model ReplyClaim {
+  id          String                @id @default(cuid())
+  clientId    String
+  subjectType ReplyClaimSubjectType
+  subjectId   String
+  staffUserId String
+  /// Refreshed each time this operator re-opens the reply.
+  claimedAt   DateTime              @default(now())
+
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  /// One claim per operator per conversation — re-opening refreshes rather
+  /// than accumulating rows.
+  @@unique([clientId, subjectType, subjectId, staffUserId])
+  @@index([clientId, subjectType, subjectId, claimedAt])
+  @@index([staffUserId])
 }
 
 model ClientMembership {
@@ -976,6 +1056,15 @@ enum FamilyProposalSource {
   /// designates `redirect=` for the same administrative domain; `include:` is
   /// s5.2's mechanism for CROSSING one, and is deliberately not used here.
   SPF_REDIRECT
+  /// The two domains are verified domains of the SAME Microsoft 365 tenant.
+  ///
+  /// The strongest of the three, and the only one that may block on its own:
+  /// a domain enters a tenant only after somebody with control of it proved
+  /// that control to Microsoft and a directory administrator admitted it, so
+  /// this is common ownership asserted by the organisation, not inferred here.
+  /// Measured 2026-08-27 — it links halifax.co.uk to bankofscotland.co.uk and
+  /// centrica.com to britishgas.co.uk, none of which DMARC or SPF can see.
+  MICROSOFT_TENANT
 }
 
 enum FamilyProposalStatus {

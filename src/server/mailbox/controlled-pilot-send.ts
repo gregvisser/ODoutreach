@@ -29,12 +29,7 @@ import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
-import {
-  isSendPacingEnabled,
-  minuteOfDayUtc,
-  pacingDateKey,
-  sendsPermittedByNow,
-} from "@/lib/mailboxes/send-pacing";
+import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 
 export type ControlledPilotBatchResult =
@@ -137,9 +132,16 @@ export async function queueControlledPilotBatch(input: {
     };
   }
 
-  const identities = await prisma.clientMailboxIdentity.findMany({
-    where: { clientId },
-  });
+  const [identities, pacingProfile] = await Promise.all([
+    prisma.clientMailboxIdentity.findMany({ where: { clientId } }),
+    // The batch size is a per-client setting, so the pilot path has to read it
+    // too — otherwise a client configured for a gentler cadence would still get
+    // the house default here.
+    prisma.client.findUnique({
+      where: { id: clientId },
+      select: { sendBatchSize: true },
+    }),
+  ]);
   const pool = executionEligibleMailboxes(identities);
   if (pool.length === 0) {
     return {
@@ -231,17 +233,12 @@ export async function queueControlledPilotBatch(input: {
           // entry means it has never sent — 0, never "allow".
           const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
           // See the note in send-introduction.ts - pacing withholds, never adds.
-          const allowedNow = isSendPacingEnabled()
-            ? Math.min(
-                cap,
-                sendsPermittedByNow({
-                  mailboxId: m.id,
-                  dateKey: pacingDateKey(at),
-                  dailyCap: cap,
-                  nowMinuteOfDay: minuteOfDayUtc(at),
-                }),
-              )
-            : cap;
+          const allowedNow = pacedAllowanceForMailbox({
+            mailboxId: m.id,
+            dailyCap: cap,
+            batchSize: pacingProfile?.sendBatchSize,
+            at,
+          });
           const booked = await countBookedSendSlotsInUtcWindow(tx, m.id, windowKey);
           localRemaining.set(m.id, Math.max(0, allowedNow - booked));
         }

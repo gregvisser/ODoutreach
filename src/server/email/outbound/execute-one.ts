@@ -35,6 +35,11 @@ import {
   isDispatchRecheckEnabled,
 } from "./dispatch-recheck";
 import { evaluateProspectSendTransport } from "./prospect-send-transport-guard";
+import { classifyRecipientAddress } from "@/lib/safety/recipient-verification-policy";
+import {
+  isRecipientVerificationEnabled,
+  lookupMailRouteForAddress,
+} from "@/server/outreach/recipient-mail-route";
 import { buildEmailBodyParts } from "@/lib/unsubscribe/email-body-parts";
 import {
   hasBlockingFinding,
@@ -248,6 +253,42 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   if (!row.subject || !row.bodySnapshot) {
     await markFailed(row.id, "INVALID_PAYLOAD", "Missing subject or body snapshot");
     return { ok: false, error: "Invalid payload" };
+  }
+
+  // ── Recipient address verification ────────────────────────────────────────
+  // Is this address well-formed, and does its domain have anywhere for mail to
+  // land? Until this gate the only check of either kind was a format regex at
+  // CSV/RocketReach import — which the Universe materialisation path
+  // (universe-to-client-list.ts) does not go through at all, and which no
+  // amount of regex could answer the second question anyway.
+  //
+  // Sending to a domain with no mail destination is a guaranteed hard bounce,
+  // and hard bounces are what damage a sending reputation.
+  //
+  // Placed HERE rather than at import for the same reason suppression is
+  // re-checked here: a list loaded last month is dispatched today, and a
+  // company that folded in between still has rows sitting in the queue.
+  //
+  // Only a PROVEN-dead domain fails the row. A failure of the check itself
+  // returns the row to the queue (see retry-policy: the code below is
+  // retryable) so a resolver having a bad minute delays mail instead of
+  // dropping it. Kill switch: RECIPIENT_VERIFICATION_ENABLED=false.
+  if (isRecipientVerificationEnabled()) {
+    const route = await lookupMailRouteForAddress(to);
+    const verification = classifyRecipientAddress({ email: to, route });
+    if (verification.verdict === "block") {
+      await markFailed(row.id, verification.code, verification.reason);
+      return { ok: false, error: verification.reason };
+    }
+    if (verification.verdict === "defer") {
+      return await handleSendFailure(
+        row.id,
+        row.retryCount,
+        verification.reason,
+        verification.code,
+        row.mailboxIdentityId,
+      );
+    }
   }
 
   // A prospect-bound row must leave through a connected mailbox. Without one it

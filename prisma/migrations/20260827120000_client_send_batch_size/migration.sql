@@ -1,0 +1,16 @@
+-- Per-client send batch size — "4 at a time, with gaps".
+--
+-- ADDITIVE + REVERSIBLE. Adds ONE nullable column to "Client". No existing
+-- column is read, rewritten or dropped, and no row is touched: every existing
+-- client gets NULL, which the code reads as "use the house default of 4".
+--
+-- WHAT IT CAN DO: re-shape WHEN a mailbox's daily allowance leaves — a group of
+-- four with a gap, instead of a steady one-at-a-time drip.
+-- WHAT IT CANNOT DO: raise a cap. The pacing gate takes the MINIMUM of the
+-- mailbox's effective daily cap and the paced allowance, so the worst a bad
+-- value here can do is release the day's mail in a different shape, never more
+-- of it. The value is additionally clamped to 1..25 on read.
+--
+-- ROLLBACK (no data loss elsewhere):
+--   ALTER TABLE "Client" DROP COLUMN "sendBatchSize";
+ALTER TABLE "Client" ADD COLUMN "sendBatchSize" INTEGER;

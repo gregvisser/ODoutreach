@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
   suppressedDomain: { findMany: vi.fn() },
-  contact: { findMany: vi.fn() },
+  contact: { groupBy: vi.fn() },
   suppressedDomainFamilyProposal: {
     findMany: vi.fn(),
     create: vi.fn(),
@@ -40,6 +40,14 @@ const DNS: Record<string, string[]> = {
 };
 
 const lookupTxt = async (name: string): Promise<string[]> => DNS[name] ?? [];
+
+/**
+ * The tenant leg, stubbed to silence. These specs pin the DNS sources, and a
+ * real lookup here would put an unauthenticated HTTPS call to Microsoft inside
+ * a suite that must stay offline. `null` is what a domain outside Microsoft 365
+ * genuinely returns, so this is the quiet case, not a fake one.
+ */
+const lookupTenant = async (): Promise<string | null> => null;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -99,10 +107,12 @@ describe("discoverLinksForClient", () => {
 describe("planClientFamilyProposals reads, and does not write", () => {
   it("plans a proposal without touching the database", async () => {
     prismaMock.suppressedDomain.findMany.mockResolvedValue([{ domain: "bt.com" }]);
-    prismaMock.contact.findMany.mockResolvedValue([{ emailDomain: "openreach.co.uk" }]);
+    prismaMock.contact.groupBy.mockResolvedValue([
+      { emailDomain: "openreach.co.uk", _count: { _all: 1 } },
+    ]);
     prismaMock.suppressedDomainFamilyProposal.findMany.mockResolvedValue([]);
 
-    const result = await planClientFamilyProposals({ clientId: "c1", lookupTxt });
+    const result = await planClientFamilyProposals({ clientId: "c1", lookupTxt, lookupTenant });
 
     expect(result.plans).toHaveLength(1);
     expect(result.plans[0]?.kind).toBe("create");
@@ -112,12 +122,14 @@ describe("planClientFamilyProposals reads, and does not write", () => {
 
   it("honours an existing rejection end to end", async () => {
     prismaMock.suppressedDomain.findMany.mockResolvedValue([{ domain: "bt.com" }]);
-    prismaMock.contact.findMany.mockResolvedValue([{ emailDomain: "openreach.co.uk" }]);
+    prismaMock.contact.groupBy.mockResolvedValue([
+      { emailDomain: "openreach.co.uk", _count: { _all: 1 } },
+    ]);
     prismaMock.suppressedDomainFamilyProposal.findMany.mockResolvedValue([
       { seedDomain: "bt.com", proposedDomain: "openreach.co.uk", status: "REJECTED" },
     ]);
 
-    const result = await planClientFamilyProposals({ clientId: "c1", lookupTxt });
+    const result = await planClientFamilyProposals({ clientId: "c1", lookupTxt, lookupTenant });
 
     expect(result.plans[0]?.kind).toBe("skip");
     if (result.plans[0]?.kind === "skip") {
@@ -141,7 +153,7 @@ describe("persistProposalPlans cannot resurrect a rejection", () => {
       },
     ];
     const result = await persistProposalPlans({ clientId: "c1", plans });
-    expect(result).toEqual({ created: 0, refreshed: 0, skipped: 1 });
+    expect(result).toEqual({ created: 0, refreshed: 0, skipped: 1, autoBlocked: 0 });
     expect(prismaMock.suppressedDomainFamilyProposal.create).not.toHaveBeenCalled();
     expect(prismaMock.suppressedDomainFamilyProposal.updateMany).not.toHaveBeenCalled();
   });
@@ -177,6 +189,7 @@ describe("persistProposalPlans cannot resurrect a rejection", () => {
       {
         kind: "create",
         fanIn: 2,
+        autoBlock: false,
         link: {
           seedDomain: "bt.com",
           proposedDomain: "openreach.co.uk",
@@ -210,6 +223,7 @@ describe("persistProposalPlans cannot resurrect a rejection", () => {
       {
         kind: "create",
         fanIn: 1,
+        autoBlock: false,
         link: {
           seedDomain: "bt.com",
           proposedDomain: "openreach.co.uk",
@@ -222,6 +236,7 @@ describe("persistProposalPlans cannot resurrect a rejection", () => {
       created: 0,
       refreshed: 0,
       skipped: 1,
+      autoBlocked: 0,
     });
   });
 });

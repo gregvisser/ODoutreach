@@ -49,6 +49,14 @@ const DNS: Record<string, string[]> = {
 };
 const lookupTxt = async (name: string): Promise<string[]> => DNS[name] ?? [];
 
+/**
+ * The tenant leg, stubbed to silence. These specs pin the DNS sources, and a
+ * real lookup here would put an unauthenticated HTTPS call to Microsoft inside
+ * a suite that must stay offline. `null` is what a domain outside Microsoft 365
+ * genuinely returns, so this is the quiet case, not a fake one.
+ */
+const lookupTenant = async (): Promise<string | null> => null;
+
 let clientId = "";
 let staffUserId = "";
 
@@ -108,7 +116,7 @@ describe("the shipped related-domain path fires end to end", () => {
     expect(before).toHaveLength(0);
 
     // --- What "Find related domains now" and the nightly job both run.
-    const plan = await planClientFamilyProposals({ clientId, lookupTxt });
+    const plan = await planClientFamilyProposals({ clientId, lookupTxt, lookupTenant });
     const written = await persistProposalPlans({ clientId, plans: plan.plans });
     expect(written.created).toBe(1);
 
@@ -171,7 +179,7 @@ describe("the shipped related-domain path fires end to end", () => {
   it("re-running after a confirmation asks nothing new", async () => {
     // The same DNS resolves the same link. It must not become a second
     // question, or the nightly job turns into a source of noise.
-    const plan = await planClientFamilyProposals({ clientId, lookupTxt });
+    const plan = await planClientFamilyProposals({ clientId, lookupTxt, lookupTenant });
     expect(plan.plans).toHaveLength(1);
     expect(plan.plans[0]?.kind).toBe("skip");
     if (plan.plans[0]?.kind === "skip") {

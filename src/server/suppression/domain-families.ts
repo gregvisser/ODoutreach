@@ -29,6 +29,16 @@ export type FamilyMember = {
   domain: string;
   /** Whether THIS domain is itself on the client's do-not-contact list. */
   isSuppressed: boolean;
+  /**
+   * True when the system added this itself, with nobody asked.
+   *
+   * A block nobody can see is a block nobody can undo, and this is the only
+   * row in the table that no human ever agreed to. It is derived rather than
+   * stored: a row carries `discoveredSource` only if it came from a proposal,
+   * and carries no `createdByStaffUserId` only if no person confirmed it. A
+   * hand-typed row has neither; a person confirming a proposal has both.
+   */
+  addedAutomatically: boolean;
   createdAt: Date;
 };
 
@@ -108,6 +118,7 @@ export async function listDomainFamiliesForClient(
       label: r.label,
       domain: r.domain,
       isSuppressed: suppressedSet.has(r.domain),
+      addedAutomatically: r.discoveredSource !== null && r.createdByStaffUserId === null,
       createdAt: r.createdAt,
     };
     const list = byLabel.get(r.label);

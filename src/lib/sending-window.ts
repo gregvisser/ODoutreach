@@ -9,6 +9,15 @@ export function utcDateKeyForInstant(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Midnight UTC at the start of `d`'s day — the lower bound of the same window
+ * `utcDateKeyForInstant` names. Used where a query needs the boundary as a Date
+ * rather than as a key string.
+ */
+export function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
+
 /** For tests: advance `d` to next UTC day boundary, return its date key. */
 export function addUtcDays(d: Date, n: number): Date {
   return new Date(
