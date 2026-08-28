@@ -1,6 +1,105 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-28 (cycle 67) - Tier P (Client Production)**
+**Updated 2026-08-28 (cycle 73) - Tier P (Client Production)**
+
+## Session 2026-08-28 - Relay cycle 73, queue row 74. Pressing Connect deleted a working mailbox's credential before the operator had signed in. Measuring it found 8 mailboxes already unable to send.
+
+Row 74 is **`DONE 73`**. Rows 84, 85 and 86 are new and `TODO`.
+
+### What was built and merged
+
+* **`3bcf047` (PR #334)** - read-only production probe.
+  `src/lib/mailboxes/mailbox-connect-credential.ts` (new pure rule, shared by the
+  probe and the fix so they cannot drift), `scripts/ops-mailbox-credential-probe.ts`
+  (new), `.github/workflows/mailbox-credential-probe.yml` (new, `workflow_dispatch`
+  + Monday 06:15 UTC), `npm run ops:mailbox-credential-probe`. Writes nothing,
+  sends nothing, deletes nothing; masks addresses; exits 0 either way.
+  Deliberately NOT merge-blocking - CI's database is the empty e2e Postgres, so a
+  CI-gated version would report a clean bill of health against no data.
+* **`08b8fc2` (PR #336)** - the fix, in
+  `src/app/(app)/clients/mailbox-connection-actions.ts` + a new test file that
+  drives the REAL server action. **Deployed and verified by hash on the DIRECT App
+  Service URL**: `/api/build-info` returned `08b8fc2` at 21:12:48Z.
+* **`c17a464` (PR #337)** - cycle 73 log, the row 74 status, rows 84-86, and the
+  watcher's uncommitted append to `cycle-072.md`.
+* No schema, no migration, no send-path change, **nothing sent, no client data
+  written**. Gates: lint 0, typecheck 0, **3081 tests / 311 files**; CI verify +
+  E2E green on all three PRs.
+
+### The finding, which outranks the code change
+
+The row told me to check production first. I could not from this machine
+(`.azure/` is empty, no prod `DATABASE_URL`, firewall allows Azure only), so the
+measurement had to become a shipped tool. Dispatched (run `33210823162`):
+
+**55 live mailbox rows; only 27 can send.** 27 CONNECTED+credential, 7
+CONNECTION_ERROR (3 without a credential), 2 DISCONNECTED, 11 DRAFT, and **8 in
+PENDING_CONNECTION with NO credential** - protech-roofing x2, chevron-security
+x2, panda-recycling x1 (still ONBOARDING), opensdoors x1, greentheuk x2. All
+active, sending toggle ON, pending ~2 to ~67 days.
+
+**Honest limit, recorded not rounded up:** for the 3 with sync history the last
+sync *predates* the pending state, so these are abandoned rescue attempts on
+mailboxes that were already down - NOT proof that a click knocked a live mailbox
+over. `updatedAt` is touched by any write, so "pending ~60 days" is an upper
+bound, not a measurement.
+
+### Decisions made
+
+* **The delete was removed rather than deferred.** The row's preferred fix worried
+  that an atomic swap "needs care so a half-finished reconnect cannot leave two
+  credentials". It does not: both OAuth callbacks `upsert` on a **`@unique`**
+  `mailboxIdentityId`, so two credentials for one mailbox are impossible at the
+  database level. The swap was always atomic.
+* **The status had to stay too, which the row did not mention.** Sending gates on
+  `connectionStatus === "CONNECTED"` (`sending-policy.ts` x3, `step-sends.ts`), so
+  keeping the credential while flipping the status would have fixed nothing. A
+  CONNECTED + active + non-removed + credential-holding mailbox now keeps its
+  credential, status, `providerLinkedUserId` and `connectedAt` for the whole round
+  trip; only `oauthState` + its 15-minute expiry are written. Every other row
+  clears to `PENDING_CONNECTION` exactly as before, asserted by tests.
+* **Audit metadata added on purpose:** the prepare audit row now carries
+  `beforeStatus` and `credentialRetained`, so retention is checkable in production
+  after the fact. Without it the change would be unfalsifiable.
+* No one-way door was walked. `.bidlow/PROJECT.json` (`lifecycle: live`) is
+  unchanged and **nothing found this session contradicts it**.
+
+### Half-done / not done, and exactly where
+
+* **NOT proved firing in production.** Nobody has pressed Connect on a production
+  mailbox since the deploy - that needs a signed-in staff session on a real
+  client's workspace, which this session cannot do and should not do. This is a
+  hash-verified deployment of tested code, not a live-firing claim. **The next
+  genuine reconnect leaves an audit row with `credentialRetained: true`, and that
+  closes it.**
+* **The 8 stranded mailboxes are NOT healed** by the fix. Each needs the mailbox
+  owner's own sign-in at Microsoft or Google. Row 84.
+
+### What the next session should pick up first
+
+1. **Row 84** - the 8 mailboxes that cannot send. Re-run
+   `gh workflow run mailbox-credential-probe.yml` (read-only, safe) to see whether
+   the number has moved. Chasing the reconnects, and publishing the Google OAuth
+   app, are **Greg's decisions** - he has declined publishing twice.
+2. **Row 85** - a mailbox pending 60 days still reads "Finish sign-in in the
+   Microsoft or Google window". Measure first: the obvious signal
+   (`oauthStateExpiresAt` in the past) is probably NULL on all 8 because cycle 64
+   only just added that column.
+3. **Row 86** - a failed reconnect can now demote a mailbox whose credential still
+   works. **Newly reachable because of this cycle's change** (before, the
+   credential was already gone by then). Strictly better than before, not a
+   regression, but the same defect one step downstream.
+
+### Two process notes worth not relearning
+
+* **Do not stack a PR unless the base branch will stay open.** #335 was opened
+  against the probe branch; `gh pr merge --auto` landed it there instead of `main`,
+  and GitHub refuses to retarget a closed PR. Reopened as #336 against `main`.
+* **`relay/queue-file-integrity.test.ts` earned its keep.** Rows 84-86 were first
+  appended to the end of QUEUE.md, which put three fresh `TODO` rows *below* row
+  48, which is `BLOCKED`. The picker stops at a blocked row, so all three would
+  have been invisible - the cycle-59 stall again. Moved above row 48; 111 relay
+  assertions green. **Append new rows ABOVE the blocked ones, not at the end.**
 
 ## Session 2026-08-28 - Relay cycle 67, queue row 48. The tab fix silently broke the client it was written for, and the per-client report is the only reason anyone saw it.
 
