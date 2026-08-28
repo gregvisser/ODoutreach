@@ -202,9 +202,25 @@ Migration is purely additive — 1 enum, 3 nullable columns, 1 FK to the existin
 `StaffUser`, 1 index. Dropping all of it restores today's behaviour exactly, so
 it is mine to merge under the brief's own test.
 
-**Not deployed or verified live by this cycle** — #306 was open with CI running
-when the cycle ended. Next cycle should confirm the running commit by hash
-against the direct App Service URL before claiming any of this is live.
+## Merged, deployed and verified live — by hash, not by prediction
+
+#306 merged as **`afa5471620a5851f5caf9223324ae28b9553bb97`**.
+
+Deploy run [33147696909](https://github.com/gregvisser/ODoutreach/actions/runs/33147696909)
+green, **including the "Prisma migrate deploy (production database)" step** — so
+the additive migration is applied to the live client database.
+
+* `GET /api/build-info` on the **direct App Service URL** (never the CDN-cached
+  custom domain) → `commit: afa5471620a5851f5caf9223324ae28b9553bb97`. Exact
+  match.
+* `GET /api/health` → `ok: true`, `database: ok`.
+* The same response carries `autonomousRelay: {active: true,
+  allowlistedClients: 1}` — independent confirmation that
+  `autonomous-actor-guard.ts` is untouched and still bidlowai-only.
+
+**Nothing was sent and no client data was touched.** The gate is inert until
+someone grades a client CORPORATE, and nobody has. The live behaviour change so
+far is exactly zero, by design — which is the honest way to ship a gate.
 
 ---
 
