@@ -1097,6 +1097,32 @@ and correct QUEUE.md.
 
 $HardRule
 
+## FIRST, BEFORE ANY NEW WORK: CLEAR THE GREEN PULL REQUESTS
+
+Do this at the START of every cycle, before you read the item below. It takes two
+minutes and it is the difference between a queue and a landfill.
+
+``gh pr list --state open`` then, for every PR whose checks are GREEN: bring the
+branch up to date if branch protection requires it, and MERGE it. Greg counted
+SEVENTEEN open on 2026-08-28 and most were green - they had simply been opened and
+abandoned.
+
+**Understand WHY this happens, because it is structural and not laziness.** A
+cycle finishes its work, opens a PR, and ends. CI takes about five minutes. Nobody
+ever comes back. So every cycle adds one and removes none, for ever. The only
+place that can be fixed is here, at the start of the NEXT cycle.
+
+Rules for the sweep:
+* RED PRs are not yours to force. Read the failure, and either fix it as part of
+  this cycle or say in your log why you left it.
+* Merge order matters: branch protection requires each branch to be current, so
+  every merge invalidates the next one. Take the docs and ``.bidlow`` record PRs
+  first - they cannot conflict with code - then the code ones, updating as you go.
+* ``gh pr merge --auto`` is better than update-then-race if auto-merge is allowed.
+* A DESTRUCTIVE migration is still Greg's. Additive is yours.
+* If a PR is genuinely not ready, say so in a comment on it, so the next cycle
+  does not have to work that out again.
+
 ## Before you touch anything, write these four things down
 
 1. **The files you are going to change.** Name them. If you cannot yet, your
