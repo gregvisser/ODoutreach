@@ -1,0 +1,77 @@
+# What every do-not-contact list holds right now, and which hold NOTHING.
+#
+# Reads the database only. No Google call, no quota, no write, no schedule.
+#
+# The dry run answers a bigger question — what does each SHEET hold — and pays
+# sixty-eight paced Google reads for it inside one HTTP request. On 2026-08-28
+# that answered 502, 207, 499 and 504 across four attempts; three of the four
+# hit Azure's ~230s ceiling. The source id needed to repair one client's list
+# was printed only by that call, so the tool for fixing a broken blocklist was
+# unreachable exactly when blocklists were broken.
+#
+# This is the cheap half, split out: milliseconds, and it cannot time out.
+#
+# Use it to (a) find the `sourceId` for "Sync one do-not-contact sheet", and
+# (b) CHECK A SYNC LANDED afterwards. (b) is the one that matters — a sync
+# reporting that it wrote 121 rows and a list actually holding 121 rows are
+# different claims, and this reads the second one.
+name: DNC sheet inventory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Count what every do-not-contact list holds
+        env:
+          # Direct App Service URL, not the custom domain: a CDN in front can
+          # answer for an older build, and a stale row count reads as a fact.
+          INVENTORY_URL: https://app-opensdoors-outreach-prod.azurewebsites.net/api/internal/suppression/sources
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; cannot ask."
+            exit 1
+          fi
+
+          response_file="/tmp/dnc-inventory.json"
+          status=$(curl -sS -o "$response_file" -w "%{http_code}" \
+            -X GET "$INVENTORY_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}") || status="000"
+
+          echo "HTTP status: ${status}"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "The inventory could not be read."
+            cat "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo
+          echo "'stored' is how many rows that client's blocklist holds TODAY."
+          echo "Zero means that client has no protection of that kind, whatever"
+          echo "the sheet says and whatever the last run reported."
+          echo
+          jq -r '
+            (["CLIENT","LIST","STORED","SHEET","RANGE SAVED","LAST SYNC","STATUS","SOURCE ID"] | @tsv),
+            (.entries[] | [
+               .client,
+               .kind,
+               (.storedRows | tostring),
+               (if .spreadsheetLinked then "linked" else "NONE" end),
+               (if .rangeSaved then "yes" else "-" end),
+               (.lastSyncedAt // "never"),
+               .syncStatus,
+               .sourceId
+             ] | @tsv)
+          ' "$response_file" | column -t -s $'\t'
+
+          echo
+          echo "Lists holding nothing: $(jq -r '.empty' "$response_file") of $(jq -r '.sources' "$response_file")"
+          echo
+          echo "--- raw ---"
+          cat "$response_file"
