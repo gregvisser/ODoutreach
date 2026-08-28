@@ -449,7 +449,11 @@ describe.each(POWERSHELL_HOSTS)("relay queue parser under %s", (shell) => {
       const result = runInWatcher(
         shell,
         `$took = Invoke-SelfQueue 21
-         Write-Result ([pscustomobject]@{ Took = $took; Note = (Read-IfPresent $NoteFile) })`,
+         Write-Result ([pscustomobject]@{
+           Took  = $took
+           Brief = (Read-IfPresent $NextFile)
+           Note  = (Read-IfPresent $NoteFile)
+         })`,
         [
           "| # | Item | Status |",
           "|---|---|---|",
@@ -457,15 +461,28 @@ describe.each(POWERSHELL_HOSTS)("relay queue parser under %s", (shell) => {
           "| 28 | The sheet syncs item. | TODO |",
           "",
         ].join("\n"),
-      ) as { Took: boolean; Note: string };
+      ) as { Took: boolean; Brief: string; Note: string };
 
-      // A PARTIAL row stops the relay either way - only TODO is taken
-      // automatically - so what the fix changes is the REASON Greg is given.
-      // Calling a partly-done row "BLOCKED" sends him looking for a blocker that
-      // does not exist.
-      expect(result.Took).toBe(false);
-      expect(result.Note).not.toMatch(/it is BLOCKED/);
-      expect(result.Note).toContain("PARTIAL 17");
+      // UPDATED for `04ddf66`, which deliberately made PARTIAL a status the
+      // relay TAKES: "PARTIAL means some of this is done and some of it is not,
+      // which is a row with work left in it - refusing to take it is refusing
+      // to do the work."
+      //
+      // That commit changed the behaviour and left this test asserting the old
+      // rule, so it went red on main. Recorded rather than quietly rewritten,
+      // because this is the project's signature defect caught in the act - and
+      // caught by the test going RED, which is the system working.
+      //
+      // The ANCHOR is unchanged and is still the whole point: `-match 'BLOCKED'`
+      // was an unanchored, case-insensitive substring test, so the word
+      // "blocked" inside row 27's prose read as a BLOCKED status and stopped the
+      // relay on a row that was not blocked. A status is what the cell STARTS
+      // with. What changed is only the consequence - the row is now picked up
+      // rather than stopping the queue with the wrong reason.
+      expect(result.Took).toBe(true);
+      expect(result.Brief).toContain("queue item 27");
+      // The one thing that must never happen either way: prose is not a status.
+      expect(result.Note).not.toMatch(/BLOCKED/);
     });
 
     it("still stops at a row that really is BLOCKED", () => {

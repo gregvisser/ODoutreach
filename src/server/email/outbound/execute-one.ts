@@ -172,19 +172,24 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   //
   // A row carrying a `staffUserId` was launched by a signed-in person and is
   // never touched — the business keeps working while an agent works beside it.
-  // A row with no staff behind it is treated as ours and must be allowlisted.
+  // A row with no staff behind it is treated as ours, and must be allowlisted
+  // AND carry a client whose Autonomous sending switch a named member of staff
+  // has deliberately turned on (re-scoped 2026-08-28; see the guard's header).
   //
   // The whole block is skipped when the relay is not running, so it costs
   // nothing (not even the extra read) in ordinary operation.
   if (autonomousRelayIsActive()) {
     const client = await prisma.client.findUnique({
       where: { id: row.clientId },
-      select: { slug: true },
+      select: { slug: true, autonomousSendEnabled: true },
     });
     const guard = evaluateAutonomousActorGuard({
       action: "SEND",
       actor: row.staffUserId ? "HUMAN_STAFF" : "MACHINE",
       clientSlug: client?.slug ?? null,
+      // `?? null` on purpose: a client row that could not be read at all and a
+      // client nobody has decided about are the same answer here — refuse.
+      clientAutonomousSend: client?.autonomousSendEnabled ?? null,
       relay: resolveAutonomousRelayState(),
     });
     if (!guard.allowed) {

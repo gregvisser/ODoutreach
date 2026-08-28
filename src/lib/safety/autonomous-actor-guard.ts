@@ -13,6 +13,32 @@
  * this repository sends real mail from real corporate mailboxes to real people
  * at other companies. A send cannot be recalled.
  *
+ * ## Re-scoped 2026-08-28 — the switch, not just the allowlist
+ *
+ * Greg: *"yes the machine can send for all customers from now on. there must be
+ * a switch or toggle set to make it machine sending or human sending."*
+ *
+ * So the guard gained a second question: **has a named person switched machine
+ * sending ON for this client?** (`Client.autonomousSendEnabled`.) The two
+ * questions are an **AND**:
+ *
+ *  * the **relay allowlist** is the operational envelope of an unattended agent
+ *    editing this repository — it answers "may a machine act for anyone at all
+ *    right now, and for whom";
+ *  * the **client switch** is the commercial and contractual decision — it
+ *    answers "has this particular client been signed up to machine sending, and
+ *    by whom".
+ *
+ * They are different questions with different owners, so both must say yes.
+ * Composing them as an AND means the guard can only ever become MORE closed
+ * than it was yesterday: no input to the new question can permit something the
+ * old one refused. That is the only safe direction for a gate to move in when
+ * the thing on the other side of it is an email to a stranger.
+ *
+ * Widening the envelope later is an environment change (`AUTONOMOUS_SEND_ALLOWLIST`),
+ * not a code change — deliberately, so it is Greg's decision to make and not a
+ * cycle's to make by accident.
+ *
  * ## What it gates, and what it deliberately does not
  *
  * It gates the **actor**, not the action. An autonomous agent sending for a
@@ -59,12 +85,27 @@ export type AutonomousActorGuardInput = {
   /** The client this action would affect. */
   clientSlug: string | null | undefined;
   relay: AutonomousRelayState;
+  /**
+   * **This client's own autonomous-send switch** — `Client.autonomousSendEnabled`.
+   *
+   * `true` a named member of staff turned machine sending ON for this client.
+   * `false` a named member of staff turned it OFF.
+   * `null`/`undefined` nobody has made the decision yet, which REFUSES.
+   *
+   * Three states, not two, and the third one is the point. A boolean defaulting
+   * to `false` would be indistinguishable from a deliberate "no", and this app
+   * has to be able to tell "we decided not to" from "nobody has looked at this
+   * client yet". Both refuse; only one of them is a decision.
+   */
+  clientAutonomousSend: boolean | null | undefined;
 };
 
 export type AutonomousGuardRefusalCode =
   | "autonomous_allowlist_missing"
   | "autonomous_client_unidentified"
-  | "autonomous_client_not_allowlisted";
+  | "autonomous_client_not_allowlisted"
+  | "autonomous_client_send_unset"
+  | "autonomous_client_send_disabled";
 
 export type AutonomousActorGuardDecision =
   | { allowed: true; reason: string }
@@ -83,11 +124,12 @@ function describe(action: AutonomousGuardedAction): string {
  * Decide whether an autonomous actor may perform this action for this client.
  *
  * **Fails closed at every branch.** Once the relay is active, an action is
- * allowed only when a real client slug matches a real allowlist entry. A
- * missing allowlist, a blank allowlist, an unidentifiable client and an
- * unrecognised actor all REFUSE. There is no path through this function that
- * reaches `allowed: true` by default, by omission, or by an empty value
- * matching another empty value.
+ * allowed only when a real client slug matches a real allowlist entry AND that
+ * client's own autonomous-send switch has been deliberately turned on. A
+ * missing allowlist, a blank allowlist, an unidentifiable client, an
+ * unrecognised actor, an unset switch and a switch turned off all REFUSE. There
+ * is no path through this function that reaches `allowed: true` by default, by
+ * omission, or by an empty value matching another empty value.
  */
 export function evaluateAutonomousActorGuard(
   input: AutonomousActorGuardInput,
@@ -146,8 +188,37 @@ export function evaluateAutonomousActorGuard(
     };
   }
 
+  // ── The client's own switch ─────────────────────────────────────────────
+  // Asked LAST, and it is an AND with everything above, never an OR. Turning
+  // the switch on cannot open a door the allowlist keeps shut; the only thing
+  // adding a second question to a gate can do is close it further.
+  if (input.clientAutonomousSend === null || input.clientAutonomousSend === undefined) {
+    return {
+      allowed: false,
+      code: "autonomous_client_send_unset",
+      reason:
+        `${describe(input.action)} is refused for "${slug}": nobody has set the Autonomous ` +
+        `sending switch on this client's account card, and an unanswered question is not a ` +
+        `yes. Open the client account and choose machine sending or human sending — whoever ` +
+        `chooses is recorded by name against it.`,
+    };
+  }
+
+  if (input.clientAutonomousSend === false) {
+    return {
+      allowed: false,
+      code: "autonomous_client_send_disabled",
+      reason:
+        `${describe(input.action)} is refused for "${slug}": the Autonomous sending switch on ` +
+        `this client's account card is set to human sending, so only a signed-in member of ` +
+        `staff may send for them. This is the switch working, not a fault.`,
+    };
+  }
+
   return {
     allowed: true,
-    reason: `"${slug}" is on the autonomous relay allowlist.`,
+    reason:
+      `"${slug}" is on the autonomous relay allowlist and its Autonomous sending switch is ` +
+      `set to machine sending.`,
   };
 }
