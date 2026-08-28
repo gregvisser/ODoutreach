@@ -15,7 +15,9 @@ const schema = z.object({
   clientId: z.string().min(1),
   kind: z.enum(["EMAIL", "DOMAIN"]),
   urlOrId: z.string().min(1),
-  sheetRange: z.string().optional(),
+  // A1 notation ("Domains!A:A") or a bare tab name ("Domains"). Bounded because
+  // it is passed straight to the Sheets API and stored; real ranges are tiny.
+  sheetRange: z.string().max(200).optional(),
 });
 
 /**
@@ -44,7 +46,12 @@ export async function upsertSuppressionSpreadsheetAction(
   }
 
   const kind = parsed.data.kind as SuppressionListKind;
+  // Absent and empty mean different things. An empty box is the operator
+  // choosing the default; an ABSENT field is a caller that simply does not deal
+  // in ranges, and must not null a range that is working — that would send the
+  // client silently back to Sheet1, which is the outage this field fixes.
   const range = parsed.data.sheetRange?.trim() || null;
+  const rangeProvided = parsed.data.sheetRange !== undefined;
 
   const existing = await prisma.suppressionSource.findFirst({
     where: { clientId: parsed.data.clientId, kind },
@@ -55,7 +62,7 @@ export async function upsertSuppressionSpreadsheetAction(
       where: { id: existing.id },
       data: {
         spreadsheetId,
-        sheetRange: range,
+        ...(rangeProvided ? { sheetRange: range } : {}),
         syncStatus: "NOT_CONFIGURED",
         lastError: null,
       },

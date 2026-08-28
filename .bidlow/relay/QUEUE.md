@@ -304,3 +304,4 @@ and makes both live.
 * Commit, push, PR and deploy when confident.
 * Every cycle: update this file's status column, and write a plain-English log.
 * If something here is wrong, correct it here rather than working around it.
+| 37 | **READ `.bidlow/relay/INBOX-FROM-CLAUDE.md` AND WORK ITS SIX ITEMS IN ORDER.** Item 1 is blocking Greg right now: he cannot reconnect five Google mailboxes and the page tells him Microsoft failed. The full detail lives in that file BECAUSE FIVE ROWS WRITTEN HERE WERE LOST TODAY when a cycle rewrote QUEUE.md from a stale read - item 6 is that bug. Nothing but Claude writes that file, so it survives. Keep this row TODO until every item in it is marked done inside the file itself. | TODO |
