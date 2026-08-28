@@ -62,6 +62,9 @@ export async function getClientByIdForStaff(
       mailboxIdentities: {
         orderBy: [{ isPrimary: "desc" }, { emailNormalized: "asc" }],
       },
+      // Who last set the account grade — rendered as the signature on the
+      // account card. Name and email only; never the staff user id.
+      accountGradeSetBy: { select: { displayName: true, email: true } },
       _count: {
         select: {
           contacts: true,

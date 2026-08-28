@@ -4092,3 +4092,88 @@ The one rule was not exercised - nothing left the building for any client.
 2. **Queue item 22** - paced sending, batches of 4, per client. Next TODO row.
 3. **Queue item 28** - the two failing DNC sheet syncs; PR #250's CI run
    `33017266904` FAILED. Start by reading that run, not by rebuilding.
+
+---
+
+# Cycle 51: row 35 landed, row 36 measured and deliberately not fixed - 2026-08-27
+
+## What actually changed
+
+**`origin/main` moved `be2dc01` -> `69a544a`.** That is the only thing this
+cycle changed about the product, and it changed no product code: `69a544a` is
+the squash of PR #298 (cycle 50's work), 3 relay test files, +204 lines.
+
+Cycle 50 wrote that fix and then left it sitting in an open PR. Cycle 51 read
+the CI verdict (`E2E pass`, `verify pass`, run `33080546249`), confirmed
+`MERGEABLE`/`CLEAN` and that the branch was not behind, and merged it.
+
+**Verification note worth keeping.** The merge was a SQUASH, so `7fc8b72` is
+deliberately not an ancestor of `main` and `git branch -r --contains` reports
+nothing - which looks exactly like a failed merge. Verify squashed work by
+CONTENT out of `origin/main`, not by ancestry.
+
+## The measurement (queue row 36) - do not skip this before touching the 429
+
+* The 429 was **never on `main`**. `a63c2f4` is the tip of `docs/state-cycle-49`;
+  **PR #297 is still OPEN**. Every E2E run on `main` that day passed.
+* The failure is real and hard: run `33079083594`, 2 failed / 62 passed /
+  0 flaky, red on all three attempts.
+* It is **not** a 429 on the page. Page status was 200. The failing assertion is
+  the console one at `e2e/screen-walk.spec.ts:210`. The 429 is a **cross-origin
+  sub-resource**.
+* **There is no in-app rate limiter anywhere in this codebase.** Every `429` in
+  `src/` is an INBOUND classifier for Gmail/Graph throttling on the send side.
+* Named source: **`src/instrumentation-client.ts:8`** - the Sentry DSN is a
+  HARDCODED LITERAL, not an env var, with `tracesSampleRate: 1`. `e2e/env.ts`
+  blanks every provider credential but CANNOT blank this one.
+* **No code change can cause or cure it.** The failing branch differs from
+  `main` by one markdown file and nothing under `src/` or `e2e/`. Same code
+  passed 13:43, failed 13:51, passed 14:09.
+* Does **not** reproduce on `main` at its real HEAD: 30/30 locally.
+* **Not proven:** the 429's URL was never captured. Sentry is identified by
+  elimination plus config, not by reading the request line.
+
+## Half-done, and exactly where
+
+1. **QUEUE.md rows 35/36 and `.bidlow/relay/log/cycle-051.md` are WRITTEN TO
+   DISK BUT NOT COMMITTED.** A stale `.git/index.lock` (0 bytes, 16:25, no
+   `git.exe` running) blocks every index operation, and removing it was denied
+   by the permission mode. Delete that lock, then reset branch
+   `fix/relay-powershell-test-timeouts` onto `69a544a`, commit those two files,
+   push, PR. **Nothing about the merge depends on this - `69a544a` is already on
+   `origin/main`.**
+2. **PR #297 (`docs/state-cycle-49`) is still open** and it also appends to
+   `.bidlow/STATE.md`. This cycle-51 section will therefore CONFLICT with it.
+   Land #297 first, or expect to resolve STATE.md by keeping both sections.
+
+## Decisions
+
+* **Merged #298 without asking.** None of the three stop conditions applied - no
+  migration, no client data, no email. Merging was the agent's call.
+* **Measured row 36 and deliberately did NOT fix it.** No limit raised, no retry
+  added, nothing marked flaky. The cause was assumed, not known, and the brief
+  was explicit that reconnaissance was the whole cycle.
+* No one-way door was opened.
+
+## Writes to production
+
+None. No send, no delete, no schema change, no migration, no Azure setting
+touched. Nothing left the building for any client.
+
+## Nothing contradicts PROJECT.json
+
+The hard rule was not exercised - no real email, no data deleted, for anyone.
+
+## Pick up first, next session
+
+1. **Free the git index lock and commit the two doc files** (see Half-done 1).
+2. **Upload the screen-walk artefacts in CI before touching the 429.**
+   `e2e/screen-walk.spec.ts` ALREADY records failed requests with full URLs into
+   `e2e/.artifacts/screen-walk/`, and `ci.yml` never uploads that directory - so
+   the one file that would name the 429's URL is written on the runner and
+   thrown away. That is a one-line workflow change and it turns row 36 from
+   deduction into evidence.
+3. **Then decide the Sentry question (OPEN, Greg's call):** move the DSN behind
+   an env var so e2e runs with it off? Recommended - and not only to fix the
+   test. A third party currently receives 100 percent-sampled traces of every
+   CI run.
