@@ -88,3 +88,9 @@ truth is worth more than an easy rebase of a docs PR. They are rescued by taking
 After the rebuild: 57 rows, ascending, no duplicate numbers, every status
 readable by the relay, and every description from both source queues present
 word-for-word.
+
+## Interrupted
+
+This cycle was still marked 'running' when the watcher started again at 2026-08-28 06:40:03, so it was stopped part-way through.
+
+Whatever it had already done on disk is done; whatever it had not is not. This note records that the cycle ended without finishing - it does NOT undo anything.
