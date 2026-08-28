@@ -1,6 +1,139 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 49) - Tier P (Client Production)**
+**Updated 2026-08-28 (cycle 63) - Tier P (Client Production)**
+
+## Session 2026-08-28 - Relay cycle 63, queue row 51. The thing overwriting the cycle logs WAS the log-writer, and one log had already been lost on `main`.
+
+Queue row 51 is `DONE 63`. Merged as **`3d7fef6`** (PR #313, squash). **Deployed
+and verified by hash on the DIRECT App Service URL** - `/api/build-info` returns
+`3d7fef6417449300efb114b53a638d6ab72e0117`, health `ok`, `database: ok`,
+`autonomousRelay.active: true`, `allowlistedClients: 1`. **No app code changed**:
+`relay-watch.ps1`, three relay specs, one restored cycle log, the queue row. No
+schema, no migration, no send path, no client data, nothing that sends.
+
+### The cause, confirmed before any code changed
+
+**It is `relay-watch.ps1` itself. There is no hook.** The watcher picks
+`$logFile = .bidlow/relay/log/cycle-NNN.md` at the START of a cycle (`:1556`) and
+writes it at the END with `... | Set-Content -Path $logFile`. Set-Content
+truncates. **Two writers, one filename**: a cycle also writes its own account of
+itself to that exact path while it runs (the 130-230 line document Greg reads),
+and the watcher writes after the agent's process has exited, so the watcher
+always wins.
+
+What replaced it was never a copy - the stub is boilerplate + the brief +
+`$output`, and `$output` is only the agent's LAST stdout message, not the file it
+wrote. Short last message, and the record collapsed to "Work happened."
+
+**It reproduced before I went looking**: the cycle opened with `cycle-062.md`
+already clobbered on disk, 227 real lines sitting as 177. Restored from HEAD.
+
+**The row's open question is answered the other way**: the `04:23:44` timestamp
+it could not place is `$started` - cycle 55's OWN start, written into cycle 55's
+own log. The brief was comparing it against cycle 56. No third process.
+
+### The already-committed casualty (this was NOT just a near miss)
+
+Audited all **65** `cycle-*.md` blobs on every local and `origin` branch. Exactly
+one path carried two shapes: **`cycle-056.md` on `main` was the 119-line stub**,
+while the real 145-line log survived only on the unmerged branch
+`feat/privacy-terms-pages` (blob `72977429`). **Cycle 56 is the cycle that FOUND
+this bug** - it caught 054 and 055 being clobbered, rescued both, and lost its
+own log to the same defect on the way out. Unnoticed for seven cycles.
+**RESTORED** on `main` as both halves (real log first, watcher record underneath,
+repair noted in the file, now 288 lines).
+
+Cycles 1-53 being watcher-shaped is legitimate - agents did not write their own
+logs before cycle 54, so nothing was lost there. Cycles 4/22/38/42 are the
+seven-line "interrupted" notes and that path was already append-safe.
+
+**A GREEN TEST WAS PUSHING THE LOSS INTO GIT.**
+`relay/cycle-log-reaches-git.test.ts` deliberately fails cycle N+1 until it
+commits cycle N's log, on the stated belief that "nothing inside cycle N can ever
+commit it". That is what made committing the stub look correct. The loss was
+driven by a passing gate, not merely tolerated. That comment now says so.
+
+### The fix
+
+New `Write-CycleLog` in `relay-watch.ps1`. One rule: **it never shortens a file.**
+
+* content present -> the cycle's words kept byte for byte, watcher's evidence
+  appended under a separator
+* absent or blank -> writes normally, no misleading "preserved" note
+* **unreadable -> treated as having content**, because the alternative is
+  overwriting something merely unread
+
+The watcher's half is appended rather than skipped because it is the part nobody
+can fake (exit code, timing, on-disk evidence verdict). Preserving one record by
+discarding the other would only move the loss.
+
+### Decisions worth knowing
+
+* **Append into ONE file, not a sidecar `cycle-NNN.watcher.md`.** A sidecar would
+  need its own tracking rule in `cycle-log-reaches-git.test.ts`, and one file per
+  cycle is what every reader (and Greg) already expects. A cycle log is now TWO
+  halves: the cycle's own words first, the watcher's evidence underneath.
+* **The watcher's record was NOT dropped in favour of the agent's.** Rejected
+  deliberately - see above.
+* **Row 51's stated premise was corrected in place**, not worked around: it
+  assumed a hook and an unexplained timestamp, and both were wrong.
+
+### The test earned its keep on its first run
+
+`relay/cycle-log-preserved.test.ts` dot-sources the REAL shipped script with
+`-LoadOnly` and drives the REAL function under `pwsh` AND `powershell` 5.1.
+Proven capable of failing by restoring the old truncating write: **11 red -> 15
+green**, the load-bearing failure printing the real heading being replaced by
+`# Cycle 62 - finished / Work happened. Evidence: a git ref moved`.
+
+**It caught a defect I had just introduced.** A MANDATORY `[string[]]` parameter
+applies `ValidateNotNullOrEmpty` per ELEMENT, so PowerShell refused to bind the
+blank lines the real call site passes:
+`Cannot bind argument to parameter 'Lines' because it is an empty string`.
+Shipped without `[AllowEmptyString()]`, **the watcher would have THROWN instead
+of writing any log at all**, on both hosts - a worse version of the bug being
+fixed. Lint, typecheck and any source-text assertion would all have passed it.
+Only running the real function under a real host caught it.
+
+### Proven it fires, not just that it exists
+
+* `relay-watch.ps1` parses clean (6601 tokens) under both hosts
+* the exact real call-site array shape round-trips both halves under `pwsh` and
+  `powershell` 5.1
+* row 51 checked with the relay's OWN `Get-QueueRows`: parses, **0 unreadable
+  rows across all 76**, picker advances to #50
+
+Gates: lint 0 - typecheck 0 - **2932 tests / 296 files green** (up 15).
+`relay/powershell-timeout-budget.test.ts` went red until the new spec was
+registered in its explicit list; the file was added rather than the check
+loosened.
+
+### Half-done / left deliberately
+
+* **`cycle-057.md` is an UNPROVEN possible loss.** It is watcher-shaped with no
+  agent version on any branch. That cycle TIMED OUT (killed at the 45-minute
+  deadline), so it most likely never wrote its own log - but that cannot be
+  proven, and if it did, that log is unrecoverable. Recorded rather than rounded
+  to "clean". Nothing to action unless the content is ever needed.
+* **The production proof of the fix lands after this session.** When cycle 63
+  ends, the watcher should APPEND to `cycle-063.md` rather than replace it. If
+  cycle 64 opens and `cycle-063.md` still begins with
+  `# Cycle 63 - row 51: the thing overwriting the logs was the log-writer`, the
+  fix held in production. **If it instead begins `# Cycle 63 - finished`, the fix
+  did NOT hold and row 51 must be reopened.**
+
+### What the next session should pick up first
+
+The picker advances to **row 50** (mailbox OAuth `oauthStateExpiresAt` written but
+never checked by either callback - a 15-minute TTL that is decorative). Row 48
+(DNC sheet range / replace-on-sync must refuse to delete a working block list) is
+the higher-consequence one behind it and touches live suppression data.
+
+### Contradicts nothing in `.bidlow/PROJECT.json`
+
+Nothing discovered this session contradicts the recorded project state. This was
+relay tooling only - no product behaviour, no domain rule, no gate on a
+real-world action was touched.
 
 ## Session 2026-08-27 - Relay cycle 49, queue item 34. The flaky locator was React streaming, and the evidence file was hiding it.
 
