@@ -131,8 +131,8 @@ green until row 39 lands.**
   row 42 itself — something that reports success and never lands.
 - The code PR was deliberately branched off `main` so it can merge independently of #300.
 
-## Open questions for Greg: 1
+## Open questions for Greg: 0
 
-Nothing here needs a decision. The single open item is mechanical and is already written into
-row 42: **re-run CI on #301 after ~08:30 UTC and merge it.** If row 39 is fixed first, that
-becomes automatic.
+Nothing here needs a decision — no schema change, no client data, no send. There is **one
+outstanding mechanical action**, already written into row 42: re-run CI on #301 after ~08:30 UTC
+and merge it. If row 39 is fixed first, that becomes automatic.
