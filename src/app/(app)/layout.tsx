@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { NewReplyNotifier } from "@/components/notifications/new-reply-notifier";
 import { StaffEmailBlocked } from "@/components/staff/staff-email-blocked";
 import { StaffInactive } from "@/components/staff/staff-inactive";
@@ -40,6 +41,9 @@ export default async function AppLayout({
         <main className="flex-1 bg-gradient-to-b from-muted/30 to-background px-4 py-8 md:px-8">
           {children}
         </main>
+        <footer className="border-t border-border bg-background px-4 py-6 md:px-8">
+          <LegalFooterLinks />
+        </footer>
       </div>
       <NewReplyNotifier />
     </div>

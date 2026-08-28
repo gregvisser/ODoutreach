@@ -10,6 +10,7 @@
     "e2e/fixtures.ts": "8f5344a6b07ea23b76e0510a27eba21f30b1374c070706ec2d7be087ebc5a28d",
     "e2e/global-setup.ts": "126ed83da826a7a9a920fd5ec75cb71f2f1dc07456a110a211b42e9a3cd400a1",
     "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
+    "e2e/legal-pages.spec.ts": "d75fe1dce06f9c423a3955ca7de11b8f24b6731f449d04baba6722837be95e7c",
     "e2e/mailboxes-table-first.spec.ts": "1b54d0bcdefa2740fc8a5f281696da3c5efc494a38894d585293a93517edce07",
     "e2e/nav-prefetch-burst.spec.ts": "0bda02d25eccad741b5de91336bb42421924f46089eb56013a94b977367a596f",
     "e2e/no-third-party-telemetry.spec.ts": "cdb6d83705b8e499ab40e4028e0fdb59fba419ebaee93e4ec8f61d5bffdae703",
