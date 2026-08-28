@@ -44,7 +44,8 @@ import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
 import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
+import { startOfUtcDay, utcDateKeyForInstant } from "@/lib/sending-window";
+import { loadCorporateReleaseAllowance } from "@/server/email-sequences/corporate-release-gate";
 import { requireClientAccess } from "@/server/tenant/access";
 import type {
   ClientMailboxIdentity,
@@ -502,6 +503,8 @@ export async function sendSequenceStepBatch(input: {
         outreachLinkDomainVerifiedAt: true,
         // Drives send pacing — how many go out together before the next gap.
         sendBatchSize: true,
+        // Drives the corporate four-at-a-time release gate.
+        accountGrade: true,
         onboarding: { select: { formData: true } },
       },
     }),
@@ -904,6 +907,21 @@ export async function sendSequenceStepBatch(input: {
   // no extra query runs while the reservation lock is held.
   const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id));
 
+  // Corporate four-at-a-time release. Resolved here, outside the transaction,
+  // for the same reason as `sendingDays`: no extra query while the reservation
+  // lock is held. An empty map for every non-corporate client, so this is inert
+  // unless someone has deliberately graded the account.
+  const corporateAllowance = await loadCorporateReleaseAllowance({
+    clientId,
+    grade: client.accountGrade,
+    mailboxIds: pool.map((m) => m.id),
+    now: at,
+    // The group arithmetic is scoped to the current UTC day, matching the
+    // window the daily cap and the reservation ledger already use. A group
+    // part-finished at 23:58 does not hold the mailbox over midnight.
+    windowStart: startOfUtcDay(at),
+  });
+
   try {
     await prisma.$transaction(
       async (tx) => {
@@ -935,7 +953,16 @@ export async function sendSequenceStepBatch(input: {
             m.id,
             windowKey,
           );
-          localRemaining.set(m.id, Math.max(0, allowedNow - booked));
+          // Corporate release gate. A `Math.min`, never a raise: for a graded
+          // CORPORATE client this holds each mailbox to a group of four with a
+          // 45-minute wait between groups. Absent for every other client, in
+          // which case `remaining` is exactly what it was before.
+          const remaining = Math.max(0, allowedNow - booked);
+          const corporateCap = corporateAllowance.get(m.id);
+          localRemaining.set(
+            m.id,
+            corporateCap === undefined ? remaining : Math.min(remaining, corporateCap),
+          );
         }
 
         for (const pr of dispatchable) {
