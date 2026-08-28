@@ -70,18 +70,28 @@ export function ClientSuppressionInlineCard({
   const emailSrc = sources.find((s) => s.kind === "EMAIL");
   const domainSrc = sources.find((s) => s.kind === "DOMAIN");
 
-  function save(kind: "EMAIL" | "DOMAIN", urlOrId: string) {
+  // Seeded from what is saved so re-saving a URL cannot silently blank a
+  // working range. Empty means "use the default".
+  const [emailRange, setEmailRange] = useState(emailSrc?.sheetRange ?? "");
+  const [domainRange, setDomainRange] = useState(domainSrc?.sheetRange ?? "");
+
+  function save(kind: "EMAIL" | "DOMAIN", urlOrId: string, sheetRange: string) {
     setMsg(null);
     startTransition(async () => {
       const r = await upsertSuppressionSpreadsheetAction({
         clientId,
         kind,
         urlOrId,
+        sheetRange,
       });
       if (r.ok) {
         setMsg(
-          `${kind === "EMAIL" ? "Email" : "Domain"} do-not-contact Sheet saved. Share as Viewer, then click Sync again.`,
+          `${kind === "EMAIL" ? "Email" : "Domain"} do-not-contact Sheet saved${
+            sheetRange.trim() ? ` — reading ${sheetRange.trim()}` : ""
+          }. Share as Viewer, then click Sync again.`,
         );
+        // The URL boxes are "paste to change"; the range boxes show current
+        // state, so they keep their value rather than clearing.
         setEmailUrl("");
         setDomainUrl("");
         router.refresh();
@@ -201,13 +211,32 @@ export function ClientSuppressionInlineCard({
                   onChange={(e) => setEmailUrl(e.target.value)}
                   placeholder="https://docs.google.com/spreadsheets/d/..."
                 />
+                <Label htmlFor="sup-email-range">Tab and range (optional)</Label>
+                <Input
+                  id="sup-email-range"
+                  value={emailRange}
+                  onChange={(e) => setEmailRange(e.target.value)}
+                  placeholder="Sheet1!A1:Z50000"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to read <code>Sheet1!A1:Z50000</code>. If your
+                  addresses are on a differently-named tab, put its name here —
+                  just <code>Emails</code>, or <code>Emails!A:A</code> for one
+                  column.
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={pending || !emailUrl.trim()}
-                    onClick={() => save("EMAIL", emailUrl)}
+                    disabled={pending || (!emailUrl.trim() && !emailSrc?.spreadsheetId)}
+                    onClick={() =>
+                      save(
+                        "EMAIL",
+                        emailUrl.trim() || emailSrc?.spreadsheetId || "",
+                        emailRange,
+                      )
+                    }
                   >
                     Save email sheet
                   </Button>
@@ -257,13 +286,32 @@ export function ClientSuppressionInlineCard({
                   onChange={(e) => setDomainUrl(e.target.value)}
                   placeholder="https://docs.google.com/spreadsheets/d/..."
                 />
+                <Label htmlFor="sup-domain-range">Tab and range (optional)</Label>
+                <Input
+                  id="sup-domain-range"
+                  value={domainRange}
+                  onChange={(e) => setDomainRange(e.target.value)}
+                  placeholder="Sheet1!A1:Z50000"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to read <code>Sheet1!A1:Z50000</code>. If your
+                  domains are on a differently-named tab, put its name here —
+                  just <code>Domains</code>, or <code>Domains!A:A</code> for one
+                  column.
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={pending || !domainUrl.trim()}
-                    onClick={() => save("DOMAIN", domainUrl)}
+                    disabled={pending || (!domainUrl.trim() && !domainSrc?.spreadsheetId)}
+                    onClick={() =>
+                      save(
+                        "DOMAIN",
+                        domainUrl.trim() || domainSrc?.spreadsheetId || "",
+                        domainRange,
+                      )
+                    }
                   >
                     Save domain sheet
                   </Button>
@@ -315,6 +363,7 @@ export function ClientSuppressionInlineCard({
                           : "domains"
                     } on the list`
                   : ""}
+                {` · reading ${s.sheetRange?.trim() || "Sheet1!A1:Z50000"}`}
                 {s.lastSyncedAt
                   ? ` · last sync ${s.lastSyncedAt.slice(0, 16).replace("T", " ")}`
                   : ""}

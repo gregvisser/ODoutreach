@@ -1,0 +1,50 @@
+# Re-check every tracked client's SPF/DKIM/DMARC/tracking host against
+# PRODUCTION data, and switch tracking OFF for any client that has regressed.
+#
+# Row 41: "Re-check on a schedule and DISABLE AUTOMATICALLY if it regresses."
+#
+# Deliberately NOT a merge-blocking CI job, for the same reason as
+# signature-link-audit.yml: this reads real client mailboxes and resolves real
+# DNS, and CI's DATABASE_URL is the ephemeral e2e Postgres with no clients in it.
+# The job would sweep nothing, find nothing wrong and report a clean bill of
+# health — a false green, which is a named defect class in this estate.
+#
+# This schedule is NOT the thing that keeps a regressed client safe. If it stops
+# running, `decideClientOpenTracking` still expires any verification older than
+# TRACKING_DNS_MAX_AGE_DAYS at dispatch, so tracking closes itself within a week
+# with nothing running at all. This job makes the state fresh; the arithmetic at
+# send time makes it safe.
+#
+# Sends no email. Touches only tracking columns, and only for clients that
+# already have tracking switched on.
+name: Tracking DNS sweep (production)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily 05:30 UTC — before the weekday send window opens at 07:00, so a
+    # regression is caught before that day's outreach carries a pixel.
+    - cron: "30 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Re-check tracking DNS and disable regressions
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "PRODUCTION_DATABASE_URL is not configured — refusing to report a clean tracking-DNS sweep against no database."
+            exit 1
+          fi
+          npm run ops:tracking-dns-sweep

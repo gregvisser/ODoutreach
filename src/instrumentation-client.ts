@@ -4,6 +4,8 @@
 
 import * as Sentry from "@sentry/nextjs";
 
+import { SENTRY_DATA_COLLECTION } from "@/lib/monitoring/sentry-data-collection";
+
 Sentry.init({
   // Read from the environment, never hardcoded. A DSN written into the source is
   // a destination `e2e/env.ts` cannot blank, so every CI run and every local
@@ -28,12 +30,10 @@ Sentry.init({
   // Enable logs to be sent to Sentry
   enableLogs: true,
 
-  dataCollection: {
-    // To disable sending user data and HTTP bodies, uncomment the lines below. For more info visit:
-    // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#dataCollection
-    // userInfo: false,
-    // httpBodies: [],
-  },
+  // Every field set explicitly, and it has to be — supplying this block at all
+  // selects the SDK's PERMISSIVE defaults as the base, so anything left unset is
+  // ON. See `src/lib/monitoring/sentry-data-collection.ts`.
+  dataCollection: SENTRY_DATA_COLLECTION,
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

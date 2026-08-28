@@ -20,6 +20,13 @@ export function isPublicPath(pathname: string): boolean {
   // Public one-click unsubscribe endpoints. The token itself is the proof.
   if (pathname.startsWith("/unsubscribe/")) return true;
   if (pathname.startsWith("/api/unsubscribe/")) return true;
+  // Legal pages. Google refuses to publish an external OAuth app whose privacy
+  // policy and terms URLs do not resolve anonymously, and a redirect to
+  // /sign-in reads to their reviewer as a missing page. Outreach recipients
+  // have no account either, and the privacy policy is about them. These pages
+  // read no session and no database.
+  if (pathname === "/privacy") return true;
+  if (pathname === "/terms") return true;
   // PWA install assets must be reachable without a session — the browser fetches
   // the manifest and registers the service worker before (and regardless of)
   // sign-in. These serve no user data. (Icon PNGs already bypass the middleware

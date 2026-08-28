@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { ClientOpenTrackingCard } from "@/components/clients/client-open-tracking-card";
 import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
@@ -28,6 +29,10 @@ import {
   MAILBOXES_WHAT_HAPPENS_BULLETS,
 } from "@/lib/mailboxes/mailbox-workspace-model";
 import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
+import { deriveGoLinkDomain } from "@/lib/clients/client-link-domain";
+import { CLIENT_OPEN_TRACKING_SELECT } from "@/lib/tracking/client-open-tracking";
+import { loadClientTrackingDnsState } from "@/server/clients/tracking-dns-persistence";
+import { isOpenTrackingPixelEnabled } from "@/lib/tracking/open-pixel";
 import { prisma } from "@/lib/db";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -77,6 +82,32 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
     : [];
 
   const deliverabilityEntries = help.deliverability;
+
+  // Open tracking is per-client and OFF by default. Read the client's own
+  // setting rather than inferring anything from the environment: the env var is
+  // only a global backstop now, reported here so staff can see when it is what
+  // is actually holding tracking off.
+  const trackingClient = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: CLIENT_OPEN_TRACKING_SELECT,
+  });
+  const candidateGoDomains = Array.from(
+    new Set(
+      bundle.mailboxRows
+        .map((m) => deriveGoLinkDomain(m.email))
+        .filter((d): d is string => Boolean(d)),
+    ),
+  ).sort();
+
+  /*
+    The four DNS checks, as the system last found them.
+
+    Read straight off the client row rather than resolved here: rendering a page
+    must not fire four DNS lookups and an HTTPS probe. The stored report is what
+    the last check SAW, the "Check DNS now" button re-runs it on demand, and the
+    scheduled sweep refreshes it every morning.
+  */
+  const trackingDns = await loadClientTrackingDnsState(clientId);
 
   /*
     The banner after an OAuth round-trip.
@@ -214,6 +245,26 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           {deliverabilityEntries.length > 0 ? (
             <ClientDeliverabilityHelp entries={deliverabilityEntries} />
           ) : null}
+
+          {/*
+            Shown to every staff member, not just setup-tool holders: whether a
+            customer's emails are tracked is something anyone supporting that
+            customer may be asked. The buttons are driven by canMutate and the
+            server action re-checks permission regardless.
+          */}
+          <ClientOpenTrackingCard
+            clientId={client.id}
+            canMutate={bundle.canMutateMailboxes}
+            linkDomain={trackingClient?.outreachLinkDomain ?? null}
+            linkDomainVerified={trackingClient?.outreachLinkDomainVerifiedAt != null}
+            trackingEnabled={trackingClient?.openTrackingEnabledAt != null}
+            candidateGoDomains={candidateGoDomains}
+            globalKillSwitchEngaged={!isOpenTrackingPixelEnabled()}
+            dnsChecks={trackingDns.checks}
+            dnsVerified={trackingDns.verified}
+            dnsCheckedAt={trackingDns.checkedAtLabel}
+            dnsVerifiedAt={trackingDns.verifiedAtLabel}
+          />
 
           {showMailboxSetupTools ? (
             <InternalProofSendCard
