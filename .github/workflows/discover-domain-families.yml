@@ -60,7 +60,13 @@ jobs:
           blocked=$(jq -r 'try .autoBlocked catch 0' "$response_file" 2>/dev/null || echo 0)
           tenant=$(jq -r 'try .tenantLookups catch 0' "$response_file" 2>/dev/null || echo 0)
           echo "Checked ${checked} contact domains; raised ${created} new suggestion(s)."
-          echo "Microsoft tenant lookups: ${tenant}."
+          links=$(jq -r 'try .tenantLinks catch 0' "$response_file" 2>/dev/null || echo 0)
+          able=$(jq -r 'try .autoBlockable catch 0' "$response_file" 2>/dev/null || echo 0)
+          echo "Microsoft tenant lookups: ${tenant}; shared-tenant links found: ${links}."
+          # The report-only number. While automatic blocking is off this is what
+          # WOULD be blocked if it were on — the measurement the decision to
+          # enable it should rest on, produced by the real nightly run.
+          echo "Would block automatically if enabled: ${able}."
           # An automatic block removes prospects from a paying client's universe
           # without anyone being asked. It must never be something you have to
           # go looking for in a log, so it is called out on its own line.
