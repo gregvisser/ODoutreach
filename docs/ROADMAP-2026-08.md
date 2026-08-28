@@ -90,11 +90,17 @@ All five require an explicit opt-in value, so all default to inactive:
 
 ```
 OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN    off   ← issue C, hard block
-OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN    off   ← issue C, tracking pixel
 MAILBOX_WARMUP_RAMP                     off   ← issue B, the volume ramp
 SEND_DISPATCH_RECHECK_ENABLED           off   ← cooldown + bounce backstop
 MICROSOFT_MIME_SEND                     off
 ```
+
+`OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN` was **removed** on 2026-08-27. Open
+tracking became a per-client opt-in that already requires a verified aligned
+domain, so a cross-domain pixel is unreachable and the flag had nothing left to
+prevent. `OPEN_TRACKING_PIXEL` (`off` in production) survives as a global
+kill-switch backstop only — it can hold tracking off for everyone, but it can no
+longer switch tracking on for anyone. See `src/lib/tracking/client-open-tracking.ts`.
 
 `BOUNCE_SUPPRESSION_ENABLED` is confirmed **on** in production.
 

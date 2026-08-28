@@ -1,65 +1,83 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-28 (cycle 55) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 49) - Tier P (Client Production)**
 
-## Session 2026-08-28 - Relay cycle 55, queue item 45. The privacy policy and terms pages exist, are public, and were proven so over HTTP.
+## Session 2026-08-27 - Relay cycle 49, queue item 34. The flaky locator was React streaming, and the evidence file was hiding it.
 
-Queue row 45 is `DONE 55`. **PR [#302](https://github.com/gregvisser/ODoutreach/pull/302) is OPEN, NOT MERGED** - see "left exactly here" below. No schema change, no migration, no send, no client data touched.
+Queue row 34 is `DONE 49`. Merged as **`be2dc01`** (PR #296). **Deployed and
+verified by hash on the DIRECT App Service URL** - `/api/build-info` returns
+`be2dc01250da66d4a4a99b82ca062daec7951241`, health `database: ok`. **No app code
+changed**: two e2e specs, one new e2e spec, `ci.yml`, `.bidlow/FROZEN.json`,
+the queue row. No schema, no migration, no send path, no client data, nothing
+that sends an email.
 
-### What was built
+### What was actually built
 
-`/privacy` and `/terms` - real pages, publicly reachable without a login, written from the code rather than a template. New: `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/components/legal/legal-page-shell.tsx`, `src/components/legal/legal-footer-links.tsx`, `e2e/legal-pages.spec.ts`. Changed: `src/lib/public-paths.ts` (+2 lines), `src/middleware.test.ts`, `src/app/(app)/layout.tsx`, `src/app/sign-in/page.tsx`, `.bidlow/FROZEN.json`.
+**The row's own premise was wrong and was corrected in place.** It said "1
+occurrence in 2 runs - do not spend a cycle on this unless it returns". Before
+touching anything I read the E2E job log of **all 68 CI runs** from the first
+sighting (`33031542852`) to that morning (`33074979216`): **10 runs flaky, 14
+strict-mode violations, every one the same class**, on three different strings
+(`No aged queue rows.` x5, `Use Connect on the mailbox row, then return here.`
+x5, `Routing` x4). It had already returned nine times.
 
-This is the gate on publishing the Google OAuth app, which is the only thing stopping every Google Workspace client's mailbox tokens expiring 7 days after consent - so it is also what blocks Train Hugger's 5 mailboxes.
+**Cause, reproduced not assumed.** Not the outbound-detail page rendering twice,
+and not prefetch. React out-of-order streaming, on EVERY streamed page: the
+finished page is delivered inside a `<div hidden id="S:n">` at the END of
+`<body>` and moved into `<main>` a frame later, so for that frame the document
+holds two identical copies and an unscoped `getByText` (document-wide, strict)
+sees both. Proven three ways - the raw HTML response carries the marker twice; a
+`MutationObserver` installed before app JS caught the duplicate on **22 of 24**
+local loads; the second copy's ancestor chain is `body > div#S:0[hidden] > ...`,
+outside `main`. The parked copy is `hidden` and gone next frame, so **no user
+ever sees it. This is a TEST defect, not a product defect.**
 
-### Proven, not asserted
+Fix: page-content assertions scoped to `main`, which the parked copy is outside
+of - **not** `.first()`, which silences the ambiguity without saying which
+element it meant. New frozen spec `e2e/streamed-content-single-copy.spec.ts`
+pins the invariant that `main` holds exactly ONE copy, so a page that really
+does render twice fails loudly.
 
-Live against a production build, no session, no cookie: `/privacy` **200**, `/terms` **200**, control `/dashboard` **307 -> /sign-in**.
+**A/B on the real code:** pre-fix specs at `--repeat-each=20` = 8 failures / 220
+runs, reproducing all three CI strings locally; fixed specs at the same repeat
+count = **280/280 green**. The new spec proved capable of failing by flipping it
+to `toHaveCount(2)` - red on all three.
 
-Red-first both ways. Unit: watched failing, `expected false to be true`. E2E: proved capable of failing by deleting the `/privacy` line from `public-paths.ts` and **rebuilding** - went red naming the exact redirect `/sign-in?callbackUrl=%2Fprivacy` while `/terms` stayed green. A permanent control test asserts a protected route fetched the same way is not 200.
-
-Gates: lint **0** - typecheck **0** - **2716** unit tests - **70** e2e passed / 1 skipped.
+**Second finding - why it stayed invisible for three weeks.** CI's
+`evidence-e2e.json` DROPPED `stats.flaky`, so all 10 flaky runs recorded
+`passed: true, failed: 0` and the only trace was a job log nobody reads. `ci.yml`
+now records `flaky` and emits a `::warning::` + job-summary line when non-zero.
+Proved it fires twice: the step's own extracted script against synthetic input
+(flaky=2 -> warning + summary, flaky=0 -> silent, no results file -> still fails
+closed), and the real artefact from the PR run, which now reads
+`"flaky": 0, "count": 64`.
 
 ### Decisions worth knowing
 
-* **The footer is mounted on the sign-in page as well as inside the app shell.** The brief said "linked from the app footer"; taken literally that ships the defect this project is worst at - Google's reviewer cannot sign in, so a footer behind the login is invisible to the entire audience the pages exist for.
-* **Corrected the brief rather than repeating it.** It states suppression is "append-only". That is true of unsubscribe and bounce only; `BLUEPRINT.json` records sheet-sourced suppression as **replace-on-sync**. The page says so and QUEUE row 45 was corrected. Repeating it would have put a false statement in a privacy policy.
-* **Added the Google API Services User Data Policy Limited Use disclosure**, which OAuth verification requires separately from the pages existing.
-* **CR-07 deliberately NOT marked closed.** The code gap it names is closed, but a policy that announces itself as unreviewed is not yet the document a client asks for. Re-grade after sign-off.
-* **No one-way door.** Nothing irreversible, nothing sent, no admin override taken.
+* **`e2e/cross-tenant.spec.ts` deliberately UNTOUCHED.** Its `toHaveCount(0)`
+  leak assertions are document-wide ON PURPOSE - a leak in the parked hidden
+  copy is still a leak. Scoping them to `main` would have weakened the tenant
+  isolation tests while looking like a tidy-up.
+* `e2e/training-screenshots.spec.ts` left alone (CAPTURE-gated, never runs in
+  CI) and the `brief-save` toast left unscoped (portalled to `<body>`, so `main`
+  would be the wrong scope).
+* **Flaky WARNS, it does not fail the build.** A hard fail would turn ordinary
+  runner noise into red `main`, which queue row 35 says is already a problem.
+  That is a policy call and is the one open question left for Greg.
+* Two frozen files changed, both with amendment entries in `.bidlow/FROZEN.json`
+  (`e2e/journeys.spec.ts`, `e2e/mailboxes-table-first.spec.ts`). The freeze gate
+  BLOCKED the first edit and the amendment was recorded rather than routed
+  around. No one-way door touched.
 
-### Left exactly here
+### Left for the next session
 
-**PR #302 is finished and blocked by queue row 39, not by its own content.** Run `33139864635` at 03:47 UTC: `verify` **PASS** (4m53s), `E2E (Playwright)` **FAIL** (1m43s) on `j5-journey.integration.test.ts:369` - row 39's clock-dependent pacing bug, now confirmed on a **fourth** branch. Merging would need an admin override of a genuinely red required check, which row 37 established is not the relay's to take.
-
-**One action needed after ~08:30 UTC: re-run CI on #302 and merge.** #302 also carries the seven stranded relay-docs commits from #300, so merging it makes rows 39-47 durable on `main`, which still stops at row 37.
-
-### Discovered, recorded, deliberately NOT fixed
-
-* **Row 46 - likely instance eight of the house defect, and it is live.** `GET /api/track/open/<id>` returns **307 -> /sign-in**. The open-tracking pixel sits behind the auth middleware (`/api/track/` is absent from `isPublicPath`, and the matcher only excludes paths *ending* in an image extension), so recipients' mail clients get an HTML redirect instead of the GIF and `openedAt` has never been written. The route itself is correct - just unreachable. Not fixed here: enabling it writes to real client rows and changes reported numbers, and `OPEN_TRACKING_PIXEL` defaults ON while OpensDoors were told in writing that tracking is off. Those two currently agree **by accident**.
-* **Row 47 - the grade gate is red in the working tree.** `.bidlow/GRADES.json` is modified-but-uncommitted (already dirty at session start, not this cycle's) and `src/lib/grade-record.test.ts` fails 4 tests on `customer_ready.blockers.5: Unrecognized key: "closed_on"`. Proven pre-existing by `git stash -u` (10/10 green on clean HEAD) then unstash (red again). The content is good - CR-05 now carries real signed-DPA evidence - the zod schema just lacks an optional `closed_on`. **This cycle staged its files by name and did NOT commit that file**, so CI sees a green tree; the next cycle that runs `git add -A` will push a red gate.
-* **A second cost of row 39, newly noticed:** the integration step runs *before* Playwright and fails the job, so overnight PRs never run their e2e at all. `e2e/legal-pages.spec.ts` has therefore never executed in CI - only locally.
-
-### Nothing contradicts PROJECT.json
-
-The one rule held - nothing left the building for any client.
-
-### Open questions for Greg - 3, all one email, none blocked the build
-
-All three are on screen in the pages' draft notice rather than silently invented, and live as named constants in `legal-page-shell.tsx`:
-
-1. The **registered legal entity and address**.
-2. **Who is the data controller** for prospect records - OpensDoors, or each customer with OpensDoors as processor?
-3. Does **`privacy@opensdoors.co.uk`** exist and is it monitored? Google's reviewer may write to it.
-
-Worth knowing alongside them: the Google app requests **`gmail.readonly`**, a **restricted** scope. Publishing with it triggers restricted-scope verification, which can require a CASA security assessment with real cost and lead time. These pages remove the blocker Greg hit; they do not guarantee the publish is quick.
-
-### What the next session should pick up first
-
-1. **Row 39** - it blocks four PRs (#297, #300, #301, #302) and is fully diagnosed. Make the J5 test control the clock the way its setup dates already do. **Do not weaken the assertion.**
-2. Then re-run CI on **#302** and merge it.
-3. **Row 47** - one optional schema key, then commit GRADES.json.
-4. **Row 46** - the open-tracking pixel, in its own cycle, with the tracking-on/off promise decided at the same time.
+* Row 34 is closed. **Row 35 (intermittent CI red from PowerShell test
+  timeouts) is still open** and is the remaining CI-trust item.
+* Nothing here is half-done. The local e2e Postgres on :5434 was recreated from
+  scratch during this cycle (it held a superseded `20260826120000_reply_claims`
+  migration from an abandoned branch and refused to migrate); that is a
+  throwaway database, not client data.
+* Nothing discovered contradicts `.bidlow/PROJECT.json`.
 
 ## Session 2026-08-27 - Relay cycle 47, queue item 8. The ASK gate nothing was reading, and an access level we had not earned.
 

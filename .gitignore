@@ -123,6 +123,11 @@ DNC-APPROVED.md
 # a merge conflict in a build artefact nobody edits by hand.
 /relay-status.html
 
+# One-byte marker the bidlow-standards state-continuity hook drops to remember it
+# already nudged this session. Local and transient, like the relay runtime state
+# above.
+/.bidlow/.state-nudged
+
 # Scratch backups the relay drops beside a file before rewriting it
 # (QUEUE.md.bak-before-*, relay-watch.ps1.bak-*, …). These are local undo, not
 # history — git is the history. Ignoring them keeps `git status` readable enough

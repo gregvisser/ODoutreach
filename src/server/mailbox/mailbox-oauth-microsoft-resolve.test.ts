@@ -4,7 +4,8 @@ vi.mock("@/server/mailbox/microsoft-mailbox-oauth", () => ({
   fetchMicrosoftGraphPrimaryEmail: vi.fn(),
 }));
 
-import { formatMicrosoftMailboxOAuthAccountMismatch } from "@/lib/mailboxes/microsoft-oauth-account-mismatch";
+import { formatMailboxOAuthAccountMismatch } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import { MailboxOAuthAccountMismatchError } from "@/server/mailbox/mailbox-oauth-callback-shared";
 
 import { resolveMicrosoftMailboxOAuthConnection } from "./mailbox-oauth-microsoft-resolve";
 import { fetchMicrosoftGraphPrimaryEmail } from "./microsoft-mailbox-oauth";
@@ -80,7 +81,22 @@ describe("resolveMicrosoftMailboxOAuthConnection", () => {
         mailboxEmailNormalized: "joe@b.co",
       }),
     ).rejects.toThrow(
-      formatMicrosoftMailboxOAuthAccountMismatch("admin@b.co", "joe@b.co"),
+      formatMailboxOAuthAccountMismatch("admin@b.co", "joe@b.co"),
     );
+  });
+
+  it("raises the mismatch as its own type, so the callback can report it apart from a generic failure", async () => {
+    vi.mocked(fetchMicrosoftGraphPrimaryEmail).mockResolvedValue({
+      id: "admin-graph",
+      primaryEmail: "admin@b.co",
+    });
+    vi.mocked(fetch).mockResolvedValue(new Response("nope", { status: 401 }));
+
+    await expect(
+      resolveMicrosoftMailboxOAuthConnection({
+        accessToken: "t",
+        mailboxEmailNormalized: "joe@b.co",
+      }),
+    ).rejects.toBeInstanceOf(MailboxOAuthAccountMismatchError);
   });
 });

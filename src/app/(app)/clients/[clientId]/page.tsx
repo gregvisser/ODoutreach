@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { ClientAccountGradeCard } from "@/components/clients/client-account-grade-card";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchBlockersCard } from "@/components/clients/client-launch-blockers-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
@@ -18,6 +19,7 @@ import {
   buildLaunchReadinessRows,
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
+import { formatAccountGradeAttribution } from "@/lib/clients/client-account-grade";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
 import { prisma } from "@/lib/db";
 import {
@@ -265,6 +267,18 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       ) : null}
 
       <ClientLaunchBlockersCard clientId={client.id} blockers={launchBlockers} />
+
+      <ClientAccountGradeCard
+        clientId={client.id}
+        grade={client.accountGrade}
+        attributionLine={formatAccountGradeAttribution({
+          grade: client.accountGrade,
+          setByName:
+            client.accountGradeSetBy?.displayName ?? client.accountGradeSetBy?.email ?? null,
+          setAt: client.accountGradeSetAt,
+        })}
+        canMutate={bundle.canMutateMailboxes}
+      />
 
       <ClientGettingStartedCard
         viewModel={gettingStarted}

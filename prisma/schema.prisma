@@ -33,6 +33,16 @@ enum ClientLifecycleStatus {
   ARCHIVED
 }
 
+/// Commercial handling tier for a client account. CORPORATE is the VIP tier and
+/// is the only one that changes behaviour today: its outreach is released to
+/// staff four recipients at a time (see `@/lib/outreach/manual-send-window`).
+/// MID and STANDARD are recorded for commercial reporting and behave alike.
+enum ClientAccountGrade {
+  CORPORATE
+  MID
+  STANDARD
+}
+
 /// PR K — Launch approval mode recorded alongside `Client.launchApprovedAt`.
 /// CONTROLLED_INTERNAL: approved for staff/allowlisted recipient pilots only
 /// (current operational mode; does not require one-click unsubscribe).
@@ -289,6 +299,7 @@ model StaffUser {
   sequenceEnrollmentsCreated      ClientEmailSequenceEnrollment[]  @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
+  clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsAsBriefAccountManager    Client[]                         @relation("ClientBriefAccountManager")
   clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
   supportTicketsCreated           SupportTicket[]                  @relation("SupportTicketCreatedBy")
@@ -407,6 +418,18 @@ model Client {
   /// 1..MAX_SEND_BATCH_SIZE on read; it can only re-shape a daily cap, never
   /// raise one.
   sendBatchSize                 Int?
+  /// Commercial handling tier — CORPORATE (VIP) / MID / STANDARD. Drives the
+  /// four-at-a-time release gate on the send screen (corporate only). Null =
+  /// nobody has graded this account yet, which is handled as STANDARD: the
+  /// grade can only ever slow sending down, so defaulting an ungraded client
+  /// into the slow path would silently change live behaviour for every
+  /// existing client.
+  accountGrade                  ClientAccountGrade?
+  /// Who last set `accountGrade`, shown ON SCREEN next to the control. A change
+  /// that decides how a client's outreach is released must have a name against
+  /// it; the full history is appended to AuditLog as well.
+  accountGradeSetByStaffUserId  String?
+  accountGradeSetAt             DateTime?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes            String?                   @db.Text
   briefAssignedAccountManagerId String?
@@ -419,6 +442,14 @@ model Client {
   /// real-prospect sends are blocked when the hard rule is enforced
   /// (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN).
   outreachLinkDomainVerifiedAt  DateTime?
+  /// Per-client open-tracking opt-in. NULL = OFF, and null is the default for
+  /// every client forever — tracking is never on because nobody turned it off.
+  /// Only set once the customer has agreed to the DNS change and their
+  /// `outreachLinkDomain` is verified, so a tracked email can only ever carry a
+  /// same-domain pixel. `OPEN_TRACKING_PIXEL=off` remains a global backstop.
+  openTrackingEnabledAt         DateTime?
+  /// Who switched open tracking on for this client (audit trail; null when off).
+  openTrackingEnabledByStaffUserId String?
   createdAt                     DateTime                  @default(now())
   updatedAt                     DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
@@ -456,6 +487,7 @@ model Client {
   sequenceStepSends               ClientEmailSequenceStepSend[]
   unsubscribeTokens               UnsubscribeToken[]
   launchApprovedBy                StaffUser?                       @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
+  accountGradeSetBy               StaffUser?                       @relation("ClientAccountGradeSetBy", fields: [accountGradeSetByStaffUserId], references: [id], onDelete: SetNull)
   briefAccountManager             StaffUser?                       @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
   briefTaxonomyLinks              ClientBriefTermLink[]
   complianceAttachments           ClientComplianceAttachment[]
@@ -467,6 +499,7 @@ model Client {
   @@index([status])
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
+  @@index([accountGradeSetByStaffUserId])
 }
 
 /// Reusable brief vocabulary: service areas, ICP industries, company sizes, target titles

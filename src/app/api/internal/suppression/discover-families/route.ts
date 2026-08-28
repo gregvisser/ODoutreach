@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
     let autoBlocked = 0;
     let contactDomainsChecked = 0;
     let tenantLookups = 0;
+    let tenantLinks = 0;
+    let autoBlockable = 0;
     let tenantBudgetExhausted = false;
 
     for (const client of clients) {
@@ -73,6 +75,16 @@ export async function POST(req: NextRequest) {
         contactDomainsChecked += plan.contactDomainsChecked;
         tenantLookups += plan.tenant.lookupsSpent;
         if (plan.tenant.budgetExhausted) tenantBudgetExhausted = true;
+        tenantLinks += plan.links.filter(
+          (l) => l.source === "MICROSOFT_TENANT",
+        ).length;
+        // THE NUMBER THE DECISION TURNS ON. With automatic blocking off this
+        // is what WOULD have been blocked had it been on — the report-only
+        // measurement, produced by the real run rather than by a simulation of
+        // it, so the switch can be flipped on evidence.
+        autoBlockable += plan.plans.filter(
+          (p) => p.kind === "create" && p.autoBlock,
+        ).length;
 
         const written = await persistProposalPlans({
           clientId: client.id,
@@ -119,6 +131,8 @@ export async function POST(req: NextRequest) {
       created,
       refreshed,
       autoBlocked,
+      autoBlockable,
+      tenantLinks,
       tenantLookups,
       errors,
     };
