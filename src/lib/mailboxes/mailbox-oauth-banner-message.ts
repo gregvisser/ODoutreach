@@ -1,3 +1,12 @@
+import {
+  MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
+  MAILBOX_OAUTH_APP_MISCONFIGURED_REASON,
+  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+  MAILBOX_OAUTH_MAILBOX_ACCESS_DENIED_REASON,
+  MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON,
+  MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+  MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+} from "@/lib/mailboxes/mailbox-oauth-failure-reason";
 import { isValidEmailFormat, normalizeEmail } from "@/lib/normalize";
 
 /**
@@ -25,21 +34,15 @@ export type MailboxOAuthBannerProvider = "MICROSOFT" | "GOOGLE" | null;
 export type MailboxOAuthBanner = { type: "ok" | "err"; text: string };
 
 /**
- * The callback approved a sign-in that is not this mailbox and cannot act for
- * it. Distinct from a generic failure because the operator can actually fix it.
+ * The reason vocabulary lives in `mailbox-oauth-failure-reason.ts` — one list,
+ * so a code cannot exist without a sentence. Re-exported here because the two
+ * callback routes have always imported these from this module and the import
+ * path is not what this change is about.
  */
-export const MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON = "oauth_account_mismatch";
-
-/**
- * The sign-in link was real, but it was issued more than fifteen minutes ago.
- *
- * Deliberately NOT folded into `unknown_state`. A link that timed out and a
- * link that was never issued are different facts: the first means "you took too
- * long, start again", the second can mean the row was disconnected underneath
- * you or the link was tampered with. Cycle 56 spent itself proving what one
- * reason code standing for two situations costs the person reading the banner.
- */
-export const MAILBOX_OAUTH_EXPIRED_STATE_REASON = "expired_state";
+export {
+  MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
+  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+};
 
 /**
  * How to name the provider mid-sentence. Never sentence-initial, so the
@@ -185,10 +188,40 @@ export function mailboxOAuthBanner(
         type: "err",
         text: `Sign-in with ${p} came back without a sign-in code. Press Connect to try again.`,
       };
+    // The five below replaced a single `callback_failed`. Each one names what
+    // failed and gives ONE next move; where that move is not the operator's to
+    // make, it says whose it is instead of sending them round Connect again.
+    case MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON:
+      return {
+        type: "err",
+        text: `${p} refused to complete the sign-in — this usually means the sign-in link was reused or had already expired. Press Connect and finish signing in straight away, in one go.`,
+      };
+    case MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON:
+      return {
+        type: "err",
+        text: `${p} signed in but did not give ongoing access, so the connection would stop working within the hour. Press Connect again and approve every prompt${input.provider === "GOOGLE" ? " — if it happens twice, remove OpensDoors under your Google account's third-party access first, then reconnect" : ""}.`,
+      };
+    case MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON:
+      return {
+        type: "err",
+        text: `${p} would not confirm which account had signed in, so this mailbox was left disconnected rather than connected to the wrong account. Press Connect to try again in a few minutes.`,
+      };
+    case MAILBOX_OAUTH_MAILBOX_ACCESS_DENIED_REASON:
+      return {
+        type: "err",
+        text: input.mailboxEmail
+          ? `That sign-in worked, but the account has no permission to send from ${input.mailboxEmail}. Ask the customer's IT administrator to grant it access to that mailbox, or connect while signed in as ${input.mailboxEmail}.`
+          : `That sign-in worked, but the account has no permission to send from this mailbox. Ask the customer's IT administrator to grant access, or connect while signed in as the mailbox itself.`,
+      };
+    case MAILBOX_OAUTH_APP_MISCONFIGURED_REASON:
+      return {
+        type: "err",
+        text: `OpensDoors is not set up to connect ${p} mailboxes yet — nothing you do on this page will fix it. Ask an administrator to check the mailbox sign-in settings, then try again.`,
+      };
     case "callback_failed":
       return {
         type: "err",
-        text: `Sign-in with ${p} did not finish. Press Connect to try again — if it keeps failing, ask the owner account to read the connection diagnostics on that row.`,
+        text: `Sign-in with ${p} did not finish, and the cause was not one we recognise. Press Connect to try again — if it keeps failing, ask the owner account to read the connection diagnostics on that row, which now record the underlying error.`,
       };
     default:
       return {

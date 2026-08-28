@@ -7,21 +7,19 @@ import {
   mailboxOAuthBanner,
   readMailboxOAuthSearchParams,
 } from "./mailbox-oauth-banner-message";
+import { MAILBOX_OAUTH_ALL_REASONS } from "./mailbox-oauth-failure-reason";
 
 /**
- * Every reason code the two callback routes can actually redirect with. If a
- * route gains a reason, add it here — the "never says Microsoft" sweep below is
- * only worth anything if it covers the whole set.
+ * Every reason code the two callback routes can actually redirect with.
+ *
+ * Read from the vocabulary itself rather than re-typed, because the hand-kept
+ * copy would have gone stale the moment cycle 77 added five codes — and the
+ * "never says Microsoft" sweep below is only worth anything if it covers the
+ * whole set. The trailing entry is the unhandled case, kept explicitly so the
+ * default branch is swept too.
  */
-const EMITTED_REASONS = [
-  "missing_state",
-  "unknown_state",
-  "mailbox_removed",
-  "provider_denied",
-  "missing_code",
-  "callback_failed",
-  MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
-  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+const EMITTED_REASONS: string[] = [
+  ...MAILBOX_OAUTH_ALL_REASONS,
   "some_reason_added_later_and_not_handled",
 ];
 

@@ -1,7 +1,9 @@
 import "server-only";
 
+import { MAILBOX_OAUTH_MAILBOX_ACCESS_DENIED_REASON } from "@/lib/mailboxes/mailbox-oauth-failure-reason";
 import {
   MailboxOAuthAccountMismatchError,
+  MailboxOAuthFailure,
   mailboxEmailsAlign,
 } from "@/server/mailbox/mailbox-oauth-callback-shared";
 import { fetchMicrosoftGraphPrimaryEmail } from "@/server/mailbox/microsoft-mailbox-oauth";
@@ -46,7 +48,8 @@ export async function resolveMicrosoftMailboxOAuthConnection(input: {
       throw new MailboxOAuthAccountMismatchError(me.primaryEmail, target);
     }
     const detail = (await inboxRes.text()).slice(0, 800);
-    throw new Error(
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_MAILBOX_ACCESS_DENIED_REASON,
       `Microsoft sign-in (${me.primaryEmail}) cannot open ${target} in Microsoft Graph (HTTP ${inboxRes.status}). ` +
         `In Exchange Online, grant this user Full Access / Send As (or equivalent) on that mailbox, ensure admin consent includes Mail.Read.Shared and Mail.Send.Shared for the mailbox OAuth app, then reconnect. ` +
         `Provider detail: ${detail}`,
@@ -59,13 +62,17 @@ export async function resolveMicrosoftMailboxOAuthConnection(input: {
   });
   if (!userRes.ok) {
     const detail = (await userRes.text()).slice(0, 800);
-    throw new Error(
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_MAILBOX_ACCESS_DENIED_REASON,
       `Microsoft Graph could not resolve directory user ${target} (HTTP ${userRes.status}): ${detail}`,
     );
   }
   const json = (await userRes.json()) as { id?: string };
   if (typeof json.id !== "string" || !json.id) {
-    throw new Error(`Microsoft Graph did not return an object id for ${target}.`);
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_MAILBOX_ACCESS_DENIED_REASON,
+      `Microsoft Graph did not return an object id for ${target}.`,
+    );
   }
   return { mailboxGraphUserId: json.id, oauthPrimaryEmail: me.primaryEmail };
 }
