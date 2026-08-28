@@ -68,10 +68,23 @@ const MINIMUM_BUDGET_MS = 20_000;
 // page next to the floor.
 const VITEST_DEFAULT_TIMEOUT_MS = 5_000;
 
-// This file talks ABOUT PowerShell without ever starting one, so it would match
-// its own detector. Excluded by name rather than by making the needle harder to
-// read - the exclusion is the honest thing to write down.
+// Specs that talk ABOUT PowerShell without ever starting one, so they match the
+// detector below without paying process-spawn cost. Excluded by name rather than
+// by making the needle harder to read - the exclusion is the honest thing to
+// write down.
+//
+// `queue-file-integrity.test.ts` joined this list in cycle 71. It reads
+// QUEUE.md off disk and asserts on its structure; the only reason it matches is
+// that its comments explain what `Get-QueueRows` and `Set-QueueRowStatus` do to
+// a duplicated row number, which is the whole point of the file. Giving it a
+// 30s budget to satisfy a detector it only trips in prose would blunt fail-fast
+// on a spec that finishes in 2ms, which is the opposite of what this guard is
+// for.
 const SELF = path.basename(__filename).replace(/\.[cm]?[jt]s$/, "");
+const TALKS_ABOUT_POWERSHELL_BUT_NEVER_STARTS_ONE = [
+  SELF,
+  "queue-file-integrity",
+];
 
 /**
  * A spec "drives PowerShell" if it names a PowerShell host at all. Both current
@@ -100,7 +113,12 @@ function declaredBudgetMs(source: string): number | null {
 
 const POWERSHELL_SPECS = readdirSync(RELAY_DIR)
   .filter((name) => name.endsWith(".test.ts"))
-  .filter((name) => !name.startsWith(SELF))
+  .filter(
+    (name) =>
+      !TALKS_ABOUT_POWERSHELL_BUT_NEVER_STARTS_ONE.some((excluded) =>
+        name.startsWith(excluded),
+      ),
+  )
   .map((name) => ({
     name,
     source: readFileSync(path.join(RELAY_DIR, name), "utf8"),
