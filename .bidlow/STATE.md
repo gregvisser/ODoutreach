@@ -1,6 +1,113 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-28 (cycle 75) - Tier P (Client Production)**
+**Updated 2026-08-28 (cycle 77) - Tier P (Client Production)**
+
+## Session 2026-08-28 - Relay cycle 77, queue row 43. The mailbox OAuth callback said `callback_failed` and nothing else.
+
+Row 43 is **`DONE 77`**. No new rows opened. PR sweep at cycle start: **zero open PRs**, none left open at close.
+
+### What was built, merged and deployed
+
+* **`0b80b83` (PR #345)**, branch `fix/mailbox-oauth-callback-reason`, merged and
+  **LIVE** - verified by hash on the DIRECT App Service URL
+  (`app-opensdoors-outreach-prod.azurewebsites.net/api/build-info` returns
+  `0b80b8319b3af032d5e8a588ecae8559f4760459`), not the CDN domain and not
+  liveness alone.
+
+The row's diagnosis was correct and was re-verified before any code. Both
+callbacks caught every exception in one `catch` and redirected
+`reason=callback_failed`, with the audit row recording only `outcome: failed`.
+
+**The mechanism, and it is the whole design decision:** the reason is attached
+where the cause is KNOWN - a new `MailboxOAuthFailure` thrown at the site that
+raised the fault - and carried out untouched. The callback never infers a reason
+from message text, because a wrong-but-specific reason sends someone to fix the
+wrong thing, and prose changes whenever a provider rewords an error.
+
+Five codes replace the shrug, in
+`src/lib/mailboxes/mailbox-oauth-failure-reason.ts`:
+`token_exchange_rejected`, `no_refresh_token`, `provider_profile_unavailable`,
+`mailbox_access_denied`, `oauth_app_misconfigured`. `callback_failed` SURVIVES
+as the honest floor for anything untagged. Audit metadata gains `reason` and
+`error` - the same words already written to the row's `lastError` and read by
+the same owner-only diagnostics, so this is a new channel, not a new exposure.
+Provider error MESSAGES are byte-identical, so nothing downstream reading
+`.message` changed.
+
+Red-first: the existing test in `google/callback/route.test.ts` ASSERTED
+`callback_failed` for a rejected token exchange; flipped to assert the specific
+reason -> **4 failed / 7 passed** before any implementation. Proved capable of
+failing by three deliberate breaks: untag one Google throw site; make the
+classifier always shrug (9 failed across 3 files); delete one banner `case`.
+
+### THE MISTAKE, recorded because it is the house defect and I committed it
+
+**A guard I wrote in this PR did not fire.** The check that every reason renders
+its own sentence stayed **GREEN** when a `case` arm was deleted: the reason falls
+through to the DEFAULT sentence, and the default sentence is itself unique, so
+nothing clashed. Caught only because the break was actually RUN rather than
+reasoned about. Rewritten to compare every reason against the *computed* default
+sentence, then re-broken to watch it go red naming `mailbox_access_denied`.
+
+**Lesson for the next cycle: a uniqueness check is not a coverage check.** If the
+fallback branch produces a distinct value, "all outputs are distinct" passes
+while the behaviour is gone. Assert against the fallback explicitly.
+
+**Second operational trap, hit twice in one cycle:** `git checkout <file>` to
+revert a deliberate break reverts the file to **HEAD**, wiping the cycle's own
+uncommitted work in that file, not just the break. It silently undid all the
+Google throw-site tagging. Copy the file aside first (`cp x /tmp/x.bak`), or
+commit before breaking.
+
+### Why the throw-site test exists, and that it earned its place
+
+`src/server/mailbox/mailbox-oauth-throw-site-reasons.test.ts` drives the REAL
+`exchangeGoogleMailboxAuthCode`, `fetchGoogleUserEmailAndSub`,
+`exchangeMicrosoftMailboxAuthCode`, `fetchMicrosoftGraphPrimaryEmail` and
+`resolveMicrosoftMailboxOAuthConnection` against stubbed provider responses. The
+route tests MOCK those, so they can only ever prove the callback CARRIES a
+reason - never that the real code ATTACHES one. That is the difference between
+built and firing. It caught the `git checkout` regression above in the full run.
+
+### Decision recorded, not papered over
+
+`missing_state` and `unknown_state` deliberately SHARE one banner sentence -
+different facts on the wire, identical next move for the operator. Surfaced by
+the new guard's first run. Declared in `MAILBOX_OAUTH_ALIASED_REASON_GROUPS`
+with the reasoning, rather than inventing a distinction that would be fiction
+for the reader. No one-way door was touched.
+
+### Gates
+
+lint 0 - typecheck 0 - **316 files / 3160 tests** (up 27 from 3133) - build exit
+0. CI on #345: `verify` pass 4m58s, `E2E (Playwright)` pass 5m49s. Row 39's
+overnight J5 flake is fixed on `main` and did not recur at 23:36 UTC.
+
+### Writes to production
+
+The deploy of `0b80b83`, and nothing else. **No send, no delete, no schema
+change, no migration, no client data touched.** None of the three stop-and-ask
+conditions applied.
+
+### Nothing contradicts PROJECT.json
+
+### NOT conflated, as the row explicitly instructed
+
+The Google OAuth app is **still in Testing** and Google still expires test-user
+refresh tokens seven days after consent. That is Greg's and is UNTOUCHED. This
+cycle changed only what the operator is TOLD when it bites: the banner will now
+say Google signed in but gave no ongoing access (`no_refresh_token`), naming the
+fault, instead of "did not finish".
+
+### Pick up first, next session
+
+1. **Take the first `TODO`/`PARTIAL` row in `.bidlow/relay/QUEUE.md`.** Rows 37,
+   38 and 42 still read `TODO` with notes saying the work is built but was
+   blocked on the old row-39 E2E flake - **that flake is fixed**, so those are
+   cheap to re-check and close.
+2. **Row 48 is `BLOCKED 70` and needs Greg, not a cycle** (Train Hugger's
+   82-domain shrink - rule (b), real client data).
+3. **Ask Greg to restart the relay watcher** - row 52, still unfixed.
 
 ## Session 2026-08-28 - Relay cycle 75, queue row 47. The grade record could not say WHEN a blocker was closed - and the evidence the row was protecting had already been destroyed.
 
