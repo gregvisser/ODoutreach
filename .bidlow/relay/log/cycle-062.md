@@ -185,3 +185,43 @@ commercial and contractual question, not an engineering one, and row 71 says it
 was settled on 2026-08-28 without the record being updated. This cycle did not
 touch it. With CR-06 closed, CR-05 is now the sole remaining data-protection
 input to dimension 8.
+
+## Three things found late, all worth the next cycle's time
+
+**1. An undeclared dependency was about to ship.** The policy module first typed
+itself off `DataCollection` from `@sentry/core`. That typechecked and linted
+clean — and would have been wrong. `package.json` declares only
+`@sentry/nextjs`; `@sentry/core` reaches us transitively and resolves purely by
+npm's hoisting. Adding it as a direct dependency is the worse fix, because a
+later `@sentry/nextjs` bump without a matching bump gives two copies of the
+Sentry core and its global state. `@sentry/nextjs` does not re-export the type
+(tsc: *"has no exported member 'DataCollection'"*). So the module carries its own
+structural type and the conformance assertion moved into the test, where
+`@sentry/core` is already reached legitimately and a resolution failure is a loud
+red rather than an obscure broken build. Worth noting that neither lint nor
+typecheck caught this — only reading `package.json` did.
+
+**2. A concurrent Cowork supervision agent is committing to the same branch.**
+Two commits appeared on `fix/sentry-data-collection-explicit` mid-cycle
+(`075b1c1`, `93bf7b2`) authored by *Claude (Cowork supervision)*, adding queue
+rows 69–71 and 72 and restoring row 41's verdict. They were preserved through the
+rebase, not clobbered. This is not a complaint — the row-41 restore was a real
+catch — but a cycle agent and a supervision agent writing to one branch at once
+is a collision waiting to happen, and the next cycle should know it can occur.
+
+**3. QUEUE.md contains two tables with overlapping row numbers.** There are two
+rows numbered 41: line 238 (*"FOURTEEN PULL REQUESTS ARE OPEN"*, `TODO`) and line
+356 (*the tracking DNS row*, `DONE 61`). Both pre-date this cycle and both are on
+`main` — this was not introduced here and was deliberately not "fixed", because
+renumbering a queue that a regex-driven picker reads is exactly the kind of
+change that stops the relay. But a row number is being used as an identifier
+while not being unique, and one of the two is `TODO`. That should be settled
+deliberately by someone who can see the whole file, not as a side-effect of
+another row.
+
+## The sweep, finished
+
+All four inherited PRs are merged: **#308**, **#302**, **#301**, **#311**. None
+were left open, and none were left red. `--auto` is unavailable on this
+repository, so each one was update-branch → wait for CI → merge by hand, and each
+merge invalidated the next, which is most of where this cycle's wall-clock went.
