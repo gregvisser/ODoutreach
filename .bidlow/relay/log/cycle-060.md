@@ -207,3 +207,9 @@ is a refusal that did not exist yesterday.
    That is correct and by design, but it means the feature is visible and inert
    until a human acts — including for `bidlowai`. Worth Greg knowing so it is not
    mistaken for the feature not working.
+
+## Interrupted
+
+This cycle was still marked 'running' when the watcher started again at 2026-08-28 08:25:41, so it was stopped part-way through.
+
+Whatever it had already done on disk is done; whatever it had not is not. This note records that the cycle ended without finishing - it does NOT undo anything.
