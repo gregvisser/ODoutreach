@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db";
 import { tryGetOpensDoorsStaff } from "@/server/auth/staff";
 import { exchangeMicrosoftMailboxAuthCode } from "@/server/mailbox/microsoft-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import { MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import {
+  MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
+  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+} from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import {
   MailboxOAuthAccountMismatchError,
   mailboxOAuthRedirectToClient,
@@ -75,6 +79,17 @@ export async function GET(req: Request) {
 
   // Every error redirect from here down carries the mailbox id, so the page can
   // read the row's real provider instead of assuming one.
+
+  // See the Google callback: the prepare step's 15-minute expiry, enforced. It
+  // goes first, before anything else reasons about the row, and it writes nothing.
+  if (isMailboxOAuthStateExpired(mailbox.oauthStateExpiresAt, new Date())) {
+    return mailboxOAuthRedirectToClient(clientId, {
+      mailbox_oauth: "error",
+      reason: MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+      oauth_mailbox_id: mailbox.id,
+    });
+  }
+
   if (isMailboxRemovedFromWorkspace(mailbox)) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",

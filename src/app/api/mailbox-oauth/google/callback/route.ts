@@ -6,7 +6,11 @@ import {
   fetchGoogleUserEmailAndSub,
 } from "@/server/mailbox/google-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import { MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import {
+  MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
+  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+} from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import {
   MailboxOAuthAccountMismatchError,
   mailboxOAuthRedirectToClient,
@@ -44,6 +48,20 @@ export async function GET(req: Request) {
   // Every error redirect from here down carries the mailbox id. The page reads
   // the row's provider from it, so the banner can say Google when it means
   // Google — until 2026-08-28 it just assumed Microsoft.
+
+  // The 15-minute expiry the prepare step writes, finally read. This sits FIRST,
+  // immediately after the lookup: nothing may reason about or act on a state
+  // before its age has been checked, so no later edit can slip work in front of
+  // the gate. The refusal writes nothing — the state is already dead, and a
+  // read-only refusal keeps the message the same if the operator refreshes.
+  if (isMailboxOAuthStateExpired(mailbox.oauthStateExpiresAt, new Date())) {
+    return mailboxOAuthRedirectToClient(clientId, {
+      mailbox_oauth: "error",
+      reason: MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+      oauth_mailbox_id: mailbox.id,
+    });
+  }
+
   if (isMailboxRemovedFromWorkspace(mailbox)) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
