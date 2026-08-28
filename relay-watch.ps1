@@ -665,6 +665,109 @@ function Get-EvidenceVerdict($before, $after, $namedFiles) {
 }
 
 # ===========================================================================
+# WRITING THE LOG WITHOUT DESTROYING THE ONE THAT IS ALREADY THERE
+#
+# This function exists because the line it replaced was
+# `... | Set-Content -Path $logFile`, and Set-Content TRUNCATES.
+#
+# TWO WRITERS, ONE FILENAME. The watcher picks $logFile at the START of a cycle
+# and writes it at the END. But a cycle also writes its own account of itself to
+# that exact path while it runs - that is what Greg actually reads, and the last
+# nine of them run to 130-230 lines. So the watcher's final Set-Content landed on
+# top of a file the agent had already written, and truncation is not a merge:
+# the agent's log was gone.
+#
+# WHAT SURVIVED WAS NOT A COPY OF IT. The replacement is this function's own
+# boilerplate, the brief, and $output - which is only the agent's LAST message on
+# stdout, not the file it wrote. When that last message was short the whole
+# record collapsed to 101 lines reading "Work happened. Evidence: a git ref
+# moved, so something was committed." A log that says "Work happened" cannot be
+# told apart from a cycle that did nothing.
+#
+# IT WAS NOT A NEAR MISS. `cycle-056.md` on `main` IS the stub; the real
+# 145-line log survives only on the unmerged branch `feat/privacy-terms-pages`.
+# Cycle 56 is the cycle that FOUND this bug - it caught 054 and 055 being
+# clobbered, rescued both, and lost its own log to the same defect on the way
+# out. And the loss was not passive: `relay/cycle-log-reaches-git.test.ts` makes
+# cycle N+1 commit whatever is on disk for cycle N, so the stub is actively
+# pushed into git by a green test.
+#
+# WHY THIS APPENDS RATHER THAN SKIPPING THE WRITE. The watcher's record is the
+# only part nobody can fake - exit code, timing, and an evidence verdict derived
+# from what moved on disk rather than from what the agent claims. Dropping it to
+# protect the agent's log would trade one silent loss for another. So neither is
+# preferred and neither is discarded: the cycle's own words are kept byte for
+# byte, and the watcher's evidence goes underneath them.
+#
+# The rule is the whole point, so it is stated plainly: THIS FUNCTION NEVER
+# SHORTENS A FILE. If the target has content, the only permitted operation is to
+# add to the end of it.
+#
+# `relay/cycle-log-preserved.test.ts` drives this function directly and fails if
+# a single byte of pre-existing content stops coming back.
+# ===========================================================================
+function Write-CycleLog {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        # [AllowEmptyString()] is load-bearing, not tidiness. A MANDATORY
+        # [string[]] parameter applies ValidateNotNullOrEmpty to each ELEMENT, so
+        # PowerShell refuses to bind an array containing "" with "Cannot bind
+        # argument to parameter 'Lines' because it is an empty string". The real
+        # call site passes blank lines as paragraph breaks, so without this the
+        # watcher throws instead of writing any log at all - a worse version of
+        # the very bug this function exists to fix. Caught by
+        # cycle-log-preserved.test.ts on its first run, under both hosts.
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines
+    )
+
+    $body = $Lines -join "`n"
+
+    # Read BEFORE deciding. A file that cannot be read is treated as though it
+    # HAS content, because the alternative is to overwrite something unreadable
+    # rather than merely unread - and this whole function exists to stop that.
+    $existing = ""
+    $unreadable = $false
+    if (Test-Path $Path -PathType Leaf) {
+        try {
+            $existing = [string](Get-Content $Path -Raw -Encoding UTF8)
+            if ($null -eq $existing) { $existing = "" }
+        } catch {
+            $unreadable = $true
+        }
+    }
+
+    if (-not $unreadable -and [string]::IsNullOrWhiteSpace($existing)) {
+        Set-Content -Path $Path -Value $body -Encoding utf8
+        return [pscustomobject]@{ Preserved = $false; Bytes = 0 }
+    }
+
+    $note = if ($unreadable) {
+        "The file already here could not be read, so it was left completely untouched and this record was added after it."
+    } else {
+        "Everything ABOVE this line was written by the cycle itself, and is kept exactly as the cycle left it. Nothing above was edited, shortened or reordered."
+    }
+
+    $preamble = @(
+        ""
+        ""
+        "---"
+        ""
+        "## The watcher's own record of this cycle"
+        ""
+        $note
+        ""
+        "This section is written by ``relay-watch.ps1`` after the cycle's process has"
+        "exited. It is the independent half of the record: the cycle above says what it"
+        "meant to do, and this says what actually moved on disk, how long it took, and"
+        "how the process ended. Where the two disagree, this half is the evidence."
+        ""
+    ) -join "`n"
+
+    Add-Content -Path $Path -Value ($preamble + $body) -Encoding utf8
+    return [pscustomobject]@{ Preserved = $true; Bytes = $existing.Length }
+}
+
+# ===========================================================================
 # SELF-QUEUEING - taking Greg off the critical path
 #
 # Greg wakes once an hour; that is a hard platform floor. If the relay waits for
@@ -1725,7 +1828,7 @@ either way.
 
     $checkedList = if ($namedFiles.Count -gt 0) { $namedFiles -join ", " } else { "none were named in the brief" }
 
-    @(
+    $wrote = Write-CycleLog -Path $logFile -Lines @(
         "# Cycle $cycle - $outcome"
         ""
         $headline
@@ -1743,10 +1846,14 @@ either way.
         "## What it did"
         ""
         $output
-    ) | Set-Content -Path $logFile -Encoding utf8
+    )
 
     Save-Status $cycle $outcome $lastSelfQueued
-    Write-Line "Cycle $cycle $outcome. Written to $logFile"
+    if ($wrote.Preserved) {
+        Write-Line "Cycle $cycle $outcome. The cycle had already written its own log ($($wrote.Bytes) bytes), so the watcher's record was ADDED UNDERNEATH it in $logFile - nothing was overwritten."
+    } else {
+        Write-Line "Cycle $cycle $outcome. Written to $logFile"
+    }
 
     # Tell Greg AFTER the log exists, so the email can point at something that
     # is already there to read.

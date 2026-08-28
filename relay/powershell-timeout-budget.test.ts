@@ -110,9 +110,10 @@ const POWERSHELL_SPECS = readdirSync(RELAY_DIR)
 describe("relay specs that start a PowerShell host", () => {
   // If the detector ever matches nothing, every assertion below would vacuously
   // pass and this whole file would become decoration - built, wired, reporting
-  // success, and never firing. It must find the two that exist.
+  // success, and never firing. It must find the three that exist.
   it("finds the specs that drive PowerShell, so the checks below are not vacuous", () => {
     expect(POWERSHELL_SPECS.map((s) => s.name).sort()).toEqual([
+      "cycle-log-preserved.test.ts",
       "gate-switch.test.ts",
       "queue-parser.test.ts",
     ]);
