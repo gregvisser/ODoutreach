@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Globe2,
   GraduationCap,
+  KeyRound,
   LifeBuoy,
   ListFilter,
   PieChart,
@@ -55,6 +56,11 @@ export const mainNav: NavItem[] = [
   // and echoes the page's own H1 "People blocked from outreach". The app avoids
   // the word "suppression" in user copy. Route /suppression is unchanged.
   { title: "Blocked contacts", href: "/suppression", icon: ListFilter },
+  // The weekly Google reconnect chore, on one screen. Listed here deliberately,
+  // unlike /operations: Google logins expire seven days after sign-in while the
+  // OAuth app stays unpublished, reconnecting is self-service for all staff, and
+  // a chore nobody can find is a chore that does not get done.
+  { title: "Google logins", href: "/google-reconnects", icon: KeyRound },
   { title: "Training", href: "/training", icon: GraduationCap },
   { title: "Support", href: "/support", icon: LifeBuoy },
   { title: "Settings", href: "/settings", icon: Settings },

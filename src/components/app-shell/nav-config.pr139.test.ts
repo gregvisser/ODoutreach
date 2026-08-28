@@ -32,6 +32,11 @@ describe("Main sidebar (PR #139 final audit, updated PR #140)", () => {
       // to end the label collision with the per-client "Do-not-contact" tab and
       // to match the page H1 "People blocked from outreach". Route unchanged.
       "Blocked contacts",
+      // Cycle 74 (#83): the weekly Google reconnect chore. Advertised here on
+      // purpose, unlike /operations — while the Google OAuth app stays
+      // unpublished every Google login expires seven days after sign-in, all
+      // staff reconnect them, and a chore nobody can find does not get done.
+      "Google logins",
       "Training",
       "Support",
       "Settings",
