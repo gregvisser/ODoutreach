@@ -295,6 +295,7 @@ model StaffUser {
   supportTicketsApproved          SupportTicket[]                  @relation("SupportTicketApprovedBy")
   suppressedDomainFamiliesCreated SuppressedDomainFamily[]         @relation("SuppressedDomainFamilyCreatedBy")
   familyProposalsDecided          SuppressedDomainFamilyProposal[] @relation("FamilyProposalDecidedBy")
+  replyClaims                     ReplyClaim[]
 
   @@index([invitedById])
 }
@@ -446,6 +447,8 @@ model Client {
   mailboxIdentities               ClientMailboxIdentity[]
   /// Microsoft Graph–ingested inbox rows (idempotent by mailbox + Graph message id)
   inboundMailboxMessages          InboundMailboxMessage[]
+  /// Advisory "someone is looking at this reply" markers. Ephemeral by design.
+  replyClaims                     ReplyClaim[]
   mailboxSendReservations         MailboxSendReservation[]
   emailTemplates                  ClientEmailTemplate[]
   emailSequences                  ClientEmailSequence[]
@@ -655,6 +658,52 @@ model InboundMailboxMessage {
   @@unique([mailboxIdentityId, providerMessageId])
   @@index([clientId, receivedAt])
   @@index([mailboxIdentityId, receivedAt])
+}
+
+/// Which conversation a `ReplyClaim` is attached to. A prospect's reply is
+/// reachable by two routes — the inbound message detail page and the
+/// linked-reply page — and both resolve to INBOUND_MESSAGE whenever the
+/// mailbox sync correlated them, so one claim is visible from either route.
+/// Webhook-ingested replies have no correlated mailbox message and use
+/// INBOUND_REPLY with their own id.
+enum ReplyClaimSubjectType {
+  INBOUND_MESSAGE
+  INBOUND_REPLY
+}
+
+/// ADVISORY "someone is looking at this reply" marker — NOT a lock. Nothing
+/// in the codebase reads this to decide whether an action may proceed; it
+/// only decides what the second operator is TOLD before they act.
+///
+/// Deliberately its own table rather than a key on
+/// `InboundMailboxMessage.metadata`, where the neighbouring handling state
+/// lives. The reply sync's upsert writes `metadata` wholesale on every run
+/// (`mailbox-inbox-sync.ts`), so anything stored there is erased for recent
+/// messages every 15 minutes — a claim written into that column would stop
+/// being shown minutes after it was made, while still looking wired up.
+///
+/// Rows are ephemeral: written when a reply detail page is opened, deleted
+/// the moment anyone acts on the conversation, and ignored once older than
+/// `REPLY_CLAIM_STALE_AFTER_MS` (30 minutes). Nothing downstream depends on
+/// them, so a stale row is inert rather than wrong, and no sweeper job is
+/// required for correctness.
+model ReplyClaim {
+  id          String                @id @default(cuid())
+  clientId    String
+  subjectType ReplyClaimSubjectType
+  subjectId   String
+  staffUserId String
+  /// Refreshed each time this operator re-opens the reply.
+  claimedAt   DateTime              @default(now())
+
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  /// One claim per operator per conversation — re-opening refreshes rather
+  /// than accumulating rows.
+  @@unique([clientId, subjectType, subjectId, staffUserId])
+  @@index([clientId, subjectType, subjectId, claimedAt])
+  @@index([staffUserId])
 }
 
 model ClientMembership {

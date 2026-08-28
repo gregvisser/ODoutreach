@@ -10,6 +10,7 @@ import {
   readHandlingStateFromMetadata,
 } from "@/lib/inbox/inbound-message-handling";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
+import { releaseReplyClaims } from "@/server/inbox/reply-claim";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import {
@@ -263,6 +264,7 @@ export async function replyToInboundMailboxMessage(
         };
       }
       await finaliseReplySent({
+        clientId,
         inboundMessageId,
         outboundEmailId,
         providerMessageId: result.providerMessageId,
@@ -314,6 +316,7 @@ export async function replyToInboundMailboxMessage(
         };
       }
       await finaliseReplySent({
+        clientId,
         inboundMessageId,
         outboundEmailId,
         providerMessageId: result.providerMessageId,
@@ -392,6 +395,7 @@ async function markOutboundFailedAndReleaseReservation(
 }
 
 async function finaliseReplySent(input: {
+  clientId: string;
   inboundMessageId: string;
   outboundEmailId: string;
   providerMessageId: string;
@@ -412,6 +416,18 @@ async function finaliseReplySent(input: {
     },
   });
   await markReservationConsumedForOutbound(input.outboundEmailId);
+
+  // The reply has left the building — the advisory "X is looking at this"
+  // marker has done its job and goes, before the metadata bookkeeping below
+  // (which can bail early). Who actually replied is recorded permanently on
+  // the OutboundEmail row.
+  await releaseReplyClaims({
+    clientId: input.clientId,
+    subject: {
+      subjectType: "INBOUND_MESSAGE",
+      subjectId: input.inboundMessageId,
+    },
+  });
 
   const existing = await prisma.inboundMailboxMessage.findUnique({
     where: { id: input.inboundMessageId },

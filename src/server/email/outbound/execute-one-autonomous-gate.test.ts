@@ -15,6 +15,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * the returned decision would pass just as happily while the mail went out.
  */
 
+/**
+ * The dispatcher verifies the recipient's domain can receive mail before
+ * sending (see execute-one-address-verification.test.ts, which is where that
+ * gate is actually tested). Fake DNS here so this suite is deterministic and
+ * needs no network — plain functions rather than vi.fn so a clearAllMocks /
+ * resetAllMocks in a beforeEach cannot strip the implementation.
+ */
+vi.mock("node:dns", () => ({
+  promises: {
+    resolveMx: async () => [{ exchange: "mx.deliverable.test", priority: 10 }],
+    resolve4: async () => [],
+    resolve6: async () => [],
+  },
+}));
+
 const { findUnique, updateMany, findFirstMbox, clientFindUnique } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   updateMany: vi.fn(),

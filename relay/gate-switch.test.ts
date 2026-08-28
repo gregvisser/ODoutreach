@@ -35,7 +35,29 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Same time budget as queue-parser.test.ts beside it, for the same measured
+// reason: every test here starts a real PowerShell host, and the FIRST one pays
+// a cold-start cost that does not fit in vitest's 5000ms default. This file went
+// red on CI alongside it on both `2de37ff` (5798ms) and `b7ef2a4` (5537ms) -
+// `Test timed out in 5000ms`, with nothing broken.
+//
+// Two of the tests below also wait on real wall-clock: `Wait-ForRelayStopped` is
+// exercised with `-PollSeconds 1` against a scripted process lookup, so they add
+// seconds of genuine polling on top of the spawn. 30s clears both comfortably
+// and still fails loudly on an actual hang.
+//
+// The full reasoning, and why this is not a global bump in vitest.config.ts, is
+// in `relay/powershell-timeout-budget.test.ts` - which also fails if this line
+// is removed.
+vi.setConfig({ testTimeout: 30_000 });
+
+// The receipt for the line above: `ctx.task.timeout` is what vitest actually
+// resolved, so this goes red if `vi.setConfig` ever stops taking effect.
+it("runs under the raised time budget, not vitest's 5s default", (ctx) => {
+  expect(ctx.task.timeout).toBe(30_000);
+});
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const GATE_SCRIPT = path.join(REPO_ROOT, "relay-gate.ps1");

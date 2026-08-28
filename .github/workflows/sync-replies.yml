@@ -63,9 +63,19 @@ jobs:
 
       # Re-sync every configured do-not-contact sheet so staff additions to
       # the DNC sheets reach the suppression tables — and therefore the
-      # send-time gate — without anyone clicking "Sync now". Non-fatal: a
-      # broken sheet shows on the suppression page; it must not fail the
-      # replies workflow.
+      # send-time gate — without anyone clicking "Sync now".
+      #
+      # This step used to check ONLY the HTTP status, which is the same defect
+      # the reply-sync step above documents at length. Live proof, run
+      # 33002377746 on 2026-08-26: the route answered 207 with
+      # `"failed":2,"ok":false` naming two do-not-contact sheets that had
+      # stopped updating — and the run went GREEN, so no alert was ever sent.
+      # 207 is a 2xx. The body is the only place the truth was.
+      #
+      # Still non-fatal HERE — one broken sheet must not stop the reply sync —
+      # but it is recorded, and the PARTIAL step below turns it into an email.
+      # A blocklist that quietly stopped updating is how someone who asked
+      # never to be contacted gets contacted.
       - name: Sync do-not-contact sheets
         env:
           SUPPRESSION_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/suppression/sync-all
@@ -73,17 +83,51 @@ jobs:
         run: |
           if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
             echo "PROCESS_QUEUE_SECRET is not configured; skipping DNC sheet sync."
+            echo "do-not-contact sheet sync: SKIPPED — PROCESS_QUEUE_SECRET is not configured" >> /tmp/run-problems.txt
             exit 0
           fi
-          status=$(curl -sS -o /tmp/suppression-sync.json -w "%{http_code}" \
+          response_file="/tmp/suppression-sync.json"
+          status=$(curl -sS -o "$response_file" -w "%{http_code}" \
             -X POST "$SUPPRESSION_SYNC_URL" \
             -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
             -H "Content-Type: application/json" \
             --data '{}') || status="000"
           echo "DNC sheet sync HTTP status: ${status}"
-          cat /tmp/suppression-sync.json 2>/dev/null || true
+          cat "$response_file" 2>/dev/null || true
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
             echo "DNC sheet sync did not succeed (status ${status}); continuing."
+            echo "do-not-contact sheet sync did not respond (HTTP ${status})" >> /tmp/run-problems.txt
+            exit 0
+          fi
+          ok=$(jq -r 'try .ok catch ""' "$response_file" 2>/dev/null || echo "")
+          # NOT `|| echo 0`. A count that could not be read is UNKNOWN, and
+          # writing 0 for unknown produces "failed for 0 items" — the line
+          # `alert-copy.ts` calls the one reading that is never true, because
+          # the line only exists when something went wrong. Caught here by
+          # running this block on a machine without jq, where every count came
+          # back 0 and every reason vanished while the run still failed.
+          failed=$(jq -er '.failedCount | numbers' "$response_file" 2>/dev/null || echo "?")
+          total=$(jq -er '.sources | numbers' "$response_file" 2>/dev/null || echo "?")
+          if [ "$ok" != "true" ]; then
+            echo "DNC sheet sync reported a PARTIAL run: ${failed} sheet(s) failed."
+            # No "N of M" counting line here on purpose. The alert subject
+            # renders a count as "N of M mailboxes" and these are Sheets, not
+            # mailboxes — a wrong noun in the subject sends Greg to the wrong
+            # screen. The reasons below carry the client names, which is the
+            # part that turns the alert into an action.
+            echo "do-not-contact sheet sync: ${failed} of ${total} sheet(s) failed to update" >> /tmp/run-problems.txt
+            reasons=$(jq -r 'try (.errors // [])[] catch empty' "$response_file" 2>/dev/null | head -5)
+            if [ -n "$reasons" ]; then
+              while IFS= read -r reason; do
+                echo "  ${reason}"
+                echo "do-not-contact sheet: ${reason}" >> /tmp/run-problems.txt
+              done <<< "$reasons"
+            else
+              # Failing without saying which sheet is how this hid for weeks.
+              # Say that the reasons are missing rather than implying there
+              # were none.
+              echo "do-not-contact sheet: run reported failures but no reasons could be read from the response" >> /tmp/run-problems.txt
+            fi
           fi
 
       # A PARTIAL run fails HERE, in a step whose name contains the word, so the

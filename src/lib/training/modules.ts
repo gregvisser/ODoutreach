@@ -174,7 +174,7 @@ const onboardingModule: TrainingModule = {
   title: "Onboarding a client workspace",
   tagline: "Create the OpensDoors workspace and land on the overview.",
   purpose:
-    "The Clients and New client pages are where a programme begins. Create the workspace shell, give it a canonical name and slug, then land on the Overview — the control centre for everything that follows (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity).",
+    "The Clients and New client pages are where a programme begins. Create the workspace shell, give it a canonical name and Workspace ID, then land on the Overview — the control centre for everything that follows (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity).",
   details: [
     'For this training the worked example is OpensDoors itself. You create a workspace called "OpensDoors" and use the real OpensDoors business details, so the copy, signatures, mailboxes and suppression you see in training are the exact values you will see in production.',
     "Creating the shell is a pure data action. No emails are sent, no mailboxes are contacted, no sheets are pulled, no OAuth is touched.",
@@ -190,17 +190,17 @@ const onboardingModule: TrainingModule = {
     },
     {
       src: "/training/training-new-client.png",
-      alt: "Add a client form with Client name, Workspace slug, Industry, Website and Internal notes fields",
+      alt: "Add a client form with Client name, Workspace ID, Industry, Website and Internal notes fields",
       caption:
-        "Add a client — name, slug (auto-derived), industry, website, internal notes. The new client starts in Onboarding.",
+        "Add a client — name, Workspace ID (auto-derived), industry, website, internal notes. The new client starts in Onboarding.",
       width: FULL_W,
       height: FULL_H,
     },
     {
       src: "/training/training-overview.png",
-      alt: "Client workspace overview with the 7-step workflow strip and Getting started checklist",
+      alt: "Client workspace overview with the workspace tab row, Getting started checklist and Launch readiness panel",
       caption:
-        "Overview — the 7-step workflow strip and Getting started checklist. Every other module is one click from here.",
+        "Overview — the Getting started checklist and the Launch readiness panel. Every other module is one click away on the tab row along the top.",
       width: FULL_W,
       height: FULL_H,
     },
@@ -214,7 +214,7 @@ const onboardingModule: TrainingModule = {
     {
       title: "Enter the business identity",
       detail:
-        'For the OpensDoors example: Client name "OpensDoors", website https://www.opensdoors.co.uk, industry "Business Development". Leave the slug auto-derived (opensdoors) unless it clashes — the slug is used in URLs and must be unique.',
+        'For the OpensDoors example: Client name "OpensDoors", website https://www.opensdoors.co.uk, industry "Business Development". Leave the Workspace ID auto-derived (opensdoors) unless it clashes — it is used in URLs and must be unique.',
     },
     {
       title: "Add internal notes if useful",
@@ -224,23 +224,23 @@ const onboardingModule: TrainingModule = {
     {
       title: "Click Create workspace",
       detail:
-        "You land on the Overview. The workflow strip shows Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity. The client stays in ONBOARDING until every required step is complete.",
+        "You land on the Overview. The tab row along the top is how you move around the workspace: Overview · Brief · Mailboxes · Do-not-contact · Sources · Lists · Templates · Outreach · Activity. Further down, the Launch readiness panel lists the seven modules that decide whether this client can go live — Brief, Mailboxes, Sources, Do-not-contact, Lists, Outreach, Activity — each with a status pill and a link. The client stays in ONBOARDING until every required step is complete.",
     },
     {
       title: "Bookmark the Overview",
       detail:
-        "The Overview is the control centre for this client. Every other module links back here via the breadcrumb and the workflow strip.",
+        "The Overview is the control centre for this client. Every other module links back here via the breadcrumb, and you can reach any of them from the tab row.",
     },
   ],
   whatGoodLooksLike: [
-    "The workspace appears in the Clients list with the correct name and slug.",
-    "Overview loads with the 7-step workflow strip visible and the Getting started checklist filled with pending items.",
+    "The workspace appears in the Clients list with the correct name and Workspace ID.",
+    "Overview loads with the tab row along the top, the Getting started checklist filled with pending items, and a Launch readiness panel showing all seven modules with a status pill each.",
     "Internal notes name the account manager (Samantha) and the main client contact (James Munro).",
     "The status pill on Overview reads ONBOARDING (or ACTIVE only after launch approval).",
   ],
   commonMistakes: [
     'Typing a marketing name instead of the canonical legal name — use "OpensDoors", not "OpensDoors Ltd – Growth Team".',
-    "Editing the slug after creation — slugs are baked into URLs; leave the auto-derived value alone.",
+    "Editing the Workspace ID after creation — it is baked into URLs; leave the auto-derived value alone.",
     "Creating a second workspace for the same client because you couldn't find the first — always search Clients first.",
     "Skipping internal notes — Samantha, James Munro and the campaign objective belong on this card so the next operator isn't guessing.",
   ],
@@ -1321,13 +1321,13 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
   {
     id: "client-overview",
     title: "Client overview",
-    subtitle: "Workflow strip, Getting started checklist, and where to go from here.",
+    subtitle: "Launch readiness, Getting started checklist, and where to go from here.",
     status: "to record",
     portalHref: "/clients",
     durationGuidance: "2 minutes",
     script: [
       "Open Clients, then open the OpensDoors test client.",
-      "Show the 7-step workflow strip: Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity.",
+      "Show the Launch readiness panel: Brief → Mailboxes → Sources → Do-not-contact → Lists → Outreach → Activity, each with a status pill and a link into that module.",
       "Explain that the status pill (ONBOARDING / ACTIVE) tells you whether the client is launchable.",
       "Click one tab (Brief) and explain that each tab is a self-contained module.",
       "Return to Overview and bookmark it as the control centre.",

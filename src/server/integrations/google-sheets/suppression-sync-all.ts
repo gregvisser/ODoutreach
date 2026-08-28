@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { suppressionKindLabel } from "@/lib/suppression/staff-labels";
 
 import { syncSuppressionSourceFromGoogle } from "./suppression-sync";
 
@@ -30,7 +31,11 @@ export type SuppressionSyncAllResult = {
 export async function syncAllConfiguredSuppressionSources(): Promise<SuppressionSyncAllResult> {
   const sources = await prisma.suppressionSource.findMany({
     where: { spreadsheetId: { not: null } },
-    select: { id: true },
+    // The client name and list kind are selected for the ERROR LINE, not for
+    // the sync. A reason that reads `cmpnsa18a00m0gapb5fh8nox6: Check the Sheet
+    // tab name and range` sends Greg hunting through 34 sources to find out
+    // whose blocklist stopped; "Train Hugger — Whole domains — …" is a job.
+    select: { id: true, kind: true, client: { select: { name: true } } },
     orderBy: { updatedAt: "asc" },
   });
 
@@ -43,6 +48,7 @@ export async function syncAllConfiguredSuppressionSources(): Promise<Suppression
   };
 
   for (const source of sources) {
+    const who = `${source.client.name} — ${suppressionKindLabel(source.kind)}`;
     try {
       const r = await syncSuppressionSourceFromGoogle({ sourceId: source.id });
       if (r.ok) {
@@ -50,14 +56,17 @@ export async function syncAllConfiguredSuppressionSources(): Promise<Suppression
         result.rowsWritten += r.rowsWritten ?? 0;
       } else {
         result.failed += 1;
-        if (r.error) {
-          result.errors.push(`${source.id}: ${r.error}`.slice(0, 300));
-        }
+        // A failure with no message still gets a line. Counting a failure and
+        // then saying nothing about it is how two dead blocklists stayed
+        // invisible for weeks.
+        result.errors.push(
+          `${who}: ${r.error ?? "sync failed with no reason given"}`.slice(0, 300),
+        );
       }
     } catch (e) {
       result.failed += 1;
       result.errors.push(
-        `${source.id}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300),
+        `${who}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300),
       );
       // continue — one broken sheet must not stop the others
     }

@@ -101,6 +101,22 @@ DNC-APPROVED.md
 # a half-finished instruction.
 /.bidlow/relay/NEXT.md
 /.bidlow/relay/CURRENT.md
+/.bidlow/relay/CURRENT.stdin.txt
 /.bidlow/relay/HALT
 /.bidlow/relay/STATUS.json
 /.bidlow/relay/log/
+
+# Generated deck. `relay-status.mjs` writes it on every run; committing it means
+# a merge conflict in a build artefact nobody edits by hand.
+/relay-status.html
+
+# Scratch backups the relay drops beside a file before rewriting it
+# (QUEUE.md.bak-before-*, relay-watch.ps1.bak-*, …). These are local undo, not
+# history — git is the history. Ignoring them keeps `git status` readable enough
+# that a genuinely untracked load-bearing file stands out, which is the failure
+# `relay/tracked-artefacts.test.ts` guards against.
+#
+# Deliberately `*.bak*` and not `*.bak`: the names in the wild are
+# `QUEUE.md.bak5-before-cowork-supervision`, `relay-watch.ps1.bak-encoding` and
+# `relay-status.mjs.bak-parser`, so anchoring the end misses most of them.
+*.bak*

@@ -52,16 +52,32 @@ These get e2e tests. Breaking one is an incident, not a bug.
 | J2 | Staff role boundaries hold: non-super-admin is refused admin operations | **Covered** — `e2e/journeys.spec.ts` |
 | J3 | Outbound email detail renders routing and timeline; unknown id is not found | **Covered** — `e2e/journeys.spec.ts` |
 | J4 | Compose sheet opens **without sending** | **Covered** — `e2e/journeys.spec.ts` |
-| J5 | **Enrol → launch → send → reply ingested → opt-out honoured** | **NOT covered end-to-end.** Unit and integration tests only |
+| J5 | **Enrol → launch → send → reply ingested → opt-out honoured** | **Covered end-to-end (2026-08-27)** — `src/server/email-sequences/j5-journey.integration.test.ts` |
 
-**J5 is the product.** It is the journey that touches a real third party's inbox
-and it is the one without an e2e test. That is stated here rather than rounded
-up. Its constituent gates *are* individually tested (see §4), which is why this
-is a gap and not a hole.
+**J5 is the product.** It is the journey that touches a real third party's inbox,
+and it was the last one without end-to-end coverage. It now has a single test
+that walks one prospect through all five stages against a real database, with the
+mailbox transport **captured** rather than connected.
 
-**NEEDS CONFIRMATION — whether J5 should get e2e coverage in this engagement.**
-It needs a seeded mailbox and a captured transport, so it is real work, and it is
-not currently in any phase.
+**Why it is an integration test rather than a Playwright spec.** The `e2e/` suite
+deliberately makes a real send impossible — `e2e/env.ts` blanks every provider
+credential. Letting a browser test "send" would mean weakening that, trading a
+real safety guarantee for a cosmetic one. Capturing the transport instead needs a
+module boundary that a built production server does not expose, so the journey
+runs where that boundary exists. The browser-observable ends of the journey stay
+covered by `e2e/`. This was a deliberate departure from the brief for queue item
+9, which asked for a Playwright journey; the reason is recorded here rather than
+worked around.
+
+**It was proven capable of failing**, not merely observed to pass — the two joins
+it exists to protect were broken in the product on 2026-08-27 and each turned the
+test red: a planner that ignores `Contact.isSuppressed` (an opt-out recorded but
+never read), and an inbound matcher that stops linking a reply to its contact.
+
+It runs in CI on every push: `.github/workflows/ci.yml` → job `e2e` → step
+"Integration tests" (`npm run test:integration`), against a real PostgreSQL
+service, with no `continue-on-error`. Note that `npm test` does **not** run it —
+`vitest.config.ts` excludes `**/*.integration.test.ts` by design.
 
 ---
 

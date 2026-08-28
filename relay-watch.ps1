@@ -67,6 +67,20 @@ $StatusFile = Join-Path $RelayDir "STATUS.json"
 $NoteFile   = Join-Path $RelayDir "SELF-QUEUE-NOTE.md"
 $LogDir     = Join-Path $RelayDir "log"
 
+# The runaway guard. It counts cycles run by THIS watcher process, NOT the
+# absolute cycle number in STATUS.json - and the difference is not cosmetic.
+#
+# Against the absolute number this guard bricks itself. On 2026-08-27 the relay
+# reached cycle 39 of an absolute limit of 40. One more cycle and it would have
+# halted; and because a restart reads the cycle number back OUT of STATUS.json,
+# every restart after that would have re-read 40, tripped the same test before
+# taking any work, and stopped again. Greg would have had a relay that emailed
+# him, accepted a restart, and never ran another item - with no way out but
+# editing this file.
+#
+# Counting per run keeps what the guard is actually for - a loop inside one
+# session that will not end must end itself - while making a restart always a
+# real recovery instead of a re-trip.
 $MaxCycles  = 40
 $SleepSecs  = 60
 
@@ -1097,12 +1111,29 @@ $HardRule
 ## The rules that apply to every cycle
 
 * Do not stall on a question. Decide, record the decision and why, and continue.
-  If the decision is genuinely Greg's - money, a client relationship, an
-  irreversible one-way door - stop and write down the question instead.
+  If the decision is genuinely Greg's - money, a client relationship, or one of
+  the three named below - stop and write down the question instead. Note what
+  changed on 2026-08-27: "an irreversible one-way door" used to sit in this list
+  and was read as covering any production merge. It does not. Only (a), (b) and
+  (c) below stop you now.
 * Gates before you claim anything: ``npm run lint``, ``npm run typecheck``,
   ``npm test``. Show the real output. A gate you did not run is not met.
 * Commit and push when confident. Branch protection is ON, so it is
   branch -> PR -> green CI -> merge. Never push straight to ``main``.
+* **MERGING IS YOURS NOW. Greg decided this on 2026-08-27 and asked to stop being
+  the bottleneck.** With green CI, MERGE AND DEPLOY WITHOUT ASKING. Do not park a
+  finished, green PR and wait for him - a PR left open ROTS: #231 went from clean
+  to 36 commits behind and CONFLICTING in a single day, and cost a whole cycle to
+  rescue. Leaving it open is not the safe option, it is the expensive one.
+* Three things still stop and ask, and they are the ONLY three:
+  (a) a DESTRUCTIVE migration - anything that drops or alters an EXISTING table,
+      column or type, or backfills over existing rows. Creating a NEW table, a new
+      enum, or adding foreign keys to a new table is ADDITIVE and is yours to merge.
+      The test is: does dropping what this adds restore today's behaviour exactly?
+  (b) anything that touches or moves real CLIENT data.
+  (c) anything that causes an EMAIL TO BE SENT. That one is absolute and it is on
+      top of the hard rule about ``bidlowai``, not instead of it.
+  If it is none of those three, you do not need him. Merge it.
 * If you deploy, verify the running commit by HASH against the DIRECT App
   Service URL (``app-opensdoors-outreach-prod.azurewebsites.net``), never the
   CDN-cached custom domain, and never liveness alone.
@@ -1216,11 +1247,46 @@ $($selfTestOutput.Trim())
     exit 1
 }
 
+# ---------------------------------------------------------------------------
+# ORPHANED "IN PROGRESS" ROWS ARE REOPENED AT STARTUP
+#
+# Only this watcher ever writes "IN PROGRESS", and it writes it at the instant it
+# hands an item to a cycle. So at startup, by definition, nothing is running and
+# every "IN PROGRESS" row is the corpse of a cycle that was killed, timed out, or
+# had its window closed. Left alone that row is not TODO, so the picker walks
+# straight past it - for ever, and silently, which is the worst kind.
+#
+# This has now happened three times (row 27 after cycle 20, row 28 twice), and
+# each time a human had to notice. A rule written in QUEUE.md did not stop it
+# happening again, so it is repaired in code here instead of being remembered.
+#
+# This also makes a restart SAFE at any moment: killing a cycle mid-flight now
+# costs that cycle's work, not the item.
+# ---------------------------------------------------------------------------
+$reopened = 0
+foreach ($row in (Get-QueueRows)) {
+    if (-not $row.Parsed) { continue }
+    if ($row.Status -notmatch '^IN PROGRESS') { continue }
+    $deadCycle = ($row.Status -replace '[^0-9]', '')
+    if ([string]::IsNullOrWhiteSpace($deadCycle)) { $deadCycle = 'unknown' }
+    # No pipe in the status text - see the standing rule at the top of QUEUE.md.
+    if (Set-QueueRowStatus $row.Number "TODO (reopened at startup - cycle $deadCycle never finished)") {
+        $reopened++
+        Write-Line "Reopened orphaned row #$($row.Number) - cycle $deadCycle took it and never finished."
+    } else {
+        Write-Line "Row #$($row.Number) is orphaned IN PROGRESS but could not be rewritten. Check its formatting."
+    }
+}
+if ($reopened -eq 0) { Write-Line "No orphaned IN PROGRESS rows to reopen." }
+else { Write-Line "Reopened $reopened orphaned row(s) so the queue does not silently skip them." }
+
 # The stall clock. See "GOING QUIET IS ITSELF A FAULT" above.
 #
 # It starts at NOW rather than at zero: a watcher that has only just started has
 # not been idle for twenty minutes, and an alert on every start is an alert Greg
 # learns to delete unread.
+# Cycles run by THIS process. See the note on $MaxCycles above.
+$cyclesThisRun = 0
 $idleSince    = Get-Date
 $stallAlerted = $false
 
@@ -1255,9 +1321,35 @@ while ($true) {
     $cycle          = [int]$status.cycle
     $lastSelfQueued = [int]$status.lastSelfQueued
 
-    if ($cycle -ge $MaxCycles) {
-        Stop-Relay "Reached the $MaxCycles cycle limit. A loop that will not end must end itself."
-        exit 0
+    # ---------------------------------------------------------------------
+    # THE RUNAWAY LIMIT IS A ROLLOVER NOW, NOT A STOP.
+    #
+    # It used to write a HALT file and email Greg, and he then had to come and
+    # press start again - roughly every sixteen hours, including overnight,
+    # which is exactly the babysitting this relay exists to remove. On
+    # 2026-08-27 it stopped at 09:30 and sat idle with five items waiting.
+    #
+    # Self-restarting was rejected once before, for a real reason: killing the
+    # watcher mid-cycle left that cycle's row stuck on IN PROGRESS, and a row
+    # that is not TODO is skipped by the picker for ever, silently. THAT reason
+    # is now gone - the startup block above reopens every orphaned row before
+    # taking any work, and it was proven red-then-green. So the objection that
+    # made this unsafe no longer holds, and the limit can do what it was always
+    # meant to do: bound one process, not end the work.
+    #
+    # Exit 42 is the signal to relay-start.cmd to launch a FRESH watcher. It is
+    # a distinct code on purpose: a HALT that Greg created, a failed self-test
+    # and a crash all exit with something else, and the wrapper only loops on
+    # 42. So "stop" still means stop, and only the rollover rolls over.
+    #
+    # This cannot spin. Reaching 42 requires $MaxCycles cycles to have actually
+    # STARTED in this process, and a cycle takes twenty to forty-five minutes.
+    # ---------------------------------------------------------------------
+    if ($cyclesThisRun -ge $MaxCycles) {
+        Write-Line "Ran $MaxCycles cycles in this session, which is the runaway limit for ONE process."
+        Write-Line "Handing over to a fresh watcher - no HALT file, nothing lost, work continues."
+        Write-Line "Any row left IN PROGRESS by this process will be reopened by the next one."
+        exit 42
     }
 
     if (-not (Test-Path $NextFile)) {
@@ -1307,7 +1399,8 @@ while ($true) {
     }
 
     $cycle = $cycle + 1
-    Write-Line "Cycle $cycle of $MaxCycles starting."
+    $cyclesThisRun++
+    Write-Line "Cycle $cycle starting (number $cyclesThisRun of $MaxCycles in this run)."
 
     Move-Item -Path $NextFile -Destination $CurrentFile -Force
     Save-Status $cycle "running" $lastSelfQueued
@@ -1417,6 +1510,41 @@ correctly refused. But it is NOT the same as work, and it must never again be
 recorded as though it were. Read what it actually did below before assuming
 either way.
 "@
+    }
+
+    # -----------------------------------------------------------------------
+    # A CYCLE THAT ENDED BADLY MUST GIVE ITS ROW BACK - MID-RUN, NOT JUST AT
+    # STARTUP.
+    #
+    # Found live on 2026-08-27, minutes after the startup version shipped and
+    # while it was busy congratulating itself. Cycle 41 was killed at the
+    # 45-minute deadline holding row 9 - PROVE, the most important item in the
+    # queue. Its row stayed "IN PROGRESS 41", the watcher carried on running,
+    # and the picker skipped straight past it. Nothing broke, nothing alerted,
+    # and the one item Greg most needed would simply never have been done.
+    #
+    # The startup reopen does NOT cover this, because the watcher never
+    # restarted. Cycles 33 and 34 timed out the same way earlier that morning,
+    # so it had already happened twice before anyone noticed.
+    #
+    # Only this cycle's own row is touched, and only while it is STILL marked
+    # "IN PROGRESS <this cycle>". If the agent got as far as writing DONE or
+    # BLOCKED, that stands - a kill is a verdict on the clock, not on the work.
+    # -----------------------------------------------------------------------
+    if ($outcome -eq "timed-out" -or $outcome -eq "failed" -or $outcome -eq "failed to run") {
+        $stranded = @(Get-QueueRows) | Where-Object {
+            $_.Parsed -and $_.Status -match "^IN PROGRESS\s+$cycle\b"
+        }
+        foreach ($row in $stranded) {
+            $why = if ($outcome -eq "timed-out") { "was killed at the $CycleTimeoutMinutes minute deadline" }
+                   elseif ($outcome -eq "failed to run") { "never started" }
+                   else { "ended badly" }
+            if (Set-QueueRowStatus $row.Number "TODO (reopened - cycle $cycle $why and did not finish this)") {
+                Write-Line "Gave row #$($row.Number) back to the queue - cycle $cycle $why, so it is TODO again rather than stranded."
+            } else {
+                Write-Line "Row #$($row.Number) is stranded on cycle $cycle and could NOT be rewritten. Check its formatting."
+            }
+        }
     }
 
     $minutes = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)

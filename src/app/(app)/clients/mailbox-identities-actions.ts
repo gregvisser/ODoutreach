@@ -16,6 +16,10 @@ import {
 } from "@/lib/mailbox-identities";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
+import {
+  findMailboxAddressConflicts,
+  mailboxAddressConflictMessage,
+} from "@/server/mailbox/mailbox-address-exclusivity";
 
 const providerSchema = z.enum(["MICROSOFT", "GOOGLE"]);
 
@@ -101,6 +105,17 @@ export async function createClientMailboxIdentity(
       };
     }
     return { ok: false, error: "A mailbox with this email already exists for this client." };
+  }
+
+  // E-06 — the check above is per client, because the unique key is. Two
+  // workspaces syncing one physical inbox each stored a verbatim copy of every
+  // message in it, so this refuses before anything is written.
+  const conflicts = await findMailboxAddressConflicts({
+    emailNormalized,
+    clientId: data.data.clientId,
+  });
+  if (conflicts.length > 0) {
+    return { ok: false, error: mailboxAddressConflictMessage(emailNormalized, conflicts) };
   }
 
   assertPrimaryRequiresActive(data.data.isPrimary, data.data.isActive);
@@ -516,6 +531,19 @@ export async function restoreClientMailboxToWorkspace(
       }
       if (!isMailboxRemovedFromWorkspace(existing)) {
         throw new Error("This mailbox is not removed. Nothing to restore.");
+      }
+
+      // E-06 — while this row sat removed, the address may have been connected
+      // to another workspace. Restoring blindly would recreate the duplicate
+      // without anyone typing the address again.
+      const conflicts = await findMailboxAddressConflicts({
+        emailNormalized: existing.emailNormalized,
+        clientId,
+        excludeMailboxId: existing.id,
+        db: tx,
+      });
+      if (conflicts.length > 0) {
+        throw new Error(mailboxAddressConflictMessage(existing.emailNormalized, conflicts));
       }
 
       const otherActive = await tx.clientMailboxIdentity.count({

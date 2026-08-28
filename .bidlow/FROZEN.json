@@ -12,13 +12,16 @@
     "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
     "e2e/mailboxes-table-first.spec.ts": "1b54d0bcdefa2740fc8a5f281696da3c5efc494a38894d585293a93517edce07",
     "e2e/nav-prefetch-burst.spec.ts": "0bda02d25eccad741b5de91336bb42421924f46089eb56013a94b977367a596f",
+    "e2e/no-third-party-telemetry.spec.ts": "cdb6d83705b8e499ab40e4028e0fdb59fba419ebaee93e4ec8f61d5bffdae703",
     "e2e/safe-database.test.ts": "79d8a0d1ea23b892535dc2ccb60bc55413db2f236b52112ada5cdd2f04483dee",
     "e2e/safe-database.ts": "4a8d42275c899ca1771cd51600a7445ae351d0a50e81dd8611d0e31c6e3197b6",
     "e2e/screen-walk.spec.ts": "ac5feebd802c8676293e25a4c760ca9f9333d2c53547194466777e21b290fde6",
     "e2e/seed-e2e.ts": "ffd3daca9181c9854ffc54b9afddf1fb449ef5c068609a8255b1614095d748fb",
     "e2e/sign-in.spec.ts": "d9ea9b934da041e0c8441da06e6180cfa3caab458b1144abb35e45f05ec1560c",
+    "e2e/streamed-content-single-copy.spec.ts": "8aa581c6520fa305d3e138361f941f10d17762c20ae151690a2990a6ae872813",
     "e2e/suppression-search.spec.ts": "29a1b77cab16d3c9b09252d1d21bcdb5e035317896d2fd8a986648f47870b642",
-    "specs/BC-01-tenant-isolation.md": "d92aebf6f4baa09689461ebe1268dd66819b4a9e4dd045a3ed96e02f2849422e"
+    "e2e/training-screenshots.spec.ts": "492323b6615bb35ba12279dc063aaed001a74b698cde738ef8a770b63fea036f",
+    "specs/BC-01-tenant-isolation.md": "fd5d97e41a9b9d873288b6e5716474d83e2e4ea0acdda14ffa1af79e401a0828"
   },
   "amendments": [
     {
@@ -146,6 +149,34 @@
       "authorised_by": "relay cycle 27 (autonomous) - NOT Greg-authorised",
       "what": "Queue item 27 defect (9): bulk contacts now seeded into their own E2E_CLIENT_BULK workspace instead of E2E_CLIENT, so the existing compose-sheet journey keeps finding E2E_CONTACT on page one.",
       "sha256_after": "1196ed56a6b569985074b1e7060df796a7ae01f8d393d1e072f3dd346fb4ac52"
+    },
+    {
+      "file": "specs/BC-01-tenant-isolation.md",
+      "date": "2026-08-27",
+      "authorised_by": "relay cycle 41 (autonomous), under queue item 9 / PROVE-CLOSE-OUT.md blocker 3 - NOT Greg-authorised",
+      "what": "E-06 changed from 'Permitted' to refused-and-contained. This is the inverse of the case the freeze gate exists to stop: the row was DOCUMENTING a defect rather than stating a rule - it recorded that one mailbox address on two workspaces duplicated every raw inbound message, body text included, into both, and closing that was named blocker 3 of the customer-ready gate. The code was written first and the row now describes it, which is why this is flagged rather than quietly rehashed. Adding or restoring an address that is live on another workspace is refused before any write; for pairs already in the database only the workspace that had the address first stores raw inbound mail. Replies and bounces were checked and found already isolated, and are deliberately unchanged.",
+      "sha256_after": "fd5d97e41a9b9d873288b6e5716474d83e2e4ea0acdda14ffa1af79e401a0828"
+    },
+    {
+      "file": "e2e/journeys.spec.ts",
+      "date": "2026-08-27",
+      "authorised_by": "Claude (agent), relay cycle 49, for Greg's review",
+      "what": "Text assertions scoped to main. Measured: React parks the streamed page in a hidden div at the end of body before moving it into main, so for one frame the document holds two copies of every string and an unscoped getByText is a strict-mode violation - 14 such CI failures across 68 runs, 22 of 24 local loads. Scoping excludes the parked copy; no assertion was weakened and none was silenced with .first().",
+      "sha256_after": "8e068b1a0ac3c5a299a9b3e598842f20f2458a9eaf4d3cd3309b18fc9e61a810"
+    },
+    {
+      "file": "e2e/mailboxes-table-first.spec.ts",
+      "date": "2026-08-27",
+      "authorised_by": "Claude (agent), relay cycle 49, for Greg's review",
+      "what": "Text assertions scoped to main, same cause as the journeys.spec.ts amendment of the same date: the streamed page is parked in a hidden div at the end of body before being moved into main, so an unscoped getByText transiently resolves to two elements. This string failed that way in 5 of 68 CI runs. The body.innerText() dedupe measurement is deliberately UNCHANGED - innerText already ignores the hidden copy, and that count is the point of the file.",
+      "sha256_after": "a4c878cdb67f3bdc1d164b888b8ca3f32d75a4a8ac7398d69151a5e1a848e548"
+    },
+    {
+      "file": "e2e/env.ts",
+      "date": "2026-08-27",
+      "authorised_by": "Claude (agent), relay cycle 52, for Greg's review",
+      "what": "Added NEXT_PUBLIC_SENTRY_DSN='' to E2E_APP_ENV. The send kill-switches in this file only cover destinations configured FROM the environment; the Sentry DSN was a string literal in src/instrumentation-client.ts, so this guard could never see it and the app under test posted browser telemetry to the client's PRODUCTION Sentry project on every run. That exhausted the ingest quota, Sentry answered with 429, and screen-walk failed its console.error assertion on all three retries. This line closes the server/edge half; the browser half is closed by the build never setting the DSN. Widens what this file blocks - it does not weaken any existing kill-switch.",
+      "sha256_after": "552794e7a7933203b2aaca19cb2c3439ca1c1007618e5657b30abb0042626226"
     }
   ]
 }
