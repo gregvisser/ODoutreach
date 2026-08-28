@@ -43,6 +43,32 @@ export type JobRunSummary = {
   reasons?: string[];
 };
 
+/**
+ * The Google seven-day reconnect chore, as the digest sees it.
+ *
+ * `checked: false` is deliberately a shape this type FORCES the caller to
+ * express rather than something it can omit. The Google app stays unpublished,
+ * so every Google mailbox expires weekly and the only warning anybody gets is
+ * this email; a check that quietly stopped running would look exactly like a
+ * week with nothing due. So "I could not look" is reported, loudly, as its own
+ * failure — the same reasoning that makes the whole digest send every day.
+ */
+export type GoogleReconnectAlert =
+  | {
+      checked: true;
+      /** Expired, plus expiring within the warning window. */
+      dueSoonCount: number;
+      /** Of those, the ones already dead and not sending. */
+      overdueCount: number;
+      totalGoogleMailboxes: number;
+      /** Grouped by client, most urgent first — a client is who gets telephoned. */
+      dueSoonByClient: {
+        clientName: string;
+        entries: { email: string; label: string }[];
+      }[];
+    }
+  | { checked: false; reason: string };
+
 export type AlertSeverity = "OK" | "PARTIAL" | "FAILED";
 
 export type AlertEmail = {
@@ -84,9 +110,18 @@ export function buildAlertEmail(input: {
   emailsSent: number;
   /** Window description for the body, e.g. "the last 24 hours". */
   window?: string;
+  /**
+   * Omitted entirely by callers that do not run the Google check. Supplying
+   * `{ checked: false }` is NOT the same as omitting it: omitted means "this
+   * caller does not do that job", false means "it is my job and I failed".
+   */
+  googleReconnects?: GoogleReconnectAlert;
 }): AlertEmail {
   const window = input.window ?? "the last 24 hours";
   const jobs = input.jobs;
+  const google = input.googleReconnects;
+  const googleBlind = google !== undefined && google.checked === false;
+  const googleDue = google?.checked === true && google.dueSoonCount > 0;
 
   // FAILED outranks PARTIAL: act now beats act today.
   const failed = jobs.find((j) => j.conclusion === "failure" || scheduleLooksBroken(j));
@@ -118,7 +153,20 @@ export function buildAlertEmail(input: {
       failed.conclusion === "failure"
         ? `Act now. ${failed.name} ran and failed in ${window}.`
         : `Act now. ${failed.name} did not run at all in ${window}.`;
+  } else if (googleBlind) {
+    // Ranked below a broken job (that is a live outage) and above everything
+    // else, because a blind check is an alarm that has stopped working, and an
+    // alarm nobody knows is off is worse than one that is merely noisy.
+    severity = "FAILED";
+    subject = truncate("ODoutreach FAILED — Google login check did not run", MAX_SUBJECT);
+    leadLine =
+      "Act now. The seven-day Google reconnect check could not run, so nobody " +
+      "is being warned about expiring mailboxes.";
   } else if (partial) {
+    // Kept AHEAD of the Google notice deliberately: both are "act today", but a
+    // partial batch means sends failed in the last 24 hours, where a login due
+    // in two days has not cost anything yet. The Google detail is in the body
+    // either way, so nothing is lost by not owning the subject line.
     severity = "PARTIAL";
     // A job that reported a problem WITHOUT a number must never be rendered as
     // "0 failed" or "failed for 0 items". Seen live on 2026-08-25, where that
@@ -136,6 +184,22 @@ export function buildAlertEmail(input: {
       MAX_SUBJECT,
     );
     leadLine = `Act today. ${partial.name} ran, but part of it failed.`;
+  } else if (googleDue && google?.checked === true) {
+    severity = "PARTIAL";
+    subject = truncate(
+      google.overdueCount > 0
+        ? `ODoutreach PARTIAL — ${google.overdueCount} Google ${
+            google.overdueCount === 1 ? "mailbox" : "mailboxes"
+          } expired, not sending`
+        : `ODoutreach PARTIAL — ${google.dueSoonCount} Google ${
+            google.dueSoonCount === 1 ? "login" : "logins"
+          } due to be reconnected`,
+      MAX_SUBJECT,
+    );
+    leadLine =
+      google.overdueCount > 0
+        ? "Act today. Google logins have expired, so those mailboxes have stopped sending."
+        : "Act today. Google logins are about to expire and need reconnecting.";
   } else {
     severity = "OK";
     subject = truncate(
@@ -163,6 +227,36 @@ export function buildAlertEmail(input: {
     lines.push(`  ${j.name}: ${state} (${j.runs} run${j.runs === 1 ? "" : "s"})`);
     for (const reason of (j.reasons ?? []).slice(0, 10)) {
       lines.push(`      ${reason}`);
+    }
+  }
+
+  // The Google seven-day reconnect chore. Always rendered when the caller ran
+  // the check — including when nothing is due, so that a section which silently
+  // stopped appearing is visible as a change rather than as a quiet week.
+  if (google) {
+    lines.push("");
+    if (!google.checked) {
+      lines.push(
+        `  Google logins: COULD NOT CHECK — ${google.reason}`,
+        "      Nobody is being warned about mailboxes whose seven-day login is expiring.",
+      );
+    } else if (google.dueSoonCount === 0) {
+      lines.push(
+        `  Google logins: all ${google.totalGoogleMailboxes} in date, nothing to reconnect.`,
+      );
+    } else {
+      lines.push(
+        `  Google logins: ${google.dueSoonCount} of ${google.totalGoogleMailboxes} need reconnecting` +
+          (google.overdueCount > 0
+            ? ` (${google.overdueCount} already expired and not sending)`
+            : ""),
+      );
+      for (const group of google.dueSoonByClient) {
+        lines.push(`      ${group.clientName}`);
+        for (const entry of group.entries) {
+          lines.push(`        ${entry.email} — ${entry.label}`);
+        }
+      }
     }
   }
 

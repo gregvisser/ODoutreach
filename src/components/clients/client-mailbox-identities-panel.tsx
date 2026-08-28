@@ -25,6 +25,7 @@ import {
   type MailboxSignatureActionResult,
 } from "@/app/(app)/clients/mailbox-signature-actions";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
+import { resolveGoogleReconnectCountdown } from "@/lib/mailboxes/google-refresh-token-expiry";
 import { buildMailboxSignatureSendPreview } from "@/lib/mailboxes/mailbox-signature-send-preview";
 import {
   buildSenderSignatureViewModel,
@@ -229,20 +230,22 @@ function providerConnectionHint(
     case "PENDING_CONNECTION":
       return "Finish sign-in in the Microsoft or Google window, or press Connect again.";
     case "CONNECTED": {
-      if (!row.connectedAt) return "Connected.";
+      // The Google seven-day reconnect clock. The arithmetic and the wording
+      // live in `google-refresh-token-expiry`, tested against a fixed date, so
+      // the row, the all-clients screen and the daily alert cannot drift into
+      // three different answers. Returns null for Microsoft, which must keep
+      // reading exactly as it did.
+      const countdown = resolveGoogleReconnectCountdown(
+        {
+          provider: row.provider,
+          connectionStatus: row.connectionStatus,
+          connectedAt: row.connectedAt ? new Date(row.connectedAt) : null,
+        },
+        new Date(),
+      );
+      if (!row.connectedAt) return countdown ? `${countdown.label}.` : "Connected.";
       const connectedLabel = `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`;
-      // Google mailboxes connect via Testing-mode OAuth, whose login expires
-      // roughly weekly. Nudge a proactive Reconnect after ~6 days so a sending
-      // window isn't lost to a silent expiry (no live token check needed). Any
-      // staff member can Reconnect, so the team self-serves this.
-      if (row.provider === "GOOGLE") {
-        const ageDays =
-          (Date.now() - new Date(row.connectedAt).getTime()) / 86_400_000;
-        if (ageDays >= 6) {
-          return `${connectedLabel}. Google logins expire about weekly — press Reconnect now to avoid a gap in sending.`;
-        }
-      }
-      return connectedLabel;
+      return countdown ? `${countdown.label}. ${connectedLabel}.` : connectedLabel;
     }
     case "CONNECTION_ERROR":
       return row.provider === "MICROSOFT"

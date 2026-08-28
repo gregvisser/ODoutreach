@@ -67,6 +67,14 @@ jobs:
           ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
           ALERT_FROM_EMAIL: ${{ vars.ALERT_FROM_EMAIL }}
           ALERT_APP_URL: https://opensdoors.bidlow.co.uk
+          # Read-only, and the ONLY warning anybody gets about the seven-day
+          # Google reconnect clock. The Google OAuth app is deliberately
+          # unpublished, so every Google mailbox's login expires weekly and is
+          # reconnected by hand; without this the first sign of an expiry is
+          # that outreach stopped. If the secret is missing the digest reports
+          # "Google login check did not run" as a FAILED — it never skips
+          # quietly, because a skipped check looks exactly like a quiet week.
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             npm run ops:alert -- --dry-run

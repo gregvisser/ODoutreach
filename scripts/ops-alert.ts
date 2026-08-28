@@ -18,8 +18,14 @@
  * than no alerting at all, because silence is the signal that something is
  * wrong, and a skipped send produces exactly the same silence as a dead system.
  */
-import { buildAlertEmail, type JobConclusion, type JobRunSummary } from "@/lib/alerts/alert-copy";
+import {
+  buildAlertEmail,
+  type GoogleReconnectAlert,
+  type JobConclusion,
+  type JobRunSummary,
+} from "@/lib/alerts/alert-copy";
 import { readPartialAnnotations, type PartialDetail } from "@/lib/alerts/partial-annotations";
+import { buildGoogleReconnectRoster } from "@/lib/mailboxes/google-reconnect-roster";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -208,6 +214,96 @@ async function concludeFrom(
   return { conclusion: "partial", detail };
 }
 
+/**
+ * The seven-day Google reconnect chore, read straight from the production
+ * database.
+ *
+ * This is the ONLY warning anybody gets. The Google OAuth app is deliberately
+ * unpublished (the owner's decision, 28 August 2026), so Google expires each
+ * mailbox's refresh token seven days after consent and OpensDoors reconnect by
+ * hand every week. Before this, the way they found out a mailbox had expired
+ * was that outreach stopped.
+ *
+ * It reads its own rows rather than going through `@/server/queries` because
+ * that module is `server-only` and this is a plain Node script. The RULES —
+ * which mailbox is due, in what order, and in what words — come from the shared
+ * `buildGoogleReconnectRoster`, so this cannot drift from what the screen shows.
+ *
+ * NEVER THROWS. A failure here must not take the whole digest down: an alert
+ * that stops arriving is indistinguishable from a healthy silent night, which
+ * is the failure mode this entire file exists to avoid. Every problem comes
+ * back as `checked: false`, which the composer renders as a loud FAILED.
+ */
+async function readGoogleReconnects(now: Date): Promise<GoogleReconnectAlert> {
+  if (!process.env.DATABASE_URL?.trim()) {
+    return {
+      checked: false,
+      reason:
+        "DATABASE_URL is not set for the alert job, so no mailbox could be checked",
+    };
+  }
+  try {
+    // Imported lazily: without a DATABASE_URL the Prisma client throws on
+    // construction, and that must be reported as a blind check rather than
+    // crash the digest before it is composed.
+    const { prisma } = await import("@/lib/db");
+    const rows = await prisma.clientMailboxIdentity.findMany({
+      where: {
+        provider: "GOOGLE",
+        isActive: true,
+        workspaceRemovedAt: null,
+        // The tenant wall as it applies to a job with no session: a
+        // soft-deleted workspace is nobody's chore.
+        client: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        clientId: true,
+        email: true,
+        provider: true,
+        connectionStatus: true,
+        connectedAt: true,
+        client: { select: { name: true, slug: true } },
+      },
+    });
+
+    const roster = buildGoogleReconnectRoster(
+      rows.map((row) => ({
+        mailboxId: row.id,
+        clientId: row.clientId,
+        clientName: row.client.name,
+        clientSlug: row.client.slug,
+        provider: row.provider,
+        connectionStatus: row.connectionStatus,
+        connectedAt: row.connectedAt,
+        email: row.email,
+      })),
+      now,
+    );
+
+    return {
+      checked: true,
+      dueSoonCount: roster.dueSoonCount,
+      overdueCount: roster.overdueCount,
+      totalGoogleMailboxes: roster.totalGoogleMailboxes,
+      dueSoonByClient: roster.dueSoonByClient.map((group) => ({
+        clientName: group.clientName,
+        entries: group.entries.map((entry) => ({
+          email: entry.email,
+          label: entry.label,
+        })),
+      })),
+    };
+  } catch (error) {
+    return {
+      checked: false,
+      reason: `the mailbox database could not be read (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    };
+  }
+}
+
 async function appIsReachable(baseUrl: string): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/health`, {
@@ -268,7 +364,9 @@ async function main(): Promise<void> {
     });
   }
 
-  const email = buildAlertEmail({ jobs, emailsSent: 0 });
+  const googleReconnects = await readGoogleReconnects(new Date());
+
+  const email = buildAlertEmail({ jobs, emailsSent: 0, googleReconnects });
 
   console.log(`subject: ${email.subject}`);
   console.log(email.body);
