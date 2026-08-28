@@ -58,6 +58,32 @@ describe("resolveDefaultSheetRange", () => {
     );
   });
 
+  /**
+   * The regression this fix could have caused, and the reason it did not.
+   *
+   * Resolving the first tab changes the range for EVERY source with no saved
+   * range — which on 2026-08-28 was all 34, including 32 that were syncing
+   * perfectly. Those 32 work because their sheet does have a "Sheet1". If one
+   * of them has "Sheet1" sitting second, "read the first tab" would quietly
+   * point a healthy live blocklist at a different tab, and the replace guard
+   * only refuses a shrink or a zero — a same-size substitution passes it.
+   *
+   * So an existing "Sheet1" still wins. That leaves every working list reading
+   * exactly the tab it read yesterday, and only sheets that never had a
+   * "Sheet1" — the two broken ones — change behaviour at all.
+   */
+  it("keeps reading Sheet1 when the sheet has one, even if it is not first", () => {
+    expect(resolveDefaultSheetRange(["Company Names", "Sheet1"])).toBe(
+      "'Sheet1'!A1:Z50000",
+    );
+  });
+
+  it("matches on Sheet1 exactly, not on a name that merely contains it", () => {
+    expect(resolveDefaultSheetRange(["Domains", "Sheet10"])).toBe(
+      "'Domains'!A1:Z50000",
+    );
+  });
+
   it("falls back to the historic default when the tabs are unknown", () => {
     // An empty list means the metadata call failed, not that the sheet is
     // empty — behave exactly as the product did before rather than invent.

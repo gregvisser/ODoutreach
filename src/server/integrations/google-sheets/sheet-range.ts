@@ -34,19 +34,38 @@ export function wholeTabRange(title: string): string {
   return `${quoteSheetTitle(title)}!${WHOLE_TAB_SPAN}`;
 }
 
+/** The tab the product used to assume, matched exactly rather than by prefix. */
+const HISTORIC_TAB = "Sheet1";
+
 /**
  * The range to read when the operator saved none.
  *
- * The FIRST tab, because that is where a sheet's main list lives and because
- * it is a fact about the sheet rather than a guess about its naming. An
- * operator whose list is on a later tab overrides it with an explicit range;
- * everyone else stops needing to know the field exists.
+ * An existing "Sheet1" wins, and otherwise the FIRST tab.
+ *
+ * The first tab is the right general answer — it is where a sheet's main list
+ * lives, and it is a fact about the sheet rather than a guess about its
+ * naming. But this function decides the range for every source with no saved
+ * range, which on 2026-08-28 was all 34 of them, and 32 were syncing perfectly
+ * well. Those 32 work precisely because their sheet does have a "Sheet1". If
+ * any one of them keeps "Sheet1" in second place, "read the first tab" would
+ * silently repoint a healthy live blocklist at a different tab — and
+ * `decideSuppressionReplace` refuses a shrink or a zero, not a substitution of
+ * roughly equal size. The fix for two broken clients would have become a
+ * quiet risk to thirty-two working ones.
+ *
+ * Preferring an existing "Sheet1" removes that entirely: every list that reads
+ * correctly today reads the identical tab tomorrow, and only sheets that never
+ * had a "Sheet1" — which is exactly the two that were broken — change at all.
+ *
+ * An operator whose list is on neither overrides it with an explicit range.
  *
  * An empty `tabTitles` means the lookup failed, not that the sheet has no
  * tabs — fall back to the historic default so a transient metadata error
  * leaves behaviour exactly as it was rather than inventing a range.
  */
 export function resolveDefaultSheetRange(tabTitles: readonly string[]): string {
-  const first = tabTitles.map((t) => t.trim()).find((t) => t.length > 0);
-  return first ? wholeTabRange(first) : DEFAULT_SHEET_RANGE;
+  const titles = tabTitles.map((t) => t.trim()).filter((t) => t.length > 0);
+  const historic = titles.find((t) => t === HISTORIC_TAB);
+  const chosen = historic ?? titles[0];
+  return chosen ? wholeTabRange(chosen) : DEFAULT_SHEET_RANGE;
 }
