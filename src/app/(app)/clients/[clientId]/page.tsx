@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientAccountGradeCard } from "@/components/clients/client-account-grade-card";
+import { ClientAutonomousSendCard } from "@/components/clients/client-autonomous-send-card";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchBlockersCard } from "@/components/clients/client-launch-blockers-card";
 import { ClientOperationalSnapshot } from "@/components/clients/client-operational-snapshot";
@@ -20,6 +21,7 @@ import {
   deriveLaunchStageLabel,
 } from "@/lib/client-launch-state";
 import { formatAccountGradeAttribution } from "@/lib/clients/client-account-grade";
+import { formatAutonomousSendAttribution } from "@/lib/clients/client-autonomous-send";
 import { buildGettingStartedViewModel } from "@/lib/clients/getting-started-view-model";
 import { prisma } from "@/lib/db";
 import {
@@ -276,6 +278,18 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
           setByName:
             client.accountGradeSetBy?.displayName ?? client.accountGradeSetBy?.email ?? null,
           setAt: client.accountGradeSetAt,
+        })}
+        canMutate={bundle.canMutateMailboxes}
+      />
+
+      <ClientAutonomousSendCard
+        clientId={client.id}
+        enabled={client.autonomousSendEnabled}
+        attributionLine={formatAutonomousSendAttribution({
+          enabled: client.autonomousSendEnabled,
+          setByName:
+            client.autonomousSendSetBy?.displayName ?? client.autonomousSendSetBy?.email ?? null,
+          setAt: client.autonomousSendSetAt,
         })}
         canMutate={bundle.canMutateMailboxes}
       />

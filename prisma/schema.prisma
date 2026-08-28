@@ -300,6 +300,7 @@ model StaffUser {
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
+  clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
   clientsAsBriefAccountManager    Client[]                         @relation("ClientBriefAccountManager")
   clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
   supportTicketsCreated           SupportTicket[]                  @relation("SupportTicketCreatedBy")
@@ -430,6 +431,19 @@ model Client {
   /// it; the full history is appended to AuditLog as well.
   accountGradeSetByStaffUserId  String?
   accountGradeSetAt             DateTime?
+  /// Machine sending or human sending, for THIS client. Consulted by
+  /// `@/lib/safety/autonomous-actor-guard` at the moment of dispatch.
+  /// true  = a machine may send for this client on its own.
+  /// false = only a signed-in member of staff may send for them.
+  /// null  = NOBODY HAS DECIDED YET, which refuses. Three states on purpose:
+  /// a plain boolean cannot tell "we decided not to" from "nobody has looked at
+  /// this client", and absence is not permission.
+  autonomousSendEnabled         Boolean?
+  /// Who last set `autonomousSendEnabled`, shown ON SCREEN next to the switch.
+  /// A decision that lets a machine cold-email a stranger from this client's own
+  /// domain must have a name against it; the full history goes to AuditLog too.
+  autonomousSendSetByStaffUserId String?
+  autonomousSendSetAt           DateTime?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes            String?                   @db.Text
   briefAssignedAccountManagerId String?
@@ -450,6 +464,23 @@ model Client {
   openTrackingEnabledAt         DateTime?
   /// Who switched open tracking on for this client (audit trail; null when off).
   openTrackingEnabledByStaffUserId String?
+  /// When this system last RESOLVED this client's SPF, DKIM, DMARC and tracking
+  /// host and found ALL FOUR correct. Null = never passed, which means tracking
+  /// is off. Written only by the verifier — never by a form, and never by a
+  /// person asserting the records are in place. A timestamp rather than a
+  /// boolean because DNS is a lease, not a fact: `decideClientOpenTracking`
+  /// treats a value older than TRACKING_DNS_MAX_AGE_DAYS as expired, so tracking
+  /// closes itself even if the scheduled re-check stops running.
+  trackingDnsVerifiedAt         DateTime?
+  /// When the verifier last LOOKED, pass or fail. Distinct from the field above
+  /// so the screen can tell "checked an hour ago and it failed" apart from
+  /// "nothing has checked this since Tuesday" — those need different actions.
+  trackingDnsCheckedAt          DateTime?
+  /// The four check results from the most recent run, as
+  /// `{ label, pass, detail }[]`. Stored so staff can see exactly what the
+  /// system found — the record it actually read, and what it wanted instead —
+  /// without anyone running dig by hand.
+  trackingDnsReport             Json?
   createdAt                     DateTime                  @default(now())
   updatedAt                     DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
@@ -488,6 +519,7 @@ model Client {
   unsubscribeTokens               UnsubscribeToken[]
   launchApprovedBy                StaffUser?                       @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
   accountGradeSetBy               StaffUser?                       @relation("ClientAccountGradeSetBy", fields: [accountGradeSetByStaffUserId], references: [id], onDelete: SetNull)
+  autonomousSendSetBy             StaffUser?                       @relation("ClientAutonomousSendSetBy", fields: [autonomousSendSetByStaffUserId], references: [id], onDelete: SetNull)
   briefAccountManager             StaffUser?                       @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
   briefTaxonomyLinks              ClientBriefTermLink[]
   complianceAttachments           ClientComplianceAttachment[]
@@ -500,6 +532,7 @@ model Client {
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
   @@index([accountGradeSetByStaffUserId])
+  @@index([autonomousSendSetByStaffUserId])
 }
 
 /// Reusable brief vocabulary: service areas, ICP industries, company sizes, target titles

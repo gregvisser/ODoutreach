@@ -33,6 +33,10 @@ const base = (over: Partial<AutonomousActorGuardInput> = {}): AutonomousActorGua
   actor: "MACHINE",
   clientSlug: "train-hugger",
   relay: { active: true, allowlist: ["bidlow"] },
+  // A client whose autonomous-send switch someone has deliberately turned on.
+  // Held constant in the allowlist tests below so they keep testing the
+  // allowlist; the toggle gets its own block.
+  clientAutonomousSend: true,
   ...over,
 });
 
@@ -129,6 +133,113 @@ describe("it fails CLOSED — never default to allowing", () => {
     // slug is case-insensitive and refusing here would be a false alarm.
     expect(evaluateAutonomousActorGuard(base({ clientSlug: "BidLow" })).allowed).toBe(true);
     expect(evaluateAutonomousActorGuard(base({ clientSlug: " bidlow " })).allowed).toBe(true);
+  });
+});
+
+/**
+ * THE PER-CLIENT AUTONOMOUS-SEND SWITCH.
+ *
+ * Greg, 2026-08-28: "yes the machine can send for all customers from now on.
+ * there must be a switch or toggle set to make it machine sending or human
+ * sending."
+ *
+ * So the guard stopped asking only "is this the one client we hard-coded" and
+ * started asking "has a named person switched machine sending ON for this
+ * client". The switch is the thing that makes autonomous sending defensible: a
+ * machine may cold-email a stranger from a client's own domain only because
+ * somebody, by name, decided it may.
+ */
+describe("the per-client autonomous-send switch", () => {
+  it("refuses when the switch has never been set — absence is not permission", () => {
+    // The single most important case on this page. A client nobody has made a
+    // decision about is a client the machine may not send for. Both spellings
+    // of "no value" behave identically, because a null from Prisma and an
+    // undefined from a partial select are the same fact.
+    for (const unset of [null, undefined]) {
+      const d = refusal(
+        evaluateAutonomousActorGuard(base({ clientSlug: "bidlow", clientAutonomousSend: unset })),
+      );
+      expect(d.code).toBe("autonomous_client_send_unset");
+    }
+  });
+
+  it("refuses when the switch is explicitly turned OFF", () => {
+    const d = refusal(
+      evaluateAutonomousActorGuard(base({ clientSlug: "bidlow", clientAutonomousSend: false })),
+    );
+    expect(d.code).toBe("autonomous_client_send_disabled");
+  });
+
+  it("refuses a DESTRUCTIVE action on the same switch", () => {
+    // Greg's rule has always had two halves. A switch that governed sending but
+    // waved deletion through would be half a gate.
+    for (const value of [null, false] as const) {
+      const d = evaluateAutonomousActorGuard(
+        base({ action: "DESTRUCTIVE", clientSlug: "bidlow", clientAutonomousSend: value }),
+      );
+      expect(d.allowed).toBe(false);
+    }
+  });
+
+  it("allows only once the switch is ON and the client is allowlisted", () => {
+    const d = evaluateAutonomousActorGuard(
+      base({ clientSlug: "bidlow", clientAutonomousSend: true }),
+    );
+    expect(d.allowed).toBe(true);
+  });
+
+  it("leaves a HUMAN_STAFF send untouched whatever the switch says", () => {
+    // The switch decides whether a MACHINE may send. A signed-in person sending
+    // for a client is the ordinary business working, and this gate has never
+    // been allowed to stop it.
+    for (const value of [null, undefined, false, true] as const) {
+      const d = evaluateAutonomousActorGuard(
+        base({ actor: "HUMAN_STAFF", clientSlug: "train-hugger", clientAutonomousSend: value }),
+      );
+      expect(d.allowed).toBe(true);
+    }
+  });
+
+  it("still treats an UNKNOWN actor as a machine and applies the switch to it", () => {
+    const d = refusal(
+      evaluateAutonomousActorGuard(
+        base({ actor: "UNKNOWN", clientSlug: "bidlow", clientAutonomousSend: false }),
+      ),
+    );
+    expect(d.code).toBe("autonomous_client_send_disabled");
+  });
+
+  it("switching client A on does not switch client B on", () => {
+    // The isolation requirement, stated as a test. The guard reaches its answer
+    // from THIS client's value and nothing else, so there is no shared state
+    // for one client's decision to leak through.
+    const relay = { active: true, allowlist: ["client-a", "client-b"] };
+    const a = evaluateAutonomousActorGuard(
+      base({ clientSlug: "client-a", clientAutonomousSend: true, relay }),
+    );
+    const b = evaluateAutonomousActorGuard(
+      base({ clientSlug: "client-b", clientAutonomousSend: null, relay }),
+    );
+    expect(a.allowed).toBe(true);
+    expect(refusal(b).code).toBe("autonomous_client_send_unset");
+  });
+
+  it("the switch cannot open a door the allowlist keeps shut", () => {
+    // The two checks are an AND, never an OR. Turning the switch on for a
+    // client the relay may not act for changes nothing — the gate can only ever
+    // become MORE closed by adding a second question to it.
+    const d = refusal(
+      evaluateAutonomousActorGuard(base({ clientSlug: "train-hugger", clientAutonomousSend: true })),
+    );
+    expect(d.code).toBe("autonomous_client_not_allowlisted");
+  });
+
+  it("says in words a non-coder can act on that the switch is the reason", () => {
+    const d = refusal(
+      evaluateAutonomousActorGuard(base({ clientSlug: "bidlow", clientAutonomousSend: null })),
+    );
+    expect(d.reason).toMatch(/switch|Autonomous sending/i);
+    expect(d.reason).not.toMatch(/undefined|null|\[object/);
   });
 });
 

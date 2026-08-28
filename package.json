@@ -20,6 +20,7 @@
     "ops:f4-contamination-report": "tsx scripts/f4-contamination-report.ts",
     "ops:f1-strip-template-signature": "tsx scripts/f1-strip-template-signature.ts",
     "ops:cross-domain-audit": "tsx scripts/ops-cross-domain-audit.ts",
+    "ops:tracking-dns-sweep": "tsx scripts/ops-tracking-dns-sweep.ts",
     "ops:family-proposals": "tsx scripts/ops-family-proposals.ts",
     "ops:tenant-probe": "tsx scripts/ops-tenant-probe.ts",
     "ops:mailbox-exclusivity": "tsx scripts/ops-mailbox-exclusivity-probe.ts",
