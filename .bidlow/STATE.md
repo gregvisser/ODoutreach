@@ -4531,3 +4531,83 @@ refused. The rule cost this row its DONE, which is the rule working.
    thing that could have closed row 48 today.
 3. **Ask Greg to restart the relay watcher.** Nothing else fixes row 52, and
    every further cycle risks losing a real log.
+
+# Cycle 70 — row 48: the fix's own regression, and the log I overwrote — 2026-08-28
+
+## What was built
+
+**PR #328, merged, deployed, verified live by hash `c64543e`.** One file plus its
+test: `src/server/integrations/google-sheets/sheet-range.ts`.
+
+`resolveDefaultSheetRange` took the FIRST tab **unconditionally**. That function
+decides the range for every suppression source with no saved range — which is
+**all 34**, of which **32 were syncing perfectly**. Those 32 work because their
+sheet HAS a `Sheet1`. If any kept `Sheet1` in second place, "read the first tab"
+would have silently repointed a healthy live blocklist at another tab — and
+`decideSuppressionReplace` refuses a shrink or a zero but **NOT a same-size
+substitution** (its own documented limit). That swap would have passed
+unreported. The cycle-69 fix for two broken clients was a quiet risk to
+thirty-two working ones.
+
+Now an existing `Sheet1` wins (exact match — `Sheet10` does not count), else the
+first tab, else the historic default. Red-first: `["Company Names", "Sheet1"]`
+watched failing. Gates: lint 0, typecheck 0, **3044 tests** (was 3042).
+
+**Proven to FIRE in production**, not merely to exist — a read-only dry run
+against the running build: all 32 healthy sources resolve `'Sheet1'!A1:Z50000`
+(unchanged); Pareto FM domains resolves `'Domains'`, 121 stored / 121 would
+write; Train Hugger domains resolves `'Domains'` and the guard refused —
+"would have removed 82 of 373 … the 373 are still blocked."
+
+## The brief was out of date, and this is the second cycle to find that
+
+Row 48's brief asks for the tab resolution, the guard, the four tests and the
+`sheetRange` input. **All of it had already shipped in cycles 65–69.** Cycle 65
+already corrected the `sheetRange` claim. A brief written off a stale queue row
+sends a cycle to rebuild what exists; the defence is to check `main` and prod
+before believing the brief.
+
+## MISTAKE I MADE, recorded because the next cycle will face it
+
+**The log-destroying watcher struck again and I committed the stub.** The real
+145-line `cycle-069.md` on `main` at `06b8a37` had been replaced on disk by the
+watcher's 180-line `# Cycle 69 - finished / Work happened…` stub. I committed it
+in PR #329 without checking — exactly the failure the cycle-65 note predicted
+("the one that forgets commits the stub over the real log permanently").
+Restored from `06b8a37` in this session's final commit.
+
+**Every cycle must `git show <last-relay-commit>:.bidlow/relay/log/cycle-NN.md |
+head -3` before committing a modified log.** A stub starts "Work happened.
+Evidence: a git ref moved". The watcher restart (row 52) is still the only real
+fix and no relay cycle can restart the process running it.
+
+## Second finding, not yet a queue row
+
+**Suppression sync state is absent from `alerts.yml`.** A source sitting in ERROR
+is visible on-screen and nowhere else. Train Hugger sat in ERROR from 2026-08-14
+to 2026-08-28 — a fortnight — with nothing saying so. There is no scheduled
+suppression-sync workflow; the nightly ~01:53Z run arrives via
+`/api/internal/suppression/sync-all` as a side-step of the replies cron.
+
+## Writes to production
+
+The deploys of `c64543e` and `4789c7e`, and nothing else. **No send, no delete,
+no schema change, no migration, no client blocklist written.** The read-only
+inventory and dry-run endpoints were used deliberately in place of the writing
+`sync-one-dnc-sheet` workflow. Nothing left the building for any client.
+
+## Nothing contradicts PROJECT.json
+
+The hard rule held again: finishing Train Hugger requires confirming an
+82-domain shrink, which is rule (b) — real client data — and was refused.
+
+## Pick up first, next session
+
+1. **Row 48 is `BLOCKED 70` and needs Greg, not a cycle.** Train Hugger's
+   "Domains" tab holds 291; we hold 373. Deliberate shortening (confirm with
+   "Remove them anyway", 82 become contactable) or rows lost from the sheet (put
+   them back, re-sync)? Until answered the 373 stay blocked — the safe direction.
+2. **Check `cycle-070.md` on disk against `main` before committing it.** See the
+   mistake above.
+3. **Write the alerting row** for suppression sources stuck in ERROR.
+4. **Ask Greg to restart the relay watcher** — row 52, still unfixed.
