@@ -1,9 +1,19 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 
+import type { DataCollection } from "@sentry/core";
 import { describe, expect, it } from "vitest";
 
 import { SENTRY_DATA_COLLECTION } from "./sentry-data-collection";
+
+/**
+ * Compile-time conformance, deliberately here and not in the module itself.
+ * `@sentry/core` is not a declared dependency (see the note on
+ * `SentryDataCollectionPolicy`), so this assignability check lives where a
+ * resolution failure is a loud test failure rather than a broken build.
+ */
+const _conformsToSdkType: DataCollection = SENTRY_DATA_COLLECTION;
+void _conformsToSdkType;
 
 /**
  * These tests drive the REAL resolver out of the installed `@sentry/core`, not a

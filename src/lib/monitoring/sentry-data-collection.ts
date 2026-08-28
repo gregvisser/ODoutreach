@@ -40,9 +40,39 @@
  * monitoring: stack traces, error messages, breadcrumbs, route names, span
  * timings and sanitised (parameterised) SQL statements are all still collected.
  */
-import type { DataCollection } from "@sentry/core";
+/**
+ * Structurally the SDK's `DataCollection`, minus the deprecated `queryParams`.
+ *
+ * Declared here rather than imported because the type lives in `@sentry/core`,
+ * which package.json does NOT declare — it reaches us only through
+ * `@sentry/nextjs`, so importing it in production code would work by npm's
+ * hoisting alone, and adding it as a direct dependency risks a second copy of
+ * the Sentry core (and its global state) the next time `@sentry/nextjs` is
+ * bumped without it.
+ *
+ * Conformance is not lost, it is moved: `sentry-data-collection.test.ts`
+ * assigns this value to the SDK's real `DataCollection` type and compares its
+ * key set against the resolver's whole output surface. A drift fails a test
+ * loudly instead of failing a production build obscurely.
+ */
+type CollectBehavior = boolean | { allow: string[] } | { deny: string[] };
 
-export const SENTRY_DATA_COLLECTION: Required<Omit<DataCollection, "queryParams">> = {
+export type SentryDataCollectionPolicy = {
+  userInfo: boolean;
+  cookies: CollectBehavior;
+  httpHeaders: { request: CollectBehavior; response: CollectBehavior };
+  httpBodies: Array<
+    "incomingRequest" | "outgoingRequest" | "incomingResponse" | "outgoingResponse"
+  >;
+  urlQueryParams: CollectBehavior;
+  graphQL: { document: boolean; variables: boolean };
+  genAI: { inputs: boolean; outputs: boolean };
+  databaseQueryData: boolean;
+  stackFrameVariables: boolean;
+  frameContextLines: number;
+};
+
+export const SENTRY_DATA_COLLECTION: SentryDataCollectionPolicy = {
   /** Prospect and staff identities. Never. */
   userInfo: false,
 
