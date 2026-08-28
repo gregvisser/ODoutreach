@@ -5,6 +5,7 @@ import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
+import { mailboxOAuthStateExpiresAt } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -19,8 +20,6 @@ import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator
 export type MailboxConnectionPrepareResult =
   | { ok: true; startUrl: string }
   | { ok: false; error: string };
-
-const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Begins OAuth: sets pending state, clears prior secret on reconnect, returns URL for browser navigation.
@@ -87,7 +86,9 @@ export async function prepareMailboxOAuthConnection(
   }
 
   const state = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
+  // Shared with the callbacks' expiry check, so the lifetime that is written
+  // here and the lifetime that is enforced there cannot drift apart.
+  const expiresAt = mailboxOAuthStateExpiresAt(new Date());
 
   try {
     await prisma.$transaction(async (tx) => {

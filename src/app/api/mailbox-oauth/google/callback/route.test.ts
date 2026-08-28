@@ -62,6 +62,7 @@ import {
 
 import { GET } from "./route";
 
+/** A row as `prepareMailboxOAuthConnection` really leaves it: state + expiry. */
 const MAILBOX = {
   id: "mb_1",
   clientId: "cl_1",
@@ -69,7 +70,12 @@ const MAILBOX = {
   provider: "GOOGLE",
   workspaceRemovedAt: null,
   deletedAt: null,
+  oauthState: "st_1",
+  oauthStateExpiresAt: new Date("2026-08-28T12:10:00.000Z"),
 };
+
+/** Inside the row's 15-minute window. */
+const DURING_WINDOW = new Date("2026-08-28T12:05:00.000Z");
 
 function callback(): Request {
   return new Request(
@@ -86,6 +92,10 @@ async function redirectQuery(res: Response): Promise<URLSearchParams> {
 
 describe("GET /api/mailbox-oauth/google/callback", () => {
   beforeEach(() => {
+    // Only `Date` is faked: the handler awaits real promises, and faking timers
+    // wholesale would stall them.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(DURING_WINDOW);
     prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(MAILBOX);
     staffMock.mockResolvedValue({ id: "staff_1" });
     exchangeMock.mockResolvedValue({
@@ -98,8 +108,59 @@ describe("GET /api/mailbox-oauth/google/callback", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  /**
+   * The 15-minute `oauthStateExpiresAt` written by `prepareMailboxOAuthConnection`
+   * was, until this test, written and never read: an abandoned Connect left a
+   * live state in the database indefinitely.
+   *
+   * It gets its OWN reason code rather than reusing `unknown_state`, because a
+   * link that has timed out and a link that was never issued are different
+   * facts and the operator's next move differs. Reusing a code that means two
+   * things is what cycle 56 spent itself unpicking.
+   */
+  it("refuses a state whose expiry has passed, with its own reason", async () => {
+    vi.setSystemTime(new Date("2026-08-28T12:10:00.001Z"));
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("mailbox_oauth")).toBe("error");
+    expect(q.get("reason")).toBe("expired_state");
+    // Carried so the banner can name Google rather than guessing.
+    expect(q.get("oauth_mailbox_id")).toBe("mb_1");
+    // The refusal happens BEFORE the state is spent on anything.
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(prismaMock.mailboxIdentitySecret.upsert).not.toHaveBeenCalled();
+  });
+
+  it("accepts a state on the last millisecond before it expires", async () => {
+    vi.setSystemTime(new Date("2026-08-28T12:10:00.000Z"));
+    profileMock.mockResolvedValue({ email: "alex@trainhugger.com", sub: "s" });
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("mailbox_oauth")).toBe("connected");
+  });
+
+  /**
+   * The only writer of a non-null `oauthState` always writes an expiry beside
+   * it, so a null here means a row nothing in this codebase can produce. Refuse
+   * it: a gate that waves through the state it cannot date is not a gate.
+   */
+  it("refuses a state row that carries no expiry at all", async () => {
+    prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue({
+      ...MAILBOX,
+      oauthStateExpiresAt: null,
+    });
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("reason")).toBe("expired_state");
+    expect(exchangeMock).not.toHaveBeenCalled();
   });
 
   it("gives a wrong-account approval its own reason, carrying both addresses", async () => {

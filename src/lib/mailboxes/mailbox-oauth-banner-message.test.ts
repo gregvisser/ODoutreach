@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
+  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
   formatMailboxOAuthAccountMismatch,
   mailboxOAuthBanner,
   readMailboxOAuthSearchParams,
@@ -20,6 +21,7 @@ const EMITTED_REASONS = [
   "missing_code",
   "callback_failed",
   MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
+  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
   "some_reason_added_later_and_not_handled",
 ];
 
@@ -81,6 +83,44 @@ describe("mailboxOAuthBanner — provider naming", () => {
     });
     expect(banner!.text).not.toMatch(/microsoft/i);
     expect(banner!.text).not.toMatch(/google/i);
+  });
+});
+
+describe("mailboxOAuthBanner — expired sign-in link", () => {
+  const base = {
+    result: "error" as const,
+    provider: "GOOGLE" as const,
+    mailboxEmail: "alex@trainhugger.com",
+    approvedEmail: null,
+    verifiedConnected: false,
+    hasMailboxId: true,
+  };
+
+  it("tells the operator it timed out and to press Connect again", () => {
+    const banner = mailboxOAuthBanner({
+      ...base,
+      reason: MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+    });
+    expect(banner!.type).toBe("err");
+    expect(banner!.text).toMatch(/timed out/i);
+    expect(banner!.text).toMatch(/15 minutes/);
+    expect(banner!.text).toMatch(/press Connect/i);
+  });
+
+  /**
+   * The reason this code exists at all. If the two ever say the same sentence,
+   * the split has quietly stopped earning its keep.
+   */
+  it("does not say the same thing as an unrecognised link", () => {
+    const expired = mailboxOAuthBanner({
+      ...base,
+      reason: MAILBOX_OAUTH_EXPIRED_STATE_REASON,
+    });
+    const unknown = mailboxOAuthBanner({ ...base, reason: "unknown_state" });
+    expect(expired!.text).not.toEqual(unknown!.text);
+    // ...and the unrecognised-link message must not itself claim expiry, or the
+    // operator is back to one sentence covering two different situations.
+    expect(unknown!.text).not.toMatch(/expired|timed out/i);
   });
 });
 

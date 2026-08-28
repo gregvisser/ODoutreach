@@ -31,6 +31,17 @@ export type MailboxOAuthBanner = { type: "ok" | "err"; text: string };
 export const MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON = "oauth_account_mismatch";
 
 /**
+ * The sign-in link was real, but it was issued more than fifteen minutes ago.
+ *
+ * Deliberately NOT folded into `unknown_state`. A link that timed out and a
+ * link that was never issued are different facts: the first means "you took too
+ * long, start again", the second can mean the row was disconnected underneath
+ * you or the link was tampered with. Cycle 56 spent itself proving what one
+ * reason code standing for two situations costs the person reading the banner.
+ */
+export const MAILBOX_OAUTH_EXPIRED_STATE_REASON = "expired_state";
+
+/**
  * How to name the provider mid-sentence. Never sentence-initial, so the
  * unknown-row case ("your email provider") still reads as English.
  */
@@ -148,11 +159,16 @@ export function mailboxOAuthBanner(
         text: "The account that approved this sign-in is not the mailbox on this row. Press Connect again and sign in as that mailbox.",
       };
     }
+    case MAILBOX_OAUTH_EXPIRED_STATE_REASON:
+      return {
+        type: "err",
+        text: "That sign-in link timed out — they are only good for 15 minutes. Press Connect on the row below and finish signing in without leaving it open.",
+      };
     case "missing_state":
     case "unknown_state":
       return {
         type: "err",
-        text: "That sign-in link has expired or was already used. Press Connect on the row below to start again.",
+        text: "That sign-in link was not recognised — it may already have been used. Press Connect on the row below to start again.",
       };
     case "mailbox_removed":
       return {
