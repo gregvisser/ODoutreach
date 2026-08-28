@@ -30,6 +30,20 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/terms")).toBe(true);
   });
 
+  it("allows the open-tracking pixel so a recipient's mail client gets the GIF and not a sign-in page", () => {
+    // The pixel is fetched by the mail client of someone who has no account and
+    // never will. Behind the session it answered every recipient with a 307 to
+    // /sign-in, so `openedAt` was never written and every open rate in the
+    // product read 0% for a reason that had nothing to do with recipients.
+    //
+    // A PREFIX, not the exact path: the token is part of the path, so there is
+    // no fixed string to match, and a future `/api/track/click/<token>` rail is
+    // unreachable for exactly the same reason. Everything under `/api/track/`
+    // is by definition addressed to a recipient rather than to a staff session.
+    // It is not widened past that — `/api/` as a whole stays protected.
+    expect(isPublicPath("/api/track/open/abc123")).toBe(true);
+  });
+
   it("keeps the staff notifications poll behind the session (not public)", () => {
     expect(isPublicPath("/api/notifications/replies")).toBe(false);
   });

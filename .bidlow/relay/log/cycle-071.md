@@ -187,3 +187,9 @@ Numbers **53-67** are retired rather than reused. If Greg or a future cycle woul
 rather compact the table so the numbers run 1-N with no gaps, that is a five-minute
 job now that there is only one table - but it would break every cycle log from 58
 onwards that cites a row by number, so I left the gaps and documented them instead.
+
+## Interrupted
+
+This cycle was still marked 'running' when the watcher started again at 2026-08-28 21:12:23, so it was stopped part-way through.
+
+Whatever it had already done on disk is done; whatever it had not is not. This note records that the cycle ended without finishing - it does NOT undo anything.
