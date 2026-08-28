@@ -21,6 +21,7 @@ import { suppressionShrinkWarning } from "@/lib/suppression/shrink-warning";
 import { loadServiceAccountCredentials } from "./auth";
 import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
 import { resolveDefaultSheetRange } from "./sheet-range";
+import { limitSheetsRead } from "./sheets-read-limiter";
 import {
   formatSuppressionSyncUserError,
   isRangeInvalidMessage,
@@ -112,10 +113,12 @@ async function readSheetTabTitles(spreadsheetId: string): Promise<string[]> {
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
     const sheets = google.sheets({ version: "v4", auth });
-    const meta = await sheets.spreadsheets.get({
-      spreadsheetId,
-      fields: "sheets.properties.title",
-    });
+    const meta = await limitSheetsRead(() =>
+      sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets.properties.title",
+      }),
+    );
     return (meta.data.sheets ?? [])
       .map((s) => s.properties?.title)
       .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
@@ -188,10 +191,12 @@ export async function syncSuppressionSourceFromGoogle(
     });
     const sheets = google.sheets({ version: "v4", auth });
 
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
+    const res = await limitSheetsRead(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      }),
+    );
 
     const flat = flattenSheetValues(
       res.data.values as string[][] | undefined,
