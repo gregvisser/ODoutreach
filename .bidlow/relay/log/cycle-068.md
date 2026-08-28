@@ -1,16 +1,21 @@
-﻿# Cycle 67 - finished
+﻿# Cycle 68 - timed-out
 
-Work happened. Evidence: a git ref moved, so something was committed; the working tree changed, so files were edited.
+KILLED. This cycle was still running after 45 minutes, so it
+was stopped, along with every process it had started (4 in
+total). The relay did NOT wait for it and has carried on to the next item.
 
-Started 2026-08-28 12:29:10, took about 38.5 minutes.
-How it ended: exit code 0.
+Anything it had already written to disk is still there - a kill does not undo
+work - so read the evidence below before assuming this item is untouched.
+
+Started 2026-08-28 13:08:40, took about 45 minutes.
+How it ended: killed at the 45 minute deadline.
 
 Evidence checked: git refs on every branch, the working tree, and these
 files named in the brief: Bidlowbusiness\_odoutreach-handover\DNC-SHEET-RANGE-FIX.md, bidlow/relay/QUEUE.md
 
 ## What it was asked to do
 
-# Cycle 67 - queue item 48
+# Cycle 68 - queue item 48
 
 This brief was written by the relay itself, off the top of QUEUE.md. Greg has
 not read it. If it is wrong, say so in your log rather than working around it,
@@ -98,7 +103,7 @@ Rules for the sweep:
 * Production migrations are real. `PRODUCTION_PRISMA_MIGRATE` is true, so
   merging a migration applies it to the live client database.
 * When you finish, update this item's row in `.bidlow/relay/QUEUE.md` to
-  `DONE 67`, or back to `TODO` with a note if you could not do it.
+  `DONE 68`, or back to `TODO` with a note if you could not do it.
 
 ## THE STATUS CELL: SIX WORDS, AND ONLY SIX
 
@@ -106,7 +111,7 @@ The status cell of a queue row MUST BEGIN with one of exactly these six:
 
     TODO    DONE    BLOCKED    PARTIAL    IN PROGRESS    WONTFIX
 
-Markdown bold around it is fine - `| **DONE 67 - ...** |` reads correctly.
+Markdown bold around it is fine - `| **DONE 68 - ...** |` reads correctly.
 Anything else does not. The relay reads QUEUE.md with a regex, and a status it
 cannot read STOPS THE WHOLE QUEUE, on purpose: refusing to guess is the right
 behaviour, and inventing is the one thing this relay will never do.
@@ -120,8 +125,8 @@ the same thing to row 38 the day before.
 
 So, plainly:
 
-* Finished it -> `DONE 67 - <what you did, and the proof>`
-* Did some of it -> `PARTIAL 67 - <what is done, what is left>`. PARTIAL
+* Finished it -> `DONE 68 - <what you did, and the proof>`
+* Did some of it -> `PARTIAL 68 - <what is done, what is left>`. PARTIAL
   is TAKEN by the relay, so the next cycle picks the row straight back up. This is
   the right answer whenever you shipped part of a row.
 * Could not start -> `TODO - <why>`
@@ -137,25 +142,4 @@ margin. Whatever you build this cycle, prove it FIRES - not that it exists.
 
 ## What it did
 
-`.bidlow/STATE.md` is updated and merged (`12237a1`, PR #323, CI green). No PRs left open.
-
-## Cycle 67, closed
-
-Three commits on `main`:
-
-| Commit | What |
-|---|---|
-| `c92c616` (#321) | The quota fix — deployed, verified by hash on the direct App Service URL |
-| `6b1163f` (#322) | Cycle log + row 48 → `PARTIAL 67` |
-| `12237a1` (#323) | Session state |
-
-**What the state file now carries forward**, so it isn't rediscovered: cycle 65's tab fix cost a second Google call per sheet, taking 34 sources from 34 read requests to 68 against a 60-per-minute-per-user ceiling — and knocked out Pareto FM, the client it was written for. It surfaced only because cycle 66 had just replaced one summed `rowsWritten: 50692` total with per-client outcomes. The aggregate had looked healthy throughout.
-
-**The counts, measured live against the running build:** Pareto FM's sheet holds **121** domains against 0 stored; Train Hugger's holds **291** against 373 stored.
-
-**Left deliberately half-done, and where:** neither write is confirmed landed. Pareto FM's 0→121 is additive and should land on the next scheduled sync — that needs *checking*, not assuming, which is why the row is `PARTIAL` rather than `DONE`. Train Hugger's sync would unblock 82 domains on a live cold-email system and is yours.
-
-Nothing found that contradicts `.bidlow/PROJECT.json`.
-
-**Open questions: 1** — were Train Hugger's 82 missing domains removed from the sheet deliberately, or lost to a hand edit? They stay blocked until you say.
 
