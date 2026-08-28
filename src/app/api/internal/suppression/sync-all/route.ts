@@ -34,19 +34,30 @@ export async function POST(req: NextRequest) {
   // a dry run reached by accident would leave every blocklist frozen while
   // reporting success, which is a quieter version of the outage this route was
   // built to fix. An unreadable body is a real sync, never a dry one.
+  //
+  // `{"sourceId":"…"}` narrows the run to ONE sheet. Read as `undefined` when
+  // absent and passed straight through otherwise — including when it is blank,
+  // which the sync refuses rather than widening. Deciding here that a blank id
+  // means "all of them" would put the dangerous default in the layer that has
+  // the least idea what it is about to write.
   let dryRun = false;
+  let sourceId: string | undefined;
   try {
     const body: unknown = await req.json();
-    dryRun =
-      typeof body === "object" &&
-      body !== null &&
-      (body as Record<string, unknown>).dryRun === true;
+    if (typeof body === "object" && body !== null) {
+      const record = body as Record<string, unknown>;
+      dryRun = record.dryRun === true;
+      if (typeof record.sourceId === "string") sourceId = record.sourceId;
+    }
   } catch {
     dryRun = false;
   }
 
   try {
-    const result = await syncAllConfiguredSuppressionSources({ dryRun });
+    const result = await syncAllConfiguredSuppressionSources({
+      dryRun,
+      ...(sourceId === undefined ? {} : { sourceId }),
+    });
     // `ok` is DERIVED from the result, not asserted. This line used to read
     // `{ ok: true, ...result }` — a literal written before anyone looked at
     // `result` — which is how a run went green while 8 of 35 mailboxes were

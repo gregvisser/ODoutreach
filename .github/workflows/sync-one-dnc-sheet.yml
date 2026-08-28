@@ -1,0 +1,129 @@
+# Re-sync ONE do-not-contact sheet, now, and write it.
+#
+# The scheduled sync is a side-step of the replies cron and does all thirty-four
+# sheets in a single request. That is the right shape for a routine job and the
+# wrong shape for "this client's blocklist is empty and needs to be right":
+#
+#   * GitHub dropped every scheduled run between 01:50Z and 12:00Z on
+#     2026-08-28 — both crons, ten hours, through the working window. A job that
+#     runs when the scheduler feels like it cannot be how a blocklist gets fixed.
+#   * Sixty-eight paced Google reads in one request is seventy-five seconds of
+#     waiting before any work. Three dispatches that morning answered 502 (65s),
+#     207 (83s) and 499 (241s); Azure gives up around 230. A run that stops
+#     part-way still reports the sheets it reached, so "the sync ran" stops
+#     meaning "that list was written".
+#   * Sources are ordered `updatedAt: asc`, so the sheet that has gone longest
+#     without a successful write is nowhere near the front — the timeout lands
+#     on exactly the list someone is trying to repair.
+#
+# Naming one sheet makes it two reads and a few seconds, and narrows what gets
+# written from thirty-four clients' data to one.
+#
+# This workflow WRITES. There is no dry-run switch here on purpose — if you want
+# to ask what a sheet holds without touching it, run "DNC sheet dry run", which
+# posts `{"dryRun":true}` as a literal and is structurally incapable of writing.
+# Two buttons, each of which does one thing, beats one button with a mode.
+#
+# It is deliberately ABSENT from the `workflow_run` list in alerts.yml. Reaching
+# the sync by dispatching "Sync replies" would have emailed Greg every time an
+# operator pressed it, which turns a routine repair into an incident.
+#
+# What it CANNOT do, and this is the point: it cannot quietly unblock anyone.
+# The replace guard in `replace-guard.ts` refuses a sync that would empty a list
+# or shrink it beyond a small margin, and refuses BEFORE the delete — so the
+# worst outcome of pointing this at the wrong sheet is a refusal and an
+# unchanged list. Fail toward keeping people blocked.
+name: Sync one do-not-contact sheet
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_id:
+        description: "The suppression source id (the `sourceId` shown by the DNC sheet dry run)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync-one:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync that sheet and report what it wrote
+        env:
+          # The direct App Service URL, not the custom domain: this reports on
+          # the running build, and a CDN in front of it can answer for an older
+          # one. A row count attributed to the wrong build reads as a fact.
+          SUPPRESSION_SYNC_URL: https://app-opensdoors-outreach-prod.azurewebsites.net/api/internal/suppression/sync-all
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+          SOURCE_ID: ${{ inputs.source_id }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; cannot sync."
+            exit 1
+          fi
+
+          # Belt and braces with the server-side check. A blank id must never
+          # reach a request body where its absence would read as "all of them".
+          if [ -z "$(printf '%s' "${SOURCE_ID}" | tr -d '[:space:]')" ]; then
+            echo "::error::No sheet was named. Refusing to run, because an empty id would sync every client's list."
+            exit 1
+          fi
+
+          response_file="/tmp/dnc-sync-one.json"
+          status=$(curl -sS -o "$response_file" -w "%{http_code}" \
+            -X POST "$SUPPRESSION_SYNC_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -nc --arg id "$SOURCE_ID" '{sourceId:$id}')") || status="000"
+
+          echo "HTTP status: ${status}"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "The sync did not complete."
+            cat "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          # The mirror of the dry-run workflow's guard. That one fails if the
+          # server wrote; this one fails if it did not. Either way the claim is
+          # checked against what the RUNNING BUILD reports, never against what
+          # this file asked for — a build that predates the sourceId filter
+          # would have synced all thirty-four sheets and answered happily.
+          if [ "$(jq -r '.dryRun' "$response_file")" = "true" ]; then
+            echo "::error::The server ran a DRY RUN. Nothing was written."
+            cat "$response_file"
+            exit 1
+          fi
+          if [ "$(jq -r '.sources' "$response_file")" != "1" ]; then
+            echo "::error::Expected exactly one sheet to be synced. Treat this as the WRONG SHEETS having been written."
+            cat "$response_file"
+            exit 1
+          fi
+
+          echo
+          echo "'stored' is what the blocklist held BEFORE this run; 'written'"
+          echo "is what it holds now."
+          echo
+          jq -r '
+            (["CLIENT","LIST","STORED","WRITTEN","TAB READ","NOTE"] | @tsv),
+            (.outcomes[] | [
+               .client,
+               .kind,
+               (.previousCount // "?" | tostring),
+               (.rowsWritten // "-" | tostring),
+               (.resolvedRange // "-"),
+               (if .refusedShrink then "REFUSED — would remove too many; nothing was deleted"
+                elif .ok then ""
+                else (.error // "failed") end)
+             ] | @tsv)
+          ' "$response_file" | column -t -s $'\t'
+
+          echo
+          echo "--- raw ---"
+          cat "$response_file"
+
+          if [ "$(jq -r '.ok' "$response_file")" != "true" ]; then
+            echo "::error::The sheet was not written. See the NOTE column."
+            exit 1
+          fi

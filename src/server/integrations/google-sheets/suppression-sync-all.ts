@@ -34,6 +34,17 @@ import { syncSuppressionSourceFromGoogle } from "./suppression-sync";
 export type SuppressionSourceOutcome = {
   /** The client whose list this is — never a bare source id. */
   client: string;
+  /**
+   * The handle needed to re-sync THIS sheet on its own.
+   *
+   * Reported alongside the client name, never instead of it. Cycle 66 removed
+   * bare ids from the error LINE for good reason — `cmpnsa18a…: Check the Sheet
+   * tab name` sent Greg hunting through thirty-four sources — but the id still
+   * has to be obtainable somewhere, or "sync just that one" has no way to name
+   * its target. It lives in the raw JSON; the human-readable table does not
+   * print it.
+   */
+  sourceId: string;
   /** "Whole domains" / "Email addresses", as staff see it. */
   kind: string;
   ok: boolean;
@@ -75,14 +86,50 @@ export type SuppressionSyncAllOptions = {
    * version of the outage this whole path exists to fix.
    */
   dryRun?: boolean;
+  /**
+   * Sync ONE named sheet instead of every configured one.
+   *
+   * Never set by the cron, which must keep sweeping all of them. This is for
+   * repairing a single client's list on demand — see
+   * `.github/workflows/sync-one-dnc-sheet.yml` for why the all-sheets run is
+   * the wrong tool for that.
+   */
+  sourceId?: string;
 };
 
 export async function syncAllConfiguredSuppressionSources(
   options: SuppressionSyncAllOptions = {},
 ): Promise<SuppressionSyncAllResult> {
   const dryRun = options.dryRun === true;
+
+  // `undefined` means "every sheet". A PRESENT but blank id means an operator
+  // meant to name one and it did not arrive — a forgotten shell variable, a
+  // `--field source_id=`. Those two must not collapse into each other: treating
+  // blank as absent turns the most ordinary mistake available into a write
+  // across thirty-four clients' blocklists.
+  const only = options.sourceId === undefined ? null : options.sourceId.trim();
+
+  const refuse = (reason: string): SuppressionSyncAllResult => ({
+    sources: 0,
+    succeeded: 0,
+    failed: 1,
+    rowsWritten: 0,
+    errors: [reason],
+    outcomes: [],
+    ...(dryRun ? { dryRun: true } : {}),
+  });
+
+  if (only !== null && only.length === 0) {
+    return refuse(
+      "A sheet was named but the id was blank. Nothing was synced — an empty id would otherwise have meant every client's list.",
+    );
+  }
+
   const sources = await prisma.suppressionSource.findMany({
-    where: { spreadsheetId: { not: null } },
+    where: {
+      spreadsheetId: { not: null },
+      ...(only ? { id: only } : {}),
+    },
     // The client name and list kind are selected for the ERROR LINE, not for
     // the sync. A reason that reads `cmpnsa18a00m0gapb5fh8nox6: Check the Sheet
     // tab name and range` sends Greg hunting through 34 sources to find out
@@ -90,6 +137,19 @@ export async function syncAllConfiguredSuppressionSources(
     select: { id: true, kind: true, client: { select: { name: true } } },
     orderBy: { updatedAt: "asc" },
   });
+
+  // Zero rows for a named sheet is not an empty sweep, it is a miss: a mistyped
+  // or deleted id, or a source whose spreadsheet was never configured. The loop
+  // below would run zero times and leave `failed: 0, errors: []`, from which
+  // `jobOutcome` derives `ok: true` — so the route would answer 200 for a sync
+  // that wrote nothing, and the operator would read "done" about a blocklist
+  // that was never touched. That is the exact defect this project keeps
+  // rediscovering, so the miss has to speak.
+  if (only && sources.length === 0) {
+    return refuse(
+      `No configured do-not-contact sheet has the id ${only}. Nothing was synced. Check the id against the DNC sheet dry run — a sheet with no spreadsheet linked will not be found here either.`,
+    );
+  }
 
   const result: SuppressionSyncAllResult = {
     sources: sources.length,
@@ -104,7 +164,7 @@ export async function syncAllConfiguredSuppressionSources(
   for (const source of sources) {
     const kind = suppressionKindLabel(source.kind);
     const who = `${source.client.name} — ${kind}`;
-    const base = { client: source.client.name, kind };
+    const base = { client: source.client.name, kind, sourceId: source.id };
     try {
       const r = await syncSuppressionSourceFromGoogle({
         sourceId: source.id,
