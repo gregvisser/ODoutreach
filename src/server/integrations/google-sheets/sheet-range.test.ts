@@ -27,14 +27,26 @@ describe("wholeTabRange", () => {
   });
 });
 
+/**
+ * The tab titles below are not invented. They are quoted verbatim from the
+ * production replies-cron run of 2026-08-28T01:54:31Z, which reported both
+ * sheets failing and named their real tabs in the error it wrote:
+ *
+ *   Train Hugger — Whole domains: … This Sheet's tabs are: "Domains", "Company Names".
+ *   Pareto FM    — Whole domains: … This Sheet's tabs are: "Domains".
+ *
+ * So "read the first tab" resolves to "Domains" for both — checked against
+ * what the live system actually reported, not against an assumption about how
+ * a client names things.
+ */
 describe("resolveDefaultSheetRange", () => {
   it("uses the only tab of a single-tab sheet", () => {
-    // Pareto FM's sheet.
+    // Pareto FM's sheet, as production reported it.
     expect(resolveDefaultSheetRange(["Domains"])).toBe("'Domains'!A1:Z50000");
   });
 
   it("uses the FIRST tab when there are several", () => {
-    // Train Hugger's sheet.
+    // Train Hugger's sheet, as production reported it.
     expect(resolveDefaultSheetRange(["Domains", "Company Names"])).toBe(
       "'Domains'!A1:Z50000",
     );
