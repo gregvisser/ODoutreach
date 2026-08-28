@@ -14,6 +14,7 @@
     "e2e/mailboxes-table-first.spec.ts": "1b54d0bcdefa2740fc8a5f281696da3c5efc494a38894d585293a93517edce07",
     "e2e/nav-prefetch-burst.spec.ts": "0bda02d25eccad741b5de91336bb42421924f46089eb56013a94b977367a596f",
     "e2e/no-third-party-telemetry.spec.ts": "cdb6d83705b8e499ab40e4028e0fdb59fba419ebaee93e4ec8f61d5bffdae703",
+    "e2e/open-pixel-public.spec.ts": "e4d53a1f23d200f5d807a73b81bdfff646517cbb51b14f516480dd899caed8a9",
     "e2e/safe-database.test.ts": "79d8a0d1ea23b892535dc2ccb60bc55413db2f236b52112ada5cdd2f04483dee",
     "e2e/safe-database.ts": "4a8d42275c899ca1771cd51600a7445ae351d0a50e81dd8611d0e31c6e3197b6",
     "e2e/screen-walk.spec.ts": "ac5feebd802c8676293e25a4c760ca9f9333d2c53547194466777e21b290fde6",

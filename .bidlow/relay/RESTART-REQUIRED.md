@@ -51,3 +51,49 @@ RESOLVED 2026-08-28 07:26 UTC: Greg ran relay-start.cmd at 08:25 local.
 The watcher restarted on the new code, self-test passed 24 checks (including the
 45-minute timeout and the tree-kill), and cycle 61 is running. No restart is
 outstanding. Kept for the record.
+
+---
+
+# A SECOND RESTART *IS* OUTSTANDING — reopened 2026-08-28 by cycle 72
+
+**Do not read the "RESOLVED" note above as meaning there is nothing to do.** It
+closed the three fixes listed at the top of this file. It did not close, and
+could not have closed, the cycle-log destruction in queue row 52.
+
+## Why the 07:26 restart could not have carried the log fix
+
+The fix did not exist yet. Measured, not assumed:
+
+    git show -s --date=iso-strict 3d7fef6   ->  2026-08-28T10:12:54+01:00
+                                            =   09:12:54 UTC
+
+    git log -S "Write-CycleLog" -- relay-watch.ps1
+                                            ->  3d7fef6, and nothing else
+
+`3d7fef6` ("the watcher's own log-writer was destroying cycle logs") landed **one
+hour and forty-six minutes after** the only restart there has been, and it is the
+sole commit that introduced the appending `Write-CycleLog`. PowerShell parses a
+script once, at launch. So the running watcher has never held the fixed script,
+and merging it again changes nothing.
+
+## What it is still doing
+
+Overwriting each cycle's real log with a short "finished" stub after the cycle
+has already committed the real one. Rescued by hand in cycles 64, 70 and 71.
+
+## The fix, and only Greg can do it
+
+Let the current cycle finish, then in the ODoutreach folder:
+
+    relay-start.cmd
+
+Same command as before. It clears HALT, reads the cycle number back out of
+STATUS.json, and carries on. Nothing in the queue is lost.
+
+## Until then
+
+Every cycle must check `git status` at start-of-cycle and restore its predecessor's
+log from `main` if it shows as modified — **after diffing, not blind.** Cycle 72
+was told to rescue `cycle-070.md` and found it already identical to `main`,
+because cycle 71 had restored it; a blind `git checkout` is how cycle 70
+overwrote cycle 69's log in the first place.

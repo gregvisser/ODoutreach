@@ -20,6 +20,24 @@ export function isPublicPath(pathname: string): boolean {
   // Public one-click unsubscribe endpoints. The token itself is the proof.
   if (pathname.startsWith("/unsubscribe/")) return true;
   if (pathname.startsWith("/api/unsubscribe/")) return true;
+  // Open-tracking pixel. Requested by the mail client of a recipient who has no
+  // account and never will, so behind the session it answered every one of them
+  // with a 307 to /sign-in instead of the 43-byte GIF — measured, not inferred.
+  // `openedAt` was therefore never written and every open rate in the product
+  // read 0% for a reason that had nothing to do with recipients.
+  //
+  // A PREFIX rather than the exact path because the correlation id is IN the
+  // path, so there is no fixed string to match. Scoped to `/api/track/` and no
+  // wider: everything under it is by definition addressed to a recipient rather
+  // than to a staff session, and the rest of `/api/` stays protected.
+  //
+  // This makes the endpoint REACHABLE. It does not switch tracking on for
+  // anyone — `decideClientOpenTracking` keeps it off for every client until that
+  // client is deliberately opted in AND their aligned domain is DNS-verified, so
+  // no mail carries a pixel today. The route reads no session, writes only
+  // `openedAt` on a correlation id it is given, and reveals nothing about
+  // whether that id exists.
+  if (pathname.startsWith("/api/track/")) return true;
   // Legal pages. Google refuses to publish an external OAuth app whose privacy
   // policy and terms URLs do not resolve anonymously, and a redirect to
   // /sign-in reads to their reviewer as a missing page. Outreach recipients
