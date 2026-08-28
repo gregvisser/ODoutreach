@@ -31,6 +31,7 @@ import {
 import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
 import { deriveGoLinkDomain } from "@/lib/clients/client-link-domain";
 import { CLIENT_OPEN_TRACKING_SELECT } from "@/lib/tracking/client-open-tracking";
+import { loadClientTrackingDnsState } from "@/server/clients/tracking-dns-persistence";
 import { isOpenTrackingPixelEnabled } from "@/lib/tracking/open-pixel";
 import { prisma } from "@/lib/db";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
@@ -97,6 +98,16 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         .filter((d): d is string => Boolean(d)),
     ),
   ).sort();
+
+  /*
+    The four DNS checks, as the system last found them.
+
+    Read straight off the client row rather than resolved here: rendering a page
+    must not fire four DNS lookups and an HTTPS probe. The stored report is what
+    the last check SAW, the "Check DNS now" button re-runs it on demand, and the
+    scheduled sweep refreshes it every morning.
+  */
+  const trackingDns = await loadClientTrackingDnsState(clientId);
 
   /*
     The banner after an OAuth round-trip.
@@ -249,6 +260,10 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             trackingEnabled={trackingClient?.openTrackingEnabledAt != null}
             candidateGoDomains={candidateGoDomains}
             globalKillSwitchEngaged={!isOpenTrackingPixelEnabled()}
+            dnsChecks={trackingDns.checks}
+            dnsVerified={trackingDns.verified}
+            dnsCheckedAt={trackingDns.checkedAtLabel}
+            dnsVerifiedAt={trackingDns.verifiedAtLabel}
           />
 
           {showMailboxSetupTools ? (

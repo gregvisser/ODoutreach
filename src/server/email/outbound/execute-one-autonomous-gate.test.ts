@@ -115,14 +115,21 @@ function mailbox() {
   };
 }
 
-/** Point the dispatcher at a client with this slug. */
-function clientIs(slug: string | null) {
+/**
+ * Point the dispatcher at a client with this slug and this autonomous-send
+ * switch.
+ *
+ * `autonomousSendEnabled` defaults to `true` here — "somebody has switched this
+ * client on" — so the allowlist tests below keep testing the ALLOWLIST. The
+ * switch gets its own describe block where it is varied deliberately.
+ */
+function clientIs(slug: string | null, autonomousSendEnabled: boolean | null = true) {
   clientFindUnique.mockImplementation(
     (q: { select?: Record<string, unknown> } | undefined) => {
       // The dispatcher reads the client twice for different columns: once for
-      // the slug (the gate) and once for the link domain (the pixel).
+      // the slug + switch (the gate) and once for the link domain (the pixel).
       if (q?.select && "slug" in q.select) {
-        return Promise.resolve(slug === null ? null : { slug });
+        return Promise.resolve(slug === null ? null : { slug, autonomousSendEnabled });
       }
       return Promise.resolve(null);
     },
@@ -226,6 +233,99 @@ describe("while the autonomous relay is running", () => {
     const data = (failed?.[0] as { data: { lastErrorCode: string; failureReason: string } }).data;
     expect(data.lastErrorCode).toBe("AUTONOMOUS_CLIENT_NOT_ALLOWLISTED");
     expect(data.failureReason).toMatch(/train-hugger/);
+  });
+});
+
+/**
+ * THE PER-CLIENT SWITCH, AT THE REAL DISPATCHER.
+ *
+ * Greg, 2026-08-28: "there must be a switch or toggle set to make it machine
+ * sending or human sending."
+ *
+ * `autonomous-actor-guard.test.ts` proves the DECISION. This proves the switch
+ * is actually READ at the point where mail leaves — every assertion here ends
+ * at `sendGmail`, because a switch that is consulted but not obeyed is exactly
+ * the defect this project keeps shipping.
+ */
+describe("the per-client autonomous-send switch, at dispatch", () => {
+  beforeEach(() => {
+    process.env.AUTONOMOUS_RELAY_ACTIVE = "1";
+    process.env.AUTONOMOUS_SEND_ALLOWLIST = "bidlowai";
+  });
+
+  it("refuses an allowlisted client whose switch nobody has set, and sends nothing", async () => {
+    // Absence is not permission — even for the one client the relay is
+    // otherwise permitted to act for.
+    clientIs("bidlowai", null);
+
+    const result = await executeOutboundSend("out1");
+
+    expect(result.ok).toBe(false);
+    expect(sendGmail).not.toHaveBeenCalled();
+    expect(getGoogleToken).not.toHaveBeenCalled();
+  });
+
+  it("refuses an allowlisted client switched to human sending, and sends nothing", async () => {
+    clientIs("bidlowai", false);
+
+    const result = await executeOutboundSend("out1");
+
+    expect(result.ok).toBe(false);
+    expect(sendGmail).not.toHaveBeenCalled();
+  });
+
+  it("sends only when the switch is on AND the client is allowlisted", async () => {
+    clientIs("bidlowai", true);
+
+    const result = await executeOutboundSend("out1");
+
+    expect(result.ok).toBe(true);
+    expect(sendGmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("switching a non-allowlisted client on does not let it send", async () => {
+    // The AND, at dispatch. A staff member turning the switch on cannot widen
+    // what an unattended agent may act for.
+    clientIs("train-hugger", true);
+
+    const result = await executeOutboundSend("out1");
+
+    expect(result.ok).toBe(false);
+    expect(sendGmail).not.toHaveBeenCalled();
+  });
+
+  it("never blocks a staff-launched send, whatever the switch says", async () => {
+    for (const value of [null, false] as const) {
+      vi.clearAllMocks();
+      setRow({ staffUserId: "staff-1" });
+      updateMany.mockResolvedValue({ count: 1 });
+      findFirstMbox.mockResolvedValue(mailbox());
+      evalSupp.mockResolvedValue({ suppressed: false });
+      getGoogleToken.mockResolvedValue("access");
+      sendGmail.mockResolvedValue({ ok: true, providerMessageId: "pm1", providerName: "gmail" });
+      clientIs("train-hugger", value);
+
+      const result = await executeOutboundSend("out1");
+
+      expect(result.ok).toBe(true);
+      expect(sendGmail).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("records the switch as the reason on the row, so it is not silent", async () => {
+    // An operator reading "no capacity" goes hunting for a problem that does
+    // not exist. The row has to say which gate stopped it.
+    clientIs("bidlowai", null);
+
+    await executeOutboundSend("out1");
+
+    const failed = updateMany.mock.calls.find(
+      (c) => (c[0] as { data?: { status?: string } })?.data?.status === "FAILED",
+    );
+    expect(failed).toBeTruthy();
+    const data = (failed?.[0] as { data: { lastErrorCode: string; failureReason: string } }).data;
+    expect(data.lastErrorCode).toBe("AUTONOMOUS_CLIENT_SEND_UNSET");
+    expect(data.failureReason).toMatch(/Autonomous sending switch/i);
   });
 });
 
