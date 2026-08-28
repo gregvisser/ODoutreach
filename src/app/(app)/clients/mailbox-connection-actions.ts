@@ -5,6 +5,7 @@ import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
+import { shouldPreserveMailboxCredentialOnConnect } from "@/lib/mailboxes/mailbox-connect-credential";
 import { mailboxOAuthStateExpiresAt } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -22,7 +23,11 @@ export type MailboxConnectionPrepareResult =
   | { ok: false; error: string };
 
 /**
- * Begins OAuth: sets pending state, clears prior secret on reconnect, returns URL for browser navigation.
+ * Begins OAuth: arms the state, returns the URL for browser navigation.
+ *
+ * A mailbox that can send today keeps its credential and its CONNECTED status
+ * for the whole round trip — see `shouldPreserveMailboxCredentialOnConnect`.
+ * Anything else is cleared to PENDING_CONNECTION as before.
  */
 export async function prepareMailboxOAuthConnection(
   clientId: string,
@@ -37,6 +42,7 @@ export async function prepareMailboxOAuthConnection(
 
   const row = await prisma.clientMailboxIdentity.findFirst({
     where: { id: mailboxId, clientId },
+    include: { secret: { select: { id: true } } },
   });
   if (!row) {
     return { ok: false, error: "Mailbox not found." };
@@ -90,20 +96,45 @@ export async function prepareMailboxOAuthConnection(
   // here and the lifetime that is enforced there cannot drift apart.
   const expiresAt = mailboxOAuthStateExpiresAt(new Date());
 
+  // A mailbox that can send today is left exactly as it is while the operator
+  // is away at the provider. Starting a sign-in is not a decision to stop
+  // sending, and an operator who closes the tab must not leave an outage behind.
+  //
+  // Nothing is lost by waiting: both callbacks write the new credential with
+  // `mailboxIdentitySecret.upsert` on the unique `mailboxIdentityId`, so the
+  // replacement is already atomic and there can never be two credentials for one
+  // mailbox. The delete that used to sit here was destroying a working
+  // credential to make room the upsert did not need.
+  const preserveWorkingCredential = shouldPreserveMailboxCredentialOnConnect({
+    connectionStatus: row.connectionStatus,
+    hasStoredCredential: row.secret !== null,
+    isActive: row.isActive,
+    workspaceRemovedAt: row.workspaceRemovedAt,
+  });
+
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.mailboxIdentitySecret.deleteMany({
-        where: { mailboxIdentityId: row.id },
-      });
+      if (!preserveWorkingCredential) {
+        await tx.mailboxIdentitySecret.deleteMany({
+          where: { mailboxIdentityId: row.id },
+        });
+      }
       await tx.clientMailboxIdentity.update({
         where: { id: row.id },
         data: {
           oauthState: state,
           oauthStateExpiresAt: expiresAt,
-          connectionStatus: "PENDING_CONNECTION",
-          lastError: null,
-          providerLinkedUserId: null,
-          connectedAt: null,
+          // The status, the linked provider account and `connectedAt` describe
+          // the credential this row still holds. They are only cleared when
+          // that credential is.
+          ...(preserveWorkingCredential
+            ? {}
+            : {
+                connectionStatus: "PENDING_CONNECTION" as const,
+                lastError: null,
+                providerLinkedUserId: null,
+                connectedAt: null,
+              }),
         },
       });
       await reconcilePrimaryMailboxForClient(tx, clientId);
@@ -126,7 +157,13 @@ export async function prepareMailboxOAuthConnection(
       await tx.clientMailboxIdentity.update({
         where: { id: row.id },
         data: {
-          connectionStatus: "CONNECTION_ERROR",
+          // Same rule as above: our own failure to build a sign-in URL says
+          // nothing about the credential this mailbox already holds, so it does
+          // not take a sending mailbox off the air. The in-flight state is
+          // dropped and the error is reported either way.
+          ...(preserveWorkingCredential
+            ? {}
+            : { connectionStatus: "CONNECTION_ERROR" as const }),
           lastError:
             `Could not build provider sign-in URL: ${detail}`.slice(0, 4000),
           oauthState: null,
@@ -150,7 +187,17 @@ export async function prepareMailboxOAuthConnection(
     metadata: {
       kind: "mailbox_oauth_prepare",
       provider: row.provider,
-      connectionStatus: "PENDING_CONNECTION",
+      // Records what was actually written, not what this step used to write.
+      // `beforeStatus` and `credentialRetained` are what makes the rule
+      // checkable in production: an operator who abandons a reconnect leaves an
+      // audit row saying the credential was kept, and the mailbox goes on
+      // sending. Without them the audit log cannot tell a preserved mailbox
+      // from a cleared one after the fact.
+      beforeStatus: row.connectionStatus,
+      connectionStatus: preserveWorkingCredential
+        ? row.connectionStatus
+        : "PENDING_CONNECTION",
+      credentialRetained: preserveWorkingCredential,
     },
   });
 
