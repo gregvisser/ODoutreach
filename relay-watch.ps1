@@ -1409,8 +1409,14 @@ $reopened = 0
 foreach ($row in (Get-QueueRows)) {
     if (-not $row.Parsed) { continue }
     if ($row.Status -notmatch '^IN PROGRESS') { continue }
-    $deadCycle = ($row.Status -replace '[^0-9]', '')
-    if ([string]::IsNullOrWhiteSpace($deadCycle)) { $deadCycle = 'unknown' }
+    # ANCHORED. This was `-replace '[^0-9]', ''`, which strips every non-digit
+    # from the WHOLE status cell and concatenates whatever is left - so a status
+    # mentioning PR numbers produced a hundred-digit "cycle id", and that garbage
+    # was then WRITTEN BACK INTO QUEUE.md as the reopen note. Observed at
+    # 2026-08-28 08:25:52 on row 68. Take only the digits that follow the words
+    # IN PROGRESS, which is the one number that means anything here.
+    $cycleMatch = [regex]::Match($row.Status, '^IN PROGRESS\s+(\d+)')
+    $deadCycle  = if ($cycleMatch.Success) { $cycleMatch.Groups[1].Value } else { 'unknown' }
     # No pipe in the status text - see the standing rule at the top of QUEUE.md.
     if (Set-QueueRowStatus $row.Number "TODO (reopened at startup - cycle $deadCycle never finished)") {
         $reopened++
