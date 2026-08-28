@@ -21,6 +21,15 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/icons/icon-512.png")).toBe(true);
   });
 
+  it("allows the legal pages so Google's OAuth reviewer and a cold prospect can open them without a login", () => {
+    // Google will not let an external OAuth app be published unless the privacy
+    // policy and terms URLs are reachable anonymously — a redirect to /sign-in
+    // reads to their crawler as a missing page. Recipients of our outreach have
+    // no login either, and they are the people the policy is about.
+    expect(isPublicPath("/privacy")).toBe(true);
+    expect(isPublicPath("/terms")).toBe(true);
+  });
+
   it("keeps the staff notifications poll behind the session (not public)", () => {
     expect(isPublicPath("/api/notifications/replies")).toBe(false);
   });
