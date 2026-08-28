@@ -45,6 +45,10 @@ import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-histor
 import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { startOfUtcDay, utcDateKeyForInstant } from "@/lib/sending-window";
+import {
+  MANUAL_SEND_COOLDOWN_MINUTES,
+  MANUAL_SEND_GROUP_SIZE,
+} from "@/lib/outreach/manual-send-window";
 import { loadCorporateReleaseAllowance } from "@/server/email-sequences/corporate-release-gate";
 import { requireClientAccess } from "@/server/tenant/access";
 import type {
@@ -930,6 +934,11 @@ export async function sendSequenceStepBatch(input: {
         // the operator is told "the next batch is later today" rather than the
         // untrue "no capacity left".
         let heldByPacing = false;
+        // Set when the CORPORATE four-at-a-time gate — not the daily cap and
+        // not pacing — is what is holding mail back. Without this the operator
+        // is told "no capacity remaining", which is untrue: the mailbox has
+        // plenty of capacity and is simply waiting out the 45-minute gap.
+        let heldByCorporateGate = false;
         for (const m of pool) {
           // Warm-up ramp: caps cold-outreach volume until a mailbox has a
           // history of sending. No-op once warmed, or when the flag is off.
@@ -959,6 +968,9 @@ export async function sendSequenceStepBatch(input: {
           // which case `remaining` is exactly what it was before.
           const remaining = Math.max(0, allowedNow - booked);
           const corporateCap = corporateAllowance.get(m.id);
+          if (corporateCap !== undefined && corporateCap < remaining) {
+            heldByCorporateGate = true;
+          }
           localRemaining.set(
             m.id,
             corporateCap === undefined ? remaining : Math.min(remaining, corporateCap),
@@ -1231,9 +1243,17 @@ export async function sendSequenceStepBatch(input: {
           }
 
           if (!placed) {
-            const reason = heldByPacing
-              ? "Held back by send pacing — the next batch for this workspace goes out later today."
-              : "No mailbox capacity remaining in this UTC day.";
+            // Order matters: the corporate gate is the most specific and the
+            // most temporary of the three, so it is named first. Telling an
+            // operator "no capacity remaining" when a mailbox is 40 minutes
+            // into a 45-minute wait sends them looking for a problem that does
+            // not exist.
+            const reason = heldByCorporateGate
+              ? `Held back by the ${String(MANUAL_SEND_GROUP_SIZE)}-at-a-time release for corporate accounts — ` +
+                `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent.`
+              : heldByPacing
+                ? "Held back by send pacing — the next batch for this workspace goes out later today."
+                : "No mailbox capacity remaining in this UTC day.";
             blocked.push({
               stepSendId: pr.stepSend.id,
               contactEmail: toEmail,
