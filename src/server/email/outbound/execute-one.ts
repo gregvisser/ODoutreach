@@ -46,11 +46,11 @@ import {
   mailboxSignatureFindings,
 } from "@/lib/clients/signature-link-alignment";
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
+import { appendOpenTrackingPixel } from "@/lib/tracking/open-pixel";
 import {
-  appendOpenTrackingPixel,
-  buildOpenTrackingPixelUrl,
-} from "@/lib/tracking/open-pixel";
-import { resolveClientLinkBaseUrl } from "@/lib/clients/client-link-domain";
+  buildOpenTrackingPixelUrlForClient,
+  CLIENT_OPEN_TRACKING_SELECT,
+} from "@/lib/tracking/client-open-tracking";
 import { getOutboundEmailProvider } from "../providers";
 import {
   humanizeGovernanceRejection,
@@ -519,17 +519,19 @@ async function sendViaConnectedMailboxOrFail(
     return { ok: false, error: msg };
   }
 
-  // Serve the open-tracking pixel from this client's sender-aligned link domain
-  // (`go.<domain>`) when it's set up + verified, so the pixel host matches the
-  // sender and the unsubscribe link — a cross-domain pixel is a phishing signal.
-  // Falls back to the tenant public base URL when the client has no aligned
-  // domain yet (buildOpenTrackingPixelUrl handles the null). The unsubscribe
+  // Open tracking is OFF unless THIS client has been opted in, and the opt-in
+  // requires a verified sender-aligned link domain (`go.<domain>`), so a pixel
+  // — when there is one at all — is always served from the same domain family
+  // as the sender. A cross-domain pixel is a phishing signal. The unsubscribe
   // link was already aligned per-client at plan time in send-introduction.ts.
-  const linkClient = await prisma.client.findUnique({
+  //
+  // A client row that cannot be read leaves `trackingClient` null, and a null
+  // client means no pixel: the failure mode is "untracked", never "tracked
+  // from the wrong domain".
+  const trackingClient = await prisma.client.findUnique({
     where: { id: row.clientId },
-    select: { outreachLinkDomain: true, outreachLinkDomainVerifiedAt: true },
+    select: CLIENT_OPEN_TRACKING_SELECT,
   });
-  const clientLinkBaseUrl = linkClient ? resolveClientLinkBaseUrl(linkClient) : null;
 
   if (mailbox.provider === "GOOGLE") {
     const fromForLog = row.fromAddress?.trim() || normalizeEmail(mailbox.email);
@@ -628,12 +630,11 @@ async function sendViaConnectedMailboxOrFail(
         }
       }
       // Open tracking: embed a hidden pixel keyed on correlationId so the
-      // /api/track/open endpoint can record opens. Served from the client's
-      // aligned link domain when verified. Skipped when no base URL is available.
-      const gmailPixelUrl = buildOpenTrackingPixelUrl(
-        row.correlationId,
-        clientLinkBaseUrl,
-      );
+      // /api/track/open endpoint can record opens. Null — no pixel — unless
+      // this client is opted in and their link domain is verified.
+      const gmailPixelUrl = trackingClient
+        ? buildOpenTrackingPixelUrlForClient(row.correlationId, trackingClient)
+        : null;
       const gmailHtml = gmailPixelUrl
         ? appendOpenTrackingPixel(bodyParts.html, gmailPixelUrl)
         : bodyParts.html;
@@ -752,11 +753,10 @@ async function sendViaConnectedMailboxOrFail(
     // See the note on the Google path above.
     mailtoUnsubscribeAddress: mailbox.email,
   });
-  // Open tracking pixel (see Gmail path above) — same aligned base URL.
-  const graphPixelUrl = buildOpenTrackingPixelUrl(
-    row.correlationId,
-    clientLinkBaseUrl,
-  );
+  // Open tracking pixel (see Gmail path above) — same per-client opt-in.
+  const graphPixelUrl = trackingClient
+    ? buildOpenTrackingPixelUrlForClient(row.correlationId, trackingClient)
+    : null;
   const graphHtml = graphPixelUrl
     ? appendOpenTrackingPixel(bodyParts.html, graphPixelUrl)
     : bodyParts.html;

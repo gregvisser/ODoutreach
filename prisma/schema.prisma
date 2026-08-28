@@ -456,6 +456,14 @@ model Client {
   /// real-prospect sends are blocked when the hard rule is enforced
   /// (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN).
   outreachLinkDomainVerifiedAt  DateTime?
+  /// Per-client open-tracking opt-in. NULL = OFF, and null is the default for
+  /// every client forever — tracking is never on because nobody turned it off.
+  /// Only set once the customer has agreed to the DNS change and their
+  /// `outreachLinkDomain` is verified, so a tracked email can only ever carry a
+  /// same-domain pixel. `OPEN_TRACKING_PIXEL=off` remains a global backstop.
+  openTrackingEnabledAt         DateTime?
+  /// Who switched open tracking on for this client (audit trail; null when off).
+  openTrackingEnabledByStaffUserId String?
   createdAt                     DateTime                  @default(now())
   updatedAt                     DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
