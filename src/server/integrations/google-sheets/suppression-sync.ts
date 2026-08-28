@@ -12,10 +12,15 @@ import {
   normalizeEmail,
 } from "@/lib/normalize";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
+import {
+  decideSuppressionReplace,
+  type SuppressionReplaceRefusal,
+} from "@/lib/suppression/replace-guard";
 import { suppressionShrinkWarning } from "@/lib/suppression/shrink-warning";
 
 import { loadServiceAccountCredentials } from "./auth";
 import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
+import { resolveDefaultSheetRange } from "./sheet-range";
 import {
   formatSuppressionSyncUserError,
   isRangeInvalidMessage,
@@ -26,6 +31,12 @@ import {
 export type SuppressionSyncInput = {
   /** Must match the row in DB — caller verifies tenant access. */
   sourceId: string;
+  /**
+   * An operator has seen the refused shrink and meant it. Never set by the
+   * scheduled re-sync — an unattended job must not be the thing that decides
+   * hundreds of people may be contacted again.
+   */
+  confirmShrink?: boolean;
 };
 
 export type SuppressionSyncResult = {
@@ -34,6 +45,12 @@ export type SuppressionSyncResult = {
   error?: string;
   /** Non-fatal hint when sync succeeded but nothing usable was found in cells. */
   warning?: string;
+  /**
+   * Set instead of writing when the replace was refused for removing too much.
+   * Present so a caller can offer the confirmation; its absence on a failure
+   * means the sync failed for some other reason and confirming would not help.
+   */
+  blockedShrink?: SuppressionReplaceRefusal;
 };
 
 function flattenSheetValues(values: string[][] | null | undefined): string[] {
@@ -49,12 +66,17 @@ function flattenSheetValues(values: string[][] | null | undefined): string[] {
 }
 
 /**
- * The tab titles of a spreadsheet, for the failure message only.
+ * The tab titles of a spreadsheet.
  *
- * Deliberately swallows its own errors and returns `[]`. This runs while we are
- * already reporting a failure; a second failure here must not replace the first
- * one, and an empty list makes `withSheetTabNames` leave the message alone
- * rather than claim we looked and found nothing.
+ * Used twice: to resolve which tab to read when no range is saved, and to name
+ * the real tabs in a range failure. For years it was only the second, so the
+ * product diagnosed its own outage in an error message and then did nothing
+ * with the diagnosis.
+ *
+ * Deliberately swallows its own errors and returns `[]`. On the failure path a
+ * second failure here must not replace the first one; on the resolve path an
+ * empty list means the caller falls back to the historic default, so a
+ * transient metadata error is never worse than the old behaviour.
  */
 async function readSheetTabTitles(spreadsheetId: string): Promise<string[]> {
   try {
@@ -122,7 +144,14 @@ export async function syncSuppressionSourceFromGoogle(
   });
 
   // Hoisted out of the try so the failure path can say WHICH range it tried.
-  const range = sheetRange?.trim() || "Sheet1!A1:Z50000";
+  //
+  // With no saved range this used to assume a tab called "Sheet1" and fail on
+  // every sheet that has never had one. Ask the sheet instead: an explicit
+  // range still wins, and `readSheetTabTitles` cannot throw, so the worst case
+  // is the old default.
+  const range =
+    sheetRange?.trim() ||
+    resolveDefaultSheetRange(await readSheetTabTitles(spreadsheetId));
 
   try {
     const auth = new google.auth.GoogleAuth({
@@ -140,12 +169,33 @@ export async function syncSuppressionSourceFromGoogle(
       res.data.values as string[][] | undefined,
     );
 
-    const { written, previousCount } = await applySheetToSuppressionTables({
+    const outcome = await applySheetToSuppressionTables({
       clientId,
       sourceId: source.id,
       kind,
       cells: flat,
+      confirmShrink: input.confirmShrink === true,
     });
+
+    // Refused, not failed: the stored rows are untouched and everyone who was
+    // blocked still is. Recorded as ERROR and WITHOUT stamping lastSyncedAt,
+    // because a list that silently stopped updating is how this started.
+    if (outcome.refused) {
+      await prisma.suppressionSource.update({
+        where: { id: source.id },
+        data: {
+          syncStatus: "ERROR",
+          lastError: outcome.refusal.reason.slice(0, 2000),
+        },
+      });
+      return {
+        ok: false,
+        error: outcome.refusal.reason,
+        blockedShrink: outcome.refusal,
+      };
+    }
+
+    const { written, previousCount } = outcome;
 
     // A shrink (previously-blocked entries removed) is the costliest silent
     // failure for opt-out data, so it takes precedence over the "nothing
@@ -203,13 +253,31 @@ export async function syncSuppressionSourceFromGoogle(
   }
 }
 
+type ApplyOutcome =
+  | { refused: false; written: number; previousCount: number }
+  | { refused: true; refusal: SuppressionReplaceRefusal };
+
 async function applySheetToSuppressionTables(args: {
   clientId: string;
   sourceId: string;
   kind: SuppressionListKind;
   cells: string[];
-}): Promise<{ written: number; previousCount: number }> {
-  const { clientId, sourceId, kind, cells } = args;
+  confirmShrink: boolean;
+}): Promise<ApplyOutcome> {
+  const { clientId, sourceId, kind, cells, confirmShrink } = args;
+
+  /**
+   * Runs inside the transaction, after the count and BEFORE the delete — the
+   * only place the guard can refuse without anything already being gone.
+   */
+  const refusalFor = (
+    wouldWrite: number,
+    previousCount: number,
+  ): SuppressionReplaceRefusal | null => {
+    if (confirmShrink) return null;
+    const decision = decideSuppressionReplace(kind, wouldWrite, previousCount);
+    return decision.allowed ? null : decision.refusal;
+  };
 
   if (kind === "EMAIL") {
     const emails = new Set<string>();
@@ -219,15 +287,20 @@ async function applySheetToSuppressionTables(args: {
     }
     const list = [...emails];
 
-    return await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
       const previousCount = await tx.suppressedEmail.count({
         where: { clientId, sourceId },
       });
+
+      const refusal = refusalFor(list.length, previousCount);
+      if (refusal) return { refused: true, refusal };
+
       await tx.suppressedEmail.deleteMany({
         where: { clientId, sourceId },
       });
 
-      if (list.length === 0) return { written: 0, previousCount };
+      if (list.length === 0)
+        return { refused: false, written: 0, previousCount };
 
       // Chunked inserts keep each statement bounded; the bulk transaction
       // timeout (vs Prisma's 5s default) lets a large DNC list commit
@@ -240,7 +313,7 @@ async function applySheetToSuppressionTables(args: {
           skipDuplicates: true,
         });
       }
-      return { written: list.length, previousCount };
+      return { refused: false, written: list.length, previousCount };
     }, BULK_TRANSACTION_OPTIONS);
   }
 
@@ -268,15 +341,19 @@ async function applySheetToSuppressionTables(args: {
 
   const list = [...domains];
 
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
     const previousCount = await tx.suppressedDomain.count({
       where: { clientId, sourceId },
     });
+
+    const refusal = refusalFor(list.length, previousCount);
+    if (refusal) return { refused: true, refusal };
+
     await tx.suppressedDomain.deleteMany({
       where: { clientId, sourceId },
     });
 
-    if (list.length === 0) return { written: 0, previousCount };
+    if (list.length === 0) return { refused: false, written: 0, previousCount };
 
     for (const batch of chunk(
       list.map((domain) => ({ clientId, sourceId, domain })),
@@ -286,6 +363,6 @@ async function applySheetToSuppressionTables(args: {
         skipDuplicates: true,
       });
     }
-    return { written: list.length, previousCount };
+    return { refused: false, written: list.length, previousCount };
   }, BULK_TRANSACTION_OPTIONS);
 }

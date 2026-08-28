@@ -90,11 +90,21 @@ export async function upsertSuppressionSpreadsheetAction(
 
 export type SyncClientSuppressionSourceResult =
   | { ok: true; rowsWritten: number; warning?: string }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * Set when the sync was REFUSED for removing too much, never when it
+       * failed for another reason. Its presence is what earns the operator a
+       * "remove them anyway" control; without it, confirming would not help.
+       */
+      blockedShrink?: { previousCount: number; wouldWrite: number; removed: number };
+    };
 
 async function syncClientSuppressionSourceByKind(
   clientId: string,
   kind: SuppressionListKind,
+  confirmShrink: boolean,
 ): Promise<SyncClientSuppressionSourceResult> {
   const staff = await requireOpensDoorsStaff();
   try {
@@ -115,13 +125,28 @@ async function syncClientSuppressionSourceByKind(
     return { ok: false, error: SUPPRESSION_SYNC_MESSAGES.spreadsheetMissing };
   }
 
-  const result = await syncSuppressionSourceFromGoogle({ sourceId: source.id });
+  const result = await syncSuppressionSourceFromGoogle({
+    sourceId: source.id,
+    confirmShrink,
+  });
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/contacts");
   revalidatePath("/suppression");
 
   if (!result.ok) {
-    return { ok: false, error: result.error ?? "Sync failed." };
+    return {
+      ok: false,
+      error: result.error ?? "Sync failed.",
+      ...(result.blockedShrink
+        ? {
+            blockedShrink: {
+              previousCount: result.blockedShrink.previousCount,
+              wouldWrite: result.blockedShrink.wouldWrite,
+              removed: result.blockedShrink.removed,
+            },
+          }
+        : {}),
+    };
   }
   return {
     ok: true,
@@ -132,12 +157,14 @@ async function syncClientSuppressionSourceByKind(
 
 export async function syncClientEmailSuppressionSourceAction(
   clientId: string,
+  confirmShrink = false,
 ): Promise<SyncClientSuppressionSourceResult> {
-  return syncClientSuppressionSourceByKind(clientId, "EMAIL");
+  return syncClientSuppressionSourceByKind(clientId, "EMAIL", confirmShrink);
 }
 
 export async function syncClientDomainSuppressionSourceAction(
   clientId: string,
+  confirmShrink = false,
 ): Promise<SyncClientSuppressionSourceResult> {
-  return syncClientSuppressionSourceByKind(clientId, "DOMAIN");
+  return syncClientSuppressionSourceByKind(clientId, "DOMAIN", confirmShrink);
 }

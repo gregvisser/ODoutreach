@@ -113,7 +113,11 @@ describe("syncSuppressionSourceFromGoogle — the saved range is the range read"
     });
   });
 
-  it("falls back to the default only when no range is saved", async () => {
+  // This mock has no `spreadsheets.get`, so the tab lookup fails and the sync
+  // falls back to the historic default — which is the guarantee being pinned
+  // here. When the tabs CAN be read, no saved range now resolves the sheet's
+  // first tab instead; see `suppression-sync-tab-resolution.test.ts`.
+  it("falls back to the default when no range is saved and no tab is known", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
 
     await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
