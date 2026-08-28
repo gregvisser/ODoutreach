@@ -21,6 +21,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  mailboxOAuthBanner,
+  readMailboxOAuthSearchParams,
+} from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import {
   MAILBOXES_PAGE_INTRO,
   MAILBOXES_PAGE_SUBTITLE,
   MAILBOXES_WHAT_HAPPENS_BULLETS,
@@ -44,20 +48,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
   const sp = searchParams ? await searchParams : {};
-  const mailboxOAuthResult =
-    typeof sp.mailbox_oauth === "string"
-      ? sp.mailbox_oauth
-      : Array.isArray(sp.mailbox_oauth)
-        ? sp.mailbox_oauth[0]
-        : undefined;
-  const mailboxOAuthReason =
-    typeof sp.reason === "string" ? sp.reason : Array.isArray(sp.reason) ? sp.reason[0] : undefined;
-  const oauthMailboxIdRaw =
-    typeof sp.oauth_mailbox_id === "string"
-      ? sp.oauth_mailbox_id
-      : Array.isArray(sp.oauth_mailbox_id)
-        ? sp.oauth_mailbox_id[0]
-        : undefined;
+  const oauthParams = readMailboxOAuthSearchParams(sp);
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
@@ -101,54 +92,33 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
     providerByDomain.entries(),
   ).map(([domain, provider]) => ({ domain, provider }));
 
-  /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
-  let oauthMailboxVerifiedConnected = false;
-  if (
-    oauthMailboxIdRaw &&
-    mailboxOAuthResult === "connected"
-  ) {
-    const persisted = await prisma.clientMailboxIdentity.findFirst({
-      where: { id: oauthMailboxIdRaw, clientId },
-      select: { connectionStatus: true },
-    });
-    oauthMailboxVerifiedConnected = persisted?.connectionStatus === "CONNECTED";
-  }
+  /*
+    The banner after an OAuth round-trip.
 
-  const mailboxOAuthErrorMessage = (() => {
-    if (mailboxOAuthResult !== "error") return null;
-    switch (mailboxOAuthReason) {
-      case "oauth_state_invalid":
-        return "Mailbox sign-in link expired or was skipped. Click Connect again.";
-      case "oauth_not_configured":
-        return "Microsoft mailbox OAuth is not configured for this deployment. Ask an administrator.";
-      case "missing_params":
-        return "Could not start Microsoft sign-in (missing parameters). Try Connect again.";
-      case "invalid_mailbox":
-        return "That mailbox row is invalid or does not belong to this workspace.";
-      case "mailbox_removed":
-        return "That mailbox was removed from this workspace. Restore it first.";
-      case "provider_denied":
-        return "Microsoft sign-in was cancelled or denied in the provider window.";
-      case "callback_failed":
-        return "Microsoft sign-in did not finish. Check the mailbox row for details and try Connect again.";
-      default:
-        return "Mailbox sign-in did not complete. Open the row below and try Connect again, or sign in from a browser where you can reach Microsoft or Google.";
-    }
-  })();
+    Two facts must come from the database and not from the URL: whether the
+    mailbox really connected (a read-model overlay must not decide success), and
+    which provider it is. The provider one is why this banner spent a year
+    telling people connecting a Google mailbox to check Microsoft — the message
+    was written when Microsoft was the only provider, and the row was never
+    asked. The callbacks now put `oauth_mailbox_id` on every redirect, and it is
+    re-read here, scoped to this workspace.
+  */
+  const oauthRow = oauthParams.mailboxId
+    ? await prisma.clientMailboxIdentity.findFirst({
+        where: { id: oauthParams.mailboxId, clientId },
+        select: { connectionStatus: true, provider: true, email: true },
+      })
+    : null;
 
-  const mailboxOAuthSuccessBanner = (() => {
-    if (mailboxOAuthResult !== "connected") return null;
-    if (oauthMailboxIdRaw && !oauthMailboxVerifiedConnected) {
-      return {
-        type: "err" as const,
-        text: "Microsoft returned, but this mailbox is still not connected. Check the row below or click Connect again.",
-      };
-    }
-    return {
-      type: "ok" as const,
-      text: "Mailbox connected. Connection status was updated.",
-    };
-  })();
+  const mailboxOAuthResultBanner = mailboxOAuthBanner({
+    result: oauthParams.result,
+    reason: oauthParams.reason,
+    provider: oauthRow?.provider ?? null,
+    mailboxEmail: oauthRow?.email ?? null,
+    approvedEmail: oauthParams.approvedEmail,
+    verifiedConnected: oauthRow?.connectionStatus === "CONNECTED",
+    hasMailboxId: Boolean(oauthParams.mailboxId),
+  });
 
   return (
     <div className="space-y-6">
@@ -200,15 +170,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
                   ? bundle.brief.emailSignature
                   : null,
             }}
-            mailboxOAuthBanner={
-              mailboxOAuthSuccessBanner ??
-              (mailboxOAuthResult === "error"
-                ? {
-                    type: "err" as const,
-                    text: mailboxOAuthErrorMessage ?? "Mailbox sign-in failed.",
-                  }
-                : null)
-            }
+            mailboxOAuthBanner={mailboxOAuthResultBanner}
           />
         </CardContent>
       </Card>

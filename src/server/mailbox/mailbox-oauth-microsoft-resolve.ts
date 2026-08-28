@@ -1,7 +1,9 @@
 import "server-only";
 
-import { formatMicrosoftMailboxOAuthAccountMismatch } from "@/lib/mailboxes/microsoft-oauth-account-mismatch";
-import { mailboxEmailsAlign } from "@/server/mailbox/mailbox-oauth-callback-shared";
+import {
+  MailboxOAuthAccountMismatchError,
+  mailboxEmailsAlign,
+} from "@/server/mailbox/mailbox-oauth-callback-shared";
 import { fetchMicrosoftGraphPrimaryEmail } from "@/server/mailbox/microsoft-mailbox-oauth";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -41,9 +43,7 @@ export async function resolveMicrosoftMailboxOAuthConnection(input: {
   });
   if (!inboxRes.ok) {
     if (inboxRes.status === 401 || inboxRes.status === 403) {
-      throw new Error(
-        formatMicrosoftMailboxOAuthAccountMismatch(me.primaryEmail, target),
-      );
+      throw new MailboxOAuthAccountMismatchError(me.primaryEmail, target);
     }
     const detail = (await inboxRes.text()).slice(0, 800);
     throw new Error(
