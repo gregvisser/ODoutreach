@@ -35,3 +35,26 @@ describe("Client workspace subnav (PR #138)", () => {
     expect(subnavSource).toContain("pathname.startsWith(`${base}/lists/`)");
   });
 });
+
+/**
+ * Owner request A (2026-08-28) — the Microsoft admin-consent and SPF/DKIM/DMARC
+ * instructions must be reachable from EVERY client account, whatever state its
+ * mailboxes are in. A tab is the only placement that survives a client with no
+ * mailbox connected, because everything on the Mailboxes tab was conditional on
+ * having one. This test is the lock: the tab is not allowed to quietly move
+ * back inside the Mailboxes page.
+ */
+describe("Client workspace subnav — Setup help tab", () => {
+  it("offers a Setup help tab on every client workspace", () => {
+    expect(subnavSource).toContain('label: "Setup help"');
+    expect(subnavSource).toContain("href: `${base}/setup-help`");
+  });
+
+  it("has a matching route file, so the tab cannot lead to a 404", () => {
+    const routePath = join(
+      process.cwd(),
+      "src/app/(app)/clients/[clientId]/setup-help/page.tsx",
+    );
+    expect(() => readFileSync(routePath, "utf8")).not.toThrow();
+  });
+});

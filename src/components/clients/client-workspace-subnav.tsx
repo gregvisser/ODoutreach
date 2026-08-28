@@ -31,6 +31,16 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
       href: `${base}/mailboxes`,
       isActive: () => pathname === `${base}/mailboxes`,
     },
+    // Sits next to Mailboxes because it is what you send the customer's IT
+    // when a mailbox will not connect or its mail is going to spam. It is a
+    // TAB, not a section of the Mailboxes page, because everything on that
+    // page was conditional on already having a mailbox — so the client who
+    // most needed these instructions was the one client who never saw them.
+    {
+      label: "Setup help",
+      href: `${base}/setup-help`,
+      isActive: () => pathname === `${base}/setup-help`,
+    },
     // Suppression comes before import in the funnel: attach the client's
     // Do-not-contact sources first, then import contacts via Sources/Lists.
     {
