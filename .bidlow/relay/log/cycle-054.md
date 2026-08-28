@@ -96,13 +96,28 @@ touches client data, so none of the three stop-and-ask conditions applies. This 
 
 ## Why it is not merged, and it is not this work's fault
 
-The branch was opened at **03:05 UTC**, inside the window where row 39 records the J5 pacing
-test as deterministically red before ~08:30 UTC. #300 was red on `E2E (Playwright)` at that same
-moment for exactly that reason — **a third independent confirmation of row 39, on a third
-branch**. Merging would need an admin override of a genuinely red required check, which row 37
-established is not the relay's to take.
+**The CI verdict was read, not assumed** — row 41 warns that a cycle which assumes will burn
+itself, and row 37 warns that a still-red branch is a new finding that outranks the row.
 
-I did not park this out of caution: no PR opened tonight can go green until row 39 lands.
+Run [33138398434](https://github.com/gregvisser/ODoutreach/actions/runs/33138398434):
+
+| Job | Result |
+|---|---|
+| `verify` — lint, typecheck, 2730 unit tests, build | **pass** (4m41s) |
+| `E2E (Playwright)` | **fail** (1m42s) |
+
+The failing job log was read in full. The only failure is
+`src/server/email-sequences/j5-journey.integration.test.ts` — **1 failed / 121 passed (122)** —
+asserting `expect(batch.blocked).toEqual([])` at line 369 and getting one blocked row, i.e. send
+pacing permitted zero sends. The run started **03:17 UTC**, inside row 39's pre-~08:30 UTC window.
+
+That is row 39's exact signature on a **fourth** branch (after #297, #300 and this one). The
+failing file has no relationship to suppression sheets: this change touches one component, one
+server action and tests. The job that actually exercises it passed.
+
+Merging would need an admin override of a genuinely red required check, which row 37 established
+is not the relay's to take. I did not park this out of caution — **no PR opened tonight can go
+green until row 39 lands.**
 
 ## An operational trap worth recording
 
