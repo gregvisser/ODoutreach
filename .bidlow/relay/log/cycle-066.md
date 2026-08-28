@@ -1,172 +1,145 @@
-# Cycle 66 — row 48: the guard refused, and it was right to
+﻿# Cycle 66 - timed-out
 
-**Outcome: the measurement half is built, deployed, verified by hash, and RUN
-twice against the 34 real sheets. The counts are in. One of them says this
-row's instruction would have caused the disaster the row was written to
-prevent. Merged as `aa7540d` (PR #319). Row marked `PARTIAL 66`.**
+KILLED. This cycle was still running after 45 minutes, so it
+was stopped, along with every process it had started (1 in
+total). The relay did NOT wait for it and has carried on to the next item.
 
-## The headline, before anything else
+Anything it had already written to disk is still there - a kill does not undo
+work - so read the evidence below before assuming this item is untouched.
 
-Row 48 says Train Hugger's whole-domain list "is serving 373 STALE rows", and
-that reading the sheet's real first tab "fixes both clients".
+Started 2026-08-28 11:43:06, took about 45 minutes.
+How it ended: killed at the 45 minute deadline.
 
-Measured, twice, on production:
+Evidence checked: git refs on every branch, the working tree, and these
+files named in the brief: Bidlowbusiness\_odoutreach-handover\DNC-SHEET-RANGE-FIX.md, bidlow/relay/QUEUE.md
 
-| | stored in the database | in the sheet's real `Domains` tab |
-|---|---|---|
-| Train Hugger — whole domains | **373** | **291** |
+## What it was asked to do
 
-The database holds **82 domains the sheet does not**. The 373 were not stale in
-the direction the row assumed — they were the *more protective* number. Doing
-what row 48 instructed would have replaced 373 with 291 and **silently
-unblocked 82 organisations on a live cold-email system.**
+# Cycle 66 - queue item 48
 
-It did not happen, and the reason is worth being precise about: *the diagnosis
-did not save it, the guard did.* Cycle 65 built a replace that refuses a shrink
-beyond 10%, and this is it firing on real client data the first time it was
-ever asked:
+This brief was written by the relay itself, off the top of QUEUE.md. Greg has
+not read it. If it is wrong, say so in your log rather than working around it,
+and correct QUEUE.md.
 
-```
-Train Hugger — Whole domains: Sync refused: this would have removed 82 of 373
-blocked domains, leaving 291. Nothing was deleted — the 373 are still blocked.
-```
+## The item, verbatim from the queue
 
-Both cycles' briefs, and my own reading of them, expected that sync to be
-routine housekeeping. It was one confirmation click away from being the worst
-outcome this product has. The lesson is not "the brief was wrong" — briefs are
-written from the outside and being wrong is their normal condition. It is that
-**the guard was the only component that had actually looked at the data.**
+> **GREG HAS HANDED THE TWO FAILING DO-NOT-CONTACT SHEETS TO US. HE TRIED THE SPREADSHEET WORKAROUND AND IT DID NOT STICK - DO NOT SEND HIM BACK TO GOOGLE SHEETS. FULL BRIEF: `C:\Bidlowbusiness\_odoutreach-handover\DNC-SHEET-RANGE-FIX.md`.** Verified live 2026-08-28 by pressing Sync: Pareto FM whole-domains has NO protection at all (0 rows), Train Hugger whole-domains is serving 373 STALE rows. Both because `suppression-sync.ts:125` falls back to `Sheet1!A1:Z50000` and neither sheet has a tab called Sheet1. **The fix is to stop guessing: `readSheetTabTitles(spreadsheetId)` ALREADY EXISTS and is already called in the catch block to write a nicer error - it discovers the real tab names and throws them away.** Use it up front when no range is set, and read the FIRST tab. That fixes both clients and every future one with nobody renaming anything. **THE PART THAT MATTERS MORE THAN THE FIX:** this path is REPLACE-ON-SYNC - `applySheetToSuppressionTables` deleteMany's then inserts. Resolving the wrong tab would DELETE a working block list. On Train Hugger that is 373 domains going from blocked to sendable, silently, on a live cold-email system. `suppressionShrinkWarning` warns AFTER the delete, which is not a guard. MAKE THE REPLACE REFUSE: a sync that would write zero rows, or shrink an existing list beyond a small margin, must ABORT without deleting and report why. Fail toward keeping people blocked, always. Red-first, four tests, each watched failing: single-tab sheet syncs with no range; a two-tab sheet reads the first; a 373-to-0 sync ABORTS and the 373 survive; an explicit range still wins. Also add the `sheetRange` input the UI has never rendered. **Done means both real sheets synced and the true row counts reported - not a green test.**
 
-## The other two numbers
+## The one rule
 
-**Pareto FM — whole domains: 0 stored, 121 in the sheet, tab `'Domains'`
-resolved correctly.** Cycle 65's fix works exactly as designed. This client has
-121 domains of protection currently missing, and the write is purely additive —
-there is nothing to delete.
+THE HARD RULE, and it is not negotiable:
+Real email may be sent, and data deleted, ONLY for the `bidlowai` client.
+Every other client may be built on, tested and measured. Nothing leaves the
+building for them. This is enforced in `autonomous-actor-guard.ts`, not by
+your good intentions. If a task seems to need a real send for anyone else,
+that task is wrong - stop and write down why.
 
-**The tab resolution did not regress anyone.** All 29 other sources resolved to
-`'Sheet1'` because their first tab is genuinely called Sheet1. The change only
-ever moved the two sheets it was meant to.
+## FIRST, BEFORE ANY NEW WORK: CLEAR THE GREEN PULL REQUESTS
 
-## What was actually built, and why it was needed
+Do this at the START of every cycle, before you read the item below. It takes two
+minutes and it is the difference between a queue and a landfill.
 
-The PR sweep found nothing — `gh pr list --state open` returned `[]`.
+`gh pr list --state open` then, for every PR whose checks are GREEN: bring the
+branch up to date if branch protection requires it, and MERGE it. Greg counted
+SEVENTEEN open on 2026-08-28 and most were green - they had simply been opened and
+abandoned.
 
-Cycle 65 had already shipped the fix (PR #316, `1c002d1`, live). So the work
-was the row's other half: *"done means both real sheets synced and the true row
-counts reported"*. That could not be done, for a structural reason rather than
-a bug:
+**Understand WHY this happens, because it is structural and not laziness.** A
+cycle finishes its work, opens a PR, and ends. CI takes about five minutes. Nobody
+ever comes back. So every cycle adds one and removes none, for ever. The only
+place that can be fixed is here, at the start of the NEXT cycle.
 
-* **`SuppressionSyncAllResult` carried totals only.** `succeeded`, `failed`,
-  and one summed `rowsWritten` across all 34 sources. A working sheet vanished
-  into the total; a broken one appeared only as a sentence in `errors`. The
-  production run cited in QUEUE.md reported `rowsWritten: 50692` and **not one
-  row of it could be attributed to a client.** A blocklist is per-client by
-  definition, and "Pareto FM has no protection" is exactly what an aggregate
-  hides.
-* **There was no way to ask without writing.** The sync is delete-then-insert,
-  so measuring a blocklist and changing it were the same action. "How many rows
-  does Train Hugger's sheet have?" could only be answered by pressing the thing
-  that deletes Train Hugger's rows.
+Rules for the sweep:
+* RED PRs are not yours to force. Read the failure, and either fix it as part of
+  this cycle or say in your log why you left it.
+* Merge order matters: branch protection requires each branch to be current, so
+  every merge invalidates the next one. Take the docs and `.bidlow` record PRs
+  first - they cannot conflict with code - then the code ones, updating as you go.
+* `gh pr merge --auto` is better than update-then-race if auto-merge is allowed.
+* A DESTRUCTIVE migration is still Greg's. Additive is yours.
+* If a PR is genuinely not ready, say so in a comment on it, so the next cycle
+  does not have to work that out again.
 
-So: per-sheet outcomes (client, list, tab read, rows stored, rows written), and
-a `dryRun` that resolves, reads, normalises and runs the guard, then stops.
+## Before you touch anything, write these four things down
 
-It routes through `syncSuppressionSourceFromGoogle` rather than a separate
-preview function on purpose — **a preview that resolved the tab, deduped or
-applied the public-suffix rule differently would predict nothing.** It writes no
-rows, no `lastSyncedAt`, and no status columns either: asking a question must
-not leave the Sources screen looking like a failed scheduled sync.
+1. **The files you are going to change.** Name them. If you cannot yet, your
+   first job is to find out, and that reconnaissance IS the cycle.
+2. **The red-first test.** Name the test file and what it asserts. Watch it FAIL
+   before you make it pass. If the behaviour cannot go red first, say why, and
+   prove the test is capable of failing by deliberately breaking the code and
+   showing the red - that is this repository's established substitute.
+3. **What "done" looks like** for this item, in one sentence a non-coder can check.
+4. **What you must NOT touch.** Anything outside the files in (1).
 
-Then `dnc-sheet-dry-run.yml`, because the dry run could not be *called* — the
-route is bearer-gated on `PROCESS_QUEUE_SECRET`, which lives in GitHub Secrets
-and Azure config and is correctly not readable from a workstation. GitHub holds
-the secret; I never see it.
+## The rules that apply to every cycle
 
-## It had never fired
+* Do not stall on a question. Decide, record the decision and why, and continue.
+  If the decision is genuinely Greg's - money, a client relationship, or one of
+  the three named below - stop and write down the question instead. Note what
+  changed on 2026-08-27: "an irreversible one-way door" used to sit in this list
+  and was read as covering any production merge. It does not. Only (a), (b) and
+  (c) below stop you now.
+* Gates before you claim anything: `npm run lint`, `npm run typecheck`,
+  `npm test`. Show the real output. A gate you did not run is not met.
+* Commit and push when confident. Branch protection is ON, so it is
+  branch -> PR -> green CI -> merge. Never push straight to `main`.
+* **MERGING IS YOURS NOW. Greg decided this on 2026-08-27 and asked to stop being
+  the bottleneck.** With green CI, MERGE AND DEPLOY WITHOUT ASKING. Do not park a
+  finished, green PR and wait for him - a PR left open ROTS: #231 went from clean
+  to 36 commits behind and CONFLICTING in a single day, and cost a whole cycle to
+  rescue. Leaving it open is not the safe option, it is the expensive one.
+* Three things still stop and ask, and they are the ONLY three:
+  (a) a DESTRUCTIVE migration - anything that drops or alters an EXISTING table,
+      column or type, or backfills over existing rows. Creating a NEW table, a new
+      enum, or adding foreign keys to a new table is ADDITIVE and is yours to merge.
+      The test is: does dropping what this adds restore today's behaviour exactly?
+  (b) anything that touches or moves real CLIENT data.
+  (c) anything that causes an EMAIL TO BE SENT. That one is absolute and it is on
+      top of the hard rule about `bidlowai`, not instead of it.
+  If it is none of those three, you do not need him. Merge it.
+* If you deploy, verify the running commit by HASH against the DIRECT App
+  Service URL (`app-opensdoors-outreach-prod.azurewebsites.net`), never the
+  CDN-cached custom domain, and never liveness alone.
+* Production migrations are real. `PRODUCTION_PRISMA_MIGRATE` is true, so
+  merging a migration applies it to the live client database.
+* When you finish, update this item's row in `.bidlow/relay/QUEUE.md` to
+  `DONE 66`, or back to `TODO` with a note if you could not do it.
 
-Worth recording, because it is this project's signature defect and it caught me
-too. The fix deployed at 10:20Z and I nearly reported it as working on that
-basis. It had never run: the cron that drives it (`*/15 7-18`) **last executed
-at 01:52Z, before the deploy, and silently skipped every slot that morning.**
-Cycle 65 shipped a correct fix into a job that was not running. Deployed is not
-fired, and the only thing that separated those two here was dispatching it by
-hand and reading what came back.
+## THE STATUS CELL: SIX WORDS, AND ONLY SIX
 
-## Proving the tests could fail
+The status cell of a queue row MUST BEGIN with one of exactly these six:
 
-The dry-run and per-sheet assertions were **red-first**: fifteen watched failing
-before a line was written. The one that passed from the start is a regression
-pin on the totals the cron reads.
+    TODO    DONE    BLOCKED    PARTIAL    IN PROGRESS    WONTFIX
 
-The route and workflow guards were written after their code, so they were proven
-capable of failing **by sabotage**, which is this repo's established substitute:
+Markdown bold around it is fine - `| **DONE 66 - ...** |` reads correctly.
+Anything else does not. The relay reads QUEUE.md with a regex, and a status it
+cannot read STOPS THE WHOLE QUEUE, on purpose: refusing to guess is the right
+behaviour, and inventing is the one thing this relay will never do.
 
-| sabotage | test that went red |
-|---|---|
-| `=== true` relaxed to a truthy check | does not accept a merely-truthy dryRun |
-| unreadable body defaults to a dry run | treats an unreadable body as a REAL sync |
-| `{"dryRun":true}` becomes an input | the dry-run workflow cannot write, by construction |
-| a `schedule:` added | the dry-run workflow is manual, never scheduled |
-| checks `.ok` instead of `.dryRun` | refuses to report unless the SERVER confirms it |
-| CDN hostname swapped in | reads the direct App Service URL, not the CDN |
+This is not hypothetical, and it is not pedantry. Cycle 59 built, merged and
+DEPLOYED half of row 40 - good work, verified by commit hash - and then wrote its
+status as `PARTLY DONE 59`. Two words, one of them not on the list above. The
+row stopped parsing, the picker met it first, and the relay took nothing at all
+for seventy minutes while eleven jobs waited behind it. `SUPERSEDED` did exactly
+the same thing to row 38 the day before.
 
-Six for six, each turning its own test red and nothing else.
+So, plainly:
 
-That third row matters more than it looks. A dry run reached by *accident* would
-freeze every blocklist while every run stayed green — a quieter version of the
-outage this path exists to fix. Hence `=== true` and nothing else, and hence the
-workflow re-reading `dryRun` from the **response**: against a build predating
-this PR the identical request performs a real sync of all 34 sources, so "I
-asked for a dry run" is not evidence of having got one.
+* Finished it -> `DONE 66 - <what you did, and the proof>`
+* Did some of it -> `PARTIAL 66 - <what is done, what is left>`. PARTIAL
+  is TAKEN by the relay, so the next cycle picks the row straight back up. This is
+  the right answer whenever you shipped part of a row.
+* Could not start -> `TODO - <why>`
+* Never invent a seventh word.
+* Do NOT write the next NEXT.md. The watcher does that. One cycle, one item.
 
-## Gates
+## Assume the seventh exists
 
-lint **0** · typecheck **0** · **3008 tests across 304 files** · build exit 0 ·
-CI green on #319 (verify 4m40s, E2E 5m18s) · deploy `aa7540d` confirmed live by
-hash on `app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`, not the
-CDN domain and not liveness.
+QUEUE.md records six instances this week of something built, wired, reporting
+success, and never firing. It is the defect this project is worst at by a wide
+margin. Whatever you build this cycle, prove it FIRES - not that it exists.
 
-No schema change, no migration, and **no client data written by this cycle.**
 
-## New finding, queued as row 69
+## What it did
 
-**Cycle 65's fix pushed the sync over Google's read quota.** Every run returns
-`failedCount: 5` — a different five each time — with `Quota exceeded … 'Read
-requests per minute per user'`.
 
-Arithmetic, not a bug: resolving the real tab costs a `spreadsheets.get` per
-source, ~29 of 34 sources have no saved range, so a run went from ~34 reads to
-~63 against a 60/minute quota. **This hits the real 15-minute cron, not just the
-dry run** — they issue identical reads. A rotating 15% of clients' blocklists
-silently fail to update every run, which is the same defect class as the outage
-row 48 exists to fix.
-
-There is a sharper edge to it. When the *metadata* call is the one refused,
-`readSheetTabTitles` swallows the error and returns `[]`, which falls back to
-`Sheet1!A1:Z50000` — so a quota blip can silently aim a REPLACE at the wrong
-tab. The shrink guard catches the large ones. That is a backstop, not a reason
-to leave it.
-
-## What is left, and why I did not do it
-
-Neither sheet is synced, and both reasons are rules rather than difficulty.
-
-* **Train Hugger needs `confirmShrink`** — a human deciding that 82 blocked
-  organisations may be contacted again. That is Greg's under (b) and (c), and
-  it is not a close call: it is the single decision this product exists to make
-  carefully.
-* **Pareto FM is additive** (0 → 121, nothing deleted) and the 15-minute cron
-  performs it unattended by design. It needs no decision from anyone — only for
-  the cron to run. I did not press it by hand because it still writes a client's
-  data and (b) is a stop, not a preference.
-
-**Open questions for Greg: 2.**
-
-1. Train Hugger's whole-domain sheet has 291 domains; the system is blocking
-   373. Should the 82 that are in the system but not the sheet be unblocked
-   (confirm the shrink), or put back into the sheet? Nothing will change until
-   you say.
-2. Pareto FM has no whole-domain protection at all and its sheet holds 121.
-   Confirm you want that synced and I will let the next cron run take it, or
-   press it on your say-so.
