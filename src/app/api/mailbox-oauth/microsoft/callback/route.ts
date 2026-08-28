@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db";
 import { tryGetOpensDoorsStaff } from "@/server/auth/staff";
 import { exchangeMicrosoftMailboxAuthCode } from "@/server/mailbox/microsoft-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import { mailboxOAuthRedirectToClient } from "@/server/mailbox/mailbox-oauth-callback-shared";
+import { MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import {
+  MailboxOAuthAccountMismatchError,
+  mailboxOAuthRedirectToClient,
+} from "@/server/mailbox/mailbox-oauth-callback-shared";
 import { resolveMicrosoftMailboxOAuthConnection } from "@/server/mailbox/mailbox-oauth-microsoft-resolve";
 import { encryptMailboxCredentialJson } from "@/server/mailbox/oauth-crypto";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
@@ -69,10 +73,13 @@ export async function GET(req: Request) {
 
   const clientId = mailbox.clientId;
 
+  // Every error redirect from here down carries the mailbox id, so the page can
+  // read the row's real provider instead of assuming one.
   if (isMailboxRemovedFromWorkspace(mailbox)) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
       reason: "mailbox_removed",
+      oauth_mailbox_id: mailbox.id,
     });
   }
 
@@ -106,6 +113,7 @@ export async function GET(req: Request) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
       reason: "provider_denied",
+      oauth_mailbox_id: mailbox.id,
     });
   }
 
@@ -113,6 +121,7 @@ export async function GET(req: Request) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
       reason: "missing_code",
+      oauth_mailbox_id: mailbox.id,
     });
   }
 
@@ -191,6 +200,10 @@ export async function GET(req: Request) {
       oauth_mailbox_id: mailbox.id,
     });
   } catch (e) {
+    // See the Google callback: a wrong-account approval is a refusal the
+    // operator can act on, not a shrug, and it is reported as its own thing.
+    const mismatch =
+      e instanceof MailboxOAuthAccountMismatchError ? e : null;
     const msg = e instanceof Error ? e.message : "OAuth failed";
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
@@ -211,12 +224,17 @@ export async function GET(req: Request) {
       metadata: {
         kind: "mailbox_oauth_callback",
         provider: "MICROSOFT",
-        outcome: "failed",
+        outcome: mismatch ? "account_mismatch" : "failed",
+        ...(mismatch ? { oauthActorEmail: mismatch.approvedEmail } : {}),
       },
     });
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
-      reason: "callback_failed",
+      reason: mismatch
+        ? MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON
+        : "callback_failed",
+      oauth_mailbox_id: mailbox.id,
+      ...(mismatch ? { oauth_actor: mismatch.approvedEmail } : {}),
     });
   }
 }

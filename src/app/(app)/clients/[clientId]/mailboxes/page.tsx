@@ -1,17 +1,16 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { ClientOpenTrackingCard } from "@/components/clients/client-open-tracking-card";
 import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
   MicrosoftAdminConsentHelp,
   type AdminConsentEntry,
 } from "@/components/clients/microsoft-admin-consent-help";
-import {
-  ClientDeliverabilityHelp,
-  type ClientDeliverabilityEntry,
-  type MailboxProvider,
-} from "@/components/clients/client-deliverability-help";
+import { ClientDeliverabilityHelp } from "@/components/clients/client-deliverability-help";
+import { resolveClientHelpDomains } from "@/lib/clients/client-help-domains";
 import { buildMicrosoftAdminConsentUrl } from "@/server/mailbox/microsoft-mailbox-oauth";
 import {
   Card,
@@ -21,11 +20,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  mailboxOAuthBanner,
+  readMailboxOAuthSearchParams,
+} from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import {
   MAILBOXES_PAGE_INTRO,
   MAILBOXES_PAGE_SUBTITLE,
   MAILBOXES_WHAT_HAPPENS_BULLETS,
 } from "@/lib/mailboxes/mailbox-workspace-model";
 import { canAccessMailboxSetupTools } from "@/lib/mailboxes/mailbox-setup-access";
+import { deriveGoLinkDomain } from "@/lib/clients/client-link-domain";
+import { CLIENT_OPEN_TRACKING_SELECT } from "@/lib/tracking/client-open-tracking";
+import { isOpenTrackingPixelEnabled } from "@/lib/tracking/open-pixel";
 import { prisma } from "@/lib/db";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -44,20 +50,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
   const sp = searchParams ? await searchParams : {};
-  const mailboxOAuthResult =
-    typeof sp.mailbox_oauth === "string"
-      ? sp.mailbox_oauth
-      : Array.isArray(sp.mailbox_oauth)
-        ? sp.mailbox_oauth[0]
-        : undefined;
-  const mailboxOAuthReason =
-    typeof sp.reason === "string" ? sp.reason : Array.isArray(sp.reason) ? sp.reason[0] : undefined;
-  const oauthMailboxIdRaw =
-    typeof sp.oauth_mailbox_id === "string"
-      ? sp.oauth_mailbox_id
-      : Array.isArray(sp.oauth_mailbox_id)
-        ? sp.oauth_mailbox_id[0]
-        : undefined;
+  const oauthParams = readMailboxOAuthSearchParams(sp);
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
@@ -65,18 +58,21 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const showMailboxSetupTools = canAccessMailboxSetupTools(staff);
   const publicSiteOrigin = resolvePublicBaseUrl();
 
-  // Tenant-wide admin-consent helper: one entry per distinct Microsoft mailbox
-  // domain, so staff can hand the customer's IT admin a ready-made approval
-  // link when the owner hits Microsoft's "Need admin approval" screen.
+  /*
+    The same domain resolution the always-present Setup help tab uses, so the
+    two screens can never disagree about which domain the customer's IT should
+    be sent records for. Here we keep the mailbox-derived entries only: this
+    page is about the mailboxes in front of you, and the fallback-to-website
+    case belongs on the Setup help tab, which is linked below.
+  */
+  const help = resolveClientHelpDomains({
+    mailboxes: bundle.mailboxRows,
+    website: null,
+    defaultSenderEmail: null,
+  });
+
   const adminConsentEntries: AdminConsentEntry[] = bundle.oauthMicrosoftReady
-    ? Array.from(
-        new Set(
-          bundle.mailboxRows
-            .filter((m) => m.provider === "MICROSOFT")
-            .map((m) => m.email.split("@")[1]?.trim().toLowerCase())
-            .filter((d): d is string => Boolean(d)),
-        ),
-      )
+    ? help.microsoftDomains
         .map((domain) => {
           const url = buildMicrosoftAdminConsentUrl(domain);
           return url ? { domain, url } : null;
@@ -84,71 +80,51 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         .filter((e): e is AdminConsentEntry => e !== null)
     : [];
 
-  // Deliverability help — one entry per distinct sending domain, with how that
-  // domain sends (M365 / Google / mixed) so staff can hand the customer the
-  // right SPF/DKIM/DMARC steps (or a ready-made email) to get outreach into the
-  // inbox. No subdomain required — this is the standard auth the domain already
-  // needs. Provider is derived from the connected mailboxes on that domain.
-  const providerByDomain = new Map<string, MailboxProvider>();
-  for (const m of bundle.mailboxRows) {
-    const domain = m.email.split("@")[1]?.trim().toLowerCase();
-    if (!domain) continue;
-    const prov: MailboxProvider = m.provider === "GOOGLE" ? "GOOGLE" : "MICROSOFT";
-    const prev = providerByDomain.get(domain);
-    providerByDomain.set(domain, !prev || prev === prov ? prov : "MIXED");
-  }
-  const deliverabilityEntries: ClientDeliverabilityEntry[] = Array.from(
-    providerByDomain.entries(),
-  ).map(([domain, provider]) => ({ domain, provider }));
+  const deliverabilityEntries = help.deliverability;
 
-  /** Read-model overlays must not decide OAuth success — check persisted mailbox row. */
-  let oauthMailboxVerifiedConnected = false;
-  if (
-    oauthMailboxIdRaw &&
-    mailboxOAuthResult === "connected"
-  ) {
-    const persisted = await prisma.clientMailboxIdentity.findFirst({
-      where: { id: oauthMailboxIdRaw, clientId },
-      select: { connectionStatus: true },
-    });
-    oauthMailboxVerifiedConnected = persisted?.connectionStatus === "CONNECTED";
-  }
+  // Open tracking is per-client and OFF by default. Read the client's own
+  // setting rather than inferring anything from the environment: the env var is
+  // only a global backstop now, reported here so staff can see when it is what
+  // is actually holding tracking off.
+  const trackingClient = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: CLIENT_OPEN_TRACKING_SELECT,
+  });
+  const candidateGoDomains = Array.from(
+    new Set(
+      bundle.mailboxRows
+        .map((m) => deriveGoLinkDomain(m.email))
+        .filter((d): d is string => Boolean(d)),
+    ),
+  ).sort();
 
-  const mailboxOAuthErrorMessage = (() => {
-    if (mailboxOAuthResult !== "error") return null;
-    switch (mailboxOAuthReason) {
-      case "oauth_state_invalid":
-        return "Mailbox sign-in link expired or was skipped. Click Connect again.";
-      case "oauth_not_configured":
-        return "Microsoft mailbox OAuth is not configured for this deployment. Ask an administrator.";
-      case "missing_params":
-        return "Could not start Microsoft sign-in (missing parameters). Try Connect again.";
-      case "invalid_mailbox":
-        return "That mailbox row is invalid or does not belong to this workspace.";
-      case "mailbox_removed":
-        return "That mailbox was removed from this workspace. Restore it first.";
-      case "provider_denied":
-        return "Microsoft sign-in was cancelled or denied in the provider window.";
-      case "callback_failed":
-        return "Microsoft sign-in did not finish. Check the mailbox row for details and try Connect again.";
-      default:
-        return "Mailbox sign-in did not complete. Open the row below and try Connect again, or sign in from a browser where you can reach Microsoft or Google.";
-    }
-  })();
+  /*
+    The banner after an OAuth round-trip.
 
-  const mailboxOAuthSuccessBanner = (() => {
-    if (mailboxOAuthResult !== "connected") return null;
-    if (oauthMailboxIdRaw && !oauthMailboxVerifiedConnected) {
-      return {
-        type: "err" as const,
-        text: "Microsoft returned, but this mailbox is still not connected. Check the row below or click Connect again.",
-      };
-    }
-    return {
-      type: "ok" as const,
-      text: "Mailbox connected. Connection status was updated.",
-    };
-  })();
+    Two facts must come from the database and not from the URL: whether the
+    mailbox really connected (a read-model overlay must not decide success), and
+    which provider it is. The provider one is why this banner spent a year
+    telling people connecting a Google mailbox to check Microsoft — the message
+    was written when Microsoft was the only provider, and the row was never
+    asked. The callbacks now put `oauth_mailbox_id` on every redirect, and it is
+    re-read here, scoped to this workspace.
+  */
+  const oauthRow = oauthParams.mailboxId
+    ? await prisma.clientMailboxIdentity.findFirst({
+        where: { id: oauthParams.mailboxId, clientId },
+        select: { connectionStatus: true, provider: true, email: true },
+      })
+    : null;
+
+  const mailboxOAuthResultBanner = mailboxOAuthBanner({
+    result: oauthParams.result,
+    reason: oauthParams.reason,
+    provider: oauthRow?.provider ?? null,
+    mailboxEmail: oauthRow?.email ?? null,
+    approvedEmail: oauthParams.approvedEmail,
+    verifiedConnected: oauthRow?.connectionStatus === "CONNECTED",
+    hasMailboxId: Boolean(oauthParams.mailboxId),
+  });
 
   return (
     <div className="space-y-6">
@@ -200,15 +176,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
                   ? bundle.brief.emailSignature
                   : null,
             }}
-            mailboxOAuthBanner={
-              mailboxOAuthSuccessBanner ??
-              (mailboxOAuthResult === "error"
-                ? {
-                    type: "err" as const,
-                    text: mailboxOAuthErrorMessage ?? "Mailbox sign-in failed.",
-                  }
-                : null)
-            }
+            mailboxOAuthBanner={mailboxOAuthResultBanner}
           />
         </CardContent>
       </Card>
@@ -231,7 +199,16 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           What connecting a mailbox does, how to get a Microsoft admin to approve
           it, the SPF/DKIM/DMARC steps for each sending domain, and the
           verification-send tool. Open this when you are setting a mailbox up or
-          something is not working.
+          something is not working. The same instructions, for this client, are
+          always on the{" "}
+          <Link
+            href={`/clients/${client.id}/setup-help`}
+            prefetch={false}
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Setup help
+          </Link>{" "}
+          tab — including before any mailbox is connected.
         </p>
         <div className="mt-4 space-y-6">
           <Card className="border-border/80 shadow-sm">
@@ -257,6 +234,22 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
           {deliverabilityEntries.length > 0 ? (
             <ClientDeliverabilityHelp entries={deliverabilityEntries} />
           ) : null}
+
+          {/*
+            Shown to every staff member, not just setup-tool holders: whether a
+            customer's emails are tracked is something anyone supporting that
+            customer may be asked. The buttons are driven by canMutate and the
+            server action re-checks permission regardless.
+          */}
+          <ClientOpenTrackingCard
+            clientId={client.id}
+            canMutate={bundle.canMutateMailboxes}
+            linkDomain={trackingClient?.outreachLinkDomain ?? null}
+            linkDomainVerified={trackingClient?.outreachLinkDomainVerifiedAt != null}
+            trackingEnabled={trackingClient?.openTrackingEnabledAt != null}
+            candidateGoDomains={candidateGoDomains}
+            globalKillSwitchEngaged={!isOpenTrackingPixelEnabled()}
+          />
 
           {showMailboxSetupTools ? (
             <InternalProofSendCard

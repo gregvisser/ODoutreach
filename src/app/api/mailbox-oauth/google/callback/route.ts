@@ -6,7 +6,11 @@ import {
   fetchGoogleUserEmailAndSub,
 } from "@/server/mailbox/google-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import { mailboxOAuthRedirectToClient } from "@/server/mailbox/mailbox-oauth-callback-shared";
+import { MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import {
+  MailboxOAuthAccountMismatchError,
+  mailboxOAuthRedirectToClient,
+} from "@/server/mailbox/mailbox-oauth-callback-shared";
 import { verifyGoogleMailboxOAuthForWorkspaceRow } from "@/server/mailbox/mailbox-oauth-google-verify";
 import { encryptMailboxCredentialJson } from "@/server/mailbox/oauth-crypto";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
@@ -37,10 +41,14 @@ export async function GET(req: Request) {
 
   const clientId = mailbox.clientId;
 
+  // Every error redirect from here down carries the mailbox id. The page reads
+  // the row's provider from it, so the banner can say Google when it means
+  // Google — until 2026-08-28 it just assumed Microsoft.
   if (isMailboxRemovedFromWorkspace(mailbox)) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
       reason: "mailbox_removed",
+      oauth_mailbox_id: mailbox.id,
     });
   }
 
@@ -74,6 +82,7 @@ export async function GET(req: Request) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
       reason: "provider_denied",
+      oauth_mailbox_id: mailbox.id,
     });
   }
 
@@ -81,6 +90,7 @@ export async function GET(req: Request) {
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
       reason: "missing_code",
+      oauth_mailbox_id: mailbox.id,
     });
   }
 
@@ -160,6 +170,12 @@ export async function GET(req: Request) {
       oauth_mailbox_id: mailbox.id,
     });
   } catch (e) {
+    // Approving as the wrong Google account is not a generic failure: the guard
+    // refused on purpose and the operator can fix it themselves. It gets its own
+    // reason code and carries the approving address, so the page can name both
+    // it and the row. Everything else stays `callback_failed`.
+    const mismatch =
+      e instanceof MailboxOAuthAccountMismatchError ? e : null;
     const msg = e instanceof Error ? e.message : "OAuth failed";
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
@@ -180,12 +196,17 @@ export async function GET(req: Request) {
       metadata: {
         kind: "mailbox_oauth_callback",
         provider: "GOOGLE",
-        outcome: "failed",
+        outcome: mismatch ? "account_mismatch" : "failed",
+        ...(mismatch ? { oauthActorEmail: mismatch.approvedEmail } : {}),
       },
     });
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
-      reason: "callback_failed",
+      reason: mismatch
+        ? MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON
+        : "callback_failed",
+      oauth_mailbox_id: mailbox.id,
+      ...(mismatch ? { oauth_actor: mismatch.approvedEmail } : {}),
     });
   }
 }

@@ -1,6 +1,83 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 47) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 49) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 49, queue item 34. The flaky locator was React streaming, and the evidence file was hiding it.
+
+Queue row 34 is `DONE 49`. Merged as **`be2dc01`** (PR #296). **Deployed and
+verified by hash on the DIRECT App Service URL** - `/api/build-info` returns
+`be2dc01250da66d4a4a99b82ca062daec7951241`, health `database: ok`. **No app code
+changed**: two e2e specs, one new e2e spec, `ci.yml`, `.bidlow/FROZEN.json`,
+the queue row. No schema, no migration, no send path, no client data, nothing
+that sends an email.
+
+### What was actually built
+
+**The row's own premise was wrong and was corrected in place.** It said "1
+occurrence in 2 runs - do not spend a cycle on this unless it returns". Before
+touching anything I read the E2E job log of **all 68 CI runs** from the first
+sighting (`33031542852`) to that morning (`33074979216`): **10 runs flaky, 14
+strict-mode violations, every one the same class**, on three different strings
+(`No aged queue rows.` x5, `Use Connect on the mailbox row, then return here.`
+x5, `Routing` x4). It had already returned nine times.
+
+**Cause, reproduced not assumed.** Not the outbound-detail page rendering twice,
+and not prefetch. React out-of-order streaming, on EVERY streamed page: the
+finished page is delivered inside a `<div hidden id="S:n">` at the END of
+`<body>` and moved into `<main>` a frame later, so for that frame the document
+holds two identical copies and an unscoped `getByText` (document-wide, strict)
+sees both. Proven three ways - the raw HTML response carries the marker twice; a
+`MutationObserver` installed before app JS caught the duplicate on **22 of 24**
+local loads; the second copy's ancestor chain is `body > div#S:0[hidden] > ...`,
+outside `main`. The parked copy is `hidden` and gone next frame, so **no user
+ever sees it. This is a TEST defect, not a product defect.**
+
+Fix: page-content assertions scoped to `main`, which the parked copy is outside
+of - **not** `.first()`, which silences the ambiguity without saying which
+element it meant. New frozen spec `e2e/streamed-content-single-copy.spec.ts`
+pins the invariant that `main` holds exactly ONE copy, so a page that really
+does render twice fails loudly.
+
+**A/B on the real code:** pre-fix specs at `--repeat-each=20` = 8 failures / 220
+runs, reproducing all three CI strings locally; fixed specs at the same repeat
+count = **280/280 green**. The new spec proved capable of failing by flipping it
+to `toHaveCount(2)` - red on all three.
+
+**Second finding - why it stayed invisible for three weeks.** CI's
+`evidence-e2e.json` DROPPED `stats.flaky`, so all 10 flaky runs recorded
+`passed: true, failed: 0` and the only trace was a job log nobody reads. `ci.yml`
+now records `flaky` and emits a `::warning::` + job-summary line when non-zero.
+Proved it fires twice: the step's own extracted script against synthetic input
+(flaky=2 -> warning + summary, flaky=0 -> silent, no results file -> still fails
+closed), and the real artefact from the PR run, which now reads
+`"flaky": 0, "count": 64`.
+
+### Decisions worth knowing
+
+* **`e2e/cross-tenant.spec.ts` deliberately UNTOUCHED.** Its `toHaveCount(0)`
+  leak assertions are document-wide ON PURPOSE - a leak in the parked hidden
+  copy is still a leak. Scoping them to `main` would have weakened the tenant
+  isolation tests while looking like a tidy-up.
+* `e2e/training-screenshots.spec.ts` left alone (CAPTURE-gated, never runs in
+  CI) and the `brief-save` toast left unscoped (portalled to `<body>`, so `main`
+  would be the wrong scope).
+* **Flaky WARNS, it does not fail the build.** A hard fail would turn ordinary
+  runner noise into red `main`, which queue row 35 says is already a problem.
+  That is a policy call and is the one open question left for Greg.
+* Two frozen files changed, both with amendment entries in `.bidlow/FROZEN.json`
+  (`e2e/journeys.spec.ts`, `e2e/mailboxes-table-first.spec.ts`). The freeze gate
+  BLOCKED the first edit and the amendment was recorded rather than routed
+  around. No one-way door touched.
+
+### Left for the next session
+
+* Row 34 is closed. **Row 35 (intermittent CI red from PowerShell test
+  timeouts) is still open** and is the remaining CI-trust item.
+* Nothing here is half-done. The local e2e Postgres on :5434 was recreated from
+  scratch during this cycle (it held a superseded `20260826120000_reply_claims`
+  migration from an abandoned branch and refused to migrate); that is a
+  throwaway database, not client data.
+* Nothing discovered contradicts `.bidlow/PROJECT.json`.
 
 ## Session 2026-08-27 - Relay cycle 47, queue item 8. The ASK gate nothing was reading, and an access level we had not earned.
 
@@ -4015,3 +4092,88 @@ The one rule was not exercised - nothing left the building for any client.
 2. **Queue item 22** - paced sending, batches of 4, per client. Next TODO row.
 3. **Queue item 28** - the two failing DNC sheet syncs; PR #250's CI run
    `33017266904` FAILED. Start by reading that run, not by rebuilding.
+
+---
+
+# Cycle 51: row 35 landed, row 36 measured and deliberately not fixed - 2026-08-27
+
+## What actually changed
+
+**`origin/main` moved `be2dc01` -> `69a544a`.** That is the only thing this
+cycle changed about the product, and it changed no product code: `69a544a` is
+the squash of PR #298 (cycle 50's work), 3 relay test files, +204 lines.
+
+Cycle 50 wrote that fix and then left it sitting in an open PR. Cycle 51 read
+the CI verdict (`E2E pass`, `verify pass`, run `33080546249`), confirmed
+`MERGEABLE`/`CLEAN` and that the branch was not behind, and merged it.
+
+**Verification note worth keeping.** The merge was a SQUASH, so `7fc8b72` is
+deliberately not an ancestor of `main` and `git branch -r --contains` reports
+nothing - which looks exactly like a failed merge. Verify squashed work by
+CONTENT out of `origin/main`, not by ancestry.
+
+## The measurement (queue row 36) - do not skip this before touching the 429
+
+* The 429 was **never on `main`**. `a63c2f4` is the tip of `docs/state-cycle-49`;
+  **PR #297 is still OPEN**. Every E2E run on `main` that day passed.
+* The failure is real and hard: run `33079083594`, 2 failed / 62 passed /
+  0 flaky, red on all three attempts.
+* It is **not** a 429 on the page. Page status was 200. The failing assertion is
+  the console one at `e2e/screen-walk.spec.ts:210`. The 429 is a **cross-origin
+  sub-resource**.
+* **There is no in-app rate limiter anywhere in this codebase.** Every `429` in
+  `src/` is an INBOUND classifier for Gmail/Graph throttling on the send side.
+* Named source: **`src/instrumentation-client.ts:8`** - the Sentry DSN is a
+  HARDCODED LITERAL, not an env var, with `tracesSampleRate: 1`. `e2e/env.ts`
+  blanks every provider credential but CANNOT blank this one.
+* **No code change can cause or cure it.** The failing branch differs from
+  `main` by one markdown file and nothing under `src/` or `e2e/`. Same code
+  passed 13:43, failed 13:51, passed 14:09.
+* Does **not** reproduce on `main` at its real HEAD: 30/30 locally.
+* **Not proven:** the 429's URL was never captured. Sentry is identified by
+  elimination plus config, not by reading the request line.
+
+## Half-done, and exactly where
+
+1. **QUEUE.md rows 35/36 and `.bidlow/relay/log/cycle-051.md` are WRITTEN TO
+   DISK BUT NOT COMMITTED.** A stale `.git/index.lock` (0 bytes, 16:25, no
+   `git.exe` running) blocks every index operation, and removing it was denied
+   by the permission mode. Delete that lock, then reset branch
+   `fix/relay-powershell-test-timeouts` onto `69a544a`, commit those two files,
+   push, PR. **Nothing about the merge depends on this - `69a544a` is already on
+   `origin/main`.**
+2. **PR #297 (`docs/state-cycle-49`) is still open** and it also appends to
+   `.bidlow/STATE.md`. This cycle-51 section will therefore CONFLICT with it.
+   Land #297 first, or expect to resolve STATE.md by keeping both sections.
+
+## Decisions
+
+* **Merged #298 without asking.** None of the three stop conditions applied - no
+  migration, no client data, no email. Merging was the agent's call.
+* **Measured row 36 and deliberately did NOT fix it.** No limit raised, no retry
+  added, nothing marked flaky. The cause was assumed, not known, and the brief
+  was explicit that reconnaissance was the whole cycle.
+* No one-way door was opened.
+
+## Writes to production
+
+None. No send, no delete, no schema change, no migration, no Azure setting
+touched. Nothing left the building for any client.
+
+## Nothing contradicts PROJECT.json
+
+The hard rule was not exercised - no real email, no data deleted, for anyone.
+
+## Pick up first, next session
+
+1. **Free the git index lock and commit the two doc files** (see Half-done 1).
+2. **Upload the screen-walk artefacts in CI before touching the 429.**
+   `e2e/screen-walk.spec.ts` ALREADY records failed requests with full URLs into
+   `e2e/.artifacts/screen-walk/`, and `ci.yml` never uploads that directory - so
+   the one file that would name the 429's URL is written on the runner and
+   thrown away. That is a one-line workflow change and it turns row 36 from
+   deduction into evidence.
+3. **Then decide the Sentry question (OPEN, Greg's call):** move the DSN behind
+   an env var so e2e runs with it off? Recommended - and not only to fix the
+   test. A third party currently receives 100 percent-sampled traces of every
+   CI run.
