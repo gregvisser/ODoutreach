@@ -39,8 +39,23 @@ const blockerSchema = z
      * hash, a test file, a CI run - something a reader can go and check.
      */
     evidence: z.string().nullable(),
+    /**
+     * The date a blocker was closed, where it is worth knowing. Optional: most
+     * blockers are closed by a commit and the commit carries its own date. It
+     * earns its place on the ones that are closed by something OUTSIDE this
+     * repository - a signed DPA, a vendor setting - where the date is the only
+     * thing recording when the obligation was actually met.
+     */
+    closed_on: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "closed_on must be an ISO date")
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine((b) => !(b.status === "OPEN" && b.closed_on !== undefined), {
+    message: "an OPEN blocker cannot carry a closing date",
+    path: ["closed_on"],
+  });
 
 export const gradeRecordSchema = z
   .object({

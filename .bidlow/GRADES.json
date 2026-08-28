@@ -100,8 +100,9 @@
         "id": "CR-05",
         "summary": "Art.28 data-processing agreements. Researched 2026-08-27 from each vendor's published DPA: RESEND binds automatically via its Terms of Service, including EU and UK SCCs (resend.com/legal/dpa) - nothing to do. ROCKETREACH forms part of its Terms of Service with no separate signature (rocketreach.co/dpa), though note the role split - it is an INDEPENDENT CONTROLLER for the prospect records it sells and a processor only for data we supply. SENTRY is the one real action and it is self-serve: Greg accepts it under Legal & Compliance in the Sentry org settings. Attempted 2026-08-27 at approximately 10:00 UTC and blocked by a Sentry platform outage, not by inaction. Record the who-and-when Sentry's page shows afterwards, not a bare assertion.",
         "owner": "greg",
-        "status": "OPEN",
-        "evidence": null
+        "status": "CLOSED",
+        "evidence": "All three Art.28 processor agreements are now in place, each with its own instrument named. SENTRY: Data Processing Amendment VERSION 5.1.0 SIGNED 28 AUGUST 2026, accepted by Greg Visser in the Sentry organisation `bidlowai` (org id 4511767741071360) and shown with a green tick at https://bidlowai.sentry.io/settings/legal/ - observed on screen at the moment of signing, not reported. Sentry's DPA is not automatic: v5.1.0 binds only 'the party that electronically accepts or otherwise agrees or opts-in', which is why this one needed a human. Also confirmed on that page: the organisation's Data Storage Region is EUROPEAN UNION, and 'Use of aggregated identifying data' is OFF. RESEND: no signature required - the DPA is incorporated into the Terms of Service and 'shall become legally binding upon Customer entering into the Agreement', with EU and UK SCCs included and the parties 'deemed to have signed the EU SCCs' (resend.com/legal/dpa, last updated 31 December 2025). ROCKETREACH: no signature required - the DPA 'forms part of the RocketReach Terms of Service'; SCCs and UK SCCs are the transfer instrument. NOTE the role split, which matters for this product: both parties are INDEPENDENT CONTROLLERS for RocketReach's own prospect data, and RocketReach is a processor only for data we supply. Their page publishes no effective date - recorded as a gap rather than invented. NOT LEGAL ADVICE: this records what each vendor publishes and what was signed, not a legal opinion.",
+        "closed_on": "2026-08-28"
       },
       {
         "id": "CR-01",
@@ -144,9 +145,8 @@
     "note": "PROVE DOES NOT CLOSE. The instruction was to re-grade and record, and closing PROVE was conditional on both grades reaching 8. Customer-ready reached 7.4. Closing every named blocker was necessary for an 8 and was not sufficient - the walk found three things nobody had recorded before (CR-06, CR-07, CR-08), which is exactly what walking is for and exactly what counting closed rows would have missed. The distance to 8 is 0.6 and it is cheap: CR-06 is two commented-out lines in two files, CR-07 is two documents, CR-08 is one gated field. Together those three would move dimensions 8, 10 and 3 and land customer-ready at roughly 8.1."
   },
 
-  "open_questions": 2,
+  "open_questions": 1,
   "questions_for_greg": [
-    "Accept the Sentry Art.28 DPA when Sentry is back up (CR-05) - it is one self-serve acceptance under Legal & Compliance and it is the only DPA that needs an action.",
     "Whose words go in the terms of service and privacy policy (CR-07)? The pages can be built, but what they promise a client about data retention and sub-processors is a commercial commitment, not an engineering one."
   ]
 }
