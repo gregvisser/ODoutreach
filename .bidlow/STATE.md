@@ -4310,3 +4310,142 @@ The hard rule was not exercised - no real email, no data deleted, for anyone.
    an env var so e2e runs with it off? Recommended - and not only to fix the
    test. A third party currently receives 100 percent-sampled traces of every
    CI run.
+
+---
+
+# Cycle 65 — row 48: the do-not-contact sheets read the wrong tab, and the replace never refused
+
+**2026-08-28.** Two PRs, both merged. Code: **#316 → `1c002d1`**, deployed and
+verified by hash on `app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`.
+Record: **#317 → `f449214`**. Zero open PRs at start and at end.
+
+## What was actually changed
+
+Two live client blocklists were broken by one line: with no `sheetRange` saved,
+`suppression-sync.ts` asked Google for `Sheet1!A1:Z50000`, and neither sheet has
+ever had a tab called Sheet1. Pareto FM had **no whole-domain protection at
+all**; Train Hugger was serving **373 stale rows**.
+
+1. **Tab resolution** — new `src/server/integrations/google-sheets/sheet-range.ts`.
+   With no saved range, read the sheet's FIRST tab via the already-existing
+   `readSheetTabTitles` (which was only ever called in the catch block, to write
+   a nicer error — the product diagnosed its own outage and threw the diagnosis
+   away). Explicit range still wins. The lookup cannot throw, so unreadable
+   metadata falls back to the old default and is never worse than today. Titles
+   are A1-quoted, so `Company Names` cannot break the range.
+2. **The replace now REFUSES** — new `src/lib/suppression/replace-guard.ts`,
+   called INSIDE the transaction, after the count and BEFORE the `deleteMany`.
+   Refuses a sync that would empty a non-empty list, or remove more than 10% of
+   one (absolute floor of 5). Nothing deleted, `lastSyncedAt` not stamped,
+   reason recorded on the source row and in the cron's error list.
+   `suppressionShrinkWarning` still exists but it reported AFTER the delete —
+   a receipt, not a guard.
+3. **An escape hatch, because a guard with no way out is a new outage** —
+   `confirmShrink` through the action, surfaced as a "Remove them anyway (N)"
+   button that does not exist until the guard has fired, inside the already
+   owner-gated controls. **The scheduled re-sync never sets it.**
+
+Gates: lint 0 · typecheck 0 · **2982 tests / 301 files** · build exit 0 · CI
+green · deploy verified by hash. Six behaviours watched RED before any fix was
+written; five neighbouring assertions were green from the start and are
+regression pins, recorded as such so nobody counts them as new work.
+
+## Half-done, and exactly where
+
+**The two real syncs. That is the whole remainder.** Row 48 is `PARTIAL 65`.
+
+The verification is already wired and needs nobody to press anything: the
+replies cron calls `/api/internal/suppression/sync-all` and `cat`s the entire
+response body into its workflow log. The **before** picture, read from the run
+of `2026-08-28T01:54:31Z`:
+
+```json
+{"sources":34,"succeeded":32,"failed":2,"rowsWritten":50692,"ok":false,"failedCount":2}
+  Train Hugger - Whole domains: ... This Sheet's tabs are: "Domains", "Company Names".
+  Pareto FM    - Whole domains: ... This Sheet's tabs are: "Domains".
+```
+
+**Next session: read that same log line on the first run after `1c002d1`.** It
+must show `failed:0` with real row counts for both, OR Train Hugger REFUSING
+with the new reason — which is also a pass, and is the safe direction. Either
+outcome closes row 48. No further code is expected.
+
+The cron had NOT fired by the end of this session: last run `01:52:54Z` against
+a `*/15 7-18 * * 1-5` schedule, i.e. an 8-hour gap on a 15-minute schedule.
+That drift is far worse than the 57–85% already on record.
+
+## Decisions
+
+* **Did NOT press Sync on Pareto FM or Train Hugger, and did NOT
+  `workflow_dispatch` the cron.** Both write to — and for Train Hugger
+  `deleteMany` — real client data. The hard rule reserves deletion to
+  `bidlowai`; stop-and-ask (b) names client data outright. Dispatching the
+  workflow is the same button as pressing Sync, so it was refused on the same
+  grounds. **This is why the row is PARTIAL and not DONE.**
+* **Merged and deployed both PRs without asking.** None of the three stop
+  conditions applied — no migration, no client data touched by the merge
+  itself, no email sent.
+* **Added the `confirmShrink` escape hatch on my own judgement**, beyond the
+  brief. Without it, a client who legitimately rebuilds their sheet is blocked
+  for ever with no in-product recovery — shipping a guard with no exit is
+  shipping a new outage.
+* **Threshold chosen: 10% with a floor of 5.** Zero is refused on its own terms
+  rather than by the percentage, because zero is the signature of a read that
+  went wrong far more often than of a client deciding nobody is blocked.
+* **Known limit written into the module docstring, not left to be discovered:**
+  the guard compares COUNTS, so a same-size swap of 373 entries for 373
+  different ones would pass. Catching that needs the previous rows diffed.
+* No one-way door was opened. No schema change, no migration, nothing on the
+  send path.
+
+## OPEN QUESTION FOR GREG — genuinely his, and it blocks closing row 48 early
+
+**May a relay cycle trigger the do-not-contact sync for a non-`bidlowai`
+client?** It deletes rows even when the net effect is a more correct list.
+Today's answer is no, and the work is parked on that. If the answer is yes, a
+single `gh workflow run sync-replies.yml` closes the row in five minutes.
+
+## Two corrections made this session
+
+1. **Row 48's brief was wrong about the UI.** "Add the `sheetRange` input the UI
+   has never rendered" — **it already exists**, works, is seeded from what is
+   saved, and saves without re-pasting the URL
+   (`client-suppression-inline-card.tsx`, `sup-email-range` / `sup-domain-range`,
+   pinned by `client-suppression-range-wiring.test.ts`). The brief grepped for
+   `name="sheetRange"`, a `<form>` attribute, on a controlled React component
+   using `id=`/`value=`. QUEUE.md and
+   `C:\Bidlowbusiness\_odoutreach-handover\DNC-SHEET-RANGE-FIX.md` both
+   corrected. **This also means "he tried the spreadsheet workaround and it did
+   not stick" is NOT explained by a missing field.**
+2. **The log-destroying watcher is STILL RUNNING** — third cycle in a row.
+   Start-of-cycle `git status` showed `cycle-064.md` modified: the real 240-line
+   log cycle 64 committed to `main` had been replaced on disk by the same
+   167-line `# Cycle 64 - finished / Work happened...` stub, one cycle AFTER the
+   fix merged. Restored with `git checkout HEAD --` before anything was
+   committed. The running PowerShell process has held the pre-fix script in
+   memory since before `3d7fef6`. **A RESTART IS THE ENTIRE REMAINING FIX AND NO
+   RELAY CYCLE CAN RESTART THE PROCESS THAT IS RUNNING IT.** Confirmation added
+   to row 52. Every cycle currently has to remember this restore by hand, and
+   the one that forgets commits the stub over the real log permanently.
+
+## Writes to production
+
+The deploy of `1c002d1`, and nothing else. **No send, no delete, no schema
+change, no migration, no Azure setting touched.** Nothing left the building for
+any client.
+
+## Nothing contradicts PROJECT.json
+
+The hard rule was exercised and **held**: the brief's own definition of "done"
+required deleting a non-`bidlowai` client's rows, and that is precisely what was
+refused. The rule cost this row its DONE, which is the rule working.
+
+## Pick up first, next session
+
+1. **Read the replies-cron log line** for the first run after `1c002d1` and
+   close row 48 (`PARTIAL 65` → `DONE`), or record the refusal if the guard
+   fired. This is a read, not a build.
+2. **Answer the open question above** if Greg is available — it is the only
+   thing that could have closed row 48 today.
+3. **Ask Greg to restart the relay watcher.** Nothing else fixes row 52, and
+   every further cycle risks losing a real log.
