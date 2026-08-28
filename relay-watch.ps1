@@ -190,7 +190,7 @@ function Read-Status {
         return [pscustomobject]@{ cycle = 0; lastOutcome = "never run"; updated = $null; lastSelfQueued = -1 }
     }
     try {
-        $s = Get-Content $StatusFile -Raw | ConvertFrom-Json
+        $s = Get-Content $StatusFile -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($null -eq $s.lastSelfQueued) {
             $s | Add-Member -NotePropertyName lastSelfQueued -NotePropertyValue -1 -Force
         }
@@ -758,6 +758,30 @@ function Get-QueueRowMatch([string]$line) {
 # the distinction the lost cycle needed and did not have.
 $QueueRowShapePattern = '^\s*\|\s*(\d+)\s*\|.*\|\s*$'
 
+# ===========================================================================
+# THE SEVENTH WORD
+#
+# 2026-08-28. It cost seventy minutes with eleven jobs behind it. Cycle 59
+# built, merged and DEPLOYED half of row 40 - genuinely good work, verified by
+# commit hash - and then wrote its status as "PARTLY DONE 59". Two words; one of
+# them is not one of the six the parser knows. The row stopped parsing, the
+# picker met it first, and the relay took nothing at all until a human fixed one
+# word by hand. Row 38 had done the same the day before with "SUPERSEDED".
+#
+# Refusing to GUESS at an unreadable row is correct and it stays. What follows is
+# a much narrower permission: the relay may repair the ONE row it set to
+# "IN PROGRESS <this cycle>" ITSELF, because it knows precisely which row that
+# was and it knows a cycle has just written to it.
+#
+# It interprets NOTHING. Every character the cycle wrote is kept, in order, after
+# the marker. All the relay does is put a readable status word in FRONT and give
+# the row back as TODO. TODO is the fail-safe reading: in the worst case the next
+# cycle reads "already shipped and live" in the preserved text and closes the row
+# in two minutes. A stall costs hours; a redundant cycle costs one.
+# ===========================================================================
+$QueueRepairMarker   = '[relay repaired the status word]'
+$script:LastTakenRow = $null
+
 # $Path is a parameter, defaulting to the real queue, ONLY so the self-test can
 # point the parser at a fixture. The loop never passes it. A parser that can only
 # be run against the live file is a parser that never gets tested until the night
@@ -765,7 +789,15 @@ $QueueRowShapePattern = '^\s*\|\s*(\d+)\s*\|.*\|\s*$'
 function Get-QueueRows([string]$Path = $QueueFile) {
     if (-not (Test-Path $Path)) { return @() }
     $rows = New-Object System.Collections.Generic.List[object]
-    $lines = Get-Content $Path
+    # -Encoding UTF8 is NOT decoration. Windows PowerShell 5.1 - the host
+    # relay-start.cmd actually uses - defaults Get-Content to the system ANSI
+    # codepage, so a UTF-8 file comes back as cp1252 gibberish. Paired with the
+    # Set-Content in Set-QueueRowStatus, which writes UTF-8, that is a
+    # read-as-1252 / write-as-UTF-8 round trip over the WHOLE queue on EVERY
+    # status update, and it adds one more layer of corruption per cycle, for
+    # ever. It is why the heading of QUEUE.md now reads "queue a EUR ..." where
+    # an em dash used to be. Do not remove it.
+    $lines = Get-Content $Path -Encoding UTF8
     for ($i = 0; $i -lt $lines.Count; $i++) {
         # [string] strips the PSPath / PSDrive / PSProvider NoteProperties that
         # Windows PowerShell 5.1 - the host relay-start.cmd actually uses - hangs
@@ -807,7 +839,9 @@ function Get-QueueRows([string]$Path = $QueueFile) {
 }
 
 function Set-QueueRowStatus($number, $newStatus) {
-    $lines = Get-Content $QueueFile
+    # See Get-QueueRows. This is the write half of the same round trip, and the
+    # more damaging half, because this one rewrites the file.
+    $lines = Get-Content $QueueFile -Encoding UTF8
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $m = Get-QueueRowMatch ([string]$lines[$i])
         if (-not $m.Success) { continue }
@@ -823,6 +857,46 @@ function Set-QueueRowStatus($number, $newStatus) {
         return $true
     }
     return $false
+}
+
+# See "THE SEVENTH WORD" above. Set-QueueRowStatus deliberately refuses to touch
+# a row it cannot parse; this is the one exception, and it is why it is a
+# separate function rather than a flag on that one.
+function Repair-UnreadableQueueRow($number, $cycle) {
+    $lines = Get-Content $QueueFile -Encoding UTF8
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = [string]$lines[$i]
+        if ((Get-QueueRowMatch $line).Success) { continue }
+        $shape = [regex]::Match($line, $QueueRowShapePattern)
+        if (-not $shape.Success) { continue }
+        if ($shape.Groups[1].Value.Trim() -ne "$number") { continue }
+
+        # The status cell of a shaped row is everything after the LAST " | ".
+        # Same anchor the reader uses, so an inner pipe in the item text cannot
+        # move it. If the line does not have that shape, nothing is touched.
+        $trimmed = $line.TrimEnd()
+        if (-not $trimmed.EndsWith('|')) { return $null }
+        $body = $trimmed.Substring(0, $trimmed.Length - 1)
+        $cut  = $body.LastIndexOf(' | ')
+        if ($cut -lt 0) { return $null }
+        $head = $body.Substring(0, $cut + 2)
+        $cell = $body.Substring($cut + 3).Trim()
+        if ($cell.Length -eq 0) { return $null }
+
+        # Bounded on purpose. A row already carrying two repairs is not repaired
+        # a third time - at that point the LOOP is the fault, and that is Greg's
+        # to see rather than the relay's to paper over.
+        $prior = ([regex]::Matches($cell, [regex]::Escape($QueueRepairMarker))).Count
+        if ($prior -ge 2) {
+            return [pscustomobject]@{ Repaired = $false; Cell = $cell; Prior = $prior }
+        }
+
+        $new = "TODO $QueueRepairMarker - cycle $cycle wrote a status word this queue does not have, so the relay put a readable one in front of it and gave the row back. Not one character of the cycle's own wording was changed; it follows here in full. >>> $cell"
+        $lines[$i] = $head + ' ' + $new + ' |'
+        Set-Content -Path $QueueFile -Value $lines -Encoding utf8
+        return [pscustomobject]@{ Repaired = $true; Cell = $cell; Prior = $prior }
+    }
+    return $null
 }
 
 # ===========================================================================
@@ -1061,7 +1135,18 @@ nothing has been changed, and no work has been lost.
         return $false
     }
 
-    if ($next.Status -notmatch '^TODO') {
+    # PARTIAL IS WORK, AND THE RELAY TAKES IT.
+    #
+    # This used to be '^TODO' alone, and that made the queue punish a cycle for
+    # being honest. PARTIAL means "some of this is done and some of it is not",
+    # which is a row with work left in it - refusing to take it is refusing to
+    # do the work. Row 59 sat at "PARTIAL 58" with a real, named, unfixed
+    # catch-all still in it, and would have stopped the relay dead the moment
+    # the picker reached it.
+    #
+    # BLOCKED and WONTFIX still stop the relay, and should. Those two words mean
+    # "not yours to take" - a different thing entirely from "not finished".
+    if ($next.Status -notmatch '^(TODO|PARTIAL)') {
         # The row parsed cleanly - this is a real status the relay simply does
         # not take automatically. The raw row goes in anyway, because the one
         # thing the lost cycle proved is that a status quoted out of context is
@@ -1069,8 +1154,8 @@ nothing has been changed, and no work has been lost.
         Write-SelfQueueNote @"
 The next item in order is #$($next.Number), and its status is '$($next.Status)'.
 
-Only TODO is taken automatically, so the relay is idling rather than deciding for
-itself that this counts as ready.
+Only TODO and PARTIAL are taken automatically, so the relay is idling rather than
+deciding for itself that this counts as ready.
 
 The row as it appears in QUEUE.md, line $($next.LineIndex + 1):
 
@@ -1167,6 +1252,33 @@ Rules for the sweep:
   merging a migration applies it to the live client database.
 * When you finish, update this item's row in ``.bidlow/relay/QUEUE.md`` to
   ``DONE $nextCycle``, or back to ``TODO`` with a note if you could not do it.
+
+## THE STATUS CELL: SIX WORDS, AND ONLY SIX
+
+The status cell of a queue row MUST BEGIN with one of exactly these six:
+
+    TODO    DONE    BLOCKED    PARTIAL    IN PROGRESS    WONTFIX
+
+Markdown bold around it is fine - ``| **DONE $nextCycle - ...** |`` reads correctly.
+Anything else does not. The relay reads QUEUE.md with a regex, and a status it
+cannot read STOPS THE WHOLE QUEUE, on purpose: refusing to guess is the right
+behaviour, and inventing is the one thing this relay will never do.
+
+This is not hypothetical, and it is not pedantry. Cycle 59 built, merged and
+DEPLOYED half of row 40 - good work, verified by commit hash - and then wrote its
+status as ``PARTLY DONE 59``. Two words, one of them not on the list above. The
+row stopped parsing, the picker met it first, and the relay took nothing at all
+for seventy minutes while eleven jobs waited behind it. ``SUPERSEDED`` did exactly
+the same thing to row 38 the day before.
+
+So, plainly:
+
+* Finished it -> ``DONE $nextCycle - <what you did, and the proof>``
+* Did some of it -> ``PARTIAL $nextCycle - <what is done, what is left>``. PARTIAL
+  is TAKEN by the relay, so the next cycle picks the row straight back up. This is
+  the right answer whenever you shipped part of a row.
+* Could not start -> ``TODO - <why>``
+* Never invent a seventh word.
 * Do NOT write the next NEXT.md. The watcher does that. One cycle, one item.
 
 ## Assume the seventh exists
@@ -1177,6 +1289,10 @@ margin. Whatever you build this cycle, prove it FIRES - not that it exists.
 "@
 
     Set-Content -Path $NextFile -Value $brief -Encoding utf8
+
+    # Remembered so that, if the cycle hands this row back unreadable, the relay
+    # knows WHICH row is its own to repair. See "THE SEVENTH WORD".
+    $script:LastTakenRow = $next.Number
 
     if (Set-QueueRowStatus $next.Number "IN PROGRESS $nextCycle") {
         Write-Line "Self-queued item #$($next.Number) as cycle $nextCycle, and marked it IN PROGRESS."
@@ -1434,7 +1550,7 @@ while ($true) {
     $logFile = Join-Path $LogDir ("cycle-{0:d3}.md" -f $cycle)
     $started = Get-Date
 
-    $prompt     = Get-Content $CurrentFile -Raw
+    $prompt     = Get-Content $CurrentFile -Raw -Encoding UTF8
     $namedFiles = Get-NamedFiles $prompt
     $before     = Get-RepoEvidence $namedFiles
 
@@ -1571,6 +1687,32 @@ either way.
                 Write-Line "Row #$($row.Number) is stranded on cycle $cycle and could NOT be rewritten. Check its formatting."
             }
         }
+    }
+
+    # -----------------------------------------------------------------------
+    # DID THIS CYCLE HAND ITS ROW BACK IN A WORD THE QUEUE DOES NOT HAVE?
+    # Only this cycle's own row, only when it is now unreadable, only twice.
+    # See "THE SEVENTH WORD" near the parser.
+    # -----------------------------------------------------------------------
+    if ($script:LastTakenRow) {
+        $takenNow = @(Get-QueueRows) |
+                    Where-Object { $_.Number -eq $script:LastTakenRow } |
+                    Select-Object -First 1
+        if ($takenNow -and -not $takenNow.Parsed) {
+            $fix = Repair-UnreadableQueueRow $script:LastTakenRow $cycle
+            if ($null -eq $fix) {
+                Write-Line "Row #$($script:LastTakenRow) is unreadable and the relay could not safely find its status cell, so it changed nothing."
+            } elseif ($fix.Repaired) {
+                $peek = $fix.Cell.Substring(0, [Math]::Min(140, $fix.Cell.Length))
+                Write-Line "Row #$($script:LastTakenRow) came back from cycle $cycle with a status word this queue does not have."
+                Write-Line "  Put TODO in front of it, kept every word the cycle wrote, released the queue."
+                Write-Line "  The cycle had written: $peek"
+            } else {
+                Write-Line "Row #$($script:LastTakenRow) is unreadable AGAIN after $($fix.Prior) repairs. Not repairing a third time - emailing Greg instead."
+                Send-RelayAlert "ODoutreach relay - row #$($script:LastTakenRow) keeps coming back unreadable" "Cycle $cycle rewrote row #$($script:LastTakenRow) into a status the queue parser cannot read, and that has now happened $($fix.Prior) times on the same row. The relay has stopped repairing it, because a third repair would hide a real loop rather than fix a typo. The row is in .bidlow/relay/QUEUE.md and the queue is stopped behind it." | Out-Null
+            }
+        }
+        $script:LastTakenRow = $null
     }
 
     $minutes = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)

@@ -300,6 +300,7 @@ model StaffUser {
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
+  clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
   clientsAsBriefAccountManager    Client[]                         @relation("ClientBriefAccountManager")
   clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
   supportTicketsCreated           SupportTicket[]                  @relation("SupportTicketCreatedBy")
@@ -430,6 +431,19 @@ model Client {
   /// it; the full history is appended to AuditLog as well.
   accountGradeSetByStaffUserId  String?
   accountGradeSetAt             DateTime?
+  /// Machine sending or human sending, for THIS client. Consulted by
+  /// `@/lib/safety/autonomous-actor-guard` at the moment of dispatch.
+  /// true  = a machine may send for this client on its own.
+  /// false = only a signed-in member of staff may send for them.
+  /// null  = NOBODY HAS DECIDED YET, which refuses. Three states on purpose:
+  /// a plain boolean cannot tell "we decided not to" from "nobody has looked at
+  /// this client", and absence is not permission.
+  autonomousSendEnabled         Boolean?
+  /// Who last set `autonomousSendEnabled`, shown ON SCREEN next to the switch.
+  /// A decision that lets a machine cold-email a stranger from this client's own
+  /// domain must have a name against it; the full history goes to AuditLog too.
+  autonomousSendSetByStaffUserId String?
+  autonomousSendSetAt           DateTime?
   /// Operator-only context — not shown in outreach templates
   briefInternalNotes            String?                   @db.Text
   briefAssignedAccountManagerId String?
@@ -505,6 +519,7 @@ model Client {
   unsubscribeTokens               UnsubscribeToken[]
   launchApprovedBy                StaffUser?                       @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
   accountGradeSetBy               StaffUser?                       @relation("ClientAccountGradeSetBy", fields: [accountGradeSetByStaffUserId], references: [id], onDelete: SetNull)
+  autonomousSendSetBy             StaffUser?                       @relation("ClientAutonomousSendSetBy", fields: [autonomousSendSetByStaffUserId], references: [id], onDelete: SetNull)
   briefAccountManager             StaffUser?                       @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
   briefTaxonomyLinks              ClientBriefTermLink[]
   complianceAttachments           ClientComplianceAttachment[]
@@ -517,6 +532,7 @@ model Client {
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
   @@index([accountGradeSetByStaffUserId])
+  @@index([autonomousSendSetByStaffUserId])
 }
 
 /// Reusable brief vocabulary: service areas, ICP industries, company sizes, target titles
