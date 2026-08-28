@@ -41,6 +41,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import {
+  syncClientDomainSuppressionSourceAction,
   syncClientEmailSuppressionSourceAction,
   upsertSuppressionSpreadsheetAction,
 } from "./client-suppression-source-actions";
@@ -186,7 +187,49 @@ describe("syncClientEmailSuppressionSourceAction (all staff with client access)"
   it("lets any staff member sync", async () => {
     const r = await syncClientEmailSuppressionSourceAction("c1");
     expect(r).toMatchObject({ ok: true, rowsWritten: 5 });
-    expect(syncSuppressionSourceFromGoogle).toHaveBeenCalledWith({ sourceId: "src-1" });
+    // Not confirming a shrink unless asked to: an ordinary Sync press must
+    // never be the thing that deletes a working blocklist.
+    expect(syncSuppressionSourceFromGoogle).toHaveBeenCalledWith({
+      sourceId: "src-1",
+      confirmShrink: false,
+    });
+  });
+
+  it("passes an operator's explicit shrink confirmation through", async () => {
+    await syncClientDomainSuppressionSourceAction("c1", true);
+    expect(syncSuppressionSourceFromGoogle).toHaveBeenCalledWith({
+      sourceId: "src-1",
+      confirmShrink: true,
+    });
+  });
+
+  it("reports a refused shrink so the caller can offer the confirmation", async () => {
+    syncSuppressionSourceFromGoogle.mockResolvedValueOnce({
+      ok: false,
+      error: "Sync refused: …",
+      blockedShrink: { previousCount: 373, wouldWrite: 0, removed: 373 },
+    });
+
+    const r = await syncClientDomainSuppressionSourceAction("c1");
+
+    expect(r).toMatchObject({
+      ok: false,
+      blockedShrink: { previousCount: 373, wouldWrite: 0, removed: 373 },
+    });
+  });
+
+  it("leaves blockedShrink off an ordinary failure, where confirming would not help", async () => {
+    syncSuppressionSourceFromGoogle.mockResolvedValueOnce({
+      ok: false,
+      error: "Check the Sheet URL or spreadsheet id.",
+    });
+
+    const r = await syncClientDomainSuppressionSourceAction("c1");
+
+    expect(r).toEqual({
+      ok: false,
+      error: "Check the Sheet URL or spreadsheet id.",
+    });
   });
 
   it("still enforces tenant access", async () => {

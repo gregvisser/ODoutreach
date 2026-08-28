@@ -65,6 +65,14 @@ export function ClientSuppressionInlineCard({
   const [emailUrl, setEmailUrl] = useState("");
   const [domainUrl, setDomainUrl] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  // Set only by a refused sync, and cleared by the next one. The override to
+  // delete a client's blocks has to be reachable — otherwise a client who
+  // genuinely rebuilds their sheet is stuck — but it must never be the button
+  // somebody presses by habit, so it does not exist until the guard has fired.
+  const [blockedShrink, setBlockedShrink] = useState<{
+    kind: "EMAIL" | "DOMAIN";
+    removed: number;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const emailSrc = sources.find((s) => s.kind === "EMAIL");
@@ -101,10 +109,14 @@ export function ClientSuppressionInlineCard({
     });
   }
 
-  function syncEmail() {
+  function sync(kind: "EMAIL" | "DOMAIN", confirmShrink = false) {
     setMsg(null);
+    setBlockedShrink(null);
     startTransition(async () => {
-      const r = await syncClientEmailSuppressionSourceAction(clientId);
+      const r =
+        kind === "EMAIL"
+          ? await syncClientEmailSuppressionSourceAction(clientId, confirmShrink)
+          : await syncClientDomainSuppressionSourceAction(clientId, confirmShrink);
       if (r.ok) {
         let text = `Sync complete — ${String(r.rowsWritten)} do-not-contact row(s) loaded from Google Sheets. Contact flags were refreshed.`;
         if (r.warning) {
@@ -114,23 +126,12 @@ export function ClientSuppressionInlineCard({
         router.refresh();
       } else {
         setMsg(r.error);
-      }
-    });
-  }
-
-  function syncDomain() {
-    setMsg(null);
-    startTransition(async () => {
-      const r = await syncClientDomainSuppressionSourceAction(clientId);
-      if (r.ok) {
-        let text = `Sync complete — ${String(r.rowsWritten)} do-not-contact row(s) loaded from Google Sheets. Contact flags were refreshed.`;
-        if (r.warning) {
-          text += ` Note: ${r.warning}`;
+        // Only a REFUSED shrink earns the override. Any other failure leaves
+        // this null, so the button never appears where confirming is not the
+        // answer.
+        if (r.blockedShrink) {
+          setBlockedShrink({ kind, removed: r.blockedShrink.removed });
         }
-        setMsg(text);
-        router.refresh();
-      } else {
-        setMsg(r.error);
       }
     });
   }
@@ -244,7 +245,7 @@ export function ClientSuppressionInlineCard({
                     type="button"
                     size="sm"
                     disabled={pending || !canSyncEmail}
-                    onClick={() => syncEmail()}
+                    onClick={() => sync("EMAIL")}
                     title={
                       !googleServiceAccountConfigured
                         ? "Configure Google service account in Azure first"
@@ -319,7 +320,7 @@ export function ClientSuppressionInlineCard({
                     type="button"
                     size="sm"
                     disabled={pending || !canSyncDomain}
-                    onClick={() => syncDomain()}
+                    onClick={() => sync("DOMAIN")}
                     title={
                       !googleServiceAccountConfigured
                         ? "Configure Google service account in Azure first"
@@ -374,6 +375,31 @@ export function ClientSuppressionInlineCard({
         </div>
 
         {msg ? <p className="whitespace-pre-wrap text-sm text-foreground">{msg}</p> : null}
+
+        {canManageSheets && blockedShrink ? (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
+            <p className="font-medium text-foreground">
+              Nothing was deleted. Everyone on the list is still blocked.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Put the missing rows back in the Sheet and sync again. Only use
+              the button below if you are certain those{" "}
+              {String(blockedShrink.removed)}{" "}
+              {blockedShrink.kind === "EMAIL" ? "addresses" : "domains"} are meant
+              to be contactable again — it cannot be undone from here.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              className="mt-2"
+              disabled={pending}
+              onClick={() => sync(blockedShrink.kind, true)}
+            >
+              {`Remove them anyway (${String(blockedShrink.removed)})`}
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
