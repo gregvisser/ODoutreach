@@ -1,102 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  appendOpenTrackingPixel,
-  buildOpenTrackingPixelUrl,
-  isOpenTrackingPixelEnabled,
-} from "./open-pixel";
+import { appendOpenTrackingPixel, isOpenTrackingPixelEnabled } from "./open-pixel";
 
-describe("buildOpenTrackingPixelUrl", () => {
-  const prevAuth = process.env.AUTH_URL;
-  const prevInternal = process.env.INTERNAL_APP_URL;
-  const prevPublic = process.env.NEXT_PUBLIC_APP_URL;
+/**
+ * Pixel-URL construction moved to ./client-open-tracking.test.ts when the
+ * builder gained a required client argument. What is left here is the global
+ * backstop and the HTML fragment.
+ */
+
+describe("isOpenTrackingPixelEnabled", () => {
   const prevPixel = process.env.OPEN_TRACKING_PIXEL;
-  const prevAligned = process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN;
 
   beforeEach(() => {
-    delete process.env.AUTH_URL;
-    delete process.env.INTERNAL_APP_URL;
-    delete process.env.NEXT_PUBLIC_APP_URL;
     delete process.env.OPEN_TRACKING_PIXEL;
-    delete process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN;
   });
   afterEach(() => {
-    process.env.AUTH_URL = prevAuth;
-    process.env.INTERNAL_APP_URL = prevInternal;
-    process.env.NEXT_PUBLIC_APP_URL = prevPublic;
     if (prevPixel === undefined) delete process.env.OPEN_TRACKING_PIXEL;
     else process.env.OPEN_TRACKING_PIXEL = prevPixel;
-    if (prevAligned === undefined)
-      delete process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN;
-    else process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN = prevAligned;
-  });
-
-  it("returns null when open tracking is disabled via OPEN_TRACKING_PIXEL=off", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    process.env.OPEN_TRACKING_PIXEL = "off";
-    expect(buildOpenTrackingPixelUrl("corr-123")).toBeNull();
-  });
-
-  it("builds an absolute pixel URL from the public base URL", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    expect(buildOpenTrackingPixelUrl("corr-123")).toBe(
-      "https://app.example.com/api/track/open/corr-123",
-    );
-  });
-
-  it("strips a trailing slash on the base URL", () => {
-    process.env.AUTH_URL = "https://app.example.com/";
-    expect(buildOpenTrackingPixelUrl("corr-123")).toBe(
-      "https://app.example.com/api/track/open/corr-123",
-    );
-  });
-
-  it("returns null when no base URL is configured", () => {
-    expect(buildOpenTrackingPixelUrl("corr-123")).toBeNull();
-  });
-
-  it("returns null for an empty correlationId", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    expect(buildOpenTrackingPixelUrl("  ")).toBeNull();
-  });
-
-  it("url-encodes the correlationId", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    expect(buildOpenTrackingPixelUrl("a/b c")).toBe(
-      "https://app.example.com/api/track/open/a%2Fb%20c",
-    );
-  });
-
-  it("prefers a client-aligned base URL over the public base URL", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    expect(
-      buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
-    ).toBe("https://go.paratus365.com/api/track/open/corr-123");
-  });
-
-  it("strips a trailing slash on the aligned base URL", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    expect(
-      buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com/"),
-    ).toBe("https://go.paratus365.com/api/track/open/corr-123");
-  });
-
-  it("falls back to the public base URL when the aligned base is empty/null", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    expect(buildOpenTrackingPixelUrl("corr-123", null)).toBe(
-      "https://app.example.com/api/track/open/corr-123",
-    );
-    expect(buildOpenTrackingPixelUrl("corr-123", "   ")).toBe(
-      "https://app.example.com/api/track/open/corr-123",
-    );
-  });
-
-  it("stays disabled even when an aligned base URL is passed", () => {
-    process.env.AUTH_URL = "https://app.example.com";
-    process.env.OPEN_TRACKING_PIXEL = "off";
-    expect(
-      buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
-    ).toBeNull();
   });
 
   // The kill-switch must fail CLOSED. OpensDoors have been told in writing that
@@ -105,52 +25,35 @@ describe("buildOpenTrackingPixelUrl", () => {
   // must never silently resume tracking. An exact-match check made "OFF" and
   // "off " (trailing space) turn the pixel back on with nothing to show for it.
   describe("the off switch fails closed", () => {
-    const meansOff = ["off", "OFF", "Off", "oFf", " off", "off ", "  off  ", "false", "FALSE", "0", "no", "disabled"];
+    const meansOff = [
+      "off",
+      "OFF",
+      "Off",
+      "oFf",
+      " off",
+      "off ",
+      "  off  ",
+      "false",
+      "FALSE",
+      "0",
+      "no",
+      "disabled",
+    ];
 
     for (const value of meansOff) {
       it(`treats ${JSON.stringify(value)} as off`, () => {
-        process.env.AUTH_URL = "https://app.example.com";
         process.env.OPEN_TRACKING_PIXEL = value;
         expect(isOpenTrackingPixelEnabled()).toBe(false);
-        expect(buildOpenTrackingPixelUrl("corr-123")).toBeNull();
-        // Even an aligned domain must not resurrect it.
-        expect(
-          buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
-        ).toBeNull();
       });
     }
-
-    it("still enables tracking when unset or explicitly on", () => {
-      process.env.AUTH_URL = "https://app.example.com";
-      expect(isOpenTrackingPixelEnabled()).toBe(true);
-      process.env.OPEN_TRACKING_PIXEL = "on";
-      expect(isOpenTrackingPixelEnabled()).toBe(true);
-    });
   });
 
-  describe("OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN", () => {
-    it("skips the pixel when on and the client has no aligned domain (no cross-domain pixel)", () => {
-      process.env.AUTH_URL = "https://app.example.com";
-      process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN = "on";
-      expect(buildOpenTrackingPixelUrl("corr-123")).toBeNull();
-      expect(buildOpenTrackingPixelUrl("corr-123", null)).toBeNull();
-      expect(buildOpenTrackingPixelUrl("corr-123", "   ")).toBeNull();
-    });
-
-    it("still emits the pixel when on and an aligned domain IS set", () => {
-      process.env.AUTH_URL = "https://app.example.com";
-      process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN = "on";
-      expect(
-        buildOpenTrackingPixelUrl("corr-123", "https://go.paratus365.com"),
-      ).toBe("https://go.paratus365.com/api/track/open/corr-123");
-    });
-
-    it("is off by default — an unaligned client still gets the public-domain pixel", () => {
-      process.env.AUTH_URL = "https://app.example.com";
-      expect(buildOpenTrackingPixelUrl("corr-123")).toBe(
-        "https://app.example.com/api/track/open/corr-123",
-      );
-    });
+  // "Not engaged" is not the same as "tracking is on". Whether any given client
+  // is tracked is decided by decideClientOpenTracking, which defaults to OFF.
+  it("reports the backstop as not engaged when unset or explicitly on", () => {
+    expect(isOpenTrackingPixelEnabled()).toBe(true);
+    process.env.OPEN_TRACKING_PIXEL = "on";
+    expect(isOpenTrackingPixelEnabled()).toBe(true);
   });
 });
 
@@ -158,12 +61,10 @@ describe("appendOpenTrackingPixel", () => {
   it("appends a hidden img with the pixel URL", () => {
     const out = appendOpenTrackingPixel(
       "<p>Hi</p>",
-      "https://app.example.com/api/track/open/x",
+      "https://go.paratus365.com/api/track/open/x",
     );
     expect(out).toContain("<p>Hi</p>");
-    expect(out).toContain(
-      'src="https://app.example.com/api/track/open/x"',
-    );
+    expect(out).toContain('src="https://go.paratus365.com/api/track/open/x"');
     expect(out).toContain("display:none");
     expect(out).toContain('width="1"');
   });

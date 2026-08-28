@@ -10,8 +10,6 @@
  * (suppresses opens). Open rates are therefore directional, not exact.
  */
 
-import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
-
 /**
  * Values an operator may reasonably type into the Azure portal to mean "off".
  * Compared after trimming and lower-casing.
@@ -19,15 +17,18 @@ import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 const OFF_VALUES = new Set(["off", "false", "0", "no", "disabled"]);
 
 /**
- * Deliverability kill-switch: set OPEN_TRACKING_PIXEL=off to stop embedding the pixel.
+ * GLOBAL KILL-SWITCH ONLY — this is a backstop, never the mechanism.
  *
- * This switch FAILS CLOSED on purpose. OpensDoors have been told in writing that
- * open tracking is off, so anything that plainly means off turns it off. The
- * previous exact-match check (`!== "off"`) silently RESUMED tracking if the
- * setting was ever typed as "OFF" or picked up a trailing space — a broken
- * written promise with no error, no log line and nothing on screen to catch it.
- * Azure's app-settings editor offers no validation, so the value is only ever
- * one careless keystroke away from that.
+ * Set `OPEN_TRACKING_PIXEL=off` to hold tracking off for every client at once,
+ * regardless of what any of them have opted into. It cannot switch tracking
+ * ON for anybody: that is decided per client by `decideClientOpenTracking`,
+ * which defaults to OFF. Returning true here means only "the backstop is not
+ * engaged", so an unset variable is safe.
+ *
+ * The switch FAILS CLOSED on purpose: anything that plainly means off turns it
+ * off. An exact-match check (`!== "off"`) would silently resume tracking if the
+ * setting were ever typed as "OFF" or picked up a trailing space, and Azure's
+ * app-settings editor offers no validation.
  */
 export function isOpenTrackingPixelEnabled(): boolean {
   const raw = process.env.OPEN_TRACKING_PIXEL;
@@ -35,47 +36,19 @@ export function isOpenTrackingPixelEnabled(): boolean {
   return !OFF_VALUES.has(raw.trim().toLowerCase());
 }
 
-/**
- * Deliverability: when `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN=on`, only embed the
- * open-tracking pixel for clients whose outreach links sit on a verified
- * sender-aligned domain (`go.<client-domain>`). For everyone else the pixel is
- * skipped rather than served from the OpensDoors app domain — a hidden 1×1 image
- * on a different host than the sender is a classic cold-bulk/phishing signal, and
- * for cold outreach that costs more deliverability than the open stats are worth.
- * Default off, so existing behaviour is unchanged until it is deliberately staged on.
- */
-export function isOpenTrackingRequireAlignedDomain(): boolean {
-  return process.env.OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN === "on";
-}
-
-/**
- * Absolute open-tracking pixel URL for an outbound email's correlationId.
- * Returns null when open tracking is disabled, or when no base URL is
- * available (so callers skip the pixel rather than emit a broken relative link).
+/*
+ * The pixel URL builder deliberately does NOT live here.
  *
- * A hidden 1x1 image pointing at a domain that differs from the sender's is a
- * strong spam/phishing signal. When a client has a verified sender-aligned link
- * domain (`go.<client-domain>`), callers pass its base URL as `preferredBaseUrl`
- * so the pixel is served from the SAME domain family as the sender — clearing
- * the mismatch signal. Falls back to the tenant public base URL when no aligned
- * domain is available (e.g. internal/governed-test rows).
+ * A builder that takes only a correlationId can be called from anywhere without
+ * naming a client, and the per-client opt-in would be one forgotten argument
+ * away from being bypassed. `buildOpenTrackingPixelUrlForClient` in
+ * ./client-open-tracking.ts requires the client, so a call site that has not
+ * consulted the opt-in does not compile.
+ *
+ * `OPEN_TRACKING_REQUIRE_ALIGNED_DOMAIN` was removed with it. It existed to stop
+ * a cross-domain pixel; the opt-in now requires a verified aligned domain, so a
+ * cross-domain pixel is unreachable and the flag had nothing left to prevent.
  */
-export function buildOpenTrackingPixelUrl(
-  correlationId: string,
-  preferredBaseUrl?: string | null,
-): string | null {
-  if (!isOpenTrackingPixelEnabled()) return null;
-  const id = correlationId?.trim();
-  if (!id) return null;
-  const preferred = preferredBaseUrl?.trim();
-  const hasAligned = Boolean(preferred && preferred.length > 0);
-  // When the aligned-domain rule is on, never emit a cross-domain pixel: skip it
-  // entirely unless the client has a verified sender-aligned base URL.
-  if (isOpenTrackingRequireAlignedDomain() && !hasAligned) return null;
-  const base = (hasAligned ? preferred : resolvePublicBaseUrl())?.replace(/\/+$/, "");
-  if (!base) return null;
-  return `${base}/api/track/open/${encodeURIComponent(id)}`;
-}
 
 /** Append a hidden 1×1 tracking pixel to an HTML email body. */
 export function appendOpenTrackingPixel(html: string, pixelUrl: string): string {
