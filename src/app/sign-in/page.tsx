@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { MicrosoftSignInButton } from "@/components/auth/microsoft-sign-in-button";
+import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { getGlobalBrand } from "@/server/branding/get-global-brand";
 
 export default async function SignInPage({
@@ -45,6 +46,7 @@ export default async function SignInPage({
           </p>
         </div>
         <MicrosoftSignInButton callbackUrl={callbackUrl} />
+        <LegalFooterLinks />
       </div>
     </div>
   );
