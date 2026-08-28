@@ -1,6 +1,111 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-28 (cycle 73) - Tier P (Client Production)**
+**Updated 2026-08-28 (cycle 75) - Tier P (Client Production)**
+
+## Session 2026-08-28 - Relay cycle 75, queue row 47. The grade record could not say WHEN a blocker was closed - and the evidence the row was protecting had already been destroyed.
+
+Row 47 is **`DONE 75`**. No new rows opened.
+
+### What was built and merged
+
+* **`3a35000` (PR #341)** - `closed_on` added to the blocker schema in
+  `src/lib/grade-record.ts`; 6 new tests in `src/lib/grade-record.test.ts`;
+  CR-05 restored in `.bidlow/GRADES.json`; row 47 status in `QUEUE.md`.
+  **Deployed and verified by hash on the DIRECT App Service URL**:
+  `/api/build-info` returned `3a35000d3db9...` at 22:25:47Z.
+* **`aa54045` (PR #342)** - `.bidlow/relay/log/cycle-075.md`.
+* No schema migration, no client data, no email. `grade-record.ts` has **no
+  runtime importers** - it is a CI-gate module, so the running app is unchanged.
+  Gates: lint 0, typecheck 0, **3128 tests / 314 files**; CI verify + E2E green
+  on both PRs. Both branches merged and deleted; **zero open PRs at handoff**.
+
+### The finding, which outranks the code change
+
+**Row 47's premise was stale, and the wrong half was the urgent half.** It said
+the grade gate was red in the working tree because a dirty `GRADES.json` was
+sitting there. It was not - `git status` was clean and that spec was 10/10
+green. The dirty copy had been **discarded** between cycles 55 and 75, so the
+signed-DPA evidence the row explicitly warned "should not be thrown away" **had
+been thrown away**, and nobody noticed *because discarding it made the gate
+pass*. A red gate announces itself; a silently reverted file does not.
+
+Recovered by walking every dangling git object for the string `closed_on` -
+blob `372c0dd`, reachable from dangling commit `810ab77`, which is cycle 55's
+own `git stash -u`.
+
+**The recovered file was a trap.** It predates cycle 62: CR-06 is `OPEN` with
+null evidence there, where HEAD has it `CLOSED` with cycle 62's Sentry fix.
+Restoring the file wholesale would have **silently reopened a fixed blocker and
+deleted its evidence, while looking like a pure recovery**. Only CR-05 was
+cherry-picked, after a field-by-field diff.
+
+### Decisions made
+
+* **`closed_on` is optional, not required on every CLOSED blocker.** Most
+  blockers are closed by a commit and the commit carries its own date; demanding
+  a hand-typed date there invents a second source of truth for something git
+  already knows. It earns its place only on blockers closed by something
+  *outside* this repository - CR-05 is a signed Art.28 DPA - where the date
+  exists nowhere else.
+* **It is ISO-validated and refused on a still-`OPEN` blocker.** A closing date
+  on an open item is the same contradiction class this module was built for.
+* **`questions_for_greg` cut 2 -> 1**, dropping the now-answered CR-05 line.
+  Leaving a "do this next" for something already done recreates the exact drift.
+* **Scores deliberately untouched.** CR-05 is owner `greg`, which by the
+  schema's own rule does not count against the grade. Customer-ready stays
+  **7.4**, sell gate stays **NOT SATISFIED**. Closing it moved the record's
+  honesty, not its number. No one-way door touched.
+
+### Proven capable of failing (not merely present)
+
+* CR-05 was restored **before** any schema change and reproduced the reported
+  failure exactly: `4 failed | 6 passed`, `customer_ready.blockers.5:
+  Unrecognized key: "closed_on"`. Then the field -> **16/16**.
+* Both new guards were then broken on purpose, **one red test apiece**:
+  deleting the ISO regex reddened only the ISO test; neutering the `.refine`
+  reddened only the OPEN test. No collateral, which is also evidence each test
+  checks what its name claims.
+
+### Contradicts what was previously recorded
+
+* **`.bidlow/relay/log/` is TRACKED in git, not gitignored.** `git ls-files
+  .bidlow/relay/log/` lists cycle-072/073/074, and cycle-075.md merged via
+  PR #342. A prior session note claimed cycle logs were local-only and that
+  QUEUE.md was the sole durable record. Findings in a cycle log are **not**
+  lost. QUEUE.md is still what the relay *reads*, so anything the next cycle
+  must act on still belongs in a row.
+* STATE.md had no cycle 74 entry; cycle 74 (`f50edc2`, Google seven-day clock)
+  is recorded only in its relay log.
+
+### Operational lesson worth carrying
+
+Writing a commit message in a bash heredoc containing `` `git stash -u` `` in
+backticks caused **command substitution** - Bash ran it and stashed every file
+of this cycle's work; `git commit` then reported "nothing added to commit".
+Recovered with one `git stash pop`. This is the **same mechanism that destroyed
+cycle 54's DPA evidence**. Use `git commit -F <file>`, never `-m`, for any
+message containing backticks.
+
+### What the next session should pick up first
+
+* Nothing from row 47 is half-done. Zero open PRs, working tree clean apart from
+  `.bidlow/relay/log/cycle-074.md`, which was **already dirty before this cycle
+  started** and was deliberately left alone (staged files by name, per cycle 55's
+  lesson).
+* **One question for Greg, and it is the only unproven claim shipped:** the DPA
+  evidence in `GRADES.json` is restored **verbatim as cycle 54 wrote it**,
+  including "observed on screen at the moment of signing". This cycle recovered
+  that text from git; it did **not** witness the signing and cannot. The record
+  now asserts a real-world compliance action - Sentry DPA v5.1.0, org `bidlowai`
+  (id 4511767741071360), EU storage region, 28 Aug 2026. Confirm at
+  <https://bidlowai.sentry.io/settings/legal/> before anything relies on it.
+  Restoring a prior cycle's observation is not the same as verifying it.
+* Candidate row nobody has opened: `open_questions` is a hand-maintained integer
+  beside the `questions_for_greg` array it counts, and **nothing enforces they
+  agree** - the same drift class `evaluateSellGate` was built to kill. Left
+  deliberately, to keep this cycle to one item.
+
+---
 
 ## Session 2026-08-28 - Relay cycle 73, queue row 74. Pressing Connect deleted a working mailbox's credential before the operator had signed in. Measuring it found 8 mailboxes already unable to send.
 
