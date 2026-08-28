@@ -1,0 +1,93 @@
+# Ask every do-not-contact sheet what it WOULD do, and write nothing.
+#
+# This exists because the honest answer to "how many rows does that client's
+# blocklist actually have?" used to be: press the button that deletes their
+# blocklist and read the total afterwards. The sync is delete-then-insert, so
+# measuring it and changing it were the same action.
+#
+# Manual only. There is deliberately NO `schedule:` here — the scheduled
+# re-sync lives in sync-replies.yml and must keep writing. And there is no
+# input to turn the dry run off: this workflow posts `{"dryRun":true}` as a
+# literal, so it is structurally incapable of writing to a client's list. If
+# you want a real sync, run the one that is supposed to do that.
+name: DNC sheet dry run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask every configured sheet what it holds
+        env:
+          # The direct App Service URL, not the custom domain: this reports on
+          # the running build, and a CDN in front of it can answer for an older
+          # one. A stale row count is worse than none — it reads as a fact.
+          SUPPRESSION_SYNC_URL: https://app-opensdoors-outreach-prod.azurewebsites.net/api/internal/suppression/sync-all
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; cannot ask."
+            exit 1
+          fi
+
+          response_file="/tmp/dnc-dry-run.json"
+          status=$(curl -sS -o "$response_file" -w "%{http_code}" \
+            -X POST "$SUPPRESSION_SYNC_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{"dryRun":true}') || status="000"
+
+          echo "HTTP status: ${status}"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "The dry run did not complete."
+            cat "$response_file" 2>/dev/null || true
+            exit 1
+          fi
+
+          # Refuse to report on a run that wrote. `dryRun: true` comes back from
+          # the server, so this checks what the RUNNING BUILD did rather than
+          # what this file asked for — if the deployed build predates the dry
+          # run it will have written to 34 live blocklists, and that must be
+          # loud rather than summarised as a nice table.
+          if [ "$(jq -r '.dryRun' "$response_file")" != "true" ]; then
+            echo "::error::The server did not confirm a dry run. Treat this as a REAL sync having happened."
+            cat "$response_file"
+            exit 1
+          fi
+
+          echo
+          echo "Every configured do-not-contact sheet, as it stands right now."
+          echo "'stored' is what the blocklist holds today; 'would write' is"
+          echo "what the sheet would replace it with. Nothing was changed."
+          echo
+          jq -r '
+            (["CLIENT","LIST","STORED","WOULD WRITE","TAB READ","NOTE"] | @tsv),
+            (.outcomes[] | [
+               .client,
+               .kind,
+               (.previousCount // "?" | tostring),
+               (.wouldWrite // "-" | tostring),
+               (.resolvedRange // "-"),
+               (if .refusedShrink then "REFUSED — would remove too many"
+                elif .ok then ""
+                else (.error // "failed") end)
+             ] | @tsv)
+          ' "$response_file" | column -t -s $'\t'
+
+          echo
+          echo "--- raw ---"
+          cat "$response_file"
+
+          # A sheet that cannot be read is still a broken blocklist, and this
+          # workflow is how someone checks. Fail so the run is red, AFTER the
+          # table above has been printed — the table is the reason to run it.
+          failed=$(jq -r '[.outcomes[] | select(.ok == false)] | length' "$response_file")
+          if [ "$failed" != "0" ]; then
+            echo "::error::${failed} sheet(s) could not be read or were refused. See the NOTE column."
+            exit 1
+          fi

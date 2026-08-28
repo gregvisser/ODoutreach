@@ -23,6 +23,10 @@ const repliesWorkflow = readFileSync(
   join(root, ".github/workflows/sync-replies.yml"),
   "utf8",
 );
+const dryRunWorkflow = readFileSync(
+  join(root, ".github/workflows/dnc-sheet-dry-run.yml"),
+  "utf8",
+);
 
 describe("suppression sync-all wiring", () => {
   it("reuses the single-source sync (atomic + bulk-timeout path), no hand-rolled writes", () => {
@@ -108,6 +112,34 @@ describe("a failing do-not-contact sheet reaches Greg", () => {
       repliesWorkflow.indexOf("Fail run — PARTIAL"),
     );
     expect(step).toContain(".errors");
+  });
+
+  it("the dry-run workflow cannot write, by construction", () => {
+    // `{"dryRun":true}` is a literal with no input behind it. The moment this
+    // becomes `${{ inputs.something }}`, a workflow whose entire purpose is to
+    // be safe to run acquires a way to delete 34 live blocklists.
+    expect(dryRunWorkflow).toContain('{"dryRun":true}');
+    expect(dryRunWorkflow).not.toContain("inputs.");
+  });
+
+  it("the dry-run workflow is manual, never scheduled", () => {
+    expect(dryRunWorkflow).toContain("workflow_dispatch:");
+    // A cron here would run the measuring tool instead of the writing one and
+    // every blocklist would quietly stop updating while the runs stayed green.
+    expect(dryRunWorkflow).not.toMatch(/^\s*schedule:/m);
+  });
+
+  it("the dry-run workflow refuses to report unless the SERVER confirms it", () => {
+    // Asking for a dry run is not evidence of getting one: against a build
+    // that predates it, the same request writes to every live list.
+    expect(dryRunWorkflow).toContain("jq -r '.dryRun'");
+  });
+
+  it("the dry-run workflow reads the direct App Service URL, not the CDN", () => {
+    expect(dryRunWorkflow).toContain(
+      "app-opensdoors-outreach-prod.azurewebsites.net",
+    );
+    expect(dryRunWorkflow).not.toContain("opensdoors.bidlow.co.uk");
   });
 
   it("names the client and the list, never a bare source id", () => {
