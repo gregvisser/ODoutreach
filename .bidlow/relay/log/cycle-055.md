@@ -143,7 +143,45 @@ the next cycle that runs `git add -A` will push a red gate.
 ## Stop-and-ask check
 
 None of the three applies: no migration (no schema change at all), no client
-data touched, nothing sent. Merged on green CI per the standing rule.
+data touched, nothing sent.
+
+## Not merged, and the reason is row 39
+
+PR [#302](https://github.com/gregvisser/ODoutreach/pull/302). Run
+`33139864635`, started **03:47 UTC**:
+
+| job | result |
+|---|---|
+| `verify` (lint, typecheck, 2716 tests, build) | **PASS** 4m53s |
+| `E2E (Playwright)` | **FAIL** 1m43s |
+
+The log was read, not inferred. The failure is
+`j5-journey.integration.test.ts:369`, `expect(batch.blocked).toEqual([])`
+receiving one row, 1 failed / 121 passed — row 39's exact clock-dependent
+pacing signature, on a **fourth** independent branch. This branch adds two
+static pages, two lines to `public-paths.ts` and a footer; it touches no
+mailbox, no pacing and no send path, so a content-based explanation is
+impossible.
+
+Merging would need an admin override of a genuinely red required check, which
+row 37 established is **not the relay's to take**. So it was not taken. The
+brief is right that an open PR rots — but the fix for that is row 39, not an
+override.
+
+**One action needed, after ~08:30 UTC: re-run CI on #302 and merge.** #302 also
+carries the seven stranded relay-docs commits from #300, so merging it makes
+rows 39–47 durable on `main`, which still stops at row 37.
+
+**A second, quieter cost of row 39, newly noticed:** the integration step runs
+*before* Playwright and fails the job, so the Playwright suite never executes on
+an overnight PR at all. `e2e/legal-pages.spec.ts` has therefore never run in CI.
+It was proven locally — 70 e2e passed, and watched red on a deliberate break —
+but CI has not yet seen it. Overnight PRs are not merely blocked; their e2e
+evidence is never collected. Recorded on row 39.
+
+I did **not** start row 39. It is a separate queue item, one cycle is one item,
+and it warns explicitly against weakening the assertion — it deserves its own
+cycle rather than being done in the margin of this one.
 
 ## Open questions for Greg — 3, and they are all one email
 
