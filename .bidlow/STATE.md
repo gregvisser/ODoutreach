@@ -1,6 +1,88 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-28 (cycle 63) - Tier P (Client Production)**
+**Updated 2026-08-28 (cycle 67) - Tier P (Client Production)**
+
+## Session 2026-08-28 - Relay cycle 67, queue row 48. The tab fix silently broke the client it was written for, and the per-client report is the only reason anyone saw it.
+
+Row 48 is **`PARTIAL 67`**, deliberately - counts reported, blockers cleared,
+neither write confirmed landed.
+
+### What was built and merged
+
+* **`c92c616` (PR #321)** - `src/server/integrations/google-sheets/sheets-read-limiter.ts`
+  (new) + its tests, `suppression-sync-quota.test.ts` (new wiring tests), and the
+  two Google read call-sites in `suppression-sync.ts`. **Deployed and verified by
+  hash on the DIRECT App Service URL**: `/api/build-info` returned `c92c616` at
+  11:45:32Z.
+* **`6b1163f` (PR #322)** - cycle 67 log + the row 48 status.
+* No schema, no migration, no send path, **no client data written**.
+* Gates: lint 0, typecheck 0, **3023 tests / 306 files**; CI verify + E2E green.
+
+### The finding
+
+Cycles 65/66 had already shipped the row's code (tab resolution + the refusing
+replace + `dryRun` + the dispatch workflow). Cycle 66 **fired the measuring tool
+twice, both runs went red, and it hit the 45-minute kill before reading them.**
+The red runs were in Actions the whole time. Reading them first was this cycle.
+
+They showed the tab fix **working in production** (`'Domains'!A1:Z50000` on both
+sheets, guard refusing a real 82-row delete) - and **five sheets refused for
+"Quota exceeded", one of them Pareto FM, the client the fix was written for.**
+
+Resolving a tab costs a second `spreadsheets.get`, so **34 sources went from 34
+read requests to 68** against Google's **60/min/user** ceiling; the service
+account is one user for every client. Verified rather than assumed: the cron run
+at 01:52Z, seven hours *before* that fix deployed, shows the tab errors and
+**zero** quota errors. We caused it by doubling our own request rate.
+
+It surfaced ONLY because cycle 66 had just replaced one summed `rowsWritten`
+total with per-client outcomes. The old aggregate read `50692` and looked healthy.
+
+### The counts, measured live 11:52Z against `c92c616`
+
+| Client / list | Stored | **Sheet holds** | Tab read |
+|---|---|---|---|
+| **Pareto FM / Whole domains** | 0 | **121** | `'Domains'!A1:Z50000` |
+| **Train Hugger / Whole domains** | 373 | **291** | `'Domains'!A1:Z50000` |
+
+Zero quota errors after the fix; 33 of 34 sheets reporting, up from 29. The one
+non-OK is Train Hugger, refused by the guard - which is the guard working.
+
+### Decisions made
+
+* **Neither write performed.** Train Hugger's sync unblocks **82 domains** on a
+  live cold-email system - the exact decision the guard exists to force a HUMAN
+  to make, and `suppression-sync.ts` says an unattended job must not make it.
+  **Rule (b); Greg's call.**
+* **Pareto FM 0 -> 121 left to the scheduled sync.** Purely additive
+  (`deleteMany` on 0 rows deletes nothing) and only ever adds protection, but it
+  still writes a real client's data, so it was not forced by hand.
+* Bad ranges are **deliberately not retried** - retrying one would dress a
+  permanently broken blocklist up as a transient blip. Retries bounded at two.
+* Under vitest the limiter's waits are zero but **retries remain**, so the wiring
+  stays observable; sabotage (unwiring the gate) turned exactly two tests red.
+
+### Half-done / where it was left
+
+* **Pareto FM's 121 domains are still not in the database.** Next scheduled sync
+  should apply them now both bugs are gone. **NOT yet confirmed landed.**
+* **Train Hugger stays at 373 stale rows** pending Greg's answer.
+
+### What the next session picks up first
+
+1. **Confirm Pareto FM actually reached 121** - re-run the `DNC sheet dry run`
+   workflow and check `previousCount`. This is a "prove it fired" check, not a
+   formality: this project's worst recurring defect is exactly this shape.
+2. **Put Train Hugger's 82 domains to Greg** (open question below).
+
+### Open question (1)
+
+**Train Hugger's sheet holds 291 domains; the database holds 373. Should the 82
+be unblocked?** Either they were deleted from the sheet deliberately, or the
+sheet lost rows to a hand edit. Until answered the 373 stay blocked - the safe
+direction, costing only a few unsendable domains.
+
+### Nothing found that contradicts `.bidlow/PROJECT.json`.
 
 ## Session 2026-08-28 - Relay cycle 63, queue row 51. The thing overwriting the cycle logs WAS the log-writer, and one log had already been lost on `main`.
 
