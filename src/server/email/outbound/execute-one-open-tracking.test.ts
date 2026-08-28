@@ -53,11 +53,20 @@ vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),
 }));
 
+import { TRACKING_DNS_MAX_AGE_DAYS } from "@/lib/tracking/client-open-tracking";
+
 import { executeOutboundSend } from "./execute-one";
 
 const PIXEL_PATH = "/api/track/open/";
 const VERIFIED_AT = new Date("2026-08-01T00:00:00.000Z");
 const OPTED_IN_AT = new Date("2026-08-20T00:00:00.000Z");
+/**
+ * Relative to now, not a fixed date. The send-time gate expires a verification
+ * after TRACKING_DNS_MAX_AGE_DAYS, so a hard-coded timestamp here would quietly
+ * become stale and turn this suite red on some future Tuesday for a reason that
+ * has nothing to do with the code.
+ */
+const DNS_VERIFIED_AT = new Date(Date.now() - 60 * 60 * 1000);
 
 const baseRow = {
   id: "out1",
@@ -169,11 +178,57 @@ describe("executeOutboundSend — the open-tracking pixel is per-client and off 
       outreachLinkDomain: "go.workspace.test",
       outreachLinkDomainVerifiedAt: VERIFIED_AT,
       openTrackingEnabledAt: OPTED_IN_AT,
+      // Since row 41 this is required too, and it is required HERE, in the real
+      // dispatcher, not only in the pure decision function. Adding the gate sent
+      // this test red on exactly one assertion — which is how we know the
+      // email-authentication check is genuinely in the send path.
+      trackingDnsVerifiedAt: DNS_VERIFIED_AT,
     });
 
     await executeOutboundSend("out1");
 
     expect(sentHtml()).toContain("https://go.workspace.test/api/track/open/corr-9");
+  });
+
+  it("sends NO pixel for an opted-in, domain-verified client whose DNS we never checked", async () => {
+    /*
+      The row-41 gate proved against the REAL dispatcher rather than the pure
+      function. Everything else about this client is perfect: they opted in,
+      their tracking host is verified, the kill switch is off. The one thing
+      missing is that this system has never resolved their SPF, DKIM and DMARC,
+      and that alone is enough for the email to go out carrying no pixel.
+    */
+    clientFindUnique.mockResolvedValue({
+      outreachLinkDomain: "go.workspace.test",
+      outreachLinkDomainVerifiedAt: VERIFIED_AT,
+      openTrackingEnabledAt: OPTED_IN_AT,
+      trackingDnsVerifiedAt: null,
+    });
+
+    const r = await executeOutboundSend("out1");
+
+    // The mail still SENDS. A missing pixel is never a reason to hold outreach.
+    expect(r.ok).toBe(true);
+    expect(sendGmail).toHaveBeenCalledTimes(1);
+    expect(sentHtml()).not.toContain(PIXEL_PATH);
+  });
+
+  it("sends NO pixel once the DNS verification goes stale, with nothing having run", async () => {
+    // The backstop that does not depend on the scheduled sweep firing. The last
+    // passing check is older than the freshness window, so the dispatcher closes
+    // the gate by arithmetic alone.
+    clientFindUnique.mockResolvedValue({
+      outreachLinkDomain: "go.workspace.test",
+      outreachLinkDomainVerifiedAt: VERIFIED_AT,
+      openTrackingEnabledAt: OPTED_IN_AT,
+      trackingDnsVerifiedAt: new Date(
+        Date.now() - (TRACKING_DNS_MAX_AGE_DAYS + 1) * 24 * 60 * 60 * 1000,
+      ),
+    });
+
+    await executeOutboundSend("out1");
+
+    expect(sentHtml()).not.toContain(PIXEL_PATH);
   });
 
   it("sends NO pixel for an opted-in client whose domain is not verified", async () => {
