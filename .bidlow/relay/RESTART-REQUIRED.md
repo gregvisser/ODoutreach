@@ -1,56 +1,53 @@
-# THIS SHOULD BE THE LAST TIME YOU HAVE TO START THIS BY HAND
+# One restart, when the current cycle finishes
 
-Written 2026-08-27, 09:50, by Claude.
+Written 2026-08-28 by Cowork supervision.
 
-## Start it
+`relay-watch.ps1` has been hardened and committed (`04ddf66`). PowerShell reads a
+script once, at launch, so **the running watcher is still executing the old code**.
+Nothing is broken by waiting - the queue is moving - but the three fixes below are
+inert until the next restart.
 
-    & "C:\Bidlowprojects\BidlowClients\Opensdoors\ODoutreach\relay-start.cmd"
+## How
 
-It deletes the HALT file for you. Leave the window open.
+Let the current cycle finish, then in the ODoutreach folder:
 
-## Why it stopped this morning
+    relay-start.cmd
 
-The HALT file says it in one line: "Reached the 40 cycle limit. A loop that will
-not end must end itself." That guard is right - a runaway loop must bound itself.
-Two things about it were wrong, and both are fixed.
+That is all. It clears HALT for you, reads the cycle number back out of
+STATUS.json, and carries on where it left off. Nothing in the queue is lost.
 
-**1. It counted the wrong thing.** The limit was checked against the ABSOLUTE
-cycle number, and that number is read back out of STATUS.json every time the
-watcher starts. So once it reached 40, a restart would re-read 40, trip the same
-test before taking any work, and stop again - for ever. It now counts cycles run
-by THIS process, so a restart always gets a fresh budget.
+## What the restart turns on
 
-**2. It ended the WORK, not just the process.** Hitting the limit wrote a HALT
-file and emailed you, and you had to come and press start - roughly every sixteen
-hours, including overnight. This morning it stopped at 09:30 and sat idle with
-five items waiting.
+1. **PARTIAL rows are taken.** The picker used to accept only `TODO`, so a cycle
+   that honestly reported "half done" stopped the queue dead. Row 59 was sitting
+   at `PARTIAL 58` with real unfixed work in it and would have done exactly that.
+   `BLOCKED` and `WONTFIX` still stop the relay, which is correct - those mean
+   "not yours to take", not "unfinished".
 
-The limit is now a ROLLOVER. When a watcher uses up its budget it exits with code
-42, and `relay-start.cmd` starts a fresh one and carries on. You will see a line
-saying "generation 2", "generation 3" and so on. Nothing needs you.
+2. **The relay repairs the one row it took itself.** On 2026-08-28 cycle 59
+   shipped, merged and deployed half of row 40 and then wrote its status as
+   `PARTLY DONE 59` - one word off the vocabulary. The row stopped parsing and
+   eleven jobs waited seventy minutes for a human. Now: if the row the relay
+   marked `IN PROGRESS` comes back unreadable, it puts a readable word in FRONT
+   of the cycle's own wording - every character kept, in order - and releases the
+   queue. Bounded at two repairs; the third emails Greg instead.
 
-**Stop still means stop.** The loop only reacts to code 42. A HALT file you
-created, a failed self-test and a crash all exit with something else and stay
-stopped.
+3. **The cycle brief names the six status words**, with cycle 59 as the worked
+   example, so this stops happening at the source rather than being caught.
 
-Proven red-then-green, not asserted: simulating the same window, the old
-behaviour ran 0 cycles and waited for you; the new one rolled over three times
-and ran 9. The exit-code branching was checked against cmd's "errorlevel N means
-N or greater" rule for 0, 1, 41, 42, 43 and 100 - only 42 loops.
+Plus four `Get-Content` calls that read UTF-8 files with no `-Encoding`, which
+under Windows PowerShell 5.1 decode as cp1252. QUEUE.md's byte-order mark is
+currently masking that - which is why the damage stopped at one pass instead of
+compounding - but the queue's correctness should not depend on a BOM surviving
+every editor that opens the file.
 
-## Why self-restarting is safe NOW when it was rejected before
+Proof: 20 checks in a harness driven by the real parser, red first, including
+cycle 59's exact status cell. `relay-watch.ps1.bak-before-encoding-and-partial`
+is the previous version if any of it needs backing out.
 
-It was rejected for a real reason: killing a watcher mid-cycle left that cycle's
-queue row stuck on `IN PROGRESS`, and a row that is not `TODO` is skipped by the
-picker for ever, silently. That happened three times.
+---
 
-That reason is gone. The watcher now reopens every orphaned `IN PROGRESS` row at
-startup, before it takes any work, and says so on screen. Cycle 40 was killed
-part-way through PROVE and left row 9 stuck exactly that way - so this start is
-the first real-world test of it. Watch for "Reopened orphaned row #9".
-
-## What it will pick up
-
-Row 9 - PROVE, the last of the six stages still amber. Brief:
-`.bidlow/relay/PROVE-CLOSE-OUT.md`. Then row 10 (re-grade), then row 12 (commit
-the files that are still untracked - that has already cost real work twice today).
+RESOLVED 2026-08-28 07:26 UTC: Greg ran relay-start.cmd at 08:25 local.
+The watcher restarted on the new code, self-test passed 24 checks (including the
+45-minute timeout and the tree-kill), and cycle 61 is running. No restart is
+outstanding. Kept for the record.
