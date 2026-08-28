@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { setClientOpenTrackingAction } from "@/app/(app)/clients/open-tracking-actions";
+import {
+  checkClientTrackingDnsAction,
+  setClientOpenTrackingAction,
+} from "@/app/(app)/clients/open-tracking-actions";
 import { verifyLinkDomainAction } from "@/app/(app)/clients/link-domain-actions";
 import {
   OUTREACH_LINK_APP_HOST,
@@ -25,6 +28,16 @@ type Props = {
   candidateGoDomains: string[];
   /** True when OPEN_TRACKING_PIXEL is holding tracking off for every client. */
   globalKillSwitchEngaged: boolean;
+  /**
+   * The four SPF/DKIM/DMARC/tracking-host results from the last check, exactly
+   * as the system found them. Empty means nothing has ever looked.
+   */
+  dnsChecks: Array<{ label: string; pass: boolean; detail: string }>;
+  /** Whether the last check PASSED all four (and recently enough to count). */
+  dnsVerified: boolean;
+  /** Pre-formatted on the server to avoid a timezone hydration mismatch. */
+  dnsCheckedAt: string | null;
+  dnsVerifiedAt: string | null;
 };
 
 /**
@@ -42,6 +55,10 @@ export function ClientOpenTrackingCard({
   trackingEnabled,
   candidateGoDomains,
   globalKillSwitchEngaged,
+  dnsChecks,
+  dnsVerified,
+  dnsCheckedAt,
+  dnsVerifiedAt,
 }: Props) {
   const router = useRouter();
   const [goDomain, setGoDomain] = useState(linkDomain ?? candidateGoDomains[0] ?? "");
@@ -57,6 +74,17 @@ export function ClientOpenTrackingCard({
         text: result.ok ? result.message : result.message,
       });
       if (result.ok) router.refresh();
+    });
+  };
+
+  const onCheckDns = () => {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await checkClientTrackingDnsAction({ clientId });
+      setMessage({ type: result.ok ? "ok" : "err", text: result.message });
+      // Refresh either way — a FAILING check is exactly when the four lines on
+      // screen most need to be replaced with what was actually found.
+      router.refresh();
     });
   };
 
@@ -181,13 +209,79 @@ export function ClientOpenTrackingCard({
         )}
       </div>
 
-      {/* Step 2 — the switch itself. */}
+      {/* Step 2 — the customer's email authentication, checked by us. */}
       <div className="mt-5 space-y-3">
-        <h3 className="text-sm font-semibold">Step 2 &mdash; switch tracking on</h3>
+        <h3 className="text-sm font-semibold">
+          Step 2 &mdash; we check the customer&rsquo;s email authentication ourselves
+        </h3>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Tracking stays off until all four of these pass, and we take nobody&rsquo;s
+          word for it &mdash; the system looks up the customer&rsquo;s live DNS records
+          itself. Without them, a tracked email gets quarantined instead of delivered.
+        </p>
+
+        {dnsChecks.length === 0 ? (
+          <p className="max-w-3xl rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+            Not checked yet. Press <strong>Check DNS now</strong> to look up this
+            customer&rsquo;s records. Nothing is sent, and nothing changes for them.
+          </p>
+        ) : (
+          <ul className="max-w-3xl space-y-2">
+            {dnsChecks.map((check) => (
+              <li
+                key={check.label}
+                className={
+                  check.pass
+                    ? "rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm"
+                    : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
+                }
+              >
+                <span className="font-semibold">
+                  {check.pass ? "✓" : "✗"} {check.label}
+                </span>{" "}
+                <span className="text-muted-foreground">{check.detail}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCheckDns}
+            disabled={!canMutate || pending}
+          >
+            {pending ? "Checking…" : "Check DNS now"}
+          </Button>
+          {dnsCheckedAt ? (
+            <span className="text-sm text-muted-foreground">
+              Last checked {dnsCheckedAt}
+              {dnsVerifiedAt ? ` · last passed ${dnsVerifiedAt}` : " · has never passed"}
+            </span>
+          ) : null}
+        </div>
+
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          These are re-checked automatically every morning before sending starts. If a
+          record is removed or weakened later, tracking switches itself off for this
+          customer &mdash; nobody has to notice.
+        </p>
+      </div>
+
+      {/* Step 3 — the switch itself. */}
+      <div className="mt-5 space-y-3">
+        <h3 className="text-sm font-semibold">Step 3 &mdash; switch tracking on</h3>
         {!linkDomainVerified ? (
           <p className="text-sm text-muted-foreground">
             Not available until step 1 is done. Until then this customer&rsquo;s emails
             carry no tracking image at all.
+          </p>
+        ) : !dnsVerified ? (
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Waiting for the customer&rsquo;s DNS. The switch refuses until the four
+            checks above all pass &mdash; and it runs them again at the moment you press
+            it, so a stale tick on this screen cannot let tracking through.
           </p>
         ) : (
           <p className="max-w-3xl text-sm text-muted-foreground">
@@ -199,7 +293,11 @@ export function ClientOpenTrackingCard({
           type="button"
           variant={trackingEnabled ? "outline" : "default"}
           onClick={() => onToggle(!trackingEnabled)}
-          disabled={!canMutate || pending || (!trackingEnabled && !linkDomainVerified)}
+          disabled={
+            !canMutate ||
+            pending ||
+            (!trackingEnabled && (!linkDomainVerified || !dnsVerified))
+          }
         >
           {pending
             ? "Saving…"

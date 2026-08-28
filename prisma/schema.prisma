@@ -450,6 +450,23 @@ model Client {
   openTrackingEnabledAt         DateTime?
   /// Who switched open tracking on for this client (audit trail; null when off).
   openTrackingEnabledByStaffUserId String?
+  /// When this system last RESOLVED this client's SPF, DKIM, DMARC and tracking
+  /// host and found ALL FOUR correct. Null = never passed, which means tracking
+  /// is off. Written only by the verifier — never by a form, and never by a
+  /// person asserting the records are in place. A timestamp rather than a
+  /// boolean because DNS is a lease, not a fact: `decideClientOpenTracking`
+  /// treats a value older than TRACKING_DNS_MAX_AGE_DAYS as expired, so tracking
+  /// closes itself even if the scheduled re-check stops running.
+  trackingDnsVerifiedAt         DateTime?
+  /// When the verifier last LOOKED, pass or fail. Distinct from the field above
+  /// so the screen can tell "checked an hour ago and it failed" apart from
+  /// "nothing has checked this since Tuesday" — those need different actions.
+  trackingDnsCheckedAt          DateTime?
+  /// The four check results from the most recent run, as
+  /// `{ label, pass, detail }[]`. Stored so staff can see exactly what the
+  /// system found — the record it actually read, and what it wanted instead —
+  /// without anyone running dig by hand.
+  trackingDnsReport             Json?
   createdAt                     DateTime                  @default(now())
   updatedAt                     DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
