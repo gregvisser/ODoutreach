@@ -1,7 +1,10 @@
 import "server-only";
 
 import { normalizeEmail } from "@/lib/normalize";
-import { mailboxEmailsAlign } from "@/server/mailbox/mailbox-oauth-callback-shared";
+import {
+  MailboxOAuthAccountMismatchError,
+  mailboxEmailsAlign,
+} from "@/server/mailbox/mailbox-oauth-callback-shared";
 
 /**
  * Google 3-legged mailbox OAuth: the refresh token is for the Google user who
@@ -27,9 +30,11 @@ export async function verifyGoogleMailboxOAuthForWorkspaceRow(input: {
   if (res.ok) {
     return;
   }
-  const oauth = normalizeEmail(input.oauthUserEmail);
-  throw new Error(
-    `This Google sign-in (${oauth}) cannot access Gmail for ${input.mailboxEmailNormalized}. ` +
-      `Use Connect while signed into that mailbox in Google, or configure Google Workspace domain-wide delegation if your organisation uses service-account impersonation for admin-managed connections.`,
+  // Names both addresses. Whoever reads this — banner, row diagnostics or audit
+  // trail — must be able to see which account approved and which one was asked
+  // for, or they cannot act on it.
+  throw new MailboxOAuthAccountMismatchError(
+    normalizeEmail(input.oauthUserEmail),
+    input.mailboxEmailNormalized,
   );
 }
