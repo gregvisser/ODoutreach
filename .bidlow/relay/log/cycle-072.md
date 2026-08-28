@@ -171,6 +171,42 @@ One incident worth recording: the e2e run first died with
 the disposable container, **not client data** - no production database was
 touched at any point this cycle.
 
+## Assume the seventh exists: closed on production, not on a green test
+
+The brief was explicit that this row IS an instance of the house defect, so a
+green suite does not close it. Merged as **`f290136`**, deploy run `33208891088`
+green including its post-deploy health check.
+
+**Identity checked by hash first**, against the DIRECT App Service URL, never the
+CDN-cached custom domain:
+
+    GET https://app-opensdoors-outreach-prod.azurewebsites.net/api/build-info
+    {"commit":"f290136ddc8ad8dd67c61499fa9f6789644a8816",
+     "buildTimestamp":"2026-08-28T20:36:24Z"}
+
+That is the commit I merged, so what answered next is genuinely this code and not
+the previous build still being served.
+
+**The real request, no session, no cookie:**
+
+    GET /api/track/open/cycle72-reachability-probe
+    status=200 content_type=image/gif size=42
+
+    HTTP/1.1 200 OK
+    Content-Length: 42
+    Content-Type: image/gif
+    Cache-Control: no-store, no-cache, must-revalidate, private
+
+    00000000: 4749 4638 3961 ...  GIF89a
+    00000020: 0100 0100 0002 0144 003b   -> terminator 0x3b
+
+**The control, on production, fetched identically:**
+
+    GET /dashboard  ->  status=307
+
+So the pixel is public and the app is still protected. Both numbers on the
+deployed commit, quoted rather than described.
+
 ## The honest limit, which I will not round up
 
 **Proving the endpoint is reachable is NOT proving an open was recorded.**
