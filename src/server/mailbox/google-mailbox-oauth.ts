@@ -1,3 +1,9 @@
+import {
+  MAILBOX_OAUTH_APP_MISCONFIGURED_REASON,
+  MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+  MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+} from "@/lib/mailboxes/mailbox-oauth-failure-reason";
+import { MailboxOAuthFailure } from "@/server/mailbox/mailbox-oauth-callback-shared";
 import "server-only";
 
 import {
@@ -35,7 +41,10 @@ export async function exchangeGoogleMailboxAuthCode(
   const clientId = process.env.MAILBOX_GOOGLE_OAUTH_CLIENT_ID?.trim();
   const clientSecret = process.env.MAILBOX_GOOGLE_OAUTH_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
-    throw new Error("Google mailbox OAuth client is not configured");
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_APP_MISCONFIGURED_REASON,
+      "Google mailbox OAuth client is not configured",
+    );
   }
   const redirectUri = mailboxGoogleRedirectUri();
   const body = new URLSearchParams({
@@ -57,11 +66,17 @@ export async function exchangeGoogleMailboxAuthCode(
       typeof json.error_description === "string"
         ? json.error_description
         : JSON.stringify(json);
-    throw new Error(`Google token exchange failed: ${err} — ${desc}`);
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+      `Google token exchange failed: ${err} — ${desc}`,
+    );
   }
   const access_token = json.access_token;
   if (typeof access_token !== "string") {
-    throw new Error("Google token response missing access_token");
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+      "Google token response missing access_token",
+    );
   }
   return {
     access_token,
@@ -79,12 +94,18 @@ export async function fetchGoogleUserEmailAndSub(
   });
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
-    throw new Error(`Google userinfo failed: ${JSON.stringify(json)}`);
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+      `Google userinfo failed: ${JSON.stringify(json)}`,
+    );
   }
   const sub = typeof json.sub === "string" ? json.sub : "";
   const email = typeof json.email === "string" ? json.email : "";
   if (!sub || !email) {
-    throw new Error("Google userinfo did not return sub and email");
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+      "Google userinfo did not return sub and email",
+    );
   }
   return { sub, email };
 }

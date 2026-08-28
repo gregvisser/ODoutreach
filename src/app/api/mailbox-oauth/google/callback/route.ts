@@ -6,13 +6,13 @@ import {
   fetchGoogleUserEmailAndSub,
 } from "@/server/mailbox/google-mailbox-oauth";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
-import {
-  MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON,
-  MAILBOX_OAUTH_EXPIRED_STATE_REASON,
-} from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import { MAILBOX_OAUTH_EXPIRED_STATE_REASON } from "@/lib/mailboxes/mailbox-oauth-banner-message";
 import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
+import { MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON } from "@/lib/mailboxes/mailbox-oauth-failure-reason";
 import {
   MailboxOAuthAccountMismatchError,
+  MailboxOAuthFailure,
+  mailboxOAuthFailureReasonOf,
   mailboxOAuthRedirectToClient,
 } from "@/server/mailbox/mailbox-oauth-callback-shared";
 import { verifyGoogleMailboxOAuthForWorkspaceRow } from "@/server/mailbox/mailbox-oauth-google-verify";
@@ -118,7 +118,8 @@ export async function GET(req: Request) {
   try {
     const tokens = await exchangeGoogleMailboxAuthCode(code);
     if (!tokens.refresh_token) {
-      throw new Error(
+      throw new MailboxOAuthFailure(
+        MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON,
         "Google did not return a refresh token — try again and accept offline access (prompt=consent).",
       );
     }
@@ -188,12 +189,13 @@ export async function GET(req: Request) {
       oauth_mailbox_id: mailbox.id,
     });
   } catch (e) {
-    // Approving as the wrong Google account is not a generic failure: the guard
-    // refused on purpose and the operator can fix it themselves. It gets its own
-    // reason code and carries the approving address, so the page can name both
-    // it and the row. Everything else stays `callback_failed`.
+    // Nothing is flattened here any more. The reason came from the site that
+    // knew the cause; this only carries it. An error with no reason attached
+    // reports `callback_failed` and its message, which is honest about being
+    // unclassified rather than guessing a code from prose.
     const mismatch =
       e instanceof MailboxOAuthAccountMismatchError ? e : null;
+    const reason = mailboxOAuthFailureReasonOf(e);
     const msg = e instanceof Error ? e.message : "OAuth failed";
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
@@ -215,14 +217,16 @@ export async function GET(req: Request) {
         kind: "mailbox_oauth_callback",
         provider: "GOOGLE",
         outcome: mismatch ? "account_mismatch" : "failed",
+        // Same words already written to the row's `lastError`, so this adds a
+        // channel for the owner-only diagnostics rather than a new exposure.
+        reason,
+        error: msg.slice(0, 4000),
         ...(mismatch ? { oauthActorEmail: mismatch.approvedEmail } : {}),
       },
     });
     return mailboxOAuthRedirectToClient(clientId, {
       mailbox_oauth: "error",
-      reason: mismatch
-        ? MAILBOX_OAUTH_ACCOUNT_MISMATCH_REASON
-        : "callback_failed",
+      reason,
       oauth_mailbox_id: mailbox.id,
       ...(mismatch ? { oauth_actor: mismatch.approvedEmail } : {}),
     });

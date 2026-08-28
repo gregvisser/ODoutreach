@@ -59,6 +59,7 @@ import {
   mailboxOAuthBanner,
   readMailboxOAuthSearchParams,
 } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import { MailboxOAuthFailure } from "@/server/mailbox/mailbox-oauth-callback-shared";
 
 import { GET } from "./route";
 
@@ -201,20 +202,128 @@ describe("GET /api/mailbox-oauth/google/callback", () => {
     expect(prismaMock.mailboxIdentitySecret.upsert).not.toHaveBeenCalled();
   });
 
-  it("keeps callback_failed for a different failure, and leaks no address", async () => {
-    exchangeMock.mockRejectedValue(new Error("token endpoint said no"));
+  /**
+   * The catch-all this row exists to remove. Every exception in the callback
+   * used to redirect with `callback_failed`, so the operator was told something
+   * broke and given nothing to act on. The reason now travels from the throw
+   * site that knows the cause.
+   */
+  it("names a rejected token exchange, and leaks no address", async () => {
+    exchangeMock.mockRejectedValue(
+      new MailboxOAuthFailure(
+        "token_exchange_rejected",
+        "Google token exchange failed: invalid_grant — Bad Request",
+      ),
+    );
 
     const q = await redirectQuery(await GET(callback()));
 
     expect(q.get("mailbox_oauth")).toBe("error");
-    expect(q.get("reason")).toBe("callback_failed");
+    expect(q.get("reason")).toBe("token_exchange_rejected");
     expect(q.get("oauth_actor")).toBeNull();
     expect(q.get("oauth_mailbox_id")).toBe("mb_1");
+    // The audit row records WHICH failure and the provider's own words, not
+    // just `outcome: failed`.
     expect(auditMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        metadata: expect.objectContaining({ outcome: "failed" }),
+        metadata: expect.objectContaining({
+          outcome: "failed",
+          reason: "token_exchange_rejected",
+          error: "Google token exchange failed: invalid_grant — Bad Request",
+        }),
       }),
     );
+  });
+
+  /**
+   * The second distinct failure the row asks for. Google returning no refresh
+   * token is a DIFFERENT operator action from a rejected exchange — the person
+   * has to revoke the app's previous grant and approve offline access again —
+   * so it must not share a reason code with it.
+   */
+  it("names a missing refresh token as its own reason", async () => {
+    exchangeMock.mockResolvedValue({ access_token: "at", expires_in: 3600 });
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("reason")).toBe("no_refresh_token");
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          outcome: "failed",
+          reason: "no_refresh_token",
+        }),
+      }),
+    );
+    expect(prismaMock.mailboxIdentitySecret.upsert).not.toHaveBeenCalled();
+  });
+
+  /**
+   * An untagged error — a Prisma outage, a bug — still has to land somewhere.
+   * `callback_failed` remains the floor, so nothing is ever swallowed silently
+   * just because it was not anticipated.
+   */
+  it("still falls back to callback_failed for an unclassified error", async () => {
+    exchangeMock.mockRejectedValue(new Error("socket hang up"));
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("reason")).toBe("callback_failed");
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          outcome: "failed",
+          reason: "callback_failed",
+          error: "socket hang up",
+        }),
+      }),
+    );
+  });
+
+  /**
+   * Built, wired and never fires is this project's worst defect class, so the
+   * reason is followed all the way to the sentence on the page — two failures,
+   * two different sentences, neither of them the old shrug.
+   */
+  it("renders each failure as a different, actionable sentence", async () => {
+    const sentenceFor = async (thrown: unknown): Promise<string> => {
+      exchangeMock.mockRejectedValue(thrown);
+      const res = await GET(callback());
+      const params = readMailboxOAuthSearchParams(
+        Object.fromEntries(new URL(res.headers.get("location")!).searchParams),
+      );
+      const banner = mailboxOAuthBanner({
+        result: params.result,
+        reason: params.reason,
+        provider: "GOOGLE",
+        mailboxEmail: "alex@trainhugger.com",
+        approvedEmail: params.approvedEmail,
+        verifiedConnected: false,
+        hasMailboxId: Boolean(params.mailboxId),
+      });
+      expect(banner?.type).toBe("err");
+      return banner!.text;
+    };
+
+    const rejected = await sentenceFor(
+      new MailboxOAuthFailure("token_exchange_rejected", "invalid_grant"),
+    );
+    const misconfigured = await sentenceFor(
+      new MailboxOAuthFailure(
+        "oauth_app_misconfigured",
+        "Google mailbox OAuth client is not configured",
+      ),
+    );
+
+    expect(rejected).not.toBe(misconfigured);
+    for (const text of [rejected, misconfigured]) {
+      expect(text).not.toMatch(/did not finish/i);
+      expect(text).not.toMatch(/microsoft/i);
+    }
+    // The one an operator cannot fix alone must say so rather than send them
+    // round the Connect loop again.
+    expect(misconfigured).toMatch(/administrator/i);
+    expect(rejected).toMatch(/Connect/);
   });
 
   it("connects when the approving account IS the mailbox", async () => {

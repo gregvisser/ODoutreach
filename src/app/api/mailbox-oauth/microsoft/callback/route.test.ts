@@ -56,6 +56,7 @@ import {
   mailboxOAuthBanner,
   readMailboxOAuthSearchParams,
 } from "@/lib/mailboxes/mailbox-oauth-banner-message";
+import { MailboxOAuthFailure } from "@/server/mailbox/mailbox-oauth-callback-shared";
 
 import { GET } from "./route";
 
@@ -142,14 +143,89 @@ describe("GET /api/mailbox-oauth/microsoft/callback", () => {
 
   /**
    * The expiry gate must not swallow the reason the operator actually needs
-   * when the state is fine and something else went wrong.
+   * when the state is fine and something else went wrong. An UNTAGGED error is
+   * the one case that should still read as unclassified.
    */
-  it("keeps callback_failed for a failure inside the window", async () => {
-    exchangeMock.mockRejectedValue(new Error("token endpoint said no"));
+  it("keeps callback_failed for an unclassified failure inside the window", async () => {
+    exchangeMock.mockRejectedValue(new Error("socket hang up"));
 
     const q = await redirectQuery(await GET(callback()));
 
     expect(q.get("reason")).toBe("callback_failed");
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          reason: "callback_failed",
+          error: "socket hang up",
+        }),
+      }),
+    );
+  });
+
+  /**
+   * The row this cycle closes named BOTH callbacks. A fix proven on one of two
+   * identical handlers is a fix proven on half the app, so the Microsoft route
+   * gets the same two distinct failures asserted.
+   */
+  it("names a rejected token exchange rather than shrugging", async () => {
+    exchangeMock.mockRejectedValue(
+      new MailboxOAuthFailure(
+        "token_exchange_rejected",
+        "Microsoft token exchange failed: invalid_grant — expired",
+      ),
+    );
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("reason")).toBe("token_exchange_rejected");
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          outcome: "failed",
+          reason: "token_exchange_rejected",
+          error: "Microsoft token exchange failed: invalid_grant — expired",
+        }),
+      }),
+    );
+  });
+
+  /**
+   * The Microsoft-only failure: the sign-in is valid and is not the wrong
+   * person either — the account simply has no rights over the target mailbox.
+   * That is a mailbox-permissions job for the customer's IT administrator, and
+   * reporting it as "sign-in did not finish" sent people back round a loop that
+   * could never have worked.
+   */
+  it("names a mailbox the signed-in account cannot open", async () => {
+    resolveMock.mockRejectedValue(
+      new MailboxOAuthFailure(
+        "mailbox_access_denied",
+        "Microsoft sign-in (it@opensdoors.co.uk) cannot open lucy@opensdoors.co.uk in Microsoft Graph (HTTP 404).",
+      ),
+    );
+
+    const res = await GET(callback());
+    const q = await redirectQuery(res);
+    expect(q.get("reason")).toBe("mailbox_access_denied");
+    expect(prismaMock.mailboxIdentitySecret.upsert).not.toHaveBeenCalled();
+
+    const params = readMailboxOAuthSearchParams(
+      Object.fromEntries(new URL(res.headers.get("location")!).searchParams),
+    );
+    const banner = mailboxOAuthBanner({
+      result: params.result,
+      reason: params.reason,
+      provider: "MICROSOFT",
+      mailboxEmail: MAILBOX.emailNormalized,
+      approvedEmail: params.approvedEmail,
+      verifiedConnected: false,
+      hasMailboxId: Boolean(params.mailboxId),
+    });
+
+    expect(banner!.type).toBe("err");
+    expect(banner!.text).toContain("lucy@opensdoors.co.uk");
+    expect(banner!.text).toMatch(/administrator/i);
+    expect(banner!.text).not.toMatch(/did not finish/i);
   });
 
   /**

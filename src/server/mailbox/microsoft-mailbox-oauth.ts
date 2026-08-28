@@ -1,6 +1,13 @@
 import "server-only";
 
 import {
+  MAILBOX_OAUTH_APP_MISCONFIGURED_REASON,
+  MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+  MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+} from "@/lib/mailboxes/mailbox-oauth-failure-reason";
+import { MailboxOAuthFailure } from "@/server/mailbox/mailbox-oauth-callback-shared";
+
+import {
   mailboxMicrosoftRedirectUri,
   microsoftMailboxOAuthScopes,
   microsoftMailboxOAuthTenant,
@@ -85,7 +92,10 @@ export async function exchangeMicrosoftMailboxAuthCode(
   const clientId = process.env.MAILBOX_MICROSOFT_OAUTH_CLIENT_ID?.trim();
   const clientSecret = process.env.MAILBOX_MICROSOFT_OAUTH_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
-    throw new Error("Microsoft mailbox OAuth client is not configured");
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_APP_MISCONFIGURED_REASON,
+      "Microsoft mailbox OAuth client is not configured",
+    );
   }
   const tenant = microsoftMailboxOAuthTenant();
   const redirectUri = mailboxMicrosoftRedirectUri();
@@ -111,11 +121,17 @@ export async function exchangeMicrosoftMailboxAuthCode(
       typeof json.error_description === "string"
         ? json.error_description
         : JSON.stringify(json);
-    throw new Error(`Microsoft token exchange failed: ${err} — ${desc}`);
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+      `Microsoft token exchange failed: ${err} — ${desc}`,
+    );
   }
   const access_token = json.access_token;
   if (typeof access_token !== "string") {
-    throw new Error("Microsoft token response missing access_token");
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_TOKEN_EXCHANGE_REJECTED_REASON,
+      "Microsoft token response missing access_token",
+    );
   }
   return {
     access_token,
@@ -136,7 +152,10 @@ export async function fetchMicrosoftGraphPrimaryEmail(
   if (!res.ok) {
     const graphErr = json.error as { message?: string } | undefined;
     const msg = graphErr?.message ?? JSON.stringify(json);
-    throw new Error(`Microsoft Graph /me failed: ${msg}`);
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+      `Microsoft Graph /me failed: ${msg}`,
+    );
   }
   const id = typeof json.id === "string" ? json.id : "";
   const mail = typeof json.mail === "string" ? json.mail : null;
@@ -144,7 +163,10 @@ export async function fetchMicrosoftGraphPrimaryEmail(
     typeof json.userPrincipalName === "string" ? json.userPrincipalName : null;
   const primaryEmail = (mail ?? upn ?? "").trim();
   if (!id || !primaryEmail) {
-    throw new Error("Microsoft Graph /me did not return id and a mailbox identifier");
+    throw new MailboxOAuthFailure(
+      MAILBOX_OAUTH_PROFILE_UNAVAILABLE_REASON,
+      "Microsoft Graph /me did not return id and a mailbox identifier",
+    );
   }
   return { id, primaryEmail };
 }
