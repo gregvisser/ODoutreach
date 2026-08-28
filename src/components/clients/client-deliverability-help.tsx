@@ -10,25 +10,34 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type {
+  ClientDeliverabilityEntry,
+  ClientHelpDomainSource,
+  MailboxProvider,
+} from "@/lib/clients/client-help-domains";
 import { cn } from "@/lib/utils";
 
 /**
- * Deliverability help panel shown on the Mailboxes page — the REAL fix for
- * "outreach lands in spam": finish the sending domain's standard email
- * authentication (SPF, DKIM, DMARC) on the domain the customer already owns.
- * Replaces the old sender-aligned `go.<domain>` link-domain card, which pushed
- * an optional subdomain most customers refused and which was never the main
- * lever. No new subdomain is required here.
+ * Deliverability help panel — the REAL fix for "outreach lands in spam":
+ * finish the sending domain's standard email authentication (SPF, DKIM, DMARC)
+ * on the domain the customer already owns. Replaces the old sender-aligned
+ * `go.<domain>` link-domain card, which pushed an optional subdomain most
+ * customers refused and which was never the main lever. No new subdomain is
+ * required here.
+ *
+ * Two things changed on 2026-08-28, both because the owner reported staff
+ * could not find this when they needed it:
+ *  - it lives on its own Setup help tab, on EVERY client, not only on the
+ *    Mailboxes tab of a client that already has a mailbox connected;
+ *  - it never returns null. With no domain known it says what is missing.
+ *
+ * The prose says what each check is FOR before naming it — the staff using
+ * this are not technical. The instructions themselves are deliberately left
+ * technical and verbatim, because their value is that a non-technical person
+ * can forward them to an IT department unchanged.
  */
 
-export type MailboxProvider = "MICROSOFT" | "GOOGLE" | "MIXED";
-
-export type ClientDeliverabilityEntry = {
-  /** The customer's sending domain, e.g. "paratus365.com". */
-  domain: string;
-  /** How this domain's connected mailbox(es) send. */
-  provider: MailboxProvider;
-};
+export type { ClientDeliverabilityEntry, MailboxProvider };
 
 function providerLabel(provider: MailboxProvider): string {
   if (provider === "MICROSOFT") return "Microsoft 365";
@@ -90,17 +99,23 @@ function emailTemplate(entry: ClientDeliverabilityEntry): string {
   const { domain, provider } = entry;
   return `Hi,
 
-To keep our outreach from ${domain} landing in inboxes rather than spam, the domain needs its standard email authentication finished: SPF, DKIM and DMARC. These protect ALL of your email — not just our outreach — and do not require any new subdomain or change to how your mail works.
+Before Outlook and Gmail put a message in someone's inbox, they check whether the sending domain has proved it really sends its own email. Where that proof is missing or incomplete, genuine messages get treated as suspicious and land in spam.
+
+There are three standard settings that provide that proof, and ${domain} needs all three finished. They protect ALL of your email — not just our outreach — and need no new subdomain and no change to how your mail works. Your IT team or whoever manages your DNS will recognise them:
 
 ${domain} sends via ${providerLabel(provider)}. Please make sure the following three are in place:
 
-1) SPF — your SPF (TXT) record should authorise your sending platform and end in -all, e.g.:
+1) SPF — the list of services allowed to send email using ${domain}. Your SPF (TXT)
+   record should authorise your sending platform and end in -all, e.g.:
    v=spf1 ${spfInclude(provider)} -all
 
-2) DKIM — turn on DKIM signing for ${domain}:
+2) DKIM — an invisible signature on every message, so the receiver can prove it
+   genuinely came from ${domain} and was not altered on the way. Turn DKIM signing on:
 ${dkimEmailSteps(provider, domain)}
 
-3) DMARC — publish a DMARC record (TXT at host _dmarc.${domain}):
+3) DMARC — your instruction to receiving mail servers about what to do when a message
+   fails the two checks above, plus a report so you can see who is sending as you.
+   Publish a DMARC record (TXT at host _dmarc.${domain}):
    v=DMARC1; p=none; rua=mailto:dmarc@${domain}
    (starts in monitor-only so it can't affect delivery; raise to quarantine later.)
 
@@ -134,10 +149,11 @@ function DomainBlock({ entry }: { entry: ClientDeliverabilityEntry }) {
       {/* SPF */}
       <div className="space-y-1.5">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          1 · SPF — authorise the sending platform
+          1 · The list of services allowed to send as this domain — called SPF
         </p>
         <p className="text-sm text-muted-foreground">
-          Their SPF (TXT) record should include their platform and end in{" "}
+          Without it, anyone can claim to be {domain} and the receiver has no way to
+          tell. Their SPF (TXT) record should include their platform and end in{" "}
           <span className="font-mono">-all</span>:
         </p>
         <Rec label="TXT @" value={`v=spf1 ${spfInclude(provider)} -all`} />
@@ -146,7 +162,11 @@ function DomainBlock({ entry }: { entry: ClientDeliverabilityEntry }) {
       {/* DKIM */}
       <div className="space-y-1.5">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          2 · DKIM — turn on signing (biggest win)
+          2 · An invisible signature on every message — called DKIM (biggest win)
+        </p>
+        <p className="text-sm text-muted-foreground">
+          It lets the receiver prove the message really came from {domain} and was
+          not altered in transit. Turn signing on:
         </p>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
           {isMs ? (
@@ -174,12 +194,13 @@ function DomainBlock({ entry }: { entry: ClientDeliverabilityEntry }) {
       {/* DMARC */}
       <div className="space-y-1.5">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          3 · DMARC — publish a policy
+          3 · What to do when a message fails those checks — called DMARC
         </p>
         <p className="text-sm text-muted-foreground">
-          Add a TXT record at host{" "}
-          <span className="font-mono">_dmarc.{domain}</span> (monitor-only first —
-          it can&rsquo;t hurt delivery):
+          This is the domain owner&rsquo;s instruction to receiving mail servers, and
+          it also sends them a report of who is sending as them. Add a TXT record at
+          host <span className="font-mono">_dmarc.{domain}</span> (monitor-only first
+          — it can&rsquo;t hurt delivery):
         </p>
         <Rec
           label="TXT _dmarc"
@@ -203,34 +224,65 @@ function DomainBlock({ entry }: { entry: ClientDeliverabilityEntry }) {
 
 export function ClientDeliverabilityHelp({
   entries,
+  domainSource = "MAILBOXES",
 }: {
   entries: ClientDeliverabilityEntry[];
+  /** Where the domains came from — drives the caveat shown above them. */
+  domainSource?: ClientHelpDomainSource;
 }) {
-  if (entries.length === 0) return null;
-
   return (
     <Card className="border-2 border-emerald-500/60 bg-emerald-50/60 shadow-sm dark:bg-emerald-500/10">
       <CardHeader>
         <div className="mb-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-500/50 bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-100">
-          📬 Email deliverability
+          📬 Getting outreach into the inbox, not spam
         </div>
         <CardTitle className="text-xl font-bold">
           Help this client&rsquo;s outreach reach the inbox
         </CardTitle>
         <CardDescription className="text-foreground/80">
-          What keeps outreach out of spam is finishing the sending domain&rsquo;s
-          standard authentication — <span className="font-semibold text-foreground">SPF</span>,{" "}
+          Before Outlook and Gmail deliver a message, they check whether the sending
+          domain has <span className="font-semibold text-foreground">proved it really sends its own email</span>.
+          Where that proof is missing, genuine messages get treated as suspicious and
+          land in spam. Three standard settings provide it — their technical names are{" "}
+          <span className="font-semibold text-foreground">SPF</span>,{" "}
           <span className="font-semibold text-foreground">DKIM</span> and{" "}
-          <span className="font-semibold text-foreground">DMARC</span> — on the
-          domain the customer <span className="font-semibold text-foreground">already owns</span>.
-          No new subdomain needed. Hand their IT the records below, or copy a
-          ready-made email. This also protects their everyday email.
+          <span className="font-semibold text-foreground">DMARC</span> — and they go on
+          the domain the customer{" "}
+          <span className="font-semibold text-foreground">already owns</span>. No new
+          subdomain, no change to how their email works, and it protects their everyday
+          mail too. You do not need to understand the records below: hand them to the
+          customer&rsquo;s IT department, or press <em>Copy email</em> and send it on.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {entries.map((entry) => (
-          <DomainBlock key={entry.domain} entry={entry} />
-        ))}
+        {entries.length === 0 ? (
+          <div className="rounded-md border border-border/70 bg-muted/20 p-3 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">
+              We don&rsquo;t know this client&rsquo;s email domain yet.
+            </p>
+            <p className="mt-1">
+              Add their website on the <span className="font-medium">Brief</span> tab,
+              or connect a mailbox on the{" "}
+              <span className="font-medium">Mailboxes</span> tab, and the exact records
+              to send their IT department will appear here, already filled in.
+            </p>
+          </div>
+        ) : (
+          <>
+            {domainSource === "CLIENT_RECORD" ? (
+              <p className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                No mailbox is connected yet, so this is based on the domain in the
+                client&rsquo;s record. Steps for{" "}
+                <span className="font-medium text-foreground">both</span> Microsoft 365
+                and Google Workspace are shown — the customer&rsquo;s IT will know
+                which they use. Everything else below is correct either way.
+              </p>
+            ) : null}
+            {entries.map((entry) => (
+              <DomainBlock key={entry.domain} entry={entry} />
+            ))}
+          </>
+        )}
       </CardContent>
     </Card>
   );

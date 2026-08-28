@@ -1,6 +1,129 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 45) - Tier P (Client Production)**
+**Updated 2026-08-27 (cycle 47) - Tier P (Client Production)**
+
+## Session 2026-08-27 - Relay cycle 47, queue item 8. The ASK gate nothing was reading, and an access level we had not earned.
+
+Queue row 8 is `DONE 47`. Merged as **`0ddd940`** (PR #293). **Deployed and
+verified by hash on the DIRECT App Service URL** - `/api/build-info` returns
+`0ddd9408b1001a86c422578c52681234bf765a91`, matching `main` HEAD. **No app code
+changed**: one new test file and one JSON artefact, plus the queue row. No
+schema, no migration, no send path, no client data, nothing that sends an email.
+
+### What was actually built
+
+`relay/blueprint-gate.test.ts` - 13 tests that read `.bidlow/BLUEPRINT.json` and
+enforce the eleven rules in `references/04-blueprint-schema.md`, plus two
+cross-checks. **Until this session NOTHING read that file's contents.** Four
+places mention `BLUEPRINT.json` and three are prose (`QUEUE.md`, `STATE.md`,
+`CLASSIFY.json`); the fourth, `tracked-artefacts.test.ts`, asserts only that it is
+KNOWN TO GIT and never opens it. The schema document opens with the words "the
+record the gate reads" and then lists eleven rules that were enforced by a human
+looking at a deck. **That is the seventh instance of the house defect, and it was
+sitting underneath the artefact that grades the discovery.**
+
+`.bidlow/BLUEPRINT.json` corrected: `access_level` `onsite` -> **`async`** with
+`access_level_basis`; a **fifth real case traced end to end**; `open_questions`
+promoted out of prose into 7 costed entries; `compensating_checks_done` (4) and
+`compensating_checks_outstanding` (2) populated with a written basis each.
+
+### The decision worth knowing
+
+**The queue row was half wrong and was corrected in place rather than worked
+around.** Five of its seven items were NOT gaps - `entities`, `not_handling`,
+`exception_register`, `real_cases` and `frequency_counted` were already written
+AND committed by cycle 45 under row 12 (`14e8e1d`). Verified, not assumed:
+`git diff origin/main -- .bidlow/BLUEPRINT.json` was empty. The row predates
+cycle 45 landing and nobody re-read it.
+
+**The item the row called "trivial" was the only real defect, and it was not
+trivial.** `access_level` was declared `onsite`, which is the ONLY level in
+`references/access-levels.md` requiring zero compensating checks - so the false
+claim did not merely overstate access, **it switched the entire access-level rule
+off**, which is exactly why `compensating_checks_done` sat empty and passed. It
+was also checkably false: all 7 entries in `answer_provenance` record
+`drafted_by: "claude"`, sourced from `prisma/schema.prisma`, `src/server/**`, the
+git log and this file. Nobody has watched anybody at OpensDoors do their work.
+
+### Proven to fire, twice over
+
+**RED FIRST ON REAL GROUND - 3 failed / 10 passed against the artefact exactly as
+committed on `main`, before a character of it was edited.** Arm A: an `onsite`
+claim contradicted by `answer_provenance`. It compares two independent halves of
+the document written for different purposes, so it **cannot pass by agreeing with
+itself** - the vacuity that made cycle 9's design gate read `DESIGN.json` instead
+of the stylesheet. Arm B: Tier P requires `open_questions[]` each carrying a
+`commercial_disposition`; **the key did not exist at all**, while four prose
+answers ended in an uncosted "ASK IN THE MEETING" list.
+
+**Then 11 deliberate sabotages, every one fired**, including: quietly dropping an
+owed compensating check (2 red), raising `real_cases_traced` without adding the
+trace, a disposition outside the five, an entity with no ending, `access_level`
+upgraded back to `onsite`, and the file truncated to `{}` (11 red - the vacuity
+guard holds, so the gate cannot go green when its subject vanishes).
+
+**And it ran on the CI runner, not only locally**: run `33071603089` logs
+`✓ relay/blueprint-gate.test.ts (13 tests)`. A green CI does not by itself prove
+the new file was included.
+
+### The fifth real case, for the record
+
+The eight dead mailboxes: expired OAuth grant -> the 15-minute reply sync writes
+`lastError` but leaves `connectionStatus` alone -> the screen still reads
+"Connected" -> the send path calls the SAME two token functions
+(`execute-one.ts:544` and `:714`), so none of the eight could send either,
+failing closed with no ESP fallback -> five of the eight were Train Hugger, so
+the largest client's warm-up ramp would not have run. Evidence: Actions run
+`32947374171` (processed 35, failed 8), commit `823dc31`, closed in PR #230.
+
+### Half-done, and exactly where it was left
+
+**Two of the six `async` compensating checks are recorded OUTSTANDING, not done,
+and are PINNED by a test** so the set cannot move in either direction unnoticed.
+Both need a human to act with the client and cannot be closed from inside a
+repository:
+
+* **`exception_checklist_sent`** - the exception register is BidlowAI's side
+  only. OpensDoors has never been asked what went wrong from THEIRS: a client
+  complaint, a prospect who reacted badly, a list that turned out wrong, and what
+  they did by hand to recover. The unsent checklist already exists in substance
+  as the four "ASK IN THE MEETING" lists, now promoted to `open_questions` OQ-01.
+* **`phased_commercials`** - **GREG'S, deliberately not marked done.** It is money
+  and a client relationship, so it is not the agent's to record. See OQ-05.
+
+If either is closed, move it from `compensating_checks_outstanding` to
+`compensating_checks_done` **and update the pin** in
+`relay/blueprint-gate.test.ts` ("still owes exactly the two compensating checks
+we know are owed"). Do not edit that line to make a red build green.
+
+### Discovered, not looked for
+
+**Local and CI test counts will never match, and nothing is wrong.** Local
+`npm test` = **2705 / 276 files**; CI `verify` = **2678 / 276**. Same file count,
+27 fewer tests. The relay suites parameterise every describe over BOTH `pwsh` and
+Windows `powershell`; the Linux runner has no `powershell`, so the CI log shows
+27 `under pwsh` and **0** `under powershell` - exactly the delta. Check this
+before concluding tests were lost. (Same spawn cost is the cause behind queue row
+35's intermittent red on `main`.)
+
+Also worth noting: the CI run on the PREVIOUS `main` commit (`b7ef2a4`, cycle 45)
+**failed** on the row-35 flake, and this cycle's run on `main` passed with the
+same suites. Row 35 remains TODO and is still 1-in-several, not deterministic.
+
+### Nothing contradicts PROJECT.json
+
+`.bidlow/PROJECT.json` records only `lifecycle: live`, the live URL, and that the
+one-way doors are already walked through. Nothing found this cycle contradicts
+it. The `access_level` correction changes a claim about how the DISCOVERY was
+done, not about the product.
+
+### What the next session should pick up first
+
+Row 8 is closed. The nearest open work is **row 35** (`main` intermittently red
+from PowerShell-spawn timeouts; the fix is a per-suite `testTimeout` on the two
+relay specs that drive PowerShell, NOT a global bump and NOT deleting those
+tests) and **row 34** (the ambiguous-locator e2e flake, 1 occurrence in 2 runs -
+do not spend a cycle on it unless it returns).
 
 ## Session 2026-08-27 - Relay cycle 45, queue item 12. The load-bearing artefacts are in git, and a guard now fails if one is not.
 
