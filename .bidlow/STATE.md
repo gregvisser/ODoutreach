@@ -1,6 +1,65 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-27 (cycle 47) - Tier P (Client Production)**
+**Updated 2026-08-28 (cycle 55) - Tier P (Client Production)**
+
+## Session 2026-08-28 - Relay cycle 55, queue item 45. The privacy policy and terms pages exist, are public, and were proven so over HTTP.
+
+Queue row 45 is `DONE 55`. **PR [#302](https://github.com/gregvisser/ODoutreach/pull/302) is OPEN, NOT MERGED** - see "left exactly here" below. No schema change, no migration, no send, no client data touched.
+
+### What was built
+
+`/privacy` and `/terms` - real pages, publicly reachable without a login, written from the code rather than a template. New: `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/components/legal/legal-page-shell.tsx`, `src/components/legal/legal-footer-links.tsx`, `e2e/legal-pages.spec.ts`. Changed: `src/lib/public-paths.ts` (+2 lines), `src/middleware.test.ts`, `src/app/(app)/layout.tsx`, `src/app/sign-in/page.tsx`, `.bidlow/FROZEN.json`.
+
+This is the gate on publishing the Google OAuth app, which is the only thing stopping every Google Workspace client's mailbox tokens expiring 7 days after consent - so it is also what blocks Train Hugger's 5 mailboxes.
+
+### Proven, not asserted
+
+Live against a production build, no session, no cookie: `/privacy` **200**, `/terms` **200**, control `/dashboard` **307 -> /sign-in**.
+
+Red-first both ways. Unit: watched failing, `expected false to be true`. E2E: proved capable of failing by deleting the `/privacy` line from `public-paths.ts` and **rebuilding** - went red naming the exact redirect `/sign-in?callbackUrl=%2Fprivacy` while `/terms` stayed green. A permanent control test asserts a protected route fetched the same way is not 200.
+
+Gates: lint **0** - typecheck **0** - **2716** unit tests - **70** e2e passed / 1 skipped.
+
+### Decisions worth knowing
+
+* **The footer is mounted on the sign-in page as well as inside the app shell.** The brief said "linked from the app footer"; taken literally that ships the defect this project is worst at - Google's reviewer cannot sign in, so a footer behind the login is invisible to the entire audience the pages exist for.
+* **Corrected the brief rather than repeating it.** It states suppression is "append-only". That is true of unsubscribe and bounce only; `BLUEPRINT.json` records sheet-sourced suppression as **replace-on-sync**. The page says so and QUEUE row 45 was corrected. Repeating it would have put a false statement in a privacy policy.
+* **Added the Google API Services User Data Policy Limited Use disclosure**, which OAuth verification requires separately from the pages existing.
+* **CR-07 deliberately NOT marked closed.** The code gap it names is closed, but a policy that announces itself as unreviewed is not yet the document a client asks for. Re-grade after sign-off.
+* **No one-way door.** Nothing irreversible, nothing sent, no admin override taken.
+
+### Left exactly here
+
+**PR #302 is finished and blocked by queue row 39, not by its own content.** Run `33139864635` at 03:47 UTC: `verify` **PASS** (4m53s), `E2E (Playwright)` **FAIL** (1m43s) on `j5-journey.integration.test.ts:369` - row 39's clock-dependent pacing bug, now confirmed on a **fourth** branch. Merging would need an admin override of a genuinely red required check, which row 37 established is not the relay's to take.
+
+**One action needed after ~08:30 UTC: re-run CI on #302 and merge.** #302 also carries the seven stranded relay-docs commits from #300, so merging it makes rows 39-47 durable on `main`, which still stops at row 37.
+
+### Discovered, recorded, deliberately NOT fixed
+
+* **Row 46 - likely instance eight of the house defect, and it is live.** `GET /api/track/open/<id>` returns **307 -> /sign-in**. The open-tracking pixel sits behind the auth middleware (`/api/track/` is absent from `isPublicPath`, and the matcher only excludes paths *ending* in an image extension), so recipients' mail clients get an HTML redirect instead of the GIF and `openedAt` has never been written. The route itself is correct - just unreachable. Not fixed here: enabling it writes to real client rows and changes reported numbers, and `OPEN_TRACKING_PIXEL` defaults ON while OpensDoors were told in writing that tracking is off. Those two currently agree **by accident**.
+* **Row 47 - the grade gate is red in the working tree.** `.bidlow/GRADES.json` is modified-but-uncommitted (already dirty at session start, not this cycle's) and `src/lib/grade-record.test.ts` fails 4 tests on `customer_ready.blockers.5: Unrecognized key: "closed_on"`. Proven pre-existing by `git stash -u` (10/10 green on clean HEAD) then unstash (red again). The content is good - CR-05 now carries real signed-DPA evidence - the zod schema just lacks an optional `closed_on`. **This cycle staged its files by name and did NOT commit that file**, so CI sees a green tree; the next cycle that runs `git add -A` will push a red gate.
+* **A second cost of row 39, newly noticed:** the integration step runs *before* Playwright and fails the job, so overnight PRs never run their e2e at all. `e2e/legal-pages.spec.ts` has therefore never executed in CI - only locally.
+
+### Nothing contradicts PROJECT.json
+
+The one rule held - nothing left the building for any client.
+
+### Open questions for Greg - 3, all one email, none blocked the build
+
+All three are on screen in the pages' draft notice rather than silently invented, and live as named constants in `legal-page-shell.tsx`:
+
+1. The **registered legal entity and address**.
+2. **Who is the data controller** for prospect records - OpensDoors, or each customer with OpensDoors as processor?
+3. Does **`privacy@opensdoors.co.uk`** exist and is it monitored? Google's reviewer may write to it.
+
+Worth knowing alongside them: the Google app requests **`gmail.readonly`**, a **restricted** scope. Publishing with it triggers restricted-scope verification, which can require a CASA security assessment with real cost and lead time. These pages remove the blocker Greg hit; they do not guarantee the publish is quick.
+
+### What the next session should pick up first
+
+1. **Row 39** - it blocks four PRs (#297, #300, #301, #302) and is fully diagnosed. Make the J5 test control the clock the way its setup dates already do. **Do not weaken the assertion.**
+2. Then re-run CI on **#302** and merge it.
+3. **Row 47** - one optional schema key, then commit GRADES.json.
+4. **Row 46** - the open-tracking pixel, in its own cycle, with the tracking-on/off promise decided at the same time.
 
 ## Session 2026-08-27 - Relay cycle 47, queue item 8. The ASK gate nothing was reading, and an access level we had not earned.
 
