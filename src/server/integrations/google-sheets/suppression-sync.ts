@@ -37,11 +37,38 @@ export type SuppressionSyncInput = {
    * hundreds of people may be contacted again.
    */
   confirmShrink?: boolean;
+  /**
+   * Resolve the tab, read the Sheet, normalise it and run the guard — then
+   * stop, before anything is written.
+   *
+   * This exists because "how many rows does that client's list actually have?"
+   * had no answer that did not involve running a delete-then-insert on their
+   * live blocklist first. It deliberately shares this function rather than
+   * being a separate preview: a preview that resolved the tab, deduped or
+   * applied the public-suffix rule differently would predict nothing.
+   *
+   * Writes NOTHING, including the source's own status columns — asking a
+   * question must not look like a failed scheduled sync afterwards.
+   */
+  dryRun?: boolean;
 };
 
 export type SuppressionSyncResult = {
   ok: boolean;
+  /** Rows actually stored. Never set by a dry run, which stored none. */
   rowsWritten?: number;
+  /** Rows a dry run WOULD have stored. Only ever set by a dry run. */
+  wouldWrite?: number;
+  /** Rows already stored for this source before the replace was considered. */
+  previousCount?: number;
+  /**
+   * The A1 range actually asked for. Reported because the whole outage was a
+   * range nobody could see: two sheets were read as `Sheet1!A1:Z50000` for
+   * weeks and the only place that string appeared was an error message.
+   */
+  resolvedRange?: string;
+  /** True when nothing was written because the caller only asked. */
+  dryRun?: true;
   error?: string;
   /** Non-fatal hint when sync succeeded but nothing usable was found in cells. */
   warning?: string;
@@ -112,36 +139,37 @@ export async function syncSuppressionSourceFromGoogle(
     return { ok: false, error: "Suppression source not found" };
   }
 
+  const dryRun = input.dryRun === true;
+
+  /**
+   * Every status write in this function goes through here.
+   *
+   * A dry run must leave the source row byte-identical: stamping SYNCING, or
+   * ERROR with a reason, would make "someone asked what this sheet holds"
+   * indistinguishable on the Sources screen from "the scheduled sync broke".
+   */
+  const recordStatus = async (
+    data: Parameters<typeof prisma.suppressionSource.update>[0]["data"],
+  ) => {
+    if (dryRun) return;
+    await prisma.suppressionSource.update({ where: { id: source.id }, data });
+  };
+
   const { clientId, spreadsheetId, kind, sheetRange } = source;
   if (!spreadsheetId) {
     const err = SUPPRESSION_SYNC_MESSAGES.spreadsheetMissing;
-    await prisma.suppressionSource.update({
-      where: { id: source.id },
-      data: {
-        syncStatus: "ERROR",
-        lastError: err,
-      },
-    });
+    await recordStatus({ syncStatus: "ERROR", lastError: err });
     return { ok: false, error: err };
   }
 
   const saDisplay = getGoogleServiceAccountDisplayInfo();
   if (!saDisplay.configured) {
     const err = SUPPRESSION_SYNC_MESSAGES.adminCredentialsRequired;
-    await prisma.suppressionSource.update({
-      where: { id: source.id },
-      data: {
-        syncStatus: "ERROR",
-        lastError: err,
-      },
-    });
+    await recordStatus({ syncStatus: "ERROR", lastError: err });
     return { ok: false, error: err };
   }
 
-  await prisma.suppressionSource.update({
-    where: { id: source.id },
-    data: { syncStatus: "SYNCING", lastError: null },
-  });
+  await recordStatus({ syncStatus: "SYNCING", lastError: null });
 
   // Hoisted out of the try so the failure path can say WHICH range it tried.
   //
@@ -175,27 +203,40 @@ export async function syncSuppressionSourceFromGoogle(
       kind,
       cells: flat,
       confirmShrink: input.confirmShrink === true,
+      dryRun,
     });
 
     // Refused, not failed: the stored rows are untouched and everyone who was
     // blocked still is. Recorded as ERROR and WITHOUT stamping lastSyncedAt,
     // because a list that silently stopped updating is how this started.
     if (outcome.refused) {
-      await prisma.suppressionSource.update({
-        where: { id: source.id },
-        data: {
-          syncStatus: "ERROR",
-          lastError: outcome.refusal.reason.slice(0, 2000),
-        },
+      await recordStatus({
+        syncStatus: "ERROR",
+        lastError: outcome.refusal.reason.slice(0, 2000),
       });
       return {
         ok: false,
         error: outcome.refusal.reason,
         blockedShrink: outcome.refusal,
+        previousCount: outcome.refusal.previousCount,
+        resolvedRange: range,
+        ...(dryRun ? { dryRun: true as const } : {}),
       };
     }
 
     const { written, previousCount } = outcome;
+
+    // Asked, not done. Returned before the success stamp and the flag refresh
+    // so a dry run cannot mark a list as synced that it never touched.
+    if (dryRun) {
+      return {
+        ok: true,
+        dryRun: true,
+        wouldWrite: written,
+        previousCount,
+        resolvedRange: range,
+      };
+    }
 
     // A shrink (previously-blocked entries removed) is the costliest silent
     // failure for opt-out data, so it takes precedence over the "nothing
@@ -216,18 +257,21 @@ export async function syncSuppressionSourceFromGoogle(
       }
     }
 
-    await prisma.suppressionSource.update({
-      where: { id: source.id },
-      data: {
-        syncStatus: "SUCCESS",
-        lastSyncedAt: new Date(),
-        lastError: null,
-      },
+    await recordStatus({
+      syncStatus: "SUCCESS",
+      lastSyncedAt: new Date(),
+      lastError: null,
     });
 
     await refreshContactSuppressionFlagsForClient(clientId);
 
-    return { ok: true, rowsWritten: written, warning };
+    return {
+      ok: true,
+      rowsWritten: written,
+      previousCount,
+      resolvedRange: range,
+      warning,
+    };
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     let friendly = formatSuppressionSyncUserError(raw, saDisplay.clientEmail);
@@ -242,14 +286,16 @@ export async function syncSuppressionSourceFromGoogle(
         await readSheetTabTitles(spreadsheetId),
       );
     }
-    await prisma.suppressionSource.update({
-      where: { id: source.id },
-      data: {
-        syncStatus: "ERROR",
-        lastError: friendly.slice(0, 2000),
-      },
+    await recordStatus({
+      syncStatus: "ERROR",
+      lastError: friendly.slice(0, 2000),
     });
-    return { ok: false, error: friendly };
+    return {
+      ok: false,
+      error: friendly,
+      resolvedRange: range,
+      ...(dryRun ? { dryRun: true as const } : {}),
+    };
   }
 }
 
@@ -263,8 +309,10 @@ async function applySheetToSuppressionTables(args: {
   kind: SuppressionListKind;
   cells: string[];
   confirmShrink: boolean;
+  /** Compute the same numbers, then stop before the delete. */
+  dryRun: boolean;
 }): Promise<ApplyOutcome> {
-  const { clientId, sourceId, kind, cells, confirmShrink } = args;
+  const { clientId, sourceId, kind, cells, confirmShrink, dryRun } = args;
 
   /**
    * Runs inside the transaction, after the count and BEFORE the delete — the
@@ -294,6 +342,11 @@ async function applySheetToSuppressionTables(args: {
 
       const refusal = refusalFor(list.length, previousCount);
       if (refusal) return { refused: true, refusal };
+
+      // Placed AFTER the guard so a dry run reports the same verdict the real
+      // sync would reach, and BEFORE the delete so it reaches it for free.
+      if (dryRun)
+        return { refused: false, written: list.length, previousCount };
 
       await tx.suppressedEmail.deleteMany({
         where: { clientId, sourceId },
@@ -348,6 +401,8 @@ async function applySheetToSuppressionTables(args: {
 
     const refusal = refusalFor(list.length, previousCount);
     if (refusal) return { refused: true, refusal };
+
+    if (dryRun) return { refused: false, written: list.length, previousCount };
 
     await tx.suppressedDomain.deleteMany({
       where: { clientId, sourceId },
