@@ -49,6 +49,72 @@ describe("the recorded grades are a machine-checkable record, not prose", () => 
   });
 });
 
+/**
+ * A blocker closed by a commit carries its date in the commit. A blocker closed
+ * by something OUTSIDE this repository - CR-05 is a signed Art.28 DPA - has no
+ * such date anywhere, so the record has to hold it. The schema is `.strict()`,
+ * which meant writing that date down was rejected outright: the four failures
+ * above were the whole grade gate refusing a file that had become MORE truthful.
+ */
+describe("a blocker can record WHEN it was closed", () => {
+  const blockerOf = (record: GradeRecord, id: string) =>
+    record.customer_ready.blockers.find((b) => b.id === id);
+
+  const withBlocker = (blocker: Record<string, unknown>) => ({
+    graded_at: "2026-08-27",
+    commit: "42d7f60",
+    tier: "P",
+    target_band: "8.5-9.5",
+    engineering: { score: 8 },
+    customer_ready: { score: 8, blockers: [blocker] },
+    sell_gate: { minimum: SELL_GATE_MINIMUM, result: "SATISFIED" },
+  });
+
+  const closed = {
+    id: "X-01",
+    summary: "example",
+    owner: "us",
+    status: "CLOSED",
+    evidence: "commit abc1234",
+  };
+
+  it("accepts an ISO closing date on a CLOSED blocker", () => {
+    const parsed = gradeRecordSchema.safeParse(withBlocker({ ...closed, closed_on: "2026-08-28" }));
+    expect(parsed.success).toBe(true);
+  });
+
+  it("stays optional, so blockers closed by a commit need no date", () => {
+    expect(gradeRecordSchema.safeParse(withBlocker(closed)).success).toBe(true);
+  });
+
+  it("refuses a date that is not an ISO date, so it cannot drift into prose", () => {
+    const parsed = gradeRecordSchema.safeParse(
+      withBlocker({ ...closed, closed_on: "28 August 2026" }),
+    );
+    expect(parsed.success).toBe(false);
+  });
+
+  it("refuses a closing date on a blocker that is still OPEN", () => {
+    const parsed = gradeRecordSchema.safeParse(
+      withBlocker({ id: "X-02", summary: "e", owner: "us", status: "OPEN", evidence: null, closed_on: "2026-08-28" }),
+    );
+    expect(parsed.success).toBe(false);
+  });
+
+  it("still refuses a key nobody has defined, so this did not open the gate up", () => {
+    const parsed = gradeRecordSchema.safeParse(withBlocker({ ...closed, closed_at: "2026-08-28" }));
+    expect(parsed.success).toBe(false);
+  });
+
+  it("records CR-05 as closed by a signed DPA, with the date that is recorded nowhere else", () => {
+    const record = gradeRecordSchema.parse(readRecordedGrades());
+    const cr05 = blockerOf(record, "CR-05");
+    expect(cr05?.status).toBe("CLOSED");
+    expect(cr05?.closed_on).toBe("2026-08-28");
+    expect(cr05?.evidence).toContain("5.1.0");
+  });
+});
+
 describe("the sell gate is computed from both scores", () => {
   const base: GradeRecord = {
     graded_at: "2026-08-27",
