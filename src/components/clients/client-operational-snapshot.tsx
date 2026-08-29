@@ -19,14 +19,14 @@ export function ClientOperationalSnapshot({ items }: { items: OperationalSnapsho
             key={it.label}
             className="rounded-lg border border-border/80 bg-card/60 px-3 py-2.5"
           >
-            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {it.label}
             </dt>
             <dd className="mt-1 text-base font-semibold leading-tight tabular-nums text-foreground">
               {it.value}
             </dd>
             {it.hint ? (
-              <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{it.hint}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{it.hint}</p>
             ) : null}
           </div>
         ))}
