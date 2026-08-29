@@ -225,3 +225,101 @@ describe("QUEUE.md structure", () => {
     ).toEqual([]);
   });
 });
+
+// THE ENCODING OF THE FILE ITSELF, WHICH IS LOAD-BEARING AND WAS NOT GUARDED.
+//
+// Windows PowerShell 5.1 - the host `relay-start.cmd` actually launches - decodes
+// a file with no `-Encoding` argument using the system ANSI code page, which on
+// this machine is cp1252. Read a UTF-8 file that way and every multi-byte
+// sequence shatters into one cp1252 character per byte; write it back as UTF-8
+// and the damage is now the file's real content. An em dash (U+2014, bytes
+// E2 80 94) comes back as the three characters U+00E2 U+20AC U+201D.
+//
+// That happened once to QUEUE.md, before the watcher's `Get-Content` calls were
+// given explicit `-Encoding UTF8` (`04ddf66`), and it left 194 broken sequences
+// in the file - 193 em dashes and one ellipsis. Cycle 83 repaired them.
+//
+// TWO things stop it recurring, and this block asserts BOTH, because either one
+// alone is a single point of failure:
+//
+//  1. The watcher passes `-Encoding UTF8` explicitly. Covered in the PowerShell.
+//  2. The file keeps its byte-order mark. A BOM makes `Get-Content` detect UTF-8
+//     REGARDLESS of the `-Encoding` argument, which is precisely why the original
+//     damage stopped at a single pass instead of compounding every cycle. The BOM
+//     is the belt to the watcher's braces, it is invisible in every editor, and
+//     any tool that rewrites this file can silently drop it.
+//
+// Guarding the CONTENT and not just the mechanism is the point: this repository's
+// most repeated defect is a fix that is present, wired and never actually firing,
+// so the assertion is made against the bytes on disk rather than against the
+// watcher's source text.
+describe("QUEUE.md encoding", () => {
+  // Read the raw bytes, NOT the decoded string: `readFileSync(path, "utf8")` is
+  // the only way to see whether the byte-order mark is still there, since every
+  // higher-level reader strips it silently.
+  const QUEUE_BYTES = readFileSync(QUEUE_PATH);
+
+  it("keeps the byte-order mark that makes PowerShell read it as UTF-8", () => {
+    expect([...QUEUE_BYTES.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+  });
+
+  // The signature of exactly one cp1252 pass over UTF-8 text. Every UTF-8
+  // sequence for a character above U+007F starts with a byte in C2..F4, which
+  // cp1252 renders as U+00C0..U+00C3 for the 2-byte forms and U+00E0..U+00E3
+  // for the 3-byte ones. The continuation bytes are always 80..BF, which cp1252
+  // renders either as U+0080..U+00BF or as one of its 27 printable specials
+  // (U+20AC, U+2014 and U+201D are the three this file actually collected).
+  //
+  // So: a lead character from that set, immediately followed by another
+  // non-ASCII character, is mojibake. Ordinary English prose - which is all this
+  // file contains outside the mojibake - never places two non-ASCII characters
+  // side by side, so this does not false-positive on a legitimate dash or quote.
+  // Expressed as codepoint arithmetic rather than as a regex holding literal
+  // high characters. The whole subject of this block is a file whose non-ASCII
+  // characters were mangled in transit; a guard that can itself be mangled by
+  // the next editor to open it is no guard at all. This function is pure ASCII.
+  const isMojibakeLead = (ch: string): boolean => {
+    const c = ch.codePointAt(0) ?? 0;
+    // 0xC0-0xC3 and 0xE0-0xE3: cp1252's rendering of the UTF-8 lead bytes that
+    // begin a 2- or 3-byte sequence.
+    return (c >= 0xc0 && c <= 0xc3) || (c >= 0xe0 && c <= 0xe3);
+  };
+
+  const isNonAscii = (ch: string): boolean => (ch.codePointAt(0) ?? 0) > 0x7f;
+
+  // INLINE CODE SPANS ARE EXEMPT, AND THIS IS DELIBERATE.
+  //
+  // This queue documents its own encoding faults, so it has to be able to QUOTE
+  // mojibake. Row 42 says, in as many words, "Every em-dash arrives as `OCo`/`a
+  // EUR "`" - naming the two manglings so a reader can recognise them. Those
+  // examples live inside backticks, they are the row's meaning, and repairing
+  // them would turn a precise bug report into nonsense.
+  //
+  // THE LIMIT THIS ACCEPTS, stated rather than buried: corruption that landed
+  // entirely inside a code span would not be caught. That is a narrow gap. A
+  // cp1252 pass mangles a whole FILE, not one span, so any real recurrence puts
+  // sequences in the prose too - which is where this looks. Preferring a guard
+  // that stays green over one that cries wolf on intentional content is what
+  // keeps it worth running.
+  const outsideCodeSpans = (line: string): string[] =>
+    line.split("`").filter((_, index) => index % 2 === 0);
+
+  it("carries no cp1252 mojibake", () => {
+    const text = QUEUE_BYTES.toString("utf8");
+    const broken: string[] = [];
+
+    text.split(/\r?\n/).forEach((line, index) => {
+      for (const segment of outsideCodeSpans(line)) {
+        for (let i = 0; i < segment.length - 1; i += 1) {
+          if (isMojibakeLead(segment[i]) && isNonAscii(segment[i + 1])) {
+            broken.push(
+              `line ${index + 1}: ${JSON.stringify(segment.slice(i, i + 3))}`,
+            );
+          }
+        }
+      }
+    });
+
+    expect(broken).toEqual([]);
+  });
+});
