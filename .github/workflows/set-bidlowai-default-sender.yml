@@ -1,0 +1,48 @@
+# One-time, hard-scoped write against PRODUCTION: sets bidlowai's
+# Client.defaultSenderEmail to greg@bidlow.co.uk. QUEUE.md row 98 —
+# Greg-approved, in writing, in that row, on 29 August 2026.
+#
+# Fixes the sequence-launch refusal traced in
+# docs/ops/SEQUENCE-LAUNCH-SCREEN-WALK-2026-08-29.md: bidlowai has no
+# verified sender-aligned link domain, so the mailto unsubscribe fallback
+# resolves to "" while defaultSenderEmail is null, and composeSequenceEmail
+# marks every send not-ready.
+#
+# manual dispatch only — this is not a recurring job, and the script itself
+# (scripts/ops-set-bidlowai-default-sender.ts) is additive-only and
+# idempotent: it can only ever move defaultSenderEmail from null to the
+# target value, and refuses outright if the field is already set to
+# something else.
+name: Set bidlowai default sender (production, one-time)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Must be exactly: SET BIDLOWAI DEFAULT SENDER'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  set-default-sender:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Set bidlowai default sender + prove composition
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "PRODUCTION_DATABASE_URL is not configured — refusing to run a client-data write against no database."
+            exit 1
+          fi
+          npm run ops:set-bidlowai-default-sender

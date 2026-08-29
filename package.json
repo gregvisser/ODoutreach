@@ -26,6 +26,7 @@
     "ops:mailbox-exclusivity": "tsx scripts/ops-mailbox-exclusivity-probe.ts",
     "ops:mailbox-credential-probe": "tsx scripts/ops-mailbox-credential-probe.ts",
     "ops:bounce-path-audit": "tsx scripts/ops-bounce-path-audit.ts",
+    "ops:set-bidlowai-default-sender": "tsx scripts/ops-set-bidlowai-default-sender.ts",
     "ops:alert": "tsx scripts/ops-alert.ts",
     "support:list": "tsx scripts/support-agent/list-open-tickets.ts",
     "support:get": "tsx scripts/support-agent/get-ticket.ts",
