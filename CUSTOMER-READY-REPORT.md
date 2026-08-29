@@ -1,6 +1,6 @@
 # Customer-Ready Report — ODoutreach
 
-**Customer-Ready 7.5/10 — Nearly ready** · **Engineering 8.5/10**
+**Customer-Ready 7.56/10 — Nearly ready** · **Engineering 8.5/10**
 **Graded 2026-08-27** against commit `b15cfe4`, by walking 30 staff-facing
 screens in a real browser against a local production build.
 Supersedes the 2026-08-23 grade of **6.8** (engineering 8.0).
@@ -27,11 +27,25 @@ not move the number, only the evidence behind it. See `.bidlow/GRADES.json` →
 deliberately left unmeasured (the send-prep panel's populated four-at-a-time
 state, and every viewport but one).
 
+**Re-graded again 2026-08-29 (cycle 102), CR-01b only.** A read-only production
+probe (`scripts/ops-bounce-path-audit.ts`, run twice — 33257014566 and
+33257443587, identical result) found **11 real OutboundEmail rows carrying
+status=BOUNCED**, all via the mailbox NDR channel, each written (`updatedAt`)
+after the fix merged on 2026-08-27 — proof this code, not a stale row, did the
+writing. `MAILBOX_BOUNCE_DETECTION_ENABLED=true` was confirmed directly in the
+production App Service config. The probe also corrected the record's own stale
+premise: sending did **not** stop on 3 July — the real range is 2026-05-20 to
+2026-08-26, 1,361 sends ever, 0 new since the fix merged. Separately checked and
+found **not** to be a second inert path: the Resend ESP webhook route is
+deployed and reachable (`POST /api/webhooks/resend` → HTTP 503, matching its
+own "not configured" guard) but has no `RESEND_WEBHOOK_SECRET` in production —
+expected, since Resend only ever served legacy/test rows, not real client
+outreach, which goes exclusively via connected Graph/Gmail mailboxes. Dimension
+9 moves 7 → 8. Weighted total 7.50 → 7.56.
+
 > **Sell gate: Engineering ≥ 8 AND Customer-Ready ≥ 8. This still does not pass.**
-> Engineering clears it. Customer-ready is 0.5 short. Two blockers remain open:
-> CR-08 (a raw correlation id) and CR-01b (the bounce path has never been
-> observed firing — an agent cannot close this, it requires a real send). CR-07
-> and CR-09 are closed.
+> Engineering clears it. Customer-ready is 0.44 short. One blocker remains open:
+> CR-08 (a raw correlation id). CR-07, CR-09 and CR-01b are closed.
 
 ## The headline, plainly
 
@@ -74,10 +88,10 @@ for production, not a prediction of it.
 | 6 | Onboarding / first-run | 10 | **8** | The client Overview walks a numbered 1–8 setup workflow with per-step status and a "2 / 8 complete" counter, each step explaining in plain English what to do |
 | 7 | Error handling & resilience | 10 | **7** | Up from 6. Off-happy-path is now tested, not assumed: a failed brief save shows an inline error and **keeps the operator's typed data**; an unknown id renders 404 disclosing nothing; unauthenticated redirects to sign-in with a callback. Still unchecked: network failure mid-journey, form validation generally, mobile |
 | 8 | Data safety & trust | 10 | **6** | **Down from 7 — the finding of this pass.** Isolation genuinely improved (E-06 fixed, BC-01 proven capable of catching a leak, `allowlistedClients: 1` visible in production). But prospect personal data is being sent to a third party right now — CR-06 |
-| 9 | Reliability & operability | 6 | **7** | Up from 5. Health check ok, monitoring cannot be off by a missing setting, runbook exists, deploys verified by hash. The bounce rate finally has a real writer — but it has never been seen firing, because nothing has sent since 3 July |
+| 9 | Reliability & operability | 6 | **8** | Up from 5, then from 7 (cycle 102). Health check ok, monitoring cannot be off by a missing setting, runbook exists, deploys verified by hash. The bounce rate's real writer is now **observed firing in production**: 11 real BOUNCED rows, written after the fix merged — CR-01b closed |
 | 10 | Commercial mechanics | 4 | **7** | *(Re-graded 2026-08-29, cycle 99.)* Up from 5. Workspace creation, staff invite/access, soft-delete with recovery and a working support form remain walked. `/privacy` and `/terms` are now live and public, verified by fetching them directly — CR-07 closed. Held at 7, not 8-10: both pages carry an on-screen "Draft — not yet reviewed, and not legal advice" notice, a real customer-visible caveat |
 
-**Weighted total: 750 ÷ 100 = 7.50 → 7.5.** No cap applies.
+**Weighted total: 756 ÷ 100 = 7.56.** No cap applies.
 
 Movement from 6.8 is **+0.58**, and it is not a clean rise: core journeys (+54),
 copy (+16), operability (+12) and error handling (+10) went up; dev-isms (−20),
@@ -101,10 +115,11 @@ pass made rather than inherited.
 3. **CR-08 — a raw correlation cuid, ungated.** On the outbound email detail page,
    in a "Routing" card. It is **not** super-admin gated — `journeys.spec.ts:95`
    explicitly asserts ordinary staff can open that page.
-4. **CR-01b — the bounce rate has never been observed firing.** The structural
-   defect is fixed and both channels now write through one function, but nothing
-   has sent since 3 July, so no real NDR has moved the number off zero. A fix that
-   has not fired is this project's most repeated defect class.
+4. ~~CR-01b — the bounce rate has never been observed firing.~~ **CLOSED
+   2026-08-29 (cycle 102).** A read-only production probe found 11 real
+   OutboundEmail rows carrying status=BOUNCED, all written by the fixed code
+   after it merged — see the re-grade note above for the full evidence,
+   including the correction that sending did not actually stop on 3 July.
 5. **CR-05 — the Sentry DPA** (Greg's, one self-serve acceptance; Resend and
    RocketReach bind automatically via their terms — researched, sources recorded).
 6. ~~CR-09 — mobile/responsive never checked.~~ **CLOSED 2026-08-29 (cycle 100).**
@@ -128,12 +143,14 @@ pass made rather than inherited.
    (cycle 100)** — five key journeys walked at a phone viewport, four real
    defects found and fixed, re-walked clean. Dimension 4 unchanged at 8 (three
    unrelated contrast defects still cap it there).
-6. Watch the bounce rate actually fire once live sending resumes; decide whether
-   "0%" with no data behind it should render as "no data yet" instead. A confident
-   wrong number is worse than a blank.
+6. ~~Watch the bounce rate actually fire once live sending resumes.~~ **DONE,
+   2026-08-29 (cycle 102)** — 11 real BOUNCED rows observed in production,
+   written by the fixed code. Still separately unresolved: whether a bounce
+   rate with genuinely zero *new* sends since the fix should render differently
+   from a rate with real data behind it — a wording question, not a defect.
 
 **Items 1–2 together would land customer-ready at roughly 8.1 and open the sell
-gate; item 6 cannot be done by an agent (rule (c), no send).**
+gate.**
 
 ## Not checked this pass — so, unproven
 
