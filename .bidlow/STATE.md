@@ -1,6 +1,119 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 79) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 81) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 81, queue row 52. The restart had happened; nothing in the repo could say so.
+
+Row 52 is **`DONE 81`**. No new rows opened. **Merged `0b65cd4` (PR #350).**
+Open PRs at start of cycle: **zero** (first clean sweep in a while).
+
+### The instance: closed on the row's own acceptance test
+
+Row 52 set its own test - *"prove it by checking that the next cycle's log still
+contains the agent's own prose underneath the watcher's block."*
+
+`cycle-080.md` showed as MODIFIED at start-of-cycle, the signature that for ten
+cycles meant "the watcher clobbered it". It was the opposite: committed **214**
+lines, on disk **395**, `git diff --stat` = **181 insertions, 0 deletions**. A
+truncating writer cannot produce zero deletions. Line 1 is still the agent's own
+heading; the watcher's block was ADDED at line 219. Seven consecutive logs agree
+(`cycle-077` opens `# Cycle 77 - finished` and is **not** a stub - that is the
+shape `Write-CycleLog` writes when the agent left no log of its own).
+
+**The manual log-rescue step every cycle had been performing is RETIRED. Do not
+do it.** If a cycle log shows modified, run `git diff --stat`: insertions with
+zero deletions is the watcher working correctly, and is now the expected state.
+
+### The class: why it survived ten cycles
+
+The code has been correct since `3d7fef6`. None of the ten cycles went on a hard
+problem. **A restart leaves no trace in the repository** - `git log` shows what
+was *merged*, nothing showed what was *loaded*, and those were silently different
+for four cycles while 64/65/70/71 each rediscovered it from scratch.
+
+Built what the row itself asked for and nobody had done:
+
+* `$script:LoadedScriptHash` - SHA256 of the script's own file, captured at
+  module scope because that is the only moment it is knowable.
+* `Get-StaleWatcherNote` - pure, so the stale branch is testable without editing
+  the script mid-cycle. Three outcomes, deliberately not two: **same** -> stamp
+  the version; **different** -> `RESTART REQUIRED`, both hashes, and the word
+  **INERT** (because *"I merged it"* is the exact false conclusion that cost this
+  row ten cycles); **unknown** -> says the check could not run, never a false
+  all-clear and never an alarm on an unreadable read.
+* Wired into every cycle log, re-hashed each cycle so a merge landing *during* a
+  long-running watcher is caught.
+
+`relay/stale-watcher-visible.test.ts` - **14 tests, red first under BOTH `pwsh`
+and `powershell`** (failure reason checked: missing function, not a harness bug).
+The load-bearing test injects nothing - it copies the real script, dot-sources
+it, **edits the copy underneath the loaded process**, re-hashes, and proves the
+alarm fires on genuine file I/O. Registered in
+`powershell-timeout-budget.test.ts`'s anti-vacuity list, which caught the
+omission on the full run - that guard working as designed.
+
+Gates: **lint 0, typecheck 0, 3203 tests / 318 files green**, CI both checks pass.
+
+### Half-done, and exactly where
+
+**Nothing is half-done. PR #350 merged, branch deleted, working tree clean.**
+
+**One thing outstanding and it is NOT urgent: the stamp is inert until the
+watcher is next restarted** - the very defect it reports. Nothing is broken
+meanwhile (logs are being preserved correctly), so this is not a stop. At the
+next natural restart run `relay-start.cmd` in the ODoutreach folder. **Proof it
+took: cycle logs start carrying a line beginning `Watcher script:`.** If that
+line never appears, the restart did not happen and the stamp is still inert.
+
+### Writes to production
+
+**None. No deploy, no send, no delete, no schema change, no migration.** Confined
+to `relay-watch.ps1`, two files under `relay/`, and two records under
+`.bidlow/relay/`. None of the three things requiring Greg were near it.
+
+### Decisions
+
+* **Closed row 52 on evidence, not on work** - cycle 80 had already left it TODO
+  for exactly one more receipt. Took the receipt, then fixed the mechanism,
+  because closing instance eleven without touching what produced it just queues
+  instance twelve.
+* **Fixed the test, not the code**, when the wiring assertion first failed: it
+  looked for the function name inside the lines array, but the value is computed
+  one line above and passed by variable - which is better code.
+* **Kept the stale sections of `RESTART-REQUIRED.md`** rather than deleting them.
+  Nothing in them was dishonest; they were written from the best evidence on the
+  day. Marked RESOLVED with the measurement instead.
+* No one-way doors touched.
+
+### Known weakness, stated not buried
+
+The wiring test is **the weakest test in that file and is labelled so in the
+file**. The call site sits inside the main loop, not a function, so proving the
+loop writes the note means running a live cycle. Asserted at source level
+instead - both that `$stalenessNote` holds the function's result *and* that the
+log body includes it, and that the assignment precedes the call.
+
+### Near-miss worth carrying forward
+
+The first draft of row 52's status cell contained a **pipe character** inside a
+backticked shell example. QUEUE.md rows are pipe-delimited and the parser is a
+regex - that would have split the row, made the status unreadable and stopped
+the entire queue, committed by the cycle writing a row *about* being careful.
+Caught it, removed the pipe, then verified: exactly 4 pipes, and
+`queue-file-integrity.test.ts` (which validates the REAL QUEUE.md against the six
+status words) passes on `main`. **Never put a `|` in a queue row, even in code
+formatting.**
+
+### Nothing contradicts `.bidlow/PROJECT.json`
+
+### Next session picks up first
+
+1. Take the next `TODO`/`PARTIAL` row off QUEUE.md as normal.
+2. **Do not rescue cycle logs by hand** - that instruction is retired.
+3. If convenient, mention the non-urgent `relay-start.cmd` restart to Greg so the
+   stale-watcher stamp becomes live.
+
+---
 
 ## Session 2026-08-29 - Relay cycle 79, queue row 38. The guard that puts cycle logs into git could force a token in with them.
 
