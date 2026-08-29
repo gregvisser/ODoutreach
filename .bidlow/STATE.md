@@ -1,8 +1,84 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 111) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 113) - Tier P (Client Production)**
 
-## Session 2026-08-29 - Relay cycle 111, queue row 92: send leg proven (Greg clicked Launch live, not this agent); reply arrived but matched the wrong send. PR #404 OPEN, NOT YET MERGED.
+## Session 2026-08-30 - Relay cycle 113, queue row 92: identical brief redispatched ~1 minute after cycle 112 closed it; no re-check performed, none was possible. PR #406 OPEN, awaiting CI.
+
+Open PRs at cycle start: zero (cycle 112's own PR #405 was already merged
+before this cycle started). Started `docs/state-cycle-113` off updated
+`origin/main`, carrying forward two pieces of pre-existing uncommitted state
+from the working tree (not this session's own work product): the relay's own
+`IN PROGRESS 113` marker on row 92, and the watcher's appended tail on
+`cycle-112.md`.
+
+### What changed
+
+Row 92's brief text arrived byte-identical to cycle 112's (same "UPDATE 29
+AUGUST 22:51 UTC" addendum). Checked, rather than assumed, whether any new
+information could exist: `/api/build-info` showed the previous cycle's build
+timestamp at `2026-08-29T23:14:05Z` (00:14 UK), and `date -u` at the start of
+this cycle read `2026-08-29 23:22:33 UTC` (00:22:33 UK) — about **one
+minute** after cycle 112's own log says it finished. The reply-sync cron only
+runs weekdays 07:00-18:00 UK; this is Sunday, ~00:22 UK. No cron ran, no
+human action occurred, so no re-walk, re-query (production DB) or re-trigger
+(the `/api/internal/replies/sync` endpoint) could have shown anything cycle
+112 did not already show. None was performed. `/api/health` reconfirmed
+`autonomousRelay.allowlistedClients: 1` (bidlowai only, unchanged) as the
+hard rule's own live proof.
+
+Wrote `docs/ops/REPLY-PROOF-2026-08-29-cycle113.md` recording that reasoning
+with the time-math evidence, and strengthened cycle 112's own un-acted-on
+recommendation to the relay: this row was redispatched again exactly one
+minute after being closed, consistent with row 95's finding that the running
+watcher has not been restarted since a fix for this exact class of problem
+merged. Named concretely what should gate the next redispatch: Monday's cron
+window (2026-08-31 07:00 UK), a new human action on the send/reply chain, or
+row 95 landing (watcher restart, Greg's own hand). `.bidlow/GRADES.json` was
+**not edited** this cycle — dimension 1 stays at 8, exactly where cycle 112
+left it. Full account: `.bidlow/relay/log/cycle-113.md`.
+
+### Half-done — pick this up first
+
+**PR #406 (`docs(relay): row 92 - identical redispatch one minute after
+cycle 112`) is OPEN, NOT MERGED.** CI was still running when this session
+paused to wait on it. Next: check `gh pr checks 406`; if green, merge with
+`gh pr merge 406 --squash`, then verify the deploy by hash against the
+direct App Service origin (`/api/build-info`), never the CDN-cached custom
+domain. The diff is docs-only (`.bidlow/relay/QUEUE.md`, two
+`.bidlow/relay/log/*.md` files, one new `docs/ops/*.md` file) so a genuine
+CI failure would be surprising and worth reading closely rather than
+assuming flake.
+
+### Deliberately not done, and why
+
+No screens were loaded, no session was minted, no production database query
+and no reply-sync trigger were performed this cycle — deliberately, because
+the time-math above shows none could add information beyond what cycles 111
+and 112 already recorded. Manufacturing a re-check that cannot show anything
+new would be the same failure mode this project's QUEUE.md itself warns
+against, just inverted (false diligence rather than false success).
+
+### Nothing contradicts PROJECT.json
+
+No schema change, no migration, no client data touched, no email sent, no
+`src/` file changed (confirmed via `git diff --stat` before commit — only
+QUEUE.md, two relay logs, and one docs/ops file). Nothing discovered this
+session that contradicts `.bidlow/PROJECT.json`.
+
+### Next session should pick up
+
+1. Merge PR #406 once green (see "Half-done" above), then verify the deploy
+   by hash.
+2. After that, the queue's next TODO/BLOCKED/PARTIAL row is whatever sits in
+   `.bidlow/relay/QUEUE.md` at the time of reading. Row 92 itself is
+   `PARTIAL 113` and, per this session's own recommendation, should not be
+   redispatched again until Monday 2026-08-31 07:00 UK, a new human action,
+   or row 95 (watcher restart) lands — check `.bidlow/relay/QUEUE.md` row 95
+   before re-walking it regardless of what the relay dispatches.
+
+---
+
+## Session 2026-08-29 - Relay cycle 111, queue row 92: send leg proven (Greg clicked Launch live, not this agent); reply arrived but matched the wrong send. PR #404 MERGED (see cycle 112/113 entries above for what happened next).
 
 Open PRs at cycle start: one, #403 (cycle 110's docs, green) — merged via
 `gh pr merge 403 --squash`. Started `docs/state-cycle-111` off updated

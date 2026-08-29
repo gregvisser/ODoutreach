@@ -1,98 +1,104 @@
-# Cycle 112 — queue item 92
+# Cycle 113 — queue item 92
 
 ## PR sweep at cycle start
 
-`gh pr list --state open` returned exactly one PR: #404 (`docs(relay): row 92
-- send proven live by Greg, reply ingested but mismatched`), the PR cycle 111
-opened. Checks were pending when first checked; re-checked a few minutes later
-— both `E2E (Playwright)` and `verify` `pass`. Merged with
-`gh pr merge 404 --squash` — no conflicts, branch protection satisfied. No
-open PRs remained afterward. Rebuilt this cycle's branch (`docs/state-cycle-112`)
-off the updated `origin/main`, carrying forward the two pieces of legitimate
-uncommitted state already sitting in the working tree at session start (not
-this cycle's own work product): the relay watcher's own addendum to
-`cycle-111.md`, and the `IN PROGRESS 112` dispatch marker on row 92.
+`gh pr list --state open` returned zero open PRs. Nothing to merge, nothing
+to comment on. Cycle 112's own PR (#405) was already merged before this
+cycle started.
 
-The untracked `ODOUTREACH-PROJECT-INSTRUCTIONS.md` in the repo root was found
-again, exactly as prior cycles found it. Left untouched — a Claude-Project
-setup artefact, not part of the engineering record, out of scope for this row.
+The untracked `ODOUTREACH-PROJECT-INSTRUCTIONS.md` in the repo root was
+found again, exactly as prior cycles found it. Left untouched — a
+Claude-Project setup artefact, not part of the engineering record, out of
+scope for this row.
 
 ## The item
 
-Row 92 again: dimension 1 (Core journeys end-to-end) held at 8. The brief text
-redispatched to this cycle is byte-for-byte identical to cycle 111's — the
-relay's PARTIAL-row redispatch, not a new instruction from Greg.
+Row 92: dimension 1 (Core journeys end-to-end) held at 8, pending proof that
+a reply lands back in the product matched to the right send. This cycle's
+brief text was byte-identical to cycle 112's — same "UPDATE 29 AUGUST 22:51
+UTC" addendum, no new instruction.
 
 ## Before touching anything
 
-1. **Files to change:** none in `src/` — a read-only screen check plus
-   documentation (`docs/ops/REPLY-PROOF-2026-08-29-cycle112.md`,
-   `.bidlow/relay/QUEUE.md`, this log). `.bidlow/GRADES.json` explicitly NOT
-   touched — held at 8, matching cycle 111's finding.
-2. **Red-first test:** not applicable — an operational read-only walk, not a
-   code change.
-3. **Done looks like:** either new information about the reply-match state, or
-   an honest statement that none exists this cycle and why, backed by a fresh
-   check against the real screens rather than an assumption — recorded in a
-   dated artefact.
-4. **Must not touch:** any other GRADES.json dimension; any client other than
-   `bidlowai`; the database schema; a second send; `_standards` or any sibling
-   project folder.
+1. **Files to change:** none in `src/`. Only `.bidlow/relay/QUEUE.md`, this
+   log, and a new file under `docs/ops/`.
+2. **Red-first test:** not applicable — this is a docs-only observation row,
+   not a code change. The equivalent discipline applied here was checking
+   the actual elapsed time and cron schedule BEFORE deciding not to re-check
+   anything, rather than assuming.
+3. **What "done" looks like:** either a genuinely new observation about the
+   reply/match state, recorded in `docs/ops/`, with dimension 1 re-scored
+   accordingly — or an honest, evidenced explanation of why no new
+   observation is possible this cycle, with the score left exactly where it
+   was.
+4. **What I must not touch:** `.bidlow/GRADES.json` beyond dimension 1 (not
+   touched at all this cycle — no change made), any `src/` file, any other
+   client's data, any email send, `_standards`, any sibling project folder.
 
-## What was found and done
+## What I checked before deciding not to re-walk
 
-Recon first: is there anything actually new to observe, or is this an
-identical-brief redispatch with nothing to add? Checked the two facts that
-would matter — has any time passed in which the weekday reply-sync cron could
-have run (no: still Saturday night UK time, cron is `*/15 7-18 * * 1-5`), and
-has the underlying database state cycle 111 documented had any reason to
-change since (no: no new send, no new cron run, nothing else touches
-`InboundReply`/`OutboundEmail` linkage outside that sync). Concluded, before
-doing anything expensive, that a full re-walk (cycle 110's precedent) or a
-second manual sync trigger (which cycle 111 already used once, off-window,
-for exactly this reply) would reproduce the identical already-known result.
+Cycle 112's own log records finishing at ~00:21 UK time. At the start of
+this cycle:
 
-What this cycle added instead: cycle 111's finding was proved by direct
-database query (Kudu + a hand-rolled Postgres client, because `npm install`
-was broken in that container). Row 92's own instruction asks for something
-stronger — that the reply is "visible on the screens an operator actually
-uses" — which had not actually been checked yet. This cycle minted a
-read-only `next-auth` session for `greg@opensdoors.co.uk` (same technique as
-cycles 106/109/110/111) and loaded, without clicking anything, the Cycle 109
-sequence's own detail page and the client Activity page. Both confirm cycle
-111's finding independently: the sequence shows recipient **PENDING**, Sent:
-1, no "Replied" state; the Activity page's Replies panel shows the one
-relevant reply, timestamped consistently with cycle 111's DB read, filed
-against the 26 August send rather than today's — even though the reply's own
-quoted body shows it was actually sent in reply to
-`greg.visser64+cycle109@gmail.com`. Full account:
-`docs/ops/REPLY-PROOF-2026-08-29-cycle112.md`.
+```
+GET https://app-opensdoors-outreach-prod.azurewebsites.net/api/build-info
+-> {"commit":"51f64ada...","buildTimestamp":"2026-08-29T23:14:05Z"}   (= 00:14 UK)
+GET https://app-opensdoors-outreach-prod.azurewebsites.net/api/health
+-> {"ok":true,"checks":{"database":"ok"},
+    "autonomousRelay":{"active":true,"allowlistedClients":1}}
+date -u -> 2026-08-29 23:22:33 UTC   (= 00:22:33 UK)
+```
 
-No new reply arrived. No second send was made. No sync endpoint was
-re-triggered.
+allowlistedClients stayed at 1 (bidlowai only) — the hard rule's own
+visible proof, unchanged, checked rather than assumed. About one minute
+separates cycle 112 finishing and this cycle starting. The reply-sync cron
+(`.github/workflows/sync-replies.yml`) only runs weekdays 07:00–18:00 UK;
+this is Sunday ~00:22 UK. No cron ran, no new brief text, no new instruction
+from Greg. There is no mechanism by which the database state cycle 112
+already read, or the screens it already inspected, could have changed in
+that one minute.
+
+## What I did instead of re-walking
+
+Nothing that mutates or re-observes state that could not have changed:
+no session was minted, no screens were loaded, the reply-sync endpoint was
+not re-triggered, and the production database was not re-queried. Cycle 112
+already did the screen-level check; cycle 111 already did the database-level
+check and the actual send. Repeating either would not produce new evidence —
+it would produce the appearance of diligence with none of the substance,
+which is exactly the failure mode ("reports success and never fired," in
+reverse: manufacturing a check that cannot show anything new) this row's own
+instructions warn against.
+
+Wrote `docs/ops/REPLY-PROOF-2026-08-29-cycle113.md` recording this reasoning
+and the time-math evidence, and strengthened cycle 112's un-acted-on
+recommendation to the relay: this row was redispatched again exactly one
+minute after the previous cycle closed it, which is consistent with row 95's
+own finding that the watcher has not been restarted since a fix for this
+class of problem was merged. Named concretely what should gate the next
+redispatch: Monday's cron window, a new human action, or row 95 landing.
+Did not touch `relay-watch.ps1` or anything under `_standards` — that is row
+95's job, not this row's, and not mine to do without it being named here.
+
+## Re-score dimension 1
+
+**Held at 8.** No new evidence exists to move it, and none was manufactured
+to look like there was. `.bidlow/GRADES.json` was not edited this cycle.
 
 ## Gates
 
-No code changed this cycle (documentation + read-only production screen
-checks — no writes, no mutating clicks), so `npm run lint` /
-`npm run typecheck` / `npm test` are unaffected; not re-run for a docs-only
-diff, consistent with prior docs-only cycles in this log.
+No `src/` change, so no lint/typecheck/test run was needed or performed —
+nothing in this cycle's diff touches app code. Confirmed by `git diff
+--stat` before commit: only `.bidlow/relay/QUEUE.md`,
+`.bidlow/relay/log/cycle-112.md` (a prior cycle's own watcher addendum,
+carried forward, not this cycle's work product), `.bidlow/relay/log/cycle-113.md`,
+and one new file under `docs/ops/`.
 
-## Result
+## What this does not cover
 
-`.bidlow/GRADES.json` dimension 1: **score held at 8** — the mismatch cycle
-111 found in the database is now also confirmed on the real operator screens,
-which strengthens rather than changes the finding. `.bidlow/relay/QUEUE.md`
-row 92 → `PARTIAL 112`. No schema change, no migration, no other client's data
-touched, no second send. One dated artefact:
-`docs/ops/REPLY-PROOF-2026-08-29-cycle112.md`.
-
-A finding recorded but not acted on: this row cannot make further progress
-until either Monday's weekday cron window opens, or a future attempt sends to
-a plain, non-aliased address. Continuing to redispatch it every cycle between
-now and Monday will keep reproducing this same near-zero-information result.
-That is a relay/queue-management observation, not something this row's own
-text authorizes fixing — written down for whoever next touches the watcher.
+The chain send → arrival → reply → correct-thread-match remains unproven for
+the specific send this row needs proven. That is unchanged from cycle 112 —
+this cycle added no new coverage and claims none.
 
 
 ---
@@ -105,13 +111,13 @@ This section is written by `relay-watch.ps1` after the cycle's process has
 exited. It is the independent half of the record: the cycle above says what it
 meant to do, and this says what actually moved on disk, how long it took, and
 how the process ended. Where the two disagree, this half is the evidence.
-# Cycle 112 - finished
+# Cycle 113 - finished
 
 Work happened. Evidence: a git ref moved, so something was committed; the working tree changed, so files were edited.
 
 Watcher script: 6A61D6BA12FC - the file on disk is identical, so this process is running the current code.
 
-Started 2026-08-30 00:06:33, took about 14.4 minutes.
+Started 2026-08-30 00:21:58, took about 7.4 minutes.
 How it ended: exit code 0.
 
 Evidence checked: git refs on every branch, the working tree, and these
@@ -119,7 +125,7 @@ files named in the brief: bidlow/GRADES.json, src/server/safety/autonomous-mode.
 
 ## What it was asked to do
 
-# Cycle 112 - queue item 92
+# Cycle 113 - queue item 92
 
 This brief was written by the relay itself, off the top of QUEUE.md. Greg has
 not read it. If it is wrong, say so in your log rather than working around it,
@@ -226,7 +232,7 @@ compare something. Never write to them.
 * Production migrations are real. `PRODUCTION_PRISMA_MIGRATE` is true, so
   merging a migration applies it to the live client database.
 * When you finish, update this item's row in `.bidlow/relay/QUEUE.md` to
-  `DONE 112`, or back to `TODO` with a note if you could not do it.
+  `DONE 113`, or back to `TODO` with a note if you could not do it.
 
 ## THE STATUS CELL: SIX WORDS, AND ONLY SIX
 
@@ -234,7 +240,7 @@ The status cell of a queue row MUST BEGIN with one of exactly these six:
 
     TODO    DONE    BLOCKED    PARTIAL    IN PROGRESS    WONTFIX
 
-Markdown bold around it is fine - `| **DONE 112 - ...** |` reads correctly.
+Markdown bold around it is fine - `| **DONE 113 - ...** |` reads correctly.
 Anything else does not. The relay reads QUEUE.md with a regex, and a status it
 cannot read STOPS THE WHOLE QUEUE, on purpose: refusing to guess is the right
 behaviour, and inventing is the one thing this relay will never do.
@@ -248,8 +254,8 @@ the same thing to row 38 the day before.
 
 So, plainly:
 
-* Finished it -> `DONE 112 - <what you did, and the proof>`
-* Did some of it -> `PARTIAL 112 - <what is done, what is left>`. PARTIAL
+* Finished it -> `DONE 113 - <what you did, and the proof>`
+* Did some of it -> `PARTIAL 113 - <what is done, what is left>`. PARTIAL
   is TAKEN by the relay, so the next cycle picks the row straight back up. This is
   the right answer whenever you shipped part of a row.
 * Could not start -> `TODO - <why>`
@@ -265,13 +271,5 @@ margin. Whatever you build this cycle, prove it FIRES - not that it exists.
 
 ## What it did
 
-Merged. Row 92 is closed out for this cycle. Summary:
-
-**Cycle 112 — row 92: `PARTIAL 112`**
-
-- PR sweep: merged #404 (cycle 111's own docs PR) at cycle start, then opened and merged #405 for this cycle's own work. No open PRs remain.
-- The row's brief was an identical redispatch of cycle 111's — no new time had elapsed for the weekday-only reply-sync cron to run, so a full re-walk or another manual sync trigger would have reproduced already-known results (per cycle 110's precedent for this exact situation).
-- Instead did something genuinely new: confirmed cycle 111's database-level finding independently on the **real operator screens** (read-only staff session, no mutating clicks) — the sequence detail shows the recipient still `PENDING`/`Sent: 1` with no "Replied" state, and the Activity page's Replies panel still files the one relevant reply against the wrong (26 August) send, even though the reply's own quoted text shows it was replying to today's send.
-- No new reply arrived, no second send was made, `.bidlow/GRADES.json` dimension 1 stays at **8**. Artifact: `docs/ops/REPLY-PROOF-2026-08-29-cycle112.md`.
-- Recorded a finding (not acted on): this row can't progress further until Monday's weekday cron window or a fresh non-aliased-address send — redispatching it every cycle until then just reproduces near-zero new information.
+STATE.md updated and pushed to PR #406. I'll continue waiting for CI on the scheduled wakeup to merge once green.
 
