@@ -1,6 +1,155 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 90) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 92) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 92, queue row 80, item 7: best message by job title. ROW 80 IS NOW COMPLETE.
+
+Row 80 is **`DONE 92`**. All **7 of 7 items** shipped. **Merged `e5ed7b5`
+(PR #368)**, deployed, verified by hash on the direct App Service URL
+(`/api/build-info` returns `e5ed7b53cc6c1d3b0e3facec801630b68b59a3dc`, health
+`database: ok`). Open PRs at start of cycle: **zero**. At end: **zero** - five
+consecutive clean starts.
+
+Cycle 91 (item 6, sender comparison, `991013c`) did not write a STATE entry; it
+is recorded in `.bidlow/relay/log/cycle-091.md`, whose file was uncommitted at
+the start of this cycle and is included in PR #368.
+
+### What was built
+
+Item (7): a button on each client's **Outreach** tab that sorts everyone they
+have emailed into audiences by job title, counts how each campaign did with each
+audience, tests whether the differences beat normal variation, and asks the model
+to explain only the ones that do.
+
+* **`src/lib/ai/title-family.ts`** - pure: free-text job title -> one of ten
+  families, by fixed ordered rules.
+  **`src/lib/ai/title-message-evidence.ts`** - pure: the table, the coverage
+  accounting, the multiplicity-adjusted significance test, the refusals.
+  **`src/lib/ai/title-message.ts`** - prompt, tool, parser.
+  **`src/server/ai/advise-title-messages.ts`** - the metered call and the write.
+  **`src/components/clients/title-message-panel.tsx`** + the Outreach page wiring.
+* Migration `20260829200000_ai_title_message_fit` - **additive**: one enum value
+  (`ALTER TYPE "AiFeature" ADD VALUE 'TITLE_MESSAGE_FIT'`) plus one new table
+  `AiTitleMessageReview`. Applied to the production database on merge; the
+  deploy's migrate step ran green.
+* Gates: lint 0, typecheck 0, **3578 tests / 344 files** (from 3518/339), build
+  green, `prisma validate` green, CI + E2E green.
+
+### The decisions that mattered: three schema facts changed what the question means
+
+The queue says "best-message-by-job-title". Reconnaissance established three
+things, each of which changes the arithmetic rather than the wording:
+
+1. **The unit must be one ENROLLED PERSON, not one send.** Everyone in a campaign
+   receives five emails, and item 2 of this same row stops the sequence the
+   instant they reply. Counting sends would count one person up to five times
+   (inflating every standard error) and would compare step 1 against a step-4
+   audience systematically stripped of exactly the people who reply - concluding
+   the first email is best, whatever it said.
+2. **"Message" means the SEQUENCE.** Templates and sequences are client-scoped
+   and every contact in a sequence walks the same steps, so the only copy
+   dimension that varies between two contacts of one client is which sequence
+   they were enrolled in. Same family of finding as cycle 91's "there is no rep".
+3. **`Contact.title` is free text and often ungroupable.** Grouping is done by
+   fixed rules IN CODE, never by the model, because the grouping decides who gets
+   pooled with whom and a model-drawn grouping would move the arithmetic under it
+   between runs. Ambiguous titles ("Director", "Compliance Officer") return
+   `null` and are reported as coverage, never swept into an "Other" bucket - that
+   bucket would be four unrelated jobs, and a finding about it reads as a finding
+   about an audience that does not exist.
+
+Two corrections this feature needed that the previous five did not, both
+generalisable:
+
+* **Multiple comparisons.** This makes dozens of cell-vs-pool tests at once; at
+  the conventional z=2 bar about one in twenty clears by chance, so a client with
+  forty cells would be handed roughly two confident false winners on every press
+  of the button. `bonferroniZThreshold(k)` raises the bar with the number of
+  comparisons actually made (Acklam inverse-normal CDF, written out, no new
+  dependency). The cycle-91 sender comparison did not need this - it compared
+  about three mailboxes.
+* **A maturity window.** A campaign launched last week has not finished emailing
+  anyone, so its non-repliers are provisional - and the error has a DIRECTION:
+  the newest campaign always has the most unfinished enrolments, so an unwindowed
+  comparison would find the older campaign better every single time. Enrolments
+  newer than 35 days (day-25 last step + 10 for a reply) are excluded. Separately,
+  enrolments that never produced a SENT email are dropped entirely: suppressed or
+  still-PENDING people were never given the chance to reply, and counting them
+  would punish whichever campaign was pointed at a dirtier list.
+
+**The confound that cannot be fixed, only declared: nobody was randomised.** Each
+campaign went to a contact list an operator built by hand, so a campaign that
+wins with Finance may simply have been given a better list of Finance people. It
+is stated as fact in the system prompt, the parser DROPS any finding arriving
+with a single confident cause, and the panel says it above the table.
+
+**The guardrail is structural, not prompt-level.** This feature's danger is being
+read as an instruction to rewrite live copy, so `TITLE_MESSAGE_TOOL` has **no
+field for suggested copy, a subject line, a rewrite, a score, a rank or a
+recommended change to a campaign**. A test asserts the serialised schema contains
+none of those words. Fourth instance of one rule, after cycles 88 (sequence
+delays), 89 (replacement copy), 90 (the send schedule) and 91 (rating a person).
+
+**Not a one-way door.** Additive migration, no existing table/column/type
+touched, no client data moved, and no code path this adds can send email or
+change a template, campaign, contact or enrolment.
+
+### A defect found and fixed on the way
+
+The `${family.label} ${message.label}` lookup keys were written to disk with a
+raw **NUL byte** where the space belonged. It worked (both sides matched) but
+made the file binary to `grep` and `git diff`. Replaced with
+`pairKey(a, b) = JSON.stringify([a, b])`, which also closes a real if unlikely
+collision: an audience "Finance" and a campaign "Finance — Q3" would collide
+under any printable separator, and a collision there would let a finding about a
+noise pair pass the drop-guard wearing another pair's verdict.
+
+### Proving it fires, not that it exists
+
+* `title-family.test.ts` and `title-message-evidence.test.ts` **went red on the
+  first run** - two real test bugs, both fixed.
+* The server test was green first time, which proves nothing, so the source was
+  **deliberately broken twice** (never-sent filter neutered; distinguishable-pair
+  filter removed). Three tests went red naming exactly the right behaviours. Both
+  breaks reverted and re-verified.
+* `title-message-roundtrip.test.ts` runs the real grouping, evidence builder,
+  significance test, request builder, HTTP layer and parser with only `fetch`
+  faked, proving the schema we SEND and the shape we PARSE are one agreement.
+
+### Nothing half-done
+
+No partial work was left anywhere. The branch is merged and deleted, the tree is
+clean, and there are zero open PRs.
+
+### What the next session should pick up first
+
+Row 80 is **CLOSED - do not re-open it looking for unbuilt features.** The two
+AI-adjacent items that remain are NOT part of row 80:
+
+1. **Verify the token prices** in `src/lib/ai/model-catalog.ts`.
+   `RATES_VERIFIED` is still `false` and `VERIFIED_RATE_VERSIONS` is empty after
+   **six** cycles. WebFetch/WebSearch/the `claude-api` skill have been denied
+   every time. **This is an ENVIRONMENT BLOCK, not a to-do - a later cycle will
+   not fix it by trying harder.** It needs a human with a browser. Make at most
+   one attempt per cycle, then move on.
+2. **A per-client AI off-switch** with attribution; only the global
+   `AI_FEATURES=off` exists.
+
+Otherwise, take the next `TODO`/`PARTIAL` row off `.bidlow/relay/QUEUE.md`.
+
+### Still true, and it gates the whole AI programme
+
+**All seven features are live and REFUSING.** `ANTHROPIC_API_KEY` is not set on
+`app-opensdoors-outreach-prod`. Every call enters the metered path, refuses with
+`no_api_key`, and writes a `REFUSED` row to `AiUsageEvent`. That is the designed
+fail-closed behaviour, not a bug - **but do not report any of these seven as
+working until the key is set.** Setting it starts real spend Greg invoices
+onward, so it is his decision and it is the one open question from this cycle.
+
+### Nothing contradicts `.bidlow/PROJECT.json`
+
+Checked. No new external service, no new dependency, no change to the tier, the
+stack, the deploy path or the domain non-negotiables.
 
 ## Session 2026-08-29 - Relay cycle 90, queue row 80. AI features, slice 6: AI-chosen send times. LIVE, and refusing until a key is set.
 
