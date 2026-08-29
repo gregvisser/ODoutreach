@@ -45,7 +45,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           CONFIRM: ${{ inputs.confirm }}
-          DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: |
           if [ -z "${DATABASE_URL}" ]; then
             echo "PRODUCTION_DATABASE_URL is not configured — refusing to run a client-data write against no database."
