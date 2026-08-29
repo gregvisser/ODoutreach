@@ -1,13 +1,25 @@
 # Customer-Ready Report — ODoutreach
 
-**Customer-Ready 7.4/10 — Nearly ready** · **Engineering 8.5/10**
+**Customer-Ready 7.5/10 — Nearly ready** · **Engineering 8.5/10**
 **Graded 2026-08-27** against commit `b15cfe4`, by walking 30 staff-facing
 screens in a real browser against a local production build.
 Supersedes the 2026-08-23 grade of **6.8** (engineering 8.0).
 
+**Re-graded 2026-08-29 (cycle 99), CR-07 only — not a full re-walk.** PR #302
+(merged 2026-08-28) shipped `/privacy` and `/terms`, already live on production
+commit `3bdf6f5`. Verified live rather than trusting the merge: both routes
+return 200 on the custom domain and the direct App Service origin, with real
+content (not a stub) and footer links reachable from the signed-out `/sign-in`
+page. Dimension 10 moves 5 → 7 (held back from 8-10 by an on-screen "Draft —
+not yet reviewed, and not legal advice" notice). Weighted total 7.42 → 7.50.
+See `.bidlow/GRADES.json` → `customer_ready.movement_this_regrade` for the exact
+arithmetic.
+
 > **Sell gate: Engineering ≥ 8 AND Customer-Ready ≥ 8. This still does not pass.**
-> Engineering clears it. Customer-ready is 0.6 short. The three things holding it
-> short were all found by *this* walk — none of them was on anybody's list.
+> Engineering clears it. Customer-ready is now 0.5 short, down from 0.6. Two of
+> the three things that held it short at the last grade are still open: CR-08
+> (a raw correlation id) and CR-01b (the bounce path has never been observed
+> firing — an agent cannot close this, it requires a real send). CR-07 is closed.
 
 ## The headline, plainly
 
@@ -51,9 +63,9 @@ for production, not a prediction of it.
 | 7 | Error handling & resilience | 10 | **7** | Up from 6. Off-happy-path is now tested, not assumed: a failed brief save shows an inline error and **keeps the operator's typed data**; an unknown id renders 404 disclosing nothing; unauthenticated redirects to sign-in with a callback. Still unchecked: network failure mid-journey, form validation generally, mobile |
 | 8 | Data safety & trust | 10 | **6** | **Down from 7 — the finding of this pass.** Isolation genuinely improved (E-06 fixed, BC-01 proven capable of catching a leak, `allowlistedClients: 1` visible in production). But prospect personal data is being sent to a third party right now — CR-06 |
 | 9 | Reliability & operability | 6 | **7** | Up from 5. Health check ok, monitoring cannot be off by a missing setting, runbook exists, deploys verified by hash. The bounce rate finally has a real writer — but it has never been seen firing, because nothing has sent since 3 July |
-| 10 | Commercial mechanics | 4 | **5** | Down from 6. Workspace creation, staff invite/access, soft-delete with recovery and a working support form all walked. But there is **no terms of service and no privacy policy anywhere** — CR-07 |
+| 10 | Commercial mechanics | 4 | **7** | *(Re-graded 2026-08-29, cycle 99.)* Up from 5. Workspace creation, staff invite/access, soft-delete with recovery and a working support form remain walked. `/privacy` and `/terms` are now live and public, verified by fetching them directly — CR-07 closed. Held at 7, not 8-10: both pages carry an on-screen "Draft — not yet reviewed, and not legal advice" notice, a real customer-visible caveat |
 
-**Weighted total: 742 ÷ 100 = 7.42 → 7.4.** No cap applies.
+**Weighted total: 750 ÷ 100 = 7.50 → 7.5.** No cap applies.
 
 Movement from 6.8 is **+0.58**, and it is not a clean rise: core journeys (+54),
 copy (+16), operability (+12) and error handling (+10) went up; dev-isms (−20),
@@ -70,10 +82,10 @@ pass made rather than inherited.
    into error reports sent to a third party — one whose Art.28 DPA is not yet
    accepted. The DSN is hard-coded, so this is not switchable off by config.
    `tracesSampleRate: 1` samples 100%, which is volume and cost on top.
-2. **CR-07 — no terms of service, no privacy policy.** Searched `src/app`: neither
-   exists. For a product processing third-party personal data under UK GDPR and
-   PECR this is a real gap, and it is exactly the document a client asks for when
-   they ask who else sees their prospects' data.
+2. ~~CR-07 — no terms of service, no privacy policy.~~ **CLOSED 2026-08-29.**
+   `/privacy` and `/terms` are live, public, and linked from the signed-out
+   sign-in footer — verified by fetching the running pages, not by reading the
+   merge. Still a draft, not a lawyer-reviewed final: see the scorecard note.
 3. **CR-08 — a raw correlation cuid, ungated.** On the outbound email detail page,
    in a "Routing" card. It is **not** super-admin gated — `journeys.spec.ts:95`
    explicitly asserts ordinary staff can open that page.
@@ -92,16 +104,17 @@ pass made rather than inherited.
 2. **Gate or drop the correlation id** on the outbound detail Routing card, or
    show it only to super admins as the mailbox diagnostics already are. Moves
    dimension 3 from 7 → 9.
-3. **Add a terms of service and a privacy policy page.** The pages are small; what
-   they promise about retention and sub-processors is Greg's call. Moves dimension
-   10 from 5 → 8.
+3. ~~Add a terms of service and a privacy policy page.~~ **DONE, 2026-08-29** —
+   live at `/privacy` and `/terms`, linked from the sign-in footer. Dimension 10
+   moved 5 → 7 (not 8: still marked Draft, unreviewed).
 4. Greg accepts the Sentry DPA when Sentry is back up.
 5. Check mobile/responsive — never checked, on any pass.
 6. Watch the bounce rate actually fire once live sending resumes; decide whether
    "0%" with no data behind it should render as "no data yet" instead. A confident
    wrong number is worse than a blank.
 
-**Items 1–3 together land customer-ready at roughly 8.1 and open the sell gate.**
+**Items 1–2 together would land customer-ready at roughly 8.1 and open the sell
+gate; item 6 cannot be done by an agent (rule (c), no send).**
 
 ## Not checked this pass — so, unproven
 

@@ -39,10 +39,10 @@
   },
 
   "customer_ready": {
-    "score": 7.4,
+    "score": 7.5,
     "band": "Nearly ready (7.0-8.9)",
     "report": "CUSTOMER-READY-REPORT.md",
-    "weighted_total": 7.42,
+    "weighted_total": 7.5,
     "cap_applied": null,
     "cap_note": "Each cap was checked against the walk. No broken core journey (all 30 screens render and navigate; the core job is covered end to end by a merge-blocking test AND was performed for real once on 2026-08-26). No cross-customer leakage (BC-01 green and proven capable of catching one; E-06 fixed in cycle 42). No placeholder content. Deployment, health check and monitoring all present. The dev-ism cap was CONSIDERED and deliberately NOT applied - see blocker CR-08 for the reasoning, which is recorded rather than buried.",
     "scorecard": [
@@ -55,10 +55,11 @@
       { "n": 7, "dimension": "Error handling & resilience", "weight": 10, "score": 7, "observed": "Up from 6. Off-happy-path is now actually tested rather than assumed: a failed brief save shows an inline error and KEEPS the operator's typed data instead of crashing (brief-save-session-expiry.spec.ts); an unknown id renders the 404 UI and discloses nothing; unauthenticated access redirects to sign-in with a callback. Zero console and page errors across 30 screens. Still unchecked: network failure mid-journey, form validation beyond the brief save, mobile." },
       { "n": 8, "dimension": "Data safety & trust", "weight": 10, "score": 6, "observed": "DOWN from 7, and this is the finding of this pass. Isolation genuinely improved - E-06 is fixed, BC-01 is green and proven capable of catching a leak, and the hard rule is visible in production as allowlistedClients:1. But prospect personal data is leaving the building right now: sentry.server.config.ts and sentry.edge.config.ts still have userInfo and httpBodies commented out, so names, email addresses and the bodies of real outreach and real replies are collected into error reports sent to a third party whose Art.28 DPA is not yet accepted (CR-06). [Cycle 62, 2026-08-28: the collection half of this is FIXED and CR-06 is CLOSED - all three entry points now pass one explicit policy and a runtime test reads userInfo false back off the live client. The score is deliberately LEFT at 6: it was set by a customer walk, and closing a cause is not the same as re-running the walk that produced the number. Re-grade this dimension on the next walk, where the remaining input is the CR-05 DPA question.]" },
       { "n": 9, "dimension": "Reliability & operability", "weight": 6, "score": 7, "observed": "Up from 5. /api/health returns ok with database ok; monitoring cannot be off by a missing setting; docs/TEAM_RUNBOOK.md exists; CI is merge-blocking and deploys are verified by hash. The bounce rate finally has a real writer (record-bounce.ts) - but it has never been seen firing in production, because nothing has sent since 3 July (CR-01b)." },
-      { "n": 10, "dimension": "Commercial mechanics", "weight": 4, "score": 5, "observed": "DOWN from 6. Workspace creation, staff invite and access toggling, soft-delete with recovery and a working support-ticket form are all present and were walked. But there is NO terms of service and NO privacy policy anywhere in src/app - checked by search, not assumed - and this product processes third-party personal data under UK GDPR and PECR (CR-07)." }
+      { "n": 10, "dimension": "Commercial mechanics", "weight": 4, "score": 7, "observed": "UP from 5, cycle 99 - CR-07 re-grade only, NOT a full re-walk. Workspace creation, staff invite and access toggling, soft-delete with recovery and a working support-ticket form remain present. CR-07's gap is closed and VERIFIED LIVE, not by reading the merge: fetched https://opensdoors.bidlow.co.uk/privacy and /terms directly - both return 200 on the custom domain AND the direct App Service origin (app-opensdoors-outreach-prod.azurewebsites.net), with real content ('How this outreach platform handles personal data...', 'Last updated 29 August 2026') rather than a stub, and the SIGNED-OUT /sign-in page (200, no session) carries footer links to both (href=\"/privacy\", href=\"/terms\"). Held at 7, not 8-10: both pages carry an on-screen amber 'Draft - not yet reviewed, and not legal advice' notice (data-testid=legal-draft-notice) - real and accurate, written from the code, but explicitly unreviewed, which is itself a customer-visible caveat on a commercial document. Whose words go in these pages is unchanged as Greg's open question." }
     ],
-    "arithmetic": "8*18 + 8*12 + 7*10 + 8*12 + 8*8 + 8*10 + 7*10 + 6*10 + 7*6 + 5*4 = 144+96+70+96+64+80+70+60+42+20 = 742. 742/100 = 7.42 -> 7.4",
-    "movement_from_6_8": "Net +0.58. Up: core journeys 5->8 (+54), copy 6->8 (+16), operability 5->7 (+12), error handling 6->7 (+10). Down: dev-isms 9->7 (-20), data safety 7->6 (-10), commercial 6->5 (-4). The rise is real but it is NOT the whole story - two dimensions fell, and both fell on findings this pass made rather than inherited.",
+    "arithmetic": "8*18 + 8*12 + 7*10 + 8*12 + 8*8 + 8*10 + 7*10 + 6*10 + 7*6 + 7*4 = 144+96+70+96+64+80+70+60+42+28 = 750. 750/100 = 7.50 -> 7.5",
+    "movement_from_6_8": "Net +0.58 at the 2026-08-27 walk. Up: core journeys 5->8 (+54), copy 6->8 (+16), operability 5->7 (+12), error handling 6->7 (+10). Down: dev-isms 9->7 (-20), data safety 7->6 (-10), commercial 6->5 (-4). The rise is real but it is NOT the whole story - two dimensions fell, and both fell on findings this pass made rather than inherited.",
+    "movement_this_regrade": "Cycle 99, 2026-08-29: CR-07 closed after live verification against production commit 3bdf6f5 (PR #302, merged 2026-08-28, already deployed). Dimension 10 (Commercial mechanics) 5 -> 7. Weighted total 7.42 -> 7.50 (+0.08). No other dimension touched - CR-08, CR-01b and CR-09 remain OPEN, exactly as instructed, and were not re-scored or closed.",
     "limitation": "This walked a FIXTURE database of four near-empty workspaces on a LOCAL production build, not the live site with seventeen real clients. It is strong evidence about rendering, copy, empty states, leakage and error paths, and weak evidence about data scale. Load times (1.3-5.9s) are local numbers under eight parallel workers hitting a cold server and are a floor for production, not a prediction of it. Two long-standing data-scale questions remain neither confirmed nor refuted.",
     "blockers": [
       {
@@ -72,8 +73,9 @@
         "id": "CR-07",
         "summary": "There is no terms of service and no privacy policy anywhere in the product. Searched src/app for privacy, terms and legal routes: none exist. For a product processing third-party personal data under UK GDPR and PECR this is a genuine commercial-mechanics gap, and it is also the document a client asks for when they ask who else sees their prospects' data.",
         "owner": "us",
-        "status": "OPEN",
-        "evidence": null
+        "status": "CLOSED",
+        "evidence": "PR #302 (feat/privacy-terms-pages, cycle 55), merged 2026-08-28T08:20:09Z, already live on production commit 3bdf6f5. RE-VERIFIED LIVE on 2026-08-29, cycle 99, by fetching the running product directly rather than trusting the merge: GET https://opensdoors.bidlow.co.uk/privacy -> 200, GET https://opensdoors.bidlow.co.uk/terms -> 200, both also 200 against the direct origin app-opensdoors-outreach-prod.azurewebsites.net (same build, not a CDN artefact). Both pages render real content written from BLUEPRINT.json and the actual code (retention, ContactUniverse survival past a client purge, per-client suppression, open-tracking defaults), not a stub. The signed-out /sign-in page (200, no session cookie) carries footer links to both (href=\"/privacy\", href=\"/terms\"), which is the surface Google's OAuth reviewer and a prospect actually reach. Middleware public-paths change (src/lib/public-paths.ts) and src/middleware.test.ts were part of the same merged PR. NOT closed as a full legal sign-off: both pages carry an on-screen 'Draft - not yet reviewed, and not legal advice' notice - the content exists and is accurate to the code, but whose words go in it is still Greg's open question (see questions_for_greg).",
+        "closed_on": "2026-08-29"
       },
       {
         "id": "CR-08",
@@ -140,9 +142,9 @@
     "result": "NOT SATISFIED",
     "requirement": "Engineering >= 8 AND Customer-Ready >= 8",
     "engineering": "8.5 - meets the bar",
-    "customer_ready": "7.4 - FAILS the bar",
+    "customer_ready": "7.5 - FAILS the bar",
     "blocked_by": ["customer_ready"],
-    "note": "PROVE DOES NOT CLOSE. The instruction was to re-grade and record, and closing PROVE was conditional on both grades reaching 8. Customer-ready reached 7.4. Closing every named blocker was necessary for an 8 and was not sufficient - the walk found three things nobody had recorded before (CR-06, CR-07, CR-08), which is exactly what walking is for and exactly what counting closed rows would have missed. The distance to 8 is 0.6 and it is cheap: CR-06 is two commented-out lines in two files, CR-07 is two documents, CR-08 is one gated field. Together those three would move dimensions 8, 10 and 3 and land customer-ready at roughly 8.1."
+    "note": "STILL NOT SATISFIED, honestly. Cycle 99 re-graded CR-07 only, as the queue item asked, after verifying the fix live rather than trusting the merge: /privacy and /terms are real, public, and linked from the signed-out sign-in page footer. That closes CR-07 and moves dimension 10 from 5 to 7, taking customer-ready from 7.4 to 7.5. It does NOT close the gate. Two blockers named at the 7.4 grade are untouched and remain OPEN on their own rows: CR-08 (a raw correlation cuid, ungated, on the outbound email detail page - dimension 3, dev-isms) and CR-01b (the bounce path has never been observed firing in production - dimension 9, reliability). CR-09 (mobile/responsive never checked) is also still open and affects dimension 4, which was already held at 8 rather than higher partly for that reason. The distance to 8 is now 0.5, not 0. Closing CR-08 (one gated field) is the cheapest remaining move; CR-01b cannot be closed by an agent at all under rule (c) - it requires a real send to observe, which no cycle may cause."
   },
 
   "open_questions": 1,

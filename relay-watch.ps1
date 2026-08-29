@@ -1845,6 +1845,25 @@ Rules for the sweep:
 3. **What "done" looks like** for this item, in one sentence a non-coder can check.
 4. **What you must NOT touch.** Anything outside the files in (1).
 
+## THIS PROJECT'S FOLDER, AND NOTHING OUTSIDE IT
+
+You are working on ONE client system. Greg runs several side by side, and they
+share one folder deliberately: ``C:\Bidlowprojects\_standards`` is the METHOD -
+the hooks, the gates, the skills, the deck, the checklists - and it applies to
+every project at once.
+
+**Do not create, edit, move or delete anything under ``_standards`` unless the
+queue row you are working on names that path explicitly.** A change made there
+while doing client work does not stay with this client; it silently changes how
+every other build is judged, including ones nobody is looking at today. If this
+row's work seems to need a change to the method, STOP and write the case for it
+into your log as a finding. Somebody will queue it as its own row, against the
+standard, where it can be reviewed on its own terms.
+
+The same goes for any sibling project folder - ``BidlowClients\Kepak``,
+``BidlowClients\Papaya``, ``BidlowTools\*``. Read them if a row asks you to
+compare something. Never write to them.
+
 ## The rules that apply to every cycle
 
 * Do not stall on a question. Decide, record the decision and why, and continue.
