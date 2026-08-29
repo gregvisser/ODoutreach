@@ -63,17 +63,40 @@ import { MailboxOAuthFailure } from "@/server/mailbox/mailbox-oauth-callback-sha
 
 import { GET } from "./route";
 
-/** A row as `prepareMailboxOAuthConnection` really leaves it: state + expiry. */
+/**
+ * A row as `prepareMailboxOAuthConnection` really leaves it: state + expiry.
+ *
+ * Since cycle 73 a mailbox that can send keeps its CONNECTED status AND its
+ * stored secret for the whole round trip, so that — not a blank row — is what a
+ * callback actually meets when an operator presses Connect on a live mailbox.
+ */
 const MAILBOX = {
   id: "mb_1",
   clientId: "cl_1",
   emailNormalized: "alex@trainhugger.com",
   provider: "GOOGLE",
+  connectionStatus: "CONNECTED",
+  isActive: true,
+  secret: { id: "sec_1" },
   workspaceRemovedAt: null,
   deletedAt: null,
   oauthState: "st_1",
   oauthStateExpiresAt: new Date("2026-08-28T12:10:00.000Z"),
 };
+
+/** The same mailbox after its credential is gone — nothing left to protect. */
+const MAILBOX_WITHOUT_CREDENTIAL = {
+  ...MAILBOX,
+  connectionStatus: "PENDING_CONNECTION",
+  secret: null,
+};
+
+/** Every `data` object written to `clientMailboxIdentity.update` this test. */
+function writtenRowData(): Record<string, unknown>[] {
+  return prismaMock.update.mock.calls.map(
+    (call) => (call[0] as { data: Record<string, unknown> }).data,
+  );
+}
 
 /** Inside the row's 15-minute window. */
 const DURING_WINDOW = new Date("2026-08-28T12:05:00.000Z");
@@ -165,6 +188,10 @@ describe("GET /api/mailbox-oauth/google/callback", () => {
   });
 
   it("gives a wrong-account approval its own reason, carrying both addresses", async () => {
+    // A row with no credential to protect, so the failure is recorded on it.
+    prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(
+      MAILBOX_WITHOUT_CREDENTIAL,
+    );
     profileMock.mockResolvedValue({
       email: "greg.visser64@gmail.com",
       sub: "sub_greg",
@@ -394,5 +421,105 @@ describe("GET /api/mailbox-oauth/google/callback", () => {
 
     expect(q.get("reason")).toBe("provider_denied");
     expect(q.get("oauth_mailbox_id")).toBe("mb_1");
+  });
+
+  /**
+   * Cycle 73 stopped Connect deleting a working credential on the way OUT. This
+   * is the same rule on the way BACK IN: a sign-in attempt that fails is not
+   * evidence about the refresh token already stored for this mailbox, and
+   * `sending-policy.ts` gates on `connectionStatus === "CONNECTED"`, so writing
+   * CONNECTION_ERROR here silently stops a mailbox that was sending fine.
+   *
+   * The wrong-account case is the proof the queue item asks for, because it is
+   * the one where the stored credential is DEFINITELY still good: the exchange
+   * succeeded, and the only thing that went wrong is who was at the keyboard.
+   */
+  it("leaves a sending mailbox sending when the wrong account approves", async () => {
+    profileMock.mockResolvedValue({
+      email: "greg.visser64@gmail.com",
+      sub: "sub_greg",
+    });
+    vi.mocked(fetch).mockResolvedValue(new Response("", { status: 403 }));
+
+    const q = await redirectQuery(await GET(callback()));
+
+    // The operator is told, in the same words as before.
+    expect(q.get("reason")).toBe("oauth_account_mismatch");
+    expect(q.get("oauth_actor")).toBe("greg.visser64@gmail.com");
+
+    // But nothing about the mailbox's ability to send is touched. Absent keys,
+    // not null ones: Prisma leaves an omitted column alone, null would erase.
+    for (const data of writtenRowData()) {
+      expect(data).not.toHaveProperty("connectionStatus");
+      expect(data).not.toHaveProperty("lastError");
+      // The spent state still has to go, preserved or not.
+      expect(data.oauthState).toBeNull();
+      expect(data.oauthStateExpiresAt).toBeNull();
+    }
+    expect(writtenRowData()).toHaveLength(1);
+    expect(prismaMock.mailboxIdentitySecret.upsert).not.toHaveBeenCalled();
+  });
+
+  it("leaves a sending mailbox sending when the token exchange is refused", async () => {
+    exchangeMock.mockRejectedValue(
+      new MailboxOAuthFailure(
+        "token_exchange_rejected",
+        // At a callback this is a fact about the AUTHORIZATION CODE — spent,
+        // expired, wrong redirect URI — not about the stored refresh token.
+        // Handing it to `classifyMailboxCredentialFailure` would read it as
+        // "reconnect required" and demote the mailbox on the wrong evidence.
+        "Google token exchange failed: invalid_grant — Bad Request",
+      ),
+    );
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("reason")).toBe("token_exchange_rejected");
+    for (const data of writtenRowData()) {
+      expect(data).not.toHaveProperty("connectionStatus");
+      expect(data).not.toHaveProperty("lastError");
+    }
+  });
+
+  /**
+   * The operator pressing Deny at Google says nothing about the credential this
+   * mailbox already holds either.
+   */
+  it("leaves a sending mailbox sending when the operator declines at Google", async () => {
+    const q = await redirectQuery(
+      await GET(
+        new Request(
+          "http://localhost:3000/api/mailbox-oauth/google/callback?state=st_1&error=access_denied",
+        ),
+      ),
+    );
+
+    expect(q.get("reason")).toBe("provider_denied");
+    for (const data of writtenRowData()) {
+      expect(data).not.toHaveProperty("connectionStatus");
+      expect(data).not.toHaveProperty("lastError");
+    }
+  });
+
+  /**
+   * The other half of the rule, and the reason it is not simply "never write".
+   * A row with nothing left to send with gets the failure recorded, exactly as
+   * it always did — otherwise a stranded mailbox goes on reading "Connected"
+   * with no explanation anywhere on the row.
+   */
+  it("still records the failure on a mailbox with no stored credential", async () => {
+    prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(
+      MAILBOX_WITHOUT_CREDENTIAL,
+    );
+    exchangeMock.mockRejectedValue(new Error("socket hang up"));
+
+    await GET(callback());
+
+    expect(writtenRowData()).toEqual([
+      expect.objectContaining({
+        connectionStatus: "CONNECTION_ERROR",
+        lastError: "socket hang up",
+      }),
+    ]);
   });
 });

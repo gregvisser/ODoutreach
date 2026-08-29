@@ -60,17 +60,38 @@ import { MailboxOAuthFailure } from "@/server/mailbox/mailbox-oauth-callback-sha
 
 import { GET } from "./route";
 
-/** A row as `prepareMailboxOAuthConnection` really leaves it: state + expiry. */
+/**
+ * A row as `prepareMailboxOAuthConnection` really leaves it: state + expiry,
+ * and — since cycle 73 — its CONNECTED status and stored secret intact for the
+ * whole round trip.
+ */
 const MAILBOX = {
   id: "mb_9",
   clientId: "cl_9",
   emailNormalized: "lucy@opensdoors.co.uk",
   provider: "MICROSOFT",
+  connectionStatus: "CONNECTED",
+  isActive: true,
+  secret: { id: "sec_9" },
   workspaceRemovedAt: null,
   deletedAt: null,
   oauthState: "st_9",
   oauthStateExpiresAt: new Date("2026-08-28T12:15:00.000Z"),
 };
+
+/** The same mailbox after its credential is gone — nothing left to protect. */
+const MAILBOX_WITHOUT_CREDENTIAL = {
+  ...MAILBOX,
+  connectionStatus: "PENDING_CONNECTION",
+  secret: null,
+};
+
+/** Every `data` object written to `clientMailboxIdentity.update` this test. */
+function writtenRowData(): Record<string, unknown>[] {
+  return prismaMock.update.mock.calls.map(
+    (call) => (call[0] as { data: Record<string, unknown> }).data,
+  );
+}
 
 const DURING_WINDOW = new Date("2026-08-28T12:05:00.000Z");
 
@@ -273,5 +294,103 @@ describe("GET /api/mailbox-oauth/microsoft/callback", () => {
     expect(banner!.type).toBe("err");
     expect(banner!.text).toMatch(/timed out/i);
     expect(banner!.text).toMatch(/press Connect/i);
+  });
+
+  /**
+   * The Google callback carries the same pair of tests and the same reasoning:
+   * a failed sign-in ATTEMPT is not evidence about the refresh token already
+   * stored for this mailbox, and `sending-policy.ts` gates on CONNECTED, so
+   * writing CONNECTION_ERROR here stops a mailbox that was sending fine.
+   *
+   * Both providers go through one shared rule so they cannot drift, and both
+   * are asserted, because "the other one is tested" is how a provider-specific
+   * regression gets in.
+   */
+  it("leaves a sending mailbox sending when the token exchange is refused", async () => {
+    exchangeMock.mockRejectedValue(
+      new MailboxOAuthFailure(
+        "token_exchange_rejected",
+        "Microsoft token exchange failed: invalid_grant",
+      ),
+    );
+
+    const q = await redirectQuery(await GET(callback()));
+
+    expect(q.get("reason")).toBe("token_exchange_rejected");
+    for (const data of writtenRowData()) {
+      expect(data).not.toHaveProperty("connectionStatus");
+      expect(data).not.toHaveProperty("lastError");
+      expect(data.oauthState).toBeNull();
+      expect(data.oauthStateExpiresAt).toBeNull();
+    }
+    expect(writtenRowData()).toHaveLength(1);
+    expect(prismaMock.mailboxIdentitySecret.upsert).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Entra's own error text is the sharpest reason not to write `lastError` on a
+   * preserved row: `mailboxRowOperatorStatus` scans it AHEAD of the status
+   * branches, so an `AADSTS500341` arriving in an `error_description` would
+   * relabel a live, sending mailbox "Cannot be reconnected".
+   */
+  it("does not let a provider refusal relabel a live mailbox as unrecoverable", async () => {
+    const q = await redirectQuery(
+      await GET(
+        new Request(
+          "http://localhost:3000/api/mailbox-oauth/microsoft/callback?state=st_9" +
+            "&error=invalid_grant&error_description=AADSTS500341%3A%20The%20user%20account%20is%20deleted",
+        ),
+      ),
+    );
+
+    expect(q.get("reason")).toBe("provider_denied");
+    for (const data of writtenRowData()) {
+      expect(data).not.toHaveProperty("lastError");
+      expect(data).not.toHaveProperty("connectionStatus");
+    }
+  });
+
+  it("still records the failure on a mailbox with no stored credential", async () => {
+    prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(
+      MAILBOX_WITHOUT_CREDENTIAL,
+    );
+    exchangeMock.mockRejectedValue(new Error("socket hang up"));
+
+    await GET(callback());
+
+    expect(writtenRowData()).toEqual([
+      expect.objectContaining({
+        connectionStatus: "CONNECTION_ERROR",
+        lastError: "socket hang up",
+      }),
+    ]);
+  });
+
+  /**
+   * Built, wired, reports success and never fires is this project's worst
+   * defect class, so the decision is followed into the audit log an operator
+   * can actually read after the fact.
+   */
+  it("records in the audit log whether the credential was kept", async () => {
+    exchangeMock.mockRejectedValue(new Error("socket hang up"));
+    await GET(callback());
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ credentialRetained: true }),
+      }),
+    );
+
+    vi.clearAllMocks();
+    prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(
+      MAILBOX_WITHOUT_CREDENTIAL,
+    );
+    staffMock.mockResolvedValue({ id: "staff_1" });
+    exchangeMock.mockRejectedValue(new Error("socket hang up"));
+    await GET(callback());
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ credentialRetained: false }),
+      }),
+    );
   });
 });
