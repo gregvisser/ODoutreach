@@ -229,6 +229,29 @@ function rowsFrom(shell: string, queueContent: string): QueueRow[] {
 const AZURE_RUNTIME_QUOTE = "1 worker, `NODE|20-lts`. That is why it sheds";
 const PIPED_STATUS = `DONE 18 - the plan is B1 Basic, ${AZURE_RUNTIME_QUOTE} at ten concurrent requests.`;
 
+// THE DUPLICATE-NUMBER FIXTURE, AND WHY IT LOOKS EXACTLY LIKE THIS.
+//
+// This is the real shape of the 2026-08-27 incident, replayed. Cycle 71 ran the
+// SHIPPED watcher against the pre-merge QUEUE.md, which then carried #69 twice:
+// a finished row already stamped DONE 62, and further down the row the picker
+// actually took, still TODO. `Set-QueueRowStatus` writes to the FIRST row
+// carrying the number, so the write landed on the finished one - overwriting a
+// real, earned `DONE 62` with `DONE 71` - while the row being worked on stayed
+// TODO and would have been re-issued for ever.
+//
+// So the two rows below are not interchangeable and their ORDER is the test: the
+// one that must not be touched is the one that comes first, and the one the
+// picker takes is the one that comes second.
+const DUPLICATE_NUMBER_QUEUE = [
+  "| # | Item | Status |",
+  "|---|---|---|",
+  "| 69 | The row that was already finished. | DONE 62 |",
+  "| 70 | An ordinary row in between. | DONE 63 |",
+  "| 69 | The row the picker actually takes. | TODO |",
+  "| 71 | The row waiting behind them. | TODO |",
+  "",
+].join("\n");
+
 // Row 30 is DONE on purpose: it puts the piped row 31 directly in the relay's
 // path, so the traversal test below can only pass if row 31 is read as DONE.
 const QUEUE_WITH_PIPED_STATUS = [
@@ -418,6 +441,107 @@ describe.each(POWERSHELL_HOSTS)("relay queue parser under %s", (shell) => {
       expect(result.Ok).toBe(false);
       expect(result.Text).toContain("DDONE 3");
     });
+
+    // The defect this cycle exists to close, asserted as the incident itself.
+    //
+    // Note what is NOT asserted: that it writes to the RIGHT row. It cannot know
+    // which is right - that is the whole problem - so the only honest behaviour
+    // is to change NEITHER and say so. Refusing is strictly better than today,
+    // because every caller already handles a false return by logging that it
+    // could not update the row, so the failure becomes loud instead of silently
+    // destroying a finished record.
+    it("refuses to rewrite anything when two rows carry the same number", () => {
+      const result = runInWatcher(
+        shell,
+        `$ok = Set-QueueRowStatus "69" "DONE 71"
+         Write-Result ([pscustomobject]@{ Ok = $ok; Text = (Read-IfPresent $QueuePath) })`,
+        DUPLICATE_NUMBER_QUEUE,
+      ) as { Ok: boolean; Text: string };
+
+      expect(result.Ok).toBe(false);
+
+      // BOTH rows survive byte for byte. The first one is the earned record the
+      // old code destroyed; the second is the row actually being worked on.
+      expect(result.Text).toContain(
+        "| 69 | The row that was already finished. | DONE 62 |",
+      );
+      expect(result.Text).toContain(
+        "| 69 | The row the picker actually takes. | TODO |",
+      );
+      expect(result.Text).not.toContain("DONE 71");
+    });
+
+    // The other half of the guard, and the reason it counts row IDs rather than
+    // grepping the file for the digits. A refusal that fires on a row number
+    // merely CONTAINING or STARTING WITH the same digits would stop the relay on
+    // an ordinary queue, which is a worse fault than the one being fixed.
+    it("still rewrites when other rows merely contain or start with the same digits", () => {
+      const result = runInWatcher(
+        shell,
+        `$ok = Set-QueueRowStatus "7" "DONE 94"
+         Write-Result ([pscustomobject]@{ Ok = $ok; Text = (Read-IfPresent $QueuePath) })`,
+        [
+          "| # | Item | Status |",
+          "|---|---|---|",
+          "| 7 | The row being rewritten, see row 70 for the history. | TODO |",
+          "| 17 | A row whose number merely contains a 7. | TODO |",
+          "| 70 | A row whose number merely starts with a 7. | TODO |",
+          "",
+        ].join("\n"),
+      ) as { Ok: boolean; Text: string };
+
+      expect(result.Ok).toBe(true);
+      expect(result.Text).toContain(
+        "| 7 | The row being rewritten, see row 70 for the history. | DONE 94 |",
+      );
+      expect(result.Text).toContain(
+        "| 17 | A row whose number merely contains a 7. | TODO |",
+      );
+      expect(result.Text).toContain(
+        "| 70 | A row whose number merely starts with a 7. | TODO |",
+      );
+    });
+  });
+
+  // The same defect in the one function that is ALLOWED to rewrite a row the
+  // parser cannot read. See "THE SEVENTH WORD" in relay-watch.ps1.
+  //
+  // Both rows below are unreadable, which is what makes this bite: the repair
+  // walks the file looking for the first UNPARSEABLE row carrying the number, so
+  // with a duplicate it would rewrite the record a human parked by hand long ago
+  // and leave the cycle's own row still unreadable - destroying a record AND
+  // leaving the queue stopped, which is the worst of both.
+  describe("Repair-UnreadableQueueRow", () => {
+    const DUPLICATE_UNREADABLE_QUEUE = [
+      "| # | Item | Status |",
+      "|---|---|---|",
+      "| 9 | A row a human parked by hand, long ago. | SUPERSEDED by row 40 |",
+      "| 10 | An ordinary row in between. | DONE 63 |",
+      "| 9 | The row cycle 94 has just handed back badly. | PARTLY DONE 94 |",
+      "",
+    ].join("\n");
+
+    it("refuses to repair anything when two rows carry the same number", () => {
+      const result = runInWatcher(
+        shell,
+        `$fix = Repair-UnreadableQueueRow "9" 94
+         Write-Result ([pscustomobject]@{ Fix = $fix; Text = (Read-IfPresent $QueuePath) })`,
+        DUPLICATE_UNREADABLE_QUEUE,
+      ) as {
+        Fix: { Repaired: boolean; Duplicate: boolean; Count: number } | null;
+        Text: string;
+      };
+
+      expect(result.Fix).not.toBeNull();
+      expect(result.Fix?.Repaired).toBe(false);
+      expect(result.Fix?.Duplicate).toBe(true);
+      expect(result.Fix?.Count).toBe(2);
+
+      // Neither cell was touched, and in particular the human's wording survives.
+      expect(result.Text).toContain("| SUPERSEDED by row 40 |");
+      expect(result.Text).toContain("| PARTLY DONE 94 |");
+      expect(result.Text).not.toContain("relay repaired the status word");
+    });
   });
 
   describe("Invoke-SelfQueue", () => {
@@ -524,6 +648,48 @@ describe.each(POWERSHELL_HOSTS)("relay queue parser under %s", (shell) => {
       expect(result.Note).toContain("DDONE 3");
       expect(result.Note).toContain("| 40 |");
       expect(result.Note).not.toMatch(/queue is exhausted/i);
+    });
+
+    // STOP AND ALERT, not "run the cycle anyway".
+    //
+    // Set-QueueRowStatus refusing is necessary but not sufficient. Before this,
+    // the caller wrote the brief, met the false, logged one line that nobody was
+    // reading, and returned TRUE - so a whole cycle ran against a row that was
+    // still TODO, and the NEXT cycle picked the very same row up again. A
+    // duplicate number would have looped for ever, one cycle at a time.
+    //
+    // So the check happens BEFORE the brief is written: no NEXT.md, no cycle, a
+    // note that names the number, and the relay's ordinary refusal cooldown.
+    it("refuses to start a cycle at all when the row it would take has a twin", () => {
+      const result = runInWatcher(
+        shell,
+        `$took = Invoke-SelfQueue 94
+         Write-Result ([pscustomobject]@{
+           Took  = $took
+           Brief = (Read-IfPresent $NextFile)
+           Note  = (Read-IfPresent $NoteFile)
+           Text  = (Read-IfPresent $QueuePath)
+         })`,
+        DUPLICATE_NUMBER_QUEUE,
+      ) as { Took: boolean; Brief: string; Note: string; Text: string };
+
+      expect(result.Took).toBe(false);
+      // No brief at all. A brief on disk is what makes the watcher run a cycle.
+      expect(result.Brief).toBe("");
+      // The note must name the number, or it is just another "something is wrong".
+      expect(result.Note).toContain("69");
+      expect(result.Note).toMatch(/twice|duplicate|more than one/i);
+      // And it must not read as an ordinary empty or blocked queue.
+      expect(result.Note).not.toMatch(/queue is exhausted/i);
+
+      // Nothing in QUEUE.md moved - including the row it would have taken.
+      expect(result.Text).toContain(
+        "| 69 | The row that was already finished. | DONE 62 |",
+      );
+      expect(result.Text).toContain(
+        "| 69 | The row the picker actually takes. | TODO |",
+      );
+      expect(result.Text).not.toContain("IN PROGRESS 94");
     });
   });
 });
