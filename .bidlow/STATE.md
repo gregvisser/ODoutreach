@@ -1,6 +1,49 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 115) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 116) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 116, queue row 96: deploy-lag claim measured and cleared - production matches `origin/main` HEAD exactly, no pipeline defect found.
+
+Row 96 (written by the relay off QUEUE.md, never read by Greg) claimed
+production was stuck on `8da903f` while `main` had moved to `e318a78`, and
+asked whether the deploy pipeline had failed, been cancelled, or never
+triggered - naming `cancel-in-progress: true` on the
+`deploy-production-azure` concurrency group as a specific suspect.
+
+Measured before changing anything, per the row's own instruction. Current
+state: `git rev-parse origin/main` = `6466c6b1f871bc8b11a06d1977d1da6af5f45d87`;
+`curl` against the DIRECT App Service origin's `/api/build-info` (never the
+CDN-cached custom domain) returns the identical commit,
+buildTimestamp `2026-08-29T23:41:40Z`. Not a green workflow run as proof -
+an exact runtime commit match. CR-08's gate confirmed present in that
+commit's actual source via `git show`.
+
+Pulled all 472 `deploy-production.yml` runs from GitHub's own record: zero
+non-success conclusions anywhere in the last 100, including across the
+three back-to-back merges at 18:35/18:42/18:57 UTC on 29 August that the row
+worried might collide under `cancel-in-progress`. **Named suspect cleared,
+not confirmed** - no cancellation ever happened. The 3h53m quiet window the
+row flagged (14:42-18:35 UTC) was empty git history, not a stuck deploy:
+exactly one commit landed on `main` in that span (the CR-08 fix itself,
+merged at 18:35:05), and its deploy started 2 seconds later and succeeded.
+What the row actually measured at 19:05 UTC was the ~90-second tail of
+Azure's documented ~2-minute post-deploy propagation lag
+([[e2e-and-deploy-verification]]) after the `e318a78` deploy completed at
+19:03:48 - a real snapshot of a real lag window, not a broken pipeline.
+
+No code change was made or needed. Full evidence and run tables:
+`.bidlow/relay/log/cycle-116.md`.
+
+**PR sweep at cycle start:** one open PR (#407, cycle 115's own docs
+follow-on for `docs/state-cycle-113`, CI in progress). Auto-merge is
+disabled repository-wide (`enablePullRequestAutoMerge` GraphQL error), so it
+was merged by hand once green rather than armed unattended. Also found
+three files of stale uncommitted local edits in the working tree
+(`STATE.md`, `QUEUE.md`, `log/cycle-115.md`) that duplicated content cycle
+115 had already pushed to `origin/docs/state-cycle-113` - confirmed
+byte-identical (`git diff HEAD` empty after stash + fast-forward pull)
+before dropping them. Left untouched, not part of this row: an untracked
+`ODOUTREACH-PROJECT-INSTRUCTIONS.md` at the repo root, unrelated to row 96.
 
 ## Session 2026-08-30 - Relay cycle 115, queue row 92: sixth consecutive identical redispatch, ruled out pipeline breakage. PR #406 merged mid-cycle; follow-on PR #407 open, CI running.
 
