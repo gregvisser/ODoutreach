@@ -22,15 +22,25 @@
  *
  * PROOF, not just an update() return: after writing, this script
  *   1. re-reads the row back from the database in a separate query, and
- *   2. re-runs the REAL composition path — `resolveClientLinkBaseUrl`,
- *      `buildSenderRow` and `composeSequenceEmail`, the exact functions
- *      `sendSequenceIntroductionBatch` calls at dispatch time — against a
+ *   2. re-runs the REAL composition path — `resolveClientLinkBaseUrl` and
+ *      `composeSequenceEmail`, imported directly from `src/lib`, against a
  *      real template and a real enrolled contact already in the `bidlowai`
- *      workspace, and prints whether `sendReady` is now true and
- *      `unsubscribe_link` is populated. The one piece not imported directly
- *      is `buildUnsubscribePlaceholder` (module-private in
- *      `send-introduction.ts`); the one-line fallback below reproduces it
- *      exactly — see send-introduction.ts:263-268.
+ *      workspace — and prints whether `sendReady` is now true and
+ *      `unsubscribe_link` is populated.
+ *
+ *      Two small pieces of `src/server/email-sequences/send-introduction.ts`
+ *      (`buildUnsubscribePlaceholder`, `buildSenderRow`) are reproduced
+ *      inline below rather than imported, because that whole module (like
+ *      almost everything under `src/server/`) starts with `import
+ *      "server-only"` — a Next.js-provided bare specifier that only Next's
+ *      own bundler can resolve; there is no real `server-only` package in
+ *      `node_modules`, so importing it from a plain `tsx` script fails with
+ *      `MODULE_NOT_FOUND` (confirmed by trying it — see the first, reverted
+ *      version of this script). Every existing ops script in this
+ *      directory avoids `src/server/*` for the same reason. The two
+ *      reproduced functions are pure one-liners; see
+ *      send-introduction.ts:263-268 and :270-305 for the originals this
+ *      mirrors exactly.
  *
  * This script sends nothing and creates no OutboundEmail row — it only
  * reads real data and calls the same pure composition function the real
@@ -47,11 +57,77 @@ import "dotenv/config";
 
 import { prisma } from "../src/lib/db";
 import { resolveClientLinkBaseUrl } from "../src/lib/clients/client-link-domain";
-import { getClientSenderProfile } from "../src/lib/opensdoors-brief";
+import {
+  getClientSenderProfile,
+  type ClientSenderProfile,
+} from "../src/lib/opensdoors-brief";
 import { composeSequenceEmail } from "../src/lib/email-sequences/sequence-email-composition";
-import { buildSenderRow } from "../src/server/email-sequences/send-introduction";
-import { eligibleWorkspaceMailboxPool } from "../src/server/mailbox/sending-policy";
+import {
+  chooseSignatureForSend,
+  type SenderSignatureMailbox,
+} from "../src/lib/mailboxes/sender-signature";
 import { isEffectivePrimaryMailbox } from "../src/lib/mailbox-identities";
+import type { ClientMailboxIdentity } from "../src/generated/prisma/client";
+
+/** Mirrors send-introduction.ts:263-268 exactly (module-private there). */
+function buildUnsubscribePlaceholder(
+  clientDefaultSenderEmail: string | null,
+): string {
+  if (!clientDefaultSenderEmail) return "";
+  return `mailto:${clientDefaultSenderEmail}?subject=unsubscribe`;
+}
+
+/** Mirrors send-introduction.ts:270-305 exactly (imports `server-only`, unimportable from plain tsx). */
+function buildSenderRow(
+  client: { name: string; defaultSenderEmail: string | null },
+  brief: ClientSenderProfile,
+  unsubscribeLink: string,
+  mailbox?: SenderSignatureMailbox | null,
+) {
+  let senderName = client.name;
+  let senderEmail: string | null = client.defaultSenderEmail;
+  let emailSignature: string = brief.emailSignature;
+
+  if (mailbox) {
+    const sel = chooseSignatureForSend({
+      mailbox,
+      clientBrief: {
+        senderDisplayNameFallback: null,
+        emailSignatureFallback: null,
+      },
+    });
+    senderName = sel.senderDisplayName ?? client.name;
+    senderEmail = mailbox.email;
+    emailSignature = sel.emailSignatureText ?? "";
+  }
+
+  return {
+    senderName,
+    senderEmail,
+    senderCompanyName: brief.senderCompanyName,
+    emailSignature,
+    unsubscribeLink: unsubscribeLink.length > 0 ? unsubscribeLink : null,
+  };
+}
+
+/**
+ * Simplified stand-in for `eligibleWorkspaceMailboxPool`
+ * (`src/server/mailbox/sending-policy.ts`, also `server-only`-guarded and
+ * therefore unimportable here): a mailbox actually eligible to receive real
+ * dispatch traffic. Not the full governance policy (daily caps, pacing,
+ * warmup) — this script never sends anything, it only needs ONE real
+ * mailbox row to populate the sender identity fields for the composition
+ * proof.
+ */
+function pickCompositionMailbox(
+  identities: ClientMailboxIdentity[],
+): ClientMailboxIdentity | null {
+  const candidates = identities.filter(
+    (m) => m.isActive && m.isSendingEnabled && m.connectionStatus === "CONNECTED",
+  );
+  if (candidates.length === 0) return null;
+  return candidates.find((m) => isEffectivePrimaryMailbox(m)) ?? candidates[0];
+}
 
 const ALLOWED_CLIENT_SLUG = "bidlowai";
 const TARGET_EMAIL = "greg@bidlow.co.uk";
@@ -93,15 +169,14 @@ async function proveComposition(
   const identities = await prisma.clientMailboxIdentity.findMany({
     where: { clientId: client.id },
   });
-  const pool = eligibleWorkspaceMailboxPool(identities);
-  if (pool.length === 0) {
+  const mailbox = pickCompositionMailbox(identities);
+  if (!mailbox) {
     console.log(
       "\n[proof] SKIPPED — no eligible connected mailbox in the bidlowai workspace, " +
         "so the real sender row cannot be built. This is unrelated to defaultSenderEmail.",
     );
     return;
   }
-  const mailbox = pool.find((m) => isEffectivePrimaryMailbox(m)) ?? pool[0];
 
   const sequence = await prisma.clientEmailSequence.findFirst({
     where: {
@@ -157,11 +232,9 @@ async function proveComposition(
 
   // Mirrors send-introduction.ts:559-568 exactly.
   const alignedLinkBaseUrl = resolveClientLinkBaseUrl(client);
-  // Mirrors buildUnsubscribePlaceholder, send-introduction.ts:263-268 exactly
-  // (that function is module-private, so the one line is reproduced here).
-  const fallbackUnsubscribeLink = client.defaultSenderEmail
-    ? `mailto:${client.defaultSenderEmail}?subject=unsubscribe`
-    : "";
+  const fallbackUnsubscribeLink = buildUnsubscribePlaceholder(
+    client.defaultSenderEmail,
+  );
   if (alignedLinkBaseUrl !== null) {
     console.log(
       "\n[proof] NOTE — bidlowai now has a verified aligned link domain, so the real " +
