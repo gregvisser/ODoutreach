@@ -1,6 +1,100 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 100) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 103) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 103, queue row 91: CR-08 closed - the last customer-ready blocker. Sell gate still fails; named exactly what's holding it down.
+
+Row 91 is **`DONE 103`**. Shipped in two PRs, both merged on green CI, deployed
+and **verified by commit hash** against the direct App Service URL
+(`/api/build-info` → `a14bee999a285c1671aa619c400d7a7035d264cd`). Open PRs at
+start of cycle: **zero**.
+
+### What changed
+
+`src/app/(app)/activity/outbound/[id]/page.tsx` showed a raw internal
+correlation cuid (`row.correlationId`) to every staff member, ungated, on the
+"Routing" card. Decided deliberately, not the cheapest option: gated it behind
+`staff.isSuperAdmin` rather than deleting it — the field carries no operator
+action (its own schema comment calls it a duplicate of `id` for
+provider/webhook correlation; nothing in the product lets an operator search
+by it), and this matches the codebase's existing precedent of showing raw
+provider/connection diagnostics to owners only (mailbox "Connection
+diagnostics (owner only)"). `Provider id`/`Provider name` were left untouched
+— a real ESP message id an operator might reference with Microsoft/Google
+support, unlike the purely internal correlation id.
+
+**Red-first, proven capable of failing:** amended the frozen
+`e2e/journeys.spec.ts` (four amendments recorded in `.bidlow/FROZEN.json`) to
+assert the Correlation row is visible to the super-admin persona and hidden
+from the plain-staff persona. Watched both run against the **unfixed** page —
+the staff assertion failed with `expected hidden, received visible`, the
+genuine defect, not a locator artefact (two locator bugs were found and fixed
+along the way: a substring match colliding with the card's own description
+text, and this file's own documented streamed-double-copy issue). Then
+applied the one-line JSX gate and watched both go green.
+
+**No schema, no migration, no client data moved, no email.**
+
+### Grading — the part that matters more than the fix
+
+Re-measured customer-ready honestly in `.bidlow/GRADES.json` +
+`CUSTOMER-READY-REPORT.md` + `.bidlow/SELL-EXCEPTION.json` (transcription
+only, same precedent as prior cycles). Dimension 3 (No dev-isms / internal
+leakage) **7 → 9**, weight 10. Weighted total **7.56 → 7.76**.
+
+**All ten named customer-ready blockers are now closed, and the sell gate
+still does not pass — 0.24 short.** Named exactly what is holding it down
+rather than rounding up: dimension 8 (Data safety & trust, weight 10, scored
+6 — the lowest on the card) had its *cause* (CR-06, prospect PII reaching
+Sentry) fixed back in cycle 62, but the *score* was deliberately never
+re-walked to match — a merged fix is not the same evidence as seeing the
+product on a fresh walk. Re-walking that dimension alone would land the total
+at roughly 7.96 — still short. Dimensions 7 (error handling, 7) and 10
+(commercial mechanics, 7, still Draft/unreviewed — Greg's call) are the other
+two below 8. Did not touch any of these, as the row instructed ("do not close
+anything else to make the number move").
+
+### Also found and carried forward, not discarded
+
+While working, found local `main` already **1 commit ahead of origin** (a
+prior, never-PR'd `docs: HANDOVER.md, and row 91` commit) plus **uncommitted**
+changes: an orphaned `relay-watch.ps1` post-cycle addendum to
+`log/cycle-102.md`, and — appended mid-session by some other process sharing
+this working tree — four new queue rows (92-95, about the dimension 1/8
+re-walks, the sell-gate slide, and the watcher-restart note). All of this was
+legitimate work that had never reached a PR. Branched from the current state
+so nothing was lost, then split cleanly: the CR-08 fix + all grading docs went
+in PR #390; the four new queue rows (unrelated to CR-08) went in a small
+follow-up PR #391 after `gh pr merge` had already merged #390 out from under
+the working branch (a genuine race with whatever else is writing to this
+repo — worth knowing about for future cycles: **something else is committing
+directly to this checkout while a cycle is running**, so always check
+`git status` for surprises immediately before opening a PR, not just at
+session start).
+
+Gates: lint 0, typecheck 0, **3,644 tests / 348 files**, full Playwright suite
+**91/92** (1 pre-existing unrelated skip, `training-screenshots.spec.ts`).
+
+### Nothing contradicts PROJECT.json
+
+The hard rule was never approached: no send, no delete, no client data.
+
+### Pick up first, next session
+
+1. **Run the PR sweep first**, as always — it was clean this cycle, keep it
+   that way.
+2. **Take the next `TODO` row off QUEUE.md.** Row 91 is closed. Rows 92-95
+   are new and queued: 92 (walk core-journeys as a human, re-score dimension
+   1 only if the walk is actually performed), 93 (re-walk data safety,
+   dimension 8, from evidence — do NOT just re-read the CR-06/CR-05 closures),
+   94 (recompute the sell gate once after 92+93 and write Greg's Tuesday
+   slide — explicitly depends on both being done first), 95 (documentation
+   only: record that a `relay-watch.ps1` change is inert until Greg restarts
+   the watcher by hand).
+3. **Still outstanding and not an agent's to do:** row 84 (`BLOCKED`) — eight
+   mailboxes cannot send and need their owners to sign in; row 48
+   (`BLOCKED`) — Train Hugger's 291-vs-373 domain question; whether to
+   publish the Google OAuth app, declined twice. All Greg's.
 
 ## Session 2026-08-29 - Relay cycle 100, queue row 89: mobile measured for the first time, four real defects found and fixed (CR-09 closed).
 
