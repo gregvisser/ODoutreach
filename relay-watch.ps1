@@ -960,6 +960,58 @@ function Get-QueueRowMatch([string]$line) {
 $QueueRowShapePattern = '^\s*\|\s*(\d+)\s*\|.*\|\s*$'
 
 # ===========================================================================
+# TWO ROWS, ONE NUMBER
+#
+# 2026-08-27, proven against the shipped watcher rather than reasoned about.
+# QUEUE.md carried #69 twice: a finished row already stamped DONE 62 at line
+# 359, and further down at line 380 the row the picker actually took, still
+# TODO. Every writer below walks the file and stops at the FIRST row carrying
+# the number, so the write landed on line 359 - overwriting a real, earned
+# DONE 62 with DONE 71 - while the row being worked on stayed TODO and would
+# have been re-issued for ever. A record destroyed and a loop started, silently,
+# by one repeated number.
+#
+# `relay/queue-file-integrity.test.ts` keeps duplicates out of the committed
+# file, and that is worth having, but it only runs in CI. The watcher rewrites
+# QUEUE.md locally between cycles, all night, where no test is watching - so the
+# guard has to be here, in the code that does the writing.
+#
+# WHY THIS COUNTS SHAPED ROWS AND NOT PARSED ONES. The hazard is "two rows in
+# this file claim to be number N", and that is true whether or not either of
+# them has a status the parser recognises. Shape is the superset: anything
+# Get-QueueRowMatch matches, this matches too. So one count serves both writers.
+#
+# WHY IT REFUSES RATHER THAN PICKING ONE. It cannot know which row is meant -
+# that IS the fault - and this file's standing rule is that a row it cannot
+# resolve is a row it will not touch. Refusing is strictly better than today:
+# every caller already handles a false return by logging that it could not
+# update the row, so the failure becomes loud instead of destroying a record.
+# ===========================================================================
+function Get-QueueRowNumberLineIndexes($lines, $number) {
+    $hits = New-Object System.Collections.Generic.List[int]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $shape = [regex]::Match([string]$lines[$i], $QueueRowShapePattern)
+        if (-not $shape.Success) { continue }
+        # Compared as whole trimmed strings, never as a substring: rows 7, 17 and
+        # 70 are three different rows, and a guard that confused them would stop
+        # the relay on an ordinary queue - a worse fault than the one being fixed.
+        if ($shape.Groups[1].Value.Trim() -ne "$number") { continue }
+        $hits.Add($i)
+    }
+    # A plain array, deliberately NOT comma-wrapped. Comma-wrapping hands the
+    # List back as ONE object, so the caller's @() sees a single element and the
+    # count is always 1 - the guard would have loaded green and never fired,
+    # which is this repository's house defect. Every caller wraps in @() so that
+    # zero hits arrive as an empty array rather than $null on PowerShell 5.1.
+    return $hits.ToArray()
+}
+
+# The human-readable line numbers, for a message a person has to act on.
+function Format-QueueRowLineNumbers($indexes) {
+    return (($indexes | ForEach-Object { $_ + 1 }) -join ', ')
+}
+
+# ===========================================================================
 # THE SEVENTH WORD
 #
 # 2026-08-28. It cost seventy minutes with eleven jobs behind it. Cycle 59
@@ -1043,6 +1095,17 @@ function Set-QueueRowStatus($number, $newStatus) {
     # See Get-QueueRows. This is the write half of the same round trip, and the
     # more damaging half, because this one rewrites the file.
     $lines = Get-Content $QueueFile -Encoding UTF8
+
+    # COUNT BEFORE WRITING. See "TWO ROWS, ONE NUMBER" above. This is the same
+    # licence as the refusal below - a row this function cannot resolve is a row
+    # it refuses to touch - applied one step earlier, to a row it cannot even
+    # identify.
+    $claimants = @(Get-QueueRowNumberLineIndexes $lines $number)
+    if ($claimants.Count -gt 1) {
+        Write-Line "REFUSED to set row #$number to '$newStatus': $($claimants.Count) rows in QUEUE.md carry that number, on lines $(Format-QueueRowLineNumbers $claimants). The relay cannot tell which one it is working on, so it changed NEITHER. Give one of them a number of its own."
+        return $false
+    }
+
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $m = Get-QueueRowMatch ([string]$lines[$i])
         if (-not $m.Success) { continue }
@@ -1065,6 +1128,23 @@ function Set-QueueRowStatus($number, $newStatus) {
 # separate function rather than a flag on that one.
 function Repair-UnreadableQueueRow($number, $cycle) {
     $lines = Get-Content $QueueFile -Encoding UTF8
+
+    # The identical guard, because this is the identical hazard in the one
+    # function permitted to rewrite a row the parser cannot read - and here it
+    # is worse. This walks the file for the first UNREADABLE row carrying the
+    # number, so with a duplicate it would rewrite a record a human had parked
+    # by hand and leave the cycle's own row still unreadable: a record destroyed
+    # AND the queue still stopped. See "TWO ROWS, ONE NUMBER" above.
+    $claimants = @(Get-QueueRowNumberLineIndexes $lines $number)
+    if ($claimants.Count -gt 1) {
+        return [pscustomobject]@{
+            Repaired  = $false
+            Duplicate = $true
+            Count     = $claimants.Count
+            Lines     = (Format-QueueRowLineNumbers $claimants)
+        }
+    }
+
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = [string]$lines[$i]
         if ((Get-QueueRowMatch $line).Success) { continue }
@@ -1089,13 +1169,13 @@ function Repair-UnreadableQueueRow($number, $cycle) {
         # to see rather than the relay's to paper over.
         $prior = ([regex]::Matches($cell, [regex]::Escape($QueueRepairMarker))).Count
         if ($prior -ge 2) {
-            return [pscustomobject]@{ Repaired = $false; Cell = $cell; Prior = $prior }
+            return [pscustomobject]@{ Repaired = $false; Duplicate = $false; Cell = $cell; Prior = $prior }
         }
 
         $new = "TODO $QueueRepairMarker - cycle $cycle wrote a status word this queue does not have, so the relay put a readable one in front of it and gave the row back. Not one character of the cycle's own wording was changed; it follows here in full. >>> $cell"
         $lines[$i] = $head + ' ' + $new + ' |'
         Set-Content -Path $QueueFile -Value $lines -Encoding utf8
-        return [pscustomobject]@{ Repaired = $true; Cell = $cell; Prior = $prior }
+        return [pscustomobject]@{ Repaired = $true; Duplicate = $false; Cell = $cell; Prior = $prior }
     }
     return $null
 }
@@ -1650,6 +1730,66 @@ The row as it appears in QUEUE.md, line $($next.LineIndex + 1):
         return $false
     }
 
+    # ---------------------------------------------------------------------
+    # STOP AND ALERT, NOT "RUN THE CYCLE ANYWAY".
+    #
+    # Set-QueueRowStatus refusing a duplicate is necessary but not sufficient.
+    # Without this, the caller below wrote the brief, met the false, logged one
+    # line into a console nobody was reading, and returned TRUE - so a whole
+    # cycle ran against a row that was still TODO, and the next cycle picked the
+    # very same row up again. A repeated number would loop for ever, one cycle
+    # at a time, each one costing real money and shipping nothing.
+    #
+    # The check is HERE, before the brief is written, rather than on the false
+    # return underneath. That way there is no NEXT.md to un-write: a brief on
+    # disk is the thing that makes the watcher run a cycle, so writing one and
+    # deleting it again is a race this does not need to have.
+    # ---------------------------------------------------------------------
+    $twins = @(Get-QueueRowNumberLineIndexes (Get-Content $QueueFile -Encoding UTF8) $next.Number)
+    if ($twins.Count -gt 1) {
+        $twinLines = Format-QueueRowLineNumbers $twins
+        Write-SelfQueueNote @"
+The next item in order is #$($next.Number), and the relay will not take it, because
+$($twins.Count) different rows in QUEUE.md carry that number. They are on lines $twinLines.
+
+The relay marks a row IN PROGRESS by finding it by number. With the number written
+twice it cannot tell which row it would be marking, and it will not guess - guessing
+is how a finished row's earned record was overwritten on 2026-08-27, while the row
+actually being worked on stayed TODO and was handed out again.
+
+So nothing has been marked, no brief was written, and no cycle was started.
+
+THE FIX IS ONE EDIT: give one of those rows a number no other row is using. The
+relay picks up again by itself within $RefusalRetryMins minutes.
+"@
+
+        # A note is a record, not an alarm - same finding as the unreadable row
+        # above. This one pushes, and it names the number, because the queue is
+        # stopped until a human changes one digit. Keyed on the row's full text
+        # so an edit that leaves it still duplicated is a new fault.
+        if (Register-BadRowAlert "duplicate|$($next.Number)|$($next.Raw)") {
+            $waiting = Get-QueueTodoCount
+            Send-RelayAlert "ODoutreach relay STUCK - QUEUE.md has $($twins.Count) rows numbered $($next.Number), $waiting jobs behind it" @"
+The relay has stopped taking work because $($twins.Count) rows in
+.bidlow\relay\QUEUE.md carry the same number, $($next.Number). They are on lines $twinLines.
+
+It marks a row IN PROGRESS by finding it by number, so with the number written
+twice it cannot tell which row it is working on. It changed nothing rather than
+mark the wrong one - which is what happened on 2026-08-27, when a finished row's
+DONE was overwritten and the row actually being worked on was handed out again.
+
+THE FIX IS ONE EDIT: give one of those rows a number no other row is using.
+The relay picks up again BY ITSELF within $RefusalRetryMins minutes. You do not
+need to restart anything.
+
+$waiting other job(s) are waiting behind this. Nothing has been skipped, nothing
+has been changed, and no work has been lost.
+"@ | Out-Null
+        }
+
+        return $false
+    }
+
     # Write the brief. The watcher cannot know which files item 7 touches, so it
     # does not pretend to - it REQUIRES the agent to name them before touching
     # them, and to say so in the log.
@@ -2200,6 +2340,25 @@ either way.
             $fix = Repair-UnreadableQueueRow $script:LastTakenRow $cycle
             if ($null -eq $fix) {
                 Write-Line "Row #$($script:LastTakenRow) is unreadable and the relay could not safely find its status cell, so it changed nothing."
+            } elseif ($fix.Duplicate) {
+                # Not a typo to repair - a queue that has two rows with the same
+                # number, which no amount of repairing fixes. See "TWO ROWS, ONE
+                # NUMBER". Greg is emailed because nothing else here can move.
+                Write-Line "Row #$($script:LastTakenRow) is unreadable AND $($fix.Count) rows carry that number, on lines $($fix.Lines). The relay changed nothing - it cannot tell which row is which. Emailing Greg."
+                Send-RelayAlert "ODoutreach relay STUCK - QUEUE.md has $($fix.Count) rows numbered $($script:LastTakenRow)" @"
+Cycle $cycle handed row #$($script:LastTakenRow) back with a status the queue parser
+cannot read, which the relay would normally repair by itself. It has NOT, because
+$($fix.Count) different rows in .bidlow\relay\QUEUE.md carry the number $($script:LastTakenRow) -
+they are on lines $($fix.Lines).
+
+With a repeated number the relay cannot tell which row is which, so it changed
+NEITHER. Guessing is how a finished row's record was overwritten before.
+
+THE FIX IS ONE EDIT: give one of those rows a number no other row is using.
+The relay picks up again by itself within $RefusalRetryMins minutes.
+
+Nothing has been skipped, nothing has been changed, and no work has been lost.
+"@ | Out-Null
             } elseif ($fix.Repaired) {
                 $peek = $fix.Cell.Substring(0, [Math]::Min(140, $fix.Cell.Length))
                 Write-Line "Row #$($script:LastTakenRow) came back from cycle $cycle with a status word this queue does not have."
