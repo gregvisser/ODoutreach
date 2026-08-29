@@ -19,6 +19,7 @@ import {
 import {
   applyBrandedSignatureToAllClientMailboxesAction,
   regenerateBrandedSignaturesForClientAction,
+  setClientDefaultSenderEmailAction,
   setClientSignaturePhoneAction,
   syncMailboxSignatureAction,
   updateMailboxSignatureAction,
@@ -353,6 +354,7 @@ export function ClientMailboxIdentitiesPanel({
   workspaceDisplayName,
   publicSiteOrigin,
   clientSignaturePhone,
+  clientDefaultSenderEmail,
   showAdvancedDiagnostics,
 }: {
   clientId: string;
@@ -375,6 +377,12 @@ export function ClientMailboxIdentitiesPanel({
   /** Client company landline — the default phone the 1-click signature uses. */
   clientSignaturePhone: string | null;
   /**
+   * Fallback identity for the mailto unsubscribe rail when this client has no
+   * verified sender-aligned link domain — the field a real launch refuses to
+   * proceed without (`send-introduction.ts`). Null until an operator sets it.
+   */
+  clientDefaultSenderEmail: string | null;
+  /**
    * Owner-only. Gates the "Advanced details" block, which shows internal
    * connection ids, raw status, and raw provider error strings — developer /
    * troubleshooting content that ordinary staff should never see.
@@ -392,6 +400,9 @@ export function ClientMailboxIdentitiesPanel({
     useState<MailboxIdentityRow | null>(null);
   const [previewRow, setPreviewRow] = useState<MailboxIdentityRow | null>(null);
   const [companyPhone, setCompanyPhone] = useState(clientSignaturePhone ?? "");
+  const [defaultSenderEmail, setDefaultSenderEmail] = useState(
+    clientDefaultSenderEmail ?? "",
+  );
   const [showRemoved, setShowRemoved] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<MailboxIdentityRow | null>(null);
   const [removeNote, setRemoveNote] = useState("");
@@ -1027,6 +1038,48 @@ export function ClientMailboxIdentitiesPanel({
                 }
               >
                 Save landline
+              </Button>
+            </div>
+          ) : null}
+          {canMutate ? (
+            <div className="flex flex-wrap items-end gap-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
+              <div className="min-w-[16rem] flex-1 space-y-1">
+                <label
+                  htmlFor="default-sender-email"
+                  className="text-xs font-medium text-foreground"
+                >
+                  Default sender email (reply/unsubscribe identity)
+                </label>
+                <input
+                  id="default-sender-email"
+                  type="email"
+                  className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  value={defaultSenderEmail}
+                  onChange={(e) => setDefaultSenderEmail(e.target.value)}
+                  placeholder="e.g. ops@client-domain.com"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used as the reply/unsubscribe address on real sends when this
+                  client has no verified sender-aligned link domain. Without
+                  either one set, a launch is refused.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="text-xs"
+                disabled={pending}
+                onClick={() =>
+                  runSignature(() =>
+                    setClientDefaultSenderEmailAction(
+                      clientId,
+                      defaultSenderEmail.trim() || null,
+                    ),
+                  )
+                }
+              >
+                Save default sender email
               </Button>
             </div>
           ) : null}
