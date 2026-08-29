@@ -1,6 +1,87 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 97) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 98) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 98, queue row 87: a merge-blocking test stops getting slower every cycle.
+
+Row 87 is **`DONE 98`**. Shipped **`0db2030` (PR #380)**, merged on green CI,
+deployed and **verified by commit hash** against the direct App Service URL
+(`/api/build-info` → `0db2030124b1af99027f3ca3143a4578e7e07d70`). Open PRs at
+start of cycle: **zero**. At end: **zero**.
+
+### What changed
+
+One file, `relay/cycle-log-reaches-git.test.ts`. Its "tracks every cycle log"
+assertion ran `git ls-files --error-unmatch <file>` **inside a filter over every
+cycle log** — 96 process spawns to answer one question. Replaced with a single
+batched `git ls-files -z` into a Set.
+
+**No source code, no schema, no migration, no client data, no email.** The
+deploy carries no behaviour change; it was verified by hash anyway.
+
+### The row's diagnosis was right; its framing was wrong, and QUEUE.md is corrected
+
+Row 87 called this a flake — "a slow `git` call losing a race with vitest's 15
+parallel workers". It is not a race. **The cost is linear in the number of cycle
+logs, so it grew by ~28ms every single cycle**, including the cycle that filed
+the row: 1,441ms alone at ~55 logs (cycle 76), **2,559ms alone at 96 logs today**,
+against a 5,000ms budget. It was not waiting for a bad day, it was walking towards
+the deadline at a measurable rate. A correction note is appended to the row.
+
+This is also why the row's "do NOT simply raise the timeout" was right for a
+better reason than it knew — raising it buys a fixed number of cycles, then reds
+again on schedule.
+
+### Measured both sides, as the row demanded
+
+Mechanism, idle machine: **2,653ms for 96 spawns vs 36ms batched — 73.6x**,
+identical answer. Test alone **2,559ms → ~35ms**. Inside the real 15-worker
+suite: **61ms**. Under 26 competing CPU processes the **unmodified** test
+reproduced cycle 76's exact `Test timed out in 5000ms` at **7,105ms**; the
+rewrite passes that identical load in **35ms**.
+
+### Proven to fire, not merely to exist
+
+Red-first for a timing bug meant reproducing the failure under artificial load
+(above), then watching both guards go red:
+
+1. A scratch untracked `cycle-999.md` → red in 28ms naming that exact file.
+2. The new spawn-count guard → red when git is asked twice.
+
+**The regression guard counts spawns, not milliseconds, deliberately.** A
+duration assertion would be the same defect class just removed: red on a slow CI
+runner having found nothing wrong. Invocation count is a fact about the code, so
+it is the same answer on every machine.
+
+### Two correctness gains that came free
+
+* The old helper **swallowed every git error** and returned false, so a broken or
+  absent git would have reported all 96 logs untracked — a loud red pointing at
+  entirely the wrong thing. It now throws.
+* `-z` returns literal NUL-separated paths; unflagged `git ls-files` quotes
+  non-ASCII paths, which would silently never match a string compare.
+
+### Deliberately left alone
+
+`relay/tracked-artefacts.test.ts` carries the same per-file helper, but over a
+**fixed list of 8** artefacts, one spawn per `it.each` case with its own 5,000ms
+budget, and it does not grow per cycle. Not this defect. Recorded so the next
+cycle does not re-derive that it is safe.
+
+Gates: lint 0, typecheck 0, **3,644 tests / 348 files**, CI + E2E green.
+
+### Nothing contradicts PROJECT.json
+
+The hard rule was never approached: no send, no delete, no client data.
+
+### Pick up first, next session
+
+1. **Run the PR sweep first**, as always — it was clean this cycle, keep it that way.
+2. **Take the next `TODO` row off QUEUE.md.** Row 87 is closed; nothing from this
+   cycle is half-done and nothing is owed.
+3. **Still outstanding and not an agent's to do:** row 84 (`BLOCKED`) — eight
+   mailboxes cannot send and need their owners to sign in; and whether to publish
+   the Google OAuth app, declined twice. Both are Greg's.
 
 ## Session 2026-08-29 - Relay cycle 97, queue row 86: a failed reconnect stops taking a working mailbox off the air.
 
