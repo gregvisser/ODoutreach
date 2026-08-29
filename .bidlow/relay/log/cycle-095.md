@@ -115,8 +115,36 @@ air" — a claim about what the digest noticed, which is all that is provable.
 
 ## Proven to fire, not merely to exist
 
-The alerts workflow dry-run, composed against the **real production database**,
-printing the real email and sending nothing. See below for the output.
+The alerts workflow dry-run (run **33244783346**), composing the real email
+against the **real production database** and sending nothing:
+
+```
+  Mailboxes off the air: 8 cannot send (27 of 55 live mailboxes can).
+      GreenTheUK
+        ad***@greentheuk.com — 2 days — was working, last inbox sync 51 days ago
+        jo***@greentheuk.com — 58 days — was working, last inbox sync 72 days ago
+      OpensDoors
+        jo***@opensdoors.co.uk — 56 days — was working, last inbox sync 91 days ago
+      Chevron Security
+        ta***@chevronsecurity.co.uk — 59 days — never connected, no inbox sync on record
+        sa***@chevronsecurity.co.uk — 59 days — never connected, no inbox sync on record
+      Protech Roofing
+        al***@protechroofing.co.uk — 60 days — never connected, no inbox sync on record
+        fr***@protechroofing.co.uk — 67 days — never connected, no inbox sync on record
+      Panda Recycling
+        ja***@beauparc.co.uk — 60 days — never connected, no inbox sync on record
+      Each needs its own owner to sign in at Microsoft or Google.
+      Nobody at OpensDoors and no automation can do it for them.
+
+DRY RUN — nothing sent.
+```
+
+The same run also shows the two sections doing genuinely different jobs rather
+than duplicating each other. The Google section listed eight rows, five of them
+**trainhugger** mailboxes in CONNECTION_ERROR — which are not stranded and are
+correctly absent from the new section. The new section listed eight rows, six of
+them Microsoft — which the Google section cannot see. They overlap on exactly the
+two greentheuk mailboxes, which are legitimately both.
 
 ## Gates
 
@@ -132,6 +160,21 @@ already sends daily to Greg alone, and this changes only what it says.
 
 `mailboxes-operator-model.ts` (row 85's sixty-day label), the OAuth callbacks
 (row 86), the send path, any schema.
+
+## A trap I walked into, worth the next cycle knowing
+
+Marking this row `BLOCKED` and leaving it where it sat would have **halted the
+entire relay**. `Invoke-SelfQueue` takes the first row that is not DONE and not
+IN PROGRESS, and if that row is BLOCKED it writes a note and idles — it does not
+skip past it. Row 84 sat above rows 85, 86 and 87, all TODO and all perfectly
+good work.
+
+`relay/queue-file-integrity.test.ts` caught it, went red, and told me why. Row 84
+now sits at the bottom beside row 48, the only other BLOCKED row, which is there
+for the same reason. The move is a one-line diff and the integrity suite is green.
+
+So: **BLOCKED is not just a word, it is a position.** Parking a row means moving
+it below everything still to be done, or the relay stops behind it.
 
 ## Open questions for Greg — both still his, and both now unavoidable
 
