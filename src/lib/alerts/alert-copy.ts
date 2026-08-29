@@ -69,6 +69,40 @@ export type GoogleReconnectAlert =
     }
   | { checked: false; reason: string };
 
+/**
+ * Live mailboxes that cannot send, as the digest sees it.
+ *
+ * SEPARATE FROM THE GOOGLE CHECK ON PURPOSE. That check queries
+ * `provider: "GOOGLE"`, so it is blind by construction to a Microsoft mailbox
+ * that is off the air — and on 29 August 2026 six of the eight stranded
+ * mailboxes were Microsoft, including OpensDoors' own, dark for 56 days, while
+ * the digest was free to report "Google logins: all in date, nothing to
+ * reconnect". Folding this into the Google section would hide exactly the rows
+ * the Google section cannot see.
+ *
+ * `checked: false` is a shape the caller is FORCED to express rather than one it
+ * can omit, for the same reason as `GoogleReconnectAlert`: a check that quietly
+ * stopped running looks precisely like an estate with nothing wrong.
+ */
+export type StrandedMailboxAlert =
+  | {
+      checked: true;
+      /** Live mailboxes sitting in PENDING_CONNECTION with no credential. */
+      strandedCount: number;
+      /** Of those, the ones that appeared inside this digest's window. */
+      newlyStrandedCount: number;
+      /** Live means active, on a workspace that has not been removed. */
+      liveCount: number;
+      /** How many of the live can actually send — the probe's headline. */
+      sendableCount: number;
+      /** Grouped by client, most recent first — a client is who gets telephoned. */
+      strandedByClient: {
+        clientName: string;
+        entries: { maskedEmail: string; label: string }[];
+      }[];
+    }
+  | { checked: false; reason: string };
+
 export type AlertSeverity = "OK" | "PARTIAL" | "FAILED";
 
 export type AlertEmail = {
@@ -116,12 +150,21 @@ export function buildAlertEmail(input: {
    * caller does not do that job", false means "it is my job and I failed".
    */
   googleReconnects?: GoogleReconnectAlert;
+  /**
+   * Omitted entirely by callers that do not run the stranded-mailbox check.
+   * Omitted means "not my job"; `{ checked: false }` means "it is my job and I
+   * failed" — the same distinction the Google field draws.
+   */
+  strandedMailboxes?: StrandedMailboxAlert;
 }): AlertEmail {
   const window = input.window ?? "the last 24 hours";
   const jobs = input.jobs;
   const google = input.googleReconnects;
   const googleBlind = google !== undefined && google.checked === false;
   const googleDue = google?.checked === true && google.dueSoonCount > 0;
+  const stranded = input.strandedMailboxes;
+  const strandedBlind = stranded !== undefined && stranded.checked === false;
+  const strandedFound = stranded?.checked === true && stranded.strandedCount > 0;
 
   // FAILED outranks PARTIAL: act now beats act today.
   const failed = jobs.find((j) => j.conclusion === "failure" || scheduleLooksBroken(j));
@@ -162,6 +205,15 @@ export function buildAlertEmail(input: {
     leadLine =
       "Act now. The seven-day Google reconnect check could not run, so nobody " +
       "is being warned about expiring mailboxes.";
+  } else if (strandedBlind && stranded?.checked === false) {
+    // Same reasoning as the Google blind check, and ranked just below it only
+    // because when both are blind they almost always share one cause (no
+    // database), and one of them has to own the subject line.
+    severity = "FAILED";
+    subject = truncate("ODoutreach FAILED — mailbox check did not run", MAX_SUBJECT);
+    leadLine =
+      "Act now. The check for mailboxes that cannot send could not run, so " +
+      "nobody would know if the estate went dark.";
   } else if (partial) {
     // Kept AHEAD of the Google notice deliberately: both are "act today", but a
     // partial batch means sends failed in the last 24 hours, where a login due
@@ -184,6 +236,33 @@ export function buildAlertEmail(input: {
       MAX_SUBJECT,
     );
     leadLine = `Act today. ${partial.name} ran, but part of it failed.`;
+  } else if (strandedFound && stranded?.checked === true) {
+    // Ranked ABOVE the Google notice, by that notice's own reasoning: a login
+    // due in two days has not cost anything yet, and a mailbox that is off the
+    // air already has. Ranked BELOW a partial batch, which is the same
+    // already-cost-something class but happened in the last 24 hours.
+    //
+    // PARTIAL, not OK, even when every one of them has been stranded for two
+    // months. An expired Google login that stops a mailbox sending is already
+    // PARTIAL here, and the same fact must not read as healthier because the
+    // mailbox happens to be Microsoft.
+    severity = "PARTIAL";
+    subject = truncate(
+      stranded.newlyStrandedCount > 0
+        ? `ODoutreach PARTIAL — ${stranded.newlyStrandedCount} ${
+            stranded.newlyStrandedCount === 1 ? "mailbox" : "mailboxes"
+          } newly off the air, ${stranded.strandedCount} in total`
+        : `ODoutreach PARTIAL — ${stranded.strandedCount} ${
+            stranded.strandedCount === 1 ? "mailbox" : "mailboxes"
+          } cannot send, ${stranded.sendableCount} of ${stranded.liveCount} can`,
+      MAX_SUBJECT,
+    );
+    leadLine =
+      stranded.newlyStrandedCount > 0
+        ? "Act today. A mailbox has gone off the air since yesterday — somebody " +
+          "was at that screen, so it is the one still worth chasing."
+        : "Act today. Mailboxes are off the air and only their owners can sign " +
+          "them back in.";
   } else if (googleDue && google?.checked === true) {
     severity = "PARTIAL";
     subject = truncate(
@@ -257,6 +336,45 @@ export function buildAlertEmail(input: {
           lines.push(`        ${entry.email} — ${entry.label}`);
         }
       }
+    }
+  }
+
+  // Mailboxes that cannot send at all. Rendered whenever the caller ran the
+  // check — INCLUDING when the answer is none, so that a section which silently
+  // stopped appearing shows up as a change rather than as a clean estate.
+  //
+  // A Google mailbox stranded by an abandoned Connect legitimately appears in
+  // both this section and the one above: it is both "cannot send now" and "part
+  // of the weekly reconnect chore". They are different questions, and
+  // suppressing the overlap would mean one section deciding what the other is
+  // allowed to report.
+  if (stranded) {
+    lines.push("");
+    if (!stranded.checked) {
+      lines.push(
+        `  Mailboxes off the air: COULD NOT CHECK — ${stranded.reason}`,
+        "      Nobody would know if the estate had stopped being able to send.",
+      );
+    } else if (stranded.strandedCount === 0) {
+      lines.push(
+        `  Mailboxes off the air: none — all ${stranded.sendableCount} of ` +
+          `${stranded.liveCount} live mailboxes can send.`,
+      );
+    } else {
+      lines.push(
+        `  Mailboxes off the air: ${stranded.strandedCount} cannot send ` +
+          `(${stranded.sendableCount} of ${stranded.liveCount} live mailboxes can).`,
+      );
+      for (const group of stranded.strandedByClient) {
+        lines.push(`      ${group.clientName}`);
+        for (const entry of group.entries) {
+          lines.push(`        ${entry.maskedEmail} — ${entry.label}`);
+        }
+      }
+      lines.push(
+        "      Each needs its own owner to sign in at Microsoft or Google.",
+        "      Nobody at OpensDoors and no automation can do it for them.",
+      );
     }
   }
 

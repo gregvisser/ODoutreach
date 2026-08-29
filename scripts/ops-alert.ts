@@ -23,9 +23,11 @@ import {
   type GoogleReconnectAlert,
   type JobConclusion,
   type JobRunSummary,
+  type StrandedMailboxAlert,
 } from "@/lib/alerts/alert-copy";
 import { readPartialAnnotations, type PartialDetail } from "@/lib/alerts/partial-annotations";
 import { buildGoogleReconnectRoster } from "@/lib/mailboxes/google-reconnect-roster";
+import { buildStrandedMailboxRoster } from "@/lib/mailboxes/stranded-mailbox-roster";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -304,6 +306,101 @@ async function readGoogleReconnects(now: Date): Promise<GoogleReconnectAlert> {
   }
 }
 
+/**
+ * Which live mailboxes cannot send at all, read straight from the production
+ * database.
+ *
+ * DELIBERATELY A SECOND QUERY, not folded into the Google one. Two reasons.
+ * The Google read filters `provider: "GOOGLE"` and so cannot see a Microsoft
+ * mailbox that is off the air — which was six of the eight on 29 August 2026,
+ * OpensDoors' own among them, dark for 56 days while the digest reported the
+ * Google chore as clear. And keeping them apart means one check failing leaves
+ * the other still able to speak, instead of one fault blinding both.
+ *
+ * The RULES come from the shared `buildStrandedMailboxRoster`, which applies the
+ * same shipped predicates as the Monday production probe, so the daily email and
+ * the probe cannot drift into disagreeing about who is off the air.
+ *
+ * NEVER THROWS — every problem comes back as `checked: false`, which the
+ * composer renders as a loud FAILED. An alert that dies while composing is
+ * indistinguishable from a healthy silent night.
+ */
+async function readStrandedMailboxes(now: Date): Promise<StrandedMailboxAlert> {
+  if (!process.env.DATABASE_URL?.trim()) {
+    return {
+      checked: false,
+      reason:
+        "DATABASE_URL is not set for the alert job, so no mailbox could be checked",
+    };
+  }
+  try {
+    const { prisma } = await import("@/lib/db");
+    const rows = await prisma.clientMailboxIdentity.findMany({
+      where: {
+        // The tenant wall as it applies to a job with no session: a soft-deleted
+        // workspace is nobody's outage.
+        client: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        clientId: true,
+        email: true,
+        provider: true,
+        connectionStatus: true,
+        isActive: true,
+        isSendingEnabled: true,
+        workspaceRemovedAt: true,
+        updatedAt: true,
+        lastSyncAt: true,
+        client: { select: { name: true, slug: true } },
+        // Presence only. The credential itself is never read here.
+        secret: { select: { id: true } },
+      },
+    });
+
+    const roster = buildStrandedMailboxRoster(
+      rows.map((row) => ({
+        mailboxId: row.id,
+        clientId: row.clientId,
+        clientName: row.client.name,
+        clientSlug: row.client.slug,
+        email: row.email,
+        provider: row.provider,
+        connectionStatus: row.connectionStatus,
+        hasStoredCredential: row.secret !== null,
+        isActive: row.isActive,
+        workspaceRemovedAt: row.workspaceRemovedAt,
+        isSendingEnabled: row.isSendingEnabled,
+        pendingSince: row.updatedAt,
+        lastSyncAt: row.lastSyncAt,
+      })),
+      now,
+    );
+
+    return {
+      checked: true,
+      strandedCount: roster.strandedCount,
+      newlyStrandedCount: roster.newlyStrandedCount,
+      liveCount: roster.liveCount,
+      sendableCount: roster.sendableCount,
+      strandedByClient: roster.strandedByClient.map((group) => ({
+        clientName: group.clientName,
+        entries: group.entries.map((entry) => ({
+          maskedEmail: entry.maskedEmail,
+          label: entry.label,
+        })),
+      })),
+    };
+  } catch (error) {
+    return {
+      checked: false,
+      reason: `the mailbox database could not be read (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    };
+  }
+}
+
 async function appIsReachable(baseUrl: string): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/health`, {
@@ -364,9 +461,16 @@ async function main(): Promise<void> {
     });
   }
 
-  const googleReconnects = await readGoogleReconnects(new Date());
+  const now = new Date();
+  const googleReconnects = await readGoogleReconnects(now);
+  const strandedMailboxes = await readStrandedMailboxes(now);
 
-  const email = buildAlertEmail({ jobs, emailsSent: 0, googleReconnects });
+  const email = buildAlertEmail({
+    jobs,
+    emailsSent: 0,
+    googleReconnects,
+    strandedMailboxes,
+  });
 
   console.log(`subject: ${email.subject}`);
   console.log(email.body);
