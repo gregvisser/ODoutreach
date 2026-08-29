@@ -5117,3 +5117,91 @@ The hard rule held again: finishing Train Hugger requires confirming an
    mistake above.
 3. **Write the alerting row** for suppression sources stuck in ERROR.
 4. **Ask Greg to restart the relay watcher** — row 52, still unfixed.
+
+---
+
+# Cycle 83 — row 71: two records were already right, the third was bigger — 2026-08-29
+
+Merged `b023acf` (PR #353). Deploy green, running commit **verified by hash** on
+the direct App Service URL. No schema change, no migration, no client data,
+nothing sent.
+
+## What changed
+
+Only `.bidlow/relay/QUEUE.md`, `relay/queue-file-integrity.test.ts`, and the
+cycle logs. **No application code**, so the deploy moved the commit without
+changing behaviour.
+
+## Two of the three records needed no change — verified, not assumed
+
+Row 71 said three records on `main` were wrong. Two were already correct:
+
+1. **CR-05 in `.bidlow/GRADES.json` is CLOSED**, since `3a35000` (#341), with
+   `closed_on: 2026-08-28` and evidence already naming the Sentry DPA v5.1.0
+   signed 28 Aug 2026 in the `bidlowai` org plus the Resend/RocketReach
+   terms-of-service route. The row's "lost three times" claim was **stale** —
+   the third correction landed in a cycle and is on main. Not touched.
+2. **Row 68 carries no hundred-digit cycle number** — reads `DONE 78`, repaired
+   by `348f839`. Confirmed by reading the file *and* by the real PowerShell
+   parser. Not touched.
+
+This is the third consecutive cycle to find its brief out of date (see cycles 70
+and 82). **Check `main` before believing a brief.**
+
+## The mojibake was real, and larger than recorded: 240, not 194
+
+The 194 figure counted only the em-dash mangling. It missed 24 right-arrows, 16
+middots, a euro sign, a `≤`, an ellipsis and four `Ã`-led forms. All reversed in
+one cp1252 pass — line by line, every changed line printed first, backup at
+`.bidlow/relay/QUEUE.md.bak-before-cycle83-mojibake` (gitignored).
+
+## Decision: I overrode the row's own precondition, on measurement
+
+Row 71 gated the repair on a relay restart **that has not happened**. I did it
+anyway, and this is the decision worth keeping:
+
+The gate was a *proxy* for "the running watcher will re-corrupt it". The real
+condition is directly measurable — the live watcher rewrote QUEUE.md at 02:30
+that cycle setting row 71 `IN PROGRESS`, and that round trip changed **exactly
+one line**, with the non-ASCII census identical (17 distinct, 706 total) and the
+BOM intact. A process reading UTF-8 as cp1252 cannot produce that. **The BOM is
+what protects this file**, it is content-independent, and it survived a live
+watcher write. Not a one-way door: fully reversible via git and the backup.
+
+Two lines refused to round-trip and were left alone under the row's skip-on-raise
+rule — **both turned out to be already correct** (a real em dash, a real
+apostrophe). Forcing them would have damaged good text.
+
+## Proven to fire, against the real parser
+
+`relay-watch.ps1` dot-sourced over the merged file: **71 rows, 71 parsed, 0
+unparsed**, row 71 `DONE 83`, 197 em dashes / 24 arrows / 1 `â`. That one is
+deliberate — row 42 quotes the manglings in backticks to describe this bug, which
+is why the new guard exempts inline code spans (gap documented).
+
+New `QUEUE.md encoding` block asserts the byte-order mark **and** the absence of
+mojibake, **watched red first at 233 flagged sequences**. Gates: lint 0,
+typecheck 0, **3205 tests / 318 files**, CI + E2E green.
+
+## The log-destruction fix is confirmed working
+
+`cycle-082.md` was uncommitted with the watcher's block appended — **189
+insertions, 0 deletions**, cycle 82's own heading still line 1. Diffed before
+committing, per the cycle-70 mistake. The appending writer is genuinely running;
+the manual rescue step is retired.
+
+## Nothing contradicts PROJECT.json
+
+The hard rule was never approached: no send, no delete, no client data.
+
+## Pick up first, next session
+
+1. **Row 72 is next and is `TODO`** — the privacy policy describes tracking
+   behaviour the product no longer has (it is now off by default, per-client
+   opt-in, DNS-gated). It is a public page a regulator can read.
+2. **Ask Greg to restart the relay watcher** (`relay-start.cmd`) — still
+   outstanding, now for cycle 81's stale-watcher stamp. Nothing is broken
+   meanwhile; cycle 83 proved the queue file is safe. You will know it worked
+   when a cycle log carries a line beginning `Watcher script:`.
+3. **Do not re-open CR-05 or row 68.** Both are correct on `main`; three cycles
+   have now been spent discovering that.
