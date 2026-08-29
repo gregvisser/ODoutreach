@@ -3,6 +3,7 @@
  */
 
 import type { SenderSignatureViewModel } from "@/lib/mailboxes/sender-signature";
+import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import { MAX_ACTIVE_MAILBOXES_PER_CLIENT } from "@/lib/mailbox-identities";
 
 /** Minimal row shape for operator status (matches `MailboxIdentityRow` in the panel). */
@@ -25,6 +26,13 @@ export type OperatorMailboxRow = {
   emailsSentToday: number;
   dailyWindowResetAt: string | null;
   lastError: string | null;
+  /**
+   * ISO expiry of the in-flight OAuth `state`, or null when there is none.
+   *
+   * Read only to answer one question: is the sign-in window this row's label
+   * points at actually still open? See `mailboxSignInWindowIsOpen`.
+   */
+  oauthStateExpiresAt: string | null;
 };
 
 export type OperatorLedgerRow = {
@@ -39,6 +47,7 @@ export type OperatorMailboxStatusKind =
   | "needs_approval"
   | "connection_failed"
   | "account_deleted"
+  | "sign_in_expired"
   | "disconnected"
   | "sending_paused"
   | "removed"
@@ -137,8 +146,96 @@ export function microsoftConnectionErrorSublabel(
   return MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC;
 }
 
+/**
+ * Is the provider sign-in window on this row still open?
+ *
+ * Delegates to the SHIPPED `isMailboxOAuthStateExpired` — the exact predicate
+ * both OAuth callbacks apply before they will accept a returning sign-in. That
+ * shared predicate is the whole point: the screen offers to finish a sign-in
+ * precisely when the server would accept it, so it can never invite an operator
+ * into a round trip that is already refused. A local copy of the arithmetic
+ * would be free to drift, and drift here means lying to an operator.
+ *
+ * A NULL expiry is CLOSED, deliberately and not by falling through. Two
+ * independent reasons, both from shipped code rather than assumption:
+ *   1. `isMailboxOAuthStateExpired(null)` is true and the callbacks gate on it
+ *      first, so a returning sign-in on such a row is refused outright.
+ *   2. Every writer of `oauthStateExpiresAt: null` in this codebase moves the
+ *      row off PENDING_CONNECTION in the same update, so the pairing is one the
+ *      current code cannot produce.
+ * Measured in production 2026-08-29 (probe run 33245630085): of the 8 stranded
+ * rows, all 8 held a real expiry and every one had closed, between 2 and 67
+ * days earlier. None was NULL. The null branch is therefore defensive, and it
+ * must not fabricate a closure date it does not have.
+ */
+export function mailboxSignInWindowIsOpen(
+  oauthStateExpiresAtIso: string | null,
+  now: Date,
+): boolean {
+  if (!oauthStateExpiresAtIso) return false;
+  const expiresAt = new Date(oauthStateExpiresAtIso);
+  if (Number.isNaN(expiresAt.getTime())) return false;
+  return !isMailboxOAuthStateExpired(expiresAt, now);
+}
+
+const UTC_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+/**
+ * "29 Jun 2026", always in UTC.
+ *
+ * Formatted from UTC parts rather than through `date-fns`/`toLocaleDateString`
+ * on purpose. This module is rendered by a client component: a locale- or
+ * timezone-dependent format produces one date on the server (Azure runs UTC)
+ * and another in a London browser on a late-evening timestamp, which is a
+ * hydration mismatch on a date the operator cannot check. One timezone, one
+ * answer.
+ */
+function formatUtcDay(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getUTCDate()} ${UTC_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/**
+ * What to tell an operator about a mailbox stuck in PENDING_CONNECTION.
+ *
+ * The old copy — "Finish sign-in in the Microsoft or Google window, or press
+ * Connect again" — is correct for the 15 minutes the OAuth state is alive, and
+ * misleading for ever afterwards. Eight production mailboxes had been reading
+ * it for between 2 and 67 days, each as though a sign-in window were sitting
+ * open on somebody's screen. Same defect class as the deleted-account labels:
+ * telling an operator to do something impossible is worse than saying nothing.
+ */
+export function pendingConnectionStatus(
+  row: Pick<OperatorMailboxRow, "oauthStateExpiresAt">,
+  now: Date,
+): OperatorMailboxStatus {
+  if (mailboxSignInWindowIsOpen(row.oauthStateExpiresAt, now)) {
+    return {
+      kind: "needs_approval",
+      label: "Needs approval",
+      sublabel:
+        "Finish sign-in in the Microsoft or Google window, or press Connect again.",
+    };
+  }
+  const closedOn = row.oauthStateExpiresAt
+    ? formatUtcDay(row.oauthStateExpiresAt)
+    : null;
+  return {
+    kind: "sign_in_expired",
+    label: "Sign-in never finished",
+    sublabel: closedOn
+      ? `The sign-in window closed on ${closedOn} and can no longer be completed. Press Connect to start a fresh sign-in — someone who can sign in to this mailbox has to finish it.`
+      : "There is no sign-in in progress for this mailbox, so there is nothing to go back and finish. Press Connect to start a fresh sign-in — someone who can sign in to this mailbox has to complete it.",
+  };
+}
+
 export function mailboxRowOperatorStatus(
   row: OperatorMailboxRow,
+  now: Date,
 ): OperatorMailboxStatus {
   if (row.workspaceRemovedAt) {
     return { kind: "removed", label: "Removed" };
@@ -181,12 +278,7 @@ export function mailboxRowOperatorStatus(
     };
   }
   if (row.connectionStatus === "PENDING_CONNECTION") {
-    return {
-      kind: "needs_approval",
-      label: "Needs approval",
-      sublabel:
-        "Finish sign-in in the Microsoft or Google window, or press Connect again.",
-    };
+    return pendingConnectionStatus(row, now);
   }
   if (row.connectionStatus === "CONNECTED" && !row.isSendingEnabled) {
     return { kind: "sending_paused", label: "Sending paused" };

@@ -48,6 +48,8 @@ import {
   MAILBOX_ACCOUNT_DELETED_SUBLABEL,
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
+  mailboxSignInWindowIsOpen,
+  pendingConnectionStatus,
   MAX_CONNECTED_MAILBOXES,
 } from "@/lib/mailboxes/mailboxes-operator-model";
 import {
@@ -160,6 +162,12 @@ export type MailboxIdentityRow = {
   dailyWindowResetAt: string | null;
   lastSyncAt: string | null;
   lastError: string | null;
+  /**
+   * ISO expiry of the in-flight OAuth `state`, or null when there is none.
+   * Decides whether this row may honestly tell the operator to go and finish a
+   * sign-in — see `mailboxSignInWindowIsOpen`.
+   */
+  oauthStateExpiresAt: string | null;
   updatedAt: string;
   senderDisplayName: string | null;
   senderPhone: string | null;
@@ -202,11 +210,17 @@ function oauthReadyForRow(
     : oauthGoogleConfigured;
 }
 
-function connectActionLabel(row: MailboxIdentityRow): string {
+function connectActionLabel(row: MailboxIdentityRow, now: Date): string {
   if (row.connectionStatus === "CONNECTED") {
     return "Reconnect";
   }
-  if (row.connectionStatus === "PENDING_CONNECTION") {
+  // "Complete sign-in" promises to resume something already under way. That is
+  // true only while the OAuth state is alive; once the window has closed the
+  // button starts a brand-new sign-in, and it should say so.
+  if (
+    row.connectionStatus === "PENDING_CONNECTION" &&
+    mailboxSignInWindowIsOpen(row.oauthStateExpiresAt, now)
+  ) {
     return "Complete sign-in";
   }
   return "Connect";
@@ -215,6 +229,7 @@ function connectActionLabel(row: MailboxIdentityRow): string {
 function providerConnectionHint(
   row: MailboxIdentityRow,
   oauthOk: boolean,
+  now: Date,
 ): string {
   if (!oauthOk) {
     return "This provider isn't connected yet. Ask an administrator to finish setup in Settings.";
@@ -228,7 +243,10 @@ function providerConnectionHint(
     case "DRAFT":
       return "Not connected — press Connect. Someone who can sign in to that mailbox finishes the prompt in the window that opens.";
     case "PENDING_CONNECTION":
-      return "Finish sign-in in the Microsoft or Google window, or press Connect again.";
+      // The same sentence, and the same defect, as the status sublabel one
+      // module along. Both read the one shared rule so the row's status and the
+      // row's expanded hint can never tell an operator two different stories.
+      return pendingConnectionStatus(row, now).sublabel ?? "";
     case "CONNECTED": {
       // The Google seven-day reconnect clock. The arithmetic and the wording
       // live in `google-refresh-token-expiry`, tested against a fixed date, so
@@ -723,7 +741,7 @@ export function ClientMailboxIdentitiesPanel({
                   oauthMicrosoftConfigured,
                   oauthGoogleConfigured,
                 );
-                const op = mailboxRowOperatorStatus(row);
+                const op = mailboxRowOperatorStatus(row, now);
                 return (
                   <TableRow key={row.id}>
                     <TableCell className="align-top min-w-[10rem] max-w-[14rem]">
@@ -814,7 +832,7 @@ export function ClientMailboxIdentitiesPanel({
                               }
                               onClick={() => startOAuth(row.id)}
                             >
-                              {connectActionLabel(row)}
+                              {connectActionLabel(row, now)}
                             </Button>
                             <Button
                               size="xs"
@@ -1315,7 +1333,7 @@ export function ClientMailboxIdentitiesPanel({
                     <span className="text-foreground/80">Internal connection: </span>
                     {row.connectionStatus}
                     {" · "}
-                    {providerConnectionHint(row, oauthOk)}
+                    {providerConnectionHint(row, oauthOk, now)}
                   </p>
                   <p>
                     <span className="text-foreground/80">Send readiness: </span>

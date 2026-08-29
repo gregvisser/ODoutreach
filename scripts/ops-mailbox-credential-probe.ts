@@ -31,6 +31,7 @@ import {
   type MailboxConnectionStatusValue,
 } from "@/lib/mailboxes/mailbox-connect-credential";
 import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
+import { pendingConnectionStatus } from "@/lib/mailboxes/mailboxes-operator-model";
 
 function maskAddress(email: string): string {
   const at = email.indexOf("@");
@@ -153,6 +154,18 @@ async function main(): Promise<void> {
         console.log(
           `      sign-in window: ${describeOAuthWindow(d.row.oauthStateExpiresAt, now)}`,
         );
+        // What the Mailboxes screen will actually SAY about this row, produced
+        // by the SHIPPED `pendingConnectionStatus` — the same function the page
+        // renders. Fixtures prove the rule; this proves the rule fires on the
+        // real rows, which is the thing this repository keeps getting wrong.
+        const shown = pendingConnectionStatus(
+          {
+            oauthStateExpiresAt:
+              d.row.oauthStateExpiresAt?.toISOString() ?? null,
+          },
+          now,
+        );
+        console.log(`      operator sees: "${shown.label}" — ${shown.sublabel}`);
       }
       console.log(
         "\nEach of these needs somebody to press Connect and complete the provider sign-in. " +

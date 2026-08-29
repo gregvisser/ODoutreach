@@ -181,6 +181,10 @@ export async function loadClientWorkspaceBundle(
     dailyWindowResetAt: m.dailyWindowResetAt?.toISOString() ?? null,
     lastSyncAt: m.lastSyncAt?.toISOString() ?? null,
     lastError,
+    // Carried so the Mailboxes screen can tell an in-flight sign-in from one
+    // that closed weeks ago. Not a secret: it is a timestamp, never the
+    // `oauthState` token itself, which must not reach the browser.
+    oauthStateExpiresAt: m.oauthStateExpiresAt?.toISOString() ?? null,
     updatedAt: m.updatedAt.toISOString(),
     senderDisplayName: m.senderDisplayName,
     senderPhone: m.senderPhone,
