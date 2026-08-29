@@ -12,7 +12,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  replyClassificationBadge,
+  UNCLASSIFIED_BADGE,
+} from "@/lib/ai/reply-classification-display";
 import { cn } from "@/lib/utils";
+
+import type { ReplyClassification } from "@/generated/prisma/enums";
 
 type ReplyRow = {
   id: string;
@@ -25,6 +31,8 @@ type ReplyRow = {
   contactName: string | null;
   sequenceName: string | null;
   outboundSubject: string | null;
+  classification: ReplyClassification | null;
+  classificationRationale: string | null;
 };
 
 type MailboxGroup = {
@@ -114,6 +122,26 @@ function MailboxGroupRow({
                   <span className="text-xs text-muted-foreground">
                     {formatTs(r.receivedAt)}
                   </span>
+                  {/*
+                    Row 80 — what the AI read this reply as. Shown on the row
+                    itself, because the value of the feature is a staff member
+                    scanning this list and seeing where to go first. An
+                    unlabelled reply says so rather than rendering blank.
+                  */}
+                  {(() => {
+                    const badge = r.classification
+                      ? replyClassificationBadge(r.classification)
+                      : UNCLASSIFIED_BADGE;
+                    return (
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[11px]", badge.className)}
+                        title={r.classificationRationale ?? undefined}
+                      >
+                        {badge.text}
+                      </Badge>
+                    );
+                  })()}
                 </div>
                 {r.sequenceName && (
                   <p className="text-xs text-muted-foreground">

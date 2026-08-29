@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { emailDomain, isInternalMail } from "@/lib/inbox/internal-mail";
 import { normalizeEmail } from "@/lib/normalize";
+import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
 import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
@@ -270,6 +271,14 @@ export async function processSyncedMessageForReply(input: {
     outboundEmailId: outbound.id,
     receivedAt: input.receivedAt,
   });
+
+  // Row 80 — label the reply so a "yes, happy to talk" is routed to a person
+  // within minutes rather than sitting in a list. Runs LAST on purpose: every
+  // guarantee above (the reply is stored, follow-ups are stopped, an opt-out is
+  // suppressed) has already happened and cannot be affected by this. It never
+  // throws, and the label is advisory — nothing here sends, suppresses or stops
+  // anything on the strength of a model's opinion.
+  await classifyInboundReplyQuietly({ replyId: reply.id });
 
   return { created: true, replyId: reply.id };
 }

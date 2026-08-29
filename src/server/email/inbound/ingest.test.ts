@@ -18,6 +18,7 @@ const {
   contactFindFirst,
   resolveInternalDomains,
   stopFollowUps,
+  classifyReply,
 } = vi.hoisted(() => ({
   inboundFindFirst: vi.fn(),
   inboundCreate: vi.fn(),
@@ -26,6 +27,7 @@ const {
   contactFindFirst: vi.fn(),
   resolveInternalDomains: vi.fn(),
   stopFollowUps: vi.fn(),
+  classifyReply: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -50,6 +52,10 @@ vi.mock("@/server/email-sequences/stop-follow-ups-on-reply", () => ({
   stopFollowUpsForLinkedReply: (...a: unknown[]) => stopFollowUps(...a),
 }));
 
+vi.mock("@/server/ai/classify-inbound-reply", () => ({
+  classifyInboundReplyQuietly: (...a: unknown[]) => classifyReply(...a),
+}));
+
 import { ingestInboundForClient } from "./ingest";
 
 beforeEach(() => {
@@ -60,6 +66,7 @@ beforeEach(() => {
   contactFindFirst.mockReset();
   resolveInternalDomains.mockReset();
   stopFollowUps.mockReset();
+  classifyReply.mockReset().mockResolvedValue(undefined);
   // Defaults for the happy path: filter off, nothing matched, create returns a row.
   resolveInternalDomains.mockResolvedValue([]);
   outboundFindFirst.mockResolvedValue(null);
@@ -152,5 +159,41 @@ describe("ingestInboundForClient — M8 gates", () => {
     expect(inboundCreate).toHaveBeenCalledTimes(1);
     // The dedup lookup ran but found nothing, so we proceeded to create.
     expect(inboundFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Row 80 — the classification wiring, proven to FIRE rather than to exist.
+   *
+   * The queue records six features this project shipped that were built, wired,
+   * reported success and never actually ran. A classifier that is never called
+   * is indistinguishable from one that is: both leave every reply unlabelled.
+   */
+  it("classifies the stored reply, including an UNLINKED one nobody is watching", async () => {
+    await ingestInboundForClient({
+      clientId: "client-1",
+      payload: {
+        fromEmail: "prospect@external.com",
+        toEmail: "rep@acme.com",
+        providerMessageId: "pm-fresh",
+      },
+      ingestionSource: "webhook",
+    });
+
+    expect(classifyReply).toHaveBeenCalledTimes(1);
+    expect(classifyReply).toHaveBeenCalledWith({ replyId: "new-reply-1" });
+  });
+
+  it("never classifies a message that was not stored", async () => {
+    resolveInternalDomains.mockResolvedValue(["acme.com"]);
+
+    await ingestInboundForClient({
+      clientId: "client-1",
+      payload: { fromEmail: "staff@acme.com", toEmail: "rep@acme.com" },
+      ingestionSource: "webhook",
+    });
+
+    // Internal staff mail creates no reply row, so there is nothing to label
+    // and nothing may be charged to the client for it.
+    expect(classifyReply).not.toHaveBeenCalled();
   });
 });
