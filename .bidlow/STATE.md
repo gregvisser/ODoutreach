@@ -1,6 +1,88 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-28 (cycle 77) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 79) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 79, queue row 38. The guard that puts cycle logs into git could force a token in with them.
+
+Row 38 is **`DONE 79`**. No new rows opened.
+
+### The row was stale; the finding was underneath it
+
+Row 38 asked whether cycle logs should be tracked. **That was already decided by
+cycle 53 in PR #300 (`d7989be`, merged 2026-08-28):** logs ARE tracked, and the
+ignore rule was *narrowed* (`/.bidlow/relay/log/*` + `!/.bidlow/relay/log/*.md`)
+rather than deleted, so scratch stays ignored and the fix for a red test is
+always "commit the log", never "add another ignore rule". `.gitignore:107` as the
+row describes it no longer exists.
+
+The row's real demand was proof the guard **fires**. Traced the commit that
+*added* every log from `cycle-054` to `cycle-078`: **25 consecutive logs, each
+committed by a LATER cycle, never by its own.** It fires.
+
+**What had stopped firing was the row's precondition.** Logs were allowed into
+git on one condition - scan for credentials first, because the object store is
+irreversible. That was done once, by hand, over 55 files. Then it stopped, and
+**26 further logs were committed scanned by nothing.** Worse: the tracking test
+goes RED until the previous log is committed, so a token pasted into a log while
+narrating a gate failure is not *permitted* into git, it is **forced** there.
+The safety mechanism was also the delivery mechanism.
+
+### What was built
+
+* **PR #348**, branch `fix/cycle-log-credential-gate`. Adds
+  `describe("cycle logs carry no credentials")` to
+  `relay/cycle-log-reaches-git.test.ts` - 12 credential **shape** patterns.
+  Shape-based, never name-based: a log must stay free to *name* `DATABASE_URL`
+  and is barred only from carrying the value. Zero hits across all 77 real logs
+  before encoding, so it starts green on true history, not on an exception list.
+* **Proved red-first**, then **fired unplanned on this cycle's own log** - the
+  first draft of `cycle-079.md` quoted the probe string while documenting it,
+  caught at `cycle-079.md:99` *before* the log was committed. Redacted, green.
+* Companion assertion: patterns must match a synthetic all-credentials sample,
+  so the scan cannot report "clean" because a regex was mistyped.
+* Gates: **lint 0, typecheck 0, 3162 tests / 316 files.**
+
+Row measurements re-run at 77 logs (cycle 53 measured 55): credential-shaped
+strings **zero**; volume **688,239 bytes**, ~8.9 KB/log.
+
+### Half-done, and exactly where
+
+**PR #348 was left OPEN with CI still running.** Nothing else is outstanding.
+It is docs + one test file; no schema, no migration, no client data, no send.
+
+### Writes to production
+
+**None. No deploy, no send, no delete, no schema change, no migration.** The only
+merge was PR #347 (`348f839`), which is docs and cycle logs only.
+
+### Decisions
+
+* Kept cycle 53's TRACK decision rather than reopening it - it is correct, and
+  reversing it would put the logs back out of reach of a rebase.
+* Did **not** re-derive measurement (b), the count of findings never mirrored to
+  QUEUE.md. It existed to choose between the cheap and expensive fix; that choice
+  is shipped. The genuine residual - tracking a log does not make anyone *read*
+  it - stays open deliberately as **row 40**.
+* **Honest limit recorded rather than rounded up:** the tracking assertion can
+  only fire LOCALLY, because CI checks out tracked files and an untracked log
+  does not exist there. The credential scan runs in CI but only over
+  already-committed logs, which is one push too late. Both rest on `npm test`
+  being run in-cycle.
+
+### Nothing contradicts PROJECT.json
+
+No one-way door was opened. Note for the record: **committing a log IS a one-way
+door** - the object store is permanent - which is precisely why the scan now
+guards it on every cycle instead of once.
+
+### Pick up first, next session
+
+1. **Merge PR #348 if CI is green** - it was green locally on every gate and was
+   left only because CI had not finished. Do not let it rot.
+2. **Commit `cycle-079.md`** (the watcher appends its evidence half after this
+   agent exits) - the tracking test will be RED naming it until you do.
+3. Row 48 still `BLOCKED` on Greg; rows 40 and 52 still open.
+
 
 ## Session 2026-08-28 - Relay cycle 77, queue row 43. The mailbox OAuth callback said `callback_failed` and nothing else.
 
