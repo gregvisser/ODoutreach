@@ -67,6 +67,33 @@ $StatusFile = Join-Path $RelayDir "STATUS.json"
 $NoteFile   = Join-Path $RelayDir "SELF-QUEUE-NOTE.md"
 $LogDir     = Join-Path $RelayDir "log"
 
+# ===========================================================================
+# WHICH VERSION OF THIS SCRIPT IS THIS PROCESS ACTUALLY RUNNING?
+#
+# Captured HERE, at module scope, because that is the only moment it is
+# knowable. PowerShell reads a script once, at launch, and then runs from
+# memory; nothing later can ask "what was I started from?" once the file on
+# disk has moved on. So the hash is taken at the instant of loading and kept.
+#
+# WHY THIS EXISTS AT ALL. Queue row 52 cost about ten cycles, none of them on a
+# hard problem. The fix for the log-destroying writer was merged as `3d7fef6`
+# and then did NOTHING for four more cycles, because the watcher process
+# already running still held the pre-fix code. Cycles 64, 65, 70 and 71 each
+# rediscovered that from scratch by noticing a clobbered log in `git status`.
+# Not one of them could see which version was loaded, because nothing recorded
+# it. This single line is what makes that visible; `Get-StaleWatcherNote`
+# below turns it into a sentence in every cycle log.
+#
+# $null when the hash cannot be taken, and that stays $null rather than
+# becoming a guess - the note reports "could not check", never a false
+# all-clear.
+$script:LoadedScriptHash = try {
+    if ($PSCommandPath) { (Get-FileHash -Path $PSCommandPath -Algorithm SHA256).Hash } else { $null }
+} catch {
+    $null
+}
+# ===========================================================================
+
 # The runaway guard. It counts cycles run by THIS watcher process, NOT the
 # absolute cycle number in STATUS.json - and the difference is not cosmetic.
 #
@@ -765,6 +792,77 @@ function Write-CycleLog {
 
     Add-Content -Path $Path -Value ($preamble + $body) -Encoding utf8
     return [pscustomobject]@{ Preserved = $true; Bytes = $existing.Length }
+}
+
+# ===========================================================================
+# SAY, IN EVERY CYCLE LOG, WHETHER THIS PROCESS IS RUNNING CURRENT CODE.
+#
+# This is the answer to the question queue row 52 could not answer for ten
+# cycles: "the fix is merged, so why is the old behaviour still happening?"
+# The answer was always "because the running process never reloaded", and it
+# took four cycles of clobbered logs to work that out because NOTHING SAID SO.
+#
+# Pure on purpose - it takes both hashes as parameters and touches no disk - so
+# `relay/stale-watcher-visible.test.ts` can drive every branch, including the
+# stale one, which is otherwise reproducible only by editing the script while
+# the relay is mid-cycle.
+#
+# The three outcomes are deliberately NOT two:
+#
+#   same      -> stamp the version. Quiet, one line, no alarm. The stamp is the
+#                point: a reader can compare it with `git log` in one glance.
+#   different -> say RESTART REQUIRED in as many words, show BOTH hashes, and
+#                state that merged changes are INERT - because "I merged it" is
+#                exactly the false conclusion that cost row 52 its ten cycles.
+#   unknown   -> say the check could not run. An unreadable hash is NOT a
+#                difference, and raising a restart alarm on every failed read
+#                is how a real alarm gets ignored.
+#
+# It cannot make a stale watcher run new code. Nothing can except a restart.
+# It makes staleness visible in the artefact Greg already reads.
+# ===========================================================================
+function Get-StaleWatcherNote {
+    param(
+        # AllowNull/AllowEmptyString are load-bearing: the whole "unknown" branch
+        # exists to be reachable, and a MANDATORY [string] would reject $null
+        # before the function could report it. Same trap as Write-CycleLog's
+        # -Lines, which threw instead of writing any log at all.
+        [Parameter(Mandatory = $true)][AllowNull()][AllowEmptyString()][string]$LoadedHash,
+        [Parameter(Mandatory = $true)][AllowNull()][AllowEmptyString()][string]$CurrentHash
+    )
+
+    $short = {
+        param($h)
+        if ([string]::IsNullOrWhiteSpace($h)) { "unknown" } else { $h.Substring(0, [Math]::Min(12, $h.Length)) }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($LoadedHash) -or [string]::IsNullOrWhiteSpace($CurrentHash)) {
+        return @(
+            "Watcher script: the staleness check could not run, so this log cannot say"
+            "whether the process is running the current code. (Loaded: $(& $short $LoadedHash); on disk now: $(& $short $CurrentHash).)"
+        )
+    }
+
+    if ($LoadedHash -eq $CurrentHash) {
+        return @(
+            "Watcher script: $(& $short $LoadedHash) - the file on disk is identical, so this process is running the current code."
+        )
+    }
+
+    return @(
+        "**RESTART REQUIRED - this watcher is running a STALE copy of its own script.**"
+        ""
+        "  Loaded at launch: $(& $short $LoadedHash)"
+        "  On disk now:      $(& $short $CurrentHash)"
+        ""
+        "PowerShell reads a script once, at launch, and then runs from memory. Every"
+        "change merged to relay-watch.ps1 since this process started is INERT - merging"
+        "it again will not help. Stop this watcher and run relay-start.cmd, which clears"
+        "HALT and reads the cycle number back out of STATUS.json."
+        ""
+        "This is queue row 52's defect. It cost about ten cycles precisely because"
+        "nothing said this out loud."
+    )
 }
 
 # ===========================================================================
@@ -2119,10 +2217,23 @@ either way.
 
     $checkedList = if ($namedFiles.Count -gt 0) { $namedFiles -join ", " } else { "none were named in the brief" }
 
+    # Read the CURRENT file fresh, every cycle, and compare it with what was
+    # loaded at launch. Doing the read here rather than once at startup is the
+    # whole point: the script can be replaced by a merge at any time DURING a
+    # long-running watcher, and that is exactly the case being detected.
+    $currentScriptHash = try {
+        if ($PSCommandPath) { (Get-FileHash -Path $PSCommandPath -Algorithm SHA256).Hash } else { $null }
+    } catch {
+        $null
+    }
+    $stalenessNote = Get-StaleWatcherNote -LoadedHash $script:LoadedScriptHash -CurrentHash $currentScriptHash
+
     $wrote = Write-CycleLog -Path $logFile -Lines @(
         "# Cycle $cycle - $outcome"
         ""
         $headline
+        ""
+        $stalenessNote
         ""
         "Started $($started.ToString('yyyy-MM-dd HH:mm:ss')), took about $minutes minutes."
         "How it ended: $(if (-not $run.Started) { 'it never started' } elseif ($run.TimedOut) { "killed at the $CycleTimeoutMinutes minute deadline" } else { "exit code $($run.ExitCode)" })."
