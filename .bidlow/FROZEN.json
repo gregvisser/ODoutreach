@@ -5,6 +5,7 @@
     "e2e/README.md": "7132584d1b02eafea1335eda0d862bb441057f7823e98551ff0e4fe26ed755af",
     "e2e/ai-spend.spec.ts": "b1ab9d23b594dc96a0be675560edfecd032c36e40eb10772cc70779697c60381",
     "e2e/brief-save-session-expiry.spec.ts": "00b04b4bc34c1182002b54e354ee9d633564a5bd60592be838e8a1499e8c90b5",
+    "e2e/client-default-sender-email.spec.ts": "367656941962656569b7cfa5a416a5484f24dc920b4b2092683fda624d7c5b33",
     "e2e/contacts-pagination.spec.ts": "5704afaecb025694fd1ad08ca3d04dbc0696df48de435d7f154b24e176a85a7c",
     "e2e/cross-tenant.spec.ts": "347cb305e1b511c3b634d6afb8644a1d6007bc010e9edcc23fad15abdd3c0c17",
     "e2e/env.ts": "6fff810c4c99258d97b73c066ad2d0c1d30863cd0b4218b509276bda8b547244",
