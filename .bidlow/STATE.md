@@ -6198,3 +6198,52 @@ The hard rule was never approached: no send, no delete, no client data.
    when a cycle log carries a line beginning `Watcher script:`.
 3. **Do not re-open CR-05 or row 68.** Both are correct on `main`; three cycles
    have now been spent discovering that.
+
+## Cycle 105/106 — queue row 92, dimension 1 re-walk — CLOSED OUT, PARTIAL
+
+Row 92 asked for the send-and-reply journey to be walked through the actual UI
+screens (not staged queue rows) for the `bidlowai` workspace only, with dated
+proof, before dimension 1 (Core journeys end-to-end) is re-scored. Cycle 105
+started this (minted a staff session the same way `e2e/global-setup.ts` does,
+drove a template/contact/sequence through the real screens against production)
+but was killed at its 45-minute deadline before finishing the paperwork; nothing
+it had written to disk was lost. Cycle 106 picked it up, verified the work on
+disk rather than trusting it, and closed it out.
+
+**What the walk found, verified against the deployed code, not just the screen:**
+a real operator can build a template, import a contact and build a sequence
+through the actual screens to "Ready to launch" — two independent passes, two
+different real recipients — but every real launch attempt is refused by the app
+itself, before any email leaves the building, with the identical message both
+times. Root cause traced to `src/server/email-sequences/send-introduction.ts`
+and `src/lib/email-sequences/sequence-email-composition.ts`: BidlowAI's
+`Client.defaultSenderEmail` is null, so the mailto unsubscribe fallback resolves
+to `""`, and `composeSequenceEmail` marks every send not-ready — a defect no
+screen in the product can fix today, since nothing sets that field anywhere.
+Full account, both passes, screenshots-free but with the raw refusal text and
+queue counts before/after: `docs/ops/SEQUENCE-LAUNCH-SCREEN-WALK-2026-08-29.md`.
+
+**Verified before trusting it:** re-ran the code paths cited in the doc and
+confirmed they match; minted a fresh 30-minute read-only staff session and
+listed the live `bidlowai` outreach sequences — exactly one "Cycle 105 walk"
+sequence remains (matches the doc's own "what this walk leaves behind" section,
+no stray debug duplicates), plus the pre-existing `BidlowAI — audit-led intro`
+sequence, deliberately left untouched (real named OpensDoors recipient, not a
+test address — see the doc's §5 for the reasoning).
+
+**Score:** held at 8, exactly as instructed when a walk cannot be completed.
+`.bidlow/GRADES.json` dimension 1 and `CUSTOMER-READY-REPORT.md` row 1 both
+updated with the new evidence; weighted total unchanged at 7.76. Named plainly:
+the send, the arrival, the reply, and the reply-matching confirmation remain
+unproven through the screens. QUEUE.md row 92 set to `PARTIAL 106`.
+
+**Cleaned up, not committed:** the scratch Playwright scripts, screenshots, a
+live prod session-cookie storage-state file and a launch log left on disk by
+cycle 105 — all deleted (never in git; several were plainly marked TEMPORARY /
+NOT COMMITTED in their own header comments, and one held a live session
+credential that must never reach git history).
+
+**What would unblock the next attempt**, per the doc: set `Client.defaultSenderEmail`
+for BidlowAI to `greg@bidlow.co.uk` (additive, currently null — one row), or give
+BidlowAI a verified sender-aligned link domain. Either is a real, separate
+decision, not made this cycle. **Nothing sent. No one-way door crossed.**
