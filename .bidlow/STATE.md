@@ -1,6 +1,116 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 81) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 85) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 85, queue row 80. AI features, slice 1: spend metering + reply classification. LIVE, and currently refusing.
+
+Row 80 is **`PARTIAL 85`** - deliberately, so the next cycle picks it straight
+back up. **Merged `96e76d7` (PR #356)** and `6205e96` (PR #357, the log).
+Open PRs at start of cycle: **one** (#355, left running by cycle 84) - merged.
+Open PRs at end: **zero**.
+
+### What was built
+
+Row 80 is seven features plus a metering requirement - a phase, not a task. The
+row supplies its own ordering and it was followed exactly: metering first
+because it cannot be retrofitted, then reply classification because routing a
+warm reply to a human beats every other item on the list.
+
+* **`src/server/ai/metered-call.ts`** - the ONLY way this app calls a model.
+  `invoke` returns token usage as part of its **return type**, so a call that
+  does not report what it cost does not compile. Metering is not a convention a
+  call site can forget. Every outcome writes exactly one `AiUsageEvent`:
+  `OK`, `REFUSED` (switched off / no key / no price) and `ERROR` alike.
+* **`src/lib/ai/model-catalog.ts`** - integer micro-USD, never a float. Each row
+  stores raw tokens **and** the rates applied **and** a `rateVersion`.
+* **`src/lib/ai/reply-classification.ts`** - taxonomy, prompt, parser. All pure.
+* **`src/server/ai/classify-inbound-reply.ts`** - wired into BOTH real ingest
+  paths, plus a visible badge on the replies panel.
+* Migration `20260829030000_ai_metering_and_reply_classification` - additive
+  only, applied to the production database on merge.
+
+### Half-done, and exactly where it was left
+
+**Slice 1 of 7.** Next, in priority order:
+
+1. **The spend screen.** The ledger is being written and NOTHING displays it, so
+   nobody can yet see what to invoice. This is the other half of the row's own
+   billing requirement and is the highest-value next step.
+2. **The per-client off-switch, with attribution.** Only the global
+   `AI_FEATURES=off` exists. A column with no writer would have been a shell, so
+   it was deliberately not added.
+3. Items 3-7: AI-written sequences, campaign quality scoring, AI-chosen send
+   times, rep dashboard, best-message-by-job-title.
+
+**Item 2 of the row was already done** - "stop the sequence the instant someone
+replies" shipped in PR #137. Verified this cycle as genuinely wired at both
+ingest paths, not merely present.
+
+### Decisions made
+
+* **Six labels, not the five the row lists.** `UNCLEAR` was added on purpose. A
+  classifier with no "I do not know" guesses, and its guesses land on the
+  majority class - which for cold outreach is rejection, burying the "yes, happy
+  to talk" the feature exists to surface. The extra label protects the row's own
+  stated priority. Governing rule throughout: **failing to label is safe,
+  mislabelling is not.**
+* **No SDK.** `@anthropic-ai/sdk` was declined for plain `fetch` - one HTTPS
+  POST, and the codebase already talks to Graph and Gmail this way.
+* **No retry.** A timed-out call may already have been served and billed, so an
+  automatic retry would double-charge the client.
+* **Classification drives nothing.** An `UNSUBSCRIBE` label is a label. The real
+  unsubscribe rail, suppression at queue and dispatch, caps and warm-up are all
+  untouched. It runs last and never throws.
+* **Not a one-way door.** The migration is additive - 3 enums, 5 nullable
+  columns, 1 new table. Dropping it restores today's behaviour exactly, which is
+  why it was merged without asking.
+
+### THE OPEN ITEM - deployed is not working
+
+**`ANTHROPIC_API_KEY` is NOT set on `app-opensdoors-outreach-prod`** (checked
+with `az webapp config appsettings list`). Every reply enters the metered path,
+refuses with `no_api_key`, writes a `REFUSED` ledger row, and displays as "Not
+checked yet". That is the designed fail-closed behaviour and it is honest on
+screen - but **zero replies are being classified right now.** Do not report this
+feature as working until the key is set. Setting it starts real billable spend
+Greg invoices onward, so it is his call and was not decided here.
+
+**The per-token prices are UNVERIFIED.** WebFetch, WebSearch and the
+`claude-api` skill were all denied this session, so the rates came from model
+knowledge - exactly what the standard forbids for anything feeding an invoice.
+Survivable only because every ledger row stores raw tokens plus the rates
+applied, so a wrong price **recomputes** rather than losing revenue.
+`RATES_VERIFIED` is `false` and the file says why. Verify before invoicing.
+
+### Proven to fire, by watching it go red
+
+Both fire-tests were confirmed capable of failing, then restored: unwiring
+`processSyncedMessageForReply` went red, and breaking the refusal-metering path
+went red. `processSyncedMessageForReply` is the one that matters - it is what
+the 15-minute `sync-replies` cron actually calls for live mailboxes, so wiring
+only the legacy ESP-webhook ingest would have labelled nothing in production
+while every test still passed.
+
+### Verified live, by hash
+
+`/api/build-info` on the **direct** App Service URL returns
+`96e76d73f4c11cec77366f87b316347cd13620e6`; health ok, database ok; deploy log
+shows the migration applying against `pg-opensdoors-outreach-prod-01`.
+
+### Nothing contradicts `.bidlow/PROJECT.json`
+
+But two operational facts are worth carrying forward: **`gh pr merge --auto` does
+not work on this repository** (auto-merge is disabled - the sweep must watch and
+merge), and the **e2e Postgres container on :5434 is a safe scratch database**
+for generating migration diffs, unlike :5433 which belongs to another project.
+
+### Gates
+
+lint clean - typecheck clean - **3264 tests in 323 files green** - build green -
+`npx vitest run relay/` 156 green after editing QUEUE.md, so the queue still
+parses through the real watcher parser.
+
+Open questions: **1** - set `ANTHROPIC_API_KEY` in Azure, or leave it refusing?
 
 ## Session 2026-08-29 - Relay cycle 81, queue row 52. The restart had happened; nothing in the repo could say so.
 
