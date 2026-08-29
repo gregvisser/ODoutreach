@@ -94,6 +94,18 @@ function flattenSheetValues(values: string[][] | null | undefined): string[] {
 }
 
 /**
+ * The result of asking a spreadsheet for its tab titles.
+ *
+ * "It failed" and "it has no tabs" used to collapse into one empty array, and
+ * that conflation was the defect: a metadata call refused for quota returned
+ * `[]`, which read as "no tabs", which fell back to the historic `Sheet1` guess
+ * — and this function's caller then runs a delete-then-insert. A momentary
+ * quota blip could therefore aim a REPLACE at the wrong tab and silently
+ * unblock a client's whole do-not-contact list.
+ */
+type SheetTabLookup = { ok: true; titles: string[] } | { ok: false };
+
+/**
  * The tab titles of a spreadsheet.
  *
  * Used twice: to resolve which tab to read when no range is saved, and to name
@@ -101,12 +113,13 @@ function flattenSheetValues(values: string[][] | null | undefined): string[] {
  * product diagnosed its own outage in an error message and then did nothing
  * with the diagnosis.
  *
- * Deliberately swallows its own errors and returns `[]`. On the failure path a
- * second failure here must not replace the first one; on the resolve path an
- * empty list means the caller falls back to the historic default, so a
- * transient metadata error is never worse than the old behaviour.
+ * Still never throws — a second failure on the error path must not replace the
+ * first one — but it now REPORTS its failure rather than disguising it as an
+ * answer, so the resolve path can refuse instead of guessing.
  */
-async function readSheetTabTitles(spreadsheetId: string): Promise<string[]> {
+async function readSheetTabTitles(
+  spreadsheetId: string,
+): Promise<SheetTabLookup> {
   try {
     const auth = new google.auth.GoogleAuth({
       credentials: loadServiceAccountCredentials(),
@@ -119,11 +132,14 @@ async function readSheetTabTitles(spreadsheetId: string): Promise<string[]> {
         fields: "sheets.properties.title",
       }),
     );
-    return (meta.data.sheets ?? [])
-      .map((s) => s.properties?.title)
-      .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+    return {
+      ok: true,
+      titles: (meta.data.sheets ?? [])
+        .map((s) => s.properties?.title)
+        .filter((t): t is string => typeof t === "string" && t.trim().length > 0),
+    };
   } catch {
-    return [];
+    return { ok: false };
   }
 }
 
@@ -177,12 +193,55 @@ export async function syncSuppressionSourceFromGoogle(
   // Hoisted out of the try so the failure path can say WHICH range it tried.
   //
   // With no saved range this used to assume a tab called "Sheet1" and fail on
-  // every sheet that has never had one. Ask the sheet instead: an explicit
-  // range still wins, and `readSheetTabTitles` cannot throw, so the worst case
-  // is the old default.
-  const range =
-    sheetRange?.trim() ||
-    resolveDefaultSheetRange(await readSheetTabTitles(spreadsheetId));
+  // every sheet that has never had one. Ask the sheet instead — an explicit
+  // range still wins.
+  const savedRange = sheetRange?.trim();
+
+  /**
+   * The range to save back to this source once it is PROVEN readable.
+   *
+   * Non-null only when this run resolved the range itself and is going to
+   * write. Resolving costs a `spreadsheets.get` per source, and on 2026-08-29
+   * all 34 configured sources had no saved range — so every 15-minute cron
+   * paid 68 Google reads against a 60-per-minute ceiling to re-derive 34
+   * answers that had not changed. Remembering the answer makes the lookup a
+   * once-per-sheet cost instead of a forever cost.
+   *
+   * This is a write to a client's configuration, so it is deliberately narrow:
+   * only when the operator left the range blank (an explicit range is theirs
+   * and is never overwritten), only when the tab names were genuinely read,
+   * only after Google served that exact range, and never on a dry run. An
+   * operator who dislikes the saved range clears the box and the sync resolves
+   * afresh, exactly as it does today.
+   */
+  let rangeToRemember: string | null = null;
+  let range: string;
+
+  if (savedRange) {
+    range = savedRange;
+  } else {
+    const lookup = await readSheetTabTitles(spreadsheetId);
+    // A spreadsheet always has at least one tab, so an empty list here means
+    // the answer is unusable rather than that the sheet is empty. Both cases
+    // refuse: without tab names there is no range this function can defend,
+    // and the path below DELETES before it inserts.
+    if (!lookup.ok || lookup.titles.length === 0) {
+      const err = SUPPRESSION_SYNC_MESSAGES.tabsUnreadable;
+      await recordStatus({ syncStatus: "ERROR", lastError: err });
+      return {
+        ok: false,
+        error: err,
+        ...(dryRun ? { dryRun: true as const } : {}),
+      };
+    }
+    range = resolveDefaultSheetRange(lookup.titles);
+    if (!dryRun) rangeToRemember = range;
+  }
+
+  /** Folded into the status writes that follow a successful READ, so
+   *  remembering the range never costs an extra round trip — and never
+   *  happens on the catch path, where the range is exactly what is in doubt. */
+  const rememberRange = rangeToRemember ? { sheetRange: rangeToRemember } : {};
 
   try {
     const auth = new google.auth.GoogleAuth({
@@ -218,6 +277,12 @@ export async function syncSuppressionSourceFromGoogle(
       await recordStatus({
         syncStatus: "ERROR",
         lastError: outcome.refusal.reason.slice(0, 2000),
+        // Remembered even though the sync was refused: the refusal is about
+        // how MANY rows the sheet holds, not about which tab they are on, and
+        // Google has already served this range. A source parked in a refused
+        // shrink — Train Hugger's domain list has been since 2026-08-14 —
+        // would otherwise re-resolve its tab every fifteen minutes for ever.
+        ...rememberRange,
       });
       return {
         ok: false,
@@ -266,6 +331,7 @@ export async function syncSuppressionSourceFromGoogle(
       syncStatus: "SUCCESS",
       lastSyncedAt: new Date(),
       lastError: null,
+      ...rememberRange,
     });
 
     await refreshContactSuppressionFlagsForClient(clientId);
@@ -285,10 +351,14 @@ export async function syncSuppressionSourceFromGoogle(
     // real tab names are one call away. Best-effort — if that call fails too,
     // the original instruction stands unchanged.
     if (isRangeInvalidMessage(friendly)) {
+      const lookup = await readSheetTabTitles(spreadsheetId);
+      // A failed lookup contributes nothing here rather than refusing: this
+      // path is decorating an error that has already happened, and
+      // `withSheetTabNames` returns the message unchanged for an empty list.
       friendly = withSheetTabNames(
         friendly,
         range,
-        await readSheetTabTitles(spreadsheetId),
+        lookup.ok ? lookup.titles : [],
       );
     }
     await recordStatus({

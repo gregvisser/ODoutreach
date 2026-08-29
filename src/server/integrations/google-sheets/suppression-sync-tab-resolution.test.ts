@@ -146,13 +146,21 @@ describe("suppression sync — resolving the tab instead of guessing Sheet1", ()
     expect(rangeAskedFor()).toBe("Company Names!B:B");
   });
 
-  it("falls back to the old default when the tab names cannot be read", async () => {
+  // This used to fall back to `Sheet1!A1:Z50000`, on the reasoning that a
+  // transient metadata error should leave behaviour exactly as it was. That
+  // reasoning missed what the caller does next: a delete-then-insert. Guessing
+  // a tab here is not "as it was", it is a REPLACE aimed at a tab nobody chose
+  // — the 373-domain outcome above, arriving by a different door. Refusing
+  // costs one 15-minute cycle; guessing can cost a client's whole blocklist.
+  it("REFUSES rather than guessing Sheet1 when the tab names cannot be read", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
     metaGet.mockRejectedValue(new Error("network"));
 
-    await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
+    const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
 
-    expect(rangeAskedFor()).toBe("Sheet1!A1:Z50000");
+    expect(r.ok).toBe(false);
+    expect(valuesGet).not.toHaveBeenCalled();
+    expect(domainDeleteMany).not.toHaveBeenCalled();
   });
 });
 

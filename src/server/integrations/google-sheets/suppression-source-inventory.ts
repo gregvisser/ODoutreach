@@ -43,9 +43,15 @@ export type SuppressionSourceInventoryEntry = {
   /** False when no spreadsheet is linked — the sync would never pick it up. */
   spreadsheetLinked: boolean;
   /**
-   * True when an operator has saved an explicit tab/range, so the sync does not
-   * resolve one. Reported because a saved range OVERRIDES tab resolution, which
-   * makes it the first thing to check when a sheet reads the wrong tab.
+   * True when a tab/range is stored, so the sync reads it without asking Google
+   * which tabs exist. Reported because a stored range OVERRIDES tab resolution,
+   * which makes it the first thing to check when a sheet reads the wrong tab.
+   *
+   * It does NOT tell you WHO stored it. An operator may have typed it, or the
+   * sync may have resolved it once and remembered it — deliberately, because
+   * re-deriving 34 unchanged answers every 15 minutes is what pushed this
+   * integration over Google's read quota. Either way the repair is the same:
+   * clear the box and the sync resolves the tab afresh on the next run.
    */
   rangeSaved: boolean;
   syncStatus: string;
