@@ -113,6 +113,54 @@ export const E2E_SUPPRESSION_NEEDLE = e2eSuppressedEmail(
 );
 
 /**
+ * AI usage ledger rows behind `/settings/ai-spend`.
+ *
+ * These exist to prove the spend screen READS THE LEDGER, rather than merely
+ * rendering. This project's worst recurring defect is a feature that is built,
+ * wired, reports success and never fires; a screen that renders an empty table
+ * looks identical whether the query works or not. So the numbers below are
+ * deliberately odd and exact, and `e2e/ai-spend.spec.ts` asserts them on the
+ * page — if the query breaks, the assertion fails rather than the table quietly
+ * emptying.
+ *
+ * Money is integer micro-USD, as it is on the ledger. The costs are chosen to
+ * total a clean $2.00 so the assertion reads as an amount a human would
+ * recognise on an invoice, and so the two clients sort in a known order
+ * (largest bill first).
+ *
+ * The mix is deliberate too: OK, REFUSED and ERROR rows together, because
+ * production today refuses every call (no `ANTHROPIC_API_KEY` in Azure) and the
+ * screen has to make "refused" visible rather than showing nothing.
+ */
+export const E2E_AI_SPEND = {
+  /** Prefix for every seeded ledger row id, so the seed can clear its own. */
+  idPrefix: "e2e-ai-usage-",
+  model: "claude-haiku-4-5-20251001",
+  /** Workspace A — three charged calls. */
+  clientA: {
+    okCalls: 3,
+    refusedCalls: 4,
+    errorCalls: 1,
+    inputTokensPerOkCall: 100_000,
+    outputTokensPerOkCall: 10_000,
+    /** 500_000 + 500_000 + 250_000. */
+    costMicroUsdPerOkCall: [500_000, 500_000, 250_000],
+    totalCostMicroUsd: 1_250_000,
+    displayCost: "$1.25",
+  },
+  /** Workspace B — one charged call, so the per-client split is provable. */
+  clientB: {
+    okCalls: 1,
+    inputTokens: 200_000,
+    outputTokens: 20_000,
+    costMicroUsd: 750_000,
+    displayCost: "$0.75",
+  },
+  /** What the Total row must read. */
+  displayTotalCost: "$2.00",
+} as const;
+
+/**
  * Bulk contacts for /contacts (queue item 27, defect 9).
  *
  * Measured in Chrome on the live site 2026-08-26: /contacts took 19,265 ms to

@@ -3,6 +3,7 @@
   "_rule": "If a rule is wrong, the human changes it and the tests follow — never the reverse.",
   "frozen": {
     "e2e/README.md": "7132584d1b02eafea1335eda0d862bb441057f7823e98551ff0e4fe26ed755af",
+    "e2e/ai-spend.spec.ts": "b1ab9d23b594dc96a0be675560edfecd032c36e40eb10772cc70779697c60381",
     "e2e/brief-save-session-expiry.spec.ts": "00b04b4bc34c1182002b54e354ee9d633564a5bd60592be838e8a1499e8c90b5",
     "e2e/contacts-pagination.spec.ts": "5704afaecb025694fd1ad08ca3d04dbc0696df48de435d7f154b24e176a85a7c",
     "e2e/cross-tenant.spec.ts": "347cb305e1b511c3b634d6afb8644a1d6007bc010e9edcc23fad15abdd3c0c17",
@@ -179,6 +180,34 @@
       "authorised_by": "Claude (agent), relay cycle 52, for Greg's review",
       "what": "Added NEXT_PUBLIC_SENTRY_DSN='' to E2E_APP_ENV. The send kill-switches in this file only cover destinations configured FROM the environment; the Sentry DSN was a string literal in src/instrumentation-client.ts, so this guard could never see it and the app under test posted browser telemetry to the client's PRODUCTION Sentry project on every run. That exhausted the ingest quota, Sentry answered with 429, and screen-walk failed its console.error assertion on all three retries. This line closes the server/edge half; the browser half is closed by the build never setting the DSN. Widens what this file blocks - it does not weaken any existing kill-switch.",
       "sha256_after": "552794e7a7933203b2aaca19cb2c3439ca1c1007618e5657b30abb0042626226"
+    },
+    {
+      "file": "e2e/fixtures.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 86, for Greg's review",
+      "what": "ADDITIVE ONLY: added E2E_AI_SPEND, a new exported fixture describing deterministic AI usage ledger rows (3 OK + 4 REFUSED + 1 ERROR on workspace A, 1 OK on workspace B, totalling $2.00) for the new /settings/ai-spend billing screen. No existing fixture, id, count or expected value was changed or removed, so no existing assertion moves. The numbers are odd and exact on purpose: an empty spend table looks identical whether the ledger query works or is broken, and this project's worst recurring defect is a feature that is built, wired, reports success and never fires.",
+      "sha256_after": "62fde51c7dee38c5483537b57c2a53a8e89212366bb404451c6af443b5c84a9a"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 86, for Greg's review",
+      "what": "Step 1 of 2 of one change: imports RATE_VERSION and E2E_AI_SPEND, ahead of seeding AI usage ledger rows for the new /settings/ai-spend screen. Recorded separately only because the frozen gate re-blocks the file after each edit; see the next amendment on this file for the substantive block and the final hash.",
+      "sha256_after": "c656740c7db724003c6301d3651c7f90007c2127ecb4bd910be9db21e1a99842"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 86, for Greg's review",
+      "what": "Step 2 of 2, and the final hash. ADDITIVE: seeds nine AiUsageEvent rows (3 OK + 4 REFUSED + 1 ERROR on workspace A, 1 OK on workspace B) so e2e/ai-spend.spec.ts can prove the new /settings/ai-spend screen actually READS the billing ledger rather than merely rendering an empty table. No existing fixture write was changed. Unlike every other write in this file these rows are deleteMany-then-createMany rather than upserted, and that is deliberate: the spend screen query is month-bounded, so an upsert would keep the original createdAt and the rows would silently fall out of range on a database that outlived a month boundary. The delete is narrowed to the E2E_AI_SPEND id prefix and sits behind assertSafeTestDatabase, so it cannot reach real data.",
+      "sha256_after": "71b48204f8cd6c9663b89d2eafbfd755327de78bd42006ec949286299b062987"
+    },
+    {
+      "file": "e2e/screen-walk.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 86, for Greg's review",
+      "what": "ADDITIVE: added one SCREENS entry, settings-ai-spend at /settings/ai-spend, so the new owner-only billing screen is covered by the same render/console-error/h1 walk as every other staff screen. Nothing existing was changed, removed or reordered; the walk's assertions are untouched.",
+      "sha256_after": "706e59d0ca3b9c4564d641d185aca84afc0eb7b20701f2b7d7ddb5df03d53ae7"
     }
   ]
 }

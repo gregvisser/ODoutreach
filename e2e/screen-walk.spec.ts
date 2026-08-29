@@ -114,6 +114,7 @@ const SCREENS: readonly Screen[] = [
   { name: "settings-branding", url: "/settings/branding" },
   { name: "settings-staff-access", url: "/settings/staff-access" },
   { name: "settings-deleted-workspaces", url: "/settings/deleted-workspaces" },
+  { name: "settings-ai-spend", url: "/settings/ai-spend" },
 ];
 
 type WalkResult = {

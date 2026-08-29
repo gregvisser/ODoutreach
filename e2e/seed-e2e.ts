@@ -13,8 +13,10 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
+import { RATE_VERSION } from "../src/lib/ai/model-catalog";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
+  E2E_AI_SPEND,
   E2E_CLIENT,
   E2E_CLIENT_B,
   E2E_CLIENT_BULK,
@@ -272,6 +274,80 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
       },
       update: { name: E2E_CLIENT_BULK.name, status: "ACTIVE", deletedAt: null },
     });
+    /**
+     * AI usage ledger rows for `/settings/ai-spend`.
+     *
+     * DELETED AND REWRITTEN each run rather than upserted, because these rows
+     * are read by a MONTH-BOUNDED query: an upsert would keep the original
+     * `createdAt` for ever, so a database that survived a month boundary would
+     * stop returning them and the spec would fail for a reason that has nothing
+     * to do with the code. Recreating them stamps `createdAt` at "now", which
+     * is always inside the month the screen shows by default.
+     *
+     * The delete is narrowed to this fixture's own id prefix. Combined with
+     * `assertSafeTestDatabase` above it cannot reach anything real.
+     */
+    await prisma.aiUsageEvent.deleteMany({
+      where: { id: { startsWith: E2E_AI_SPEND.idPrefix } },
+    });
+    await prisma.aiUsageEvent.createMany({
+      data: [
+        // Workspace A: three charged calls, four refusals, one failure. The
+        // mix matters — production today refuses every call, and the screen has
+        // to make that visible rather than showing an empty table.
+        ...E2E_AI_SPEND.clientA.costMicroUsdPerOkCall.map((costMicroUsd, i) => ({
+          id: `${E2E_AI_SPEND.idPrefix}a-ok-${i}`,
+          clientId: E2E_CLIENT.id,
+          clientSlugAtCall: E2E_CLIENT.slug,
+          feature: "REPLY_CLASSIFICATION" as const,
+          status: "OK" as const,
+          model: E2E_AI_SPEND.model,
+          inputTokens: E2E_AI_SPEND.clientA.inputTokensPerOkCall,
+          outputTokens: E2E_AI_SPEND.clientA.outputTokensPerOkCall,
+          costMicroUsd,
+          inputRatePerMTokMicroUsd: 1_000_000,
+          outputRatePerMTokMicroUsd: 5_000_000,
+          rateVersion: RATE_VERSION,
+        })),
+        ...Array.from({ length: E2E_AI_SPEND.clientA.refusedCalls }, (_, i) => ({
+          id: `${E2E_AI_SPEND.idPrefix}a-refused-${i}`,
+          clientId: E2E_CLIENT.id,
+          clientSlugAtCall: E2E_CLIENT.slug,
+          feature: "REPLY_CLASSIFICATION" as const,
+          status: "REFUSED" as const,
+          model: E2E_AI_SPEND.model,
+          rateVersion: RATE_VERSION,
+          outcomeCode: "no_api_key",
+        })),
+        ...Array.from({ length: E2E_AI_SPEND.clientA.errorCalls }, (_, i) => ({
+          id: `${E2E_AI_SPEND.idPrefix}a-error-${i}`,
+          clientId: E2E_CLIENT.id,
+          clientSlugAtCall: E2E_CLIENT.slug,
+          feature: "REPLY_CLASSIFICATION" as const,
+          status: "ERROR" as const,
+          model: E2E_AI_SPEND.model,
+          rateVersion: RATE_VERSION,
+          outcomeCode: "overloaded_error",
+        })),
+        // Workspace B: one charged call, so the spec proves the total is split
+        // per client rather than lumped together.
+        {
+          id: `${E2E_AI_SPEND.idPrefix}b-ok-0`,
+          clientId: E2E_CLIENT_B.id,
+          clientSlugAtCall: E2E_CLIENT_B.slug,
+          feature: "REPLY_CLASSIFICATION" as const,
+          status: "OK" as const,
+          model: E2E_AI_SPEND.model,
+          inputTokens: E2E_AI_SPEND.clientB.inputTokens,
+          outputTokens: E2E_AI_SPEND.clientB.outputTokens,
+          costMicroUsd: E2E_AI_SPEND.clientB.costMicroUsd,
+          inputRatePerMTokMicroUsd: 1_000_000,
+          outputRatePerMTokMicroUsd: 5_000_000,
+          rateVersion: RATE_VERSION,
+        },
+      ],
+    });
+
     await prisma.contact.createMany({
       data: Array.from({ length: E2E_CONTACT_BULK.count }, (_, i) => ({
         // Fixed id — `Contact` has no unique (clientId, email), so without this
