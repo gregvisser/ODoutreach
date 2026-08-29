@@ -50,6 +50,7 @@ vi.mock("@/lib/db", () => ({
 import {
   applyBrandedSignatureToAllClientMailboxesAction,
   regenerateBrandedSignaturesForClientAction,
+  setClientDefaultSenderEmailAction,
   setClientSignaturePhoneAction,
 } from "./mailbox-signature-actions";
 import { brandedSignatureNeedsNameBackfill } from "@/lib/mailboxes/branded-signature-backfill";
@@ -394,6 +395,59 @@ describe("setClientSignaturePhoneAction", () => {
   it("refuses a missing / soft-deleted client", async () => {
     clientFindFirst.mockResolvedValue(null);
     const res = await setClientSignaturePhoneAction("c1", "123");
+    expect(res.ok).toBe(false);
+    expect(clientUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("setClientDefaultSenderEmailAction", () => {
+  it("saves a trimmed, lowercased default sender email on the client", async () => {
+    const res = await setClientDefaultSenderEmailAction(
+      "c1",
+      "  Ops@Idverde.co.uk  ",
+    );
+    expect(clientUpdate).toHaveBeenCalledTimes(1);
+    expect(clientUpdate.mock.calls[0][0]).toMatchObject({
+      where: { id: "c1" },
+      data: { defaultSenderEmail: "ops@idverde.co.uk" },
+    });
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+    expect(auditCreate.mock.calls[0][0]).toMatchObject({
+      data: {
+        staffUserId: "staff1",
+        clientId: "c1",
+        action: "UPDATE",
+        entityType: "Client",
+        entityId: "c1",
+      },
+    });
+    expect(res.ok).toBe(true);
+  });
+
+  it("clears the default sender email when given a blank value", async () => {
+    const res = await setClientDefaultSenderEmailAction("c1", "   ");
+    expect(clientUpdate.mock.calls[0][0].data).toEqual({
+      defaultSenderEmail: null,
+    });
+    expect(res.ok).toBe(true);
+  });
+
+  it("refuses a value that is not a real email address", async () => {
+    const res = await setClientDefaultSenderEmailAction("c1", "not-an-email");
+    expect(res.ok).toBe(false);
+    expect(clientUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a missing / soft-deleted client", async () => {
+    clientFindFirst.mockResolvedValue(null);
+    const res = await setClientDefaultSenderEmailAction("c1", "ops@idverde.co.uk");
+    expect(res.ok).toBe(false);
+    expect(clientUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the caller cannot mutate this client's mailboxes", async () => {
+    requireMutator.mockRejectedValue(new Error("Forbidden"));
+    const res = await setClientDefaultSenderEmailAction("c1", "ops@idverde.co.uk");
     expect(res.ok).toBe(false);
     expect(clientUpdate).not.toHaveBeenCalled();
   });

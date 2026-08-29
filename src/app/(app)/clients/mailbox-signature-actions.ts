@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { isValidEmailFormat, normalizeEmail } from "@/lib/normalize";
 import {
   htmlSignatureToText,
   normaliseSignatureHtml,
@@ -596,5 +597,79 @@ export async function setClientSignaturePhoneAction(
     message: value
       ? "Company landline saved. Press “Set branded signatures” to apply it to mailboxes."
       : "Company landline cleared.",
+  };
+}
+
+/**
+ * Set (or clear) the client's default sender email — the identity a real send
+ * falls back to for the mailto unsubscribe rail whenever the client has no
+ * verified sender-aligned link domain (`send-introduction.ts`). Until this
+ * action existed the field could only be set by a hand-edit direct to
+ * production; a client without it hits a launch refusal with no on-screen
+ * explanation or path to fix it themselves (queue row 99).
+ */
+export async function setClientDefaultSenderEmailAction(
+  clientId: string,
+  email: string | null,
+): Promise<MailboxSignatureActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  try {
+    await requireClientMailboxMutator(staff, clientId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
+  }
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!client) {
+    return { ok: false, error: "Client not found." };
+  }
+
+  const trimmed = email?.trim() ?? "";
+  if (trimmed.length === 0) {
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { defaultSenderEmail: null },
+    });
+    await prisma.auditLog.create({
+      data: {
+        staffUserId: staff.id,
+        clientId,
+        action: "UPDATE",
+        entityType: "Client",
+        entityId: clientId,
+        metadata: { change: "default_sender_email_cleared" },
+      },
+    });
+    revalidatePath(`/clients/${clientId}/mailboxes`);
+    return { ok: true, message: "Default sender email cleared." };
+  }
+
+  if (!isValidEmailFormat(trimmed)) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+
+  const value = normalizeEmail(trimmed);
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { defaultSenderEmail: value },
+  });
+  await prisma.auditLog.create({
+    data: {
+      staffUserId: staff.id,
+      clientId,
+      action: "UPDATE",
+      entityType: "Client",
+      entityId: clientId,
+      metadata: { change: "default_sender_email_set", value },
+    },
+  });
+  revalidatePath(`/clients/${clientId}/mailboxes`);
+  return {
+    ok: true,
+    message:
+      "Default sender email saved. Used as the reply/unsubscribe identity when this client has no aligned link domain.",
   };
 }
