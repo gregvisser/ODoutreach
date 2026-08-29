@@ -13,6 +13,7 @@
     "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
     "e2e/legal-pages.spec.ts": "d75fe1dce06f9c423a3955ca7de11b8f24b6731f449d04baba6722837be95e7c",
     "e2e/mailboxes-table-first.spec.ts": "1b54d0bcdefa2740fc8a5f281696da3c5efc494a38894d585293a93517edce07",
+    "e2e/mobile-walk.spec.ts": "e2a5f337a9020d30108767ad191304dc9ac1dacdb328d0393f1471ba97f21021",
     "e2e/nav-prefetch-burst.spec.ts": "0bda02d25eccad741b5de91336bb42421924f46089eb56013a94b977367a596f",
     "e2e/no-third-party-telemetry.spec.ts": "cdb6d83705b8e499ab40e4028e0fdb59fba419ebaee93e4ec8f61d5bffdae703",
     "e2e/open-pixel-public.spec.ts": "e4d53a1f23d200f5d807a73b81bdfff646517cbb51b14f516480dd899caed8a9",

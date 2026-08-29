@@ -59,7 +59,9 @@ export function ClientLogo({
       )}
       style={{
         ...dimensionStyle,
-        fontSize: Math.max(10, Math.round(size * 0.35)),
+        // Floor of 12px: below that a phone user cannot read the monogram
+        // (measured — the 32px list-row tile rendered at 11px).
+        fontSize: Math.max(12, Math.round(size * 0.35)),
       }}
       title={`No logo for ${clientName}`}
     >

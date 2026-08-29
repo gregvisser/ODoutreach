@@ -798,7 +798,12 @@ export function ClientMailboxIdentitiesPanel({
                       )}
                     </TableCell>
                     <TableCell className="align-top">
-                      <div className="flex flex-wrap gap-1 max-w-md">
+                      {/* The table already scrolls horizontally (Table's own
+                          overflow-x-auto) — wrapping this into two lines only
+                          inflates the row height, which stretches the whole
+                          row and leaves a block of empty space under the
+                          Mailbox/Provider columns still on screen. */}
+                      <div className="flex flex-nowrap gap-1">
                         {canMutate ? (
                           <>
                             <Button

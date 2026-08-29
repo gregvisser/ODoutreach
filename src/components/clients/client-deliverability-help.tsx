@@ -123,11 +123,18 @@ Let us know once these are done and we'll confirm on our side. Thank you!`;
 }
 
 function Rec({ label, value }: { label: string; value: string }) {
+  // Label, value and the copy button used to share one row — on a phone
+  // width that left the record itself too little room, and `break-all`
+  // chopped it mid-word ("spf.pro" / "tection.outlook.com"), which is
+  // exactly the string a customer's IT department has to copy correctly.
+  // The value now gets its own full-width line.
   return (
-    <div className="flex items-center gap-2 rounded border border-border/60 bg-background p-2 font-mono text-xs">
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 break-all">{value}</code>
-      <CopyButton value={value} label="Copy" className="shrink-0 font-sans" />
+    <div className="rounded border border-border/60 bg-background p-2 font-mono text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="shrink-0 text-muted-foreground">{label}</span>
+        <CopyButton value={value} label="Copy" className="shrink-0 font-sans" />
+      </div>
+      <code className="mt-1 block break-words">{value}</code>
     </div>
   );
 }

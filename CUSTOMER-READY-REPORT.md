@@ -15,11 +15,23 @@ not yet reviewed, and not legal advice" notice). Weighted total 7.42 → 7.50.
 See `.bidlow/GRADES.json` → `customer_ready.movement_this_regrade` for the exact
 arithmetic.
 
+**Re-graded again 2026-08-29 (cycle 100), CR-09 only.** Mobile was measured for
+the first time: a new merge-blocking spec (`e2e/mobile-walk.spec.ts`) drives
+five key journeys at a 375×667 phone viewport and found four real defects, all
+fixed and re-walked clean (a sub-12px monogram tile, sub-12px snapshot labels, a
+mailbox table row inflated by a wrapped button column, and a customer-facing DNS
+record chopped mid-word). Weighted total **unchanged at 7.50** — dimension 4 was
+already held at 8 by three unrelated open contrast defects, so closing CR-09 did
+not move the number, only the evidence behind it. See `.bidlow/GRADES.json` →
+`customer_ready.blockers[CR-09]` for the full account, including what was
+deliberately left unmeasured (the send-prep panel's populated four-at-a-time
+state, and every viewport but one).
+
 > **Sell gate: Engineering ≥ 8 AND Customer-Ready ≥ 8. This still does not pass.**
-> Engineering clears it. Customer-ready is now 0.5 short, down from 0.6. Two of
-> the three things that held it short at the last grade are still open: CR-08
-> (a raw correlation id) and CR-01b (the bounce path has never been observed
-> firing — an agent cannot close this, it requires a real send). CR-07 is closed.
+> Engineering clears it. Customer-ready is 0.5 short. Two blockers remain open:
+> CR-08 (a raw correlation id) and CR-01b (the bounce path has never been
+> observed firing — an agent cannot close this, it requires a real send). CR-07
+> and CR-09 are closed.
 
 ## The headline, plainly
 
@@ -57,7 +69,7 @@ for production, not a prediction of it.
 | 1 | Core journeys end-to-end | 18 | **8** | Proven twice: a real email left the system 2026-08-26 12:16:36 UTC through the real queue worker with its raw MIME inspected, **and** the enrol→launch→send→reply→opt-out chain is covered by a merge-blocking test proven capable of failing. Was 5. Not higher because the browser walk is navigation-only — no human has clicked compose→send→reply on this build |
 | 2 | Nothing half-built in the path | 12 | **8** | All 30 screens render real content — no stubs, no "coming soon", no placeholder text, zero failed requests. Held at 8: two DESIGN.json signature elements are specified and not built (absent, not half-built) |
 | 3 | No dev-isms / internal leakage | 10 | **7** | A scan of all 30 rendered screens for raw enums, env-var names, cuids and stack traces returned **exactly one hit** — a raw correlation cuid (CR-08). Everything else clean. Down from 9 because the previous 13-page pass never opened that screen |
-| 4 | Professional polish & UX | 12 | **8** | Coherent, real empty states, no layout breakage, no console noise. The design system is now *enforced* by 55 tests computing WCAG 2.2 AA contrast properly. Held at 8: three measured contrast defects still open, and mobile again unchecked |
+| 4 | Professional polish & UX | 12 | **8** | Coherent, real empty states, no layout breakage, no console noise. The design system is now *enforced* by 55 tests computing WCAG 2.2 AA contrast properly. Mobile now checked (cycle 100, CR-09 closed) — four defects found and fixed. Held at 8: three measured contrast defects, unrelated to mobile, still open |
 | 5 | Copy & clarity | 8 | **8** | Up from 6 — the contradiction that cost those points is gone, verified on screen. The copy is careful about what it does not promise: *"'Sent from mailbox' means ODoutreach handed the email to the connected mailbox/provider. It does not guarantee inbox placement"*, and Delivered reads "—" with *"Outlook and Gmail do not report this back"* |
 | 6 | Onboarding / first-run | 10 | **8** | The client Overview walks a numbered 1–8 setup workflow with per-step status and a "2 / 8 complete" counter, each step explaining in plain English what to do |
 | 7 | Error handling & resilience | 10 | **7** | Up from 6. Off-happy-path is now tested, not assumed: a failed brief save shows an inline error and **keeps the operator's typed data**; an unknown id renders 404 disclosing nothing; unauthenticated redirects to sign-in with a callback. Still unchecked: network failure mid-journey, form validation generally, mobile |
@@ -95,6 +107,10 @@ pass made rather than inherited.
    has not fired is this project's most repeated defect class.
 5. **CR-05 — the Sentry DPA** (Greg's, one self-serve acceptance; Resend and
    RocketReach bind automatically via their terms — researched, sources recorded).
+6. ~~CR-09 — mobile/responsive never checked.~~ **CLOSED 2026-08-29 (cycle 100).**
+   Five key journeys walked at a 375×667 phone viewport, four real defects found
+   and fixed, re-walked clean. Did not move the weighted total — dimension 4 was
+   already held at 8 by three unrelated open contrast defects.
 
 ## Fix-to-ready checklist — ordered, cheapest-highest-impact first
 
@@ -108,7 +124,10 @@ pass made rather than inherited.
    live at `/privacy` and `/terms`, linked from the sign-in footer. Dimension 10
    moved 5 → 7 (not 8: still marked Draft, unreviewed).
 4. Greg accepts the Sentry DPA when Sentry is back up.
-5. Check mobile/responsive — never checked, on any pass.
+5. ~~Check mobile/responsive — never checked, on any pass.~~ **DONE, 2026-08-29
+   (cycle 100)** — five key journeys walked at a phone viewport, four real
+   defects found and fixed, re-walked clean. Dimension 4 unchanged at 8 (three
+   unrelated contrast defects still cap it there).
 6. Watch the bounce rate actually fire once live sending resumes; decide whether
    "0%" with no data behind it should render as "no data yet" instead. A confident
    wrong number is worse than a blank.
@@ -121,7 +140,9 @@ gate; item 6 cannot be done by an agent (rule (c), no send).**
 - **Anything data-scale.** Two long-standing findings could again be neither
   confirmed nor refuted on a fixture database: the Campaigns column reading 0, and
   the numbers contradiction at production scale.
-- Mobile and responsive layout, on any pass to date.
+- The send-preparation screen's *populated* four-at-a-time state (the fixture
+  client has no active sequence, so only its clean empty state was walked), and
+  every viewport but 375×667.
 - Network failure mid-journey; form validation beyond the brief save.
 - Whether Sentry is actually *receiving* events — the dashboard was in a partial
   outage on 2026-08-27. This is also the last gap between engineering 8.5 and 9.
