@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateSequenceLaunchReadiness,
+  LAUNCH_CHECK_DISPLAY_ORDER,
   type SequenceLaunchReadinessSnapshotInput,
 } from "./launch-readiness";
 
@@ -380,5 +381,96 @@ describe("evaluateSequenceLaunchReadiness — step-send aware", () => {
       expect(check.detail.toLowerCase()).not.toMatch(/allowlist/);
       expect(check.label.toLowerCase()).not.toMatch(/allowlist/);
     }
+  });
+});
+
+/**
+ * Added by the campaign-review cycle (queue row 80, item 4).
+ *
+ * The product now has an AI that scores a campaign's copy out of 100. This
+ * block exists so that score can never become a launch check, in either
+ * direction — and both directions are real failures, not hypotheticals:
+ *
+ *   * As a BLOCKER it would stop every launch in the product whenever the AI
+ *     is unavailable. That is not an edge case: `ANTHROPIC_API_KEY` is unset in
+ *     production today, so every AI call currently REFUSES. Wiring the score in
+ *     as a blocker would have taken the live client's send button out.
+ *   * As a PASS it would print a machine's opinion, in the language of the
+ *     safety checks, next to the one button that mails strangers from a real
+ *     client's domain. An operator would read "quality checked" as "checked".
+ *
+ * The launch rail is deterministic and offline and must stay that way. A future
+ * cycle that wants an AI check here has to delete these assertions first, and
+ * read why they were written.
+ */
+/**
+ * Check ids are snake_case, so a check is "about the AI" when one of its
+ * SEGMENTS is one of these words. Matching the raw string instead would fire on
+ * "daily_capacity_av-ai-lable" and "pending_em-ai-l_sendable_recipients", which
+ * is how a guardrail test ends up being deleted for being wrong rather than
+ * respected for being right.
+ */
+const AI_FLAVOURED_SEGMENTS = new Set([
+  "ai",
+  "score",
+  "scored",
+  "quality",
+  "critique",
+  "critiqued",
+  "review",
+  "reviewed",
+]);
+
+function aiFlavouredSegments(checkId: string): string[] {
+  return checkId.split("_").filter((part) => AI_FLAVOURED_SEGMENTS.has(part));
+}
+
+describe("the launch rail is deterministic and never consults the AI", () => {
+  it("has no AI, score or quality check in the check set", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: { introductionEligibleBatchCount: 10 } }),
+    );
+    for (const check of r.checks) {
+      expect(aiFlavouredSegments(check.id)).toEqual([]);
+    }
+  });
+
+  it("has no AI, score or quality check in the display order", () => {
+    for (const id of LAUNCH_CHECK_DISPLAY_ORDER) {
+      expect(aiFlavouredSegments(id)).toEqual([]);
+    }
+  });
+
+  it("would catch an AI check if one were added", () => {
+    // Proves the guard above is capable of firing — the assertions are only
+    // worth having if they would actually notice.
+    expect(aiFlavouredSegments("ai_quality_score")).toEqual([
+      "ai",
+      "quality",
+      "score",
+    ]);
+    expect(aiFlavouredSegments("campaign_review")).toEqual(["review"]);
+    expect(aiFlavouredSegments("daily_capacity_available")).toEqual([]);
+  });
+
+  it("never mentions an AI score in what an operator reads", () => {
+    const r = evaluateSequenceLaunchReadiness(
+      snapshot({ stepSend: { introductionEligibleBatchCount: 10 } }),
+    );
+    for (const check of r.checks) {
+      expect(`${check.label} ${check.detail}`.toLowerCase()).not.toMatch(
+        /\bai\b|quality score|campaign score/,
+      );
+    }
+  });
+
+  it("reaches a verdict from a snapshot alone — the input has nowhere to put a score", () => {
+    const input = snapshot({ stepSend: { introductionEligibleBatchCount: 10 } });
+    expect(Object.keys(input)).not.toContain("aiReview");
+    expect(Object.keys(input)).not.toContain("qualityScore");
+    // Same input, same verdict, every time: no network, no model, no drift.
+    const a = evaluateSequenceLaunchReadiness(input);
+    const b = evaluateSequenceLaunchReadiness(input);
+    expect(a).toEqual(b);
   });
 });
