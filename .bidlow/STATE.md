@@ -1,6 +1,100 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 103) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 108) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 108, queue row 99: operator-facing `Client.defaultSenderEmail` control shipped, deployed, verified live by hash.
+
+Row 99 is **`DONE 108`**. Open PRs at cycle start: zero (the sweep was clean).
+Found the current branch carrying cycle 107's **uncommitted** docs (QUEUE.md +
+logs closing row 98 / raising row 99) — committed and merged that first (#398)
+before starting this row's own work, so it didn't rot as an unpushed branch.
+
+### What changed
+
+Row 99: there was no screen anywhere in the product to set
+`Client.defaultSenderEmail` — the field the real send path
+(`send-introduction.ts`) reads as the mailto-unsubscribe fallback identity
+whenever a client has no verified sender-aligned link domain (the normal
+case). Until row 98's hand-edit, the only way to set it was a direct
+production database edit.
+
+Added `setClientDefaultSenderEmailAction` in
+`src/app/(app)/clients/mailbox-signature-actions.ts` — mirrors the existing
+`setClientSignaturePhoneAction` precedent (auth + `requireClientMailboxMutator`
+check, soft-delete guard on the client row), validated via the codebase's
+existing `isValidEmailFormat`/`normalizeEmail` helpers (`src/lib/normalize.ts`
+— reused, not reinvented), and additionally writes an `AuditLog` row
+(`entityType: "Client"`) on every set/clear since this field gates a real
+send. New labelled input + "Save default sender email" button on the client
+Mailboxes tab (`client-mailbox-identities-panel.tsx`), next to the existing
+Company landline control, wired through `mailboxes/page.tsx` — no new query,
+`client.defaultSenderEmail` was already selected onto the object that page
+reads. **No migration** — the column has existed, read-only, since
+2026-04-15.
+
+**Red-first, proven both ways (not just claimed):**
+- Unit tests: wrote 5 new tests in `mailbox-signature-actions.test.ts` first,
+  `git stash`'d the new action's implementation only, ran the suite — all 5
+  failed with `is not a function`; popped the stash, re-ran — 25/25 green.
+- e2e: wrote `e2e/client-default-sender-email.spec.ts` for the target
+  end-state, built the real production (webpack) app with the UI/action/page
+  changes stashed out, ran the spec against that pre-fix build — both tests
+  failed (one on the label never appearing, "confirms the gap"; one timing
+  out trying to fill a field that doesn't exist). Restored the changes,
+  rebuilt, re-ran — both green, including a genuine fill → save → full page
+  reload → value-still-persisted round trip, and a separate
+  invalid-email-refused-on-screen case. One real bug found running it: both
+  e2e tests raced on the same shared fixture client row under Playwright's
+  default `fullyParallel`; fixed with `test.describe.configure({ mode:
+  "serial" })`.
+
+Gates: lint 0, typecheck 0, **3,649 tests** (full suite), CI's own E2E job
+green independently of the local run.
+
+### Shipped and verified
+
+Merged via #399 (feature, after #398 docs) and #400 (docs closing row 99).
+A `_standards` ship gate (`gate-ship.mjs`) blocked the first PR attempt
+because the new e2e spec was unfrozen — ran `freeze-specs.mjs` from
+`C:\Bidlowprojects\_standards` (read/run only, **no edits made to
+`_standards` itself**) to hash it into this repo's `.bidlow/FROZEN.json`,
+committed alongside the spec.
+
+**Deployed and verified by hash, not by a green workflow alone:**
+`deploy-production.yml` run 33275501022 succeeded; the direct App Service
+origin (`https://app-opensdoors-outreach-prod.azurewebsites.net/api/build-info`,
+never the CDN-cached custom domain) returned `commit: 524217b...`, matching
+`main` HEAD exactly at merge time.
+
+### Deliberately not done, and why
+
+The queue item's "Consider ALSO surfacing a plain-English on-screen
+explanation of why a launch is refused" was left undone. The row's own SCOPE
+line said "UI + one server action + validation," the suggestion was phrased
+as "Consider," and the file it would touch (`send-introduction.ts`) is the
+live guarded real-send path for `bidlowai` — touching it beyond what was
+explicitly asked felt like unjustified scope creep into code this project
+has good reason to be conservative about.  `composeSequenceEmail`'s
+`missingFields`/`warnings` already compute the real reason and sit unused at
+`send-introduction.ts:1093-1115` (the two places that write the generic
+"Composition lost send-readiness..." string) — a clean starting point for a
+future row that wants to thread them into the on-screen/blocked-reason text.
+
+### Nothing contradicts PROJECT.json
+
+No one-way door touched. No email sent. No client's data touched other than
+the e2e fixture client (`E2E Test Workspace`) and unit-test mocks — never
+`bidlowai` or a real client. No schema change. Full cycle account:
+`.bidlow/relay/log/cycle-108.md`.
+
+### Next session should pick up
+
+Nothing left half-done on row 99 — it's closed end to end (built, tested red
+then green, merged, deployed, verified live). The queue's next TODO/BLOCKED
+rows are whatever sits below row 99 in `.bidlow/relay/QUEUE.md` at the time
+of reading — check there rather than assuming anything from this entry.
+
+---
 
 ## Session 2026-08-29 - Relay cycle 103, queue row 91: CR-08 closed - the last customer-ready blocker. Sell gate still fails; named exactly what's holding it down.
 
