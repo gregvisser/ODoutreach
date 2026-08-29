@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { AiCampaignReviewPanel } from "@/components/clients/email-sequences/ai-campaign-review-panel";
 import { AiSendTimePanel } from "@/components/clients/email-sequences/ai-send-time-panel";
+import { TitleMessagePanel } from "@/components/clients/title-message-panel";
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
 import { EmailPreviewPanel } from "@/components/clients/email-preview/email-preview-panel";
 import {
@@ -22,6 +23,7 @@ import {
   loadClientEmailSequencesOverview,
 } from "@/server/email-sequences/queries";
 import { loadLatestSendTimeAdvice } from "@/server/ai/advise-send-times";
+import { loadLatestTitleMessageReview } from "@/server/ai/advise-title-messages";
 import { loadLatestCampaignReviews } from "@/server/ai/review-campaign";
 import { isPreSendPreviewEnabled } from "@/server/email-rendering/pre-send-preview";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
@@ -70,6 +72,7 @@ export default async function ClientOutreachPage({
     stepSendBundle,
     campaignReviews,
     sendTimeAdvice,
+    titleMessageReview,
   ] = await Promise.all([
     loadClientEmailSequencesOverview(client.id),
     getClientEmailSequenceMutationAllowed(staff, client.id),
@@ -79,6 +82,7 @@ export default async function ClientOutreachPage({
     }),
     loadLatestCampaignReviews(client.id),
     loadLatestSendTimeAdvice(client.id),
+    loadLatestTitleMessageReview(client.id),
   ]);
 
   const sequenceFlashRaw = firstParam(sp.sequence);
@@ -223,6 +227,18 @@ export default async function ClientOutreachPage({
         flash={{
           ok: firstParam(sp.sendTimeAdvice),
           error: firstParam(sp.sendTimeAdviceError),
+        }}
+      />
+
+      <TitleMessagePanel
+        clientId={client.id}
+        canMutate={canMutateSequences}
+        aiEnabled={areAiFeaturesEnabled()}
+        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        review={titleMessageReview}
+        flash={{
+          ok: firstParam(sp.titleMessage),
+          error: firstParam(sp.titleMessageError),
         }}
       />
 
