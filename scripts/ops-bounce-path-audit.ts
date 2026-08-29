@@ -65,6 +65,7 @@ async function main(): Promise<void> {
         providerName: true,
         sentAt: true,
         createdAt: true,
+        updatedAt: true,
         mailboxIdentityId: true,
       },
       orderBy: { createdAt: "desc" },
@@ -86,13 +87,18 @@ async function main(): Promise<void> {
           : row.lastProviderEventType
             ? "ESP webhook"
             : "unknown";
-        const sinceFix = row.createdAt >= FIX_MERGED_AT ? "SINCE FIX" : "BEFORE FIX (pre-cycle-39)";
+        // `bouncedAt` is the historical event time (NDR-received / provider-event
+        // time) and can predate the fix even for a write the fix itself made —
+        // the mailbox NDR path passes through the ORIGINAL event time as `at`.
+        // `updatedAt` is when the database row was actually last written, which is
+        // the only fact that says whether THIS code path did the writing.
+        const stampedByThisCode = row.updatedAt >= FIX_MERGED_AT ? "STATUS WRITE SINCE FIX" : "row not updated since fix";
         console.log(
-          `   ${maskAddress(row.toEmail)}  status=${row.status}  channel=${channel}  [${sinceFix}]`,
+          `   ${maskAddress(row.toEmail)}  status=${row.status}  channel=${channel}  [${stampedByThisCode}]`,
         );
         console.log(
-          `      bouncedAt=${row.bouncedAt?.toISOString() ?? "null"}  bounceCategory=${row.bounceCategory ?? "null"}  ` +
-            `mailboxIdentityId=${row.mailboxIdentityId ?? "null"}  createdAt=${row.createdAt.toISOString()}`,
+          `      bouncedAt(event)=${row.bouncedAt?.toISOString() ?? "null"}  bounceCategory=${row.bounceCategory ?? "null"}  ` +
+            `mailboxIdentityId=${row.mailboxIdentityId ?? "null"}  createdAt(row)=${row.createdAt.toISOString()}  updatedAt(row)=${row.updatedAt.toISOString()}`,
         );
       }
     }
@@ -128,7 +134,10 @@ async function main(): Promise<void> {
     }
 
     console.log("\n--- Verdict ---");
-    const sinceFixBounces = bounced.filter((r) => r.createdAt >= FIX_MERGED_AT);
+    // A row's `updatedAt` moving past the fix is proof THIS code wrote it — the
+    // fix could only ever run after it deployed, whatever the underlying NDR's
+    // own historical event time says.
+    const sinceFixBounces = bounced.filter((r) => r.updatedAt >= FIX_MERGED_AT);
     if (sinceFixBounces.length > 0 || ndrOnly.length > 0) {
       console.log(
         "OBSERVED: at least one real bounce has been recorded by a live channel since the fix merged.",
