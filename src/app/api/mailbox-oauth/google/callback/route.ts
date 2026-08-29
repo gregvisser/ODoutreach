@@ -10,6 +10,10 @@ import { MAILBOX_OAUTH_EXPIRED_STATE_REASON } from "@/lib/mailboxes/mailbox-oaut
 import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import { MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON } from "@/lib/mailboxes/mailbox-oauth-failure-reason";
 import {
+  mailboxOAuthFailedAttemptUpdate,
+  shouldPreserveMailboxOnFailedOAuthAttempt,
+} from "@/lib/mailboxes/mailbox-oauth-failed-attempt";
+import {
   MailboxOAuthAccountMismatchError,
   MailboxOAuthFailure,
   mailboxOAuthFailureReasonOf,
@@ -34,6 +38,11 @@ export async function GET(req: Request) {
 
   const mailbox = await prisma.clientMailboxIdentity.findFirst({
     where: { oauthState: state },
+    // Whether a credential is still stored is the whole input to the rule
+    // below: since cycle 73 a mailbox that can send keeps its secret through
+    // the round trip, so a failed attempt now meets a mailbox it could take
+    // off the air.
+    include: { secret: { select: { id: true } } },
   });
 
   if (!mailbox) {
@@ -44,6 +53,19 @@ export async function GET(req: Request) {
   }
 
   const clientId = mailbox.clientId;
+
+  /**
+   * What this attempt failing is allowed to write to the row. A failed SIGN-IN
+   * is not evidence about the refresh token already stored for this mailbox —
+   * see `mailbox-oauth-failed-attempt.ts` for why this is not the credential
+   * classifier's job.
+   */
+  const failedAttemptRow = {
+    connectionStatus: mailbox.connectionStatus,
+    hasStoredCredential: mailbox.secret !== null,
+    isActive: mailbox.isActive,
+    workspaceRemovedAt: mailbox.workspaceRemovedAt,
+  };
 
   // Every error redirect from here down carries the mailbox id. The page reads
   // the row's provider from it, so the banner can say Google when it means
@@ -75,12 +97,10 @@ export async function GET(req: Request) {
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
         where: { id: mailbox.id },
-        data: {
-          connectionStatus: "CONNECTION_ERROR",
-          lastError: `Google OAuth: ${desc}`.slice(0, 4000),
-          oauthState: null,
-          oauthStateExpiresAt: null,
-        },
+        data: mailboxOAuthFailedAttemptUpdate(
+          failedAttemptRow,
+          `Google OAuth: ${desc}`,
+        ),
       });
       await reconcilePrimaryMailboxForClient(tx, clientId);
     });
@@ -95,6 +115,10 @@ export async function GET(req: Request) {
         provider: "GOOGLE",
         outcome: "provider_error",
         error: err,
+        // What was actually written. Without this the audit log cannot tell a
+        // mailbox left sending from one taken off the air after the fact.
+        credentialRetained:
+          shouldPreserveMailboxOnFailedOAuthAttempt(failedAttemptRow),
       },
     });
     return mailboxOAuthRedirectToClient(clientId, {
@@ -200,12 +224,7 @@ export async function GET(req: Request) {
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
         where: { id: mailbox.id },
-        data: {
-          connectionStatus: "CONNECTION_ERROR",
-          lastError: msg.slice(0, 4000),
-          oauthState: null,
-          oauthStateExpiresAt: null,
-        },
+        data: mailboxOAuthFailedAttemptUpdate(failedAttemptRow, msg),
       });
       await reconcilePrimaryMailboxForClient(tx, clientId);
     });
@@ -221,6 +240,10 @@ export async function GET(req: Request) {
         // channel for the owner-only diagnostics rather than a new exposure.
         reason,
         error: msg.slice(0, 4000),
+        // The audit row carries the error even when the mailbox row does not,
+        // so nothing is lost by preserving a sending mailbox.
+        credentialRetained:
+          shouldPreserveMailboxOnFailedOAuthAttempt(failedAttemptRow),
         ...(mismatch ? { oauthActorEmail: mismatch.approvedEmail } : {}),
       },
     });

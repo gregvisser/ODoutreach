@@ -7,6 +7,10 @@ import { MAILBOX_OAUTH_EXPIRED_STATE_REASON } from "@/lib/mailboxes/mailbox-oaut
 import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
 import { MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON } from "@/lib/mailboxes/mailbox-oauth-failure-reason";
 import {
+  mailboxOAuthFailedAttemptUpdate,
+  shouldPreserveMailboxOnFailedOAuthAttempt,
+} from "@/lib/mailboxes/mailbox-oauth-failed-attempt";
+import {
   MailboxOAuthAccountMismatchError,
   MailboxOAuthFailure,
   mailboxOAuthFailureReasonOf,
@@ -66,6 +70,9 @@ export async function GET(req: Request) {
 
   const mailbox = await prisma.clientMailboxIdentity.findFirst({
     where: { oauthState: state },
+    // See the Google callback: whether a credential is still stored is the only
+    // input to the failed-attempt rule below.
+    include: { secret: { select: { id: true } } },
   });
 
   if (!mailbox) {
@@ -76,6 +83,14 @@ export async function GET(req: Request) {
   }
 
   const clientId = mailbox.clientId;
+
+  /** What this attempt failing may write to the row — see the Google callback. */
+  const failedAttemptRow = {
+    connectionStatus: mailbox.connectionStatus,
+    hasStoredCredential: mailbox.secret !== null,
+    isActive: mailbox.isActive,
+    workspaceRemovedAt: mailbox.workspaceRemovedAt,
+  };
 
   // Every error redirect from here down carries the mailbox id, so the page can
   // read the row's real provider instead of assuming one.
@@ -103,12 +118,10 @@ export async function GET(req: Request) {
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
         where: { id: mailbox.id },
-        data: {
-          connectionStatus: "CONNECTION_ERROR",
-          lastError: `Microsoft OAuth: ${desc}`.slice(0, 4000),
-          oauthState: null,
-          oauthStateExpiresAt: null,
-        },
+        data: mailboxOAuthFailedAttemptUpdate(
+          failedAttemptRow,
+          `Microsoft OAuth: ${desc}`,
+        ),
       });
       await reconcilePrimaryMailboxForClient(tx, clientId);
     });
@@ -123,6 +136,10 @@ export async function GET(req: Request) {
         provider: "MICROSOFT",
         outcome: "provider_error",
         error: err,
+        // What was actually written — the audit log has to be able to tell a
+        // mailbox left sending from one taken off the air.
+        credentialRetained:
+          shouldPreserveMailboxOnFailedOAuthAttempt(failedAttemptRow),
       },
     });
     return mailboxOAuthRedirectToClient(clientId, {
@@ -227,12 +244,7 @@ export async function GET(req: Request) {
     await prisma.$transaction(async (tx) => {
       await tx.clientMailboxIdentity.update({
         where: { id: mailbox.id },
-        data: {
-          connectionStatus: "CONNECTION_ERROR",
-          lastError: msg.slice(0, 4000),
-          oauthState: null,
-          oauthStateExpiresAt: null,
-        },
+        data: mailboxOAuthFailedAttemptUpdate(failedAttemptRow, msg),
       });
       await reconcilePrimaryMailboxForClient(tx, clientId);
     });
@@ -248,6 +260,9 @@ export async function GET(req: Request) {
         // channel for the owner-only diagnostics rather than a new exposure.
         reason,
         error: msg.slice(0, 4000),
+        // The audit row keeps the error even when the mailbox row does not.
+        credentialRetained:
+          shouldPreserveMailboxOnFailedOAuthAttempt(failedAttemptRow),
         ...(mismatch ? { oauthActorEmail: mismatch.approvedEmail } : {}),
       },
     });
