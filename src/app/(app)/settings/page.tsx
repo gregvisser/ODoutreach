@@ -201,6 +201,30 @@ export default async function SettingsPage() {
               </Link>
             </CardContent>
           </Card>
+
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">AI spend</CardTitle>
+              <CardDescription>
+                What each client&apos;s AI usage cost, month by month, for
+                invoicing. Every call is recorded as it happens — including the
+                refusals and failures, which cost nothing.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Tokens in, tokens out, cost and client, per call. Refused calls
+                stay visible so a switched-off feature never looks the same as a
+                broken one.
+              </p>
+              <Link prefetch={false}
+                href="/settings/ai-spend"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Open AI spend →
+              </Link>
+            </CardContent>
+          </Card>
         </section>
       ) : null}
 

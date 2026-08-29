@@ -66,6 +66,39 @@ export const RATE_VERSION = "2026-08-29-unverified" as const;
  */
 export const RATES_VERIFIED = false;
 
+/**
+ * Rate versions that HAVE been checked against the published price list.
+ *
+ * Deliberately a list of versions rather than a single boolean, because the
+ * ledger is historical: once a corrected price list ships, last month's rows
+ * still carry the old version and must still be flagged as unverified, while
+ * this month's are trustworthy. A screen that showed one flag for everything
+ * would go green the moment the CURRENT rates were checked and quietly imply
+ * the old invoices had been checked too.
+ *
+ * EMPTY ON PURPOSE. Cycle 85 could not reach the published prices (WebFetch
+ * denied), and cycle 86 could not either — WebFetch and the `claude-api` skill
+ * were both denied again. Nothing has been verified, so nothing is listed, and
+ * `/settings/ai-spend` says so on its face.
+ *
+ * TO CLOSE THIS: check the current per-MTok prices at
+ * https://docs.claude.com/en/docs/about-claude/pricing, correct `RATES` above
+ * if they differ (adding a NEW `RATE_VERSION` if they do), then add the
+ * verified version string here and set `RATES_VERIFIED` true.
+ */
+const VERIFIED_RATE_VERSIONS: ReadonlySet<string> = new Set<string>();
+
+/**
+ * Whether the figures behind a ledger row can be quoted to a customer.
+ *
+ * Unknown versions are unverified. That direction matters: an unrecognised
+ * string is a rate list nobody remembers checking, and treating it as sound is
+ * how a guessed price reaches an invoice.
+ */
+export function isRateVersionVerified(version: string): boolean {
+  return VERIFIED_RATE_VERSIONS.has(version);
+}
+
 /** Price per million tokens, in micro-USD. $1.00 / MTok === 1_000_000. */
 export interface ModelRate {
   readonly inputPerMTokMicroUsd: number;
