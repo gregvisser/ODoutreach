@@ -31,6 +31,17 @@ export const AI_MODELS = {
    * model, and picking one would multiply the client's bill for no accuracy.
    */
   REPLY_CLASSIFICATION: "claude-haiku-4-5-20251001",
+  /**
+   * Sequence drafting. Deliberately the SAME model as classification, and the
+   * reason is billing rather than capability: this table is an invoice input,
+   * and the one rate it holds is already flagged unverified. Adding a second
+   * model would mean entering a second price nobody has checked, doubling the
+   * unverified surface of a bill Greg has to defend. Writing five short cold
+   * emails from a brief is well within this model; if a future cycle finds the
+   * copy wants a larger model, that is a deliberate change made at the same
+   * time as a verified price for it.
+   */
+  SEQUENCE_DRAFTING: "claude-haiku-4-5-20251001",
 } as const;
 
 export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
