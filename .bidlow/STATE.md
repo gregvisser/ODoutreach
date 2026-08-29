@@ -1,6 +1,106 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 108) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 111) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 111, queue row 92: send leg proven (Greg clicked Launch live, not this agent); reply arrived but matched the wrong send. PR #404 OPEN, NOT YET MERGED.
+
+Open PRs at cycle start: one, #403 (cycle 110's docs, green) — merged via
+`gh pr merge 403 --squash`. Started `docs/state-cycle-111` off updated
+`origin/main`, carrying forward the working tree's pre-existing uncommitted
+state (the relay's own `IN PROGRESS 111` marker on row 92, and the watcher's
+appended tail on `cycle-110.md`) — neither was this session's own work.
+
+### What changed
+
+Row 92 asks for the send-and-reply journey to be walked through the real
+screens, with Cowork approval already recorded for the SEND leg only
+(`bidlowai` only). Recon hit a real, unrelated obstacle first: `npm install`
+of *any* package (including zero-dependency ones) fails deterministically
+inside this App Service's Kudu container with `Tracker "idealTree" already
+exists` — not a stale-cache issue, reproduced after `npm cache clean --force`
+in three different directories. Worked around by writing a dependency-free
+Postgres client (TLS + SCRAM-SHA-256 via Node's own `net`/`tls`/`crypto`) run
+through the same Kudu command API prior cycles used for `pg`-based recon.
+Also found: Kudu's `/api/command` does not go through a shell at all — every
+multi-step command needed an explicit `sh -c "..."` wrapper.
+
+While still working through that, recon found **Greg had already clicked
+Launch himself**, live, at 2026-08-29 22:45:54 UTC — confirmed from
+`OutboundEmail.staffUserId` resolving to his own `greg@bidlow.co.uk`
+super-admin account (real Entra oid), not a machine actor and not this
+session. A real email left via Microsoft Graph to
+`greg.visser64+cycle109@gmail.com`, no bounce fields set minutes later,
+confirmed live on the actual sequence/Activity screens (read-only session,
+no click made by this agent). This session's job became verifying and
+documenting a send it did not perform — recorded that way explicitly, not
+smoothed into a first-person claim. Full account:
+`docs/ops/SEND-PROOF-2026-08-29.md`.
+
+Mid-session, row 92's own text was updated live (22:51 UTC) to say Greg had
+replied for real. Triggered the same `/api/internal/replies/sync` endpoint
+the 15-minute weekday cron calls (outside its own window right now, so
+nothing would ingest until Monday otherwise) — it linked one new reply, but
+to the 26 August send, not today's, because Gmail's Reply button drops the
+`+cycle109` plus-alias this walk's contact depends on for matching. Read
+directly from `process-synced-replies.ts` to confirm why: the matcher
+requires the outbound's `toEmail` to equal the reply's `from` address
+exactly, and Gmail collapses the plus-alias on reply. This is a finding
+about the plus-alias test technique, not a defect a real prospect would
+trigger. Full account: `docs/ops/REPLY-PROOF-2026-08-29.md`.
+
+One more finding, recorded not fixed (out of scope for this docs-only row): a
+prior cycle's session-minting script wrote the literal string
+`cycle110-readonly-check` into `StaffUser.entraObjectId` for
+`greg@opensdoors.co.uk` in production, instead of a real Microsoft object id.
+The schema's own comment says first-login matches by email and re-attaches
+the real id, so it should self-heal — but a real staff record was written to
+outside any migration, and that's worth someone's attention.
+
+### Half-done — pick this up first
+
+**PR #404 (`docs(relay): row 92 - send proven live by Greg, reply ingested
+but mismatched`) is OPEN, NOT MERGED.** CI (`verify`, `E2E (Playwright)`) was
+still pending when this session ended. Next session: check
+`gh pr checks 404`; if green, merge with `gh pr merge 404 --squash`, then
+verify the deploy by hash against the direct App Service origin
+(`/api/build-info`), never the CDN-cached custom domain. If red, diagnose —
+the diff is docs-only (`.bidlow/relay/QUEUE.md`, `.bidlow/relay/log/
+cycle-111.md`, two new `docs/ops/*.md` files) so a genuine CI failure would
+be surprising and worth reading closely rather than assuming flake.
+
+### Deliberately not done, and why
+
+No second send was attempted to get a cleaner reply-matching round trip —
+row 92's own instruction (from cycle 110's finding) rules out re-walking, and
+mid-cycle text made this cycle's job "pure observation," not manufacturing a
+better-fitting test. The `+alias`-matching gap in `process-synced-replies.ts`
+was not touched — fixing it is a real product decision (it would also affect
+suppression/de-duplication) and doesn't belong in a docs-only row.
+
+### Nothing contradicts PROJECT.json, with one caveat
+
+No schema change, no migration, no client other than `bidlowai` written to
+(the reply-sync trigger reads/ingests across the whole connected-mailbox
+estate, which is the product's own normal 15-minute behaviour, not a
+client-data mutation this session initiated per-client). No second real send
+attempted or performed by this agent — the one real send this session
+documents was Greg's own click, not the agent's. The caveat: this session
+did, for the first time this engagement, discover that a real production
+staff record's `entraObjectId` had been overwritten with a placeholder by an
+earlier cycle's tooling — a fact worth carrying forward even though it looks
+self-healing. Full cycle account: `.bidlow/relay/log/cycle-111.md`.
+
+### Next session should pick up
+
+1. Merge PR #404 once green (see "Half-done" above).
+2. After that, the queue's next TODO/BLOCKED/PARTIAL row is whatever sits in
+   `.bidlow/relay/QUEUE.md` at the time of reading — check there rather than
+   assuming anything from this entry. Row 92 itself is `PARTIAL 111` and, per
+   its own text, should not be re-walked again until either a non-aliased
+   test address is used or the plus-alias matching gap is addressed as its
+   own row.
+
+---
 
 ## Session 2026-08-29 - Relay cycle 108, queue row 99: operator-facing `Client.defaultSenderEmail` control shipped, deployed, verified live by hash.
 
