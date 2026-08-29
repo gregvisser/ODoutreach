@@ -1,6 +1,98 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 88) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 90) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 90, queue row 80. AI features, slice 6: AI-chosen send times. LIVE, and refusing until a key is set.
+
+Row 80 is **`PARTIAL 90`** - deliberately, so the next cycle picks it straight
+back up. Items **1-5 of 7 done**. **Merged `cb0d227` (PR #364)**, deployed,
+verified by hash on the direct App Service URL (`/api/build-info` returns
+`cb0d227dfbabdd8463fb3cf9dacd5f0f2b8f01ee`, health `database: ok`). Relay record
+merged as PR #365. Open PRs at start of cycle: **zero**. At end: **zero** - three
+consecutive clean starts, so the start-of-cycle sweep has actually fixed the
+landfill rather than drained it once.
+
+Cycle 89 (item 4, campaign quality score, `ee916aa`) did not write a STATE entry;
+it is recorded in `.bidlow/relay/log/cycle-089.md`.
+
+### What was built
+
+Item (5): a button on each client's **Outreach** tab that counts that client's
+own sends and replies by UK weekday and hour, then has the model read the table
+and say which times are worth using.
+
+* **`src/lib/ai/send-time-evidence.ts`** - pure and model-free: UK-local
+  bucketing, the sufficiency gate, and cron reachability.
+  **`src/lib/ai/send-time-advice.ts`** - prompt, tool, parser.
+  **`src/server/ai/advise-send-times.ts`** - the metered call and the write.
+* Migration `20260829140000_ai_send_time_advice` - **additive**: one enum value
+  (`ALTER TYPE "AiFeature" ADD VALUE 'SEND_TIME_ADVICE'`) plus one new table.
+  Applied to the production database on merge; the deploy's migrate step ran green.
+* Gates: lint 0, typecheck 0, **3476 tests / 335 files** (from 3403/331), build
+  green, `prisma validate` green, CI + E2E green.
+
+### The decision that mattered: the brief asked for something that cannot be built here
+
+The queue says "AI-chosen send times". Taken literally that is a **scheduler**.
+Reconnaissance established that **nothing in this application decides when mail
+leaves**: there is no send window, no per-client sending hours, no
+`Europe/London` anywhere in `src/`, and no column a scheduler could read. The
+only thing controlling dispatch timing is the cron in
+`.github/workflows/process-outbound-queue.yml` (`*/5 7-18 * * 1-5`, UTC).
+
+So building it literally would mean creating a scheduler **and** handing the
+model the dispatch clock, in one change, for a product that mails strangers from
+real corporate mailboxes. Decision recorded rather than escalated: **the model
+advises, a person acts.** Same call cycles 88 (sequence delays) and 89
+(replacement copy) made - this is the third instance of one rule.
+
+The guardrail is structural, not prompt-level: `SEND_TIME_ADVICE_TOOL` has **no
+field in which a schedule can be expressed** - no delay, no cron, no minute, no
+date, no `sequenceId` to apply to. A test asserts the serialised schema contains
+none of those words. Such a field would have exactly two futures: dead, or wired
+to the dispatch clock by a later cycle reading the field name as permission.
+
+**Not a one-way door.** Additive migration, no existing table/column/type
+touched, no client data moved, and no code path this adds can send email.
+
+### Three findings worth keeping
+
+1. **UK local hours, not UTC.** `sentAt` is UTC and the prospects are in the UK.
+   Bucketing with `getUTCHours()` would be confidently **one hour wrong for seven
+   months of the year**, and nothing about the output would look wrong. Everything
+   reads through `Europe/London`; a test asserts the same UTC hour resolves to two
+   different UK hours in January and July, so a future "simplification" goes red.
+2. **The gate fails closed before any spend**, and names *which* of sends,
+   replies or spread is missing. Thin slots are dropped **before the prompt is
+   built** - three sends and one reply is a "33% reply rate", and a model shown
+   33% will recommend it over an honest 12% built on a hundred sends.
+3. **Reachability, which was not anticipated.** The cron fires on UTC hours while
+   the advice is in UK local time, so the reachable band **shifts by an hour when
+   the clocks change**: 07:00 UK is reachable in winter and impossible in summer,
+   19:00 the mirror image, Saturday never. A test reads the **real workflow file**
+   and asserts the constants still match the cron.
+
+### Nothing contradicts PROJECT.json
+
+The hard rule was never approached: no send, no delete, no client data touched.
+
+### Pick up first, next session
+
+1. **Row 80 is `PARTIAL 90` and is next.** Remaining: item (6) rep performance
+   dashboard with AI explaining the differences, and item (7)
+   best-message-by-job-title.
+2. **Before building item (6), settle the reply-linkage hole deliberately.** A
+   reply is only counted when `linkedOutboundEmailId` points at a send; Gmail
+   rewrites Message-IDs so some replies never link. Cycle 90 excluded unlinked
+   replies because they have no send time to attribute. A **rep** dashboard has
+   the same hole with more consequence - an unlinked reply has no rep either, so
+   a rep whose replies happen to link less often would look worse at their job.
+3. **Two things are Greg's and have not moved:** verify the per-token prices
+   (**six** consecutive cycles blocked - WebFetch, WebSearch and the `claude-api`
+   skill all unavailable, 85-90), and set `ANTHROPIC_API_KEY` in Azure. Until the
+   key is set, all four AI features render and refuse visibly, on the ledger.
+   Tokens are recorded correctly regardless, so a wrong rate is a recompute, not
+   lost revenue.
 
 ## Session 2026-08-29 - Relay cycle 88, queue row 80. AI features, slice 4: the AI writes a whole SEQUENCE. LIVE, and refusing until a key is set.
 
