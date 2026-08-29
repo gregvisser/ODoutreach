@@ -25,6 +25,12 @@ describe("Main sidebar (PR #139 final audit, updated PR #140)", () => {
     // client workspace, where it is the trusted operational view.
     expect(mainNav.map((n) => n.title)).toEqual([
       "Reports",
+      // Cycle 87 (#80): the cross-client queue of replies still waiting on a
+      // human. Advertised here for the same reason as "Google logins" — the
+      // per-client Activity tab could only show a warm reply to somebody who
+      // had already guessed which of thirty-odd workspaces to open, and a
+      // queue nobody can find is a queue nobody works.
+      "Replies to answer",
       "Clients",
       "New client",
       "Universe",
