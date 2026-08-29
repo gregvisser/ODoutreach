@@ -62,17 +62,49 @@ function cycleLogs(): ReadonlyArray<{ file: string; rel: string; n: number }> {
     .sort((a, b) => a.n - b.n);
 }
 
-/** True when git has this path in its index, i.e. it survives clean/rebase. */
-function isTrackedByGit(relPath: string): boolean {
-  try {
-    execFileSync("git", ["ls-files", "--error-unmatch", "--", relPath], {
-      cwd: REPO_ROOT,
-      stdio: "ignore",
-    });
-    return true;
-  } catch {
-    return false;
-  }
+/**
+ * How many times we have shelled out to git to answer "is this tracked?".
+ * Asserted below; see `trackedLogPaths` for why it must stay at one.
+ */
+let gitLsFilesCalls = 0;
+
+/**
+ * Every path git has in its index under the cycle-log directory, as one set.
+ *
+ * ONE `git ls-files`, NOT ONE PER FILE, AND THAT IS THE WHOLE POINT.
+ *
+ * This used to call `git ls-files --error-unmatch <file>` once per log inside a
+ * `.filter()`. That is a process spawn per log, and the cost therefore grew by
+ * one spawn every time a cycle wrote its log. Measured on 2026-08-29 at 96 logs:
+ * 96 spawns took 2,653ms on an IDLE machine against a 5,000ms per-test budget,
+ * and the batched call below took 36ms - 73x faster. Under load the per-file
+ * version reproduced the exact failure cycle 76 hit, `Test timed out in 5000ms`,
+ * at 7,105ms; the batched version answers in tens of milliseconds at the same
+ * load.
+ *
+ * So this was never a flaky test in the usual sense. It was a linear-growth
+ * timing bug whose deadline the suite was walking towards at ~28ms per cycle,
+ * and raising the timeout would only have bought a few weeks before the same
+ * red returned on a slower machine - which is why the queue explicitly refused
+ * that fix.
+ *
+ * Two correctness gains come free with the batching:
+ *   * It does NOT swallow a git failure. The old per-file version caught every
+ *     error and returned false, so a broken or absent git reported all 96 logs
+ *     as untracked - a confusing red pointing at the wrong thing. If git cannot
+ *     answer, that now throws and says so.
+ *   * `-z` returns NUL-separated literal paths. Without it git quotes and
+ *     escapes any path containing non-ASCII or unusual characters, which would
+ *     silently never match a plain string compare.
+ */
+function trackedLogPaths(): ReadonlySet<string> {
+  gitLsFilesCalls += 1;
+  const out = execFileSync("git", ["ls-files", "-z", "--", LOG_DIR_REL], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  // git reports POSIX separators on every platform, which is what `rel` uses.
+  return new Set(out.split("\0").filter((p) => p.length > 0));
 }
 
 /** True when some .gitignore rule excludes this path. */
@@ -217,7 +249,9 @@ describe("cycle logs reach git", () => {
     // during cycle N+1 the newest log IS cycle N's, so the one file that needs
     // forcing would have been the one file excused. That would have been the
     // eleventh "built, wired, reports success, never fired".
-    const untracked = cycleLogs().filter((l) => !isTrackedByGit(l.rel));
+    const before = gitLsFilesCalls;
+    const tracked = trackedLogPaths();
+    const untracked = cycleLogs().filter((l) => !tracked.has(l.rel));
 
     expect(
       untracked.map((l) => l.file),
@@ -228,6 +262,23 @@ describe("cycle logs reach git", () => {
         `and committing it is THIS cycle's job. Fix by adding them to your ` +
         `commit (\`git add ${LOG_DIR_REL}\`), not by deleting this test.`,
     ).toEqual([]);
+
+    // The regression guard for the timeout this test was rewritten to fix.
+    //
+    // It counts SPAWNS, not milliseconds, on purpose. A duration assertion here
+    // would be the same class of defect we are removing: it would pass or fail
+    // on how busy the machine is, and would go red on a slow CI runner having
+    // found nothing wrong. The number of times we shell out to git is a fact
+    // about the code, so it is the same answer on every machine, every time.
+    expect(
+      gitLsFilesCalls - before,
+      "this check asked git more than once. It must stay a single batched " +
+        "`git ls-files` over the whole log directory: the per-file version " +
+        "cost one process spawn per cycle log, grew by one spawn every cycle, " +
+        "and timed out at 5,000ms under load (cycle 76, and reproduced at " +
+        "7,105ms on 2026-08-29). Do not answer a red here by raising the " +
+        "timeout - that only defers it to a slower machine.",
+    ).toBe(1);
   });
 });
 
