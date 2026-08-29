@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AiCampaignReviewPanel } from "@/components/clients/email-sequences/ai-campaign-review-panel";
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
 import { EmailPreviewPanel } from "@/components/clients/email-preview/email-preview-panel";
 import {
@@ -11,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import { OUTREACH_PAGE_SUBTITLE, OUTREACH_PAGE_TITLE } from "@/lib/clients/outreach-staff-copy";
 import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -18,6 +20,7 @@ import {
   buildSequenceLaunchReadinessMap,
   loadClientEmailSequencesOverview,
 } from "@/server/email-sequences/queries";
+import { loadLatestCampaignReviews } from "@/server/ai/review-campaign";
 import { isPreSendPreviewEnabled } from "@/server/email-rendering/pre-send-preview";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadSequenceStepSendUiSnapshots } from "@/server/email-sequences/send-introduction";
@@ -58,15 +61,21 @@ export default async function ClientOutreachPage({
   if (!bundle.client) notFound();
   const client = bundle.client;
 
-  const [sequencesOverview, canMutateSequences, sequencePrepSnapshots, stepSendBundle] =
-    await Promise.all([
-      loadClientEmailSequencesOverview(client.id),
-      getClientEmailSequenceMutationAllowed(staff, client.id),
-      loadClientSequencePrepSnapshots(client.id),
-      loadSequenceStepSendUiSnapshots(client.id, {
-        clientIsActive: client.status === "ACTIVE",
-      }),
-    ]);
+  const [
+    sequencesOverview,
+    canMutateSequences,
+    sequencePrepSnapshots,
+    stepSendBundle,
+    campaignReviews,
+  ] = await Promise.all([
+    loadClientEmailSequencesOverview(client.id),
+    getClientEmailSequenceMutationAllowed(staff, client.id),
+    loadClientSequencePrepSnapshots(client.id),
+    loadSequenceStepSendUiSnapshots(client.id, {
+      clientIsActive: client.status === "ACTIVE",
+    }),
+    loadLatestCampaignReviews(client.id),
+  ]);
 
   const sequenceFlashRaw = firstParam(sp.sequence);
   const sequenceIdFromQuery = firstParam(sp.sequenceId);
@@ -178,6 +187,27 @@ export default async function ClientOutreachPage({
         launchMailboxOptions={launchMailboxOptions}
         sequencePrepSnapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}
+      />
+
+      <AiCampaignReviewPanel
+        clientId={client.id}
+        canMutate={canMutateSequences}
+        aiEnabled={areAiFeaturesEnabled()}
+        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        // Archived campaigns are excluded: reviewing one spends the client's
+        // money on copy nobody is going to send.
+        sequences={sequencesOverview.sequences
+          .filter((s) => s.status !== "ARCHIVED")
+          .map((s) => ({
+            id: s.id,
+            name: s.name,
+            stepCount: s.steps.length,
+          }))}
+        reviewsBySequenceId={campaignReviews}
+        flash={{
+          ok: firstParam(sp.campaignReview),
+          error: firstParam(sp.campaignReviewError),
+        }}
       />
 
       {preSendPreviewEnabled ? (

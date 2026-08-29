@@ -298,6 +298,7 @@ model StaffUser {
   emailSequencesApproved          ClientEmailSequence[]            @relation("ClientEmailSequenceApprovedBy")
   sequenceEnrollmentsCreated      ClientEmailSequenceEnrollment[]  @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
+  aiCampaignReviewsRequested      AiCampaignReview[]               @relation("AiCampaignReviewRequestedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
@@ -528,6 +529,9 @@ model Client {
   contactUniverseSources          ContactUniverseSource[]
   /// Billing ledger for phase-2 AI calls made on this client's behalf.
   aiUsageEvents                   AiUsageEvent[]
+  /// AI critiques of this client's campaigns. Advisory only — see
+  /// `AiCampaignReview`.
+  aiCampaignReviews               AiCampaignReview[]
 
   @@index([deletedAt])
   @@index([status])
@@ -1372,6 +1376,10 @@ model ClientEmailSequence {
   steps                  ClientEmailSequenceStep[]
   enrollments            ClientEmailSequenceEnrollment[]
   stepSends              ClientEmailSequenceStepSend[]
+  /// AI critiques of this campaign's copy. ADVISORY ONLY: nothing on this
+  /// model or in the launch rail reads them, and a review can neither block
+  /// nor clear a launch.
+  aiReviews              AiCampaignReview[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -1823,6 +1831,10 @@ enum AiFeature {
   /// client like any other call; the drafts it produces are DRAFT templates and
   /// are not sendable until a person approves each one.
   SEQUENCE_DRAFTING
+  /// Scoring and critiquing one campaign's copy before it is launched. Billed
+  /// to that client. Produces advice on a screen and nothing else — it does
+  /// not change a template, a sequence, or whether either may be sent.
+  CAMPAIGN_REVIEW
 }
 
 /// How an AI call ended.
@@ -1881,4 +1893,47 @@ model AiUsageEvent {
   @@index([clientId, createdAt])
   @@index([feature, createdAt])
   @@index([createdAt])
+}
+
+/// An AI critique of one campaign's copy, kept so a paid-for review survives a
+/// page refresh instead of being bought twice.
+///
+/// ADVISORY ONLY, AND THAT IS THE WHOLE DESIGN. Nothing in the send pipeline,
+/// the approval gate or `evaluateSequenceLaunchReadiness` reads this table. A
+/// review can neither block a launch nor clear one: launch permission is
+/// decided by deterministic, offline checks that know nothing about the AI.
+/// Deleting every row here restores today's behaviour exactly.
+///
+/// Rows cascade with the sequence and the client. That loses no billing: the
+/// charge lives in `AiUsageEvent`, which deliberately survives client deletion.
+model AiCampaignReview {
+  id                     String   @id @default(cuid())
+  clientId               String
+  sequenceId             String
+  /// 0-100, clamped in code. The model's opinion of the WRITING only.
+  score                  Int
+  /// One paragraph of plain English about the campaign as a whole.
+  summary                String
+  /// The critique, as a JSON array of {severity, area, finding, suggestion}.
+  /// Shaped and length-capped by `parseCampaignReviewToolUse` before it is
+  /// written — in particular `suggestion` is capped too short to hold an email,
+  /// so a critique can never become a second way to author copy.
+  findings               Json
+  /// Exact model id, and the prompt version that produced this. Stored so a
+  /// review written under an older prompt is not read as a current one.
+  model                  String
+  promptVersion          String
+  /// How many emails were in the campaign when it was reviewed, so a screen can
+  /// say plainly that the campaign has changed since.
+  stepCount              Int      @default(0)
+  requestedByStaffUserId String?
+  createdAt              DateTime @default(now())
+
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sequence    ClientEmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  requestedBy StaffUser?          @relation("AiCampaignReviewRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([sequenceId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([requestedByStaffUserId])
 }

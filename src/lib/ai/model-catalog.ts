@@ -42,6 +42,13 @@ export const AI_MODELS = {
    * time as a verified price for it.
    */
   SEQUENCE_DRAFTING: "claude-haiku-4-5-20251001",
+  /**
+   * Campaign review. The SAME model again, for the same billing reason: the one
+   * rate in this table is still flagged unverified, and a second model would
+   * mean a second unchecked price on the same invoice. Judging five short
+   * emails against a stated rubric is well within this model.
+   */
+  CAMPAIGN_REVIEW: "claude-haiku-4-5-20251001",
 } as const;
 
 export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
