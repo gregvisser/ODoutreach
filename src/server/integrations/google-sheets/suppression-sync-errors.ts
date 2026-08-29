@@ -12,6 +12,14 @@ export const SUPPRESSION_SYNC_MESSAGES = {
     `Share as Viewer: ${serviceAccountEmail}. Open the Sheet → Share → paste this email → Viewer → Send/Share. Then click Sync again.`,
   shareSheetGeneric:
     "Share as Viewer with the Google service account email on the Suppression page or client card (Copy email). Open the Sheet → Share → paste that email → Viewer → Send/Share. Then click Sync again.",
+  /**
+   * The tab names could not be read, so there is no honest way to choose a
+   * range. Says plainly that nothing changed, because the alternative this
+   * replaces — guessing "Sheet1" and running a delete-then-insert against
+   * whatever was there — could unblock a whole list without a word.
+   */
+  tabsUnreadable:
+    "Could not read this Sheet's tab names, so the sync does not know which tab to read. Nothing was changed and the blocked list is untouched. This is usually Google's per-minute read limit; the next scheduled sync will try again. If it keeps happening, save an explicit tab and range (e.g. Domains!A:A) on this list.",
   noDataInRange: "No data found in the selected range — check the tab or expand the range.",
   noValidEmails: "No valid emails found in the selected range.",
   noValidDomains: "No valid domains found in the selected range.",

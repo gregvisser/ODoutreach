@@ -113,19 +113,24 @@ describe("syncSuppressionSourceFromGoogle — the saved range is the range read"
     });
   });
 
-  // This mock has no `spreadsheets.get`, so the tab lookup fails and the sync
-  // falls back to the historic default — which is the guarantee being pinned
-  // here. When the tabs CAN be read, no saved range now resolves the sheet's
-  // first tab instead; see `suppression-sync-tab-resolution.test.ts`.
-  it("falls back to the default when no range is saved and no tab is known", async () => {
+  // This mock has no `spreadsheets.get`, so the tab lookup fails. It used to
+  // fall back to the historic `Sheet1` default; it now refuses. The fallback
+  // looked harmless because it "left behaviour as it was", but this path
+  // DELETES before it inserts, so reading a tab nobody chose could replace a
+  // client's blocklist with whatever happened to be on Sheet1. When the tabs
+  // CAN be read, no saved range resolves the sheet's first tab; see
+  // `suppression-sync-tab-resolution.test.ts`.
+  it("refuses when no range is saved and no tab can be discovered", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
 
-    await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
+    const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
 
-    expect(valuesGet).toHaveBeenCalledWith({
+    expect(r.ok).toBe(false);
+    expect(valuesGet).not.toHaveBeenCalledWith({
       spreadsheetId: "sheet-123",
       range: DEFAULT_RANGE,
     });
+    expect(valuesGet).not.toHaveBeenCalled();
   });
 
   it("writes the rows it found in the operator's tab", async () => {
