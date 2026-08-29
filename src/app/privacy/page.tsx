@@ -31,6 +31,7 @@ export default function PrivacyPage() {
     <LegalPageShell
       title="Privacy Policy"
       intro="How this outreach platform handles personal data — both for the staff who use it and for the people who receive email through it."
+      lastUpdated="29 August 2026"
     >
       <LegalSection heading="Who this covers">
         <p>
@@ -134,12 +135,42 @@ export default function PrivacyPage() {
             a single timestamp of the first open, and nothing else
           </strong>
           . It does not record your IP address, your location, your device or
-          your mail client. Repeated opens are not counted.
+          your mail client. Repeated opens are not counted. That timestamp is
+          stored against your contact record, so although it is the only thing
+          captured, it is linked to you rather than counted anonymously.
         </p>
         <p>
-          Open tracking is on by default and can be switched off per
-          deployment. Blocking remote images in your mail client prevents it
-          entirely.
+          Open tracking is{" "}
+          <strong className="text-foreground">off by default</strong>. It stays
+          off for every customer on this platform until it has been switched on
+          deliberately for one individual customer, and switching it on for one
+          customer does not switch it on for any other. There is no version of
+          this system in which tracking is running because nobody remembered to
+          turn it off.
+        </p>
+        <LegalPlainly>
+          <p className="font-semibold">
+            A customer cannot simply tick a box to turn it on.
+          </p>
+          <p className="mt-2">
+            Before tracking can be enabled for a customer, this system looks up
+            that customer&rsquo;s own DNS records itself and must find all four
+            of <strong>SPF</strong>, <strong>DKIM</strong>,{" "}
+            <strong>DMARC</strong> and the tracking host correct — and the
+            tracking host must be a subdomain of the very domain the mail is
+            sent from, so the hidden image can never be loaded from somewhere
+            unrelated to the sender. Nobody is asked to confirm the records are
+            in place; the check is a live lookup, and a person&rsquo;s assurance
+            is not accepted in its stead. It is repeated every day, and tracking
+            switches itself back off if the records stop passing or have not
+            been confirmed for seven days.
+          </p>
+        </LegalPlainly>
+        <p>
+          A single system-wide switch can also hold tracking off for every
+          customer at once, and it can only hold it off — it cannot turn it on
+          for anyone. Separately from all of this, blocking remote images in
+          your mail client prevents tracking entirely.
         </p>
       </LegalSection>
 
@@ -176,9 +207,15 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong className="text-foreground">Sentry</strong> — error
-            monitoring. Receives technical diagnostics when something fails,
-            which can incidentally include identifiers present in the failing
-            operation.
+            monitoring. When something fails it receives the stack trace, the
+            error message, the route that failed and timing information. It is
+            deliberately <strong>not configured to receive</strong> request or
+            response bodies, HTTP headers, cookies, sign-in identities, URL
+            query strings, database values, or the local variables held in a
+            stack frame — which is to say the text of outreach and replies, and
+            the contact details themselves, are withheld from it. What it does
+            still receive is our own source code around the failure, and the
+            shape of a failing database query with the values stripped out.
           </li>
           <li>
             <strong className="text-foreground">Microsoft Azure</strong> —

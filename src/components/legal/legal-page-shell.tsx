@@ -18,6 +18,13 @@ import Link from "next/link";
  */
 export const LEGAL_OPERATOR_NAME = "OpensDoors";
 export const LEGAL_CONTACT_EMAIL = "privacy@opensdoors.co.uk";
+/**
+ * The date both documents were first published. Each page may override it with
+ * its own `lastUpdated`, because they change independently: sharing one date
+ * would either backdate a document that just changed or claim a revision to one
+ * that did not, and both are the same small dishonesty this page set exists to
+ * avoid.
+ */
 export const LEGAL_LAST_UPDATED = "28 August 2026";
 
 export function LegalDraftNotice() {
@@ -79,10 +86,12 @@ export function LegalPlainly({ children }: { children: React.ReactNode }) {
 export function LegalPageShell({
   title,
   intro,
+  lastUpdated = LEGAL_LAST_UPDATED,
   children,
 }: {
   title: string;
   intro: string;
+  lastUpdated?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -97,7 +106,7 @@ export function LegalPageShell({
           </h1>
           <p className="text-sm text-muted-foreground">{intro}</p>
           <p className="text-xs text-muted-foreground">
-            Last updated {LEGAL_LAST_UPDATED}.
+            Last updated {lastUpdated}.
           </p>
         </header>
 
