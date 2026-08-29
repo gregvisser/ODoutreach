@@ -170,6 +170,29 @@ log in plain English so Greg can prepare what he says in the room.
 ## Queue, in order
 
 
+## STANDING RULE added 2026-08-29 - THIS PROJECT'S FOLDER, AND NOTHING OUTSIDE IT
+
+Greg runs several client systems side by side and is about to run more. They are
+separate repositories with separate queues, so they cannot collide by accident -
+with one deliberate exception.
+
+`C:\Bidlowprojects\_standards` is the METHOD, shared by every project: the hooks,
+the gates, the skills, the deck, the checklists.
+
+**No cycle creates, edits, moves or deletes anything under `_standards` unless the
+row it is working on names that path explicitly.** A change made there while doing
+client work does not stay with this client. It silently changes how every other
+build is judged, including ones nobody is looking at that week, and the next
+project to run inherits it without anyone deciding to.
+
+If a row's work seems to need the method changed, that is a FINDING, not a task.
+Write the case into the cycle log and let it be queued as its own row against the
+standard, where it can be argued on its own terms.
+
+The same applies to sibling project folders - `BidlowClients\Kepak`,
+`BidlowClients\Papaya`, `BidlowTools\*`. Read them if a row asks for a
+comparison. Never write to them.
+
 ## STANDING RULE - NEVER PUT A PIPE IN A STATUS CELL
 
 This has now stopped the relay twice in one evening, and the second time it was the
