@@ -238,6 +238,41 @@
       "authorised_by": "Claude (agent), relay cycle 87, for Greg's review",
       "what": "Step 2 of 2, and the final hash. ADDITIVE: seeds seven InboundReply rows on workspace A (5 that must appear on the new /replies queue in a stated order, plus a NOT_INTERESTED and an UNSUBSCRIBE that must never appear) so e2e/replies-needing-a-person.spec.ts can prove the screen actually READS the database and applies the routing rule, rather than merely rendering an empty table. No existing fixture write was changed. Like the AI ledger rows these are deleteMany-then-createMany rather than upserted, because the screen is 30-day-bounded and ranks by waiting time, so a pinned receivedAt would go stale and then fall out of range. The delete is narrowed to the E2E_REPLIES_WAITING id prefix and sits behind assertSafeTestDatabase, so it cannot reach real data.",
       "sha256_after": "f4f6d2a0419caf42e87eaca4bee957a62d706af3fd1ccc12912b253822d9c0cd"
+    },
+    {
+      "file": "e2e/journeys.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 103, for Greg's review",
+      "what": "Step 1 of 2 of one change (CR-08): added an assertion in the super-admin 'outbound email detail renders routing and timeline' test that the Correlation row is visible to a super admin. Recorded separately only because the frozen gate re-blocks the file after each edit; see the next amendment on this file for the staff-hidden assertion and the final hash.",
+      "sha256_after": "ece41c82659bf78bb8798836b52e7ecc643bb24f9d363db6f9cc063d9432667c"
+    },
+    {
+      "file": "e2e/journeys.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 103, for Greg's review",
+      "what": "Step 2 of 2, and the final hash (CR-08). ADDITIVE: added an assertion in the non-super-admin staff 'can still open an outbound email detail' test that the Correlation row is hidden. Red-first for the fix that follows in src/app/(app)/activity/outbound/[id]/page.tsx, which gates that row behind staff.isSuperAdmin. No existing assertion changed.",
+      "sha256_after": "b676bceb39c8de22d613e3d14ffe7ee938af2eb53cf3e400d80a161b8e7430b0"
+    },
+    {
+      "file": "e2e/journeys.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 103, for Greg's review",
+      "what": "Step 1 of 2 (locator fix): the super-admin Correlation assertion used a substring getByText that also matched the Routing card's description text ('...provider correla...'), a strict-mode violation caught by actually running the test. Added { exact: true }. No assertion intent changed.",
+      "sha256_after": "688c88f9f1a6feb25467c82596b21aa04259df06a2faa935040b7e2e7fe24927"
+    },
+    {
+      "file": "e2e/journeys.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 103, for Greg's review",
+      "what": "Step 2 of 2, and the final hash (CR-08 locator fix). Same exact:true fix applied to the staff-hidden assertion for consistency. No assertion intent changed.",
+      "sha256_after": "c544725d39c202cc685676aa16ec6eee34c968318fdb14f67eee5f238f2f6325"
+    },
+    {
+      "file": "e2e/journeys.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 103, for Greg's review",
+      "what": "Second locator fix for the same CR-08 change, found by actually running the test: the file's own documented streamed-double-copy issue (React parks the finished page in a hidden div at the end of body for one frame) made the staff-hidden assertion hit 2 elements unscoped. Scoped it to main, matching the pattern already used by every other page-content assertion in this file. No assertion intent changed.",
+      "sha256_after": "d0327028ffe701ebae5a128c714d788d77c89aca2538aa4393d35f2f7aee0ef9"
     }
   ]
 }

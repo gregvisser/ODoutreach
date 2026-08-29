@@ -62,6 +62,12 @@ test.describe("super-admin journeys", () => {
     await expect(content.getByText("Timeline")).toBeVisible();
     await expect(content.getByText(E2E_OUTBOUND_EMAIL.toEmail).first()).toBeVisible();
     await expect(content.getByText(E2E_OUTBOUND_EMAIL.subject)).toBeVisible();
+
+    // CR-08: the raw correlation cuid is an internal provider-webhook id with
+    // no operator action attached to it — visible to a super admin only.
+    await expect(
+      content.getByText("Correlation", { exact: true }),
+    ).toBeVisible();
   });
 
   test("an unknown outbound email id is not found", async ({ page }) => {
@@ -111,10 +117,17 @@ test.describe("staff role boundaries", () => {
     page,
   }) => {
     await page.goto(`/activity/outbound/${E2E_OUTBOUND_EMAIL.id}`);
+    const content = page.getByRole("main");
 
     await expect(
       page.getByRole("heading", { name: "Outbound email", level: 1 }),
     ).toBeVisible();
+
+    // CR-08: ordinary staff must not see the raw correlation cuid — noise at
+    // best, and it leaks implementation shape at worst.
+    await expect(
+      content.getByText("Correlation", { exact: true }),
+    ).toBeHidden();
   });
 });
 
