@@ -1,6 +1,96 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 92) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 94) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 94, queue row 82: the relay refuses to write to a row it cannot identify.
+
+Row 82 is **`DONE 94`**. Two PRs, both merged on green CI: **`05c4656` (PR #372)**
+the fix, **`97dcdd6` (PR #373)** the state record. Open PRs at start of cycle:
+**zero**. At end: **zero** - seven consecutive clean starts.
+
+**Cycle 93 did not write a STATE entry** (row 81, the DNC sheet-range persistence,
+`111a298` / PR #370). It is recorded in `.bidlow/relay/log/cycle-093.md`, which was
+uncommitted at the start of this cycle and is included in PR #373.
+
+### What was changed
+
+`Set-QueueRowStatus` found a queue row **by number** and rewrote the **first**
+match. With a number written twice, the picker took one row and the write landed
+on the other - proven on 2026-08-27, when it overwrote an earned `DONE 62` with
+`DONE 71` while the row actually being worked on stayed `TODO` and would have been
+re-issued for ever. `relay/queue-file-integrity.test.ts` keeps duplicates out of
+the *committed* file, but it only runs in CI; the watcher rewrites `QUEUE.md`
+locally between cycles all night, where no test is watching.
+
+Three changes in `relay-watch.ps1`, one concern:
+
+* **`Set-QueueRowStatus`** counts the rows claiming the number before writing and
+  refuses when there is more than one - the licence it already applied to a row it
+  cannot parse, moved one step earlier to a row it cannot *identify*.
+* **`Repair-UnreadableQueueRow`** got the identical guard. Not asked for by the
+  row, and the one scope decision of the cycle (below).
+* **`Invoke-SelfQueue`** stops and alerts *before* the brief is written, rather
+  than running the cycle anyway. The check sits before the brief so there is no
+  `NEXT.md` to un-write - a brief on disk is what makes the watcher start a cycle.
+
+New shared helper `Get-QueueRowNumberLineIndexes` counts rows **shaped** like a
+queue row - the superset of rows the parser can read - because the hazard is that
+two rows *claim* number N whether or not either parses. Numbers compare whole:
+7, 17 and 70 are three different rows.
+
+### Decision: I widened the row's scope by one function, deliberately
+
+The row named `Set-QueueRowStatus` and `Invoke-SelfQueue` only. I also guarded
+`Repair-UnreadableQueueRow`, against the queue's one-concern-per-cycle rule,
+because it is the *same* defect one function along and worse there: it walks for
+the first **unreadable** row carrying the number, so a duplicate would rewrite a
+record a human had parked by hand *and* leave the cycle's own row still
+unreadable - record lost and queue still stopped. Closing the row while leaving a
+known identical hole in the sibling writer would have made the row's status false.
+Not a one-way door: additive refusal, fully revertible, and the guard is inert on
+any queue without duplicates.
+
+### Proven to fire, and proven inert
+
+Three new cases in `relay/queue-parser.test.ts`, driving the real `relay-watch.ps1`
+under **both** PowerShell hosts, on a fixture that is the 2026-08-27 incident row
+for row: **6 failures before, 33 pass after**. A fourth case pins what must *not*
+change (a queue holding 7, 17 and 70 still rewrites row 7) and was green throughout.
+
+End to end: the shipped `Invoke-SelfQueue` over a duplicated number returns false,
+writes **no** `NEXT.md`, leaves both rows byte for byte, and reaches
+`Send-RelayAlert` with `QUEUE.md has 2 rows numbered 69`. Inert on the live file:
+**71 rows, 0 unparsed, 0 duplicated numbers**, row 82 reads back as `DONE 94`
+through the shipped parser, picker moves on to **#84**.
+
+**The house defect, caught in the act:** my first version of the counter loaded
+green and never fired - a comma-wrapped `return` handed the `List` back as one
+object, so the caller's `@()` saw a single element and the count was always 1.
+Only the red test found it. Recorded in the code beside the fix.
+
+Gates: lint 0, typecheck 0, **3597 tests / 345 files**, build green,
+`relay-selftest.ps1` 35 checks, CI verify + E2E green on both PRs.
+
+### Nothing contradicts PROJECT.json
+
+No schema, no migration, no client data, no email. The hard rule was never
+approached - this cycle touched only the relay's own tooling.
+
+### Pick up first, next session
+
+1. **Row 84 is next and is `TODO`** - 8 of 55 live mailboxes are in
+   `PENDING_CONNECTION` with no stored credential. The row itself says no agent
+   can close it: reconnecting needs the mailbox owner to sign in at Microsoft or
+   Google. What a cycle *can* do is re-run the probe (read-only) and make the
+   screen tell the truth for a 60-day-pending row (that is row 85).
+2. **The running watcher loaded the OLD script**, so this cycle's guard starts
+   protecting the queue at the next watcher restart. Nothing is broken meanwhile -
+   the live queue has zero duplicates. `Get-StaleWatcherNote` already reports the
+   staleness in the cycle log; nothing new is needed for it.
+3. **Still outstanding for Greg, unchanged:** Train Hugger's domain blocklist has
+   been stuck in a refused shrink for 15 days (82 removals) and needs a human
+   decision; and the Google OAuth app is still unpublished, which is why Google
+   mailboxes drop weekly.
 
 ## Session 2026-08-29 - Relay cycle 92, queue row 80, item 7: best message by job title. ROW 80 IS NOW COMPLETE.
 
