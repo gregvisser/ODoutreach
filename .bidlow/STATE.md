@@ -1,6 +1,105 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 98) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 100) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 100, queue row 89: mobile measured for the first time, four real defects found and fixed (CR-09 closed).
+
+Row 89 is **`DONE 100`**. Shipped **`88dcce4` (PR #383)**, merged on green CI,
+deployed and **verified by commit hash** against the direct App Service URL
+(`/api/build-info` → `88dcce497e5095553c3ff563526f373683d0b535`). Open PRs at
+start of cycle: **zero**. At end: **zero**.
+
+### What changed
+
+New merge-blocking `e2e/mobile-walk.spec.ts` drives five journeys (client
+list, client overview, mailboxes, setup-help, outreach send-prep) at a
+375x667 phone viewport and asserts: no horizontal page overflow, no rendered
+text under 12px, no table wider than the viewport lacking its own
+scroller, no interactive control under 24px. Measured BEFORE touching
+anything, as the row demanded — it went red twice, for two different reasons:
+
+1. **Real defects, first pass:** `client-logo.tsx`'s monogram tile had no
+   font-size floor (10px min, 11px at the 32px size used on `/clients`);
+   `client-operational-snapshot.tsx` had two literal `text-[11px]` labels.
+2. **A stale local e2e Postgres** was silently swallowing content on
+   `/mailboxes` and `/outreach` (missing five same-day AI-feature
+   migrations) — `prisma migrate deploy` against the throwaway e2e DB fixed
+   that and surfaced real content for the first time, which then found two
+   more things: a mailbox table row inflated to ~97px by an action-button
+   column wrapping onto two lines (`client-mailbox-identities-panel.tsx`,
+   `flex-wrap` → `flex-nowrap`), and a customer-facing SPF/DMARC record
+   chopped mid-word by `break-all` inside a cramped row
+   (`client-deliverability-help.tsx`, given its own full-width line +
+   `break-words`).
+
+**A bug in the walk itself was found and fixed before it produced a false
+fix:** Chromium keeps a closed `<details>` panel's children at a cached,
+non-zero `getBoundingClientRect()` even though nothing is painted, so a
+rect-based visibility check reads collapsed owner-only diagnostic text as
+on-screen. `Element.checkVisibility()` is the one API that accounts for
+this; every check in the spec now gates on it. Confirmed with a throwaway
+debug spec (deleted) before touching any product code — that finding is
+recorded as a test bug, not "fixed" as a product bug.
+
+Re-walked after each fix: all 5 journeys green.
+
+**No schema, no migration to app tables, no client data moved, no email.**
+(The `prisma migrate deploy` above applied only already-committed,
+already-shipped migrations to a local throwaway e2e database — not
+production, and not a new migration.)
+
+### Grading
+
+`.bidlow/GRADES.json`: CR-09 OPEN → CLOSED with full evidence. Dimension 4
+(Professional polish & UX) observed-text updated; **score unchanged at 8** —
+three pre-existing, unrelated open contrast defects (DESIGN.json) already
+held it there. Weighted customer-ready total **unchanged at 7.50**.
+`CUSTOMER-READY-REPORT.md` updated to match. Sell gate still **NOT
+SATISFIED**: CR-08 (raw correlation cuid) and CR-01b (bounce path never
+observed firing — needs a real send, no cycle can close it) remain open.
+
+### Deliberately left alone / named rather than hidden
+
+* The send-prep screen's **populated** four-at-a-time state (real recipient
+  batches, cooldown timer, Launch button) was **not exercised** — the e2e
+  fixture client (`E2E_CLIENT`) has no active `ClientEmailSequence` or
+  enrollment, so `/outreach` rendered its clean empty state only. Seeding one
+  touches `e2e/seed-e2e.ts`, a shared fixture seven other specs depend on;
+  judged out of scope for a single measure-then-fix cycle. **Candidate
+  follow-up row** if that specific gated UI needs its own mobile check.
+* Only one viewport measured (375x667). A second breakpoint was not run.
+* Did not touch the shared `Table` component's horizontal-scroll pattern
+  (used across dozens of tables app-wide) — a swipeable table inside a card
+  is a standard, acceptable mobile pattern; reworking it would be the
+  responsive redesign the row explicitly ruled out.
+* `CUSTOMER-READY-REPORT.md`'s "Top blockers" list carries pre-existing stale
+  entries (CR-06, CR-05 shown open when GRADES.json already records them
+  closed) — inherited drift from before this cycle, unrelated to CR-09, left
+  untouched (one concern per cycle).
+
+Gates: lint 0, typecheck 0, **3,644 tests / 348 files**, full Playwright
+suite (not just the new spec) **91/92** (1 pre-existing unrelated skip,
+`training-screenshots.spec.ts`) — proves the shared-component edits did not
+regress `screen-walk` or `mailboxes-table-first`. `npm run build` green
+three times (once per round of fixes).
+
+### Nothing contradicts PROJECT.json
+
+The hard rule was never approached: no send, no delete, no client data.
+
+### Pick up first, next session
+
+1. **Run the PR sweep first**, as always — it was clean this cycle, keep it
+   that way.
+2. **Take the next `TODO` row off QUEUE.md.** Row 89 is closed; the only
+   half-done thing from this cycle is the named follow-up above (seed a
+   launchable sequence to check the populated four-at-a-time gate UI on
+   mobile) — not started, not blocking, not owed.
+3. **Still outstanding and not an agent's to do:** row 84 (`BLOCKED`) — eight
+   mailboxes cannot send and need their owners to sign in; row 48
+   (`BLOCKED`) — Train Hugger's 291-vs-373 domain question; row 90 (`TODO`)
+   — check whether the bounce path has ever fired in production (read-only);
+   and whether to publish the Google OAuth app, declined twice. All Greg's.
 
 ## Session 2026-08-29 - Relay cycle 98, queue row 87: a merge-blocking test stops getting slower every cycle.
 
