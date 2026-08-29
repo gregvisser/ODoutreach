@@ -1,6 +1,101 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 85) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 88) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 88, queue row 80. AI features, slice 4: the AI writes a whole SEQUENCE. LIVE, and refusing until a key is set.
+
+Row 80 is **`PARTIAL 88`** - deliberately, so the next cycle picks it straight
+back up. **Merged `760e47b` (PR #361)**, deployed, verified by hash on the direct
+App Service URL. Open PRs at start of cycle: **zero**. At end: **zero**.
+
+Note: cycles 86 and 87 did not write a STATE entry. Their work is recorded in
+`.bidlow/relay/log/cycle-086.md` and `cycle-087.md` - slice 2 was the spend
+screen `/settings/ai-spend` (`de2b9d9`), slice 3 was `/replies`, the cross-client
+queue of replies still owed a human (`5f539b1`).
+
+### What was built
+
+Item (3) of the row: a button on each client's **Templates** tab that drafts five
+emails from that client's own brief on the spec's day 1 / 4 / 9 / 16 / 25 cadence.
+
+* **`src/lib/ai/sequence-drafting.ts`** - pure: cadence arithmetic, prompt, tool,
+  parser. **`src/server/ai/draft-sequence.ts`** - the metered call and the write.
+* Migration `20260829060000_ai_sequence_drafting_feature` - one line,
+  `ALTER TYPE "AiFeature" ADD VALUE 'SEQUENCE_DRAFTING'`. Applied to the
+  production database on merge.
+* Gates: lint 0, typecheck 0, **3347 tests / 328 files** (from 3307/326), build
+  green, CI + E2E green.
+
+### The decision that mattered, and it was nearly invisible
+
+**`createEmailTemplate` auto-approves.** `src/server/email-templates/mutations.ts:105-106`
+runs `canApproveTemplate` and writes `status: APPROVED` with an approver and a
+timestamp for anything structurally valid with no unknown placeholders - which
+well-formed model output passes trivially. APPROVED is not cosmetic: the schema's
+own comment says *"Only APPROVED templates will be eligible for future
+sequences"*, so APPROVED is the state that makes a template **sendable**.
+
+Routing model output through it would have taken five cold emails **no human had
+ever read** and put them one sequence-launch away from a stranger's inbox, on a
+real client's sending domain - and it would have passed every test anyone would
+have thought to write. `draft-sequence.ts` therefore writes its rows directly,
+pinned `DRAFT` with null approver and null approvedAt, and leaves
+`createEmailTemplate` untouched for hand-authored templates.
+
+**Rule for any future AI-writes-content feature: do not reuse
+`createEmailTemplate` for model output.**
+
+Second decision, same shape: the tool schema has **no delay field and no day
+field**. The model writes words; the cadence is a constant applied by position
+after parsing. A model that could choose delays could return five zeros, and five
+cold emails landing in one inbox inside a minute is a deliverability incident.
+
+### One-way doors
+
+None opened. The migration adds an enum value: nothing dropped, rewritten, read
+or backfilled, no existing row can carry it, and dropping it restores today's
+behaviour exactly - which is rule (a)'s own stated test. Recorded because the
+literal wording ("alters an existing type") and that test point different ways,
+and the next cycle should not have to re-derive it. No send path, no suppression
+path, no client data moved, and no path added by which an email can be sent.
+
+### Half-done, and exactly where it was left
+
+**Slice 4 of 7.** Items 4-7 untouched: campaign quality score and critique,
+AI-chosen send times, rep performance dashboard, best-message-by-job-title.
+
+### Contradicts nothing in PROJECT.json, but ONE standing item is now reclassified
+
+**The unverified token prices are an ENVIRONMENT BLOCK, not a to-do.** WebFetch,
+WebSearch and the `claude-api` skill have now been denied in cycles 85, 86, 87
+and 88. This cycle additionally checked whether the skill ships a local pricing
+reference that could be read from disk - it does not exist on this machine.
+**There is no route to the published price list from inside an agent session
+here, and a later cycle will not fix it by trying harder.** Previous entries
+framed this as "verify the prices next cycle"; that framing is wrong and has now
+cost four cycles of re-discovery.
+
+The ledger survives it correctly: every `AiUsageEvent` stores raw tokens, both
+applied rates and the `rateVersion`, so a wrong rate is a recompute rather than
+lost revenue, and `/settings/ai-spend` says unverified on its face. This cycle
+also deliberately did **not** introduce a second unverified price - sequence
+drafting reuses the one model already in the rate table rather than adding a
+larger model whose price would be a second guess on the same invoice.
+
+### Pick up first, next session
+
+1. **Two things need Greg, and neither is a judgement call the relay can make.**
+   (a) Read the per-MTok prices at `docs.claude.com/en/docs/about-claude/pricing`,
+   correct `RATES` in `src/lib/ai/model-catalog.ts`, add the version to
+   `VERIFIED_RATE_VERSIONS`, set `RATES_VERIFIED` true. Two minutes with a
+   browser; it is the only thing between the ledger and an invoice he can send.
+   (b) Set `ANTHROPIC_API_KEY` in Azure when he wants AI spend to start - until
+   then classification and drafting both refuse, visibly and on the ledger, and
+   the new button honestly says "not configured yet" rather than failing on click.
+2. **Row 80 continues at item (4)**, campaign quality score and critique.
+3. **Still outstanding from cycle 83:** ask Greg to restart the relay watcher.
+   You will know it worked when a cycle log carries a line beginning
+   `Watcher script:`.
 
 ## Session 2026-08-29 - Relay cycle 85, queue row 80. AI features, slice 1: spend metering + reply classification. LIVE, and currently refusing.
 
