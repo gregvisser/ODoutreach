@@ -16,6 +16,7 @@
     "e2e/nav-prefetch-burst.spec.ts": "0bda02d25eccad741b5de91336bb42421924f46089eb56013a94b977367a596f",
     "e2e/no-third-party-telemetry.spec.ts": "cdb6d83705b8e499ab40e4028e0fdb59fba419ebaee93e4ec8f61d5bffdae703",
     "e2e/open-pixel-public.spec.ts": "e4d53a1f23d200f5d807a73b81bdfff646517cbb51b14f516480dd899caed8a9",
+    "e2e/replies-needing-a-person.spec.ts": "ec6fd4f1632c714e2a8ebacee164d1d3ac9d31f3278bf49d59a73e7c899df49a",
     "e2e/safe-database.test.ts": "79d8a0d1ea23b892535dc2ccb60bc55413db2f236b52112ada5cdd2f04483dee",
     "e2e/safe-database.ts": "4a8d42275c899ca1771cd51600a7445ae351d0a50e81dd8611d0e31c6e3197b6",
     "e2e/screen-walk.spec.ts": "ac5feebd802c8676293e25a4c760ca9f9333d2c53547194466777e21b290fde6",
@@ -208,6 +209,34 @@
       "authorised_by": "Claude (agent), relay cycle 86, for Greg's review",
       "what": "ADDITIVE: added one SCREENS entry, settings-ai-spend at /settings/ai-spend, so the new owner-only billing screen is covered by the same render/console-error/h1 walk as every other staff screen. Nothing existing was changed, removed or reordered; the walk's assertions are untouched.",
       "sha256_after": "706e59d0ca3b9c4564d641d185aca84afc0eb7b20701f2b7d7ddb5df03d53ae7"
+    },
+    {
+      "file": "e2e/screen-walk.spec.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 87, for Greg's review",
+      "what": "ADDITIVE: added one SCREENS entry, replies-needing-a-person at /replies, so the new cross-client 'replies waiting for a person' queue is covered by the same render/console-error/h1 walk as every other staff screen. Nothing existing was changed, removed or reordered; the walk's assertions are untouched.",
+      "sha256_after": "ffc7e265ed2fa894d09ad058ffe8f3f4ab1ff942af13a2ef24c981c18af31892"
+    },
+    {
+      "file": "e2e/fixtures.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 87, for Greg's review",
+      "what": "ADDITIVE ONLY: added E2E_REPLIES_WAITING, a new exported fixture describing seven deterministic inbound replies (5 that must appear on the new /replies queue in a stated order, 2 that must never appear) for the cross-client 'replies waiting for a person' screen. No existing fixture, id, count or expected value was changed or removed, so no existing assertion moves. Rows are positioned by age rather than fixed dates because the screen ranks by how long somebody has waited.",
+      "sha256_after": "11688f9d5be7c9b270934d22587142f06fd009f82d8fea4b556f3d489959069a"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 87, for Greg's review",
+      "what": "Step 1 of 2 of one change: imports E2E_REPLIES_WAITING, ahead of seeding inbound replies for the new /replies waiting-for-a-person queue. Recorded separately only because the frozen gate re-blocks the file after each edit; see the next amendment on this file for the substantive block and the final hash.",
+      "sha256_after": "7e8f9d72e4ca93c8035ac979df8f0387847f8d9248331908376875545cc26308"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-29",
+      "authorised_by": "Claude (agent), relay cycle 87, for Greg's review",
+      "what": "Step 2 of 2, and the final hash. ADDITIVE: seeds seven InboundReply rows on workspace A (5 that must appear on the new /replies queue in a stated order, plus a NOT_INTERESTED and an UNSUBSCRIBE that must never appear) so e2e/replies-needing-a-person.spec.ts can prove the screen actually READS the database and applies the routing rule, rather than merely rendering an empty table. No existing fixture write was changed. Like the AI ledger rows these are deleteMany-then-createMany rather than upserted, because the screen is 30-day-bounded and ranks by waiting time, so a pinned receivedAt would go stale and then fall out of range. The delete is narrowed to the E2E_REPLIES_WAITING id prefix and sits behind assertSafeTestDatabase, so it cannot reach real data.",
+      "sha256_after": "f4f6d2a0419caf42e87eaca4bee957a62d706af3fd1ccc12912b253822d9c0cd"
     }
   ]
 }

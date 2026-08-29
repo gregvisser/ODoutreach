@@ -96,6 +96,7 @@ const SCREENS: readonly Screen[] = [
   { name: "client-activity", url: `/clients/${CLIENT}/activity` },
   { name: "client-suppression", url: `/clients/${CLIENT}/suppression` },
 
+  { name: "replies-needing-a-person", url: "/replies" },
   { name: "activity", url: "/activity" },
   { name: "activity-outbound-detail", url: `/activity/outbound/${E2E_OUTBOUND_EMAIL.id}` },
   { name: "contacts", url: "/contacts" },

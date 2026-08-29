@@ -5,6 +5,7 @@ import {
   KeyRound,
   LifeBuoy,
   ListFilter,
+  MailQuestion,
   PieChart,
   Settings,
   Sparkles,
@@ -48,6 +49,13 @@ export type NavItem = {
  */
 export const mainNav: NavItem[] = [
   { title: "Reports", href: "/reporting", icon: PieChart },
+  // Every reply still waiting on a human, across all clients. Listed second,
+  // directly under Reports: a warm reply going cold is the most expensive
+  // thing that happens in this product, and the per-client Activity tab could
+  // only show it to somebody who had already guessed which workspace to open.
+  // Same reasoning as "Google logins" below — a queue nobody can find is a
+  // queue nobody works.
+  { title: "Replies to answer", href: "/replies", icon: MailQuestion },
   { title: "Clients", href: "/clients", icon: Users },
   { title: "New client", href: "/clients/new", icon: Sparkles },
   { title: "Universe", href: "/universe", icon: Globe2 },

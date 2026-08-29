@@ -259,6 +259,47 @@ export const E2E_CONNECTED_MAILBOX_COUNT = E2E_MAILBOXES.filter(
   (m) => m.connected,
 ).length;
 
+/**
+ * Replies for the cross-client "waiting for a person" queue (`/replies`).
+ *
+ * Every row is positioned by AGE relative to the moment the seed runs, because
+ * the screen sorts by how long somebody has been waiting and calls a booking
+ * overdue after four hours. Fixed timestamps would drift out of the 30-day
+ * window and start failing for a reason unconnected to the code, so the seed
+ * deletes and recreates these rows rather than upserting them — the same
+ * reasoning as the AI usage ledger above.
+ *
+ * The set pins every branch of the routing rule at once: ordering across two
+ * bands, the unclassified case that production is entirely made of today, and
+ * the two labels that must never appear.
+ */
+export const E2E_REPLIES_WAITING = {
+  /** Prefix for every seeded reply id, so the seed can clear its own. */
+  idPrefix: "e2e-inbound-reply-",
+  /**
+   * Shown, in exactly this order: bookings first (longest wait first), then
+   * the ones somebody has to read, then the diary job.
+   */
+  expectedOrder: [
+    { email: "waiting-positive-old@example.test", hoursAgo: 6 },
+    { email: "waiting-positive-new@example.test", hoursAgo: 0.17 },
+    { email: "waiting-referral@example.test", hoursAgo: 2 },
+    { email: "waiting-unclassified@example.test", hoursAgo: 1 },
+    { email: "waiting-later@example.test", hoursAgo: 72 },
+  ],
+  /** Never shown: a rejection needs nobody, and an opt-out is already actioned. */
+  excluded: [
+    "waiting-not-interested@example.test",
+    "waiting-unsubscribe@example.test",
+  ],
+  /** POSITIVE rows — the number the screen leads with. */
+  wantToTalkCount: 2,
+  /** Only the six-hour-old booking is past its four-hour threshold. */
+  overdueCount: 1,
+  /** The rationale rendered under the first row's badge. */
+  topRationale: "Asked for a call this week.",
+} as const;
+
 export const E2E_STORAGE_STATE = {
   superAdmin: "e2e/.auth/super-admin.json",
   staff: "e2e/.auth/staff.json",

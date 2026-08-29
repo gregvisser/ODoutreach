@@ -30,6 +30,7 @@ import {
   E2E_MEMBER_A,
   E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
+  E2E_REPLIES_WAITING,
   E2E_STAFF,
   E2E_SUPER_ADMIN,
   E2E_SUPPRESSION,
@@ -359,6 +360,72 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         emailDomain: "e2e-contacts.test",
       })),
       skipDuplicates: true,
+    });
+
+    /**
+     * Inbound replies for the cross-client `/replies` queue.
+     *
+     * DELETED AND REWRITTEN each run, like the AI ledger above and for the
+     * same class of reason: this screen is bounded to the last 30 days and
+     * ranks by how long somebody has waited, so an upsert would pin
+     * `receivedAt` to the first ever run — the rows would first go stale, then
+     * drop out of the window entirely. Recreating them stamps each row a fixed
+     * distance behind "now", which is what the assertions describe.
+     *
+     * The delete is narrowed to this fixture's own id prefix and sits behind
+     * `assertSafeTestDatabase` above, so it cannot reach anything real.
+     *
+     * `linkedOutboundEmailId` is deliberately left null: an uncorrelated reply
+     * has no handled-state to read, so these rows also prove that a reply the
+     * matcher could not tie to a send is still routed to a person rather than
+     * quietly dropped.
+     */
+    const seededAt = Date.now();
+    await prisma.inboundReply.deleteMany({
+      where: { id: { startsWith: E2E_REPLIES_WAITING.idPrefix } },
+    });
+    await prisma.inboundReply.createMany({
+      data: [
+        ...E2E_REPLIES_WAITING.expectedOrder.map((row, i) => ({
+          id: `${E2E_REPLIES_WAITING.idPrefix}shown-${String(i)}`,
+          clientId: E2E_CLIENT.id,
+          fromEmail: row.email,
+          subject: `E2E waiting reply ${String(i)}`,
+          bodyPreview: "Seeded reply for the waiting-for-a-person queue.",
+          receivedAt: new Date(seededAt - row.hoursAgo * 3_600_000),
+          // Index 3 is the UNCLASSIFIED row — the state production is entirely
+          // in today, because ANTHROPIC_API_KEY is unset in Azure. It must
+          // still appear on the screen.
+          classification:
+            i === 0 || i === 1
+              ? ("POSITIVE" as const)
+              : i === 2
+                ? ("REFERRAL" as const)
+                : i === 3
+                  ? null
+                  : ("INTERESTED_LATER" as const),
+          classificationRationale:
+            i === 0 ? E2E_REPLIES_WAITING.topRationale : null,
+        })),
+        // The two that must never reach the queue. A rejection needs no
+        // action, and an opt-out was already actioned at ingest.
+        {
+          id: `${E2E_REPLIES_WAITING.idPrefix}excluded-0`,
+          clientId: E2E_CLIENT.id,
+          fromEmail: E2E_REPLIES_WAITING.excluded[0],
+          subject: "E2E rejection",
+          receivedAt: new Date(seededAt - 3_600_000),
+          classification: "NOT_INTERESTED" as const,
+        },
+        {
+          id: `${E2E_REPLIES_WAITING.idPrefix}excluded-1`,
+          clientId: E2E_CLIENT.id,
+          fromEmail: E2E_REPLIES_WAITING.excluded[1],
+          subject: "E2E opt-out",
+          receivedAt: new Date(seededAt - 3_600_000),
+          classification: "UNSUBSCRIBE" as const,
+        },
+      ],
     });
   } finally {
     await prisma.$disconnect();
