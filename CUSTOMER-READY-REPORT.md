@@ -53,6 +53,23 @@ in `e2e/journeys.spec.ts`: watched failing against the unfixed page (the row was
 visible to ordinary staff), then green after the fix. Dimension 3 moves 7 → 9.
 Weighted total 7.56 → 7.76.
 
+**Re-walked 2026-08-29 (cycle 106), dimension 1 only — score UNCHANGED at 8, exactly
+as instructed if the walk cannot be completed.** For the first time, a real operator
+drove a template, an imported contact and a sequence through the actual screens
+(not a staged queue row) across two independent passes with two different real
+recipients, and both reached "Ready to launch." Every real launch attempt was
+refused by the app itself, before any email left the building, with the identical
+on-screen message both times. Traced in the deployed code to a genuine,
+reproducible defect: BidlowAI's `Client.defaultSenderEmail` is null, so the mailto
+unsubscribe fallback resolves to an empty string and the send-time composition
+check marks every send not-ready — a defect no screen in the product can fix
+today, since none sets that field. Nothing was sent, confirmed against the
+outbound queue counts (unchanged before and after). Full account:
+`docs/ops/SEQUENCE-LAUNCH-SCREEN-WALK-2026-08-29.md`. Weighted total **unchanged
+at 7.76** — the score did not move, only the evidence behind it. Named plainly:
+the send, the arrival, the reply, and the reply-matching confirmation remain
+unproven through the screens.
+
 > **Sell gate: Engineering ≥ 8 AND Customer-Ready ≥ 8. This STILL does not pass.**
 > Engineering clears it. **All ten named customer-ready blockers are now closed**,
 > and customer-ready is still 0.24 short, at 7.76. Closing every named defect was
@@ -116,7 +133,7 @@ for production, not a prediction of it.
 
 | # | Dimension | Wt | Score | What was actually observed |
 |---|---|:--:|:--:|---|
-| 1 | Core journeys end-to-end | 18 | **8** | Proven twice: a real email left the system 2026-08-26 12:16:36 UTC through the real queue worker with its raw MIME inspected, **and** the enrol→launch→send→reply→opt-out chain is covered by a merge-blocking test proven capable of failing. Was 5. Not higher because the browser walk is navigation-only — no human has clicked compose→send→reply on this build |
+| 1 | Core journeys end-to-end | 18 | **8** | Proven twice: a real email left the system 2026-08-26 12:16:36 UTC through the real queue worker with its raw MIME inspected, **and** the enrol→launch→send→reply→opt-out chain is covered by a merge-blocking test proven capable of failing. Was 5. *(Re-walked 2026-08-29, cycle 106 — score held at 8 as instructed.)* A real operator drove a template, contact and sequence through the actual screens to "Ready to launch," twice, and every real launch was refused by the app itself with the same message both times — traced to a genuine defect (BidlowAI's `Client.defaultSenderEmail` is null, so the mailto unsubscribe fallback resolves empty and blocks every send). Nothing sent. Send, arrival, reply and reply-matching remain unproven |
 | 2 | Nothing half-built in the path | 12 | **8** | All 30 screens render real content — no stubs, no "coming soon", no placeholder text, zero failed requests. Held at 8: two DESIGN.json signature elements are specified and not built (absent, not half-built) |
 | 3 | No dev-isms / internal leakage | 10 | **9** | *(Re-graded 2026-08-29, cycle 103.)* Up from 7 — CR-08 closed. The one hit the 30-screen scan found (a raw correlation cuid) is now gated to super admins only, matching the mailbox-diagnostics precedent, and restored to the 9 this dimension held before that hit was found. Caveat: not a fresh full-persona re-scan of all 30 screens — the direct proof is this one page under both personas, red-first in `e2e/journeys.spec.ts` |
 | 4 | Professional polish & UX | 12 | **8** | Coherent, real empty states, no layout breakage, no console noise. The design system is now *enforced* by 55 tests computing WCAG 2.2 AA contrast properly. Mobile now checked (cycle 100, CR-09 closed) — four defects found and fixed. Held at 8: three measured contrast defects, unrelated to mobile, still open |
