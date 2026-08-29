@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AiSequenceDraftPanel } from "@/components/clients/email-templates/ai-sequence-draft-panel";
 import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
@@ -78,6 +80,14 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         canMutate={canMutateTemplates}
         overview={templatesOverview}
         flash={templatesFlash}
+      />
+
+      <AiSequenceDraftPanel
+        clientId={client.id}
+        clientName={client.name}
+        canMutate={canMutateTemplates}
+        aiEnabled={areAiFeaturesEnabled()}
+        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
       />
 
       <Card className="border-border/80 shadow-sm">

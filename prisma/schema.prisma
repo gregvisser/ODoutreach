@@ -1819,6 +1819,10 @@ enum ReplyClassification {
 /// invoice can be broken down by what it bought.
 enum AiFeature {
   REPLY_CLASSIFICATION
+  /// Drafting a whole 5-touch outreach sequence for one client. Billed to that
+  /// client like any other call; the drafts it produces are DRAFT templates and
+  /// are not sendable until a person approves each one.
+  SEQUENCE_DRAFTING
 }
 
 /// How an AI call ended.
