@@ -45,10 +45,15 @@ async function main(): Promise<void> {
     const totalSentEver = await prisma.outboundEmail.count({
       where: { sentAt: { not: null } },
     });
+    const sendRange = await prisma.outboundEmail.aggregate({
+      where: { sentAt: { not: null } },
+      _min: { sentAt: true },
+      _max: { sentAt: true },
+    });
 
     console.log(
       `Sent since the fix merged (${FIX_MERGED_AT.toISOString().slice(0, 10)}): ${totalSentSinceFix.toLocaleString()}. ` +
-        `Sent ever: ${totalSentEver.toLocaleString()}.`,
+        `Sent ever: ${totalSentEver.toLocaleString()}, ${sendRange._min.sentAt?.toISOString() ?? "?"} to ${sendRange._max.sentAt?.toISOString() ?? "?"}.`,
     );
 
     const bounced = await prisma.outboundEmail.findMany({
