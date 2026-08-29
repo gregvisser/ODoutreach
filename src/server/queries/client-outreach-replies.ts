@@ -2,6 +2,8 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 
+import type { ReplyClassification } from "@/generated/prisma/enums";
+
 export type OutreachReplyRow = {
   id: string;
   fromEmail: string;
@@ -13,6 +15,9 @@ export type OutreachReplyRow = {
   contactName: string | null;
   sequenceName: string | null;
   outboundSubject: string | null;
+  /** Row 80 — what the AI read this reply as. Null = nobody has labelled it. */
+  classification: ReplyClassification | null;
+  classificationRationale: string | null;
 };
 
 export type MailboxReplyGroup = {
@@ -52,6 +57,8 @@ export async function loadClientOutreachReplies(
       receivedAt: true,
       matchMethod: true,
       linkedOutboundEmailId: true,
+      classification: true,
+      classificationRationale: true,
       contact: { select: { fullName: true, email: true } },
       linkedOutbound: {
         select: {
@@ -95,6 +102,8 @@ export async function loadClientOutreachReplies(
       sequenceName:
         r.linkedOutbound?.sequenceStepSends?.[0]?.sequence?.name ?? null,
       outboundSubject: r.linkedOutbound?.subject ?? null,
+      classification: r.classification,
+      classificationRationale: r.classificationRationale,
     };
 
     const existing = grouped.get(mbx.id);

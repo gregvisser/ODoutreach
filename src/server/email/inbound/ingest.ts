@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import type { InboundMatchMethod } from "@/generated/prisma/enums";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
 import { normalizeEmail } from "@/lib/normalize";
+import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { resolveInternalDomainsForClient } from "@/server/inbox/internal-domains";
 import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
@@ -168,6 +169,11 @@ export async function ingestInboundForClient(params: {
       outboundEmailId: linkedOutboundEmailId,
     });
   }
+
+  // Row 80 — label the reply for routing. Outside the `linkedOutboundEmailId`
+  // branch deliberately: an UNLINKED reply is exactly the one nobody is
+  // watching, so it is the one that most needs a label. Never throws.
+  await classifyInboundReplyQuietly({ replyId: row.id });
 
   return { id: row.id, matchMethod };
 }

@@ -15,6 +15,8 @@ const stopFollowUpsMock = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ enrollmentsStopped: 0 }),
 );
 
+const classifyReplyMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
 vi.mock("@/lib/db", () => ({
   prisma: prismaMock,
 }));
@@ -30,6 +32,10 @@ vi.mock("@/server/email/outbound/lifecycle", () => ({
 
 vi.mock("@/server/email-sequences/stop-follow-ups-on-reply", () => ({
   stopFollowUpsForLinkedReply: stopFollowUpsMock,
+}));
+
+vi.mock("@/server/ai/classify-inbound-reply", () => ({
+  classifyInboundReplyQuietly: classifyReplyMock,
 }));
 
 import {
@@ -80,6 +86,7 @@ describe("processSyncedMessageForReply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stopFollowUpsMock.mockResolvedValue({ enrollmentsStopped: 0 });
+    classifyReplyMock.mockResolvedValue(undefined);
   });
 
   it("links definitively by rfc822 Message-ID (BY_THREAD_REF)", async () => {
@@ -128,6 +135,46 @@ describe("processSyncedMessageForReply", () => {
       clientId: "c1",
       outboundEmailId: "ob-stop",
     });
+  });
+
+  /**
+   * Row 80 — classification must FIRE on the real production path.
+   *
+   * This is the one that matters: `processSyncedMessageForReply` is what the
+   * 15-minute `sync-replies` cron actually calls for live client mailboxes. A
+   * classifier wired only into the legacy ESP-webhook ingest would label
+   * nothing in production while every test still passed.
+   */
+  it("classifies the reply it just stored (row 80)", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob-classify",
+      contactId: "ct-classify",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-classify" });
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    expect(classifyReplyMock).toHaveBeenCalledWith({ replyId: "reply-classify" });
+  });
+
+  it("does not classify when no reply was stored", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue(null);
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    // Nothing was stored, so there is nothing to label and nothing to charge.
+    expect(classifyReplyMock).not.toHaveBeenCalled();
+  });
+
+  it("does not re-classify — and re-charge — a duplicate reply", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue({ id: "existing" });
+
+    await processSyncedMessageForReply(BASE_INPUT);
+
+    expect(classifyReplyMock).not.toHaveBeenCalled();
   });
 
   it("does not call stopFollowUpsForLinkedReply when no outbound matched", async () => {

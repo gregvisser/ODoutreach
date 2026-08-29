@@ -379,58 +379,58 @@ model SupportTicketAttachment {
 // ——— Tenant / workspace ———
 
 model Client {
-  id                            String                    @id @default(cuid())
-  name                          String
-  slug                          String                    @unique
-  status                        ClientLifecycleStatus     @default(ONBOARDING)
-  industry                      String?
-  website                       String?
-  notes                         String?
+  id                               String                    @id @default(cuid())
+  name                             String
+  slug                             String                    @unique
+  status                           ClientLifecycleStatus     @default(ONBOARDING)
+  industry                         String?
+  website                          String?
+  notes                            String?
   /// Optional per-client logo URL — rendered in the client workspace header, overview, and brief.
-  logoUrl                       String?
+  logoUrl                          String?
   /// Optional accessible alt text for `logoUrl`. When null, UI falls back to the client name.
-  logoAltText                   String?
+  logoAltText                      String?
   /// Opaque token for inbound webhook URL — maps to this tenant only
-  inboundIngestToken            String                    @unique @default(cuid())
+  inboundIngestToken               String                    @unique @default(cuid())
   /// Default From: for outbound (operational placeholder until per-mailbox config)
-  defaultSenderEmail            String?
+  defaultSenderEmail               String?
   /// Provider/domain verification is tracked outside this app until integrated — gates real sends when enforced
-  senderIdentityStatus          SenderIdentityStatus      @default(NOT_SET)
+  senderIdentityStatus             SenderIdentityStatus      @default(NOT_SET)
   /// PR K — Recorded launch approval trail (null for legacy ACTIVE clients predating the workflow).
-  launchApprovedAt              DateTime?
-  launchApprovedByStaffUserId   String?
-  launchApprovalMode            ClientLaunchApprovalMode?
-  launchApprovalNotes           String?                   @db.Text
+  launchApprovedAt                 DateTime?
+  launchApprovedByStaffUserId      String?
+  launchApprovalMode               ClientLaunchApprovalMode?
+  launchApprovalNotes              String?                   @db.Text
   /// Snapshot of the readiness checklist recorded at approval time — never rewritten after approval.
-  launchApprovalChecklist       Json?
+  launchApprovalChecklist          Json?
   /// Per-client business brief — structured v2. JSON keys: line1, line2, city, region, postalCode, country, formattedSummary
-  briefBusinessAddress          Json?
+  briefBusinessAddress             Json?
   /// Main point of contact: firstName, lastName, role, email, mobile, status (string enum: active|inactive|unknown)
-  briefMainContact              Json?
+  briefMainContact                 Json?
   /// Company LinkedIn page URL
-  briefLinkedinUrl              String?
+  briefLinkedinUrl                 String?
   /// Company landline shown in outreach mailbox signatures — the default the
   /// one-click branded signature uses for every mailbox. A mailbox's own
   /// `senderPhone` overrides it when set.
-  signaturePhone                String?
+  signaturePhone                   String?
   /// How many outreach emails leave a mailbox together, with a natural gap
   /// before the next group — the "4 at a time" the client was promised. Null
   /// means use the house default (see DEFAULT_SEND_BATCH_SIZE). Clamped to
   /// 1..MAX_SEND_BATCH_SIZE on read; it can only re-shape a daily cap, never
   /// raise one.
-  sendBatchSize                 Int?
+  sendBatchSize                    Int?
   /// Commercial handling tier — CORPORATE (VIP) / MID / STANDARD. Drives the
   /// four-at-a-time release gate on the send screen (corporate only). Null =
   /// nobody has graded this account yet, which is handled as STANDARD: the
   /// grade can only ever slow sending down, so defaulting an ungraded client
   /// into the slow path would silently change live behaviour for every
   /// existing client.
-  accountGrade                  ClientAccountGrade?
+  accountGrade                     ClientAccountGrade?
   /// Who last set `accountGrade`, shown ON SCREEN next to the control. A change
   /// that decides how a client's outreach is released must have a name against
   /// it; the full history is appended to AuditLog as well.
-  accountGradeSetByStaffUserId  String?
-  accountGradeSetAt             DateTime?
+  accountGradeSetByStaffUserId     String?
+  accountGradeSetAt                DateTime?
   /// Machine sending or human sending, for THIS client. Consulted by
   /// `@/lib/safety/autonomous-actor-guard` at the moment of dispatch.
   /// true  = a machine may send for this client on its own.
@@ -438,30 +438,30 @@ model Client {
   /// null  = NOBODY HAS DECIDED YET, which refuses. Three states on purpose:
   /// a plain boolean cannot tell "we decided not to" from "nobody has looked at
   /// this client", and absence is not permission.
-  autonomousSendEnabled         Boolean?
+  autonomousSendEnabled            Boolean?
   /// Who last set `autonomousSendEnabled`, shown ON SCREEN next to the switch.
   /// A decision that lets a machine cold-email a stranger from this client's own
   /// domain must have a name against it; the full history goes to AuditLog too.
-  autonomousSendSetByStaffUserId String?
-  autonomousSendSetAt           DateTime?
+  autonomousSendSetByStaffUserId   String?
+  autonomousSendSetAt              DateTime?
   /// Operator-only context — not shown in outreach templates
-  briefInternalNotes            String?                   @db.Text
-  briefAssignedAccountManagerId String?
+  briefInternalNotes               String?                   @db.Text
+  briefAssignedAccountManagerId    String?
   /// Sender-aligned outreach link domain (go.<customer-domain>) that serves this
   /// client's unsubscribe + open-tracking links. Aligning links with the sending
   /// domain avoids the cross-domain (phishing) signal that gets outreach
   /// quarantined. Set only once the DNS CNAME + app custom-domain routing are live.
-  outreachLinkDomain            String?
+  outreachLinkDomain               String?
   /// When `outreachLinkDomain` was verified as serving correctly. Null = unverified;
   /// real-prospect sends are blocked when the hard rule is enforced
   /// (OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN).
-  outreachLinkDomainVerifiedAt  DateTime?
+  outreachLinkDomainVerifiedAt     DateTime?
   /// Per-client open-tracking opt-in. NULL = OFF, and null is the default for
   /// every client forever — tracking is never on because nobody turned it off.
   /// Only set once the customer has agreed to the DNS change and their
   /// `outreachLinkDomain` is verified, so a tracked email can only ever carry a
   /// same-domain pixel. `OPEN_TRACKING_PIXEL=off` remains a global backstop.
-  openTrackingEnabledAt         DateTime?
+  openTrackingEnabledAt            DateTime?
   /// Who switched open tracking on for this client (audit trail; null when off).
   openTrackingEnabledByStaffUserId String?
   /// When this system last RESOLVED this client's SPF, DKIM, DMARC and tracking
@@ -471,22 +471,22 @@ model Client {
   /// boolean because DNS is a lease, not a fact: `decideClientOpenTracking`
   /// treats a value older than TRACKING_DNS_MAX_AGE_DAYS as expired, so tracking
   /// closes itself even if the scheduled re-check stops running.
-  trackingDnsVerifiedAt         DateTime?
+  trackingDnsVerifiedAt            DateTime?
   /// When the verifier last LOOKED, pass or fail. Distinct from the field above
   /// so the screen can tell "checked an hour ago and it failed" apart from
   /// "nothing has checked this since Tuesday" — those need different actions.
-  trackingDnsCheckedAt          DateTime?
+  trackingDnsCheckedAt             DateTime?
   /// The four check results from the most recent run, as
   /// `{ label, pass, detail }[]`. Stored so staff can see exactly what the
   /// system found — the record it actually read, and what it wanted instead —
   /// without anyone running dig by hand.
-  trackingDnsReport             Json?
-  createdAt                     DateTime                  @default(now())
-  updatedAt                     DateTime                  @updatedAt
+  trackingDnsReport                Json?
+  createdAt                        DateTime                  @default(now())
+  updatedAt                        DateTime                  @updatedAt
   /// F2 — soft-delete marker. Non-null = workspace deleted: hidden everywhere
   /// and recoverable within the window before a separate, explicit hard purge.
-  deletedAt                     DateTime?
-  deletedByStaffUserId          String?
+  deletedAt                        DateTime?
+  deletedByStaffUserId             String?
 
   memberships                     ClientMembership[]
   onboarding                      ClientOnboarding?
@@ -526,6 +526,8 @@ model Client {
   briefTaxonomyFirstUses          BriefTaxonomyTerm[]              @relation("BriefTermFirstClient")
   universesFirstSeen              ContactUniverse[]                @relation("UniverseFirstSeenClient")
   contactUniverseSources          ContactUniverseSource[]
+  /// Billing ledger for phase-2 AI calls made on this client's behalf.
+  aiUsageEvents                   AiUsageEvent[]
 
   @@index([deletedAt])
   @@index([status])
@@ -1696,6 +1698,21 @@ model InboundReply {
   metadata              Json?
   createdAt             DateTime           @default(now())
 
+  /// What the AI read this reply as. NULL means not classified — either the
+  /// feature is off, the call failed, or the model gave an answer we would not
+  /// store. Null must always route the reply to a person; it never means
+  /// "nothing interesting here".
+  classification           ReplyClassification?
+  /// 0-100, advisory only. Never used as a gate — a low-confidence POSITIVE
+  /// still needs a human faster than a high-confidence NOT_INTERESTED.
+  classificationConfidence Int?
+  classifiedAt             DateTime?
+  /// Model id that produced the label, so a re-classification after a model
+  /// change can be told apart from the original.
+  classificationModel      String?
+  /// One short sentence for the person reading the inbox.
+  classificationRationale  String?              @db.Text
+
   client         Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   contact        Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   linkedOutbound OutboundEmail? @relation("ReplyToOutbound", fields: [linkedOutboundEmailId], references: [id], onDelete: SetNull)
@@ -1781,4 +1798,83 @@ model AuditLog {
 
   @@index([clientId, createdAt])
   @@index([staffUserId, createdAt])
+}
+
+// ——— AI (phase 2) ———
+
+/// What a recipient meant when they replied. `UNCLEAR` is deliberate: a
+/// classifier with no "I do not know" guesses, and its guesses land on the
+/// majority class — which for cold outreach is rejection. See
+/// `src/lib/ai/reply-classification.ts` for the full reasoning.
+enum ReplyClassification {
+  POSITIVE
+  INTERESTED_LATER
+  REFERRAL
+  NOT_INTERESTED
+  UNSUBSCRIBE
+  UNCLEAR
+}
+
+/// Which phase-2 feature spent the money. Every AI call names one, so a client
+/// invoice can be broken down by what it bought.
+enum AiFeature {
+  REPLY_CLASSIFICATION
+}
+
+/// How an AI call ended.
+///   OK       — the model answered and we used it.
+///   REFUSED  — we declined to call at all (switched off, no key, no rate).
+///              Costs nothing, and is recorded so "nothing is happening" is
+///              visible rather than silent.
+///   ERROR    — we called and it failed. Still recorded: a failed call can
+///              still have burned input tokens, and an invisible error rate is
+///              how a feature reports success while never firing.
+enum AiCallStatus {
+  OK
+  REFUSED
+  ERROR
+}
+
+/// One row per AI call, written as the call happens.
+///
+/// This is a BILLING LEDGER, not telemetry. Greg invoices OpensDoors for API
+/// usage, so the row is written for every outcome including refusals and
+/// errors, and it stores the token counts AND the rates applied — cost is
+/// derived and can be recomputed, tokens cannot be reconstructed later.
+///
+/// `clientSlugAtCall` duplicates the client's slug on purpose. `clientId` goes
+/// null if a workspace is ever deleted, and an invoice that loses its line
+/// items when a client leaves is worse than useless.
+model AiUsageEvent {
+  id                        String       @id @default(cuid())
+  clientId                  String?
+  /// Denormalised so the ledger survives client deletion. Never rewritten.
+  clientSlugAtCall          String
+  feature                   AiFeature
+  status                    AiCallStatus
+  /// Exact model id string as sent to the API.
+  model                     String
+  inputTokens               Int          @default(0)
+  outputTokens              Int          @default(0)
+  /// Derived: tokens x rates, in integer micro-USD. Never a float.
+  costMicroUsd              Int          @default(0)
+  /// The rates actually applied, stored so a corrected price list can
+  /// recompute historical rows without changing what was already invoiced.
+  inputRatePerMTokMicroUsd  Int          @default(0)
+  outputRatePerMTokMicroUsd Int          @default(0)
+  /// Which version of the price list produced `costMicroUsd`.
+  rateVersion               String
+  latencyMs                 Int?
+  /// What the call was about, for tracing a charge back to a real thing.
+  subjectType               String?
+  subjectId                 String?
+  /// Short machine-readable reason for a REFUSED or ERROR row.
+  outcomeCode               String?
+  createdAt                 DateTime     @default(now())
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([feature, createdAt])
+  @@index([createdAt])
 }
