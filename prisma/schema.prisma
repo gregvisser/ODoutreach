@@ -299,6 +299,7 @@ model StaffUser {
   sequenceEnrollmentsCreated      ClientEmailSequenceEnrollment[]  @relation("ClientEmailSequenceEnrollmentCreatedBy")
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
   aiCampaignReviewsRequested      AiCampaignReview[]               @relation("AiCampaignReviewRequestedBy")
+  aiSendTimeAdviceRequested       AiSendTimeAdvice[]               @relation("AiSendTimeAdviceRequestedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
@@ -532,6 +533,7 @@ model Client {
   /// AI critiques of this client's campaigns. Advisory only — see
   /// `AiCampaignReview`.
   aiCampaignReviews               AiCampaignReview[]
+  aiSendTimeAdvice                AiSendTimeAdvice[]
 
   @@index([deletedAt])
   @@index([status])
@@ -1835,6 +1837,11 @@ enum AiFeature {
   /// to that client. Produces advice on a screen and nothing else — it does
   /// not change a template, a sequence, or whether either may be sent.
   CAMPAIGN_REVIEW
+  /// Reading one client's own send-and-reply history to advise on when to send.
+  /// Billed to that client. Produces advice on a screen and nothing else — it
+  /// sets no schedule, and it cannot: when mail leaves is decided by a GitHub
+  /// Actions cron, not by anything in this database.
+  SEND_TIME_ADVICE
 }
 
 /// How an AI call ended.
@@ -1934,6 +1941,50 @@ model AiCampaignReview {
   requestedBy StaffUser?          @relation("AiCampaignReviewRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([sequenceId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([requestedByStaffUserId])
+}
+
+/// One piece of advice about WHEN to send for a client, and the evidence it was
+/// drawn from.
+///
+/// NOTHING READS THIS BUT A SCREEN. There is deliberately no column here that a
+/// scheduler could consume: the windows are stored as JSON prose-and-hours for
+/// display, not as a setting, because when mail actually leaves is decided by
+/// the cron in `.github/workflows/process-outbound-queue.yml` and by nothing in
+/// this database. See `src/lib/ai/send-time-advice.ts` for why that separation
+/// is structural rather than a style choice.
+model AiSendTimeAdvice {
+  id                     String   @id @default(cuid())
+  clientId               String
+  /// One paragraph of plain English about what this client's history shows.
+  summary                String
+  /// The recommendation, as a JSON array of {weekday, startHour, endHour,
+  /// reason}, shaped and length-capped by `parseSendTimeAdviceToolUse`. An
+  /// EMPTY array is a real answer: "the time of day does not matter much here".
+  windows                Json
+  /// What the history does not prove, as a JSON array of short strings.
+  cautions               Json
+  /// The evidence the advice was drawn from, as a JSON array of
+  /// {weekday, hour, sent, replied, replyRatePercent}. Stored alongside so the
+  /// panel can show the numbers next to the opinion, and so advice given on a
+  /// thin history stays auditable after the history has grown.
+  evidence               Json
+  /// Totals behind the evidence, and how far back it was read. Kept as columns
+  /// rather than dug out of the JSON so a screen can caveat the advice cheaply.
+  totalSent              Int
+  totalReplied           Int
+  lookbackDays           Int
+  /// Exact model id, and the prompt version that produced this. Stored so
+  /// advice written under an older prompt is not read as a current one.
+  model                  String
+  promptVersion          String
+  requestedByStaffUserId String?
+  createdAt              DateTime @default(now())
+
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestedBy StaffUser? @relation("AiSendTimeAdviceRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
+
   @@index([clientId, createdAt])
   @@index([requestedByStaffUserId])
 }
