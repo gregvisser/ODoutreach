@@ -30,6 +30,8 @@ import {
   type MailboxConnectCredentialRow,
   type MailboxConnectionStatusValue,
 } from "@/lib/mailboxes/mailbox-connect-credential";
+import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
+import { pendingConnectionStatus } from "@/lib/mailboxes/mailboxes-operator-model";
 
 function maskAddress(email: string): string {
   const at = email.indexOf("@");
@@ -42,6 +44,24 @@ function ageInDays(from: Date | null, now: Date): string {
   const days = Math.floor((now.getTime() - from.getTime()) / 86_400_000);
   if (days < 1) return "today";
   return days === 1 ? "1 day" : `${days} days`;
+}
+
+/**
+ * Plain-English state of a mailbox's OAuth sign-in window.
+ *
+ * Uses the SHIPPED `isMailboxOAuthStateExpired` — the exact predicate both
+ * callbacks apply before they will accept a returning sign-in — so "closed"
+ * here means the server would genuinely refuse the round trip, not that this
+ * script's own arithmetic thinks it is old.
+ */
+function describeOAuthWindow(expiresAt: Date | null, now: Date): string {
+  if (!expiresAt) {
+    return "NO expiry recorded (NULL) — the callbacks refuse a null state, so this window cannot be finished";
+  }
+  if (!isMailboxOAuthStateExpired(expiresAt, now)) {
+    return `OPEN until ${expiresAt.toISOString()} — a sign-in really is in flight`;
+  }
+  return `CLOSED since ${expiresAt.toISOString()} (${ageInDays(expiresAt, now)} ago)`;
 }
 
 async function main(): Promise<void> {
@@ -126,6 +146,26 @@ async function main(): Promise<void> {
               ? `PREVIOUSLY WORKING — last inbox sync ${ageInDays(d.row.lastSyncAt, now)} ago`
               : "no inbox sync on record — may never have been connected"),
         );
+        // Is the sign-in window this row's label points at actually still open?
+        // The screen tells the operator to "finish sign-in in the Microsoft or
+        // Google window", which is only true while the state is live. This is
+        // the fact that decides whether that sentence is honest, so it is
+        // reported per row rather than inferred from the age.
+        console.log(
+          `      sign-in window: ${describeOAuthWindow(d.row.oauthStateExpiresAt, now)}`,
+        );
+        // What the Mailboxes screen will actually SAY about this row, produced
+        // by the SHIPPED `pendingConnectionStatus` — the same function the page
+        // renders. Fixtures prove the rule; this proves the rule fires on the
+        // real rows, which is the thing this repository keeps getting wrong.
+        const shown = pendingConnectionStatus(
+          {
+            oauthStateExpiresAt:
+              d.row.oauthStateExpiresAt?.toISOString() ?? null,
+          },
+          now,
+        );
+        console.log(`      operator sees: "${shown.label}" — ${shown.sublabel}`);
       }
       console.log(
         "\nEach of these needs somebody to press Connect and complete the provider sign-in. " +

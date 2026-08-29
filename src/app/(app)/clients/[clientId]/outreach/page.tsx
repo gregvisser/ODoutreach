@@ -109,6 +109,9 @@ export default async function ClientOutreachPage({
     focusSequenceId: sequenceIdFromQuery,
   };
 
+  // One clock for the whole list, so two mailboxes rendered in the same pass
+  // cannot be judged against two different "now"s.
+  const now = new Date();
   const launchMailboxOptions = bundle.mailboxRows
     .filter((m) => !m.workspaceRemovedAt && m.isActive)
     .map((m) => {
@@ -121,7 +124,7 @@ export default async function ClientOutreachPage({
           ? new Date(m.workspaceRemovedAt)
           : null,
       });
-      const status = mailboxRowOperatorStatus(m);
+      const status = mailboxRowOperatorStatus(m, now);
       const readiness = bundle.sendingReadinessByMailboxId[m.id];
       const capBlocked = readiness?.atLedgerCap === true;
       return {
