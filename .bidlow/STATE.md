@@ -1,6 +1,104 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 94) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 96) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 96, queue row 85: a sixty-day-old mailbox stops claiming a sign-in window is open.
+
+Row 85 is **`DONE 96`**. Shipped **`d3db9f1` (PR #376)**, merged on green CI,
+deployed and **verified by commit hash** against the direct App Service URL
+(`/api/build-info` → `d3db9f12108e32cdf62fc97cf3320363b6add072`). Open PRs at
+start of cycle: **zero**. At end: **zero**.
+
+**Cycle 95 did not write a STATE entry** (row 84, the daily digest that was blind
+to six Microsoft mailboxes, `PR #375`). Its log existed but was left *uncommitted*
+in the working tree; this cycle committed it. It is recorded in
+`.bidlow/relay/log/cycle-095.md`. Row 84 remains **BLOCKED on Greg** — the eight
+reconnects need each mailbox owner to sign in at their provider.
+
+### What changed
+
+Eight live mailboxes sit in `PENDING_CONNECTION` with no credential, aged 2 to 67
+days, and every one read *"Needs approval — Finish sign-in in the Microsoft or
+Google window, or press Connect again."* True for the 15 minutes the OAuth state
+is alive; misleading for ever after. Same defect class as the deleted-account
+labels cycle 7 corrected.
+
+The window is now open **exactly** when the shipped `isMailboxOAuthStateExpired`
+— the predicate both OAuth callbacks apply before accepting a returning sign-in —
+says the callback would accept it. One shared predicate, so the screen can never
+invite an operator into a round trip the server already refuses. Closed windows
+read "Sign-in never finished" and name the date. Applied to **three** call sites,
+not the one the row named: the status sublabel, `providerConnectionHint`, and
+`connectActionLabel`, which rendered "Complete sign-in" — a button promising to
+resume a flow that is gone.
+
+### The row's premise was wrong, and measuring first is what caught it
+
+Row 85 asked for the expiry to be measured before designing, predicting the 8
+rows would be NULL because "cycle 64 only added that column recently". Backwards:
+cycle 64 (`bdf11ea`) added the **check**; `oauthState` and `oauthStateExpiresAt`
+shipped **together** on 2026-04-20 in `20260420120000_mailbox_oauth_connection`.
+
+Probe run **33245630085** (read-only, production): **all 8 rows hold a real
+expiry, all 8 CLOSED (2–67 days ago), none NULL.** QUEUE.md row 85 carries the
+correction inline. This is the fourth cycle in recent memory to find its brief out
+of date — **check `main`, and measure, before believing a brief.**
+
+### Decisions worth keeping
+
+* **A NULL expiry reads as CLOSED — decided, not defaulted.** Two grounds
+  provable from shipped code: the callbacks refuse a null state outright, and
+  every writer of `oauthStateExpiresAt: null` moves the row off
+  `PENDING_CONNECTION` in the same update. So it is a **defensive** branch and
+  must not fabricate a closure date; a test asserts the null copy contains no
+  four-digit year.
+* **Dates format from UTC parts, never `toLocaleDateString`/date-fns.** This
+  renders in a client component: a London browser would disagree with UTC-running
+  Azure on a late-evening timestamp — a hydration mismatch on a date nobody can
+  check.
+* **Not a one-way door.** Copy and a view-model only. No schema, no migration, no
+  client data moved, no email. Fully reversible by revert.
+
+### Red first, and proven to fire
+
+`mailboxes-operator-model.test.ts`: **4 failed, 26 passed** before the change. The
+26 passing are the must-not-change cases (in-flight sign-in unchanged,
+CONNECTED/DRAFT unaffected, deleted account still outranking a closed window).
+
+One pre-existing assertion **was encoding the defect** — it built a
+`PENDING_CONNECTION` row with no expiry and expected "Needs approval", the exact
+state eight mailboxes had been in for months. Corrected to supply a live window,
+not weakened.
+
+**Fires on real data, not just fixtures:** probe run **33246187533** renders each
+of the 8 real production rows through the *shipped* `pendingConnectionStatus` and
+prints the operator-facing sentence. All eight print "Sign-in never finished" with
+their true closure dates.
+
+Gates: lint 0, typecheck 0, **3626 tests / 347 files**, build green, CI verify +
+E2E pass.
+
+### Nothing contradicts PROJECT.json
+
+The hard rule was never approached: no send, no delete, no client data touched.
+
+### Pick up first, next session
+
+1. **Row 86 is the natural next one** — a failed reconnect still demotes a mailbox
+   whose stored credential may be perfectly good (both OAuth callbacks write
+   `CONNECTION_ERROR` blindly). Deliberately left alone this cycle: it is a
+   credential-lifecycle concern, not a labelling one. The `account_mismatch` case
+   is the one to prove it with, since the stored credential is definitely fine.
+2. **Row 87** — `relay/cycle-log-reaches-git.test.ts` flakes on a 5s timeout under
+   worker contention. It is a required check and will one day red a good cycle.
+   Do **not** just raise the timeout.
+3. **Row 84 stays BLOCKED and is Greg's**: chase the eight reconnects across five
+   workspaces (OpensDoors' own mailbox among them, 56 days dark), and decide
+   whether to publish the Google OAuth app — declined twice, still the only fix
+   for the weekly Google expiry. Both now reach his inbox daily via cycle 95's
+   digest section.
+4. **The watcher restart is still outstanding** (see cycle 83/94 notes) — cycle
+   94's duplicate-number guard only protects the queue from the next restart.
 
 ## Session 2026-08-29 - Relay cycle 94, queue row 82: the relay refuses to write to a row it cannot identify.
 
