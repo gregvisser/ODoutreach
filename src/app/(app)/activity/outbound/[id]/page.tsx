@@ -63,8 +63,12 @@ export default async function OutboundDetailPage({ params }: Props) {
             <span>{row.fromAddress ?? "—"}</span>
             <span className="text-muted-foreground">Subject</span>
             <span>{row.subject ?? "—"}</span>
-            <span className="text-muted-foreground">Correlation</span>
-            <span className="break-all font-mono text-xs">{row.correlationId}</span>
+            {staff.isSuperAdmin ? (
+              <>
+                <span className="text-muted-foreground">Correlation</span>
+                <span className="break-all font-mono text-xs">{row.correlationId}</span>
+              </>
+            ) : null}
             <span className="text-muted-foreground">Provider id</span>
             <span className="break-all font-mono text-xs">
               {row.providerMessageId ?? "—"}
