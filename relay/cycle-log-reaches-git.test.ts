@@ -39,7 +39,7 @@
 // folded in here and quietly called fixed.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -86,6 +86,56 @@ function isIgnoredByGit(relPath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Credential shapes that must never be committed inside a cycle log.
+ *
+ * Deliberately shape-based, not name-based. A log is prose about the build, so
+ * it names `DATABASE_URL` and `GOOGLE_CLIENT_SECRET` constantly and must be
+ * allowed to; what it must never do is carry the VALUE. Every pattern below was
+ * run against all 77 existing logs and returned zero, so this gate starts green
+ * on real history rather than being switched on over a pile of exceptions.
+ */
+const CREDENTIAL_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
+  { name: "GitHub token", re: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/ },
+  { name: "GitHub fine-grained PAT", re: /\bgithub_pat_[A-Za-z0-9_]{30,}\b/ },
+  { name: "AWS access key id", re: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "Google API key", re: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { name: "Anthropic API key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/ },
+  { name: "OpenAI-style API key", re: /\bsk-[A-Za-z0-9]{32,}\b/ },
+  { name: "Slack token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}/ },
+  { name: "PEM private key", re: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----/ },
+  {
+    name: "JSON Web Token",
+    re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
+  },
+  {
+    name: "connection string with an inline password",
+    re: /\b(?:postgres|postgresql|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s:/@]+:[^\s@]+@/,
+  },
+  {
+    name: "Sentry DSN including its key",
+    re: /https:\/\/[0-9a-f]{16,}@[A-Za-z0-9.-]*ingest[A-Za-z0-9.-]*\//,
+  },
+  {
+    name: "secret environment variable assigned a real value",
+    re: /\b(?:AUTH_SECRET|NEXTAUTH_SECRET|DATABASE_URL|PRODUCTION_DATABASE_URL|AZURE_AD_CLIENT_SECRET|MICROSOFT_CLIENT_SECRET|GOOGLE_CLIENT_SECRET|GOOGLE_SERVICE_ACCOUNT_JSON_BASE64|RESEND_API_KEY|CRON_SECRET|OUTBOUND_DEV_SECRET|INBOUND_DEV_SECRET|SENTRY_AUTH_TOKEN)["']?\s*[=:]\s*["']?[A-Za-z0-9_+/=~.-]{16,}/,
+  },
+];
+
+/** Every `file:line — what it looks like` hit in the given text. */
+function credentialHits(
+  text: string,
+  label: string,
+): ReadonlyArray<string> {
+  const hits: string[] = [];
+  text.split(/\r?\n/).forEach((line, i) => {
+    for (const { name, re } of CREDENTIAL_PATTERNS) {
+      if (re.test(line)) hits.push(`${label}:${i + 1} — ${name}`);
+    }
+  });
+  return hits;
 }
 
 describe("cycle logs reach git", () => {
@@ -177,6 +227,76 @@ describe("cycle logs reach git", () => {
         `the watcher wrote the previous cycle's log after that agent exited, ` +
         `and committing it is THIS cycle's job. Fix by adding them to your ` +
         `commit (\`git add ${LOG_DIR_REL}\`), not by deleting this test.`,
+    ).toEqual([]);
+  });
+});
+
+// The precondition of the decision above, turned into a gate instead of a memory.
+//
+// Queue row 38 allowed cycle logs into git on ONE explicit condition: "scan all
+// 53 existing logs for credential-shaped strings before putting any of them in
+// git - a gate log can contain a token, and tracking is irreversible in the
+// object store." Cycle 53 did exactly that, by hand, over 55 logs, found zero,
+// and tracked them.
+//
+// THEN THE CHECK STOPPED AND THE DECISION KEPT RUNNING. By cycle 79 another 26
+// logs had been committed - permanently, into the object store - and not one of
+// them had been scanned by anything. The measurement was a one-off; the thing it
+// authorised was forever.
+//
+// That gap is worse than merely unguarded, because of what the test above does.
+// `npm test` is a mandatory gate on every cycle, and the assertion above goes RED
+// until the previous cycle's log is added to a commit. So the safety mechanism is
+// also the delivery mechanism: if a cycle ever pastes a real token into its log
+// while narrating a gate failure, the tracking test does not just permit that
+// token into git, it FORCES it there, and a push makes it unrecallable.
+//
+// Hence this block. Same file on purpose - it guards the same decision, and a
+// reader who deletes one should be looking straight at the other.
+describe("cycle logs carry no credentials", () => {
+  it("can actually detect a credential", () => {
+    // Without this the suite below passes vacuously the moment a pattern is
+    // mistyped, and reports "clean" for a scanner that cannot match anything.
+    // That is this repository's most-recorded defect and it is not going to be
+    // introduced by the test written to prevent it.
+    const planted = [
+      "token ghp_abcdefghijklmnopqrstuvwxyz0123",
+      "db postgres://admin:hunter2@10.0.0.4:5432/prod",
+      "aws AKIAIOSFODNN7EXAMPLE",
+      "-----BEGIN RSA PRIVATE KEY-----",
+      'DATABASE_URL="postgresBUTnotAurlJUSTalongvalue"',
+    ].join("\n");
+
+    const hits = credentialHits(planted, "planted");
+
+    expect(
+      hits.length,
+      "the credential patterns matched nothing in a sample built entirely out " +
+        "of credentials, so the scan below proves nothing.",
+    ).toBeGreaterThanOrEqual(5);
+  });
+
+  it("finds no credential in any cycle log", () => {
+    const logs = cycleLogs();
+
+    expect(
+      logs.length,
+      "no cycle logs were found, so this scan would report clean without " +
+        "reading anything.",
+    ).toBeGreaterThan(10);
+
+    const hits = logs.flatMap((log) =>
+      credentialHits(readFileSync(path.join(LOG_DIR_ABS, log.file), "utf8"), log.rel),
+    );
+
+    expect(
+      hits,
+      `a cycle log contains something shaped like a live credential. The test ` +
+        `above will commit this file on the next cycle, and git never forgets, ` +
+        `so REDACT THE VALUE IN THE LOG NOW - before it is pushed. If the ` +
+        `credential is real, it must also be ROTATED: removing it from the file ` +
+        `is not a fix once it has been committed. Do NOT silence this by adding ` +
+        `an ignore rule or an exception list.`,
     ).toEqual([]);
   });
 });
