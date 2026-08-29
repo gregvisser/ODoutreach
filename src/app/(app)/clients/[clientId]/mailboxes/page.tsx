@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { ClientOpenTrackingCard } from "@/components/clients/client-open-tracking-card";
 import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
+import { RepPerformancePanel } from "@/components/clients/rep-performance-panel";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
   MicrosoftAdminConsentHelp,
@@ -34,12 +35,22 @@ import { CLIENT_OPEN_TRACKING_SELECT } from "@/lib/tracking/client-open-tracking
 import { loadClientTrackingDnsState } from "@/server/clients/tracking-dns-persistence";
 import { isOpenTrackingPixelEnabled } from "@/lib/tracking/open-pixel";
 import { prisma } from "@/lib/db";
+import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
+import { loadLatestRepPerformanceReview } from "@/server/ai/explain-rep-performance";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
+
+/** A query-string value, taking the first when a param is repeated. */
+function firstParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  if (typeof value === "string" && value.length > 0) return value;
+  return null;
+}
 
 type Props = {
   params: Promise<{ clientId: string }>;
@@ -108,6 +119,18 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
     scheduled sweep refreshes it every morning.
   */
   const trackingDns = await loadClientTrackingDnsState(clientId);
+
+  /*
+    The sender comparison, and who is allowed to buy one.
+
+    Gated on the same permission as editing the client's outreach rather than on
+    `canMutateMailboxes`, because the button SPENDS the client's money — the
+    same rule the campaign review and the send-time advice already use.
+  */
+  const [repPerformanceReview, canMutateSequences] = await Promise.all([
+    loadLatestRepPerformanceReview(clientId),
+    getClientEmailSequenceMutationAllowed(staff, clientId),
+  ]);
 
   /*
     The banner after an OAuth round-trip.
@@ -200,6 +223,27 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         clientId={client.id}
         sendBatchSize={client.sendBatchSize ?? null}
         canMutate={bundle.canMutateMailboxes}
+      />
+
+      {/*
+        How the mailboxes compare with each other.
+
+        Deliberately on THIS tab rather than a reporting screen: the thing it
+        actually diagnoses is a mailbox — a domain failing authentication, a
+        reputation hole, an unfinished warm-up — so the fix is a few inches
+        above it. See `rep-performance-evidence.ts` for why this cannot be read
+        as a comparison between people.
+      */}
+      <RepPerformancePanel
+        clientId={client.id}
+        canMutate={canMutateSequences}
+        aiEnabled={areAiFeaturesEnabled()}
+        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        review={repPerformanceReview}
+        flash={{
+          ok: firstParam(sp.repPerformance),
+          error: firstParam(sp.repPerformanceError),
+        }}
       />
 
       <details className="group rounded-lg border border-border/80 bg-card px-4 py-3 shadow-sm">

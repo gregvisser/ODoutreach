@@ -300,6 +300,7 @@ model StaffUser {
   sequenceStepSendsCreated        ClientEmailSequenceStepSend[]    @relation("ClientEmailSequenceStepSendCreatedBy")
   aiCampaignReviewsRequested      AiCampaignReview[]               @relation("AiCampaignReviewRequestedBy")
   aiSendTimeAdviceRequested       AiSendTimeAdvice[]               @relation("AiSendTimeAdviceRequestedBy")
+  aiRepPerformanceRequested       AiRepPerformanceReview[]         @relation("AiRepPerformanceRequestedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
@@ -534,6 +535,7 @@ model Client {
   /// `AiCampaignReview`.
   aiCampaignReviews               AiCampaignReview[]
   aiSendTimeAdvice                AiSendTimeAdvice[]
+  aiRepPerformanceReviews         AiRepPerformanceReview[]
 
   @@index([deletedAt])
   @@index([status])
@@ -1842,6 +1844,12 @@ enum AiFeature {
   /// sets no schedule, and it cannot: when mail leaves is decided by a GitHub
   /// Actions cron, not by anything in this database.
   SEND_TIME_ADVICE
+  /// Explaining the differences between the mailboxes a client sends from.
+  /// Billed to that client. Produces prose on a screen and nothing else. The
+  /// comparison itself — including which gaps are larger than chance — is
+  /// arithmetic done before the model is called; the model only explains the
+  /// gaps that survived it.
+  REP_PERFORMANCE
 }
 
 /// How an AI call ended.
@@ -1984,6 +1992,58 @@ model AiSendTimeAdvice {
 
   client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   requestedBy StaffUser? @relation("AiSendTimeAdviceRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([requestedByStaffUserId])
+}
+
+/// One AI explanation of the differences between a client's sending mailboxes.
+///
+/// Read this alongside `src/lib/ai/rep-performance-evidence.ts`, which explains
+/// why a "rep" here is a MAILBOX and not a salesperson: every sender in a
+/// workspace sends identical, client-scoped copy, and no person chooses their
+/// recipients or their volume. Differences between senders are therefore
+/// mailbox and domain conditions, not effort — and most apparent differences
+/// are not differences at all, which is why `evidence` records the significance
+/// verdict that was reached BEFORE the model was asked anything.
+model AiRepPerformanceReview {
+  id       String @id @default(cuid())
+  clientId String
+  /// One paragraph of plain English about what the sender table shows.
+  summary  String
+  /// The explanation, as a JSON array of {senderLabel, observation,
+  /// likelyCauses[], checkFirst}, shaped and length-capped by
+  /// `parseRepPerformanceToolUse`. An EMPTY array is the expected answer most
+  /// of the time: "these senders are performing the same".
+  findings Json
+  /// What the table does not prove, as a JSON array of short strings.
+  cautions Json
+  /// The table the explanation was drawn from, as a JSON array of
+  /// {mailboxIdentityId, label, sent, replied, positive, bounced, the three
+  /// rates, comparison, bounceComparison}. Stored alongside so the panel can
+  /// show the numbers next to the prose, and so an explanation given on a
+  /// thinner history stays auditable after the history has grown.
+  evidence Json
+  /// Totals behind the evidence, and how far back it was read. Columns rather
+  /// than JSON so a screen can caveat the prose cheaply.
+  totalSent     Int
+  totalReplied  Int
+  totalPositive Int
+  lookbackDays  Int
+  /// Whether ANY sender differed from the rest by more than chance. Recorded
+  /// because it is the single fact that decides how the panel is read: false
+  /// means the correct headline is "no difference", however unequal the
+  /// percentages in the table happen to look.
+  anyDistinguishable Boolean
+  /// Exact model id, and the prompt version that produced this. Stored so an
+  /// explanation written under an older prompt is not read as a current one.
+  model                  String
+  promptVersion          String
+  requestedByStaffUserId String?
+  createdAt              DateTime @default(now())
+
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestedBy StaffUser? @relation("AiRepPerformanceRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([clientId, createdAt])
   @@index([requestedByStaffUserId])
