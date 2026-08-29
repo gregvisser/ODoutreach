@@ -49,6 +49,15 @@ export const AI_MODELS = {
    * emails against a stated rubric is well within this model.
    */
   CAMPAIGN_REVIEW: "claude-haiku-4-5-20251001",
+  /**
+   * Send-time advice. The SAME model again, and for the fourth time the reason
+   * is billing rather than capability: the one rate in this table is still
+   * flagged unverified, and a second model would put a second unchecked price
+   * on the same invoice. The work is reading a table of a dozen counts that
+   * this application computed — the arithmetic is already done before the model
+   * sees it — which is comfortably within this model.
+   */
+  SEND_TIME_ADVICE: "claude-haiku-4-5-20251001",
 } as const;
 
 export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
