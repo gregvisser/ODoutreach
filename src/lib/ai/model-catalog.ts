@@ -67,6 +67,16 @@ export const AI_MODELS = {
    * decides which gaps are real — is complete before the model sees it.
    */
   REP_PERFORMANCE: "claude-haiku-4-5-20251001",
+  /**
+   * Explaining which campaign suits which job title. The SAME model a sixth
+   * time, and the billing reason has not changed: the one rate in this table is
+   * still flagged unverified, and a second model would put a second unchecked
+   * price on the same invoice. The work is reading a table of a few dozen counts
+   * whose arithmetic — the job-title grouping, the reply rates, and the
+   * multiplicity-adjusted significance test that decides which gaps are real —
+   * is complete before the model sees it.
+   */
+  TITLE_MESSAGE_FIT: "claude-haiku-4-5-20251001",
 } as const;
 
 export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];

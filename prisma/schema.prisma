@@ -301,6 +301,7 @@ model StaffUser {
   aiCampaignReviewsRequested      AiCampaignReview[]               @relation("AiCampaignReviewRequestedBy")
   aiSendTimeAdviceRequested       AiSendTimeAdvice[]               @relation("AiSendTimeAdviceRequestedBy")
   aiRepPerformanceRequested       AiRepPerformanceReview[]         @relation("AiRepPerformanceRequestedBy")
+  aiTitleMessageRequested         AiTitleMessageReview[]           @relation("AiTitleMessageRequestedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
@@ -536,6 +537,7 @@ model Client {
   aiCampaignReviews               AiCampaignReview[]
   aiSendTimeAdvice                AiSendTimeAdvice[]
   aiRepPerformanceReviews         AiRepPerformanceReview[]
+  aiTitleMessageReviews           AiTitleMessageReview[]
 
   @@index([deletedAt])
   @@index([status])
@@ -1850,6 +1852,11 @@ enum AiFeature {
   /// arithmetic done before the model is called; the model only explains the
   /// gaps that survived it.
   REP_PERFORMANCE
+  /// Reading which of a client's campaigns got more replies from which kind of
+  /// job title. Billed to that client. Produces prose on a screen and nothing
+  /// else — it changes no template, no campaign and no targeting, and the job
+  /// titles are grouped by fixed rules in code rather than by the model.
+  TITLE_MESSAGE_FIT
 }
 
 /// How an AI call ended.
@@ -2044,6 +2051,76 @@ model AiRepPerformanceReview {
 
   client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   requestedBy StaffUser? @relation("AiRepPerformanceRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([requestedByStaffUserId])
+}
+
+/// Which of a client's campaigns got more replies from which kind of job title,
+/// kept so a paid-for answer survives a page refresh instead of being bought
+/// twice.
+///
+/// ADVISORY ONLY, AND THAT IS THE WHOLE DESIGN. Nothing in the send pipeline,
+/// the sequence launch rail or any targeting decision reads this table. It
+/// cannot move a contact, change a template, retarget a campaign or alter who
+/// receives what. Deleting every row here restores today's behaviour exactly.
+///
+/// There is deliberately no column holding suggested copy, a subject line or a
+/// recommended change to a campaign — see `src/lib/ai/title-message.ts` for why
+/// draft text arriving with the authority of a statistic is the specific danger
+/// this feature is built around.
+///
+/// Rows cascade with the client. That loses no billing: the charge lives in
+/// `AiUsageEvent`, which deliberately survives client deletion.
+model AiTitleMessageReview {
+  id       String @id @default(cuid())
+  clientId String
+  /// One paragraph of plain English about what the table shows.
+  summary  String
+  /// The explanation, as a JSON array of {audienceLabel, messageLabel,
+  /// observation, couldExplainIt[], checkFirst}, shaped and length-capped by
+  /// `parseTitleMessageToolUse`. An EMPTY array is the expected answer most of
+  /// the time: "no campaign is doing better than another with any audience".
+  findings Json
+  /// What the table does not prove, as a JSON array of short strings.
+  cautions Json
+  /// The table the explanation was drawn from, as a JSON array of job-title
+  /// families each holding its campaign rows and our verdict on each. Stored
+  /// alongside so the panel can show the numbers next to the prose, and so an
+  /// answer given on a thinner history stays auditable after it has grown.
+  evidence Json
+  /// How much of the client's outreach the table actually covered, as
+  /// {totalEnrollments, missingTitle, ungrouped, tooThinToCompare, compared,
+  /// comparedPercent}. Stored because it is the number that decides how far the
+  /// findings generalise, and a reader who is not shown it will assume "all".
+  coverage Json
+  /// Totals behind the evidence, and how far back it was read. Columns rather
+  /// than JSON so a screen can caveat the prose cheaply.
+  totalReplied  Int
+  totalPositive Int
+  lookbackDays  Int
+  /// How many campaign-vs-audience comparisons were made, and the number of
+  /// standard errors a gap had to clear once that count was accounted for.
+  /// Recorded because the threshold MOVES with the size of the table, so a
+  /// later reader cannot re-derive it from the verdicts alone.
+  comparisonCount Int
+  /// Stored to three decimal places as a string would be lossy in the other
+  /// direction; an Int of milli-standard-errors keeps it exact and orderable.
+  zThresholdMilli Int
+  /// Whether ANY campaign beat another with ANY audience by more than chance.
+  /// Recorded because it is the single fact that decides how the panel is read:
+  /// false means the correct headline is "no difference", however unequal the
+  /// percentages in the table happen to look.
+  anyDistinguishable Boolean
+  /// Exact model id, and the prompt version that produced this. Stored so an
+  /// answer written under an older prompt is not read as a current one.
+  model                  String
+  promptVersion          String
+  requestedByStaffUserId String?
+  createdAt              DateTime @default(now())
+
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestedBy StaffUser? @relation("AiTitleMessageRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([clientId, createdAt])
   @@index([requestedByStaffUserId])
