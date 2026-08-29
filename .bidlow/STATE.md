@@ -1,6 +1,91 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-29 (cycle 96) - Tier P (Client Production)**
+**Updated 2026-08-29 (cycle 97) - Tier P (Client Production)**
+
+## Session 2026-08-29 - Relay cycle 97, queue row 86: a failed reconnect stops taking a working mailbox off the air.
+
+Row 86 is **`DONE 97`**. Shipped **`a4eedfd` (PR #378)**, merged on green CI,
+deployed and **verified by commit hash** against the direct App Service URL
+(`/api/build-info` → `a4eedfda49e626f377604edd6408b711bb8fc169`). Open PRs at
+start of cycle: **zero**. At end: **zero**.
+
+### What changed
+
+Both OAuth callbacks answered every failure — the operator pressed Deny, they
+approved as the wrong person, the token exchange was refused — by writing
+`connectionStatus: "CONNECTION_ERROR"`. `sending-policy.ts` gates on
+`connectionStatus === "CONNECTED"`, so a failed **sign-in attempt** took a
+mailbox off the air whose stored credential the attempt never went near.
+
+Reachable only since cycle 73, which stopped `prepareMailboxOAuthConnection`
+deleting the credential on the way *out* to the provider, and disclosed this as
+the same defect one step downstream rather than hiding it. Not a regression —
+before 73 the mailbox was dead either way.
+
+A failed attempt now writes **neither** `connectionStatus` nor `lastError` on a
+mailbox that can still send. New pure rule
+`src/lib/mailboxes/mailbox-oauth-failed-attempt.ts`, reusing cycle 73's
+`isMailboxSendingCredentialLive`; both providers share it so they cannot drift.
+A row with no stored credential still records the failure, so a stranded mailbox
+does not go on reading "Connected" with nothing on it to explain why.
+
+### The judgement the row asked for, made rather than assumed
+
+The row asked whether to defer to `classifyMailboxCredentialFailure`. **No, and
+the reasoning is the durable part.** That classifier reads errors produced by
+*using a stored refresh token* (send and reply-sync), where `invalid_grant`
+genuinely means the grant is dead. A callback's errors come from exchanging a
+fresh **authorization code**, where `invalid_grant` means the code was expired,
+already spent, or issued for a different redirect URI — a fact about the code,
+not about the token in `MailboxIdentitySecret`. Handing it to the classifier
+returns `reauth_required → CONNECTION_ERROR`: the same blanket demotion wearing
+a classifier's name, on evidence about a different credential entirely.
+
+The right question is not "what does this error say about the stored credential"
+— the answer is always *nothing, it never touched it* — but "does this row still
+hold a credential the send path is using". The send and sync paths run every 5
+and 15 minutes and **do** exercise the credential; deferring the status to them
+defers it to the only code with evidence.
+
+`lastError` is preserved too, which the row did not ask for and needed:
+`mailboxRowOperatorStatus` checks `isMailboxAccountDeletedError(row.lastError)`
+**ahead of** the status branches, so an `AADSTS500341` arriving inside a
+provider's `error_description` would have relabelled a live, sending mailbox
+"Cannot be reconnected". There is a test for exactly that.
+
+### The row's premise was wrong in one detail
+
+It listed `missing_code` among the write sites. It is not one — that branch
+redirects read-only and writes nothing. The two real write sites are the
+provider-`error` branch and the catch block. QUEUE.md records the correction.
+
+### Proving it fires
+
+Red-first: three callback tests were written before the routes were touched and
+watched fail with `Received: "CONNECTION_ERROR"` — including the proof case the
+row named, **account_mismatch**, where the stored credential is definitely still
+fine. 37 tests green across the three files afterwards.
+
+**Production execution is not proven and is not claimed.** The callbacks sit
+behind auth middleware, so the deployed handler cannot be probed anonymously —
+an unauthenticated GET is bounced to `/sign-in` before the route runs — and
+firing it for real needs an operator to complete a browser OAuth round trip
+against a live client mailbox. That is why the audit metadata now carries
+**`credentialRetained`**: the next genuine failed reconnect leaves a permanent,
+readable record of which way the rule went. Verified live: `a4eedfd` is the
+running commit.
+
+### Known flake, recorded not fixed
+
+`relay/cycle-log-reaches-git.test.ts` times out at its 5000 ms budget under full
+local suite load (it shells out to git); alone it passes in 2.3 s, and it passed
+in CI. Outside this cycle's declared files, so left alone — but it will redden CI
+eventually and the fix is a timeout, not a rewrite.
+
+### Gates
+
+`npm run lint` clean · `npm run typecheck` clean · `npm test` 3643 passed.
+No schema change, no migration.
 
 ## Session 2026-08-29 - Relay cycle 96, queue row 85: a sixty-day-old mailbox stops claiming a sign-in window is open.
 
