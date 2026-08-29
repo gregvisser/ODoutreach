@@ -1,6 +1,117 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 113) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 115) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 115, queue row 92: sixth consecutive identical redispatch, ruled out pipeline breakage. PR #406 merged mid-cycle; follow-on PR #407 open, CI running.
+
+Open PRs at cycle start: one (#406, cycle 113's PR, checks pending). Started
+this cycle on branch `docs/state-cycle-113`, carrying forward two pieces of
+pre-existing uncommitted state from the shared working tree (not this
+session's own work product — written by `relay-watch.ps1` between cycles):
+the relay's own `IN PROGRESS 115` marker on row 92, and the watcher's
+appended tail on `cycle-114.md`.
+
+### What changed
+
+Row 92's brief arrived byte-identical to cycles 110-114's. Time-math check
+(not assumed): `date -u` read `2026-08-29 23:39:30 UTC` (00:39 UK), a few
+minutes after cycle 114 finished (~00:34 UK per its own log); reply-sync cron
+is weekday-only, 30+ hours from Monday's window; row 95 (watcher restart)
+still `TODO`; `allowlistedClients` still 1. No re-walk performed — nothing
+could have changed.
+
+One new, read-only check this cycle that cycles 110-114 had not run: pulled
+the actual `sync-replies.yml` run logs (`gh run view --log`), not just the
+pass/fail badge, after noticing its last four runs were red. Found the
+reply-sync step itself is healthy (`ok:true`, last successful ingest 28 Aug
+19:06 UTC, before Greg's reply existed) — the workflow's red comes from an
+unrelated Train Hugger do-not-contact sheet shrink-guard, not a reply-
+ingestion defect. This rules out "the pipeline is silently broken" and
+confirms the sole blocker is still the known Gmail `+cycle109` alias
+mismatch from cycle 111. Dimension 1 held at 8. `.bidlow/GRADES.json` **not
+edited**. Row 92 marked `PARTIAL 115`. Wrote
+`docs/ops/REPLY-PROOF-2026-08-29-cycle115.md`. Full account:
+`.bidlow/relay/log/cycle-115.md`.
+
+**PR housekeeping, and a discovery worth flagging for whoever next touches
+the relay:** PR #406 (cycle 113's PR) turned green and auto-merged into
+`main` *while this cycle's own commit was in flight* — evidence that
+something (auto-merge queued by an earlier cycle, or a scheduled watcher
+action) merges PRs independently of any cycle's own session. My new commit
+landed on a branch whose earlier history had already been squash-merged, so
+I opened a follow-on PR (**#407**) for it. That PR came back `mergeable:
+false` / `mergeStateStatus: dirty` — a real conflict, confirmed by
+reproducing it in an isolated temp clone (`/tmp/pr407-fix`, kept outside the
+shared working directory on purpose, see below) rather than by trusting the
+label. Both conflicting hunks (`QUEUE.md` row 92, `cycle-114.md`'s tail) were
+trivial: my branch's content was a strict superset of `origin/main`'s
+(PARTIAL 115 supersedes the already-merged PARTIAL 114 text; my
+`cycle-114.md` includes the watcher's addendum that had never reached
+`main`). Resolved with `git checkout --ours`, verified the result was
+byte-identical to my branch tip before merging, committed
+(`161db4e`), and pushed. **PR #407 is OPEN, CI re-triggered, not yet merged
+when this session paused.**
+
+**Concurrency discovery, worth recording explicitly:** this session found the
+*live* working directory being edited by something else mid-session — a
+`QUEUE.md` diff appeared (a new `IN PROGRESS 11x` marker on row 92) while
+this session was mid-flight, matching the exact pattern row 92's own text
+warns about (PARTIAL rows being re-picked immediately rather than waiting for
+a watcher restart). This confirms `relay-watch.ps1` runs against this same
+checkout live, not a separate clone, and may dispatch a new cycle before a
+prior cycle's own PR has finished merging. **Consequence for any session
+working in this shared directory: do not assume `git status` is clean or
+stable between your own commands, and do not treat an uncommitted diff you
+did not make as stray — it may be another process's in-flight state.** This
+is exactly the shape of row 95's own finding; recorded here as corroborating
+evidence, not acted on (row 95 is documentation-only and not this row's to
+touch).
+
+### Half-done — pick this up first
+
+**PR #407 (`docs(relay): row 92 - sixth consecutive identical redispatch,
+ruled out pipeline breakage`) is OPEN, NOT MERGED**, containing a merge
+commit that reconciles it with `main`. Next: check `gh pr checks 407` /
+`gh pr view 407 --json mergeable`; if green and mergeable, merge with
+`gh pr merge 407 --squash --delete-branch`, then verify the deploy by hash
+against the direct App Service origin (`/api/build-info`), never the
+CDN-cached custom domain. The diff is docs-only (four files under
+`.bidlow/relay/` and `docs/ops/`) so a genuine CI failure would be surprising
+and worth reading closely. The temp clone at
+`C:\Users\Greg Visser\AppData\Local\Temp\pr407-fix` was used only to resolve
+the merge conflict away from the live working directory and can be deleted;
+nothing in it is authoritative that isn't also on `origin/docs/state-cycle-113`.
+
+### Deliberately not done, and why
+
+No screens were loaded, no session was minted, no production database query
+and no reply-sync trigger were performed — deliberately, because the
+time-math shows none could add information beyond what cycles 111-114
+already recorded, and because this row's own text asks for read-only
+observation. The one new check performed (pulling GH Actions run logs) was
+read-only against GitHub's own record, not against the product.
+
+### Nothing contradicts PROJECT.json
+
+No schema change, no migration, no client data touched, no email sent, no
+`src/` file changed (confirmed via `git diff --stat` before each commit —
+only `QUEUE.md`, relay logs, and one `docs/ops/` file). Nothing discovered
+this session that contradicts `.bidlow/PROJECT.json`.
+
+### Next session should pick up
+
+1. Merge PR #407 once green and mergeable (see "Half-done" above), then
+   verify the deploy by hash.
+2. After that, the queue's next TODO/BLOCKED/PARTIAL row is whatever sits in
+   `.bidlow/relay/QUEUE.md` at the time of reading. Row 92 itself is
+   `PARTIAL 115` and, per this session's own recommendation, should not be
+   redispatched again before Monday 2026-08-31 07:00 UK, a new human action
+   on the send/reply chain, or row 95 landing — though this session also
+   found live evidence that the relay is not honouring that kind of
+   recommendation between cycles, so treat the row's actual status in
+   QUEUE.md as ground truth over this note if they disagree.
+3. Delete the temp clone at `...\AppData\Local\Temp\pr407-fix` if still
+   present; it was scratch space for this session only.
 
 ## Session 2026-08-30 - Relay cycle 113, queue row 92: identical brief redispatched ~1 minute after cycle 112 closed it; no re-check performed, none was possible. PR #406 OPEN, awaiting CI.
 
