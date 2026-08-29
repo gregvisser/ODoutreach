@@ -258,6 +258,93 @@ Remove-Item $fixture -Force -ErrorAction SilentlyContinue
 Remove-Item $broken  -Force -ErrorAction SilentlyContinue
 
 # ===========================================================================
+# 7. A FINDING HANDED ON IN A LOG REACHES QUEUE.md
+#
+# Twice, a cycle wrote down that it owed the queue a row and then exited without
+# writing one - cycle 50 ("I'm queueing it as a new row") and cycle 52 ("two
+# things for you rather than for me"). Both findings then existed only inside a
+# log, and nothing downstream reads old logs. Cycle 52 lost its entire
+# reconnaissance re-deriving the first one.
+#
+# The unit behaviour is covered by relay/unmirrored-finding.test.ts in CI. What
+# THIS section adds is the composition the watcher's loop actually performs -
+# take the row numbers, judge the log, carry the words, read the queue back -
+# run on the real machine, against the real relay-watch.ps1, at every start.
+#
+# It also replays the REAL cycle-050.md, so the detector is held against true
+# history rather than against a fixture written to make it pass.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "7. A finding a cycle handed on is carried into QUEUE.md"
+
+$handoffQueue = Join-Path $env:TEMP "relay-selftest-handoff-queue.md"
+@(
+    "| # | Item | Status |"
+    "|---|---|---|"
+    "| 1 | a finished thing | DONE 4 |"
+    "| 2 | a waiting thing | TODO |"
+    "| 3 | a held thing | BLOCKED waiting on Greg |"
+) | Set-Content -Path $handoffQueue -Encoding utf8
+
+$rowsBefore = @(@(Get-QueueRows $handoffQueue) | ForEach-Object { [string]$_.Number })
+Assert-True ($rowsBefore.Count -eq 3) `
+    "the fixture queue is read before the cycle, so the comparison is not vacuous (got $($rowsBefore.Count) rows)"
+
+# The shape of a real cycle log: a heading, then the cycle's own words.
+$handoffLog = "# Cycle 99 - finished`n`n## What it did`n`nShipped the thing.`n`nSeparate finding - not this item. I'm queueing it as a new row.`n"
+
+# BOTH cycles that failed this way DID write to QUEUE.md - each stamped its own
+# row DONE. So the same row numbers before and after is the real-world case, and
+# a check on "did the file change" would have caught neither.
+$verdict = Get-UnmirroredFindingVerdict -LogText $handoffLog -RowNumbersBefore $rowsBefore -RowNumbersAfter $rowsBefore
+Assert-True ($verdict.ShouldRecord -eq $true) `
+    "a cycle that hands a finding on and adds no new row is caught"
+Assert-True (@($verdict.Passages).Count -gt 0) `
+    "the cycle's own sentence is captured, so the queue row can quote it (got $(@($verdict.Passages).Count))"
+
+$mirrored = Get-UnmirroredFindingVerdict -LogText $handoffLog -RowNumbersBefore $rowsBefore -RowNumbersAfter (@($rowsBefore) + @("4"))
+Assert-True ($mirrored.ShouldRecord -eq $false) `
+    "a cycle that DID add a queue row is left alone, so doing the right thing is never punished"
+
+$quiet = Get-UnmirroredFindingVerdict -LogText "# Cycle 98 - finished`n`n## What it did`n`nRan the gates. All green." -RowNumbersBefore $rowsBefore -RowNumbersAfter $rowsBefore
+Assert-True ($quiet.ShouldRecord -eq $false) `
+    "an ordinary cycle raises nothing - a gate that cries wolf gets ignored"
+
+# The real log, from git, not a fixture built to pass.
+$realLog = Join-Path $PSScriptRoot ".bidlow\relay\log\cycle-050.md"
+if (Test-Path $realLog) {
+    $realPassages = @(Get-CycleHandoffPassages ([string](Get-Content $realLog -Raw -Encoding UTF8)))
+    Assert-True ($realPassages.Count -gt 0) `
+        "the real cycle-050.md - the log whose finding cost cycle 52 its reconnaissance - is detected (got $($realPassages.Count) passages)"
+} else {
+    Assert-True $false "cycle-050.md is missing, so the detector could not be replayed against real history"
+}
+
+$carried = Add-QueueRowForHandoff -Cycle 99 -Passages $verdict.Passages -LogPath ".bidlow/relay/log/cycle-099.md" -Path $handoffQueue
+Assert-True ($carried.Added -eq $true) `
+    "the finding is written into the queue file ($($carried.Reason))"
+
+# Read it back through the picker's own parser. A row the relay cannot read
+# would STOP THE WHOLE QUEUE - the seventh-word failure, caused by the relay.
+$afterRows = @(Get-QueueRows $handoffQueue)
+$newRow    = $afterRows | Where-Object { $_.Number -eq $carried.Number } | Select-Object -First 1
+Assert-True ($null -ne $newRow -and $newRow.Parsed) `
+    "the row the relay wrote is readable by Get-QueueRows, so it cannot stall the queue"
+Assert-True ($null -ne $newRow -and $newRow.Status -match '^TODO') `
+    "it comes back as TODO, so the picker will actually take it"
+Assert-True ($null -ne $newRow -and $newRow.Item -match 'queueing it as a new row') `
+    "it carries the cycle's own words, not the relay's summary of them"
+
+# Above the BLOCKED row, or the picker idles the moment it reaches it and the
+# new finding is buried behind a permanent stop.
+$orderedNumbers = @($afterRows | ForEach-Object { [string]$_.Number })
+Assert-True (($orderedNumbers -join ",") -eq "1,2,$($carried.Number),3") `
+    "it is placed ABOVE the BLOCKED row, so the picker still reaches it (order was $($orderedNumbers -join ','))"
+
+Remove-Item $handoffQueue -Force -ErrorAction SilentlyContinue
+
+# ===========================================================================
 
 Write-Host ""
 if ($script:Failures.Count -eq 0) {

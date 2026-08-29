@@ -1003,6 +1003,291 @@ function Repair-UnreadableQueueRow($number, $cycle) {
 }
 
 # ===========================================================================
+# A FINDING THAT EXISTS ONLY IN A CYCLE LOG IS A FINDING NOBODY WILL READ
+#
+# Cycle 53 made the cycle logs TRACKED, which closed the half of this problem
+# where a log could be deleted by a rebase or a `git clean -fd`. It deliberately
+# did not claim to fix the other half, and the other half is the expensive one.
+#
+# The proof that it is real and separate: `cycle-050.md` was NEVER deleted. It
+# has been on disk, readable, the whole time. Cycle 52 still spent its entire
+# reconnaissance re-deriving the finding inside it, because nothing downstream
+# reads fifty old logs. Durability was never the binding constraint; ATTENTION
+# was. The one channel every cycle actually reads is QUEUE.md.
+#
+# Twice, a cycle said out loud that it owed the queue a row and then exited
+# without writing one:
+#
+#   * cycle 50, under a heading called "Separate finding - not this item":
+#     "I'm queueing it as a new row rather than folding it into this cycle."
+#     No row was ever added. Cycle 52 paid for it.
+#   * cycle 52: "Two things for you rather than for me:" - one of which was this
+#     very observation. No row was added for either.
+#
+# WHY THIS IS NOT A RULE IN THE BRIEF. Both cycles already intended to do it.
+# Telling the next one again is the mechanism that has now failed twice. So the
+# check happens HERE, after the agent's process has exited, where no promise is
+# involved - the same reason the orphaned-IN-PROGRESS reopen was moved out of
+# QUEUE.md and into code.
+#
+# WHY "DID QUEUE.md CHANGE" IS THE WRONG TEST, ALTHOUGH IT IS THE OBVIOUS ONE.
+# It would have caught NEITHER case. Both cycles wrote to QUEUE.md - each
+# stamped its own row DONE on the way out. What neither did was add a NEW row.
+# So the signal is the set of row NUMBERS before and after the cycle.
+#
+# WHAT IT DOES WHEN IT FIRES, AND WHY THAT IS NOT "INVENTING". The relay copies
+# the cycle's own sentences into a new TODO row, verbatim, and interprets
+# nothing - exactly the licence Repair-UnreadableQueueRow already operates under.
+# A note file would not have worked: nobody reads those either, which is the
+# whole finding.
+#
+# THE COST OF CRYING WOLF IS TAKEN SERIOUSLY. Measured over all 78 real cycle
+# logs when this was written, the patterns below match FIVE of them. The brief is
+# cut out of the log first, because cycle 72's brief - written by a human -
+# contains the words "that is a separate finding", and a gate that fires on its
+# own instructions is noise on night one. `relay/unmirrored-finding.test.ts`
+# holds that rate to a measured ceiling AND a floor.
+# ===========================================================================
+
+# The three headings that divide a cycle log. The watcher writes all three, so
+# they are stable, and they are what makes "the cycle's own words" separable from
+# "the brief the cycle was handed".
+$CycleLogWatcherRecordHeading = "## The watcher's own record of this cycle"
+$CycleLogBriefHeading         = "## What it was asked to do"
+$CycleLogAgentHeading         = "## What it did"
+
+# Deliberately NARROW. Every one of these is a phrase a cycle uses to say "this
+# is for somebody else", not merely a phrase that mentions the queue - a cycle
+# log talks about rows and statuses constantly, and matching on that vocabulary
+# would fire on all 78 logs and be switched off within a week.
+$CycleHandoffPatterns = @(
+    '\b(?:queue|queuing|queueing|queued)\b[^.\r\n]{0,60}\bnew row\b',
+    '\bnew queue row\b',
+    '\b(?:write|writing|wrote|add|adding|added|needs|worth)\b[^.\r\n]{0,40}\bqueue rows?\b',
+    '\b(?:queueing|queuing) it\b',
+    '\bseparate finding\b',
+    '\bnot this item\b',
+    '\bfor you rather than for me\b',
+    '\bfor (?:a|the) (?:later|next|future) cycle\b',
+    '\bnext cycle should\b'
+)
+
+# The cycle's own words, with the brief and the watcher's own record removed.
+#
+# A cycle log comes in two shapes and this handles both. Either the agent wrote
+# its own log and the watcher appended underneath it, or the agent wrote nothing
+# and the watcher's record is the whole file. In both, the agent's stdout sits
+# after the LAST "## What it did", and the brief sits between the two headings.
+function Get-CycleOwnWords([string]$LogText) {
+    if ([string]::IsNullOrEmpty($LogText)) { return "" }
+
+    # Everything before the FIRST of the two watcher-written headings is the
+    # agent's own log file, if it wrote one.
+    $cut = -1
+    foreach ($marker in @($CycleLogWatcherRecordHeading, $CycleLogBriefHeading)) {
+        $at = $LogText.IndexOf($marker, [System.StringComparison]::Ordinal)
+        if ($at -ge 0 -and ($cut -lt 0 -or $at -lt $cut)) { $cut = $at }
+    }
+    $head = if ($cut -ge 0) { $LogText.Substring(0, $cut) } else { $LogText }
+
+    # LAST, not first: in the two-shape case the watcher's appended record
+    # carries its own copy of both headings, and the agent's stdout follows the
+    # later one.
+    $last = $LogText.LastIndexOf($CycleLogAgentHeading, [System.StringComparison]::Ordinal)
+    $tail = if ($last -ge 0) { $LogText.Substring($last + $CycleLogAgentHeading.Length) } else { "" }
+
+    return ($head + "`n" + $tail)
+}
+
+# The lines - whole lines, so the sentence survives - in which a cycle handed
+# something on. Capped at six: the row exists to carry the finding to a reader,
+# not to reproduce the log inside the queue.
+function Get-CycleHandoffPassages([string]$LogText) {
+    $found = New-Object System.Collections.Generic.List[string]
+    $own   = Get-CycleOwnWords $LogText
+    if ([string]::IsNullOrWhiteSpace($own)) { return $found.ToArray() }
+
+    foreach ($rawLine in ($own -split "`r?`n")) {
+        $line = ([string]$rawLine).Trim()
+        if ($line.Length -eq 0) { continue }
+        foreach ($pattern in $CycleHandoffPatterns) {
+            if ([regex]::IsMatch($line, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+                $clean = ($line -replace '\s+', ' ').Trim()
+                if (-not $found.Contains($clean)) { $found.Add($clean) }
+                break
+            }
+        }
+        if ($found.Count -ge 6) { break }
+    }
+    # NO comma operator here, and that is not a style choice. `return ,$array`
+    # was the first version, added out of habit to stop PowerShell unrolling a
+    # single result. It made an EMPTY result come back as a one-element array
+    # CONTAINING the empty array, so `@(Get-CycleHandoffPassages $x).Count` was 1
+    # for every log ever written and the detector fired on all 78 of them. The
+    # sweep test in relay/unmirrored-finding.test.ts caught it on its first run,
+    # which is the entire argument for holding the fire-rate to a measured
+    # ceiling rather than to an opinion.
+    return $found.ToArray()
+}
+
+# Pure decision, so it can be driven from a test with any pair of row-number
+# sets rather than by running a real cycle and hoping.
+function Get-UnmirroredFindingVerdict {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$LogText,
+        [AllowEmptyCollection()][string[]]$RowNumbersBefore = @(),
+        [AllowEmptyCollection()][string[]]$RowNumbersAfter  = @()
+    )
+
+    $passages = @(Get-CycleHandoffPassages $LogText)
+
+    $before = @{}
+    foreach ($n in $RowNumbersBefore) { $before["$n"] = $true }
+
+    $newRows = New-Object System.Collections.Generic.List[string]
+    foreach ($n in $RowNumbersAfter) {
+        if (-not $before.ContainsKey("$n")) { $newRows.Add("$n") }
+    }
+
+    $reason = if ($passages.Count -eq 0) {
+        "the cycle's own words name nothing it was handing on, so there is nothing to carry"
+    } elseif ($newRows.Count -gt 0) {
+        "the cycle handed something on AND added row(s) " + ($newRows -join ", ") + ", so it mirrored the finding itself"
+    } else {
+        "the cycle handed something on in its log and added no queue row, so the finding would exist only in the log"
+    }
+
+    return [pscustomobject]@{
+        ShouldRecord = (($passages.Count -gt 0) -and ($newRows.Count -eq 0))
+        Passages     = $passages
+        NewRows      = $newRows.ToArray()
+        Reason       = $reason
+    }
+}
+
+# Copy the cycle's own sentences into QUEUE.md as a new TODO row.
+#
+# WHERE THE ROW GOES IS NOT COSMETIC. Invoke-SelfQueue takes the first row in
+# FILE ORDER that is not DONE and not IN PROGRESS, and IDLES when that row is
+# BLOCKED - it does not skip past it, because the order is the plan. So a row
+# appended below a BLOCKED row at the bottom of the table would be buried behind
+# a permanent stop. It goes immediately ABOVE the first BLOCKED or WONTFIX row
+# instead, which is also what `relay/queue-file-integrity.test.ts` requires.
+#
+# $Path defaults to the live queue and is a parameter only so a test can point it
+# at a fixture, exactly as Get-QueueRows does.
+function Add-QueueRowForHandoff {
+    param(
+        [Parameter(Mandatory = $true)][int]$Cycle,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Passages,
+        [Parameter(Mandatory = $true)][string]$LogPath,
+        [string]$Path = $QueueFile,
+        [int]$MaxQuotedChars = 800
+    )
+
+    if (-not (Test-Path $Path)) {
+        return [pscustomobject]@{
+            Added  = $false
+            Number = $null
+            Reason = "QUEUE.md is not where the relay expected it ($Path), so nothing was written."
+        }
+    }
+
+    $lines = @(Get-Content $Path -Encoding UTF8)
+
+    $tableIndexes = New-Object System.Collections.Generic.List[int]
+    $numbers      = New-Object System.Collections.Generic.List[int]
+    $firstHalt    = -1
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = [string]$lines[$i]
+        $parsedNumber = 0
+
+        $m = Get-QueueRowMatch $line
+        if ($m.Success) {
+            $tableIndexes.Add($i)
+            if ([int]::TryParse($m.Groups[2].Value.Trim(), [ref]$parsedNumber)) { $numbers.Add($parsedNumber) }
+            if ($firstHalt -lt 0 -and $m.Groups[5].Value.Trim() -match '^(?:\*{1,2}|_{1,2})?\s*(?:BLOCKED|WONTFIX)') {
+                $firstHalt = $i
+            }
+            continue
+        }
+
+        # A row the parser cannot read is still a row, and still part of the
+        # table. Dropping it here would let the new row land in the middle of the
+        # table's line range and break the one-contiguous-table guarantee.
+        $shape = [regex]::Match($line, $QueueRowShapePattern)
+        if ($shape.Success) {
+            $tableIndexes.Add($i)
+            if ([int]::TryParse($shape.Groups[1].Value.Trim(), [ref]$parsedNumber)) { $numbers.Add($parsedNumber) }
+        }
+    }
+
+    if ($tableIndexes.Count -eq 0 -or $numbers.Count -eq 0) {
+        return [pscustomobject]@{
+            Added  = $false
+            Number = $null
+            Reason = "QUEUE.md has no numbered rows to anchor to, so the relay refused to invent a table. The finding is still in $LogPath."
+        }
+    }
+
+    $newNumber = (($numbers | Measure-Object -Maximum).Maximum) + 1
+    $insertAt  = if ($firstHalt -ge 0) { $firstHalt } else { $tableIndexes[$tableIndexes.Count - 1] + 1 }
+
+    # The cell is pipe-delimited and this is arbitrary prose out of a log. A raw
+    # pipe here is the "NODE|20-lts" defect again, except written by the relay
+    # itself; a newline would split one row into two lines and cut the table in
+    # half.
+    $quoted = ($Passages -join ' ')
+    $quoted = $quoted -replace '[\r\n]+', ' '
+    $quoted = $quoted -replace '\|', '/'
+    $quoted = ($quoted -replace '\s+', ' ').Trim()
+    if ($quoted.Length -gt $MaxQuotedChars) {
+        $quoted = $quoted.Substring(0, $MaxQuotedChars).TrimEnd() + " [cut here - the rest is in the log]"
+    }
+    if ($quoted.Length -eq 0) {
+        return [pscustomobject]@{
+            Added  = $false
+            Number = $null
+            Reason = "there was nothing quotable left after the cycle's words were made safe for a table cell"
+        }
+    }
+
+    $item = "**CARRIED HERE BY THE RELAY - cycle $Cycle handed this up in its log and queued no row for it.** Every word after the arrow is the cycle's own and the relay interpreted none of it. The context is in ``$LogPath``. Either turn this into a real item or close it WONTFIX - it costs one reading either way, which is what a finding stranded in a log costs every cycle that has to re-derive it. >>> $quoted"
+
+    $row = "| $newNumber | $item | TODO |"
+
+    $updated = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($i -eq $insertAt) { $updated.Add($row) }
+        $updated.Add([string]$lines[$i])
+    }
+    if ($insertAt -ge $lines.Count) { $updated.Add($row) }
+
+    Set-Content -Path $Path -Value $updated -Encoding utf8
+
+    # PROVE IT, DO NOT ASSUME IT. A row the relay's own picker cannot read would
+    # STOP THE WHOLE QUEUE - the seventh-word failure, caused this time by the
+    # relay rather than by a cycle. So the file is read back through the real
+    # parser, and anything short of a clean TODO row is rolled straight back.
+    $written = @(Get-QueueRows $Path) | Where-Object { $_.Number -eq "$newNumber" } | Select-Object -First 1
+    if ($null -eq $written -or -not $written.Parsed -or $written.Status -notmatch '^TODO') {
+        Set-Content -Path $Path -Value $lines -Encoding utf8
+        return [pscustomobject]@{
+            Added  = $false
+            Number = $null
+            Reason = "the row the relay built could not be read back by its own parser, so QUEUE.md was put back exactly as it was and nothing was changed. The finding is still in $LogPath."
+        }
+    }
+
+    return [pscustomobject]@{
+        Added  = $true
+        Number = "$newNumber"
+        Reason = "carried the cycle's own words into QUEUE.md as row #$newNumber, above any BLOCKED row so the picker still reaches it"
+    }
+}
+
+# ===========================================================================
 # GOING QUIET IS ITSELF A FAULT
 #
 # 2026-08-26, twice in one day: the relay went silent with a full queue behind
@@ -1663,6 +1948,12 @@ while ($true) {
     $namedFiles = Get-NamedFiles $prompt
     $before     = Get-RepoEvidence $namedFiles
 
+    # The row NUMBERS as they stand before the cycle touches anything. Compared
+    # against the same list afterwards, this is what tells "mirrored a finding
+    # into the queue" apart from "stamped its own row DONE" - and every cycle
+    # does the second. See "A FINDING THAT EXISTS ONLY IN A CYCLE LOG" above.
+    $queueRowsBefore = @(@(Get-QueueRows) | ForEach-Object { [string]$_.Number })
+
     # The prompt goes in as a FILE rather than down a pipe, because a redirected
     # pipe gives no handle on the child and therefore no way to kill it.
     #
@@ -1853,6 +2144,81 @@ either way.
         Write-Line "Cycle $cycle $outcome. The cycle had already written its own log ($($wrote.Bytes) bytes), so the watcher's record was ADDED UNDERNEATH it in $logFile - nothing was overwritten."
     } else {
         Write-Line "Cycle $cycle $outcome. Written to $logFile"
+    }
+
+    # -----------------------------------------------------------------------
+    # DID THIS CYCLE HAND SOMETHING ON AND THEN NOT QUEUE IT?
+    #
+    # Runs AFTER the log has been written, because the log file is the richest
+    # version of the cycle's own words - richer than $output, which is only the
+    # agent's last message on stdout.
+    #
+    # Only for a cycle that ENDED NORMALLY. A killed or failed cycle has already
+    # had its row given back above, and its log is a fragment; reading a handoff
+    # out of a half-written sentence would be exactly the cry-wolf failure this
+    # is built to avoid.
+    # -----------------------------------------------------------------------
+    if ($outcome -eq "finished" -or $outcome -eq "no-change") {
+        try {
+            $logText     = [string](Get-Content $logFile -Raw -Encoding UTF8)
+            $rowsAfter   = @(@(Get-QueueRows) | ForEach-Object { [string]$_.Number })
+            $handoff     = Get-UnmirroredFindingVerdict -LogText $logText `
+                              -RowNumbersBefore $queueRowsBefore -RowNumbersAfter $rowsAfter
+            $relativeLog = ".bidlow/relay/log/cycle-{0:d3}.md" -f $cycle
+
+            if ($handoff.ShouldRecord) {
+                $carried = Add-QueueRowForHandoff -Cycle $cycle -Passages $handoff.Passages -LogPath $relativeLog
+
+                if ($carried.Added) {
+                    Write-Line "Cycle $cycle handed something on in its log and queued no row for it."
+                    Write-Line "  Copied its own words into QUEUE.md as row #$($carried.Number), TODO. Nothing was interpreted."
+                    @(
+                        ""
+                        ""
+                        "### The relay carried an unqueued finding into QUEUE.md"
+                        ""
+                        "This cycle's own words say it was handing something on, and it added no new"
+                        "row to QUEUE.md before it exited. Nothing downstream reads old cycle logs -"
+                        "the one channel every cycle reads is QUEUE.md - so the relay copied the"
+                        "sentences below into that file as row #$($carried.Number), status TODO."
+                        ""
+                        "Not one word of the quoted text is the relay's, and it interpreted none of"
+                        "it. If the row turns out not to be worth doing, close it WONTFIX; that costs"
+                        "one reading, and a finding stranded in a log costs a whole cycle every time"
+                        "somebody has to re-derive it."
+                        ""
+                        "What was carried:"
+                        ""
+                    ) | Add-Content -Path $logFile -Encoding utf8
+                    @($handoff.Passages) | ForEach-Object { "* $_" } | Add-Content -Path $logFile -Encoding utf8
+                } else {
+                    # The finding is real and the relay could not carry it. THIS
+                    # is worth an email, and the ordinary case is not: a queue row
+                    # that arrives by itself needs no announcement, a finding with
+                    # nowhere to go does.
+                    Write-Line "Cycle $cycle handed something on and queued no row, and the relay could NOT carry it: $($carried.Reason)"
+                    Send-RelayAlert "ODoutreach relay - cycle $cycle found something and it is stranded in a log" @"
+Cycle $cycle's log says it was handing a finding on to somebody else, and the
+cycle added no row to QUEUE.md for it. The relay tried to copy the cycle's own
+words into QUEUE.md so the next cycle would meet them, and could not:
+
+$($carried.Reason)
+
+Nothing has been changed and nothing has been lost - but the finding currently
+exists only in $relativeLog, and no cycle reads old logs. This is what happened
+to cycle 50's E2E finding, which cost cycle 52 its entire reconnaissance.
+
+What the cycle said:
+
+$((@($handoff.Passages) | ForEach-Object { "* $_" }) -join "`n")
+"@ | Out-Null
+                }
+            }
+        } catch {
+            # Carrying a finding forward must never be the thing that stops the
+            # relay taking the next item.
+            Write-Line "Could not check whether cycle $cycle left a finding unqueued: $($_.Exception.Message)"
+        }
     }
 
     # Tell Greg AFTER the log exists, so the email can point at something that

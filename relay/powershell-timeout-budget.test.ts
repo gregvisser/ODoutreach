@@ -134,6 +134,7 @@ describe("relay specs that start a PowerShell host", () => {
       "cycle-log-preserved.test.ts",
       "gate-switch.test.ts",
       "queue-parser.test.ts",
+      "unmirrored-finding.test.ts",
     ]);
   });
 
