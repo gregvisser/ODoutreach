@@ -18,9 +18,14 @@ name: Set bidlowai default sender (production, one-time)
 on:
   workflow_dispatch:
     inputs:
-      confirm:
-        description: 'Must be exactly: SET BIDLOWAI DEFAULT SENDER'
+      dry_run:
+        description: 'true = read-only plan + composition proof against the CURRENT row, no write. false = perform the write.'
         required: true
+        type: boolean
+        default: true
+      confirm:
+        description: 'Required when dry_run=false. Must be exactly: SET BIDLOWAI DEFAULT SENDER'
+        required: false
         type: string
 
 permissions:
@@ -40,6 +45,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           CONFIRM: ${{ inputs.confirm }}
+          DRY_RUN: ${{ inputs.dry_run == 'true' && '1' || '' }}
         run: |
           if [ -z "${DATABASE_URL}" ]; then
             echo "PRODUCTION_DATABASE_URL is not configured — refusing to run a client-data write against no database."
