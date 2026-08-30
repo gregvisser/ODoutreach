@@ -1,6 +1,64 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 133) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 137) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 137, queue row 110: gate re-confirmed not met, left TODO. No code changed.
+
+**What happened:** Row 110 (Microsoft Graph half of definitive reply
+matching) is gated: do not start until row 108's Gmail fix is merged,
+deployed AND observed working in production. Cycle 136 (immediately prior,
+same morning) already measured this and found the gate not met, leaving row
+110 `TODO` with a dated artefact
+(`docs/ops/GRAPH-REPLY-MESSAGEID-GATE-CHECK-2026-08-30-row110.md`). This
+cycle did not assume that finding was still current — it re-ran the check
+using the repo's own official read-only tool
+(`.github/workflows/mailbox-credential-probe.yml`, triggered manually, run
+`33300432912`) instead of repeating cycle 136's ad-hoc Postgres-firewall-rule
+approach. Same conclusion: **zero of the system's Google mailboxes are
+`CONNECTED`** (27/55 live mailboxes overall can send; none of them Google),
+so row 108's Gmail-only read-back fix cannot be exercised by a real send.
+Today was also Sunday, so the weekday-only send cron would not have fired
+regardless. Row 110 stays `TODO`. No Microsoft Graph code, test, or
+send-path file was touched.
+
+**PR sweep (done first, as required every cycle):** one open PR at cycle
+start, #434 (cycle 136's own docs commit) — green, squash-merged. This
+cycle's own docs commit merged as PR #435 (also green). Zero PRs open at
+session end.
+
+**Important find, not this row's work but recorded per row 110's own
+instruction:** the on-disk `QUEUE.md` at session start already contained six
+rows — **111, 112, 113, 114, 115, 116** — added by the supervisor (Cowork
+side) that morning, which row 110's text said had been **silently discarded
+twice already** by cycles that committed an older version of the file. All
+six were confirmed present (status `TODO`) before this cycle's edit and were
+committed exactly as found — only row 110's own status cell was changed.
+**Row 115 carries Greg's explicit written authorisation for the relay to
+send ONE real email**, to his own address, for the `bidlowai` client only,
+via the real Launch button, once row 109 is confirmed deployed — this is a
+live, high-value row and the next session must not lose it. If a future
+session opens `QUEUE.md` and rows 111-116 are missing, that confirms the
+silent-discard defect is still live and needs its own row against the relay
+tooling, not against this repo's application code.
+
+**Nothing half-done.** This session's only durable output is
+`.bidlow/relay/log/cycle-137.md` and the row 110 status-cell update in
+`QUEUE.md`, both merged to `main` (commit range `f266746..9b3cbd7`).
+
+**Next session should pick up:** whatever row the relay picker takes next
+from `QUEUE.md`. Per row 110's own note, the priority order it specifies is
+**115, then 111, 112, 113, 116, then row 110's neighbours, with 114 near the
+end and the BLOCKED rows (92, 84, 48) at the very back** — read row 110 in
+full before assuming the picker's default top-to-bottom order applies. Row
+110 itself (Graph reply-matching) stays blocked until a Gmail send actually
+succeeds through the row 108 code path — that requires a human to reconnect
+at least one Google mailbox (see the standing mailbox-credential-health
+record) or a deliberate decision that the gate no longer requires Gmail to
+fire first.
+
+**Nothing here contradicts `.bidlow/PROJECT.json`.**
+
+---
 
 ## Session 2026-08-30 - Relay cycle 127, queue row 102: measured reply-matcher mis-filing read-only against production, found mechanism (ii) NOT biting, fixed a real prefix-matching gap. PR #422 open, mergeable, CI pending.
 
