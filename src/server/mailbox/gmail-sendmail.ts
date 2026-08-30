@@ -22,10 +22,14 @@ const GMAIL_LIST = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
  * supply to its own `<...@mail.gmail.com>` value before delivery — every
  * sampled reply's In-Reply-To carried Gmail's format, never ours. The value
  * stamped here is stored correctly and is real, it just never matches what
- * the recipient's client actually replies to. Do not rely on this id for
- * thread-ref reply matching (leg 1 of `processSyncedMessageForReply`) until
- * that measurement's fix (capture Gmail's own Message-ID via a
- * post-send `format=metadata` fetch) is built.
+ * the recipient's client actually replies to on its own. Row 108 closes this
+ * gap for the Gmail path: after a successful send, execute-one.ts calls
+ * {@link fetchDeliveredGmailMessageId} to read back Gmail's own rewritten
+ * value and corrects the stored `rfc822MessageId`, so thread-ref reply
+ * matching (leg 1 of `processSyncedMessageForReply`) has a real value to
+ * match against. This function's return value is still what gets stamped on
+ * the outgoing MIME and stored first — the correction is a best-effort
+ * follow-up, never a replacement for sending.
  */
 export function generateRfc822MessageId(fromEmail: string): string {
   const domain = fromEmail.split("@")[1]?.trim().toLowerCase() || "odoutreach.local";
@@ -70,6 +74,43 @@ export async function findGmailMessageIdByRfc822MessageId(input: {
     return { status: "not_found" };
   } catch {
     return { status: "unknown" };
+  }
+}
+
+/**
+ * Row 108 — read back the Message-ID Gmail actually stamped on a message we
+ * just sent. Gmail rewrites whatever we supply in the outgoing MIME (see
+ * {@link generateRfc822MessageId}'s doc comment and
+ * docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md); this is the only
+ * way to learn the value a genuine reply's In-Reply-To will actually carry.
+ *
+ * Best-effort ONLY, by contract: this runs after a real send has already
+ * succeeded and must never affect that outcome. Every failure mode — network
+ * error, non-2xx response, malformed JSON, a missing header — is swallowed
+ * here and reported as `null`. Callers MUST treat `null` as "leave the
+ * originally stored value in place" and must never let this function's
+ * rejection propagate into the send path.
+ */
+export async function fetchDeliveredGmailMessageId(input: {
+  accessToken: string;
+  gmailMessageId: string;
+}): Promise<string | null> {
+  try {
+    const url = `${GMAIL_LIST}/${encodeURIComponent(input.gmailMessageId)}?format=metadata&metadataHeaders=Message-ID`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${input.accessToken}` },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      payload?: { headers?: Array<{ name?: string; value?: string }> };
+    };
+    const header = json.payload?.headers?.find(
+      (h) => typeof h?.name === "string" && h.name.toLowerCase() === "message-id",
+    );
+    const value = header?.value?.trim();
+    return value ? value : null;
+  } catch {
+    return null;
   }
 }
 
