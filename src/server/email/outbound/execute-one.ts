@@ -13,11 +13,13 @@ import {
 } from "@/server/safety/autonomous-mode";
 import {
   buildRfc5322PlainTextEmail,
+  fetchDeliveredGmailMessageId,
   findGmailMessageIdByRfc822MessageId,
   generateRfc822MessageId,
   sendGmailUsersMessagesSend,
   stableRfc822MessageId,
 } from "@/server/mailbox/gmail-sendmail";
+import { reportError } from "@/lib/logger";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import {
   classifyMailboxCredentialFailure,
@@ -139,6 +141,50 @@ async function markMailboxReauthRequired(
     });
     await reconcilePrimaryMailboxForClient(tx, clientId);
   });
+}
+
+/**
+ * Row 108 — best-effort only, by contract. Runs strictly AFTER a Gmail send
+ * has already been recorded as SENT. Reads back the Message-ID Gmail actually
+ * stamped (it rewrites whatever we supply — see
+ * docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md) and corrects the
+ * stored `rfc822MessageId` so a future reply's In-Reply-To can link via
+ * BY_THREAD_REF instead of the heuristic legs.
+ *
+ * THE SAFETY CONTRACT IS ABSOLUTE: every exception here is caught and
+ * swallowed. This function must never throw, never retry, and never touch
+ * `status`. A delivered email is worth more than a matching id — on any
+ * failure the row simply keeps the value already written at send time and
+ * falls back to today's heuristic matching, exactly as before this row.
+ */
+async function captureDeliveredGmailMessageIdBestEffort(input: {
+  outboundEmailId: string;
+  accessToken: string;
+  providerMessageId: string;
+  storedRfc822MessageId: string;
+}): Promise<void> {
+  try {
+    const gmailMessageId = input.providerMessageId.replace(/^gmail:/, "");
+    if (!gmailMessageId) return;
+    const delivered = await fetchDeliveredGmailMessageId({
+      accessToken: input.accessToken,
+      gmailMessageId,
+    });
+    if (!delivered || delivered === input.storedRfc822MessageId) return;
+    // Guarded on providerMessageId so a row reconciled or changed since the
+    // send-time write is left alone rather than clobbered.
+    await prisma.outboundEmail.updateMany({
+      where: { id: input.outboundEmailId, providerMessageId: input.providerMessageId },
+      data: { rfc822MessageId: delivered },
+    });
+  } catch (e) {
+    reportError(e, {
+      scope: "outbound.gmail-messageid-readback",
+      detail:
+        "Post-send Gmail Message-ID read-back failed; the send already succeeded and stands unchanged — this outbound keeps its originally stored rfc822MessageId and falls back to heuristic reply matching.",
+      outboundEmailId: input.outboundEmailId,
+    });
+  }
 }
 
 /**
@@ -689,6 +735,15 @@ async function sendViaConnectedMailboxOrFail(
         return { ok: true };
       }
       await markReservationConsumedForOutbound(row.id);
+      // Row 108 — best-effort, never allowed to affect the outcome above.
+      // captureDeliveredGmailMessageIdBestEffort swallows every failure itself;
+      // this send is already recorded as SENT regardless of what happens next.
+      await captureDeliveredGmailMessageIdBestEffort({
+        outboundEmailId: row.id,
+        accessToken,
+        providerMessageId: result.providerMessageId,
+        storedRfc822MessageId: rfc822MessageId,
+      });
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

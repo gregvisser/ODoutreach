@@ -61,6 +61,9 @@ vi.mock("@/server/mailbox/gmail-sendmail", () => ({
   sendGmailUsersMessagesSend: (...a: unknown[]) =>
     (sendGmail as (...args: unknown[]) => unknown)(...a),
   generateRfc822MessageId: () => TEST_MESSAGE_ID,
+  // Row 108's post-send read-back is out of scope for this suite — a no-op
+  // null means "nothing delivered found," which the fix treats as leave-as-is.
+  fetchDeliveredGmailMessageId: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),

@@ -142,6 +142,53 @@ describe("processSyncedMessageForReply", () => {
     });
   });
 
+  /**
+   * Row 108 — the leg that has never fired in production. Cycle 130 measured
+   * (docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md) that leg 1's own
+   * SQL was never broken — it correctly matches `rfc822MessageId == In-Reply-To`
+   * for ANY string, including Gmail's own `<...@mail.gmail.com>` shape (proven
+   * by the preceding test, which already uses that shape). What was broken
+   * was upstream: the Gmail send path stamped a value Gmail then rewrote, so
+   * no OutboundEmail row ever held the value a genuine reply would carry. This
+   * test names that connection explicitly: once row 108's post-send read-back
+   * (execute-one-gmail-messageid-readback.test.ts) corrects the stored
+   * rfc822MessageId to Gmail's OWN delivered id, a reply whose In-Reply-To
+   * carries that exact delivered id links via BY_THREAD_REF.
+   */
+  it("row 108: links via BY_THREAD_REF using a GENUINE Gmail-delivered Message-ID (not our generated uuid)", async () => {
+    const deliveredGmailMessageId =
+      "<CAKYWr=Z75bBC9-1HzZ5Zqw5XbJo0f_96mCJOMFE1E2FGrc6x-Q@mail.gmail.com>";
+    prismaMock.inboundReply.findFirst.mockResolvedValue(null);
+    prismaMock.outboundEmail.findFirst.mockResolvedValue({
+      id: "ob-gmail-readback",
+      contactId: "ct-gmail-readback",
+      status: "SENT",
+    });
+    prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-gmail-readback" });
+
+    const result = await processSyncedMessageForReply({
+      ...BASE_INPUT,
+      inReplyToHeader: deliveredGmailMessageId,
+    });
+
+    expect(result.created).toBe(true);
+    expect(prismaMock.outboundEmail.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          clientId: "c1",
+          rfc822MessageId: deliveredGmailMessageId,
+        }),
+      }),
+    );
+    expect(prismaMock.inboundReply.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        matchMethod: "BY_THREAD_REF",
+        linkedOutboundEmailId: "ob-gmail-readback",
+        inReplyToProviderId: deliveredGmailMessageId,
+      }),
+    });
+  });
+
   it("calls stopFollowUpsForLinkedReply for the matched outbound (PR #137)", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
     prismaMock.outboundEmail.findFirst.mockResolvedValue({
