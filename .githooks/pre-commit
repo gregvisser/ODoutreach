@@ -1,0 +1,27 @@
+#!/bin/sh
+# Restores QUEUE.md's UTF-8 BOM before it can be committed without one.
+#
+# See scripts/relay/ensure-queue-bom.mjs for the full story (queue row 127,
+# 30 August 2026). This runs on EVERY commit, not only ones that touch
+# QUEUE.md on purpose - the BOM has twice gone missing silently in the working
+# tree, from a write path outside any commit, so by the time a commit touches
+# the file deliberately the damage is already sitting there waiting to be
+# picked up. Installed via `core.hooksPath` by `scripts/relay/install-git-hooks.mjs`
+# (the npm "prepare" script), so this is live after `npm install` on any
+# machine rather than depending on one machine configured by hand.
+#
+# Never blocks a commit - if `node` itself is unavailable this warns and gets
+# out of the way. `relay/queue-file-integrity.test.ts` remains the real gate in
+# CI for the rare case of a bypassed hook (--no-verify) or a missing `node`.
+
+QUEUE_FILE=".bidlow/relay/QUEUE.md"
+
+if [ -f "$QUEUE_FILE" ]; then
+  if node scripts/relay/ensure-queue-bom.mjs "$QUEUE_FILE"; then
+    git add "$QUEUE_FILE"
+  else
+    echo "pre-commit: could not check QUEUE.md's BOM (node failed) - continuing; relay/queue-file-integrity.test.ts still guards this in CI" >&2
+  fi
+fi
+
+exit 0
