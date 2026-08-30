@@ -126,3 +126,188 @@ measure-only row.
 
 `DONE 139` — see `docs/ops/2026-08-30-screen-walk-findings-row111.md` for
 the full ranked findings list and the 32-screen count.
+
+
+---
+
+## The watcher's own record of this cycle
+
+Everything ABOVE this line was written by the cycle itself, and is kept exactly as the cycle left it. Nothing above was edited, shortened or reordered.
+
+This section is written by `relay-watch.ps1` after the cycle's process has
+exited. It is the independent half of the record: the cycle above says what it
+meant to do, and this says what actually moved on disk, how long it took, and
+how the process ended. Where the two disagree, this half is the evidence.
+# Cycle 139 - finished
+
+Work happened. Evidence: a git ref moved, so something was committed; the working tree changed, so files were edited.
+
+Watcher script: B9E192203DEB - the file on disk is identical, so this process is running the current code.
+
+Started 2026-08-30 09:41:07, took about 30.1 minutes.
+How it ended: exit code 0.
+
+Evidence checked: git refs on every branch, the working tree, and these
+files named in the brief: e2e/screen-walk.spec.ts, e2e/.artifacts, bidlow/GRADES.json, bidlow/relay/QUEUE.md
+
+## What it was asked to do
+
+# Cycle 139 - queue item 111
+
+This brief was written by the relay itself, off the top of QUEUE.md. Greg has
+not read it. If it is wrong, say so in your log rather than working around it,
+and correct QUEUE.md.
+
+## The item, verbatim from the queue
+
+> **WALK THE WHOLE PRODUCT AS A NEW EMPLOYEE WHO HAS NEVER SEEN IT, AND WRITE DOWN EVERY PLACE IT DOES NOT TELL THEM WHAT JUST HAPPENED. MEASURE ONLY - FIX NOTHING IN THIS ROW.** Greg set the standard himself on 30 August, after clicking Launch and being unable to tell whether an email had gone: 'the send page is very confusing... i dont know if anything has actually been sent? if im not sure whats going on in this screen, how would a employee?' That is the test every screen has to pass. **THE METHOD ALREADY EXISTS - USE IT, do not invent one.** `e2e/screen-walk.spec.ts` opens the staff-facing screens against a LOCAL PRODUCTION BUILD (`npm run build`, then `npm run start`) as a signed-in super admin and records each screen's rendered text, load time, console errors, page errors and failed requests to `e2e/.artifacts/screen-walk/*.json`. That is how the customer-ready grade was originally produced. Re-run it, and then WALK THE RESULT WITH JUDGEMENT - the artefacts tell you what a screen said, not whether a human could act on it. **WHAT COUNTS AS A FINDING, and be strict:** a screen that looks identical before and after a consequential action; a state with no explanation and no next step; a control whose effect you cannot predict from its label; an error or empty state that names no cause; a number a reader cannot trace to anything; two screens that disagree; an instruction that assumes knowledge a new operator has not got. A finding is NOT 'I would have designed this differently' - it is 'a competent person would not know what to do here'. **COVER THE WHOLE OPERATOR PATH, not just the pretty screens:** creating a client, connecting a mailbox, importing a list, building a template, building a sequence, reviewing recipients, launching, and then reading what came back on Activity and Replies. The launch and post-launch stretch is where the known failure is, so walk it hardest. **THE DELIVERABLE IS ONE DATED ARTEFACT under `docs/ops/`,** a numbered list, each entry naming: the screen, the exact words on it, what a new operator would reasonably conclude, what is actually true, and one sentence on what it should say instead. Rank them by how much damage the confusion does - a wrong belief about whether an email was sent ranks above a fuzzy label. Say how many screens were walked, so the count is auditable. **FIX NOTHING.** Measuring and fixing in one cycle produces neither properly, and the fixes belong to row 112 where they can be argued about one at a time. If you find something actively dangerous - a control that could send or delete when its label says otherwise - STOP, say so at the top of the artefact, and change nothing. **DO NOT SCORE ANYTHING:** no `.bidlow/GRADES.json`, no dimension, no sell gate. Row 114 does the scoring, once, from this evidence. **SCOPE:** running the walk, reading its artefacts, and writing the findings artefact. No source change. No send - the `bidlowai` sequence 'Cycle 129 send-and-reply walk - 2026-08-30' stays untouched at Ready: 1, Sent: 0 waiting for the owner's own click, and no cycle may launch it. No client data mutated beyond what the existing walk fixture already creates. **THE HARD RULE, verbatim and not negotiable: real email may be sent, and data deleted, ONLY for the `bidlowai` client. Every other client may be built on, tested and measured, but nothing leaves the building for them.** **DEFINITION OF DONE:** the dated artefact on disk with a numbered, ranked findings list and the screen count; the raw walk artefacts regenerated; lint 0, typecheck 0, the full unit suite green, merged to `main`.
+
+## The one rule
+
+THE HARD RULE, and it is not negotiable:
+Real email may be sent, and data deleted, ONLY for the `bidlowai` client.
+Every other client may be built on, tested and measured. Nothing leaves the
+building for them. This is enforced in `autonomous-actor-guard.ts`, not by
+your good intentions. If a task seems to need a real send for anyone else,
+that task is wrong - stop and write down why.
+
+## FIRST, BEFORE ANY NEW WORK: CLEAR THE GREEN PULL REQUESTS
+
+Do this at the START of every cycle, before you read the item below. It takes two
+minutes and it is the difference between a queue and a landfill.
+
+`gh pr list --state open` then, for every PR whose checks are GREEN: bring the
+branch up to date if branch protection requires it, and MERGE it. Greg counted
+SEVENTEEN open on 2026-08-28 and most were green - they had simply been opened and
+abandoned.
+
+**Understand WHY this happens, because it is structural and not laziness.** A
+cycle finishes its work, opens a PR, and ends. CI takes about five minutes. Nobody
+ever comes back. So every cycle adds one and removes none, for ever. The only
+place that can be fixed is here, at the start of the NEXT cycle.
+
+Rules for the sweep:
+* RED PRs are not yours to force. Read the failure, and either fix it as part of
+  this cycle or say in your log why you left it.
+* Merge order matters: branch protection requires each branch to be current, so
+  every merge invalidates the next one. Take the docs and `.bidlow` record PRs
+  first - they cannot conflict with code - then the code ones, updating as you go.
+* `gh pr merge --auto` is better than update-then-race if auto-merge is allowed.
+* A DESTRUCTIVE migration is still Greg's. Additive is yours.
+* If a PR is genuinely not ready, say so in a comment on it, so the next cycle
+  does not have to work that out again.
+
+## Before you touch anything, write these four things down
+
+1. **The files you are going to change.** Name them. If you cannot yet, your
+   first job is to find out, and that reconnaissance IS the cycle.
+2. **The red-first test.** Name the test file and what it asserts. Watch it FAIL
+   before you make it pass. If the behaviour cannot go red first, say why, and
+   prove the test is capable of failing by deliberately breaking the code and
+   showing the red - that is this repository's established substitute.
+3. **What "done" looks like** for this item, in one sentence a non-coder can check.
+4. **What you must NOT touch.** Anything outside the files in (1).
+
+## THIS PROJECT'S FOLDER, AND NOTHING OUTSIDE IT
+
+You are working on ONE client system. Greg runs several side by side, and they
+share one folder deliberately: `C:\Bidlowprojects\_standards` is the METHOD -
+the hooks, the gates, the skills, the deck, the checklists - and it applies to
+every project at once.
+
+**Do not create, edit, move or delete anything under `_standards` unless the
+queue row you are working on names that path explicitly.** A change made there
+while doing client work does not stay with this client; it silently changes how
+every other build is judged, including ones nobody is looking at today. If this
+row's work seems to need a change to the method, STOP and write the case for it
+into your log as a finding. Somebody will queue it as its own row, against the
+standard, where it can be reviewed on its own terms.
+
+The same goes for any sibling project folder - `BidlowClients\Kepak`,
+`BidlowClients\Papaya`, `BidlowTools\*`. Read them if a row asks you to
+compare something. Never write to them.
+
+## The rules that apply to every cycle
+
+* Do not stall on a question. Decide, record the decision and why, and continue.
+  If the decision is genuinely Greg's - money, a client relationship, or one of
+  the three named below - stop and write down the question instead. Note what
+  changed on 2026-08-27: "an irreversible one-way door" used to sit in this list
+  and was read as covering any production merge. It does not. Only (a), (b) and
+  (c) below stop you now.
+* Gates before you claim anything: `npm run lint`, `npm run typecheck`,
+  `npm test`. Show the real output. A gate you did not run is not met.
+* Commit and push when confident. Branch protection is ON, so it is
+  branch -> PR -> green CI -> merge. Never push straight to `main`.
+* **MERGING IS YOURS NOW. Greg decided this on 2026-08-27 and asked to stop being
+  the bottleneck.** With green CI, MERGE AND DEPLOY WITHOUT ASKING. Do not park a
+  finished, green PR and wait for him - a PR left open ROTS: #231 went from clean
+  to 36 commits behind and CONFLICTING in a single day, and cost a whole cycle to
+  rescue. Leaving it open is not the safe option, it is the expensive one.
+* Three things still stop and ask, and they are the ONLY three:
+  (a) a DESTRUCTIVE migration - anything that drops or alters an EXISTING table,
+      column or type, or backfills over existing rows. Creating a NEW table, a new
+      enum, or adding foreign keys to a new table is ADDITIVE and is yours to merge.
+      The test is: does dropping what this adds restore today's behaviour exactly?
+  (b) anything that touches or moves real CLIENT data.
+  (c) anything that causes an EMAIL TO BE SENT. That one is absolute and it is on
+      top of the hard rule about `bidlowai`, not instead of it.
+  If it is none of those three, you do not need him. Merge it.
+* If you deploy, verify the running commit by HASH against the DIRECT App
+  Service URL (`app-opensdoors-outreach-prod.azurewebsites.net`), never the
+  CDN-cached custom domain, and never liveness alone.
+* Production migrations are real. `PRODUCTION_PRISMA_MIGRATE` is true, so
+  merging a migration applies it to the live client database.
+* When you finish, update this item's row in `.bidlow/relay/QUEUE.md` to
+  `DONE 139`, or back to `TODO` with a note if you could not do it.
+
+## THE STATUS CELL: SIX WORDS, AND ONLY SIX
+
+The status cell of a queue row MUST BEGIN with one of exactly these six:
+
+    TODO    DONE    BLOCKED    PARTIAL    IN PROGRESS    WONTFIX
+
+Markdown bold around it is fine - `| **DONE 139 - ...** |` reads correctly.
+Anything else does not. The relay reads QUEUE.md with a regex, and a status it
+cannot read STOPS THE WHOLE QUEUE, on purpose: refusing to guess is the right
+behaviour, and inventing is the one thing this relay will never do.
+
+This is not hypothetical, and it is not pedantry. Cycle 59 built, merged and
+DEPLOYED half of row 40 - good work, verified by commit hash - and then wrote its
+status as `PARTLY DONE 59`. Two words, one of them not on the list above. The
+row stopped parsing, the picker met it first, and the relay took nothing at all
+for seventy minutes while eleven jobs waited behind it. `SUPERSEDED` did exactly
+the same thing to row 38 the day before.
+
+So, plainly:
+
+* Finished it -> `DONE 139 - <what you did, and the proof>`
+* Did some of it -> `PARTIAL 139 - <what is done, what is left>`. PARTIAL
+  is TAKEN by the relay, so the next cycle picks the row straight back up. This is
+  the right answer whenever you shipped part of a row.
+* Could not start -> `TODO - <why>`
+* Never invent a seventh word.
+* Do NOT write the next NEXT.md. The watcher does that. One cycle, one item.
+
+## Assume the seventh exists
+
+QUEUE.md records six instances this week of something built, wired, reporting
+success, and never firing. It is the defect this project is worst at by a wide
+margin. Whatever you build this cycle, prove it FIRES - not that it exists.
+
+
+## What it did
+
+Confirmed: row 111 is correctly marked `DONE 139` on `main`, working tree is clean (the untracked `ODOUTREACH-PROJECT-INSTRUCTIONS.md` predates this cycle and is unrelated — left untouched).
+
+## Summary
+
+Cycle 139 is complete:
+
+1. **PR sweep**: Merged the one open PR (#437, row 115's send-proof docs) after committing the watcher's leftover addendum and waiting for green CI.
+2. **Row 111 (screen walk)**: Re-ran `e2e/screen-walk.spec.ts` against a fresh local production build — 32/32 screens passed mechanically. Read every artefact with judgment, traced source code behind anything suspicious, and wrote 7 ranked findings to `docs/ops/2026-08-30-screen-walk-findings-row111.md`. Top finding directly reproduces Greg's own complaint: the post-Launch banner always says "queued" even after the email has actually sent (evidenced by cycle 138's real send proof, cross-referenced against source). Other findings cover contradictory do-not-contact status between screens, a mislabeled contact-count-as-"Lists", and unexplained "mock" provider labels. No dangerous mislabeled control was found. No source code changed, no send occurred.
+3. **Gates**: lint 0, typecheck 0, 3711 unit tests green, PR #438 merged to `main` at `1d03d08`.
+4. Row 111 marked `DONE 139` in QUEUE.md.
+
+Open question for whoever picks up row 112: the findings artefact identifies concrete root causes (e.g., two different truthiness checks on suppression-source data, `counts.queued` reflecting intake rather than dispatch state) that should make the fixes there fairly direct.
+

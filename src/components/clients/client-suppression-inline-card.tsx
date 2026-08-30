@@ -22,7 +22,9 @@ import {
 import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
 import {
   suppressionKindShortLabel,
+  suppressionSourceIsConnected,
   suppressionSyncStatusLabel,
+  suppressionSyncUnavailableCopy,
 } from "@/lib/suppression/staff-labels";
 
 type SourceRow = {
@@ -173,34 +175,45 @@ export function ClientSuppressionInlineCard({
                 </div>
               </details>
             ) : (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
-                <p className="font-medium text-foreground">Google Sheets sync isn&apos;t set up yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Ask an administrator to connect Google Sheets sync (a one-time
-                  setup). Once it&apos;s on, you just paste a Sheet URL here.
-                </p>
-              </div>
+              (() => {
+                // Row 111 finding 2 — pick the true sentence for THIS
+                // client rather than always saying "isn't set up yet",
+                // which directly contradicts the "Sheet connected" / "Last
+                // sync succeeded" text a client with prior sync history
+                // sees a few lines below.
+                const copy = suppressionSyncUnavailableCopy(
+                  sources.some((s) => s.syncStatus === "SUCCESS"),
+                );
+                return (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
+                    <p className="font-medium text-foreground">{copy.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{copy.body}</p>
+                  </div>
+                );
+              })()
             )}
 
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Email addresses never to contact</p>
-                {emailSrc ? (
+                {/* Row 111 finding 3 — same test the Overview readiness row already
+                    uses (a non-blank spreadsheetId), so the two screens can no
+                    longer disagree about whether this is "connected." */}
+                {emailSrc && suppressionSourceIsConnected(emailSrc) ? (
                   <p className="text-xs text-muted-foreground">
-                    Sheet connected.
-                    {emailSrc.spreadsheetId ? (
-                      <>
-                        {" "}
-                        <a
-                          href={`https://docs.google.com/spreadsheets/d/${emailSrc.spreadsheetId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline hover:text-foreground"
-                        >
-                          Open ↗
-                        </a>
-                      </>
-                    ) : null}
+                    Sheet connected.{" "}
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${emailSrc.spreadsheetId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-foreground"
+                    >
+                      Open ↗
+                    </a>
+                  </p>
+                ) : emailSrc ? (
+                  <p className="text-xs text-muted-foreground">
+                    Sheet reference missing — paste the Sheet URL again to reconnect.
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">Paste a Sheet URL and save to connect.</p>
@@ -260,22 +273,21 @@ export function ClientSuppressionInlineCard({
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-medium">Domains never to contact</p>
-                {domainSrc ? (
+                {domainSrc && suppressionSourceIsConnected(domainSrc) ? (
                   <p className="text-xs text-muted-foreground">
-                    Sheet connected.
-                    {domainSrc.spreadsheetId ? (
-                      <>
-                        {" "}
-                        <a
-                          href={`https://docs.google.com/spreadsheets/d/${domainSrc.spreadsheetId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline hover:text-foreground"
-                        >
-                          Open ↗
-                        </a>
-                      </>
-                    ) : null}
+                    Sheet connected.{" "}
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${domainSrc.spreadsheetId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-foreground"
+                    >
+                      Open ↗
+                    </a>
+                  </p>
+                ) : domainSrc ? (
+                  <p className="text-xs text-muted-foreground">
+                    Sheet reference missing — paste the Sheet URL again to reconnect.
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">Optional — same flow as email.</p>

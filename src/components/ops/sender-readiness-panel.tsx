@@ -38,8 +38,11 @@ function headlineBadge(h: SenderReadinessReport["headline"], context: ReadinessV
           Platform: test or mock mode
         </Badge>
       ) : (
-        <Badge variant="secondary" title="Legacy global transport (EMAIL_PROVIDER) is mock or unset — not the primary client outreach path when mailboxes are connected">
-          Legacy transport: mock
+        <Badge
+          variant="secondary"
+          title="Legacy global transport (EMAIL_PROVIDER) is mock or unset — not the primary client outreach path when mailboxes are connected"
+        >
+          No mailbox connected — cannot send real outreach
         </Badge>
       );
     case "needs_verification":

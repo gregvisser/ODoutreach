@@ -1,3 +1,4 @@
+import type { OutboundEmailStatus } from "@/generated/prisma/enums";
 import { SEQUENCE_INTRODUCTION_BATCH_CAP } from "@/lib/controlled-pilot-constants";
 
 /**
@@ -82,3 +83,90 @@ export const LIVE_SEQUENCE_LAUNCH_INTRO_HELP =
 
 export const LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP =
   "Sends one step at a time. Eligibility, delays, and suppression are re-checked when you launch.";
+
+/**
+ * Row 111 finding 1 — after a launch, the flash banner always said "N
+ * queued", even once the row had already gone QUEUED → SENT via Graph
+ * (`docs/ops/SEND-PROOF-2026-08-30.md` measured ~1.2s). The dispatcher
+ * awaits the queue drain before returning, so by the time this banner
+ * renders, dispatch has very often already finished. Callers re-read each
+ * newly-created `OutboundEmail`'s real status and classify it here so the
+ * banner reports what actually happened, not the fixed intake word.
+ */
+export type SequenceDispatchOutcome = {
+  /** Reached a terminal "left the building" status by the time we checked. */
+  sentImmediately: number;
+  /** Reached a terminal failure status by the time we checked. */
+  failedImmediately: number;
+  /** Still genuinely in flight — the worker has not resolved it yet. */
+  stillPending: number;
+};
+
+const DISPATCH_OUTCOME_SENT_STATUSES = new Set<OutboundEmailStatus>([
+  "SENT",
+  "DELIVERED",
+  "REPLIED",
+]);
+
+const DISPATCH_OUTCOME_FAILED_STATUSES = new Set<OutboundEmailStatus>([
+  "FAILED",
+  "BOUNCED",
+  "BLOCKED_SUPPRESSION",
+]);
+
+export function classifySequenceDispatchOutcome(
+  statuses: readonly OutboundEmailStatus[],
+): SequenceDispatchOutcome {
+  let sentImmediately = 0;
+  let failedImmediately = 0;
+  for (const status of statuses) {
+    if (DISPATCH_OUTCOME_SENT_STATUSES.has(status)) sentImmediately += 1;
+    else if (DISPATCH_OUTCOME_FAILED_STATUSES.has(status)) failedImmediately += 1;
+  }
+  return {
+    sentImmediately,
+    failedImmediately,
+    stillPending: Math.max(
+      0,
+      statuses.length - sentImmediately - failedImmediately,
+    ),
+  };
+}
+
+/**
+ * `categoryLabel` is the singular noun already used elsewhere in the flash
+ * message ("introduction", "follow up 1", ...); this adds "s" for plurals,
+ * matching the existing pluralisation in `sequence-actions.ts`.
+ */
+export function describeSequenceDispatchOutcome(
+  categoryLabel: string,
+  outcome: SequenceDispatchOutcome,
+): string {
+  const total =
+    outcome.sentImmediately + outcome.failedImmediately + outcome.stillPending;
+  if (total === 0) return `0 ${categoryLabel}s queued`;
+
+  const parts: string[] = [];
+  if (outcome.sentImmediately > 0) {
+    parts.push(
+      outcome.sentImmediately === 1
+        ? `1 ${categoryLabel} sent`
+        : `${String(outcome.sentImmediately)} ${categoryLabel}s sent`,
+    );
+  }
+  if (outcome.stillPending > 0) {
+    parts.push(
+      outcome.stillPending === 1
+        ? `1 ${categoryLabel} queued — sending shortly`
+        : `${String(outcome.stillPending)} ${categoryLabel}s queued — sending shortly`,
+    );
+  }
+  if (outcome.failedImmediately > 0) {
+    parts.push(
+      outcome.failedImmediately === 1
+        ? `1 ${categoryLabel} failed to send (see timeline for the reason)`
+        : `${String(outcome.failedImmediately)} ${categoryLabel}s failed to send (see timeline for the reason)`,
+    );
+  }
+  return parts.join(" · ");
+}

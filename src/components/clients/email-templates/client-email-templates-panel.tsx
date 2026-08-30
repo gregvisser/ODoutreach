@@ -106,7 +106,13 @@ export function ClientEmailTemplatesPanel(props: Props) {
     {
       label: TEMPLATE_STATUS_LABELS.READY_FOR_REVIEW,
       value: counts.byStatus.READY_FOR_REVIEW,
-      hint: "Legacy status — open and save to refresh",
+      // Row 111 finding 5 — the old hint ("Legacy status — open and save to
+      // refresh") never said whether a template stuck here blocks a
+      // sequence. It does not: `canApproveSequence` (sequence-policy.ts)
+      // only excludes ARCHIVED templates, so this status can already be
+      // picked into a sequence and sent. State that plainly instead of
+      // leaving the word "legacy" to carry the whole answer.
+      hint: "Can still be used in a sequence — open and save to move it to Saved",
     },
     {
       label: TEMPLATE_STATUS_LABELS.DRAFT,

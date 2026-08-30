@@ -14,6 +14,7 @@ import {
 import { requireStaffUser } from "@/server/auth/staff";
 import { getOutboundEmailByIdForStaff } from "@/server/queries/outbound-detail";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+import { describeOutboundProvider } from "@/lib/email/outbound-provider-copy";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export default async function OutboundDetailPage({ params }: Props) {
   const row = await getOutboundEmailByIdForStaff(id, accessible);
 
   if (!row) notFound();
+
+  const providerDisplay = describeOutboundProvider(row.providerName);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -74,7 +77,14 @@ export default async function OutboundDetailPage({ params }: Props) {
               {row.providerMessageId ?? "—"}
             </span>
             <span className="text-muted-foreground">Provider</span>
-            <span>{row.providerName ?? "—"}</span>
+            <span>
+              {providerDisplay.label}
+              {providerDisplay.explanation ? (
+                <span className="block text-xs text-muted-foreground">
+                  {providerDisplay.explanation}
+                </span>
+              ) : null}
+            </span>
           </div>
         </CardContent>
       </Card>
