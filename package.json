@@ -33,6 +33,7 @@
     "support:resolve": "tsx scripts/support-agent/resolve-ticket.ts",
     "support:escalate": "tsx scripts/support-agent/escalate-ticket.ts",
     "postinstall": "prisma generate",
+    "prepare": "node scripts/relay/install-git-hooks.mjs",
     "typecheck": "tsc --noEmit",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",

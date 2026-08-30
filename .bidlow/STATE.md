@@ -1,6 +1,82 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 160) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 162) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 162, queue row 127: found and fixed the real write path stripping QUEUE.md's UTF-8 BOM; PR #461 open, CI running, not yet merged.
+
+**PR sweep first:** found PR #459 (row 126, cycle 161's `anthropic-workspace-id`
+header work) green and merged it (squash `080ee73`). Its own QUEUE.md
+close-out and `cycle-161.md` log were already part of that commit — an
+earlier assumption in this session that they were "leftover uncommitted work"
+was wrong (a misread diff context) and led to a wasted detour opening and
+closing PR #460 against a branch that had gone stale/conflicting after the
+squash. No harm done — #460 was closed with an explanation, nothing merged
+from it. `cycle-161.md` (which genuinely never reached `main`) was recovered
+from that branch and carried into this row's PR instead.
+
+**Row 127, the actual assignment:** find what silently strips QUEUE.md's
+UTF-8 BOM outside a cycle's own commit (it had happened twice in one day,
+rows 121 and 127) and fix the write path, not just leave the existing test
+(`relay/queue-file-integrity.test.ts`) to catch it after the fact.
+
+**Root cause, reproduced directly rather than assumed:** `relay-watch.ps1`
+was cleared — every `Set-Content -Path $QueueFile ... -Encoding utf8` call it
+makes runs under Windows PowerShell 5.1 (the host `relay-start.cmd`
+launches), where `-Encoding utf8` always WRITES a BOM. Confirmed live in this
+session: the Claude Code harness's own file tools are the actual culprit, and
+only one of the two. Its line-level **Edit** tool preserves an existing BOM
+(tested: edit a BOM'd throwaway file, BOM survives byte-for-byte). Its
+**Write** tool — a full-file replace — does not: writing plain text back out
+through it left a throwaway BOM'd file starting with the first content byte,
+reproduced twice on disk. That tool lives outside this repository and cannot
+be patched here.
+
+**The fix sits at the commit gate instead of relying on CI:**
+`scripts/relay/ensure-queue-bom.mjs` (byte-level restore, never decodes to a
+string) + `.githooks/pre-commit` (runs it on every commit, re-stages the
+file if it had to act) + `scripts/relay/install-git-hooks.mjs` wired as the
+npm `"prepare"` script, so `core.hooksPath` is set to `.githooks`
+automatically after `npm install`/`npm ci` on any machine — not dependent on
+one machine configured by hand. **Not in `relay-watch.ps1`, so no watcher
+restart is needed** for this to take effect.
+
+**Proven to fire, not just to exist, twice over:** (1) `relay/ensure-queue-bom.test.ts`
+builds a throwaway git repo, commits a BOM-less QUEUE.md through the real
+hook, and asserts the committed blob carries the BOM — watched red first
+(hook stubbed to a no-op) and green after. (2) Live in this session's own
+commit (`3c7da68` on branch `fix/row127-queue-bom`): stripped the real
+QUEUE.md's BOM by hand using the exact TextDecoder mechanism identified for
+the Write tool, staged it, ran `git commit`, and the hook printed
+`ensure-queue-bom: restored the UTF-8 BOM on .bidlow/relay/QUEUE.md` and the
+committed blob was verified (via `git show HEAD:...`) to carry it.
+
+Gates: lint 0, typecheck 0, test 3758/3758 passed, build succeeded.
+`relay/queue-file-integrity.test.ts` (existing, 9/9) stays as the CI-side
+backstop for a bypassed hook (`--no-verify`) or a machine that never ran
+`npm install`.
+
+**LEFT OPEN, PICK UP HERE FIRST:** PR #461
+(`fix/row127-queue-bom` → `main`) is pushed with CI running but **not yet
+merged** when this session ended — the next session's first job is to check
+`gh pr checks 461`, and if green, merge it (docs/tooling + a new git hook +
+one new test file; no app code, no migration, no client data, no send — this
+session's own standing merge authority covers it, nothing here should need
+Greg). If CI is red, read the failure before assuming the fix is wrong — the
+new test spins up a real throwaway git repo and shells out to `git`/`node`,
+so a CI runner without `node` on `PATH` inside the hook's shell would be a
+plausible, fixable, environment gap rather than a logic bug.
+
+**One-way doors:** none touched. No migration, no client data, no real send.
+
+**One thing worth carrying forward, not this row's to fix:** GitHub Actions
+briefly failed to create ANY check-suite for two consecutive pushes to the
+original `feat/row126-anthropic-workspace-header` branch during this session
+(confirmed via `gh api .../commits/<sha>/check-suites` showing no "GitHub
+Actions" entry at all, only third-party apps) — recovered by abandoning that
+branch and opening a fresh one, which triggered CI normally. Never
+diagnosed further since it didn't recur; flagging in case it does again.
+
+**Nothing here contradicts `.bidlow/PROJECT.json`.**
 
 ## Session 2026-08-30 - Relay cycle 160, queue row 129: the workspace-scoped Anthropic key Greg added at 18:48 UTC WORKS. Row 113/126's HTTP 400 is gone. Merged as `7daa9a4`.
 
