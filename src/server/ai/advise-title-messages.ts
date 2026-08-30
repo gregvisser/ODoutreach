@@ -201,6 +201,7 @@ export async function adviseTitleMessages(args: {
     invoke: async () => {
       const response = await callAnthropicMessages({
         apiKey: process.env.ANTHROPIC_API_KEY as string,
+        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: TITLE_MESSAGE_SYSTEM_PROMPT,
         userText: buildTitleMessageInput({

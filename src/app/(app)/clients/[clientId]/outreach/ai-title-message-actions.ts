@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { describeUnhandledAiFailure } from "@/server/ai/ai-failure-messages";
 import { adviseTitleMessages } from "@/server/ai/advise-title-messages";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientEmailSequenceMutator } from "@/server/email-sequences/mutator-access";
@@ -37,8 +38,9 @@ function messageForFailure(reason: string): string {
       // is missing — a second campaign at the same audience, job titles on the
       // imported contacts, or simply more replies. That is more useful to an
       // operator than anything this switch could add, so it is passed through
-      // rather than flattened.
-      return reason;
+      // rather than flattened. But a raw provider error code (a 400/401/429/5xx,
+      // a timeout) is not a gate sentence and must not reach the screen verbatim.
+      return describeUnhandledAiFailure(reason) ?? reason;
   }
 }
 

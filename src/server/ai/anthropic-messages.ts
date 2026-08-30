@@ -44,6 +44,14 @@ export interface AnthropicMessagesRequest {
   readonly maxTokens: number;
   /** When set, the model is forced to answer by calling this tool. */
   readonly tool: AnthropicToolDefinition;
+  /**
+   * Required by Anthropic only when `apiKey` is an identity-linked key that
+   * was NOT scoped to a single workspace at creation — such a key gets a
+   * `400 anthropic-workspace-id is required` on every call otherwise. A key
+   * created inside a workspace does not need this. Omitted (header not sent)
+   * when unset, which is the correct request for that key shape.
+   */
+  readonly workspaceId?: string;
   /** Injectable for tests. Defaults to the platform `fetch`. */
   readonly fetchImpl?: typeof fetch;
 }
@@ -74,13 +82,16 @@ export async function callAnthropicMessages(
 ): Promise<AnthropicMessagesResponse> {
   const doFetch = req.fetchImpl ?? fetch;
 
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-api-key": req.apiKey,
+    "anthropic-version": ANTHROPIC_VERSION,
+  };
+  if (req.workspaceId) headers["anthropic-workspace-id"] = req.workspaceId;
+
   const response = await doFetch(ANTHROPIC_MESSAGES_URL, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": req.apiKey,
-      "anthropic-version": ANTHROPIC_VERSION,
-    },
+    headers,
     body: JSON.stringify({
       model: req.model,
       max_tokens: req.maxTokens,

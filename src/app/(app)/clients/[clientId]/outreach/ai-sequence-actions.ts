@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { describeUnhandledAiFailure } from "@/server/ai/ai-failure-messages";
 import { draftSequenceForClient } from "@/server/ai/draft-sequence";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientEmailTemplateMutator } from "@/server/email-templates/mutator-access";
@@ -33,7 +34,9 @@ function messageForFailure(reason: string): string {
     case "unusable_answer":
       return "The AI did not return a usable sequence. Nothing was saved — please try again.";
     default:
-      return "The sequence could not be drafted. Nothing was saved.";
+      return (
+        describeUnhandledAiFailure(reason) ?? "The sequence could not be drafted. Nothing was saved."
+      );
   }
 }
 
