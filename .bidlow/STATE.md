@@ -1,6 +1,63 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 122) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 124) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 124, queue row 100: fixed the reply-matcher plus-alias defect, red-first test proven, PR open awaiting CI.
+
+**What was built:** confirmed from production data (read-only, via the App
+Service's own Kudu container — direct psql from this machine is
+firewalled) which of two candidate mechanisms caused the 29 August reply to
+mis-link to the 26 August send: both competing `OutboundEmail` rows have
+`rfc822MessageId: null` (the mailbox, `greg@bidlow.co.uk`, is Microsoft
+Graph — not yet stamped), so mechanism (ii) (stamped-send exclusion) could
+not have fired; mechanism (i) (Gmail dropping the `+cycle109` alias on
+Reply, defeating leg 3's literal `toEmail` equality) is the one that did.
+Added a red-first test to `process-synced-replies.test.ts` reproducing the
+exact shape, watched it fail, then fixed `processSyncedMessageForReply`
+(legs 2 and 3 now fetch candidates on every existing safety constraint
+except `toEmail`, then compare recipients canonically in code via new
+`canonicalizeEmailForMatching` in `src/lib/normalize.ts`, built on
+`normalizeEmail`). No schema change. One other test file
+(`reply-optout-body.test.ts`) needed its prisma mock updated for the same
+reason, no behavioural change. Full evidence, the SQL, the red failure
+output and the design rationale: `docs/ops/REPLY-MATCHER-PLUS-ALIAS-FIX-2026-08-30.md`.
+
+**Gates run and green:** lint 0, typecheck 0, 3655/3655 tests (up from
+3649), `npm run build --webpack` succeeded.
+
+**What is half-done:** PR #419
+(`fix/reply-matcher-plus-alias-row100` → `main`) is open with CI running
+(E2E + verify jobs pending as of session end). This is code-only, additive,
+no migration/send/client-data-touch, so it is mine to merge under the
+standing rule once CI is green — **next session (or this one, if resumed):
+check `gh pr checks 419`, and if green, merge it** (branch may need
+updating first if branch protection requires it). If CI is red, read the
+failure and fix or note why before redispatching row 100.
+
+**Decisions made:** chose in-code canonical comparison over a new
+normalized-recipient column (no migration needed, every existing safety
+constraint on legs 2/3 stayed in the query). Left leg 1 (thread-ref)
+untouched — unrelated to this defect. Did NOT touch `.bidlow/GRADES.json`,
+dimension 1, or the sell gate — the row's own text is explicit that fixing
+the matcher does not by itself observe the send→reply→match journey, and
+this session did not claim that it did. No email sent, no client data
+mutated (both production queries were `SELECT`s), no firewall rule opened
+on the Postgres flexible server.
+
+**Discovered, not previously recorded:** the sending mailbox for both the
+26 and 29 August test sends is Microsoft Graph (`greg@bidlow.co.uk`), not
+Gmail as the earlier proofs implied by focus — Graph sends are not stamped
+with `rfc822MessageId` at all (0 of 6 for this mailbox vs 1,095 stamped
+rows elsewhere in the table). That's a separate, pre-existing gap
+(leg 1/thread-ref can never fire for a Graph-sent outreach) — left alone,
+out of this row's scope, but worth a future queue row if BY_THREAD_REF
+coverage for Graph sends ever matters.
+
+**Next session should pick up:** merge PR #419 once green (or fix red CI),
+then update QUEUE.md's row 100 line only if the merge changes anything
+about the status text already written (it shouldn't — the status was
+written assuming a clean merge). After that, row 101 (CR-10 engineering
+half) is next in the queue, untouched this session.
 
 ## Session 2026-08-30 - Relay cycle 122, queue row 93: re-measured `.bidlow/GRADES.json` dimension 8 (Data safety & trust) from live evidence, answered whether the prior score was fair when set, moved it 6 -> 7 (not 8), and surfaced a new, currently-inert third-party data risk (CR-10) that no prior cycle had named.
 
