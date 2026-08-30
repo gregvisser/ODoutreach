@@ -1,6 +1,6 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 127) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 133) - Tier P (Client Production)**
 
 ## Session 2026-08-30 - Relay cycle 127, queue row 102: measured reply-matcher mis-filing read-only against production, found mechanism (ii) NOT biting, fixed a real prefix-matching gap. PR #422 open, mergeable, CI pending.
 
@@ -7142,3 +7142,114 @@ schema change — every production query in the artefact is a `SELECT`.
    confirm its current status in QUEUE.md before assuming it's still open.
 3. **Do not re-open row 92/CR-05/row 68** — per the standing note above, all
    already correct on `main`.
+
+**Note: cycles 131 and 132 are not recorded in this file** — cycle 131 (row
+106, launch-refusal cause naming) merged real work (PRs #427/#428, commit
+`3dd9351`) but did not write a STATE.md entry; cycle 132 was killed mid-run by
+the watcher restart (see `.bidlow/relay/log/cycle-132.md`, "interrupted") and
+left an uncommitted QUEUE.md edit (a new urgent row 109 about a silent Launch
+button) that this session found and committed as-is without changing its
+content. See `.bidlow/relay/QUEUE.md` rows 106/109 and
+`.bidlow/relay/log/cycle-131.md`/`cycle-132.md` for that history if needed.
+
+## Cycle 133 — queue row 107, chart-series-contrast — DONE, closed
+
+Row 107 asked to close a measured WCAG 1.4.11 defect recorded in
+`.bidlow/DESIGN.json` `open_defects`: in light mode `--chart-3` measured
+2.51:1 and `--chart-4` measured 2.39:1 against `--card` (required 3:1), and
+the obvious fix (darken `--chart-4`) was already known and recorded as wrong
+— it would land `--chart-4` within 0.07 lightness of `--chart-1` at the same
+hue (both were hue 162), destroying distinguishability instead of fixing
+contrast. The row required clearing four bars at once, computed not
+eyeballed: 3:1 contrast both themes; every pair of series distinguishable
+from every other; distinguishable under simulated protanopia, deuteranopia
+*and* tritanopia; and still recognisably the product's palette.
+
+**What was built:** `src/lib/design/color-vision.ts` (new — OKLab forward
+transform, Machado-Oliveira-Fernandes 2009 CVD simulation, OKLab ΔE, per the
+project's `dataviz` skill's documented method) and
+`src/lib/design/chart-palette.test.ts` (new — the re-runnable gate: every
+chart token ≥3:1 vs `--card`; every *pair* of chart tokens, all-pairs not
+just adjacent, ≥8.0 ΔE under simulated protan/deutan, ≥15.0 ΔE under normal
+vision (hard floor), ≥6.0 ΔE under tritan (a regression guard the skill
+itself doesn't hard-gate); no chart hue within 25° of `--destructive`'s hue,
+so a series can never read as an error state; and the shipped token count
+matches a named `PROVEN_SAFE_CHART_TOKEN_COUNT` constant). Written and run
+red against the *unchanged* tokens first — 10/22 assertions failed,
+reproducing the defect's own numbers exactly (`--chart-4` 2.39:1) plus a
+distinguishability failure the prior cycle had never measured at all
+(`--chart-1` vs `--chart-2` at 7.6 ΔE, below both the CVD and normal-vision
+floors).
+
+**Fix:** re-derived `--chart-1..4` by grid/hill-climb search over hue ×
+lightness × chroma, holding `--chart-1`'s hue fixed at 162 (matching
+`--primary`) so the result stays brand-anchored. Final set clears every bar
+with margin in both themes (worst all-pairs CVD ΔE 10.6–10.9, worst
+normal-vision ΔE 20.0–21.1, worst contrast 3.80:1, worst tritan ΔE
+13.4–14.2) — cross-checked independently against the `dataviz` skill's own
+`scripts/validate_palette.js` on the hex equivalents, which reports `ALL
+CHECKS PASS` for both modes. One live catch mid-search: the test's
+destructive-hue-collision check failed on the first `--chart-2` candidate
+(hue 52°, 24.675° from `--destructive`'s 27.325° — a hair under the 25°
+buffer), invisible to the eye; moved to hue 58° (30.675° gap) with no other
+bar affected.
+
+**`--chart-5` was dropped, not fixed.** An exhaustive search could not find a
+5th hue, anchored on the same brand green, that clears the all-pairs
+normal-vision floor together with the other four — best found was 14.19–14.20
+ΔE against a required 15.0, a measured near-miss (for scale: the `dataviz`
+skill's own carefully-engineered 8-hue reference palette also cannot clear
+this floor past its first three slots, so four here, brand-anchored, is
+already ahead of that reference's own ceiling). `--chart-5` and its `@theme
+inline` Tailwind mapping were removed from `globals.css` rather than shipped
+in a documented-broken state; nothing in the product referenced `--chart-5`
+or `--chart-4` before this row (`dashboard-charts.tsx` only used
+chart-1/2/3), so this is not a visible regression. Two ways to add a genuine
+5th series back are recorded in the artefact if ever needed: drop the
+exact-162 brand anchor (an unconstrained 5-hue search clears comfortably,
+~10/~18 ΔE), or add secondary encoding (dash pattern, marker shape, direct
+label) to the 5th series.
+
+**`.bidlow/DESIGN.json` updated honestly:** `chart-series-contrast` moved out
+of `open_defects` (genuinely closed, not half-closed); four new
+`contrast_pairs` entries (chart-1..4 vs `--card`); the cycle-9 decision entry
+kept as historical record with a note that it's superseded; a new
+`decisions_taken_this_cycle` entry with the full method, numbers, and the
+chart-5 rationale; `accessibility.commitments` 1.4.11 `how_verified` updated
+to say chart tokens are now MACHINE-checked.
+
+**Gates run and shown:** `npx vitest run src/lib/design/` 110/110; full `npm
+test` 3701/3703 before merge (2 pre-existing failures unrelated to this row —
+`cycle-log-reaches-git.test.ts` failing by design until cycle-131/132 logs
+were committed, and a flaky Sentry network-timeout test that passed in
+isolation), **3703/3703 confirmed green after merge** on `main`; `npm run
+lint` 0 errors; `npx tsc --noEmit` 0 errors. Also committed
+`.bidlow/relay/log/cycle-131.md` and `cycle-132.md` in the same PR — the
+relay's own test requires this at the start of a cycle, per its assertion
+message.
+
+Merged to `main` as `1ecb140` (PR #429, squash-merged, CI green on `verify`
+and `E2E (Playwright)`). `.bidlow/relay/QUEUE.md` row 107 set to `DONE 133`.
+No `.bidlow/GRADES.json` touched, as instructed — this is a polish-dimension
+fix for a future measured walk to score, not this row's business.
+
+**Nothing contradicts PROJECT.json.** No `src/server/email` file was touched,
+no schema, no migration, no send, no client data.
+
+## Pick up first, next session
+
+1. **Row 109 (new, added by the watcher between cycles, not yet worked):** a
+   silent Launch-button failure Greg hit live on `bidlowai` — he clicked
+   Launch, confirmed the dialog, and nothing visibly happened (no send, no
+   queued row, no error). See `.bidlow/relay/QUEUE.md` row 109 for the full,
+   already-detailed brief — it names the exact investigation order (client
+   handler vs server action vs silent swallow) and forbids touching the
+   existing `Cycle 129 send-and-reply walk - 2026-08-30` sequence. This is
+   marked the most important row on the board in its own text.
+2. **The reply-matcher leg-1 fix** (from the cycle-130 entry above) is still
+   not started — two provider-specific send-path changes, scoped as their own
+   row.
+3. If a 5th chart series is ever genuinely needed, read
+   `docs/ops/CHART-SERIES-CONTRAST-2026-08-30.md` first — it names exactly
+   what does and doesn't work and why, so the search isn't repeated from
+   scratch.
