@@ -1181,6 +1181,75 @@ function Repair-UnreadableQueueRow($number, $cycle) {
 }
 
 # ===========================================================================
+# AN ORPHAN REOPEN THAT KNOWS THE WORK MIGHT ALREADY BE ON MAIN
+#
+# Row 103. Observed 30 August: cycle 125 finished row 101 in full and its PR
+# merged as #420 (`26559fd`), but the 45-minute kill fired before it could
+# write `DONE 125` into the status cell. Both reopen paths below - the startup
+# one and the mid-run timeout one - wrote a bare "TODO (reopened...)", which
+# told cycle 126 nothing about the work already on `main`. A human caught it
+# by hand and amended the brief; cycle 126 then closed the row correctly
+# without redoing anything. That catch will not happen when nobody is
+# watching.
+#
+# THE ORPHAN REOPEN IS RIGHT. A stranded row must go back to something the
+# picker will take, or it is skipped for ever, silently. The bug is that it
+# reopens BLIND. What the watcher already knows at that moment is the cycle
+# number and the row number - and this repository's own commit history shows
+# every row's landing commit names its row directly, either because the
+# branch-naming convention (`fix/reply-matcher-plus-alias-row100`,
+# `feat/ai-processor-coverage-gate-row101`) surfaces into the merge subject, or
+# because the commit message says so outright ("row 101 - verify and close
+# CR-10 engineering half"). A hit here does NOT mean the row is done - only a
+# person or the next cycle can judge whether the merged work satisfies the
+# brief - so this deliberately never writes DONE. It only decides which
+# WARNING a reopened row carries.
+#
+# Split into a pure matcher (Test-RowNumberMergedInLog) and an I/O wrapper
+# (Test-RowMergedOnMain) for the same reason Get-EvidenceVerdict is split from
+# Get-RepoEvidence above: relay-selftest.ps1 can drive the matching logic
+# directly, against fixed log text, without a live git repository.
+# ===========================================================================
+function Test-RowNumberMergedInLog([string]$LogText, [string]$RowNumber) {
+    if ([string]::IsNullOrWhiteSpace($LogText)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($RowNumber)) { return $false }
+    # Anchored on both sides so "row 100" can never match while testing for
+    # row 10 or row 1001 - digits are word characters, so \b sits only at a
+    # genuine boundary either way.
+    return [bool]([regex]::IsMatch($LogText, "(?i)\brow\s*$([regex]::Escape($RowNumber))\b"))
+}
+
+function Test-RowMergedOnMain([string]$RowNumber, [string]$RepoPath = $RepoRoot) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $log = (& git -C $RepoPath log --oneline -300 main 2>$null | Out-String)
+    } catch {
+        $log = ""
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    return Test-RowNumberMergedInLog $log $RowNumber
+}
+
+# The one decision both reopen paths make. $ReasonSuffix is the reopen note
+# they already wrote before this fix existed, kept byte for byte either way -
+# this only decides what goes in FRONT of it. The status text is the exact
+# form the queue item asked for, so a reader scanning QUEUE.md sees the
+# warning before anything else.
+function Get-OrphanReopenStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$CycleNumber,
+        [Parameter(Mandatory = $true)][string]$ReasonSuffix,
+        [Parameter(Mandatory = $true)][bool]$MergedOnMain
+    )
+    if ($MergedOnMain) {
+        return "PARTIAL $CycleNumber - work may already be merged, VERIFY main BEFORE redoing ($ReasonSuffix)"
+    }
+    return "TODO ($ReasonSuffix)"
+}
+
+# ===========================================================================
 # A FINDING THAT EXISTS ONLY IN A CYCLE LOG IS A FINDING NOBODY WILL READ
 #
 # Cycle 53 made the cycle logs TRACKED, which closed the half of this problem
@@ -2062,10 +2131,21 @@ foreach ($row in (Get-QueueRows)) {
     # IN PROGRESS, which is the one number that means anything here.
     $cycleMatch = [regex]::Match($row.Status, '^IN PROGRESS\s+(\d+)')
     $deadCycle  = if ($cycleMatch.Success) { $cycleMatch.Groups[1].Value } else { 'unknown' }
+    # See "AN ORPHAN REOPEN THAT KNOWS THE WORK MIGHT ALREADY BE ON MAIN" above.
+    # The row this cycle was holding may already be merged, even though it
+    # never wrote DONE - so ask before writing a bare TODO back.
+    $mergedOnMain = Test-RowMergedOnMain $row.Number
     # No pipe in the status text - see the standing rule at the top of QUEUE.md.
-    if (Set-QueueRowStatus $row.Number "TODO (reopened at startup - cycle $deadCycle never finished)") {
+    $newStatus = Get-OrphanReopenStatus -CycleNumber $deadCycle `
+        -ReasonSuffix "reopened at startup - cycle $deadCycle never finished" `
+        -MergedOnMain $mergedOnMain
+    if (Set-QueueRowStatus $row.Number $newStatus) {
         $reopened++
-        Write-Line "Reopened orphaned row #$($row.Number) - cycle $deadCycle took it and never finished."
+        if ($mergedOnMain) {
+            Write-Line "Reopened orphaned row #$($row.Number) as PARTIAL - cycle $deadCycle took it and never finished, but main's history already mentions this row. VERIFY before redoing."
+        } else {
+            Write-Line "Reopened orphaned row #$($row.Number) - cycle $deadCycle took it and never finished."
+        }
     } else {
         Write-Line "Row #$($row.Number) is orphaned IN PROGRESS but could not be rewritten. Check its formatting."
     }
@@ -2338,8 +2418,20 @@ either way.
             $why = if ($outcome -eq "timed-out") { "was killed at the $CycleTimeoutMinutes minute deadline" }
                    elseif ($outcome -eq "failed to run") { "never started" }
                    else { "ended badly" }
-            if (Set-QueueRowStatus $row.Number "TODO (reopened - cycle $cycle $why and did not finish this)") {
-                Write-Line "Gave row #$($row.Number) back to the queue - cycle $cycle $why, so it is TODO again rather than stranded."
+            # See "AN ORPHAN REOPEN THAT KNOWS THE WORK MIGHT ALREADY BE ON
+            # MAIN" above this cycle's own row 103 fix. This is the exact case
+            # that cost cycle 126 a manual rescue: cycle 125 finished row 101
+            # and its PR merged, but the 45-minute kill fired first.
+            $mergedOnMain = Test-RowMergedOnMain $row.Number
+            $newStatus = Get-OrphanReopenStatus -CycleNumber $cycle `
+                -ReasonSuffix "reopened - cycle $cycle $why and did not finish this" `
+                -MergedOnMain $mergedOnMain
+            if (Set-QueueRowStatus $row.Number $newStatus) {
+                if ($mergedOnMain) {
+                    Write-Line "Gave row #$($row.Number) back to the queue as PARTIAL - cycle $cycle $why, but main's history already mentions this row. VERIFY before redoing."
+                } else {
+                    Write-Line "Gave row #$($row.Number) back to the queue - cycle $cycle $why, so it is TODO again rather than stranded."
+                }
             } else {
                 Write-Line "Row #$($row.Number) is stranded on cycle $cycle and could NOT be rewritten. Check its formatting."
             }

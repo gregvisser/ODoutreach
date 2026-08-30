@@ -91,6 +91,23 @@ Two things worth knowing:
 - 45 minutes is generous on purpose. The longest real cycle so far took about
   twenty, so a normal slow job will never be cut off.
 
+**If you are handed a row that was reopened after a timeout, check `main`
+before redoing anything.** A cycle killed at the deadline can still have
+finished the work and merged it — the 45-minute clock has no way to know the
+last thing the cycle did before it was killed was open a green pull request.
+Observed 30 August: cycle 125 finished row 101 in full and its PR merged as
+#420, but the kill fired before it could write `DONE 125`, and the row went
+back to the queue with no mention of the merged work. The watcher now checks
+`main`'s own history for the row number before reopening a timed-out row, and
+if it finds a match it reopens as `PARTIAL <cycle> - work may already be
+merged, VERIFY main BEFORE redoing` instead of a bare `TODO` — but it never
+marks the row `DONE` itself, because only a person or the next cycle can judge
+whether the merged work actually satisfies the brief. So: if your brief says
+the row was reopened after a timeout, your first action, before writing any
+code, is `git log --oneline -10 main` for that row's number. If the merged
+work already satisfies the brief, verify it and close the row rather than
+redoing it.
+
 ## 2. You get an email when it goes wrong
 
 You already learn about a failed overnight job from your inbox. The relay now
