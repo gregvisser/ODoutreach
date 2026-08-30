@@ -117,6 +117,16 @@ cleaned up after.
 - `npm run build -- --webpack` - succeeded.
 - `relay-selftest.ps1` - 74/74 checks, red-first proven per above.
 
+## Merge
+
+PR #461 (row 127's BOM fix, this cycle's own PR-sweep merge, including this
+cycle's own committed log file): squashed to `5f96977` on `origin/main`.
+
+PR #462 (row 122 itself): squashed to `e7935b6` on `origin/main`, confirmed
+with `git ls-remote origin refs/heads/main`:
+
+    e7935b6d3be7b822a3a53a374ec1a40f14848ed6	refs/heads/main
+
 ## Scope discipline
 
 Did not touch `.bidlow/GRADES.json`, any dimension score, or
