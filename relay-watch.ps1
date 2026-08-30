@@ -1447,6 +1447,96 @@ function Get-DoneWithoutMergeStatus {
 }
 
 # ===========================================================================
+# A DONE WHOSE OWN BRIEF NEVER DEMANDED A MERGE CAN STILL BE SITTING ON A
+# PUSHED, UNMERGED BRANCH - ROW 121's GUARD STANDS DOWN FOR EXACTLY THIS CASE
+#
+# Row 122. Cycle 154 committed and pushed the Tuesday readiness verdict as
+# `c031769` (PR #451), wrote `DONE 154` into row 114, and ended saying it was
+# waiting on CI and would merge once green. Nothing survived the cycle to do
+# that. Row 114's own "DEFINITION OF DONE" asks for a dated artefact, not a
+# merge commit hash - so Test-RowDefinitionOfDoneDemandsMerge correctly
+# returns $false for it, and Get-DoneWithoutMergeStatus above correctly never
+# fires. That carve-out is right: an artefact-only row that produced no code
+# change must not be forced to manufacture a merge. But row 114 was NOT that
+# case - it had real committed, pushed work sitting on a branch, unmerged. The
+# demands-a-merge question and the is-there-unmerged-work-on-a-branch question
+# are different questions, and only one of them was being asked.
+#
+# This does not replace Get-DoneWithoutMergeStatus - it runs FIRST, beside it,
+# and only acts when it finds a pushed branch actually mentioning this row
+# number ahead of origin/main. An artefact-only row with no pushed branch at
+# all (the case the carve-out exists for) finds nothing here either, and falls
+# through to the existing check unchanged.
+#
+# Split the same way as Test-RowMergedOnMain / Get-DoneWithoutMergeStatus
+# above: an I/O wrapper that walks real remote branches
+# (Find-UnmergedPushedBranchForRow) and a pure decision
+# (Get-DoneWithUnmergedBranchStatus) that relay-selftest.ps1 can drive
+# directly against a fixed branch name, without a live git repository.
+# ===========================================================================
+function Find-UnmergedPushedBranchForRow {
+    param(
+        [Parameter(Mandatory = $true)][string]$RowNumber,
+        [string]$RepoPath = $RepoRoot
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & git -C $RepoPath fetch origin --prune *> $null 2>&1
+        $branchList = @(& git -C $RepoPath for-each-ref --format="%(refname:short)" refs/remotes/origin 2>$null)
+    } catch {
+        $branchList = @()
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    foreach ($branch in $branchList) {
+        $branch = ([string]$branch).Trim()
+        if (-not $branch) { continue }
+        if ($branch -eq "origin/main" -or $branch -eq "origin/HEAD") { continue }
+
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $ahead = (& git -C $RepoPath log --oneline "origin/main..$branch" 2>$null | Out-String)
+        } catch {
+            $ahead = ""
+        } finally {
+            $ErrorActionPreference = $previous
+        }
+        # Nothing ahead of main on this branch - not the case this row exists
+        # to catch, whether or not its name happens to mention the row.
+        if ([string]::IsNullOrWhiteSpace($ahead)) { continue }
+
+        $shortName = $branch -replace '^origin/', ''
+        # Checks both the branch NAME (this repo's own convention stamps the
+        # row number into it, e.g. `fix/row127-queue-bom`) and its commit
+        # subjects (e.g. "row 101 - verify and close CR-10"), reusing the same
+        # anchored matcher row 103's orphan-reopen check already relies on so
+        # "row 100" can never match while testing for row 10 or row 1001.
+        if (Test-RowNumberMergedInLog "$shortName`n$ahead" $RowNumber) {
+            return $shortName
+        }
+    }
+    return $null
+}
+
+function Get-DoneWithUnmergedBranchStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$CurrentStatus,
+        [Parameter(Mandatory = $true)][string]$RowNumber,
+        [Parameter(Mandatory = $true)][string]$CycleNumber,
+        [AllowNull()][string]$UnmergedBranch
+    )
+    # Left alone: no pushed branch was found naming this row ahead of main -
+    # either there genuinely is none (the artefact-only case row 121's
+    # carve-out protects), or the branch already merged and disappeared.
+    if ([string]::IsNullOrWhiteSpace($UnmergedBranch)) { return $CurrentStatus }
+
+    return "PARTIAL $CycleNumber - closed DONE but branch '$UnmergedBranch' is pushed ahead of origin/main and was never merged, so it is rewritten to PARTIAL - the next cycle should finish the merge, not redo the work. Original: $CurrentStatus"
+}
+
+# ===========================================================================
 # A FINDING THAT EXISTS ONLY IN A CYCLE LOG IS A FINDING NOBODY WILL READ
 #
 # Cycle 53 made the cycle logs TRACKED, which closed the half of this problem
@@ -2649,22 +2739,42 @@ either way.
     # own row, and only while it still reads "DONE <this cycle>" - if a later
     # step already rewrote it (the unreadable-row repair below, for instance),
     # this does not fight that rewrite.
+    #
+    # ROW 122 runs FIRST, beside this: a pushed branch that names this row and
+    # sits ahead of origin/main, unmerged, is checked before the generic
+    # demands-a-merge question below - see "A DONE WHOSE OWN BRIEF NEVER
+    # DEMANDED A MERGE CAN STILL BE SITTING ON A PUSHED, UNMERGED BRANCH"
+    # above. This is the row 114/cycle 154 shape: an artefact-only row whose
+    # brief never demanded a merge, so Get-DoneWithoutMergeStatus alone would
+    # never have looked, but which still had real committed work waiting on
+    # CI with nobody left to merge it.
     # -----------------------------------------------------------------------
     if ($script:LastTakenRow) {
         $justClosed = @(Get-QueueRows) |
                       Where-Object { $_.Number -eq $script:LastTakenRow } |
                       Select-Object -First 1
         if ($justClosed -and $justClosed.Parsed -and $justClosed.Status -match "^DONE\s+$cycle\b") {
-            $demandsMerge = Test-RowDefinitionOfDoneDemandsMerge $justClosed.Item
-            $mergedOnMain = if ($demandsMerge) { Test-RowMergedOnMain $justClosed.Number } else { $true }
-            $newDoneStatus = Get-DoneWithoutMergeStatus -CurrentStatus $justClosed.Status `
-                -DemandsMerge $demandsMerge -MergedOnMain $mergedOnMain `
-                -RowNumber $justClosed.Number -CycleNumber $cycle
+            $unmergedBranch = Find-UnmergedPushedBranchForRow -RowNumber $justClosed.Number
+            $newDoneStatus = Get-DoneWithUnmergedBranchStatus -CurrentStatus $justClosed.Status `
+                -RowNumber $justClosed.Number -CycleNumber $cycle -UnmergedBranch $unmergedBranch
+
+            if ($newDoneStatus -eq $justClosed.Status) {
+                $demandsMerge = Test-RowDefinitionOfDoneDemandsMerge $justClosed.Item
+                $mergedOnMain = if ($demandsMerge) { Test-RowMergedOnMain $justClosed.Number } else { $true }
+                $newDoneStatus = Get-DoneWithoutMergeStatus -CurrentStatus $justClosed.Status `
+                    -DemandsMerge $demandsMerge -MergedOnMain $mergedOnMain `
+                    -RowNumber $justClosed.Number -CycleNumber $cycle
+            }
+
             if ($newDoneStatus -ne $justClosed.Status) {
                 if (Set-QueueRowStatus $justClosed.Number $newDoneStatus) {
-                    Write-Line "Row #$($justClosed.Number) was closed DONE by cycle $cycle but nothing on main mentions it - rewritten to PARTIAL so the next cycle verifies before trusting it."
+                    if ($unmergedBranch) {
+                        Write-Line "Row #$($justClosed.Number) was closed DONE by cycle $cycle but branch '$unmergedBranch' is pushed and unmerged - rewritten to PARTIAL so the next cycle finishes the merge."
+                    } else {
+                        Write-Line "Row #$($justClosed.Number) was closed DONE by cycle $cycle but nothing on main mentions it - rewritten to PARTIAL so the next cycle verifies before trusting it."
+                    }
                 } else {
-                    Write-Line "Row #$($justClosed.Number) was closed DONE with no matching merge on main, and could NOT be rewritten. Check its formatting."
+                    Write-Line "Row #$($justClosed.Number) was closed DONE with unmerged work found, and could NOT be rewritten. Check its formatting."
                 }
             }
         }

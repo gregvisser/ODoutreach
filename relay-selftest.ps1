@@ -608,6 +608,84 @@ Assert-True ($doneUntouched.Count -eq 0) `
     "a row already closed DONE is never touched by the stranded-row reopen"
 
 # ===========================================================================
+# 11. A DONE ROW SITTING ON A PUSHED, UNMERGED BRANCH IS REOPENED AS PARTIAL
+#     NAMING THE BRANCH - EVEN WHEN THE ROW'S OWN BRIEF NEVER DEMANDED A MERGE
+#
+# Row 122. Cycle 154 committed and pushed the Tuesday readiness verdict,
+# wrote DONE 154 into row 114, and ended waiting on CI - nothing survived the
+# cycle to finish the merge. Row 114's own brief asked for a dated artefact,
+# not a merge commit hash, so section 10's Get-DoneWithoutMergeStatus alone
+# would never have looked here. This is a second, narrower question: not "did
+# this row's brief demand a merge" but "is there a pushed branch, ahead of
+# main, that actually names this row".
+# ===========================================================================
+
+Write-Host ""
+Write-Host "11. A DONE with a pushed, unmerged branch behind it is reopened as PARTIAL naming the branch; a clean row with no pushed branch is left alone"
+
+# --- 11a. The pure decision -------------------------------------------------
+
+$branchStatus = Get-DoneWithUnmergedBranchStatus -CurrentStatus "DONE 154 - Tuesday readiness verdict written, waiting on CI" `
+    -RowNumber "114" -CycleNumber "154" -UnmergedBranch "fix/tuesday-readiness-verdict-row114"
+Assert-True ($branchStatus -match "^PARTIAL 154 - closed DONE but branch 'fix/tuesday-readiness-verdict-row114' is pushed ahead of origin/main and was never merged") `
+    "a DONE row with a pushed, unmerged branch behind it is rewritten to PARTIAL naming the branch (got: $branchStatus)"
+Assert-True ($branchStatus -match 'DONE 154 - Tuesday readiness verdict written, waiting on CI') `
+    "the cycle's own original DONE text is carried in full, not discarded (got: $branchStatus)"
+
+$leftAloneNoBranch = Get-DoneWithUnmergedBranchStatus -CurrentStatus "DONE 151 - investigation only, category (b)" `
+    -RowNumber "118" -CycleNumber "151" -UnmergedBranch $null
+Assert-True ($leftAloneNoBranch -eq "DONE 151 - investigation only, category (b)") `
+    "a clean artefact-only row with no pushed branch found is left exactly as the cycle wrote it (got: $leftAloneNoBranch)"
+
+# --- 11b. The real git-walking half, against a scratch repo with a real
+#          bare 'origin' remote - not the real repository, and not a mock.
+#          Proves Find-UnmergedPushedBranchForRow actually walks git and
+#          finds a branch that is genuinely pushed and genuinely ahead of
+#          main, then stops finding it the moment that branch actually merges
+#          - the exact moment row 121's own carve-out must take back over. ---
+
+$bareRemote    = Join-Path $env:TEMP ("relay-selftest-row122-remote-" + [guid]::NewGuid().ToString('N') + ".git")
+$scratchRow122 = Join-Path $env:TEMP ("relay-selftest-row122-repo-" + [guid]::NewGuid().ToString('N'))
+
+& git init --bare $bareRemote *> $null
+& git init $scratchRow122 *> $null
+& git -C $scratchRow122 config user.email "relay-selftest@example.com" *> $null
+& git -C $scratchRow122 config user.name "relay selftest" *> $null
+& git -C $scratchRow122 remote add origin $bareRemote *> $null
+Set-Content -Path (Join-Path $scratchRow122 "seed.txt") -Value "seed" -Encoding ascii
+& git -C $scratchRow122 add seed.txt *> $null
+& git -C $scratchRow122 commit -m "seed" *> $null
+& git -C $scratchRow122 branch -M main *> $null
+& git -C $scratchRow122 push origin main *> $null 2>&1
+
+& git -C $scratchRow122 checkout -b fix/row122-partial-merge-guard *> $null
+Set-Content -Path (Join-Path $scratchRow122 "fix.txt") -Value "fix" -Encoding ascii
+& git -C $scratchRow122 add fix.txt *> $null
+& git -C $scratchRow122 commit -m "row 122 - reopen unmerged DONE rows as PARTIAL" *> $null
+& git -C $scratchRow122 push origin fix/row122-partial-merge-guard *> $null 2>&1
+& git -C $scratchRow122 checkout main *> $null
+
+$foundBranch = Find-UnmergedPushedBranchForRow -RowNumber "122" -RepoPath $scratchRow122
+Assert-True ($foundBranch -eq "fix/row122-partial-merge-guard") `
+    "a real branch pushed to origin, ahead of main, whose own commit names row 122, is actually found by walking git (got: $foundBranch)"
+
+$notFoundBranch = Find-UnmergedPushedBranchForRow -RowNumber "999" -RepoPath $scratchRow122
+Assert-True ($null -eq $notFoundBranch) `
+    "a row number the pushed branch does not mention is correctly reported as not found (got: $notFoundBranch)"
+
+# Merge it and push - the branch is no longer AHEAD of main, so it must stop
+# being found. This is the moment row 121's own carve-out must take back
+# over: once the work actually lands on main, this check gets out of the way.
+& git -C $scratchRow122 merge fix/row122-partial-merge-guard -m "merge row 122 fix" *> $null
+& git -C $scratchRow122 push origin main *> $null 2>&1
+$mergedBranch = Find-UnmergedPushedBranchForRow -RowNumber "122" -RepoPath $scratchRow122
+Assert-True ($null -eq $mergedBranch) `
+    "once the branch actually merges into main it is no longer reported as an unmerged, pushed branch (got: $mergedBranch)"
+
+Remove-Item -Path $scratchRow122 -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $bareRemote -Recurse -Force -ErrorAction SilentlyContinue
+
+# ===========================================================================
 
 Write-Host ""
 if ($script:Failures.Count -eq 0) {
