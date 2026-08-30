@@ -1,6 +1,78 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 120) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 122) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 122, queue row 93: re-measured `.bidlow/GRADES.json` dimension 8 (Data safety & trust) from live evidence, answered whether the prior score was fair when set, moved it 6 -> 7 (not 8), and surfaced a new, currently-inert third-party data risk (CR-10) that no prior cycle had named.
+
+**PR sweep at cycle start:** zero open PRs. Found the same shape cycle 121
+described inheriting from cycle 120: uncommitted `QUEUE.md` (row 93 already
+flipped to `IN PROGRESS 122` by the picker) and an uncommitted 176-line
+watcher appendix on `cycle-121.md`, both legitimate prior record rather than
+stray work, carried forward into this cycle's commit. The untracked
+`ODOUTREACH-PROJECT-INSTRUCTIONS.md` (present since at least cycle 120,
+unrelated to any row) was left alone again.
+
+**Answered Greg's own question first, as row 93 demanded:** was the 6 fair
+when it was set on 27 August? Yes. Checked the actual dates: CR-06's fix
+(`47692b9`) merged 2026-08-28, and CR-05's Sentry DPA was signed the same
+day - both AFTER the 27 August walk that produced the 6. The walk that set
+that score genuinely could not have seen either fix, so 6 was correct for
+what was true that day; it went STALE afterwards rather than having been
+WRONG. Recorded as a named distinction in the GRADES.json entry, not just
+asserted.
+
+**Re-measured, not re-read.** Confirmed production is running commit
+`062e21e` (`/api/build-info` on the direct App Service origin) with
+`47692b9` as a confirmed ancestor. Re-ran, fresh today rather than citing the
+old result, the same live-client mechanism CR-06's original evidence used:
+`sentry-config-wiring.test.ts` + `sentry-data-collection.test.ts`, 16/16
+green, reading `userInfo`/`httpBodies` back off a real `Sentry.init()` client
+as `false`. Grepped all three entry points (`sentry.server.config.ts`,
+`sentry.edge.config.ts`, `src/instrumentation-client.ts`) - unchanged, all
+still wired to the shared policy.
+
+**Checked for a new PII carrier since the 27 August walk, as instructed, and
+found one - inert, not firing, but real.** Six AI features (queue row 80)
+shipped 2026-08-28/29 call Anthropic's API. Read all six:
+`classify-inbound-reply.ts` sends a real prospect's own reply subject + up to
+2,000 chars of body, verbatim, to Anthropic - a genuine PII carrier with NO
+Art.28 DPA in place (CR-05 covered only Sentry/Resend/RocketReach). The other
+five send only the client's own mailbox identity or aggregated statistics -
+not prospect PII. Verified LIVE, not assumed, that this pathway has sent
+nothing yet: `az webapp config appsettings list` against the real production
+App Service lists all 38 actual settings and `ANTHROPIC_API_KEY` is not
+among them, and `src/server/ai/metered-call.ts` (which all six features
+route through with no bypass) refuses (`no_api_key`) before any network call
+when the key is absent.
+
+**Score:** dimension 8 moved 6 -> 7 (the row's own instruction explicitly
+allowed 6, or 7-not-8, as honest outcomes). Up because the two named causes
+of the 6 are now genuinely fixed and freshly re-verified. Not to 8 because a
+new, uncovered pathway now exists in deployed code, gated by nothing but
+whether an environment variable happens to be unset. Recorded a new OPEN
+blocker `CR-10` in `.bidlow/GRADES.json` (owner `greg` - needs either an
+Anthropic DPA before `ANTHROPIC_API_KEY` is ever set, or a code-level
+compliance gate) and a second entry in `questions_for_greg`
+(`open_questions` 1 -> 2). **Nothing else in GRADES.json was touched** -
+`arithmetic`, `weighted_total` (7.76) and `sell_gate` are deliberately left
+for row 94, which recomputes the weighted total after both dimension
+re-walks (rows 92 and 93) are closed. Confirmed the diff touched only
+dimension 8, the blockers array and `questions_for_greg` before committing.
+
+**Gates:** lint 0, typecheck 0, 3649/3649 tests (348 files) - all re-run and
+shown, not assumed.
+
+**Merged:** PR #415, both CI jobs (`verify`, `E2E`) green, squash-merged and
+fast-forwarded `main` to `b65d11c`. No code, no migration, no client data, no
+email - docs/data-record only.
+
+**What the next session should pick up first:** row 94 ("recompute the sell
+gate once, honestly, and write Tuesday's slide") is now unblocked on its
+dimension-8 input - it also needs row 92 (dimension 1) closed or explicitly
+still-open before it may run; check row 92's live status in QUEUE.md, since
+it was BLOCKED as of cycle 120 pending a separate reply-matcher defect, not
+PARTIAL. **CR-10 is Greg's call**, not code to write speculatively - do not
+build a compliance gate or accept a DPA on his behalf.
 
 ## Session 2026-08-30 - Relay cycle 120, queue row 92: closed BLOCKED (not PARTIAL) per the row's own "stop taking this row" instruction; a queue-integrity test caught a real picker-halting bug in the first attempt at that closure and it was fixed before merge.
 
