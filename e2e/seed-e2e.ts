@@ -25,6 +25,16 @@ import {
   E2E_CONTACT_BULK,
   e2eBulkContactEmail,
   e2eBulkContactId,
+  E2E_LAUNCH_CLIENT,
+  E2E_LAUNCH_CONTACT,
+  E2E_LAUNCH_CONTACT_LIST,
+  E2E_LAUNCH_ENROLLMENT,
+  E2E_LAUNCH_MAILBOX,
+  E2E_LAUNCH_MAILBOX_SIGNATURE_HTML,
+  E2E_LAUNCH_SEQUENCE,
+  E2E_LAUNCH_STEP,
+  E2E_LAUNCH_STEP_SEND,
+  E2E_LAUNCH_TEMPLATE,
   E2E_MAILBOX_SIGNATURE_HTML,
   E2E_MAILBOXES,
   E2E_MEMBER_A,
@@ -158,6 +168,202 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         },
       });
     }
+
+    // ---- Launch journey fixtures (queue item 117) ----------------------
+    // A whole sequence graph that is genuinely launch-ready on screen:
+    // ACTIVE client, one connected+signed mailbox, an approved INTRODUCTION
+    // template carrying {{unsubscribe_link}}, a contact list with one
+    // email-sendable member, an enrollment, and a READY step-send row — every
+    // blocker in `evaluateSequenceLaunchReadiness` passes. See the fixture
+    // constants for the send-safety reasoning (no MailboxIdentitySecret, and
+    // the queue never drains under `e2e/env.ts`).
+    await prisma.client.upsert({
+      where: { id: E2E_LAUNCH_CLIENT.id },
+      create: {
+        id: E2E_LAUNCH_CLIENT.id,
+        name: E2E_LAUNCH_CLIENT.name,
+        slug: E2E_LAUNCH_CLIENT.slug,
+        status: "ACTIVE",
+        // Dispatch-time unsubscribe composition falls back to
+        // `mailto:<defaultSenderEmail>` when no aligned link domain is
+        // configured — null here fails composition with "No unsubscribe
+        // link could be created", which the readiness rail's own
+        // {{unsubscribe_link}}-token check does not catch.
+        defaultSenderEmail: E2E_LAUNCH_MAILBOX.email,
+      },
+      update: {
+        name: E2E_LAUNCH_CLIENT.name,
+        status: "ACTIVE",
+        deletedAt: null,
+        defaultSenderEmail: E2E_LAUNCH_MAILBOX.email,
+      },
+    });
+
+    await prisma.clientMailboxIdentity.upsert({
+      where: { id: E2E_LAUNCH_MAILBOX.id },
+      create: {
+        id: E2E_LAUNCH_MAILBOX.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        provider: "MICROSOFT",
+        email: E2E_LAUNCH_MAILBOX.email,
+        emailNormalized: E2E_LAUNCH_MAILBOX.email,
+        isActive: true,
+        connectionStatus: "CONNECTED",
+        connectedAt: new Date("2026-01-01T09:00:00.000Z"),
+        senderDisplayName: "E2E Launch Sender",
+        senderSignatureHtml: E2E_LAUNCH_MAILBOX_SIGNATURE_HTML,
+        senderSignatureSource: "manual",
+      },
+      update: {
+        isActive: true,
+        workspaceRemovedAt: null,
+        connectionStatus: "CONNECTED",
+        connectedAt: new Date("2026-01-01T09:00:00.000Z"),
+        senderSignatureHtml: E2E_LAUNCH_MAILBOX_SIGNATURE_HTML,
+        senderSignatureSource: "manual",
+      },
+    });
+
+    await prisma.contact.upsert({
+      where: { id: E2E_LAUNCH_CONTACT.id },
+      create: {
+        id: E2E_LAUNCH_CONTACT.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        email: E2E_LAUNCH_CONTACT.email,
+        fullName: E2E_LAUNCH_CONTACT.fullName,
+        emailDomain: "example.test",
+      },
+      update: { email: E2E_LAUNCH_CONTACT.email, isSuppressed: false },
+    });
+
+    await prisma.contactList.upsert({
+      where: { id: E2E_LAUNCH_CONTACT_LIST.id },
+      create: {
+        id: E2E_LAUNCH_CONTACT_LIST.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        name: E2E_LAUNCH_CONTACT_LIST.name,
+      },
+      update: { name: E2E_LAUNCH_CONTACT_LIST.name, archivedAt: null },
+    });
+
+    await prisma.contactListMember.upsert({
+      where: {
+        contactListId_contactId: {
+          contactListId: E2E_LAUNCH_CONTACT_LIST.id,
+          contactId: E2E_LAUNCH_CONTACT.id,
+        },
+      },
+      create: {
+        contactListId: E2E_LAUNCH_CONTACT_LIST.id,
+        contactId: E2E_LAUNCH_CONTACT.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+      },
+      update: {},
+    });
+
+    await prisma.clientEmailTemplate.upsert({
+      where: { id: E2E_LAUNCH_TEMPLATE.id },
+      create: {
+        id: E2E_LAUNCH_TEMPLATE.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        name: E2E_LAUNCH_TEMPLATE.name,
+        category: "INTRODUCTION",
+        subject: E2E_LAUNCH_TEMPLATE.subject,
+        content: E2E_LAUNCH_TEMPLATE.content,
+        status: "APPROVED",
+      },
+      update: {
+        subject: E2E_LAUNCH_TEMPLATE.subject,
+        content: E2E_LAUNCH_TEMPLATE.content,
+        status: "APPROVED",
+        archivedAt: null,
+      },
+    });
+
+    await prisma.clientEmailSequence.upsert({
+      where: { id: E2E_LAUNCH_SEQUENCE.id },
+      create: {
+        id: E2E_LAUNCH_SEQUENCE.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        contactListId: E2E_LAUNCH_CONTACT_LIST.id,
+        name: E2E_LAUNCH_SEQUENCE.name,
+        status: "APPROVED",
+      },
+      update: {
+        contactListId: E2E_LAUNCH_CONTACT_LIST.id,
+        status: "APPROVED",
+        archivedAt: null,
+      },
+    });
+
+    await prisma.clientEmailSequenceStep.upsert({
+      where: { id: E2E_LAUNCH_STEP.id },
+      create: {
+        id: E2E_LAUNCH_STEP.id,
+        sequenceId: E2E_LAUNCH_SEQUENCE.id,
+        templateId: E2E_LAUNCH_TEMPLATE.id,
+        category: "INTRODUCTION",
+        position: 0,
+      },
+      update: { templateId: E2E_LAUNCH_TEMPLATE.id },
+    });
+
+    await prisma.clientEmailSequenceEnrollment.upsert({
+      where: { id: E2E_LAUNCH_ENROLLMENT.id },
+      create: {
+        id: E2E_LAUNCH_ENROLLMENT.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        sequenceId: E2E_LAUNCH_SEQUENCE.id,
+        contactId: E2E_LAUNCH_CONTACT.id,
+        contactListId: E2E_LAUNCH_CONTACT_LIST.id,
+        status: "PENDING",
+      },
+      update: { status: "PENDING", currentStepPosition: 0 },
+    });
+
+    /**
+     * DELETED AND REWRITTEN each run, like the AI ledger and replies fixtures
+     * above and for a related but sharper reason: `tryReserveSendSlotInTransaction`
+     * (src/server/mailbox/sending-policy.ts) permanently refuses to reuse a
+     * `MailboxSendReservation` whose `idempotencyKey` is already `RELEASED` —
+     * real duplicate-send protection, working as designed. A confirmed Launch
+     * in one test run reserves-then-releases this fixture's key when the
+     * dispatch doesn't complete (e.g. a genuinely blocked recipient); a bare
+     * upsert would leave that released row in place, and every subsequent
+     * local run against the same persistent database would then find the
+     * step-send permanently stuck — a fresh CI database never shows this, so
+     * it would otherwise only surface as flaky-on-rerun for a developer.
+     * Clearing both tables scoped to this fixture's own ids before
+     * re-upserting keeps the fixture idempotent across repeated local runs,
+     * not just a single fresh one.
+     */
+    await prisma.mailboxSendReservation.deleteMany({
+      where: { mailboxIdentityId: E2E_LAUNCH_MAILBOX.id },
+    });
+    await prisma.outboundEmail.deleteMany({
+      where: { clientId: E2E_LAUNCH_CLIENT.id },
+    });
+    await prisma.clientEmailSequenceStepSend.upsert({
+      where: { id: E2E_LAUNCH_STEP_SEND.id },
+      create: {
+        id: E2E_LAUNCH_STEP_SEND.id,
+        clientId: E2E_LAUNCH_CLIENT.id,
+        sequenceId: E2E_LAUNCH_SEQUENCE.id,
+        enrollmentId: E2E_LAUNCH_ENROLLMENT.id,
+        stepId: E2E_LAUNCH_STEP.id,
+        templateId: E2E_LAUNCH_TEMPLATE.id,
+        contactId: E2E_LAUNCH_CONTACT.id,
+        contactListId: E2E_LAUNCH_CONTACT_LIST.id,
+        status: "READY",
+        idempotencyKey: E2E_LAUNCH_STEP_SEND.idempotencyKey,
+      },
+      update: {
+        status: "READY",
+        outboundEmailId: null,
+        blockedReason: null,
+        failureReason: null,
+      },
+    });
 
     // ---- cross-tenant isolation fixtures (BC-01) -----------------------
     // A second workspace, and one staff member scoped to each. Membership is

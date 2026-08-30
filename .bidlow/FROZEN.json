@@ -12,6 +12,7 @@
     "e2e/fixtures.ts": "8f5344a6b07ea23b76e0510a27eba21f30b1374c070706ec2d7be087ebc5a28d",
     "e2e/global-setup.ts": "126ed83da826a7a9a920fd5ec75cb71f2f1dc07456a110a211b42e9a3cd400a1",
     "e2e/journeys.spec.ts": "cfe8bb2e1a9dc87dbf9f1decc15f434595025738eb74b19372aa792075d3a78e",
+    "e2e/launch-journey.spec.ts": "d3e652bdc0c8563156ddce6a33f30199499d5f06c89707913d3528f3ec117328",
     "e2e/legal-pages.spec.ts": "d75fe1dce06f9c423a3955ca7de11b8f24b6731f449d04baba6722837be95e7c",
     "e2e/mailboxes-table-first.spec.ts": "1b54d0bcdefa2740fc8a5f281696da3c5efc494a38894d585293a93517edce07",
     "e2e/mobile-walk.spec.ts": "e2a5f337a9020d30108767ad191304dc9ac1dacdb328d0393f1471ba97f21021",
@@ -274,6 +275,69 @@
       "authorised_by": "Claude (agent), relay cycle 103, for Greg's review",
       "what": "Second locator fix for the same CR-08 change, found by actually running the test: the file's own documented streamed-double-copy issue (React parks the finished page in a hidden div at the end of body for one frame) made the staff-hidden assertion hit 2 elements unscoped. Scoped it to main, matching the pattern already used by every other page-content assertion in this file. No assertion intent changed.",
       "sha256_after": "d0327028ffe701ebae5a128c714d788d77c89aca2538aa4393d35f2f7aee0ef9"
+    },
+    {
+      "file": "e2e/fixtures.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Added E2E_LAUNCH_* fixture constants (queue row 117) — a dedicated workspace/contact/mailbox/template/sequence/enrollment/step-send fixture set for a new Launch-journey e2e spec. Purely additive: no existing exported fixture constant was changed, renamed or removed. The new client is deliberately separate from E2E_CLIENT so the new spec cannot alter any existing spec's assertions.",
+      "sha256_after": "117d02c3d4692e476d030ff62356814d3d2f1195f9fa41b9eca014b792bc2110"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Added the import list for E2E_LAUNCH_* fixtures (queue row 117), preparing to seed a dedicated launch-ready sequence fixture graph. Purely additive.",
+      "sha256_after": "d159ee9ce01625a27d2c3de6659422882973c6826c7997993f9b3bd65c347668"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Added the seed block for E2E_LAUNCH_* fixtures (queue row 117): a dedicated client, mailbox, contact, contact list, template, sequence, step, enrollment and READY step-send row that together make evaluateSequenceLaunchReadiness pass, for the new e2e/launch-journey.spec.ts. Purely additive upserts; no existing seeded row is changed.",
+      "sha256_after": "0851372fe1b9db243e607dcebe65e22af158fb9c65a72ec8a21181a11b772614"
+    },
+    {
+      "file": "e2e/env.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Adding MAILBOX_SEND_PACING=false to the e2e app env ahead of the queue-row-117 Launch-journey spec. Pacing (src/lib/mailboxes/send-pacing.ts) schedules sends against real wall-clock time-of-day within a 07:00-18:00 UTC window; leaving it on would make the new e2e spec flaky depending on what time CI runs, for a mechanism that already has its own unit coverage (send-pacing.test.ts) — the same reasoning as the existing MAILBOX_WARMUP_RAMP kill-switch pattern already implicit here.",
+      "sha256_after": "552794e7a7933203b2aaca19cb2c3439ca1c1007618e5657b30abb0042626226"
+    },
+    {
+      "file": "e2e/env.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Added MAILBOX_SEND_PACING=false to E2E_APP_ENV (queue row 117) so the new Launch-journey e2e spec is not flaky against wall-clock pacing windows. Confirmed by running: with pacing left on (default), the fixture's step-send blocked with 'Held back by send pacing'; with it off, the same fixture dispatches deterministically regardless of when the suite runs.",
+      "sha256_after": "8dbe359988d1c0512058643b1807af6d81db084a3cc0804adf0bee8fb749e2b8"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Root-caused via a live local run + temporary debug logging (reverted, see the send-introduction.ts diff history): tryReserveSendSlotInTransaction (src/server/mailbox/sending-policy.ts) permanently refuses a RELEASED idempotency key ('a prior attempt for this idempotency key is finished') and the caller folds that refusal into the generic 'No mailbox capacity remaining' message, which is real, intentional duplicate-send protection, not a bug. Re-running the e2e seed against a PERSISTENT local database (not a fresh CI one) therefore made the Launch fixture's step-send permanently undispatchable after its first real attempt. Added a delete-then-reset of this fixture's MailboxSendReservation + OutboundEmail rows on every seed run, mirroring the AI-spend/replies delete-then-recreate pattern already in this file, so the fixture is truly idempotent across repeated local runs, not just against a fresh CI database.",
+      "sha256_after": "0851372fe1b9db243e607dcebe65e22af158fb9c65a72ec8a21181a11b772614"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Applied the reservation/outbound-email reset-on-reseed fix for the Launch fixture (queue row 117), described in the prior amendment entry.",
+      "sha256_after": "4ed559295d67ff027ea1176853d0f59246f6e56f4039d429e18245251c0d4693"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Set Client.defaultSenderEmail on E2E_LAUNCH_CLIENT (queue row 117). Root-caused via a live run: at dispatch time, buildUnsubscribePlaceholder(client.defaultSenderEmail) builds the mailto fallback unsubscribe link used when no aligned link domain is configured, and returns an empty string when defaultSenderEmail is null — composition then fails with 'No unsubscribe link could be created for this send'. The readiness-rail check only verifies the template's {{unsubscribe_link}} TOKEN is present, not that a real link can be minted, so this only surfaces at actual dispatch. Setting defaultSenderEmail mirrors how a real client's Mailboxes tab is configured.",
+      "sha256_after": "4ed559295d67ff027ea1176853d0f59246f6e56f4039d429e18245251c0d4693"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (cycle 146 relay agent)",
+      "what": "Applied the defaultSenderEmail fix described in the prior amendment entry, and confirmed live: the Launch fixture now dispatches for real — a QUEUED OutboundEmail row with no providerName/providerMessageId is created in the throwaway e2e database, exactly the safe, verified-by-running outcome the row-117 brief called for.",
+      "sha256_after": "f1a418cef25a375a81486a4bdf24d75a6a49107d0082babb37ddabc9f95f5935"
     }
   ]
 }
