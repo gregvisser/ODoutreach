@@ -17,10 +17,16 @@ import { runMeteredAiCall } from "./metered-call";
 
 const CLIENT = { id: "client-1", slug: "train-hugger" };
 
+// Deliberately NOT REPLY_CLASSIFICATION: that feature carries prospect personal
+// data and, per the CR-10 gate below, is refused before `invoke` regardless of
+// API key. These generic ledger/refusal tests are about `runMeteredAiCall`
+// itself, not about that one feature's data class, so they run against a
+// feature the CR-10 gate declares clean. Same model string either way (both
+// map to the same priced model), so the cost math is unaffected.
 const baseArgs = {
   client: CLIENT,
-  feature: "REPLY_CLASSIFICATION" as const,
-  model: AI_MODELS.REPLY_CLASSIFICATION,
+  feature: "SEQUENCE_DRAFTING" as const,
+  model: AI_MODELS.SEQUENCE_DRAFTING,
   apiKey: "sk-ant-test",
   subject: { type: "InboundReply", id: "reply-1" },
 };
@@ -63,14 +69,14 @@ describe("a successful call", () => {
     });
 
     const row = writtenRow();
-    expect(row.model).toBe(AI_MODELS.REPLY_CLASSIFICATION);
+    expect(row.model).toBe(AI_MODELS.SEQUENCE_DRAFTING);
     expect(row.inputTokens).toBe(700);
     expect(row.outputTokens).toBe(40);
     expect(row.clientId).toBe("client-1");
     // 700 in at $1/MTok + 40 out at $5/MTok = 900 micro-USD.
     expect(row.costMicroUsd).toBe(900);
     expect(row.status).toBe("OK");
-    expect(row.feature).toBe("REPLY_CLASSIFICATION");
+    expect(row.feature).toBe("SEQUENCE_DRAFTING");
   });
 
   it("stores the rates and rate version, so a corrected price list can recompute", async () => {
@@ -188,5 +194,42 @@ describe("a call that fails", () => {
     expect(out.ok).toBe(true);
     // ...but money was spent and not recorded, which must never be silent.
     expect(reportErrorMock).toHaveBeenCalled();
+  });
+});
+
+describe("the personal-data processor gate (CR-10)", () => {
+  it("refuses a feature declared to carry prospect personal data when its vendor has no recorded processor allowance — EVEN WITH A REAL API KEY", async () => {
+    const invoke = vi.fn();
+
+    const out = await runMeteredAiCall({
+      ...baseArgs,
+      feature: "REPLY_CLASSIFICATION",
+      model: AI_MODELS.REPLY_CLASSIFICATION,
+      apiKey: "sk-ant-test",
+      invoke,
+    });
+
+    expect(out.ok).toBe(false);
+    // The whole point of this gate: an API key must not, by itself, be enough.
+    expect(invoke).not.toHaveBeenCalled();
+    const row = writtenRow();
+    expect(row.status).toBe("REFUSED");
+    expect(row.outcomeCode).toBe("no_processor_allowance");
+    expect(row.costMicroUsd).toBe(0);
+    expect(row.feature).toBe("REPLY_CLASSIFICATION");
+  });
+
+  it("leaves a feature NOT declared to carry personal data unaffected — the gate is narrow, not an off switch", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      result: "ok",
+      usage: { inputTokens: 10, outputTokens: 5 },
+    });
+
+    // baseArgs.feature is SEQUENCE_DRAFTING, declared clean by the CR-10 policy.
+    const out = await runMeteredAiCall({ ...baseArgs, invoke });
+
+    expect(out.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(writtenRow().status).toBe("OK");
   });
 });

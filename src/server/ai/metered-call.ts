@@ -10,6 +10,8 @@ import {
 import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
+import { isPersonalDataUncovered } from "./ai-feature-data-policy";
+
 import type { AiFeature } from "@/generated/prisma/client";
 
 /**
@@ -140,10 +142,14 @@ export async function runMeteredAiCall<T>(
   }
 
   // Order matters only in that each check must happen before any money is
-  // spent. All three fail closed: nothing is called, nothing is charged.
+  // spent. All four fail closed: nothing is called, nothing is charged.
   if (!areAiFeaturesEnabled()) return refuse("ai_features_switched_off");
   if (!apiKey) return refuse("no_api_key");
   if (!rate) return refuse("no_rate_for_model");
+  // CR-10: a feature declared to carry a prospect's own personal data may not
+  // reach a vendor with no recorded processor allowance for it — regardless of
+  // whether an API key happens to be configured. See `ai-feature-data-policy.ts`.
+  if (isPersonalDataUncovered(feature)) return refuse("no_processor_allowance");
 
   const startedAt = Date.now();
   let invoked: AiInvokeResult<T>;
