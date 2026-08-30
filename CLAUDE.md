@@ -57,6 +57,15 @@ marks the row `DONE` itself — only a person or the next cycle can judge whethe
 the merged work actually satisfies the brief. If the merged work already
 satisfies the brief, verify it and close the row rather than redoing it.
 
+## A change to `relay-watch.ps1` is inert until Greg restarts it — never report it as fixed on merge alone
+PowerShell reads `relay-watch.ps1`, or any other file the watcher loads at launch, once — at
+process start. Merging a fix changes the file on disk; it does not change what the already-running
+watcher process is executing. That fix does nothing until Greg runs `relay-start.cmd` by hand — do
+NOT restart it yourself. The acceptance test is a cycle log line beginning `Watcher script:` naming
+the current hash; if no cycle log has ever contained that line, no restart has happened and the
+change is still not running. Any cycle that edits the watcher, or a file it loads at launch, must
+end its own log stating plainly, in as many words, that the change is inert until Greg restarts it.
+
 ---
 <!-- BidlowAI Engineering Standard — injected 2026-07-19. Full rules: ENGINEERING-STANDARD.md (repo root) -->
 ## BidlowAI Engineering Standard (non-negotiable)

@@ -25,6 +25,19 @@ you have closed the window, open `.bidlow\relay\STATUS.json` — it holds the
 cycle number, what happened last, and when. Every cycle also leaves a numbered
 file in `.bidlow\relay\log\` describing what changed and what was decided.
 
+## A change to `relay-watch.ps1` does nothing until you restart it
+
+PowerShell reads `relay-watch.ps1` — and anything else the watcher loads when
+it starts — once, at launch. Merging a fix to the watcher changes the file on
+disk; it does not change what the process that is already running is
+executing. The fix sits inert until you close the window and run
+`relay-start.cmd` by hand. **The proof it worked is a cycle log that begins
+with a line starting `Watcher script:` naming the current hash** — if no cycle
+log has ever contained that line, no restart has actually happened and every
+watcher change merged since the last one is still not running. Any cycle that
+edits the watcher must end its own log saying, in as many words, that the
+change is inert until you restart it.
+
 ---
 
 # Before a client meeting: two commands
