@@ -130,6 +130,7 @@ export async function draftSequenceForClient(args: {
     invoke: async () => {
       const response = await callAnthropicMessages({
         apiKey: process.env.ANTHROPIC_API_KEY as string,
+        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEQUENCE_DRAFTING_SYSTEM_PROMPT,
         userText: buildSequenceDraftingInput(loaded.brief),

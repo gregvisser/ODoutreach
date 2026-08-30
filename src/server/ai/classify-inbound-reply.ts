@@ -79,6 +79,7 @@ export async function classifyInboundReply(args: {
     invoke: async () => {
       const response = await callAnthropicMessages({
         apiKey: process.env.ANTHROPIC_API_KEY as string,
+        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: CLASSIFICATION_SYSTEM_PROMPT,
         userText,

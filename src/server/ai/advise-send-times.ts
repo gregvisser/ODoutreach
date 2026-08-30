@@ -122,6 +122,7 @@ export async function adviseSendTimes(args: {
     invoke: async () => {
       const response = await callAnthropicMessages({
         apiKey: process.env.ANTHROPIC_API_KEY as string,
+        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
         userText: buildSendTimeAdviceInput({
