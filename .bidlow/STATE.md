@@ -1,6 +1,83 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 117) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 120) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 120, queue row 92: closed BLOCKED (not PARTIAL) per the row's own "stop taking this row" instruction; a queue-integrity test caught a real picker-halting bug in the first attempt at that closure and it was fixed before merge.
+
+**PR sweep at cycle start:** one open PR (#410, row 97's "Chrome extension not
+available" docs record). Waited on CI (`gh pr checks --watch`), both `verify`
+and `E2E` went green, merged via `gh pr merge --squash --delete-branch`
+(landed as `acc073c`). Also found and reconciled uncommitted local leftovers
+from an interrupted earlier attempt at this same cycle number (row 92
+flipped to `IN PROGRESS 120` with no other content, plus a stray note
+appended to `cycle-119.md`) - stashed, merged #410, confirmed the stash was
+now redundant against the merged `cycle-119.md`, and dropped it.
+
+**Row 92 - the brief handed to this session was stale.** The cycle brief
+(generated "off the top of QUEUE.md") reproduced row 92's original text plus
+its 29-August "the reply now exists, go observe" update - the same text
+cycles 111-117 already worked from. The **live, committed** `QUEUE.md` row
+92 carried a further addition appended after cycle 117 that the brief did
+not include: **"STOP TAKING THIS ROW... WHEN YOU TAKE THIS ROW, DO NOTHING
+EXCEPT CLOSE IT. Write the status as BLOCKED, never PARTIAL - PARTIAL is
+what causes the loop."** Followed the live row text, not the stale brief, and
+recorded the discrepancy in the cycle log rather than silently re-running the
+walk the brief implied.
+
+**Verified cheaply before accepting "nothing changed" as a reason to stop:**
+`/api/health` still `allowlistedClients:1`; `gh run list --workflow=sync-
+replies.yml` showed no run since cycle 117's own on-demand trigger (cron
+doesn't fire on Sundays); row 95 (would change redispatch cadence) still
+`TODO`. No browser walk, screen check, contact import, or send performed.
+
+**A real bug was caught by CI, not shipped:** the first version of this
+closure (PR #411, first push) marked row 92 `BLOCKED` in its existing file
+position (line 319) without moving it. `relay/queue-file-integrity.test.ts`
+- "keeps BLOCKED and WONTFIX rows below every row still to be done" - failed
+in CI's `verify` job, because `Invoke-SelfQueue` (the watcher's picker) halts
+at the first BLOCKED/WONTFIX row it reaches in file order rather than
+skipping past it, and row 92 sat above four TODO rows (97, 93, 94, 95). Left
+as pushed, this would have silently frozen the entire relay the next time the
+picker reached row 92 - the same failure mode as the row-48/cycle-70
+incident the test itself documents. **Fixed:** moved row 92's table row
+(content unchanged) to sit directly before row 84, one of the two other
+BLOCKED rows already correctly parked at the bottom of the table, using a
+small Node script operating on the raw file buffer so the required BOM and
+line endings (also gated by this same test file) were preserved exactly.
+Re-ran the test locally (9/9 pass), then the full gate - lint (0), typecheck
+(0), and the complete suite (348 files / 3649 tests, all green) - before
+pushing the fix and re-merging. Landed as `009dde2`.
+
+**Lesson for future cycles closing a row as BLOCKED or WONTFIX:** it is not
+enough to change the status word in place - the row must also be moved to
+sit below every row still TODO/PARTIAL in file order, or the picker halts
+there silently. Always check `relay/queue-file-integrity.test.ts` passes
+locally before pushing a BLOCKED/WONTFIX status change.
+
+**Score:** dimension 1 held at 8, unchanged - `.bidlow/GRADES.json` not
+touched. No other queue row, no code, no migration, no send.
+
+**Found but not acted on (flagged for Greg or a future cycle):** row 92's
+text refers to the Gmail-alias reply-matcher mismatch (Reply strips the
+`+cycle109` alias, so `process-synced-replies.ts`'s exact-address match
+resolves to the wrong contact/thread) as "a genuine product defect with its
+own row." A search of the current `QUEUE.md` (all 83 rows, numbers 1-99)
+under several phrasings ("wrong thread", "reply matcher", "matcher gap",
+"contact de-dup(e)", "+cycle109", "alias") found no such row. Either it
+exists somewhere this search missed, or it still needs to be queued
+deliberately - this session did not create one, since doing so was outside
+this row's own "do nothing except close it" instruction.
+
+**What the next session should pick up:** row 92 is now `BLOCKED 120` and,
+per its own text, should not be redispatched again - it waits on either (a)
+a human deliberately performing a fresh, non-aliased send-and-reply, or (b)
+the alias-matcher gap being fixed as its own deliberate, scoped product
+decision (touches contact de-duplication and suppression matching, not just
+this row). Before that: confirm whether a dedicated queue row for the
+matcher defect actually exists (see above) and queue one if not. Row 95
+(watcher restart needed for `relay-watch.ps1`/`Invoke-SelfQueue` changes to
+take effect) is still `TODO` and unrelated to this session's work beyond
+being checked as a "would this change the answer" condition.
 
 ## Session 2026-08-30 - Relay cycle 117, queue row 92: reply-sync forced on demand instead of waited for; same single reply reconfirmed still mismatched; dimension 1 held at 8.
 
