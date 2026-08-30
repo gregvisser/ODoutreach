@@ -7054,3 +7054,91 @@ credential that must never reach git history).
 for BidlowAI to `greg@bidlow.co.uk` (additive, currently null — one row), or give
 BidlowAI a verified sender-aligned link domain. Either is a real, separate
 decision, not made this cycle. **Nothing sent. No one-way door crossed.**
+
+## Cycle 130 — queue row 105, reply-matcher leg 1 — DONE, measurement only
+
+Row 105 asked why leg 1 (`BY_THREAD_REF`) of `processSyncedMessageForReply`
+has linked zero replies ever, and to confirm-or-clear two named suspects
+against live production data before deciding whether it's fixable. Both
+suspects are now **confirmed**, not just uncleared:
+
+- **Gmail** stamps a Message-ID on 100% of its 1,095 sends, but Gmail's
+  `users.messages.send` API rewrites it to its own `<...@mail.gmail.com>`
+  value at delivery — verified directly, not inferred: all 9 sampled Gmail
+  replies with a stamped counterpart carry Gmail's format in `In-Reply-To`,
+  never ours.
+- **Microsoft Graph** stamps 0% of 267 sends, because its `sendMail` action
+  returns `202 Accepted` with an empty body — there has never been an id to
+  store on that path.
+- The anti-join the row asked for came back **0**: of 36 replies carrying an
+  `In-Reply-To` header, none has ever matched any `rfc822MessageId` this
+  codebase has ever stamped, anywhere, in the whole table's history.
+
+**The row's own brief had an inaccurate premise**, corrected in the artefact:
+it assumed both providers "return [a usable id] on the send response." They
+don't — Gmail's response is its own opaque internal id, not the real
+Message-ID (a second `GET .../messages/{id}?format=metadata` call would be
+needed to read back what Gmail actually stamped); Graph's `sendMail` action
+returns nothing at all (a real fix means switching to the two-call
+create-draft-then-send pattern, since only the draft-creation call returns
+`internetMessageId`). So leg 1 **is** fixable for both providers in
+principle, but only via a rewrite of the live send path used for every
+client's real outreach — judged too large and too risky to build unreviewed
+inside a measurement row, so this closed on the row's own explicitly
+sanctioned "measured, fixable-in-principle, documented so nobody trusts leg 1
+again" outcome rather than force a half-scoped send-path change through.
+
+**What was built:** nothing behavioral. Three doc-comment corrections only —
+`src/server/mailbox/gmail-sendmail.ts` (removed a flatly wrong claim that
+"Gmail preserves a client-supplied Message-ID"), `src/server/mailbox/
+process-synced-replies.ts` (leg 1's "definitive/unambiguous" framing
+corrected to state its dead-on-arrival status and point at the artefact), and
+`src/server/email/outbound/execute-one.ts` (explains why the Graph
+`updateMany` never sets `rfc822MessageId` — deliberate, not an oversight).
+Matcher query logic and both providers' send logic are byte-for-byte
+unchanged; legs 2/3 were not touched, per the row's explicit instruction not
+to compensate by loosening them. Full account, queries, and the raw
+header-vs-stamped comparison table: `docs/ops/
+REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md`.
+
+**Route used, and the deviation worth knowing for next time:** same Kudu/SCM
+read-only route as cycles 124/127 (no direct DB access from this machine).
+`npm install pg` failed every attempt in that container with a known npm
+9.6.7 arborist bug (`Tracker "idealTree" already exists`, confirmed via the
+full debug log, unrelated to package name, cache state, or `HOME`) — routed
+around it by fetching `pg` and its full runtime dependency tree directly from
+the npm registry (`curl | tar`, no arborist), which is a viable fallback if
+that npm bug recurs. All scratch files, the fetched packages, and the local
+credential file were deleted from both the container and this machine at the
+end of the run.
+
+**Gates run and shown:** lint 0, typecheck 0, 349 test files / 3661 tests
+green. `.bidlow/GRADES.json` and `CUSTOMER-READY-REPORT.md` were not touched
+— the row explicitly said not to score this. QUEUE.md row 105 set to `DONE
+130`. Merged to `main` as `d2e65de` (PR #425, squash-merged, CI green on both
+`verify` and `E2E (Playwright)`).
+
+**Nothing contradicts PROJECT.json.** No send, no client-data mutation, no
+schema change — every production query in the artefact is a `SELECT`.
+
+## Pick up first, next session
+
+1. **A dedicated follow-up row to actually fix reply-matcher leg 1** — not
+   started. Two independent, provider-specific changes to the live send path,
+   each buildable and testable with mocked provider responses (existing style
+   in `execute-one-google.test.ts` already mocks `fetch`): (a) Gmail — after a
+   successful send, `GET /users/me/messages/{id}?format=metadata&
+   metadataHeaders=Message-ID` and store what Gmail actually assigned instead
+   of the generated value; (b) Microsoft Graph — switch both
+   `sendMicrosoftGraphSendMail` and `sendMicrosoftGraphMimeSendMail` from the
+   single-call `sendMail` action to create-draft (`POST /messages`, which
+   returns `internetMessageId`) then send-by-id. Both touch code that fires on
+   every real client send — scope as its own row with its own red-first
+   tests, and consider one live validation send through `bidlowai`'s own
+   mailbox (the only client the hard rule permits) before trusting either for
+   every other client.
+2. **Row 72 was still `TODO` as of cycle 83's log** (privacy policy describing
+   tracking behaviour the product no longer has) — not touched this session;
+   confirm its current status in QUEUE.md before assuming it's still open.
+3. **Do not re-open row 92/CR-05/row 68** — per the standing note above, all
+   already correct on `main`.
