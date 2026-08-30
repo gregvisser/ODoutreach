@@ -863,6 +863,16 @@ async function sendViaConnectedMailboxOrFail(
         row.mailboxIdentityId,
       );
     }
+    // No `rfc822MessageId` here — deliberate, not an oversight. Both Graph send
+    // paths (`sendMicrosoftGraphSendMail`'s JSON `sendMail` and
+    // `sendMicrosoftGraphMimeSendMail`'s raw-MIME `sendMail`) call the `sendMail`
+    // *action*, which returns 202 Accepted with an empty body — no message id,
+    // real or otherwise. Graph never gets a stamped Message-ID today (measured
+    // against production 2026-08-30, row 105,
+    // docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md: 0 of 267 Graph sends
+    // stamped). Capturing the real one would mean switching to the create-draft
+    // (POST /messages, which returns `internetMessageId`) + send-by-id pattern —
+    // a materially bigger change to this send path than adding a field here.
     const updated = await prisma.outboundEmail.updateMany({
       where: { id: row.id, status: "PROCESSING", providerMessageId: null },
       data: {

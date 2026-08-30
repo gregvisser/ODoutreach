@@ -23,7 +23,17 @@ import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
  *         reject every reply. Fresh inbox mail (no header, no Re:) is skipped.
  *   1. BY_THREAD_REF (definitive, only when In-Reply-To present): the header
  *      value equals the `rfc822MessageId` we stamped on a specific OutboundEmail
- *      for this client. Unambiguous — a genuine reply to that exact send.
+ *      for this client. Unambiguous — a genuine reply to that exact send — IN
+ *      THEORY. Measured against production 2026-08-30 (row 105,
+ *      docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md): it has matched
+ *      ZERO replies, ever, because what we stamp never equals what a real
+ *      reply's In-Reply-To carries for either provider — Gmail rewrites the
+ *      Message-ID we send (see leg 2's note below) and Microsoft Graph is
+ *      never stamped at all (see the comment above the Graph `updateMany` in
+ *      execute-one.ts). This leg is not wrong as a QUERY — the matcher logic
+ *      is correct and has its own test proving it — the defect is entirely
+ *      upstream, in what the send path stores. Every linked reply in
+ *      production has come from leg 2 or leg 3 below.
  *   2. BY_CONTACT_EMAIL subject-anchored: any outbound (stamped or not) to
  *      that exact recipient from that mailbox whose subject equals the
  *      reply's base subject (Re:/Fwd: prefixes stripped). Required because
