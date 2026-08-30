@@ -170,7 +170,18 @@ Saturday evening, a weekday outside 07:00-18:00, and a weekday inside
 - Asserts `process-outbound-queue.yml`'s cron is still exactly
   `*/5 7-18 * * 1-5` — a regression guard on the "do not touch" instruction.
 
-**Real workflow run outside business hours, quoted after merge:** ⬜ to be
-filled in below once observed — see the log for this cycle for the current
-status (a real run had not yet been observed at the time this document was
-first written, since the cron change had not yet reached `main`).
+**Real workflow run outside business hours, quoted after merge:** ✅ observed.
+Run `33336908935` (`event: "schedule"`, not `workflow_dispatch`), started
+`2026-08-30T21:36:50Z` — Sunday, both outside the old `7-18` UTC window and
+outside the old weekday-only window at once — against `headSha
+88164bcc2baea9be9175f614b27f3f6af63b4b81` (main HEAD at the time, itself well
+after this row's own merge `11604ed`). This tick would not have existed at
+all under the pre-fix cron. It failed overall, but for a reason unrelated to
+scheduling: `##[error]do-not-contact sheet sync did not respond (HTTP 502)` —
+a downstream Google Sheets 502 on a different step (the DNC sync), not a
+reply-sync or cron problem. This document's own definition of done asked for
+a real run outside business hours, quoted, not a green one; that is what is
+quoted above, verbatim from `gh run view 33336908935 --log-failed`. Filled in
+by row 128 / cycle 165 while re-checking this row's precondition — this row's
+own definition of done is otherwise unchanged and was already satisfied by
+cycle 159's merge.
