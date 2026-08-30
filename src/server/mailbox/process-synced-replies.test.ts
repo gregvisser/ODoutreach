@@ -73,6 +73,20 @@ describe("stripReplyPrefixes", () => {
     expect(stripReplyPrefixes(null)).toBe("");
     expect(stripReplyPrefixes(undefined)).toBe("");
   });
+
+  // Row 102 — cycle 124's REPLY-MATCHER-PLUS-ALIAS-FIX-2026-08-30.md flagged
+  // these as real client prefixes the pattern didn't cover: Spanish/Portuguese
+  // "Res:", Polish "Odp:", Scandinavian "Vs:" (distinct from the already-handled
+  // "Sv:"), and the bare "R:" some French Outlook clients emit. For a STAMPED
+  // send (leg 1 can't match without In-Reply-To, leg 3 excludes stamped sends
+  // by design), a subject carrying one of these fails leg 2's equality outright
+  // and there is no leg left — mechanism (ii) arriving through a different door.
+  it("strips RES/ODP/VS/bare-R prefixes real mail clients produce", () => {
+    expect(stripReplyPrefixes("RES: Asunto original")).toBe("Asunto original");
+    expect(stripReplyPrefixes("Odp: Temat wiadomości")).toBe("Temat wiadomości");
+    expect(stripReplyPrefixes("Vs: Opprinnelig emne")).toBe("Opprinnelig emne");
+    expect(stripReplyPrefixes("R: Oggetto originale")).toBe("Oggetto originale");
+  });
 });
 
 const BASE_INPUT = {

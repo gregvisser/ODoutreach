@@ -1,6 +1,97 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 124) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 127) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 127, queue row 102: measured reply-matcher mis-filing read-only against production, found mechanism (ii) NOT biting, fixed a real prefix-matching gap. PR #422 open, mergeable, CI pending.
+
+**Note: cycles 125 and 126 (queue row 101, CR-10 engineering half) are not
+recorded in this file** — that work is real and merged (commit `26559fd`,
+PR #420) but neither cycle wrote a STATE.md entry (125 was killed at its
+45-minute deadline; 126 verified 125's work and closed the row without
+backfilling here). See `.bidlow/relay/QUEUE.md` row 101 and
+`.bidlow/relay/log/cycle-125.md`/`cycle-126.md` for that history if needed.
+
+**What was built this cycle:** row 102 asked to measure, read-only against
+production, whether the reply matcher's leg-3 `rfc822MessageId: null`
+exclusion (mechanism (ii), named but not confirmed active by cycle 124) is
+actually mis-filing any of the 1,095 stamped `OutboundEmail` rows. Reused
+cycle 124's exact route (App Service's own Kudu/SCM container — direct
+`psql` from this machine is firewalled; `az webapp deployment
+list-publishing-credentials` + Kudu `/api/command` + `/api/vfs`, `pg`
+installed fresh into a scratch dir, `DATABASE_URL` read only inside the
+container's own process, never printed). Hit and fixed a JS-template-literal
+escaping bug along the way (`\+` was silently dropping to `+` through a
+shell-escaping layer, breaking the regex sent to Postgres) — worked around
+with `String.fromCharCode(92)` instead of a literal backslash. All scratch
+files/dirs deleted from the container and this machine afterward, confirmed
+gone.
+
+**The three numbers, all backed by exact SQL in
+`docs/ops/REPLY-MATCHER-MEASUREMENT-2026-08-30.md`:** (a) 39 total
+`InboundReply` rows, all `matchMethod = BY_CONTACT_EMAIL` (zero
+`BY_THREAD_REF` ever recorded in this table's history), 10 with
+`linkedOutboundEmailId IS NULL` — traced to `opensdoors`' own pre-engagement
+May 2026 test data whose outbound rows were later deleted (`onDelete:
+SetNull`), not a matcher failure; (b) stamped=1095 / unstamped=324 /
+total=1419, matching cycle 124's figure exactly; (c) of 29 currently-linked
+replies eligible for the check, exactly **1** links to a non-newest send —
+and it is the identical, already-known row-100/cycle-124 incident (same
+reply id `cmtezdw2g0085g1mg3hjbmwh4`, same wrong/right outbound ids), not a
+new occurrence, and both competing sends are unstamped. **Conclusion:
+mechanism (ii) is measured and NOT biting in production today** — no case
+found where a stamped, more-recent, canonically-matching candidate was
+excluded in favour of an older one. Row closed on the "near zero" branch of
+its own three named outcomes.
+
+**Also fixed, found while reading the code (the row's own "concrete testable
+gap"):** `stripReplyPrefixes` was missing RES/ODP/VS/bare-R prefixes —
+red-first test added and quoted failing, then fixed. **Found while fixing
+it, not named in the row's brief:** `looksLikeReplyBySubject` (the
+reply-detection gate that runs *before* `stripReplyPrefixes`) held an
+independent, near-duplicate regex — extending only the exported function
+would have left the fix unreachable for real traffic, exactly the "assume
+the seventh exists" failure mode this project tracks. Unified both onto one
+`REPLY_FORWARD_PREFIX` constant in `src/server/mailbox/process-synced-replies.ts`
+so the two can no longer drift apart. All 35 pre-existing prefix/matcher
+tests still pass unmodified.
+
+**Gates run and shown:** lint 0, typecheck 0, 349 files / 3661 tests green
+locally before push. One transient failure mid-cycle —
+`relay/cycle-log-reaches-git.test.ts` flagging `cycle-126.md` as still
+untracked — fixed by `git add`ing that log file in the same commit (same
+pattern cycle 126 used for `cycle-125.md`).
+
+**What is half-done, and where it was left:** PR #422
+(`docs/row102-reply-matcher-measurement`) is open against `main`, mergeable
+(had to rebase once — the branch was accidentally cut from a stale local
+commit predating row 101's squash-merge, which showed as a false
+`CONFLICTING`; fixed with `git rebase origin/main` + force-push), CI
+(`E2E (Playwright)` + `verify`) was still `pending` as of this write. Per
+this project's standing rule, merge it as soon as CI is green — no
+destructive migration, no client-data mutation, no send, so no one-way-door
+approval is needed. `.bidlow/relay/QUEUE.md` row 102 is already written as
+`DONE 127` inside that same unmerged commit; it only becomes true on `main`
+once #422 merges.
+
+**Decisions made, none touching a one-way door:** scoped the "not-newest"
+measurement (c) to replies whose linked outbound has both a
+`mailboxIdentityId` and a `sentAt` (0 rows excluded on that basis this run);
+did not attempt to measure *silently-dropped* replies (messages that looked
+like a reply but produced no `InboundReply` row at all) — that population is
+invisible to any query against `InboundReply` alone and would need the raw
+inbox-sync message log, a different and larger measurement than the three
+numbers this row asked for; stated that limitation plainly rather than
+estimating. Left Graph-send stamping (the separate gap cycle 124 named)
+untouched, as instructed.
+
+**What the next session should pick up first:** confirm PR #422 merged and
+row 102 reads `DONE 127` on `main` (if it's still open/pending, that's the
+very next thing to check — `gh pr checks 422`, and merge once green,
+branch protection may require bringing it current again if anything else
+merged first). Nothing else was left mid-stream this cycle.
+
+**Nothing sent. No client data mutated — every production query this
+cycle was a `SELECT`. No schema change, no migration.**
 
 ## Session 2026-08-30 - Relay cycle 124, queue row 100: fixed the reply-matcher plus-alias defect, red-first test proven, PR open awaiting CI.
 
