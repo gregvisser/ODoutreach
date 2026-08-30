@@ -345,6 +345,65 @@ Assert-True (($orderedNumbers -join ",") -eq "1,2,$($carried.Number),3") `
 Remove-Item $handoffQueue -Force -ErrorAction SilentlyContinue
 
 # ===========================================================================
+# 8. A TIMED-OUT ROW WHOSE WORK IS ALREADY MERGED IS REOPENED WITH A WARNING,
+#    NOT A BARE TODO
+#
+# Row 103. Observed 30 August: cycle 125 finished row 101 in full and its PR
+# merged as #420, but the 45-minute kill fired before it could write DONE 125
+# into the status cell. Both orphan-reopen paths in relay-watch.ps1 - the one
+# at startup and the one around the mid-run 45-minute timeout - wrote a bare
+# "TODO (reopened...)", which told cycle 126 nothing about the work already on
+# main. A human caught it by hand and amended the brief; that catch will not
+# happen when nobody is watching.
+#
+# The orphan reopen is right - a stranded row must go back to the picker or it
+# is skipped for ever. The bug is that it reopened BLIND. Test-RowMergedOnMain
+# is split into a pure matcher (this section) and an I/O wrapper that runs
+# `git log`, exactly as Get-EvidenceVerdict is split from Get-RepoEvidence
+# above - so this drives the matching logic directly, against real commit
+# subjects from this repository's own history, without needing a git checkout.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "8. A timed-out row whose work is already merged is reopened with a warning"
+
+# Real commit subjects from this repository's own `git log`, not a fixture
+# written to make the test pass.
+$mainLogWithMergedRows = @"
+3b3fcb0 docs(state): record cycle 127 - row 102 reply-matcher measurement
+b6c57e7 docs(relay): row 102 - measure reply-matcher mis-filing, fix prefix gap
+3cd6fd1 docs(relay): row 101 - verify and close CR-10 engineering half (cycle 126) (#421)
+8b2370f fix(mailbox): canonicalize plus-alias recipients in reply matching (row 100) (#419)
+"@
+
+Assert-True ((Test-RowNumberMergedInLog $mainLogWithMergedRows "101") -eq $true) `
+    "row 101's merge commit ('row 101 - verify and close...') is recognised in main's history"
+Assert-True ((Test-RowNumberMergedInLog $mainLogWithMergedRows "100") -eq $true) `
+    "row 100's merge commit ('...matching (row 100) (#419)') is recognised in main's history"
+Assert-True ((Test-RowNumberMergedInLog $mainLogWithMergedRows "10") -eq $false) `
+    "row 10 is NOT falsely matched inside 'row 100' or 'row 101' - the word-boundary check holds"
+Assert-True ((Test-RowNumberMergedInLog $mainLogWithMergedRows "103") -eq $false) `
+    "a row with no commit at all (this row, 103, before this fix lands) is correctly reported as not merged"
+
+# The behaviour that actually matters: a timed-out row whose number IS in
+# main's history comes back as PARTIAL with the verify-first warning, not TODO.
+$mergedStatus = Get-OrphanReopenStatus -CycleNumber "125" `
+    -ReasonSuffix "reopened - cycle 125 was killed at the 45 minute deadline and did not finish this" `
+    -MergedOnMain $true
+Assert-True ($mergedStatus -match '^PARTIAL 125 - work may already be merged, VERIFY main BEFORE redoing') `
+    "a merged, timed-out row is reopened as PARTIAL with the verify-first warning, not a bare TODO (got: $mergedStatus)"
+Assert-True ($mergedStatus -match 'reopened - cycle 125 was killed at the 45 minute deadline') `
+    "the original reopen reason is still carried in full - nothing the old behaviour recorded is lost (got: $mergedStatus)"
+
+$unmergedStatus = Get-OrphanReopenStatus -CycleNumber "41" `
+    -ReasonSuffix "reopened - cycle 41 was killed at the 45 minute deadline and did not finish this" `
+    -MergedOnMain $false
+Assert-True ($unmergedStatus -match '^TODO \(reopened') `
+    "a row with nothing found on main is still reopened as a plain TODO, exactly as before this fix (got: $unmergedStatus)"
+Assert-True ($unmergedStatus -notmatch 'PARTIAL') `
+    "the PARTIAL warning is never applied when nothing was found on main - a false alarm here would train Greg to ignore it"
+
+# ===========================================================================
 
 Write-Host ""
 if ($script:Failures.Count -eq 0) {

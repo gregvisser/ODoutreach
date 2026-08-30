@@ -42,6 +42,21 @@ Production migrations are **NOT applied automatically on deploy**. The deploy wo
 - Local Node is v22; CI and Azure build/run on **Node 20** — keep this gap in mind.
 - `.azure/prod-db-admin-password.txt` holds a plaintext prod DB password; `.azure/` is gitignored. Do not commit or echo it.
 
+## A row reopened after a relay timeout may already be merged — check `main` first
+If a queue row you have been handed says it was reopened after a cycle timed out
+(the 45-minute deadline in `relay-watch.ps1`), your **first action, before writing
+any code**, is `git log --oneline -10 main` for that row's number. A cycle killed
+at the deadline can still have finished the work and opened a pull request that
+merged before the kill fired — the clock has no way to know the last thing the
+cycle did was land a green PR. This cost a whole cycle on 30 August: cycle 125
+finished row 101 in full and merged it as #420, but the timeout fired before it
+could write `DONE 125`, and the row went back out with no mention of the merged
+work. The watcher now writes `PARTIAL <cycle> - work may already be merged,
+VERIFY main BEFORE redoing` on a reopened row where it finds a match, but it never
+marks the row `DONE` itself — only a person or the next cycle can judge whether
+the merged work actually satisfies the brief. If the merged work already
+satisfies the brief, verify it and close the row rather than redoing it.
+
 ---
 <!-- BidlowAI Engineering Standard — injected 2026-07-19. Full rules: ENGINEERING-STANDARD.md (repo root) -->
 ## BidlowAI Engineering Standard (non-negotiable)
