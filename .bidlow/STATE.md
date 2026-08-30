@@ -1,6 +1,82 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 151) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 158) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 158, queue row 125: reply sync now runs continuously; sending unchanged. PR sweep merged #454 (row 128) first. Row 125 work merged as `11604ed`; QUEUE.md left PARTIAL pending confirmation of a real out-of-hours workflow run — check that first if picking this up.
+
+**Row 125, the actual assignment:** Greg's decision (30 August) — sending and
+replying stay inside business hours, but receiving must run at any time.
+`sync-replies.yml` cron changed `*/15 7-18 * * 1-5` → `*/15 * * * *`.
+`process-outbound-queue.yml` is UNTOUCHED — sending stays business-hours-only,
+weekdays, exactly as before.
+
+**The damage question (investigated first, per Greg's explicit condition,
+BEFORE any change was made):** can a scheduled follow-up go out to a contact
+who already replied but whose reply hasn't synced yet? **Answer: no, not in
+the ordinary case.** `process-outbound-queue.yml`'s OWN first step ("Sync
+replies before advancing") awaits the same `/api/internal/replies/sync` call
+and its synchronous write of `ClientEmailSequenceEnrollment.status =
+COMPLETED` (`stop-follow-ups-on-reply.ts`) BEFORE its second step re-reads
+that live status and skips the enrolment. This guard is independent of the
+standalone `sync-replies.yml` schedule and is untouched by this row. Full
+trace with file:line citations in
+`docs/ops/REPLY-SYNC-ALWAYS-ON-2026-08-30.md`. Two residual (pre-existing,
+out-of-scope) gaps found and recorded there, not fixed: replies beyond the
+50-mailbox per-run cap, and replies that don't link to any outbound email
+(those never stop a sequence — a real structural gap, unrelated to cron
+cadence, worth its own investigation as a future row but NOT filed as one
+yet because occurrence frequency is unknown).
+
+**Greg's condition ("leave it if it will cause problems") — checked and
+cleared:** no duplicate-inbound-row risk (compound-unique upsert key already
+protects this), no new rate-limit exposure (same per-tick call shape, just
+spread across previously-idle hours), cost triples as estimated (~220→~672
+runs/week, not "far above"), and no race with the send queue gets worse
+(`process-outbound-queue.yml` never runs outside business hours so it can
+never overlap the new out-of-hours ticks).
+
+**Proof it fires:** new `relay/reply-sync-schedule.test.ts` — reads the REAL
+`.github/workflows/*.yml` files, parses cron fields with a small matcher, and
+simulates firing at Sunday-night/Saturday-evening/weekday-night instants.
+Watched RED against the un-edited cron (`expected false to be true` at the
+Sunday-night case), watched GREEN after the one-line cron edit. Also pins
+`process-outbound-queue.yml`'s cron as a literal-string regression guard —
+if anyone edits that file's schedule later this test will fail.
+
+**PR sweep, done first per standing instruction:** one open PR, #454 (row
+128, opened before cycle 157 was killed at its 45-minute deadline — see
+below), CI green, squash-merged (`1252f0e`), branch deleted.
+
+**Recurring defect re-encountered, same day, again:** `QUEUE.md` lost its
+UTF-8 BOM a second time (row 127 already exists to track this — third
+occurrence in two days per cycle 157's own log). Restored by hand with a
+short Node script (`Buffer.concat` with the BOM bytes) since PowerShell is
+DENIED in this session's tool permissions — the usual restoration method
+(`relay/queue-file-integrity.test.ts` fixups other cycles used) wasn't
+directly available. Confirmed byte-identical outcome via the test that
+checks it. **Whatever keeps stripping this BOM is still unidentified** — row
+127 is TODO and worth picking up before it costs a cycle the way the Aug-28
+duplicate-table incident did.
+
+**What was found NOT yet done at the end of this session:** the queue row's
+own definition of done requires quoting a REAL scheduled workflow run that
+executed outside 07:00-18:00 weekday hours, after merge. The merge
+(`11604ed`) landed ~18:44 UTC on a Sunday — already outside the OLD
+schedule's window — and a background poll for the next scheduled
+`sync-replies.yml` run (ticks every 15 min under the new cron) was started
+but had not yet resolved when this note was written. **If picking this row
+back up: check `gh run list --workflow=sync-replies.yml` for a `"event":
+"schedule"` run with `createdAt` after `2026-08-30T18:44:00Z` — if one
+exists, quote its run ID/URL/timestamp in the QUEUE.md row 125 status cell
+and cycle-158.md log, and flip the status from `PARTIAL 158` to `DONE 158`.
+This is a small, additive, doc-only follow-up commit, safe to merge without
+asking.**
+
+**One-way doors:** none touched. No migration, no client data change, no
+real send from anyone, `bidlowai` included. `process-outbound-queue.yml` not
+touched in any way — verified by the new test's regression assertion.
+
+**Nothing here contradicts `.bidlow/PROJECT.json`.**
 
 ## Session 2026-08-30 - Relay cycle 151, queue row 118 (assigned) + row 117 (finished cycle 150's stalled merge). Both landed on `main`.
 
