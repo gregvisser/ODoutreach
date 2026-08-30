@@ -404,6 +404,68 @@ Assert-True ($unmergedStatus -notmatch 'PARTIAL') `
     "the PARTIAL warning is never applied when nothing was found on main - a false alarm here would train Greg to ignore it"
 
 # ===========================================================================
+# 9. A STALE .git/index.lock IS CLEARED AT CYCLE START, BUT ONE HELD BY A LIVE
+#    GIT PROCESS IS LEFT ALONE
+#
+# Row 120. Cycles 146 and 147 were killed at the 45-minute deadline while git
+# held the index lock; the kill left the lock file on disk, and every commit
+# from every cycle that followed failed against it until a human noticed and
+# renamed it away by hand. Twice.
+#
+# A scratch repo, not the real one, so this test can plant and remove a lock
+# file without ever touching this repository's own git state.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "9. A stale .git/index.lock is cleared; one a live git process holds is left alone"
+
+$scratchRepo = Join-Path $env:TEMP ("relay-selftest-lockrepo-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path (Join-Path $scratchRepo ".git") -Force | Out-Null
+$scratchLock = Join-Path $scratchRepo ".git\index.lock"
+
+# No lock at all - the ordinary case, every cycle, forever. Must do nothing.
+$noLock = Clear-StaleIndexLock -RepoPath $scratchRepo -Now (Get-Date)
+Assert-True ($noLock.Found -eq $false -and $noLock.Removed -eq $false) `
+    "no lock present means nothing is found and nothing is touched"
+
+# Plant a lock and back-date it, exactly as a killed git process would leave
+# one - then say a live git process is holding it. This must be LEFT ALONE.
+Set-Content -Path $scratchLock -Value "" -Encoding ascii
+(Get-Item $scratchLock).LastWriteTime = (Get-Date).AddMinutes(-90)
+
+$fakeLiveGit = [pscustomobject]@{ Id = 424242 }
+$held = Clear-StaleIndexLock -RepoPath $scratchRepo -Now (Get-Date) -GitProcessCheck { $fakeLiveGit }
+Assert-True ($held.Found -eq $true -and $held.Held -eq $true -and $held.Removed -eq $false) `
+    "a lock held by a live git process is detected but NOT removed"
+Assert-True (Test-Path $scratchLock) `
+    "the lock file is still on disk - it must survive being held"
+Assert-True ($held.Note -match '424242') `
+    "the log line names the PID holding it, so a human can check it (got: $($held.Note))"
+
+# Same lock, same age, but now no git process holds it - the case that cost
+# cycles 148 and 149 a night's work. This must be REMOVED, and the removal
+# must be LOGGED PLAINLY, including how old the lock was.
+$stale = Clear-StaleIndexLock -RepoPath $scratchRepo -Now (Get-Date) -GitProcessCheck { $null }
+Assert-True ($stale.Found -eq $true -and $stale.Removed -eq $true -and $stale.Held -eq $false) `
+    "a stale lock with no live git process holding it is cleared"
+Assert-True (-not (Test-Path $scratchLock)) `
+    "the lock file is actually gone from disk, not just reported as gone"
+Assert-True ($stale.Note -match '(?i)stale' -and $stale.Note -match '\.git.index\.lock') `
+    "the action is logged plainly, naming the lock (got: $($stale.Note))"
+Assert-True ($stale.Note -match '9\d(\.\d+)? minutes old') `
+    "the log line states how old the lock was, per the brief's own wording (got: $($stale.Note))"
+
+# The watcher's real call site passes no -GitProcessCheck at all, so the
+# default must genuinely ask the OS, not merely accept whatever is handed to
+# it - a check that always "sees no git" would clear a lock a real commit is
+# using and corrupt the index.
+$defaultParam = (Get-Command Clear-StaleIndexLock).Parameters['GitProcessCheck']
+Assert-True ($null -ne $defaultParam) `
+    "Clear-StaleIndexLock exposes a GitProcessCheck parameter for the real call site to rely on"
+
+Remove-Item -Path $scratchRepo -Recurse -Force -ErrorAction SilentlyContinue
+
+# ===========================================================================
 
 Write-Host ""
 if ($script:Failures.Count -eq 0) {

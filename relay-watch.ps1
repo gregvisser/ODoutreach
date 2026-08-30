@@ -439,6 +439,75 @@ function Resolve-InterruptedCycle {
 # waiting 45 minutes is not a test anyone runs twice.
 # ===========================================================================
 
+# ===========================================================================
+# A STALE .git/index.lock SILENTLY DISABLES EVERY COMMIT THAT FOLLOWS IT
+#
+# Cycles 146 and 147 were killed at the 45-minute deadline while git held the
+# index lock. The kill removes the process but leaves the lock file on disk -
+# git itself refuses every future `git add` / `git commit` against a repo with
+# an index.lock present, whether or not anything still holds it. Cycle 148 then
+# did the whole of row 117 correctly and could not commit a single byte because
+# of exactly this, and still reported the row DONE - the work was nearly lost.
+#
+# Runs at the START of every cycle, before the brief is handed to Claude Code,
+# so a lock left behind by the PREVIOUS cycle's kill never blocks the next one.
+#
+# A lock that IS held by a live git process must be left alone - removing it
+# out from under a running git command corrupts the index. -GitProcessCheck is
+# a parameter, not a hard-coded `Get-Process -Name git`, so the self-test can
+# simulate "held" and "not held" without needing a real git process to exist at
+# the moment the test runs.
+# ===========================================================================
+function Clear-StaleIndexLock {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoPath,
+        [Parameter(Mandatory = $true)][datetime]$Now,
+        [scriptblock]$GitProcessCheck = { Get-Process -Name "git" -ErrorAction SilentlyContinue }
+    )
+
+    $lockPath = Join-Path $RepoPath ".git\index.lock"
+
+    if (-not (Test-Path $lockPath -PathType Leaf)) {
+        return [pscustomobject]@{ Found = $false; Removed = $false; Held = $false; Note = $null }
+    }
+
+    $liveGit = & $GitProcessCheck
+    if ($liveGit) {
+        $pid0 = @($liveGit)[0].Id
+        return [pscustomobject]@{
+            Found   = $true
+            Removed = $false
+            Held    = $true
+            Note    = "Found .git/index.lock, but a live git process (PID $pid0) holds it - left alone."
+        }
+    }
+
+    $ageMinutes = $null
+    try {
+        $ageMinutes = [math]::Round(($Now - (Get-Item -Path $lockPath).LastWriteTime).TotalMinutes, 1)
+    } catch {
+        $ageMinutes = $null
+    }
+    $ageText = if ($null -ne $ageMinutes) { "$ageMinutes minutes old" } else { "age unknown" }
+
+    try {
+        Remove-Item -Path $lockPath -Force
+        return [pscustomobject]@{
+            Found   = $true
+            Removed = $true
+            Held    = $false
+            Note    = "Cleared a stale .git/index.lock ($ageText). No live git process held it."
+        }
+    } catch {
+        return [pscustomobject]@{
+            Found   = $true
+            Removed = $false
+            Held    = $false
+            Note    = "Found a stale .git/index.lock ($ageText) but could not remove it: $($_.Exception.Message)"
+        }
+    }
+}
+
 # Every process descended from $rootPid, parent first.
 #
 # Windows reuses PIDs, so an old PID could name an unrelated process that is
@@ -2274,6 +2343,13 @@ while ($true) {
     $cycle = $cycle + 1
     $cyclesThisRun++
     Write-Line "Cycle $cycle starting (number $cyclesThisRun of $MaxCycles in this run)."
+
+    # Clear a stale .git/index.lock left behind by a killed cycle BEFORE the
+    # brief goes to Claude Code - see Clear-StaleIndexLock above for why.
+    $lockCheck = Clear-StaleIndexLock -RepoPath $RepoRoot -Now (Get-Date)
+    if ($lockCheck.Found) {
+        Write-Line $lockCheck.Note
+    }
 
     Move-Item -Path $NextFile -Destination $CurrentFile -Force
     Save-Status $cycle "running" $lastSelfQueued
