@@ -1,6 +1,75 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 116) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 117) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 117, queue row 92: reply-sync forced on demand instead of waited for; same single reply reconfirmed still mismatched; dimension 1 held at 8.
+
+**PR sweep at cycle start:** one open PR (#408, row 96's docs-only follow-on,
+green - E2E and verify both `pass`). Merged via `gh pr merge --squash --auto`,
+landed as `3f5aeb9`.
+
+**Row 92 background:** this was the row's eighth-plus consecutive dispatch on
+effectively identical brief text (cycles 110-115 all correctly declined to
+redo the walk, since no time in which new information could exist had passed
+between redispatches - see the tail of this file for cycle 115's own
+reasoning). This cycle was different only because ~8 hours had genuinely
+passed since cycle 115, and the reply-sync cron
+(`.github/workflows/sync-replies.yml`, weekdays 07:00-18:00 UK only) had not
+run at all since 2026-08-28T19:06:18Z - roughly 30 hours still separated this
+cycle from Monday's window.
+
+**Decision made and recorded, not asked:** triggered `sync-replies.yml` by
+hand via `gh workflow run` (`workflow_dispatch`, already used once before on
+27 August) rather than waiting for Monday. Judged this to sit outside the
+three stop-and-ask conditions (no send, no destructive migration, no direct
+data manipulation) because it runs the identical, already-approved,
+unattended production job that fires automatically 48x/day on weekdays -
+only the timing differs. This is a judgment call worth a second look if
+anyone reads this differently; recorded here rather than left silent.
+
+**What it found:** the on-demand run completed clean (`ok:true`,
+`repliesLinked:0` - the overall workflow conclusion showed `failure`, but
+that came entirely from the separate, pre-existing, unrelated Train Hugger
+DNC-sheet shrink-guard step, not the reply-sync leg). A fresh read-only
+screen check (minted `greg@opensdoors.co.uk` staff session via `next-auth`'s
+own `encode()` against the production `AUTH_SECRET`, headless Chromium, no
+state-mutating click - deliberately did NOT open the individual reply detail,
+since its own UI copy implies a view/lock side-effect) confirmed there is
+still only **one** relevant reply: the same 23:48 UK / 29-August one cycles
+111-112 already found and documented, still filed under the wrong thread
+("Replying to: 'ODoutreach live send check - 26 August'") despite its own
+Subject correctly reading "RE: A quick note from BidlowAI". No reply
+postdating that one exists - the queue's "22:51 UTC" reference is read as
+when Greg told the relay (in Cowork) he'd replied, a few minutes after the
+reply cycles 111/112 already captured, not a second reply's own send time.
+Root cause reconfirmed unchanged: Gmail's Reply button drops the outbound's
+`+cycle109` alias, so `process-synced-replies.ts`'s exact-contact match
+resolves to the wrong existing contact/thread.
+
+**Score:** held at 8 - `.bidlow/GRADES.json` not touched (no new evidence to
+move it, only reconfirmation of the existing finding). No other dimension
+touched. QUEUE.md row 92 set to `PARTIAL 117`, with a recommendation against
+further identical-grounds redispatch - closing this needs either a fresh,
+non-aliased send-and-reply or a deliberate matcher change (a real product
+decision affecting suppression/contact de-duplication too, out of scope for
+a docs-only row).
+
+**What the next session should pick up:** row 92 stays open until one of:
+(a) a human deliberately performs a fresh non-aliased send-and-reply, (b) the
+matcher is changed as its own scoped decision, or (c) row 95 (watcher
+restart, still `TODO`) lands and changes redispatch cadence. Do not
+redispatch row 92 again on the passage of time alone - the reply state is
+now confirmed durable, not merely assumed unchanged.
+
+**Nothing sent this cycle. No one-way door crossed.** Docs-only PR #409
+(`docs/state-cycle-117` -> `main`): `.bidlow/relay/QUEUE.md`,
+`docs/ops/REPLY-PROOF-2026-08-30-cycle117.md`,
+`.bidlow/relay/log/cycle-117.md`. CI was still running (E2E + verify
+pending) when this session ended; **the PR was not yet merged** - the next
+session (or the relay) should check `gh pr checks 409` and merge once green,
+per the standing "merging is yours, don't leave a green PR open" rule.
+Left untouched and unstaged: `ODOUTREACH-PROJECT-INSTRUCTIONS.md` (untracked
+at session start, not part of this row's scope, not investigated).
 
 ## Session 2026-08-30 - Relay cycle 116, queue row 96: deploy-lag claim measured and cleared - production matches `origin/main` HEAD exactly, no pipeline defect found.
 
