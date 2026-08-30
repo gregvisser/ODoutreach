@@ -7294,20 +7294,89 @@ fix for a future measured walk to score, not this row's business.
 **Nothing contradicts PROJECT.json.** No `src/server/email` file was touched,
 no schema, no migration, no send, no client data.
 
+## Cycle 140 — row 112: fixed all 7 of row 111's ranked confusion findings
+
+Row 109 above is long since resolved (`DONE 134`), row 111 walked and ranked
+seven UI confusion findings (`DONE 139`), and this session (row 112, cycle
+140) fixed all seven, highest damage first, none left unfixed.
+
+**What changed, briefly** (full findings + exact new wording:
+`docs/ops/2026-08-30-row112-confusion-fixes.md`):
+
+1. The post-launch flash banner always said "N queued", even once the send
+   had actually completed (`triggerOutboundQueueDrain` is awaited before the
+   banner is built, so in production dispatch is usually already done). Now
+   re-reads the real `OutboundEmail` status and says "sent" / "queued —
+   sending shortly" / "failed" via a new reused humanizer
+   (`describeSequenceDispatchOutcome`, `src/lib/clients/outreach-sequence-send-staff-copy.ts`).
+2. The Do-not-contact tab's amber "sync isn't set up yet" banner used to sit
+   above cards saying "Sheet connected" / "Last sync succeeded" — a global
+   credential check contradicting a per-client fact. Now picks the true
+   sentence via `suppressionSyncUnavailableCopy`.
+3. The DNC tab's "Sheet connected" badge and the Overview readiness panel
+   used two different tests for the same fact (source row exists vs
+   non-blank `spreadsheetId`). Now share one test,
+   `suppressionSourceIsConnected` — both in `src/lib/suppression/staff-labels.ts`.
+4. Overview's "Lists" row counted contacts, not lists, and could disagree
+   with the client's own Lists tab. **Kept the "Lists" label** — it is a
+   deliberate PR #138 decision, protected by its own test
+   (`client-launch-state.test.ts` "one name per destination"), that the row
+   must match the subnav tab it links to. Fixed the metric text instead
+   ("1 contact total · 1 eligible", not a bare "1 total").
+5. A template status "IN REVIEW" only said "Legacy status" with no statement
+   of whether it blocks a sequence — verified in `sequence-policy.ts` that it
+   does not (only `ARCHIVED` templates are unusable), then said so.
+6/7. "Provider: mock" (outbound email detail) and "Legacy transport: mock"
+   (operations workspace table) were raw/jargon labels with no on-screen
+   explanation. New shared humanizer `describeOutboundProvider`
+   (`src/lib/email/outbound-provider-copy.ts`) for #6; plain-language badge
+   text for #7, verified accurate for that specific table (always has real
+   mailbox data, never the `unassessed` case) before writing it.
+
+**What was deliberately left, and why:** finding 3's fuller ask — have
+Overview say "sheet reference missing — using the last list synced before it
+went missing" instead of a flat "Not configured" — needs a NEW data signal
+threaded from `client-workspace-bundle.ts` through `LaunchReadinessPanelInput`
+into `client-launch-state.ts`. That's data plumbing, not a wording fix; this
+session only made the two screens use the same test, which is what actually
+stops the disagreement. Scoped as real follow-up work, not started.
+
+**Method note for whoever reads this file next:** finding 4 is a case where
+the row-111 artefact's literal suggested fix ("relabel to Contacts") would
+have been wrong — it would have silently broken a previous, deliberate,
+tested naming decision. Always check whether a fix a prior artefact suggests
+collides with an existing test before applying it verbatim; grep the test
+file for the label/string first.
+
+**Gates run and shown:** `npm run lint` 0, `npm run typecheck` 0, `npm test`
+354 files / 3736 tests green (was 3723 before this session's new tests).
+Guard test files re-run and confirmed green/untouched:
+`send-introduction.test.ts`, `send-introduction.pacing.test.ts`,
+`suppression-guard.test.ts` — no governance, suppression, or capacity code
+was touched. No `.bidlow/GRADES.json` write, no score, no send — the
+`bidlowai` sequence stayed at Ready: 1, Sent: 0.
+
+Merged to `main` as `f462914` (PR #439, CI green on `verify` and `E2E
+(Playwright)`). `.bidlow/relay/QUEUE.md` row 112 set to `DONE 140`.
+
+**Nothing contradicts PROJECT.json.** No schema, no migration, no send, no
+client data touched; all changes are staff-facing copy/wording plus two new
+small, pure, tested humanizer modules.
+
 ## Pick up first, next session
 
-1. **Row 109 (new, added by the watcher between cycles, not yet worked):** a
-   silent Launch-button failure Greg hit live on `bidlowai` — he clicked
-   Launch, confirmed the dialog, and nothing visibly happened (no send, no
-   queued row, no error). See `.bidlow/relay/QUEUE.md` row 109 for the full,
-   already-detailed brief — it names the exact investigation order (client
-   handler vs server action vs silent swallow) and forbids touching the
-   existing `Cycle 129 send-and-reply walk - 2026-08-30` sequence. This is
-   marked the most important row on the board in its own text.
-2. **The reply-matcher leg-1 fix** (from the cycle-130 entry above) is still
-   not started — two provider-specific send-path changes, scoped as their own
-   row.
-3. If a 5th chart series is ever genuinely needed, read
+1. Check `.bidlow/relay/QUEUE.md` for the next open row — this file is
+   maintained by an autonomous relay cycle and the queue is the live source
+   of truth for what's next, not this STATE.md entry.
+2. Finding 3's follow-up (above): thread a "has prior sync history despite a
+   missing spreadsheetId" signal into the Overview readiness panel so its
+   "Not configured" text can distinguish that case from genuinely-never-set-up,
+   the way the Do-not-contact tab now can.
+3. The reply-matcher leg-1 fix (from the cycle-130 entry earlier in this
+   file) — two provider-specific send-path changes, scoped as its own row —
+   was still not started as of cycle 133 and has not been revisited since;
+   confirm against the current queue before assuming it's still open.
+4. If a 5th chart series is ever genuinely needed, read
    `docs/ops/CHART-SERIES-CONTRAST-2026-08-30.md` first — it names exactly
    what does and doesn't work and why, so the search isn't repeated from
    scratch.
