@@ -4,7 +4,7 @@
   "tier": "P",
   "authored": "2026-08-26",
   "authored_by": "relay cycle 9",
-  "status": "direction proposed and adopted; colour + accessibility half enforced by a build gate, signature elements specified but mostly NOT yet built (see implementation status on each)",
+  "status": "direction proposed and adopted; colour + accessibility half enforced by a build gate (now including chart-series contrast and colour-blind distinguishability, closed 2026-08-30), signature elements specified but mostly NOT yet built (see implementation status on each)",
   "supersedes": null,
 
   "why_this_file_exists": [
@@ -71,11 +71,10 @@
         "--border": "oklch(0.912 0.006 165)",
         "--input": "oklch(0.62 0.013 165)",
         "--ring": "oklch(0.55 0.082 162)",
-        "--chart-1": "oklch(0.55 0.09 162)",
-        "--chart-2": "oklch(0.58 0.08 210)",
-        "--chart-3": "oklch(0.72 0.12 80)",
-        "--chart-4": "oklch(0.72 0.08 162)",
-        "--chart-5": "oklch(0.55 0.04 250)",
+        "--chart-1": "oklch(0.594 0.13 162)",
+        "--chart-2": "oklch(0.62 0.216 58)",
+        "--chart-3": "oklch(0.432 0.22 253.3)",
+        "--chart-4": "oklch(0.447 0.164 326.4)",
         "--sidebar": "oklch(0.99 0.003 165)",
         "--sidebar-foreground": "oklch(0.24 0.014 165)",
         "--sidebar-primary": "oklch(0.52 0.084 162)",
@@ -104,11 +103,10 @@
         "--border": "oklch(0.3 0.012 165)",
         "--input": "oklch(0.53 0.013 165)",
         "--ring": "oklch(0.6 0.08 162)",
-        "--chart-1": "oklch(0.68 0.09 162)",
-        "--chart-2": "oklch(0.68 0.08 210)",
-        "--chart-3": "oklch(0.78 0.11 80)",
-        "--chart-4": "oklch(0.78 0.07 162)",
-        "--chart-5": "oklch(0.68 0.03 250)",
+        "--chart-1": "oklch(0.555 0.115 162)",
+        "--chart-2": "oklch(0.582 0.22 58)",
+        "--chart-3": "oklch(0.67 0.179 253.3)",
+        "--chart-4": "oklch(0.593 0.166 326.4)",
         "--sidebar": "oklch(0.185 0.012 165)",
         "--sidebar-foreground": "oklch(0.93 0.006 165)",
         "--sidebar-primary": "oklch(0.68 0.09 162)",
@@ -272,7 +270,7 @@
     "commitments": [
       { "sc": "1.4.1", "name": "Use of Color", "level": "A", "how_verified": "by hand, screen by screen — an audit that is owed, not done" },
       { "sc": "1.4.3", "name": "Contrast (Minimum)", "level": "AA", "ratio": 4.5, "how_verified": "MACHINE — every text pair in contrast_pairs, both themes" },
-      { "sc": "1.4.11", "name": "Non-text Contrast", "level": "AA", "ratio": 3.0, "how_verified": "MACHINE for control boundaries and focus indicators; by hand for meaningful graphics" },
+      { "sc": "1.4.11", "name": "Non-text Contrast", "level": "AA", "ratio": 3.0, "how_verified": "MACHINE for control boundaries, focus indicators, and chart series (src/lib/design/chart-palette.test.ts, contrast + CVD/normal-vision distinguishability); by hand for other meaningful graphics" },
       { "sc": "2.1.1", "name": "Keyboard", "level": "A", "how_verified": "by hand; the Base UI / Radix primitives carry most of it" },
       { "sc": "2.4.7", "name": "Focus Visible", "level": "AA", "how_verified": "MACHINE — --ring is asserted at 3:1 against both grounds it appears on" },
       { "sc": "2.4.11", "name": "Focus Not Obscured (Minimum)", "level": "AA", "new_in_2_2": true, "how_verified": "by hand — the risk here is the sticky app-shell header covering a focused row; not yet checked" },
@@ -312,7 +310,11 @@
     { "foreground": "--input", "background": "--background", "role": "ui_component", "min_ratio": 3.0, "note": "the boundary of a text field, and its only identifier" },
     { "foreground": "--input", "background": "--card", "role": "ui_component", "min_ratio": 3.0 },
     { "foreground": "--ring", "background": "--background", "role": "ui_component", "min_ratio": 3.0, "note": "focus indicator — WCAG 2.4.7" },
-    { "foreground": "--ring", "background": "--card", "role": "ui_component", "min_ratio": 3.0 }
+    { "foreground": "--ring", "background": "--card", "role": "ui_component", "min_ratio": 3.0 },
+    { "foreground": "--chart-1", "background": "--card", "role": "ui_component", "min_ratio": 3.0, "note": "chart series contrast — WCAG 1.4.11, non-text meaningful graphic" },
+    { "foreground": "--chart-2", "background": "--card", "role": "ui_component", "min_ratio": 3.0 },
+    { "foreground": "--chart-3", "background": "--card", "role": "ui_component", "min_ratio": 3.0 },
+    { "foreground": "--chart-4", "background": "--card", "role": "ui_component", "min_ratio": 3.0 }
   ],
 
   "decisions_taken_this_cycle": [
@@ -333,9 +335,16 @@
       "does_not_fix": "The destructive BUTTON. See open_defects.destructive-button-composite."
     },
     {
-      "decision": "Do not change the chart tokens, and do not gate chart contrast, despite having measured two failures.",
+      "decision": "(2026-08-26, cycle 9) Do not change the chart tokens, and do not gate chart contrast, despite having measured two failures.",
       "why": "Darkening --chart-4 to reach 3:1 moves it to roughly 0.62 lightness at hue 162 — which puts it within 0.07 lightness of --chart-1 at the same hue, so the two series become hard to tell apart. Fixing the contrast properly means reconsidering categorical distinguishability across the whole series set at the same time, including for colour-blind readers. That is a real piece of design work, not a token nudge, and doing it hastily at the end of this cycle would trade a measurable defect for an unmeasured one.",
-      "recorded_as": "open_defects.chart-series-contrast, with the measured numbers so the next person starts from evidence"
+      "recorded_as": "open_defects.chart-series-contrast at the time; superseded by the 2026-08-30 entry below, which closes it"
+    },
+    {
+      "decision": "(2026-08-30, cycle 133) Replace all four chart tokens with a freshly-derived, computed palette; drop --chart-5 rather than ship it broken. Closes open_defects.chart-series-contrast.",
+      "why": "The prior chart-3/chart-4 pairing measured 2.51:1 and 2.39:1 against the card in light mode (below the 3:1 WCAG 1.4.11 floor), and chart-1/chart-4 shared hue 162 — the cycle-9 finding above. A full re-derivation, computed and asserted by src/lib/design/chart-palette.test.ts (not eyeballed), grid-searched hue x lightness x chroma jointly for a set clearing all four bars this row set at once: >=3:1 contrast against --card in both themes; >=8.0 OKLab ΔE (x100) between every PAIR of series (not just neighbours — this project treats its chart tokens as usable in any combination, so it holds itself to the dataviz skill's stricter 'scatter/small-multiples' all-pairs check rather than the default adjacent-only one) under simulated protanopia and deuteranopia (Machado-Oliveira-Fernandes 2009, severity 1.0); >=15.0 ΔE under normal, unsimulated vision (the skill's hard floor); and no chart hue within 25 degrees of --destructive's hue (~27deg), so a chart series can never read as an error state. --chart-1 was held fixed at the brand hue (162, matching --primary) throughout the search so the result stays recognisably OpensDoors' green rather than a generic default.",
+      "measured": "Full before/after ratio and CVD-delta tables in docs/ops/CHART-SERIES-CONTRAST-2026-08-30.md. Final set clears every bar with margin in both themes (worst all-pairs CVD ΔE 10.6-10.9, worst normal-vision ΔE 20.0-21.1, worst contrast 3.80:1 light / 3.87:1 dark, tritan also checked and comfortably clears the same floor at 13.4-14.2 though the skill only formally gates protan/deutan). --chart-2's hue was set to 58, not the search's initial 52, after the chart-palette.test.ts destructive-collision check caught a 24.7deg gap against --destructive's light-mode hue (27.325) — a hair under the 25deg buffer the test requires; 58deg widens the gap to 30.7deg with no other bar affected.",
+      "chart_5_dropped": "An exhaustive search (same artefact) could not find a 5th hue, anchored on brand green at hue 162, that clears the all-pairs normal-vision floor together with the other four — best found was 14.2 ΔE against a required 15.0, a real measured near-miss, not a shortcut. Rather than ship a 5th token documented as failing a hard bar, --chart-5 and its @theme mapping were removed. If a 5th simultaneous series is ever genuinely needed: dropping the exact-162 brand anchor clears comfortably (an unconstrained 5-hue search reached ~10 CVD / ~18 normal-vision ΔE), or a constrained 5th slot can ship with mandatory secondary encoding (dash pattern, marker shape, or direct label) rather than relying on hue alone.",
+      "reversible": "Yes — the token values and the proven-safe count are both named constants (globals.css, DESIGN.json, and PROVEN_SAFE_CHART_TOKEN_COUNT in chart-palette.test.ts); revisiting the cap is a value change in three places, not an architecture change."
     },
     {
       "decision": "Do not darken --border.",
@@ -349,16 +358,17 @@
   ],
 
   "enforcement": {
-    "gate": "src/lib/design/design-system.test.ts",
+    "gate": "src/lib/design/design-system.test.ts and src/lib/design/chart-palette.test.ts",
     "runs_in": "npm test — the same gate as everything else, so it blocks CI and therefore merge",
     "what_it_asserts": [
       "every colour token named in tokens.colour exists in src/app/globals.css with exactly that value, in both :root and .dark",
       "no token in globals.css is missing from this file (drift in either direction fails)",
       "every pair in contrast_pairs meets its min_ratio in both themes, computed from the real oklch values through the full sRGB conversion",
       "the machine_checked anti-goals hold: no hue in the forbidden violet band, no pure black on pure white",
-      "every button size variant is at least 24px in both dimensions (WCAG 2.2 SC 2.5.8)"
+      "every button size variant is at least 24px in both dimensions (WCAG 2.2 SC 2.5.8)",
+      "chart-palette.test.ts: every chart token is >=3:1 against --card in both themes; every PAIR of chart tokens (not just neighbours) clears an OKLab ΔE >= 8.0 under simulated protanopia and deuteranopia, and >= 15.0 under normal vision (hard gate), and >= 6.0 under simulated tritanopia (regression guard); no chart hue sits within 25deg of --destructive's hue; the chart token count matches the number proven safe by the last search"
     ],
-    "proven_to_fire": "Yes, on real ground. Written before the fix, the gate failed on --input at 1.21:1 against the light canvas and 1.30:1 against a card, against a required 3:1 — a genuine pre-existing WCAG 2.2 AA 1.4.11 failure that had been shipped and never noticed. It was not a manufactured red.",
+    "proven_to_fire": "Yes, on real ground, twice. First on --input (1.21:1 against the light canvas, 1.30:1 against a card, against a required 3:1). Second on the chart palette (2026-08-30): chart-palette.test.ts was written and run against the UNCHANGED tokens before any fix, and failed red — --chart-4 at 2.39:1 against a required 3:1, and --chart-1 vs --chart-2 at 7.6 ΔE against a required 8.0/15.0 under CVD and normal vision respectively. Neither was a manufactured red.",
     "not_enforced": "Everything in anti_goals with machine_checked false, and every accessibility commitment marked 'by hand'. Those are honest commitments, not gates. Do not read this file as a conformance claim."
   },
 
@@ -370,13 +380,6 @@
       "why_not_fixed_here": "Reaching 4.5 on the hover state by token alone needs roughly 0.46 lightness, which is a visibly different, much deeper red across the whole product. The real fix is to the variant — a solid destructive ground with a light label, which is what the primary button already does — and that is a component change, not a token change.",
       "severity": "AA text failure on a control that deletes things. Should be fixed.",
       "owed_to": "queue item 7 (UI consolidation)"
-    },
-    {
-      "id": "chart-series-contrast",
-      "found": "2026-08-26, while writing this file",
-      "what": "In light mode --chart-3 measures 2.51:1 and --chart-4 measures 2.39:1 against a card, against 3:1 required by 1.4.11 for a graphic carrying required information. Dark mode passes comfortably (8.63 and 8.98).",
-      "why_not_fixed_here": "See decisions_taken_this_cycle — the naive fix collides chart-4 with chart-1.",
-      "owed_to": "a dedicated pass on the chart palette, including colour-blind distinguishability"
     },
     {
       "id": "in-flow-shadows",
