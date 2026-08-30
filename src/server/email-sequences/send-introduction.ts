@@ -59,7 +59,10 @@ import {
   getClientSenderProfile,
   type ClientSenderProfile,
 } from "@/lib/opensdoors-brief";
-import { composeSequenceEmail } from "@/lib/email-sequences/sequence-email-composition";
+import {
+  composeSequenceEmail,
+  describeCompositionBlocker,
+} from "@/lib/email-sequences/sequence-email-composition";
 import { isFollowUpTooStaleForAutoSend } from "@/lib/email-sequences/auto-followup-window";
 import {
   isFollowupRequiresSentIntroEnabled,
@@ -1091,19 +1094,24 @@ export async function sendSequenceStepBatch(input: {
               sender: senderRowForSend,
             });
             if (!composition.ok || !composition.sendReady) {
+              // Operator-facing: name what is actually missing rather than
+              // the generic "re-plan" message — see
+              // describeCompositionBlocker for why this composition can
+              // fail here even though the plan-time classifier marked the
+              // row READY (its placeholder sender fallbacks don't exist at
+              // dispatch time).
+              const reason = describeCompositionBlocker(composition);
               blocked.push({
                 stepSendId: pr.stepSend.id,
                 contactEmail: toEmail,
-                reason:
-                  "Composition lost send-readiness between planning and dispatch; re-plan.",
+                reason,
                 decisionReason: "blocked_plan_classifier",
               });
               await tx.clientEmailSequenceStepSend.update({
                 where: { id: pr.stepSend.id },
                 data: {
                   status: "BLOCKED",
-                  blockedReason:
-                    "Composition lost send-readiness between planning and dispatch; re-plan.",
+                  blockedReason: reason,
                 },
               });
               await tx.mailboxSendReservation.update({

@@ -331,6 +331,118 @@ export function composeSequenceEmail(
 /** Convenience constant exposed for tests and UI copy. */
 export const SEQUENCE_SEND_REQUIRED_FIELDS = SEND_REQUIRED_FIELDS;
 
+/**
+ * Plain-English explanation of a missing field, for an operator who is not a
+ * developer — never the raw `{{ snake_case }}` key. `fix` names a specific
+ * product screen when one exists so the operator has a next step, not just a
+ * diagnosis.
+ */
+const MISSING_FIELD_EXPLANATIONS: Record<
+  SequencePlaceholderKey,
+  { problem: string; fix: string }
+> = {
+  email: {
+    problem: "this recipient has no email address on file",
+    fix: "open Review recipients to fix it",
+  },
+  first_name: {
+    problem: "this recipient has no first name on file",
+    fix: "check the recipient's contact record",
+  },
+  last_name: {
+    problem: "this recipient has no last name on file",
+    fix: "check the recipient's contact record",
+  },
+  full_name: {
+    problem: "this recipient has no name on file",
+    fix: "check the recipient's contact record",
+  },
+  company_name: {
+    problem: "this recipient has no company name on file",
+    fix: "check the recipient's contact record",
+  },
+  role: {
+    problem: "this recipient has no role or title on file",
+    fix: "check the recipient's contact record",
+  },
+  website: {
+    problem: "this recipient has no website on file",
+    fix: "check the recipient's contact record",
+  },
+  phone: {
+    problem: "this recipient has no phone number on file",
+    fix: "check the recipient's contact record",
+  },
+  sender_name: {
+    problem: "no sender name is set for this client",
+    fix: "set one on the client's Mailboxes tab",
+  },
+  sender_email: {
+    problem: "this client has no default sending email address set",
+    // Deliberately the SAME fix text as unsubscribe_link below: the
+    // fallback unsubscribe link is built from this same value, so setting
+    // it once resolves both fields — the two problems should read as one
+    // instruction, not two identical pointers at the same screen.
+    fix: "set the client's default sending email on the Mailboxes tab",
+  },
+  sender_company_name: {
+    problem: "no company name is set for this client",
+    fix: "set one in the client's profile",
+  },
+  email_signature: {
+    problem: "no signature is set for the sending mailbox",
+    fix: "update the mailbox's signature on the client's Mailboxes tab",
+  },
+  unsubscribe_link: {
+    problem: "no unsubscribe link could be created for this send",
+    fix: "set the client's default sending email on the Mailboxes tab",
+  },
+};
+
+function joinProblems(problems: readonly string[]): string {
+  const [first, ...rest] = problems;
+  const capitalized = (first ?? "").charAt(0).toUpperCase() + (first ?? "").slice(1);
+  if (rest.length === 0) return capitalized;
+  if (rest.length === 1) return `${capitalized} and ${rest[0]}`;
+  return `${capitalized}, ${rest.slice(0, -1).join(", ")}, and ${rest[rest.length - 1]}`;
+}
+
+/**
+ * Operator-facing reason a composition is not send-ready — names what is
+ * missing in plain words and, where a product screen exists to fix it, which
+ * screen. Groups fields that share the same fix into one sentence so a
+ * client with no default sender email doesn't get two near-identical
+ * complaints about it.
+ *
+ * Never leaks a raw placeholder key, table name, or id — this is shown
+ * directly on an operator's screen.
+ */
+export function describeCompositionBlocker(
+  result: SequenceCompositionResult,
+): string {
+  if (result.unknownPlaceholders.length > 0) {
+    return "The template uses a placeholder ODoutreach doesn't recognize — fix it on the Templates tab before sending.";
+  }
+  if (result.missingFields.length === 0) {
+    // Not send-ready with nothing missing is a genuinely unexpected state —
+    // there is no specific field to name, so this is the one case where the
+    // generic message is the honest one.
+    return "Composition lost send-readiness between planning and dispatch; re-plan.";
+  }
+
+  const problemsByFix = new Map<string, string[]>();
+  for (const key of result.missingFields) {
+    const { problem, fix } = MISSING_FIELD_EXPLANATIONS[key];
+    const problems = problemsByFix.get(fix) ?? [];
+    problems.push(problem);
+    problemsByFix.set(fix, problems);
+  }
+
+  return Array.from(problemsByFix.entries())
+    .map(([fix, problems]) => `${joinProblems(problems)} — ${fix}.`)
+    .join(" ");
+}
+
 /** Empty result helper — useful for defensive UI code paths. */
 export function emptySequenceCompositionResult(): SequenceCompositionResult {
   return {

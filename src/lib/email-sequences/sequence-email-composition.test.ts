@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   composeSequenceEmail,
+  describeCompositionBlocker,
   emptySequenceCompositionResult,
   SEQUENCE_SEND_REQUIRED_FIELDS,
   type SequenceCompositionContact,
@@ -359,5 +360,92 @@ describe("composeSequenceEmail", () => {
     expect(empty.usedPlaceholders).toEqual([]);
     expect(empty.unknownPlaceholders).toEqual([]);
     expect(empty.missingFields).toEqual([]);
+  });
+});
+
+describe("describeCompositionBlocker", () => {
+  it("names a missing unsubscribe rail and points at the Mailboxes tab — not the generic re-plan message", () => {
+    // The row-99/cycle-107 incident: a client with no default sending email
+    // and no hosted link domain composes with an empty {{unsubscribe_link}}.
+    const result = composeSequenceEmail(
+      input({ sender: sender({ unsubscribeLink: null }) }),
+    );
+    expect(result.sendReady).toBe(false);
+    expect(result.missingFields).toEqual(["unsubscribe_link"]);
+
+    const reason = describeCompositionBlocker(result);
+
+    expect(reason).not.toBe(
+      "Composition lost send-readiness between planning and dispatch; re-plan.",
+    );
+    expect(reason.toLowerCase()).toContain("unsubscribe");
+    expect(reason).toContain("Mailboxes tab");
+    // Never leak the raw placeholder key to an operator screen.
+    expect(reason).not.toContain("{{");
+    expect(reason).not.toContain("unsubscribe_link");
+  });
+
+  it("names a recipient with no email and points at Review recipients", () => {
+    const result = composeSequenceEmail(
+      input({ contact: contact({ email: null }) }),
+    );
+    expect(result.missingFields).toContain("email");
+
+    const reason = describeCompositionBlocker(result);
+
+    expect(reason.toLowerCase()).toContain("no email address");
+    expect(reason).toContain("Review recipients");
+    expect(reason).not.toContain("{{");
+  });
+
+  it("groups fields that share the same fix into one sentence instead of repeating it", () => {
+    // sender_email and unsubscribe_link are both empty for the same root
+    // cause (no default sending email) — the operator should read one
+    // instruction, not two identical pointers at the same screen.
+    const result = composeSequenceEmail(
+      input({
+        sender: sender({ senderEmail: null, unsubscribeLink: null }),
+      }),
+    );
+    expect(result.missingFields).toEqual(
+      expect.arrayContaining(["sender_email", "unsubscribe_link"]),
+    );
+
+    const reason = describeCompositionBlocker(result);
+
+    expect(reason.match(/Mailboxes tab/g)).toHaveLength(1);
+    expect(reason).toContain(" and ");
+  });
+
+  it("never leaks a raw placeholder token for an unknown template placeholder", () => {
+    const result = composeSequenceEmail(
+      input({ subject: "Hi {{Pet Name}}", content: "" }),
+    );
+    expect(result.ok).toBe(false);
+
+    const reason = describeCompositionBlocker(result);
+
+    expect(reason).not.toContain("{{");
+    expect(reason).not.toContain("pet_name");
+  });
+
+  it("keeps the generic message for the one case that has nothing to name", () => {
+    // Not send-ready with an empty missingFields list shouldn't occur via
+    // composeSequenceEmail, but describeCompositionBlocker must still
+    // return something honest rather than an empty string.
+    const reason = describeCompositionBlocker({
+      ok: true,
+      sendReady: false,
+      subject: "",
+      body: "",
+      usedPlaceholders: [],
+      unknownPlaceholders: [],
+      missingFields: [],
+      warnings: [],
+    });
+
+    expect(reason).toBe(
+      "Composition lost send-readiness between planning and dispatch; re-plan.",
+    );
   });
 });
