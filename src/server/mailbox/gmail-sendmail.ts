@@ -13,10 +13,19 @@ const GMAIL_LIST = "https://gmail.googleapis.com/gmail/v1/users/me/messages";
 /**
  * Generate an RFC 5322 Message-ID we control, e.g. "<uuid@sending-domain>".
  *
- * We stamp this header on the outgoing email so that when the recipient
- * replies, their In-Reply-To header carries this exact value — letting us
+ * We stamp this header on the outgoing email hoping that when the recipient
+ * replies, their In-Reply-To header will carry this exact value — letting us
  * link the reply back to this specific send with certainty (rather than
- * guessing by sender address). Gmail preserves a client-supplied Message-ID.
+ * guessing by sender address). Measured against production 2026-08-30
+ * (row 105, docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md): it
+ * doesn't happen. Gmail's `users.messages.send` REWRITES the Message-ID we
+ * supply to its own `<...@mail.gmail.com>` value before delivery — every
+ * sampled reply's In-Reply-To carried Gmail's format, never ours. The value
+ * stamped here is stored correctly and is real, it just never matches what
+ * the recipient's client actually replies to. Do not rely on this id for
+ * thread-ref reply matching (leg 1 of `processSyncedMessageForReply`) until
+ * that measurement's fix (capture Gmail's own Message-ID via a
+ * post-send `format=metadata` fetch) is built.
  */
 export function generateRfc822MessageId(fromEmail: string): string {
   const domain = fromEmail.split("@")[1]?.trim().toLowerCase() || "odoutreach.local";
