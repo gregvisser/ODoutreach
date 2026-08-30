@@ -4,7 +4,19 @@ name: Sync replies
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 7-18 * * 1-5"
+    # Every 15 minutes, ALL hours, ALL days. Greg's decision, 30 August:
+    # sending and replying stay inside business hours, but RECEIVING must run
+    # at any time. Before this change the cron was `*/15 7-18 * * 1-5`
+    # (weekday, 07:00-18:00 UTC only), so a reply landing after 18:00 Friday
+    # was invisible on every operator screen until 07:00 Monday - up to 61
+    # hours during which the reply-needing-a-person queue stayed empty. This
+    # roughly triples the scheduled runs of this workflow, from about 220 a
+    # week to 672 - see docs/ops/REPLY-SYNC-ALWAYS-ON-2026-08-30.md for the
+    # measured cost and the damage-question investigation that cleared this
+    # change. `process-outbound-queue.yml` is deliberately UNCHANGED - sending
+    # stays business-hours-only, weekdays. relay/reply-sync-schedule.test.ts
+    # proves both facts against the real files.
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: read
