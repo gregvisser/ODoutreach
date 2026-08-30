@@ -41,8 +41,12 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
   if (!bundle.client) notFound();
   const client = bundle.client;
 
+  const showArchivedTemplates = firstParam(sp.showArchived) === "1";
+
   const [templatesOverview, canMutateTemplates] = await Promise.all([
-    loadClientEmailTemplatesOverview(client.id),
+    loadClientEmailTemplatesOverview(client.id, {
+      includeArchived: showArchivedTemplates,
+    }),
     getClientEmailTemplateMutationAllowed(staff, client.id),
   ]);
 
@@ -80,6 +84,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         canMutate={canMutateTemplates}
         overview={templatesOverview}
         flash={templatesFlash}
+        showArchived={showArchivedTemplates}
       />
 
       <AiSequenceDraftPanel

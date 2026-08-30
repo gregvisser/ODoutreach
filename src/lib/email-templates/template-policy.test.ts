@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   canApproveTemplate,
   canTransitionStatus,
+  describeTemplateDeleteEligibility,
+  isTemplateStatusUsableInSequence,
   TEMPLATE_CATEGORY_LABELS,
   TEMPLATE_CATEGORY_ORDER,
   TEMPLATE_STATUS_LABELS,
@@ -149,5 +151,65 @@ describe("label / order exports", () => {
       "ARCHIVED",
     ]);
     expect(TEMPLATE_STATUS_LABELS.READY_FOR_REVIEW).toBe("In review");
+  });
+});
+
+// Row 130 — "the screen has no way to remove a template and no structure
+// telling an operator what they can actually use." These two functions are
+// the single source of truth for both halves of that complaint.
+describe("isTemplateStatusUsableInSequence", () => {
+  it("is true for every status except ARCHIVED — matches canApproveSequence exactly", () => {
+    expect(isTemplateStatusUsableInSequence("DRAFT")).toBe(true);
+    expect(isTemplateStatusUsableInSequence("READY_FOR_REVIEW")).toBe(true);
+    expect(isTemplateStatusUsableInSequence("APPROVED")).toBe(true);
+    expect(isTemplateStatusUsableInSequence("ARCHIVED")).toBe(false);
+  });
+});
+
+describe("describeTemplateDeleteEligibility", () => {
+  it("allows deleting a template never placed in a sequence step and with no send history", () => {
+    const decision = describeTemplateDeleteEligibility({
+      sequenceSteps: 0,
+      sequenceStepSends: 0,
+    });
+    expect(decision).toEqual({ canDelete: true, reason: null });
+  });
+
+  it("refuses a template that is used in a sequence step, with a readable reason naming the count", () => {
+    const decision = describeTemplateDeleteEligibility({
+      sequenceSteps: 2,
+      sequenceStepSends: 0,
+    });
+    expect(decision.canDelete).toBe(false);
+    if (decision.canDelete) throw new Error("unreachable");
+    expect(decision.reason).toContain("2 sequence steps");
+    expect(decision.reason).toContain("only be archived");
+  });
+
+  it("refuses a template with real send history, even if no live sequence step remains, using send-specific wording", () => {
+    const decision = describeTemplateDeleteEligibility({
+      sequenceSteps: 0,
+      sequenceStepSends: 3,
+    });
+    expect(decision.canDelete).toBe(false);
+    if (decision.canDelete) throw new Error("unreachable");
+    expect(decision.reason).toContain("3 real emails");
+  });
+
+  it("uses singular wording for exactly one use", () => {
+    const stepDecision = describeTemplateDeleteEligibility({
+      sequenceSteps: 1,
+      sequenceStepSends: 0,
+    });
+    if (stepDecision.canDelete) throw new Error("unreachable");
+    expect(stepDecision.reason).toContain("a sequence step");
+    expect(stepDecision.reason).not.toContain("1 sequence steps");
+
+    const sendDecision = describeTemplateDeleteEligibility({
+      sequenceSteps: 1,
+      sequenceStepSends: 1,
+    });
+    if (sendDecision.canDelete) throw new Error("unreachable");
+    expect(sendDecision.reason).toContain("a real email");
   });
 });

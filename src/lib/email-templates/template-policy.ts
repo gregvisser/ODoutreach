@@ -195,3 +195,55 @@ export function canApproveTemplate(
   }
   return { ok: true };
 }
+
+/**
+ * Row 130 — a template can be picked into a sequence in every status
+ * except ARCHIVED (the rule `canApproveSequence` in sequence-policy.ts
+ * already enforces). Exported so the Templates screen can show, per
+ * status, whether it is usable at a glance without duplicating the rule
+ * or risking the two going out of sync.
+ */
+export function isTemplateStatusUsableInSequence(
+  status: ClientEmailTemplateStatus,
+): boolean {
+  return status !== "ARCHIVED";
+}
+
+/**
+ * Row 130 — the delete boundary, read from the data model
+ * (`prisma/schema.prisma`): `ClientEmailSequenceStep.template` and
+ * `ClientEmailSequenceStepSend.template` both declare `onDelete:
+ * Restrict`, so the database itself refuses to delete a
+ * `ClientEmailTemplate` row that either still references. A template
+ * that has never been placed in a sequence step, and has no send
+ * history, can be genuinely removed; one that has either must be
+ * refused with a plain-English reason rather than a disabled button.
+ */
+export type TemplateDeleteEligibility =
+  | { canDelete: true; reason: null }
+  | { canDelete: false; reason: string };
+
+export function describeTemplateDeleteEligibility(counts: {
+  sequenceSteps: number;
+  sequenceStepSends: number;
+}): TemplateDeleteEligibility {
+  if (counts.sequenceStepSends > 0) {
+    return {
+      canDelete: false,
+      reason:
+        counts.sequenceStepSends === 1
+          ? "This template has been used to send a real email — deleting it would break that send's record, so it can only be archived."
+          : `This template has been used to send ${String(counts.sequenceStepSends)} real emails — deleting it would break those sends' records, so it can only be archived.`,
+    };
+  }
+  if (counts.sequenceSteps > 0) {
+    return {
+      canDelete: false,
+      reason:
+        counts.sequenceSteps === 1
+          ? "This template is used in a sequence step — deleting it would break that sequence, so it can only be archived."
+          : `This template is used in ${String(counts.sequenceSteps)} sequence steps — deleting it would break those sequences, so it can only be archived.`,
+    };
+  }
+  return { canDelete: true, reason: null };
+}
