@@ -466,6 +466,148 @@ Assert-True ($null -ne $defaultParam) `
 Remove-Item -Path $scratchRepo -Recurse -Force -ErrorAction SilentlyContinue
 
 # ===========================================================================
+# 10. A DONE THAT NEVER MERGED IS REWRITTEN TO PARTIAL, AND AN "IN PROGRESS"
+#     ROW ABANDONED BY A CLEANLY-ENDED CYCLE IS NO LONGER INVISIBLE FOR EVER
+#
+# Row 121, the mirror of row 103 above. Cycle 148 wrote `DONE 148` describing a
+# full passing spec while its own log said it was blocked and could not
+# commit; `origin/main` never moved. Separately, cycle 150 ended cleanly
+# (exit code 0) having run out of time waiting on a rebuild and never wrote a
+# status word for row 117 at all - the mid-run reopen above only fired for
+# timed-out / failed / failed-to-run, so a clean exit left the row invisible
+# to the picker for good.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "10. A DONE with no merge behind it is rewritten to PARTIAL; a cleanly-ended cycle still gives its row back"
+
+# --- 10a. The text scan: does this row's OWN brief demand a merge? ---------
+
+$mergeRequiredBrief = @"
+**THE WORK:** build the thing red-first.
+**DEFINITION OF DONE:** the check in place, both tests passing and failing red
+without the change, lint 0, typecheck 0, full suite green, and the merge
+commit hash on origin/main quoted in your log.
+"@
+Assert-True ((Test-RowDefinitionOfDoneDemandsMerge $mergeRequiredBrief) -eq $true) `
+    "a brief whose Definition of Done unconditionally asks for a merge commit hash demands a merge"
+
+$artefactOnlyBrief = @"
+**THE WORK:** measure it, read-only, and say what is actually wrong.
+**DEFINITION OF DONE:** a dated artefact naming the finding, with the probe
+output quoted; any fix red-first with the failure quoted; lint 0, typecheck 0,
+full suite green, merged to main. If the honest answer is that only a human
+can clear it, say so plainly - that is a complete and valuable outcome.
+"@
+Assert-True ((Test-RowDefinitionOfDoneDemandsMerge $artefactOnlyBrief) -eq $false) `
+    "a brief whose Definition of Done allows 'that is a complete and valuable outcome' does not demand a merge"
+
+Assert-True ((Test-RowDefinitionOfDoneDemandsMerge "") -eq $true) `
+    "a row with no brief text at all defaults to demanding a merge - the safe direction, since most rows do"
+
+# --- 10b. The pure decision: rewrite only when a merge was demanded and none was found ---
+
+$rewritten = Get-DoneWithoutMergeStatus -CurrentStatus "DONE 148 - spec written, tests pass" `
+    -DemandsMerge $true -MergedOnMain $false -RowNumber "117" -CycleNumber "148"
+Assert-True ($rewritten -match '^PARTIAL 148 - closed DONE but no commit naming row 117 was found on main') `
+    "a row that demanded a merge and has none is rewritten to PARTIAL (got: $rewritten)"
+Assert-True ($rewritten -match 'DONE 148 - spec written, tests pass') `
+    "the cycle's own original DONE text is carried in full, not discarded (got: $rewritten)"
+
+$leftAloneMerged = Get-DoneWithoutMergeStatus -CurrentStatus "DONE 125 - merged as #420" `
+    -DemandsMerge $true -MergedOnMain $true -RowNumber "101" -CycleNumber "125"
+Assert-True ($leftAloneMerged -eq "DONE 125 - merged as #420") `
+    "a row that demanded a merge and HAS one is left exactly as the cycle wrote it"
+
+$leftAloneNoDemand = Get-DoneWithoutMergeStatus -CurrentStatus "DONE 151 - investigation only, category (b)" `
+    -DemandsMerge $false -MergedOnMain $false -RowNumber "118" -CycleNumber "151"
+Assert-True ($leftAloneNoDemand -eq "DONE 151 - investigation only, category (b)") `
+    "a row whose brief never demanded a merge is left alone even with nothing found on main"
+
+# --- 10c. The full check, end to end, against real Get-QueueRows parsing:
+#          closes a fake row DONE with no merge behind it, and an
+#          artefact-only row DONE the same way. Get-QueueRows IS parameterised
+#          by path (unlike Set-QueueRowStatus, which always targets the real
+#          QUEUE.md - the real call site never needs anything else, since it
+#          only ever acts on the file the watcher itself is running against),
+#          so this drives the row-reading half against a real fixture file and
+#          the decision half through the exact functions the call site uses. ---
+
+$doneQueue = Join-Path $env:TEMP "relay-selftest-done-queue.md"
+$mergeRequiredFlat  = $mergeRequiredBrief  -replace "[\r\n]+", ' '
+$artefactOnlyFlat   = $artefactOnlyBrief   -replace "[\r\n]+", ' '
+@(
+    "| # | Item | Status |"
+    "|---|---|---|"
+    "| 200 | $mergeRequiredFlat | DONE 148 - spec written, tests pass, lint 0, typecheck 0 |"
+    "| 201 | $artefactOnlyFlat | DONE 151 - investigation only, no fix needed, category (b) |"
+) | Set-Content -Path $doneQueue -Encoding utf8
+
+$queueRows = Get-QueueRows $doneQueue
+$fakeRow      = $queueRows | Where-Object { $_.Number -eq "200" } | Select-Object -First 1
+$artefactRow  = $queueRows | Where-Object { $_.Number -eq "201" } | Select-Object -First 1
+Assert-True ($fakeRow.Parsed -and $artefactRow.Parsed) `
+    "both fixture rows are readable before the check runs"
+
+# No commit anywhere names row 200 or row 201 - the exact shape of cycle 148's
+# failure, where origin/main never moved at all.
+$noMergeLog = "3b3fcb0 docs(relay): row 118 - something else entirely`n"
+
+$fakeDemands   = Test-RowDefinitionOfDoneDemandsMerge $fakeRow.Item
+$fakeMerged    = Test-RowNumberMergedInLog $noMergeLog $fakeRow.Number
+$fakeNewStatus = Get-DoneWithoutMergeStatus -CurrentStatus $fakeRow.Status `
+    -DemandsMerge $fakeDemands -MergedOnMain $fakeMerged -RowNumber $fakeRow.Number -CycleNumber "148"
+Assert-True ($fakeNewStatus -match '^PARTIAL 148 - closed DONE but no commit naming row 200 was found on main') `
+    "the fake row, DONE with no merge behind it and read back through the real Get-QueueRows parser, is rewritten to PARTIAL (got: $fakeNewStatus)"
+
+$artefactDemands   = Test-RowDefinitionOfDoneDemandsMerge $artefactRow.Item
+$artefactMerged    = Test-RowNumberMergedInLog $noMergeLog $artefactRow.Number
+$artefactNewStatus = Get-DoneWithoutMergeStatus -CurrentStatus $artefactRow.Status `
+    -DemandsMerge $artefactDemands -MergedOnMain $artefactMerged -RowNumber $artefactRow.Number -CycleNumber "151"
+Assert-True ($artefactNewStatus -eq $artefactRow.Status) `
+    "the artefact-only row, DONE with no merge behind it and read back the same way, is left alone because its own brief never demanded one (got: $artefactNewStatus)"
+
+Remove-Item $doneQueue -Force -ErrorAction SilentlyContinue
+
+# --- 10d. The mid-run reopen fires for EVERY outcome, not just the three bad ones ---
+
+$orphanQueue = @(
+    [pscustomobject]@{ Number = "117"; Item = "irrelevant"; Status = "IN PROGRESS 150"; Parsed = $true }
+    [pscustomobject]@{ Number = "9";   Item = "irrelevant"; Status = "IN PROGRESS 41";  Parsed = $true }
+    [pscustomobject]@{ Number = "5";   Item = "irrelevant"; Status = "DONE 40";         Parsed = $true }
+)
+$neverMerged = { param($n) $false }
+
+# The case row 121 exists to fix: outcome "finished" (a clean exit), which the
+# old code never even looked at.
+$finishedActions = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "150" `
+    -Outcome "finished" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
+Assert-True ($finishedActions.Count -eq 1 -and $finishedActions[0].RowNumber -eq "117") `
+    "a row left IN PROGRESS by a cycle that exited cleanly (outcome 'finished') is still reopened (got $($finishedActions.Count) action(s))"
+Assert-True ($finishedActions[0].NewStatus -match '^TODO \(reopened - cycle 150 ended \(outcome: finished\) without writing a status word') `
+    "the reopen note says the cycle ended without writing a status word, not a fabricated timeout reason (got: $($finishedActions[0].NewStatus))"
+
+# outcome "no-change" - the other clean-exit case - must fire too.
+$noChangeActions = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "150" `
+    -Outcome "no-change" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
+Assert-True ($noChangeActions.Count -eq 1 -and $noChangeActions[0].RowNumber -eq "117") `
+    "a row left IN PROGRESS by a cycle that ended with no changes at all is still reopened"
+
+# Regression guard: the original timed-out wording must still read exactly as
+# it did before this row, and a row held by a DIFFERENT cycle must never move.
+$timedOutActions = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "41" `
+    -Outcome "timed-out" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
+Assert-True ($timedOutActions.Count -eq 1 -and $timedOutActions[0].RowNumber -eq "9") `
+    "a timed-out cycle still reopens only its OWN row (got $($timedOutActions.Count) action(s))"
+Assert-True ($timedOutActions[0].NewStatus -match 'was killed at the 45 minute deadline') `
+    "the timed-out wording is unchanged by this row (got: $($timedOutActions[0].NewStatus))"
+
+$doneUntouched = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "40" `
+    -Outcome "finished" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
+Assert-True ($doneUntouched.Count -eq 0) `
+    "a row already closed DONE is never touched by the stranded-row reopen"
+
+# ===========================================================================
 
 Write-Host ""
 if ($script:Failures.Count -eq 0) {

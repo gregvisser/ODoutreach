@@ -1319,6 +1319,134 @@ function Get-OrphanReopenStatus {
 }
 
 # ===========================================================================
+# A DONE THAT NEVER MERGED IS THE MIRROR IMAGE OF THE ORPHAN REOPEN ABOVE
+#
+# Row 121. Cycle 148 wrote `DONE 148` into row 117's status cell, describing a
+# full passing spec, while the closing section of its own log said it was
+# blocked and could not commit - the stale `.git/index.lock` row 120 exists to
+# fix. Both sentences sat in the same file. `origin/main` never moved and the
+# branch it created was zero commits ahead. Only a human reading git caught
+# it.
+#
+# Test-RowMergedOnMain already answers "does main's history mention this row
+# number" - built for row 103 to decide what WARNING a reopened row carries.
+# This reuses it unchanged for the opposite question: a row the cycle itself
+# just closed DONE is allowed to stay that way only if main backs it up.
+#
+# NOT EVERY DONE ROW PROMISED A MERGE. A measurement or an artefact-only row
+# can close DONE correctly having produced nothing origin/main did not already
+# carry - row 118 is exactly this shape ("if it is (b), that is a complete
+# answer"). So this keys on the row's OWN brief (its "DEFINITION OF DONE"
+# clause), never on the cycle's account of itself - trusting a cycle's own
+# narrative is the exact failure this check exists to catch. A row whose brief
+# never demanded a merge is never made to produce one.
+#
+# Split the same way as Test-RowMergedOnMain / Get-OrphanReopenStatus above:
+# a pure text scan (Test-RowDefinitionOfDoneDemandsMerge) and a pure decision
+# (Get-DoneWithoutMergeStatus), so relay-selftest.ps1 can drive both directly
+# against fixed text, without a live git repository.
+# ===========================================================================
+function Test-RowDefinitionOfDoneDemandsMerge([string]$ItemText) {
+    # No brief text to read is the conservative default: assume a merge WAS
+    # promised, because that is true of nearly every row in this queue, and a
+    # false "no merge needed" here is the dangerous direction - it would wave
+    # a real DONE-without-merge defect through unexamined.
+    if ([string]::IsNullOrWhiteSpace($ItemText)) { return $true }
+
+    $marker = 'DEFINITION OF DONE'
+    $idx    = $ItemText.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase)
+    $clause = if ($idx -ge 0) { $ItemText.Substring($idx) } else { $ItemText }
+
+    # Phrases this queue's own authors already use, verbatim, when a row's
+    # brief allows it to close without a code merge - "that is a complete
+    # answer" (rows 92, 104, 118), "if the honest answer is" (row 114), and the
+    # two ways a resolved investigation says nothing was needed. Narrow and
+    # literal on purpose: a false "yes it demands a merge" here only costs a
+    # PARTIAL that the next cycle re-verifies in seconds, but a false "no
+    # merge needed" hides the exact defect row 121 exists to catch.
+    $escapePhrases = @(
+        'that is a complete answer',
+        'that is a complete and valuable outcome',
+        'if the honest answer is',
+        'no code change',
+        'no source code changed',
+        'artefact-only',
+        'artefact only',
+        'measurement only'
+    )
+    foreach ($phrase in $escapePhrases) {
+        if ($clause -match [regex]::Escape($phrase)) { return $false }
+    }
+    return $true
+}
+
+# The mid-run mirror of the "why is this row still IN PROGRESS" text, and the
+# list of rows it applies to - pulled out of the main loop so relay-selftest.ps1
+# can drive it directly against a fixture row list and a fixed outcome string,
+# without a live git repository or an actual cycle run. $MergeCheck is
+# injected for the same reason: the real call site passes Test-RowMergedOnMain,
+# a test passes a scriptblock over fixed text.
+function Get-StrandedRowActions {
+    param(
+        [Parameter(Mandatory = $true)][array]$QueueRows,
+        [Parameter(Mandatory = $true)][string]$CycleNumber,
+        [Parameter(Mandatory = $true)][string]$Outcome,
+        [Parameter(Mandatory = $true)][int]$CycleTimeoutMinutes,
+        [Parameter(Mandatory = $true)][scriptblock]$MergeCheck
+    )
+    $stranded = @($QueueRows) | Where-Object {
+        $_.Parsed -and $_.Status -match "^IN PROGRESS\s+$CycleNumber\b"
+    }
+    $actions = New-Object System.Collections.Generic.List[object]
+    foreach ($row in $stranded) {
+        # ROW 121: this used to gate on $Outcome being one of the three ways
+        # the WATCHER can tell a cycle went wrong (timed-out / failed / failed
+        # to run). Cycle 150 ended CLEANLY - exit code 0, outcome "finished" -
+        # having simply run out of time waiting on a rebuild and never gotten
+        # round to writing its own row's status word. A clean exit was never a
+        # reason to look, so row 117 sat "IN PROGRESS 150" while the watcher
+        # kept running, and cycle 151 stepped straight past it - invisible for
+        # good, since the picker only self-queues TODO and PARTIAL. The real
+        # invariant has nothing to do with WHY the process ended: this
+        # function is only ever called after Invoke-CycleAgent has already
+        # returned, so by construction nothing is holding the row any more -
+        # every outcome value reaches here, unconditionally.
+        $why = if ($Outcome -eq "timed-out") { "was killed at the $CycleTimeoutMinutes minute deadline" }
+               elseif ($Outcome -eq "failed to run") { "never started" }
+               elseif ($Outcome -eq "failed") { "ended badly" }
+               else { "ended (outcome: $Outcome) without writing a status word for its own row" }
+        # See "AN ORPHAN REOPEN THAT KNOWS THE WORK MIGHT ALREADY BE ON
+        # MAIN" above this cycle's own row 103 fix. This is the exact case
+        # that cost cycle 126 a manual rescue: cycle 125 finished row 101
+        # and its PR merged, but the 45-minute kill fired first.
+        $mergedOnMain = & $MergeCheck $row.Number
+        $newStatus = Get-OrphanReopenStatus -CycleNumber $CycleNumber `
+            -ReasonSuffix "reopened - cycle $CycleNumber $why and did not finish this" `
+            -MergedOnMain $mergedOnMain
+        $actions.Add([pscustomobject]@{
+            RowNumber    = $row.Number
+            NewStatus    = $newStatus
+            MergedOnMain = $mergedOnMain
+        })
+    }
+    return $actions
+}
+
+function Get-DoneWithoutMergeStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$CurrentStatus,
+        [Parameter(Mandatory = $true)][bool]$DemandsMerge,
+        [Parameter(Mandatory = $true)][bool]$MergedOnMain,
+        [Parameter(Mandatory = $true)][string]$RowNumber,
+        [Parameter(Mandatory = $true)][string]$CycleNumber
+    )
+    # Left alone: either the row never promised a merge, or one was found.
+    if (-not $DemandsMerge -or $MergedOnMain) { return $CurrentStatus }
+
+    return "PARTIAL $CycleNumber - closed DONE but no commit naming row $RowNumber was found on main, so it is rewritten to PARTIAL rather than trusted - VERIFY before redoing. Original: $CurrentStatus"
+}
+
+# ===========================================================================
 # A FINDING THAT EXISTS ONLY IN A CYCLE LOG IS A FINDING NOBODY WILL READ
 #
 # Cycle 53 made the cycle logs TRACKED, which closed the half of this problem
@@ -2485,31 +2613,59 @@ either way.
     # Only this cycle's own row is touched, and only while it is STILL marked
     # "IN PROGRESS <this cycle>". If the agent got as far as writing DONE or
     # BLOCKED, that stands - a kill is a verdict on the clock, not on the work.
+    #
+    # ROW 121: this used to gate on $outcome being one of the three ways the
+    # WATCHER can tell a cycle went wrong (timed-out / failed / failed to
+    # run). Cycle 150 ended CLEANLY - exit code 0, outcome "finished" - having
+    # simply run out of time waiting on a rebuild and never gotten round to
+    # writing its own row's status word. A clean exit was never a reason to
+    # look, so row 117 sat "IN PROGRESS 150" while the watcher kept running,
+    # and cycle 151 stepped straight past it - invisible for good, since the
+    # picker only self-queues TODO and PARTIAL. The real invariant has nothing
+    # to do with WHY the process ended: it is simply that the process has now
+    # exited, so nothing is holding this row - checked structurally, because
+    # this code runs only after Invoke-CycleAgent has already returned. See
+    # Get-StrandedRowActions above, which is now called unconditionally.
     # -----------------------------------------------------------------------
-    if ($outcome -eq "timed-out" -or $outcome -eq "failed" -or $outcome -eq "failed to run") {
-        $stranded = @(Get-QueueRows) | Where-Object {
-            $_.Parsed -and $_.Status -match "^IN PROGRESS\s+$cycle\b"
-        }
-        foreach ($row in $stranded) {
-            $why = if ($outcome -eq "timed-out") { "was killed at the $CycleTimeoutMinutes minute deadline" }
-                   elseif ($outcome -eq "failed to run") { "never started" }
-                   else { "ended badly" }
-            # See "AN ORPHAN REOPEN THAT KNOWS THE WORK MIGHT ALREADY BE ON
-            # MAIN" above this cycle's own row 103 fix. This is the exact case
-            # that cost cycle 126 a manual rescue: cycle 125 finished row 101
-            # and its PR merged, but the 45-minute kill fired first.
-            $mergedOnMain = Test-RowMergedOnMain $row.Number
-            $newStatus = Get-OrphanReopenStatus -CycleNumber $cycle `
-                -ReasonSuffix "reopened - cycle $cycle $why and did not finish this" `
-                -MergedOnMain $mergedOnMain
-            if (Set-QueueRowStatus $row.Number $newStatus) {
-                if ($mergedOnMain) {
-                    Write-Line "Gave row #$($row.Number) back to the queue as PARTIAL - cycle $cycle $why, but main's history already mentions this row. VERIFY before redoing."
-                } else {
-                    Write-Line "Gave row #$($row.Number) back to the queue - cycle $cycle $why, so it is TODO again rather than stranded."
-                }
+    $strandedActions = Get-StrandedRowActions -QueueRows (Get-QueueRows) -CycleNumber $cycle `
+        -Outcome $outcome -CycleTimeoutMinutes $CycleTimeoutMinutes `
+        -MergeCheck { param($n) Test-RowMergedOnMain $n }
+    foreach ($action in $strandedActions) {
+        if (Set-QueueRowStatus $action.RowNumber $action.NewStatus) {
+            if ($action.MergedOnMain) {
+                Write-Line "Gave row #$($action.RowNumber) back to the queue as PARTIAL - cycle $cycle ended, but main's history already mentions this row. VERIFY before redoing."
             } else {
-                Write-Line "Row #$($row.Number) is stranded on cycle $cycle and could NOT be rewritten. Check its formatting."
+                Write-Line "Gave row #$($action.RowNumber) back to the queue - cycle $cycle ended without closing it, so it is TODO again rather than stranded."
+            }
+        } else {
+            Write-Line "Row #$($action.RowNumber) is stranded on cycle $cycle and could NOT be rewritten. Check its formatting."
+        }
+    }
+
+    # -----------------------------------------------------------------------
+    # A DONE THIS CYCLE JUST WROTE FOR ITS OWN ROW IS CHECKED AGAINST MAIN.
+    # See "A DONE THAT NEVER MERGED IS THE MIRROR IMAGE..." above, beside row
+    # 103's Test-RowMergedOnMain / Get-OrphanReopenStatus. Only this cycle's
+    # own row, and only while it still reads "DONE <this cycle>" - if a later
+    # step already rewrote it (the unreadable-row repair below, for instance),
+    # this does not fight that rewrite.
+    # -----------------------------------------------------------------------
+    if ($script:LastTakenRow) {
+        $justClosed = @(Get-QueueRows) |
+                      Where-Object { $_.Number -eq $script:LastTakenRow } |
+                      Select-Object -First 1
+        if ($justClosed -and $justClosed.Parsed -and $justClosed.Status -match "^DONE\s+$cycle\b") {
+            $demandsMerge = Test-RowDefinitionOfDoneDemandsMerge $justClosed.Item
+            $mergedOnMain = if ($demandsMerge) { Test-RowMergedOnMain $justClosed.Number } else { $true }
+            $newDoneStatus = Get-DoneWithoutMergeStatus -CurrentStatus $justClosed.Status `
+                -DemandsMerge $demandsMerge -MergedOnMain $mergedOnMain `
+                -RowNumber $justClosed.Number -CycleNumber $cycle
+            if ($newDoneStatus -ne $justClosed.Status) {
+                if (Set-QueueRowStatus $justClosed.Number $newDoneStatus) {
+                    Write-Line "Row #$($justClosed.Number) was closed DONE by cycle $cycle but nothing on main mentions it - rewritten to PARTIAL so the next cycle verifies before trusting it."
+                } else {
+                    Write-Line "Row #$($justClosed.Number) was closed DONE with no matching merge on main, and could NOT be rewritten. Check its formatting."
+                }
             }
         }
     }
