@@ -6,6 +6,7 @@ import type {
 } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import {
+  describeTemplateDeleteEligibility,
   TEMPLATE_CATEGORY_ORDER,
   TEMPLATE_STATUS_ORDER,
 } from "@/lib/email-templates/template-policy";
@@ -33,6 +34,9 @@ export type TemplateSummary = {
   archivedAtIso: string | null;
   createdBy: { id: string; name: string | null; email: string } | null;
   approvedBy: { id: string; name: string | null; email: string } | null;
+  /** Row 130 — from the schema's own `onDelete: Restrict` relations. */
+  canDelete: boolean;
+  deleteBlockedReason: string | null;
 };
 
 export type TemplateCounts = {
@@ -45,6 +49,8 @@ export type TemplateCounts = {
 export type ClientEmailTemplatesOverview = {
   templates: TemplateSummary[];
   counts: TemplateCounts;
+  /** Total ARCHIVED rows for this client, regardless of `includeArchived`. */
+  archivedCount: number;
 };
 
 const SUBJECT_PREVIEW_MAX = 160;
@@ -84,6 +90,15 @@ function makeCounts(
   return { total: rows.length, byStatus, byCategory, approvedByCategory };
 }
 
+export type LoadTemplatesOptions = {
+  /**
+   * Row 130 — archived templates are history, not the working list.
+   * `counts`/`archivedCount` always reflect the FULL set regardless of
+   * this flag; only which rows land in `templates` changes.
+   */
+  includeArchived?: boolean;
+};
+
 /**
  * Load every template for a client (client-scoped, ordered for display)
  * along with per-status / per-category counts. Used by the Outreach
@@ -91,11 +106,13 @@ function makeCounts(
  */
 export async function loadClientEmailTemplatesOverview(
   clientId: string,
+  options?: LoadTemplatesOptions,
 ): Promise<ClientEmailTemplatesOverview> {
   if (!clientId) {
     return {
       templates: [],
       counts: makeCounts([]),
+      archivedCount: 0,
     };
   }
 
@@ -116,42 +133,54 @@ export async function loadClientEmailTemplatesOverview(
       archivedAt: true,
       createdBy: { select: { id: true, displayName: true, email: true } },
       approvedBy: { select: { id: true, displayName: true, email: true } },
+      _count: { select: { sequenceSteps: true, sequenceStepSends: true } },
     },
   });
 
-  const templates: TemplateSummary[] = rows.map((r) => ({
-    id: r.id,
-    clientId: r.clientId,
-    name: r.name,
-    category: r.category,
-    status: r.status,
-    subject: r.subject,
-    content: r.content,
-    subjectPreview: previewOf(r.subject, SUBJECT_PREVIEW_MAX),
-    contentPreview: previewOf(r.content, CONTENT_PREVIEW_MAX),
-    createdAtIso: r.createdAt.toISOString(),
-    updatedAtIso: r.updatedAt.toISOString(),
-    approvedAtIso: r.approvedAt ? r.approvedAt.toISOString() : null,
-    archivedAtIso: r.archivedAt ? r.archivedAt.toISOString() : null,
-    createdBy: r.createdBy
-      ? {
-          id: r.createdBy.id,
-          name: r.createdBy.displayName,
-          email: r.createdBy.email,
-        }
-      : null,
-    approvedBy: r.approvedBy
-      ? {
-          id: r.approvedBy.id,
-          name: r.approvedBy.displayName,
-          email: r.approvedBy.email,
-        }
-      : null,
-  }));
+  const includeArchived = options?.includeArchived ?? false;
+  const visibleRows = includeArchived
+    ? rows
+    : rows.filter((r) => r.status !== "ARCHIVED");
+
+  const templates: TemplateSummary[] = visibleRows.map((r) => {
+    const eligibility = describeTemplateDeleteEligibility(r._count);
+    return {
+      id: r.id,
+      clientId: r.clientId,
+      name: r.name,
+      category: r.category,
+      status: r.status,
+      subject: r.subject,
+      content: r.content,
+      subjectPreview: previewOf(r.subject, SUBJECT_PREVIEW_MAX),
+      contentPreview: previewOf(r.content, CONTENT_PREVIEW_MAX),
+      createdAtIso: r.createdAt.toISOString(),
+      updatedAtIso: r.updatedAt.toISOString(),
+      approvedAtIso: r.approvedAt ? r.approvedAt.toISOString() : null,
+      archivedAtIso: r.archivedAt ? r.archivedAt.toISOString() : null,
+      createdBy: r.createdBy
+        ? {
+            id: r.createdBy.id,
+            name: r.createdBy.displayName,
+            email: r.createdBy.email,
+          }
+        : null,
+      approvedBy: r.approvedBy
+        ? {
+            id: r.approvedBy.id,
+            name: r.approvedBy.displayName,
+            email: r.approvedBy.email,
+          }
+        : null,
+      canDelete: eligibility.canDelete,
+      deleteBlockedReason: eligibility.reason,
+    };
+  });
 
   const counts = makeCounts(
     rows.map((r) => ({ status: r.status, category: r.category })),
   );
+  const archivedCount = rows.filter((r) => r.status === "ARCHIVED").length;
 
-  return { templates, counts };
+  return { templates, counts, archivedCount };
 }

@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import {
   archiveClientEmailTemplateAction,
+  deleteClientEmailTemplateAction,
   returnClientEmailTemplateToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/template-actions";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +25,7 @@ import {
   validateTemplatePlaceholders,
 } from "@/lib/email-templates/placeholders";
 import {
+  isTemplateStatusUsableInSequence,
   TEMPLATE_CATEGORY_LABELS,
   TEMPLATE_CATEGORY_ORDER,
   TEMPLATE_STATUS_LABELS,
@@ -32,6 +36,7 @@ import type {
 } from "@/server/email-templates/queries";
 
 import { ClientEmailTemplateForm } from "./client-email-template-form";
+import { TemplateDeleteConfirmForm } from "./template-delete-confirm-form";
 
 /**
  * Templates workspace — create/edit reusable content for sequences.
@@ -48,6 +53,8 @@ type Props = {
     error: string | null;
     focusTemplateId: string | null;
   };
+  /** Row 130 — archived rows are hidden by default; this reflects `?showArchived=1`. */
+  showArchived: boolean;
 };
 
 function formatDate(iso: string | null): string {
@@ -88,20 +95,27 @@ function groupTemplates(
 }
 
 export function ClientEmailTemplatesPanel(props: Props) {
-  const { clientId, clientName, canMutate, overview, flash } = props;
-  const { templates, counts } = overview;
+  const { clientId, clientName, canMutate, overview, flash, showArchived } = props;
+  const { templates, counts, archivedCount } = overview;
   const grouped = groupTemplates(templates);
 
   const statusTiles: Array<{
     label: string;
     value: number;
     hint: string;
+    usable: boolean | null;
   }> = [
-    { label: "Total", value: counts.total, hint: "All templates for this client" },
+    {
+      label: "Total",
+      value: counts.total,
+      hint: "All templates for this client",
+      usable: null,
+    },
     {
       label: TEMPLATE_STATUS_LABELS.APPROVED,
       value: counts.byStatus.APPROVED,
       hint: "Ready to pick in Outreach sequences",
+      usable: isTemplateStatusUsableInSequence("APPROVED"),
     },
     {
       label: TEMPLATE_STATUS_LABELS.READY_FOR_REVIEW,
@@ -113,16 +127,23 @@ export function ClientEmailTemplatesPanel(props: Props) {
       // picked into a sequence and sent. State that plainly instead of
       // leaving the word "legacy" to carry the whole answer.
       hint: "Can still be used in a sequence — open and save to move it to Saved",
+      usable: isTemplateStatusUsableInSequence("READY_FOR_REVIEW"),
     },
     {
       label: TEMPLATE_STATUS_LABELS.DRAFT,
       value: counts.byStatus.DRAFT,
-      hint: "Fix placeholders or required fields, then save",
+      // Row 130 — Draft READS like "not ready", but `canApproveSequence`
+      // only excludes ARCHIVED, so a Draft template can already be picked
+      // into a sequence. Say that plainly rather than let the label imply
+      // otherwise.
+      hint: "Already usable in a sequence — fixing placeholders just moves it to Saved",
+      usable: isTemplateStatusUsableInSequence("DRAFT"),
     },
     {
       label: TEMPLATE_STATUS_LABELS.ARCHIVED,
       value: counts.byStatus.ARCHIVED,
-      hint: "Kept for history — not usable",
+      hint: "Kept for history — not usable, hidden from the list below by default",
+      usable: isTemplateStatusUsableInSequence("ARCHIVED"),
     },
   ];
 
@@ -157,15 +178,63 @@ export function ClientEmailTemplatesPanel(props: Props) {
               key={tile.label}
               className="rounded-lg border border-border/70 bg-muted/30 p-3"
             >
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {tile.label}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {tile.label}
+                </p>
+                {tile.usable !== null && (
+                  <span
+                    className={
+                      tile.usable
+                        ? "rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                        : "rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    }
+                  >
+                    {tile.usable ? "Usable" : "Not usable"}
+                  </span>
+                )}
+              </div>
               <p className="mt-1 text-2xl font-semibold tabular-nums">
                 {tile.value}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{tile.hint}</p>
             </div>
           ))}
+        </div>
+
+        <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+          {showArchived ? (
+            <>
+              <span>
+                Showing archived templates too ({archivedCount} archived — kept for history, not
+                usable in a sequence).
+              </span>
+              <Link
+                prefetch={false}
+                href={`/clients/${clientId}/templates#client-email-templates`}
+                className="font-medium text-primary underline underline-offset-2"
+              >
+                Hide archived
+              </Link>
+            </>
+          ) : (
+            <>
+              <span>
+                {archivedCount > 0
+                  ? `${archivedCount} archived template${archivedCount === 1 ? "" : "s"} hidden from the list below.`
+                  : "No archived templates."}
+              </span>
+              {archivedCount > 0 && (
+                <Link
+                  prefetch={false}
+                  href={`/clients/${clientId}/templates?showArchived=1#client-email-templates`}
+                  className="font-medium text-primary underline underline-offset-2"
+                >
+                  Show archived
+                </Link>
+              )}
+            </>
+          )}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
@@ -305,9 +374,20 @@ function TemplateRow({
             {template.subjectPreview || "(no subject)"}
           </p>
         </div>
-        <Badge variant={statusBadgeVariant(template.status)}>
-          {TEMPLATE_STATUS_LABELS[template.status]}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {isTemplateStatusUsableInSequence(template.status) ? (
+            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+              Usable
+            </span>
+          ) : (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Not usable
+            </span>
+          )}
+          <Badge variant={statusBadgeVariant(template.status)}>
+            {TEMPLATE_STATUS_LABELS[template.status]}
+          </Badge>
+        </div>
       </div>
       <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
         {template.contentPreview}
@@ -324,7 +404,7 @@ function TemplateRow({
         </p>
       )}
       {canMutate && (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           {template.status === "ARCHIVED" && (
             <form action={returnClientEmailTemplateToDraftAction}>
               <input type="hidden" name="clientId" value={clientId} />
@@ -343,7 +423,28 @@ function TemplateRow({
               </FormSubmitButton>
             </form>
           )}
+          {template.status === "ARCHIVED" && template.canDelete && (
+            <TemplateDeleteConfirmForm
+              action={deleteClientEmailTemplateAction}
+              clientId={clientId}
+              templateId={template.id}
+              templateName={template.name}
+            >
+              <FormSubmitButton
+                size="sm"
+                variant="destructive"
+                pendingLabel="Deleting…"
+              >
+                Delete permanently
+              </FormSubmitButton>
+            </TemplateDeleteConfirmForm>
+          )}
         </div>
+      )}
+      {canMutate && template.status === "ARCHIVED" && !template.canDelete && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {template.deleteBlockedReason}
+        </p>
       )}
     </div>
   );

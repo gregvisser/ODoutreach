@@ -4,7 +4,10 @@ import type {
   ClientEmailTemplateStatus,
 } from "@/generated/prisma/enums";
 
-import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
+import {
+  isTemplateStatusUsableInSequence,
+  TEMPLATE_CATEGORY_ORDER,
+} from "@/lib/email-templates/template-policy";
 
 /**
  * Pure policy helpers for client email sequences (PR D4b). No DB / no
@@ -259,7 +262,7 @@ export function validateSequenceSteps(
       hasIntroduction = true;
     }
 
-    if (step.template.status === "ARCHIVED") {
+    if (!isTemplateStatusUsableInSequence(step.template.status)) {
       issues.push({
         stepIndex: index,
         code: "TEMPLATE_NOT_APPROVED",
@@ -329,15 +332,16 @@ export function summarizeSequenceReadiness(
   let mismatchedStepCount = 0;
 
   for (const step of input.steps) {
+    const usable = isTemplateStatusUsableInSequence(step.template.status);
     if (step.template.category !== step.category) mismatchedStepCount += 1;
-    if (step.template.status === "ARCHIVED") unusableStepCount += 1;
-    if (step.template.category === step.category && step.template.status !== "ARCHIVED") {
+    if (!usable) unusableStepCount += 1;
+    if (step.template.category === step.category && usable) {
       if (step.category === "INTRODUCTION") {
         hasIntroduction = true;
       } else {
         followUpCount += 1;
       }
-    } else if (step.template.status !== "ARCHIVED") {
+    } else if (usable) {
       /* mismatch will be counted in mismatchedStepCount */
     }
   }

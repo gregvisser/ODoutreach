@@ -92,6 +92,12 @@ const SCREENS: readonly Screen[] = [
   { name: "client-sources", url: `/clients/${CLIENT}/sources` },
   { name: "client-contacts", url: `/clients/${CLIENT}/contacts` },
   { name: "client-templates", url: `/clients/${CLIENT}/templates` },
+  // Row 130 — the "Show archived" view is new surface; prove it renders
+  // cleanly too, not just the default (archived-hidden) list.
+  {
+    name: "client-templates-archived",
+    url: `/clients/${CLIENT}/templates?showArchived=1`,
+  },
   { name: "client-outreach", url: `/clients/${CLIENT}/outreach` },
   { name: "client-activity", url: `/clients/${CLIENT}/activity` },
   { name: "client-suppression", url: `/clients/${CLIENT}/suppression` },

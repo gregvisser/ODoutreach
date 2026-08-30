@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import {
   canApproveTemplate,
   canTransitionStatus,
+  describeTemplateDeleteEligibility,
   validateTemplateInput,
   type TemplateValidationResult,
 } from "@/lib/email-templates/template-policy";
@@ -35,7 +36,8 @@ export type MutationError = {
     | "NOT_FOUND"
     | "WRONG_CLIENT"
     | "INVALID_STATUS_TRANSITION"
-    | "APPROVAL_BLOCKED";
+    | "APPROVAL_BLOCKED"
+    | "IN_USE";
   message: string;
   validation?: TemplateValidationResult;
   currentStatus?: ClientEmailTemplateStatus;
@@ -330,6 +332,49 @@ export async function archiveTemplate(
     where: { id: current.id },
     data,
   });
+}
+
+export type DeletedTemplate = { id: string; name: string };
+
+/**
+ * Row 130 — permanently remove a template that has never been placed in
+ * a sequence step and has no send history. Any status may be deleted
+ * (not just ARCHIVED); the only gate is the data-model boundary
+ * `describeTemplateDeleteEligibility` reads off the schema's own
+ * `onDelete: Restrict` relations. Refusal carries the same
+ * plain-English reason the UI shows before the click, so this can never
+ * disagree with what the operator was told.
+ */
+export async function deleteEmailTemplate(
+  input: StatusMutationInput,
+): Promise<DeletedTemplate> {
+  const current = await prisma.clientEmailTemplate.findUnique({
+    where: { id: input.templateId },
+    select: {
+      id: true,
+      clientId: true,
+      name: true,
+      _count: { select: { sequenceSteps: true, sequenceStepSends: true } },
+    },
+  });
+  if (!current) {
+    throw new TemplateMutationError({
+      code: "NOT_FOUND",
+      message: "Template not found.",
+    });
+  }
+  ensureClientMatch(current, input.clientId);
+
+  const eligibility = describeTemplateDeleteEligibility(current._count);
+  if (!eligibility.canDelete) {
+    throw new TemplateMutationError({
+      code: "IN_USE",
+      message: eligibility.reason,
+    });
+  }
+
+  await prisma.clientEmailTemplate.delete({ where: { id: current.id } });
+  return { id: current.id, name: current.name };
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   approveTemplate,
   archiveTemplate,
   createEmailTemplate,
+  deleteEmailTemplate,
   markTemplateReadyForReview,
   returnTemplateToDraft,
   TemplateMutationError,
@@ -139,7 +140,12 @@ export async function updateClientEmailTemplateAction(
   }
 }
 
-type StatusActionKind = "ready" | "approve" | "archive" | "return_to_draft";
+type StatusActionKind =
+  | "ready"
+  | "approve"
+  | "archive"
+  | "return_to_draft"
+  | "delete";
 
 async function runStatusAction(
   formData: FormData,
@@ -159,6 +165,8 @@ async function runStatusAction(
 
   try {
     let okMessage = "";
+    // Deleted templates no longer exist to focus/scroll to.
+    let focusId: string | undefined = templateId;
     switch (kind) {
       case "ready": {
         const row = await markTemplateReadyForReview({
@@ -196,10 +204,20 @@ async function runStatusAction(
         okMessage = `Restored as draft — ${row.name}`;
         break;
       }
+      case "delete": {
+        const row = await deleteEmailTemplate({
+          templateId,
+          clientId,
+          staffUserId: staff.id,
+        });
+        okMessage = `Deleted — ${row.name}`;
+        focusId = undefined;
+        break;
+      }
     }
     revalidatePath(`/clients/${clientId}/templates`);
     revalidatePath(`/clients/${clientId}/outreach`);
-    redirectBack(clientId, { kind: "ok", message: okMessage }, templateId);
+    redirectBack(clientId, { kind: "ok", message: okMessage }, focusId);
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
     redirectBack(
@@ -232,4 +250,10 @@ export async function returnClientEmailTemplateToDraftAction(
   formData: FormData,
 ): Promise<void> {
   await runStatusAction(formData, "return_to_draft");
+}
+
+export async function deleteClientEmailTemplateAction(
+  formData: FormData,
+): Promise<void> {
+  await runStatusAction(formData, "delete");
 }
