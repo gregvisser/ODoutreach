@@ -345,6 +345,13 @@
       "authorised_by": "Claude (agent), relay cycle 164, row 130",
       "what": "Added client-templates-archived screen (?showArchived=1) to prove the new archived-toggle view renders cleanly, alongside the existing default templates screen",
       "sha256_after": "b275ec41f34ba08c8c02a75d405ecc1c7fa9784e98661e6d6afbb3cff401391f"
+    },
+    {
+      "file": "e2e/screen-walk.spec.ts",
+      "date": "2026-08-30",
+      "authorised_by": "Claude (agent), relay cycle 164, row 130",
+      "what": "Fixed finalUrl to keep the query string (was pathname-only, so any screen with ?query could never pass the not-redirected assertion) - needed for the new client-templates-archived entry to actually prove anything",
+      "sha256_after": "c9795927164f08fe3bdcfd86f430f2003ae5b6845c48399d4cec1863555b2e5d"
     }
   ]
 }

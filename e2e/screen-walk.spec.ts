@@ -174,10 +174,16 @@ async function walk(page: Page, screen: Screen): Promise<WalkResult> {
     .textContent()
     .catch(() => null);
 
+  const finalUrlObj = new URL(page.url());
   return {
     name: screen.name,
     url: screen.url,
-    finalUrl: new URL(page.url()).pathname,
+    // Row 130 — pathname-only dropped any query string even when there was
+    // no redirect at all, so a screen entry carrying `?query` could never
+    // pass the "not redirected" assertion below. Invisible until now
+    // because no SCREENS entry used a query string before
+    // client-templates-archived.
+    finalUrl: `${finalUrlObj.pathname}${finalUrlObj.search}`,
     status: response?.status() ?? null,
     loadMs,
     heading: heading?.trim() ?? "",
