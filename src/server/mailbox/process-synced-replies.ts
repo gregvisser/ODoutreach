@@ -51,15 +51,25 @@ import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
  */
 
 /**
+ * Reply/forward prefixes real mail clients produce, in one place — row 102:
+ * this used to be two independently-maintained regexes (this one, plus a
+ * near-duplicate in the looks-like-reply gate below), and the drift between
+ * them was itself the bug: a prefix added to one silently stayed missing from
+ * the other. "Re"/"Sv"/"Aw"/"Antw"/"Wg"/"Tr"/"Fwd"/"Fw" (English/Scandinavian/
+ * German-Dutch/French) plus "Res" (Spanish/Portuguese), "Odp" (Polish), "Vs"
+ * (Scandinavian, distinct from "Sv"), a bare "R" (French Outlook), and 回复
+ * (Chinese).
+ */
+const REPLY_FORWARD_PREFIX = /^((re|res|sv|vs|odp|aw|antw|wg|tr|fwd|fw|r|回复)\s*:\s*)+/i;
+
+/**
  * Strip leading reply/forward markers (repeatedly) to recover the subject
- * we originally sent: "RE: RE: Fwd: Hello" → "Hello". Mirrors the prefix
- * set used by the looks-like-reply gate. Pure — exported for unit tests.
+ * we originally sent: "RE: RE: Fwd: Hello" → "Hello". Pure — exported for
+ * unit tests.
  */
 export function stripReplyPrefixes(subject: string | null | undefined): string {
   const s = (subject ?? "").trim();
-  return s
-    .replace(/^((re|sv|aw|antw|wg|tr|fwd|fw|回复)\s*:\s*)+/i, "")
-    .trim();
+  return s.replace(REPLY_FORWARD_PREFIX, "").trim();
 }
 
 export async function processSyncedMessageForReply(input: {
@@ -103,16 +113,15 @@ export async function processSyncedMessageForReply(input: {
 }): Promise<{ created: boolean; replyId?: string }> {
   const inReplyTo = input.inReplyToHeader?.trim() || null;
   const hasInReplyTo = inReplyTo !== null && inReplyTo.length > 0;
-  // Subject-line reply signal. Covers most common languages and clients:
-  // "Re:" / "RE:" (English), "Sv:" (Scandinavian), "Aw:" / "Antw:" / "Wg:"
-  // (German/Dutch), "Tr:" (French), "回复:" (Chinese), plus forwards
-  // ("Fwd:" / "Fw:"). Used as a fallback when the provider didn't include
-  // the In-Reply-To header — notably Microsoft Graph's list-messages
-  // endpoint returns internetMessageHeaders empty even when $select'd.
+  // Subject-line reply signal — shares REPLY_FORWARD_PREFIX with
+  // stripReplyPrefixes (row 102) so a prefix this gate doesn't recognise can
+  // never leave the fix in stripReplyPrefixes unreachable: this gate runs
+  // first, and a message it rejects never gets as far as leg 2's subject
+  // match. Used as a fallback when the provider didn't include the
+  // In-Reply-To header — notably Microsoft Graph's list-messages endpoint
+  // returns internetMessageHeaders empty even when $select'd.
   const subject = (input.subject ?? "").trim();
-  const looksLikeReplyBySubject =
-    /^(re|sv|aw|antw|wg|tr|fwd|fw)\s*:/i.test(subject) ||
-    /^回复\s*:/.test(subject);
+  const looksLikeReplyBySubject = REPLY_FORWARD_PREFIX.test(subject);
 
   if (!hasInReplyTo && !looksLikeReplyBySubject) {
     // No In-Reply-To header AND subject doesn't look like a reply/forward —
