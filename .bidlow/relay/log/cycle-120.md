@@ -106,10 +106,33 @@ chain remains unproven for a correctly-addressed send, and closes only when
 either a fresh non-aliased send-and-reply is performed, or the matcher gap is
 fixed as its own deliberate product change.
 
+## A gate caught a real mistake in the first version of this closure
+
+The first PR for this cycle (#411) failed CI's `verify` job on a real,
+load-bearing test: `relay/queue-file-integrity.test.ts` - "keeps BLOCKED and
+WONTFIX rows below every row still to be done." `Invoke-SelfQueue` (the
+watcher's picker) takes the first row in FILE ORDER that is not DONE/IN
+PROGRESS, and if that row is BLOCKED it halts rather than skipping past it -
+"the order is the plan." Row 92 sat at line 319, above four TODO rows (97,
+93, 94, 95 at lines 321-324); marking it BLOCKED in place, without moving it,
+would have silently frozen the entire queue behind it the next time the
+picker reached it. This is exactly the row-48/cycle-70 incident the test's
+own comment describes, and the gate did its job - it was run and it failed,
+and the failure was read rather than forced past. Fixed by moving row 92's
+table row (content unchanged) to sit directly before row 84, the first of
+the two existing BLOCKED rows already correctly parked at the bottom of the
+table - so the BLOCKED/WONTFIX group (92, 84, 48) now sits entirely below
+every remaining TODO row, preserving the file's one contiguous table.
+Re-ran `relay/queue-file-integrity.test.ts` locally: 9/9 pass, including the
+BOM/encoding guards (the reorder was done with a small Node script operating
+on the raw buffer specifically to avoid disturbing the BOM or line endings
+those tests guard).
+
 ## Files changed this cycle
 
-- `.bidlow/relay/QUEUE.md` - row 92 status only (`BLOCKED`, not `PARTIAL`,
-  per the row's own instruction on why PARTIAL causes the redispatch loop).
+- `.bidlow/relay/QUEUE.md` - row 92 status (`BLOCKED`, not `PARTIAL`, per
+  the row's own instruction) and its position in the table (moved below all
+  TODO rows, per `relay/queue-file-integrity.test.ts`).
 - `.bidlow/relay/log/cycle-120.md` - this file.
 
 No code changed. No other queue row touched. No email sent. No migration. No
