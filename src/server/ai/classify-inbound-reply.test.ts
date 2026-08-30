@@ -40,12 +40,6 @@ function modelAnswers(input: unknown, usage = { inputTokens: 700, outputTokens: 
   });
 }
 
-/** The data written back onto the reply row. */
-function savedClassification() {
-  expect(prismaMock.inboundReply.update).toHaveBeenCalledTimes(1);
-  return prismaMock.inboundReply.update.mock.calls[0][0].data;
-}
-
 beforeEach(() => {
   prismaMock.inboundReply.findFirst.mockReset().mockResolvedValue(REPLY);
   prismaMock.inboundReply.update.mockReset().mockResolvedValue({});
@@ -55,68 +49,50 @@ beforeEach(() => {
   delete process.env.AI_FEATURES;
 });
 
-describe("classifying a reply", () => {
-  it("labels a warm reply and saves it against the reply", async () => {
+describe("the personal-data processor gate (CR-10)", () => {
+  // Reply classification is the one feature this codebase has declared to
+  // carry a prospect's own words (subject + body, verbatim) to Anthropic, and
+  // Anthropic carries no recorded processor allowance for that. So — with a
+  // real API key configured (see `beforeEach`) — this must refuse before the
+  // model is ever called, not merely when the key happens to be absent.
+  it("refuses to classify — and never calls Anthropic — even though a valid API key is configured", async () => {
     modelAnswers({ label: "POSITIVE", confidence: 95, rationale: "Offered a time." });
 
     const out = await classifyInboundReply({ replyId: "reply-1" });
 
-    expect(out.classified).toBe(true);
-    const data = savedClassification();
-    expect(data.classification).toBe("POSITIVE");
-    expect(data.classificationConfidence).toBe(95);
-    expect(data.classificationRationale).toBe("Offered a time.");
-    expect(data.classifiedAt).toBeInstanceOf(Date);
-    expect(data.classificationModel).toMatch(/^claude-/);
+    expect(out.classified).toBe(false);
+    expect(out.reason).toBe("no_processor_allowance");
+    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(prismaMock.inboundReply.update).not.toHaveBeenCalled();
   });
 
-  it("meters the call against the client that received the reply", async () => {
+  it("still records the refusal on the usage ledger, against the client that received the reply", async () => {
     modelAnswers({ label: "POSITIVE", confidence: 95, rationale: "x" });
 
     await classifyInboundReply({ replyId: "reply-1" });
 
     expect(prismaMock.aiUsageEvent.create).toHaveBeenCalledTimes(1);
     const row = prismaMock.aiUsageEvent.create.mock.calls[0][0].data;
+    expect(row.status).toBe("REFUSED");
+    expect(row.outcomeCode).toBe("no_processor_allowance");
+    expect(row.costMicroUsd).toBe(0);
     expect(row.clientId).toBe("client-1");
     expect(row.clientSlugAtCall).toBe("train-hugger");
     expect(row.feature).toBe("REPLY_CLASSIFICATION");
     expect(row.subjectId).toBe("reply-1");
-    expect(row.costMicroUsd).toBe(900);
-  });
-
-  it("sends the reply body to the model", async () => {
-    modelAnswers({ label: "POSITIVE", confidence: 95, rationale: "x" });
-
-    await classifyInboundReply({ replyId: "reply-1" });
-
-    const sent = callAnthropicMock.mock.calls[0][0];
-    expect(sent.userText).toMatch(/Yes, happy to talk/);
-    expect(sent.userText).toMatch(/Re: quick question/);
-    // Forced tool call — prose answers are not an accepted output shape.
-    expect(sent.tool.name).toBe(CLASSIFICATION_TOOL.name);
   });
 });
 
 describe("when it cannot classify, the reply is left for a person", () => {
-  it("saves nothing when the model returns an unusable answer", async () => {
-    modelAnswers({ label: "DEFINITELY_MAYBE", confidence: 99, rationale: "x" });
-
-    const out = await classifyInboundReply({ replyId: "reply-1" });
-
-    expect(out.classified).toBe(false);
-    expect(prismaMock.inboundReply.update).not.toHaveBeenCalled();
-  });
-
-  it("saves nothing, and does not throw, when the model call fails", async () => {
-    callAnthropicMock.mockRejectedValue(new Error("anthropic_http_529: overloaded"));
-
-    const out = await classifyInboundReply({ replyId: "reply-1" });
-
-    expect(out.classified).toBe(false);
-    expect(prismaMock.inboundReply.update).not.toHaveBeenCalled();
-    // The failure is still on the ledger.
-    expect(prismaMock.aiUsageEvent.create.mock.calls[0][0].data.status).toBe("ERROR");
-  });
+  // The "model returns an unusable answer" and "model call fails" branches of
+  // classifyInboundReply (an unparseable tool call; a thrown error inside
+  // `invoke`) are exercised by `reply-classification.test.ts` and
+  // `metered-call.test.ts` respectively, but cannot be reached THROUGH this
+  // function today: the CR-10 gate above refuses REPLY_CLASSIFICATION before
+  // `invoke` ever runs, for any input, regardless of what the model would have
+  // said. That is a deliberate, temporary loss of integration coverage on this
+  // one file, not an oversight — restoring it is exactly the work of whatever
+  // future row grants Anthropic a recorded processor allowance.
 
   it("does not call the model at all when the AI switch is off", async () => {
     process.env.AI_FEATURES = "off";
@@ -162,18 +138,5 @@ describe("guards", () => {
     expect(out.classified).toBe(false);
     expect(callAnthropicMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
-  });
-
-  it("falls back to the snippet when there is no body preview", async () => {
-    prismaMock.inboundReply.findFirst.mockResolvedValue({
-      ...REPLY,
-      bodyPreview: null,
-      snippet: "Please remove me from your list",
-    });
-    modelAnswers({ label: "UNSUBSCRIBE", confidence: 99, rationale: "Asked to be removed." });
-
-    await classifyInboundReply({ replyId: "reply-1" });
-
-    expect(callAnthropicMock.mock.calls[0][0].userText).toMatch(/Please remove me/);
   });
 });
