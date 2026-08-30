@@ -7648,3 +7648,89 @@ client data touched.
    `docs/ops/CHART-SERIES-CONTRAST-2026-08-30.md` first — it names exactly
    what does and doesn't work and why, so the search isn't repeated from
    scratch.
+
+## Cycle 154 — row 114, the Tuesday readiness measurement — DONE, PR open pending CI
+
+**What was built/changed:** Replaced the piecemeal customer-ready mosaic
+(7.86, assembled across rows 92–125) with one fresh re-walk against a new
+local production build of `main` (commit `2c1e04f`): `npm ci`, migrations,
+`npm run build`, then the FULL Playwright suite (not just screen-walk) — 94
+passed, 1 pre-existing unrelated skip, 0 failed, 32/32 screens clean. Nine of
+the ten customer-ready dimensions re-derived from that evidence; dimension 1
+(Core journeys, weight 18) HELD AT 8 exactly as the row's own rule requires —
+no dated `docs/ops/` artefact proves an OBSERVED, correctly-matched
+send-arrival-reply loop yet (the matcher bug that caused the one real
+mismatch is fixed and unit-tested, but not yet re-observed). Dimension 8
+(Data safety & trust) moved 7 → 8 on genuinely new evidence: CR-10's
+engineering half closed (`#420`) since the last measurement — the AI feature
+that sends a prospect's reply text to Anthropic is now refused by a
+code-level gate independent of whether the API key is configured, re-verified
+19/19 green on this build. New weighted total **7.96** (was 7.86). Sell gate:
+**NOT SATISFIED, short by 0.04** — the thinnest gap ever measured, reported
+as 7.96, not rounded up.
+
+Wrote `docs/ops/TUESDAY-READINESS-MEASUREMENT-2026-08-30.md` (full method,
+per-dimension evidence, arithmetic, and the plain-English answer: no, an
+unaided first-timer cannot yet show evidence of the whole loop, though most of
+it is provably walkable). Appended a slide to
+`C:\Bidlowbusiness\_odoutreach-handover\DECK-NOTES-TUESDAY.md` and confirmed
+it landed by opening the file. Updated `.bidlow/GRADES.json` in place
+(graded_at, commit, scorecard, arithmetic, sell_gate — one coherent entry,
+not another piecemeal note). Also committed `.bidlow/relay/log/cycle-153.md`,
+left untracked when that cycle ended, per row 121's established pattern.
+
+**A gate this session had not met before: the standards `gate-ship.mjs` hook
+blocked `gh pr create`** because `.bidlow/SELL-EXCEPTION.json`'s
+`grade_acknowledged.customer_ready` (7.86) no longer matched the new grade
+(7.96) — the hook fails closed on any drift between the exception and the
+live grade, in either direction. Did NOT fabricate a new authorisation:
+updated only `grade_acknowledged` (a transcription field, not itself the
+authorisation) with a note explaining why, following the exact precedent
+already set five times in that file (cycles 44, 99, 102, 103, 123).
+`scope`/`why`/`known_risks`/`expires` — Greg's actual sign-off — were not
+touched. This is worth knowing for next time: **any row that changes
+`GRADES.json`'s customer_ready score while still under 8 will hit this same
+block on its own PR**, and the fix is exactly this transcription pattern, not
+a workaround.
+
+**Half-done, and exactly where it was left:** PR **#451**
+(`docs/row114-tuesday-readiness-measurement`) is open against `main`, CI
+(`verify` + `E2E (Playwright)`) was still pending at end of session. Gates
+already run and green locally before the PR was opened: lint 0, typecheck 0,
+full unit suite 356 files / 3742 tests green, production build green,
+`src/lib/grade-record.test.ts` (16/16, validates `GRADES.json` against its own
+zod schema) green. QUEUE.md row 114 is already written as `DONE 154` with the
+full evidence summary — **that status is honest only once #451 actually
+merges**; if a future session finds #451 still open or closed unmerged,
+treat row 114 as not actually done yet and check `git log` for row 114 on
+`main` before trusting the QUEUE.md text, exactly as this project's own
+row-121 rule prescribes.
+
+**Decisions made:** No one-way door crossed — no schema, no migration, no
+send, no client data touched. The one judgement call was the
+`SELL-EXCEPTION.json` transcription above, made on an established precedent
+rather than a fresh decision.
+
+**Nothing contradicts `PROJECT.json`.**
+
+## Pick up first, next session
+
+1. **Confirm PR #451 merged.** Check `git log --oneline -5 main` for a commit
+   naming row 114 / cycle 154. If it isn't there, the CI run needs
+   re-checking (`gh pr checks 451`) and the merge finished before anything
+   else — do not re-do row 114's measurement, the work is already correct
+   and evidenced, only the merge step may be outstanding.
+2. Per `.bidlow/relay/QUEUE.md`, row 114 was the last row gated to run —
+   check what the queue looks like after it closes; there may be nothing
+   left TODO except the BLOCKED rows (92, 84, 48, 110, 113), all of which
+   wait on a person, not a cycle.
+3. Dimension 1 (Core journeys, weight 18) is still the single heaviest thing
+   holding the sell gate shut, by 0.04 now, not 0.14. The concrete next step
+   named in this session's artefact: a Google mailbox needs to reconnect
+   (row 118, human action) before the Gmail-side send-reply loop can be
+   retried; once it can, run a fresh send, get a real reply, and confirm the
+   now-fixed matcher (`docs/ops/REPLY-MATCHER-PLUS-ALIAS-FIX-2026-08-30.md`)
+   links it to the right thread — only then re-score dimension 1.
+4. CR-10's commercial half (whether to ever pursue an Art.28 DPA with
+   Anthropic) is still open and is Greg's call, unaffected by this session's
+   engineering-half closure.
