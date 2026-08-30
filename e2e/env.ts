@@ -71,4 +71,12 @@ export const E2E_APP_ENV: Record<string, string> = {
   ALLOW_DEV_PROVIDER_SIMULATE: "false",
   ALLOW_DEV_WEBHOOK_REPLAY: "false",
   ALLOW_DEV_INBOUND_SIMULATE: "false",
+
+  // Send pacing (`src/lib/mailboxes/send-pacing.ts`) defaults ON and schedules
+  // a mailbox's sends against real wall-clock time-of-day within a
+  // 07:00-18:00 UTC window. Left on, a spec that launches a sequence would
+  // pass or fail depending on what time it happens to run — flaky for a
+  // reason that has nothing to do with the Launch journey itself, and the
+  // pacing math already has its own unit coverage (`send-pacing.test.ts`).
+  MAILBOX_SEND_PACING: "false",
 };

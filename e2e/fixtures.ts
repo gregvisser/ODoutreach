@@ -306,3 +306,79 @@ export const E2E_STORAGE_STATE = {
   memberA: "e2e/.auth/member-a.json",
   memberB: "e2e/.auth/member-b.json",
 } as const;
+
+/**
+ * The Launch journey (queue item 117) — a sequence that is genuinely
+ * "ready to launch" on screen (every blocker in
+ * `evaluateSequenceLaunchReadiness` passes) but whose actual dispatch
+ * cannot leave the building.
+ *
+ * Own dedicated workspace, deliberately separate from `E2E_CLIENT`: a
+ * confirmed Launch queues a real `OutboundEmail` row and advances
+ * enrollment/step-send state, which would otherwise couple this spec to
+ * every other screen that reads `E2E_CLIENT`'s counts (mailboxes,
+ * operations queue, activity).
+ *
+ * SEND SAFETY, same reasoning as `E2E_MAILBOXES`: the mailbox below is
+ * `connectionStatus: CONNECTED` with a signature — enough for the
+ * readiness rail to pass — but no `MailboxIdentitySecret` row is ever
+ * seeded, so `sendViaConnectedMailboxOrFail` has no token and fails
+ * closed. On top of that, `e2e/env.ts` sets `AUTOPROCESS_OUTBOUND_QUEUE`
+ * and `PROCESS_QUEUE_SECRET` so `triggerOutboundQueueDrain` never fires a
+ * drain in this test run at all — a confirmed Launch can only ever create
+ * a `QUEUED` `OutboundEmail` row that nothing in the e2e process attempts
+ * to dispatch.
+ */
+export const E2E_LAUNCH_CLIENT = {
+  id: "e2e-launch-client-000000000001",
+  name: "E2E Launch Workspace",
+  slug: "e2e-launch-workspace",
+} as const;
+
+export const E2E_LAUNCH_CONTACT = {
+  id: "e2e-launch-contact-000000000001",
+  email: "launch-recipient@example.test",
+  fullName: "E2E Launch Recipient",
+} as const;
+
+export const E2E_LAUNCH_MAILBOX = {
+  id: "e2e-launch-mailbox-000000000001",
+  email: "launch-sender@example.test",
+} as const;
+
+/** Signature HTML — same shape as `E2E_MAILBOX_SIGNATURE_HTML`, required for the `sender_signature_configured` readiness check to pass. */
+export const E2E_LAUNCH_MAILBOX_SIGNATURE_HTML =
+  "<p>Kind regards,<br/>E2E Launch Sender<br/>E2E Launch Workspace</p>";
+
+export const E2E_LAUNCH_CONTACT_LIST = {
+  id: "e2e-launch-contact-list-00001",
+  name: "E2E Launch Contact List",
+} as const;
+
+export const E2E_LAUNCH_TEMPLATE = {
+  id: "e2e-launch-template-000000001",
+  name: "E2E Launch Introduction",
+  subject: "E2E launch introduction subject",
+  /** Carries `{{unsubscribe_link}}` directly, so the `unsubscribe_placeholder_present` check passes without needing an aligned link domain configured. */
+  content:
+    "Hello,\n\nThis is a fixture introduction email for the e2e Launch journey.\n\n{{unsubscribe_link}}",
+} as const;
+
+export const E2E_LAUNCH_SEQUENCE = {
+  id: "e2e-launch-sequence-000000001",
+  name: "E2E Launch Sequence",
+} as const;
+
+export const E2E_LAUNCH_STEP = {
+  id: "e2e-launch-step-000000000001",
+} as const;
+
+export const E2E_LAUNCH_ENROLLMENT = {
+  id: "e2e-launch-enrollment-0000001",
+} as const;
+
+/** Idempotency key format matches the real planner: `seq:<sequenceId>:enr:<enrollmentId>:step:<stepId>`. */
+export const E2E_LAUNCH_STEP_SEND = {
+  id: "e2e-launch-stepsend-000000001",
+  idempotencyKey: `seq:${E2E_LAUNCH_SEQUENCE.id}:enr:${E2E_LAUNCH_ENROLLMENT.id}:step:${E2E_LAUNCH_STEP.id}`,
+} as const;
