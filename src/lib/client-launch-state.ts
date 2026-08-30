@@ -229,11 +229,19 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
     if (input.contactsTotal <= 0) pill = "not_started";
     else if (input.contactsEligible >= 1) pill = "ready";
     else pill = "needs_attention";
+    // Row 111 finding 4 — this row is labelled "Lists" to match the subnav
+    // tab it links to (see "one name per destination" below), but the
+    // number is a raw CONTACT count, not a count of lists. A client can
+    // have an eligible contact seeded directly with zero contact lists, so
+    // the metric text itself must say "contact" — otherwise a bare "1
+    // total" under the label "Lists" reads as "a list exists," which the
+    // client's own Lists tab can directly contradict.
+    const contactNoun = input.contactsTotal === 1 ? "contact" : "contacts";
     return {
       id: "contacts",
       label: "Lists",
       pillStatus: pill,
-      metric: `${String(input.contactsTotal)} total · ${String(input.contactsEligible)} eligible`,
+      metric: `${String(input.contactsTotal)} ${contactNoun} total · ${String(input.contactsEligible)} eligible`,
       href: `${base}/contacts`,
       actionLabel: "Open contacts",
     };

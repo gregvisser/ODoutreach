@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
+import {
+  classifySequenceDispatchOutcome,
+  describeSequenceDispatchOutcome,
+  type SequenceDispatchOutcome,
+} from "@/lib/clients/outreach-sequence-send-staff-copy";
 import { TEMPLATE_CATEGORY_ORDER } from "@/lib/email-templates/template-policy";
+import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   enrollSequenceContacts,
@@ -86,6 +92,28 @@ function getClientIdFromForm(formData: FormData): string {
   const clientId = String(formData.get("clientId") ?? "").trim();
   if (!clientId) throw new Error("Missing clientId.");
   return clientId;
+}
+
+/**
+ * Row 111 finding 1 — `sendSequenceIntroductionBatch` / `sendSequenceStepBatch`
+ * await the outbound queue drain before returning, so in production the rows
+ * they just queued have very often already reached a terminal status by the
+ * time this action builds its flash message. Re-reading the real status here
+ * (once, read-only, after dispatch has already happened) is what lets the
+ * banner say "sent" instead of the fixed intake word "queued" — see
+ * `describeSequenceDispatchOutcome` for the copy itself.
+ */
+async function loadSequenceDispatchOutcome(
+  outboundEmailIds: readonly string[],
+): Promise<SequenceDispatchOutcome> {
+  if (outboundEmailIds.length === 0) {
+    return { sentImmediately: 0, failedImmediately: 0, stillPending: 0 };
+  }
+  const rows = await prisma.outboundEmail.findMany({
+    where: { id: { in: [...outboundEmailIds] } },
+    select: { status: true },
+  });
+  return classifySequenceDispatchOutcome(rows.map((r) => r.status));
 }
 
 function flashForError(e: unknown): string {
@@ -593,12 +621,11 @@ export async function sendClientEmailSequenceIntroductionAction(
       confirmationPhrase,
     });
     revalidatePath(`/clients/${clientId}/outreach`);
-    const parts: string[] = [];
-    parts.push(
-      result.counts.queued === 1
-        ? "1 introduction queued"
-        : `${String(result.counts.queued)} introductions queued`,
+    const dispatchOutcome = await loadSequenceDispatchOutcome(
+      result.queued.map((q) => q.outboundEmailId),
     );
+    const parts: string[] = [];
+    parts.push(describeSequenceDispatchOutcome("introduction", dispatchOutcome));
     if (result.counts.blockedAllowlist > 0) {
       parts.push(
         `${String(result.counts.blockedAllowlist)} blocked at dispatch (see timeline for reasons)`,
@@ -705,12 +732,11 @@ export async function sendClientEmailSequenceStepAction(
       confirmationPhrase,
     });
     revalidatePath(`/clients/${clientId}/outreach`);
-    const parts: string[] = [];
-    parts.push(
-      result.counts.queued === 1
-        ? `1 ${categoryLabel} queued`
-        : `${String(result.counts.queued)} ${categoryLabel}s queued`,
+    const dispatchOutcome = await loadSequenceDispatchOutcome(
+      result.queued.map((q) => q.outboundEmailId),
     );
+    const parts: string[] = [];
+    parts.push(describeSequenceDispatchOutcome(categoryLabel, dispatchOutcome));
     if (result.counts.blockedAllowlist > 0) {
       parts.push(
         `${String(result.counts.blockedAllowlist)} blocked at dispatch (see timeline for reasons)`,

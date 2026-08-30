@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifySequenceDispatchOutcome,
+  describeSequenceDispatchOutcome,
   humanizeSequenceLaunchDisabledReason,
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
   LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
@@ -84,5 +86,119 @@ describe("live launch staff copy", () => {
       expect(line).not.toMatch(/GOVERNED_TEST_EMAIL_DOMAINS/i);
       expect(line).not.toMatch(/Allowlisted domains/i);
     }
+  });
+});
+
+/**
+ * Row 111 finding 1 — the launch banner always said "queued", even once a
+ * send had actually gone out via Graph in ~1.2s (docs/ops/SEND-PROOF-2026-08-30.md).
+ * `triggerOutboundQueueDrain` is awaited by the dispatcher before it returns,
+ * so by the time this banner renders the real `OutboundEmail` rows it just
+ * created have very often already reached a terminal status. These two
+ * functions turn that real status into the sentence the operator reads,
+ * instead of the fixed intake word "queued".
+ */
+describe("classifySequenceDispatchOutcome", () => {
+  it("counts a row already SENT by the time we re-check as sent, not queued", () => {
+    const outcome = classifySequenceDispatchOutcome(["SENT"]);
+    expect(outcome).toEqual({
+      sentImmediately: 1,
+      failedImmediately: 0,
+      stillPending: 0,
+    });
+  });
+
+  it("treats DELIVERED the same as SENT — both mean the operator's email left", () => {
+    expect(classifySequenceDispatchOutcome(["DELIVERED"]).sentImmediately).toBe(1);
+  });
+
+  it("counts a still-QUEUED row (worker has not run yet) as pending, not sent", () => {
+    const outcome = classifySequenceDispatchOutcome(["QUEUED"]);
+    expect(outcome).toEqual({
+      sentImmediately: 0,
+      failedImmediately: 0,
+      stillPending: 1,
+    });
+  });
+
+  it("counts a row that failed at dispatch as failed, not queued", () => {
+    const outcome = classifySequenceDispatchOutcome(["FAILED"]);
+    expect(outcome).toEqual({
+      sentImmediately: 0,
+      failedImmediately: 1,
+      stillPending: 0,
+    });
+  });
+
+  it("splits a mixed batch into the right buckets", () => {
+    const outcome = classifySequenceDispatchOutcome([
+      "SENT",
+      "SENT",
+      "QUEUED",
+      "FAILED",
+    ]);
+    expect(outcome).toEqual({
+      sentImmediately: 2,
+      failedImmediately: 1,
+      stillPending: 1,
+    });
+  });
+
+  it("an empty batch is all zero", () => {
+    expect(classifySequenceDispatchOutcome([])).toEqual({
+      sentImmediately: 0,
+      failedImmediately: 0,
+      stillPending: 0,
+    });
+  });
+});
+
+describe("describeSequenceDispatchOutcome", () => {
+  it("says 'sent', not 'queued', once dispatch has already completed", () => {
+    const msg = describeSequenceDispatchOutcome("introduction", {
+      sentImmediately: 1,
+      failedImmediately: 0,
+      stillPending: 0,
+    });
+    expect(msg).toBe("1 introduction sent");
+    expect(msg).not.toMatch(/queued/i);
+  });
+
+  it("pluralises the category label for more than one", () => {
+    const msg = describeSequenceDispatchOutcome("introduction", {
+      sentImmediately: 3,
+      failedImmediately: 0,
+      stillPending: 0,
+    });
+    expect(msg).toBe("3 introductions sent");
+  });
+
+  it("says 'queued — sending shortly' only for rows genuinely not dispatched yet", () => {
+    const msg = describeSequenceDispatchOutcome("introduction", {
+      sentImmediately: 0,
+      failedImmediately: 0,
+      stillPending: 1,
+    });
+    expect(msg).toBe("1 introduction queued — sending shortly");
+  });
+
+  it("reports a mixed outcome as separate, honest counts", () => {
+    const msg = describeSequenceDispatchOutcome("introduction", {
+      sentImmediately: 2,
+      failedImmediately: 1,
+      stillPending: 1,
+    });
+    expect(msg).toBe(
+      "2 introductions sent · 1 introduction queued — sending shortly · 1 introduction failed to send (see timeline for the reason)",
+    );
+  });
+
+  it("falls back to the old '0 queued' wording when nothing was queued at all", () => {
+    const msg = describeSequenceDispatchOutcome("introduction", {
+      sentImmediately: 0,
+      failedImmediately: 0,
+      stillPending: 0,
+    });
+    expect(msg).toBe("0 introductions queued");
   });
 });

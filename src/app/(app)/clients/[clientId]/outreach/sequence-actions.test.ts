@@ -32,6 +32,7 @@ const {
   introBatchMock,
   stepBatchMock,
   redirectMock,
+  outboundEmailFindManyMock,
 } = vi.hoisted(() => ({
   staffMock: vi.fn(),
   accessMock: vi.fn(),
@@ -46,10 +47,17 @@ const {
   redirectMock: vi.fn((url: string) => {
     throw new Error(`NEXT_REDIRECT;${url}`);
   }),
+  // Row 111 finding 1 — after dispatch, the action re-reads each newly
+  // created OutboundEmail's real status to report what actually happened
+  // rather than the fixed intake word "queued".
+  outboundEmailFindManyMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/db", () => ({
+  prisma: { outboundEmail: { findMany: outboundEmailFindManyMock } },
+}));
 vi.mock("@/server/auth/staff", () => ({ requireOpensDoorsStaff: staffMock }));
 vi.mock("@/server/tenant/access", () => ({
   requireClientAccess: accessMock,
@@ -102,6 +110,7 @@ beforeEach(() => {
   staffMock.mockResolvedValue({ id: "staff_1", role: "ADMIN" });
   accessMock.mockResolvedValue(undefined);
   mutatorMock.mockResolvedValue(undefined);
+  outboundEmailFindManyMock.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -165,8 +174,18 @@ describe("sendClientEmailSequenceIntroductionAction — a failed access/mutator 
         blockedPlanClassifier: 0,
         blockedAlreadySent: 0,
       },
+      queued: [
+        {
+          stepSendId: "ss_1",
+          outboundEmailId: "oe_1",
+          contactEmail: "a@b.com",
+          allowlistedDomain: "b.com",
+        },
+      ],
       blocked: [],
     });
+    // The worker has not resolved this row yet by the time we re-check.
+    outboundEmailFindManyMock.mockResolvedValueOnce([{ status: "QUEUED" }]);
 
     await expect(
       sendClientEmailSequenceIntroductionAction(
@@ -179,8 +198,62 @@ describe("sendClientEmailSequenceIntroductionAction — a failed access/mutator 
     ).rejects.toThrow("NEXT_REDIRECT");
 
     expect(introBatchMock).toHaveBeenCalledTimes(1);
-    const url = decodeURIComponent(redirectMock.mock.calls[0]?.[0] as string);
-    expect(url).toContain("sequence=1+introduction+queued");
+    const url = decodeURIComponent(
+      (redirectMock.mock.calls[0]?.[0] as string).replace(/\+/g, " "),
+    );
+    expect(url).toContain("sequence=1 introduction queued — sending shortly");
+  });
+
+  /**
+   * Row 111 finding 1 — the exact confusion Greg hit: the banner said
+   * "queued" while, in production, the send had very often already gone
+   * out (`docs/ops/SEND-PROOF-2026-08-30.md` measured QUEUED → SENT in
+   * ~1.2s via `triggerOutboundQueueDrain`, which the batch call awaits
+   * before this action ever builds its flash message). Once dispatch has
+   * actually completed by the time we re-check, the banner must say so.
+   */
+  it("says 'sent', not 'queued', once the dispatched row has actually gone out", async () => {
+    introBatchMock.mockResolvedValueOnce({
+      counts: {
+        queued: 1,
+        blockedAllowlist: 0,
+        blockedLaunchApproval: 0,
+        suppressedAtExecutionTime: 0,
+        blockedPlanClassifier: 0,
+        blockedAlreadySent: 0,
+      },
+      queued: [
+        {
+          stepSendId: "ss_1",
+          outboundEmailId: "oe_1",
+          contactEmail: "a@b.com",
+          allowlistedDomain: "b.com",
+        },
+      ],
+      blocked: [],
+    });
+    outboundEmailFindManyMock.mockResolvedValueOnce([{ status: "SENT" }]);
+
+    await expect(
+      sendClientEmailSequenceIntroductionAction(
+        formData({
+          clientId: "cl_1",
+          sequenceId: "seq_1",
+          confirmationPhrase: "SEND INTRODUCTION",
+        }),
+      ),
+    ).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(outboundEmailFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["oe_1"] } },
+      }),
+    );
+    const url = decodeURIComponent(
+      (redirectMock.mock.calls[0]?.[0] as string).replace(/\+/g, " "),
+    );
+    expect(url).toContain("sequence=1 introduction sent");
+    expect(url).not.toMatch(/queued/i);
   });
 });
 

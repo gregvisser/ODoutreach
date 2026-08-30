@@ -158,6 +158,32 @@ describe("buildLaunchReadinessRows", () => {
     expect(rows[6]?.href).toBe("/clients/abc/activity");
   });
 
+  /**
+   * Row 111 finding 4 — the row keeps the label "Lists" (renaming it back to
+   * "Contacts" would reintroduce the exact two-names-per-destination defect
+   * PR #138 fixed — see "one name per destination" above), but its number
+   * comes from `contactsTotal`/`contactsEligible`, a raw CONTACT count. A
+   * client can have an eligible contact seeded directly with zero actual
+   * lists (this fixture), which is exactly what the real Lists tab shows as
+   * "0" while this row read "1 total". The metric text itself must say
+   * "contact", not the bare "total", so it can never be misread as a list
+   * count.
+   */
+  it("the Lists row's metric names 'contact', not a bare count that reads as a list count", () => {
+    const row = buildLaunchReadinessRows(
+      basePanel({ contactsTotal: 1, contactsEligible: 1 }),
+    ).find((r) => r.id === "contacts");
+    expect(row?.label).toBe("Lists");
+    expect(row?.metric).toBe("1 contact total · 1 eligible");
+  });
+
+  it("pluralises the contact-count metric for more than one contact", () => {
+    const row = buildLaunchReadinessRows(
+      basePanel({ contactsTotal: 3, contactsEligible: 2 }),
+    ).find((r) => r.id === "contacts");
+    expect(row?.metric).toBe("3 contacts total · 2 eligible");
+  });
+
   it("marks suppression as Not configured when no sheet sources", () => {
     const row = buildLaunchReadinessRows(basePanel({ suppressionSheetCount: 0 })).find(
       (r) => r.id === "suppression",
