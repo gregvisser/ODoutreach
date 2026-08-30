@@ -79,6 +79,23 @@ matcher defect actually exists (see above) and queue one if not. Row 95
 take effect) is still `TODO` and unrelated to this session's work beyond
 being checked as a "would this change the answer" condition.
 
+**Discovered at the very end of this session, NOT acted on - flag for
+whoever opens this repo next:** after the row-92 work was merged, the local
+working tree's `.bidlow/relay/QUEUE.md` showed an uncommitted change to row
+97 that this session did not make - a coherent, complete addition (not crash
+debris) reading "STOP RETRYING THIS ROW - ITS PURPOSE IS ALREADY SERVED...
+CLOSE THIS ROW AS DONE," arguing the Chrome-extension instrument will never
+be available to an unattended relay cycle and that row 97's own definition
+of done was already met by the 29 August send (`docs/ops/SEND-PROOF-2026-08-29.md`).
+This reads as someone (most likely Greg) editing the live file directly on
+disk while this session was running - the same pattern this session's own
+row 92 already showed once (a mid-flight addition appearing between when a
+brief was generated and when the row was actually worked). Left untouched,
+uncommitted, on disk: row 97 was not this cycle's row, closing it was not
+this session's decision to make, and the content looks deliberate rather
+than something safe to discard. Whoever picks up next should read row 97
+fresh from disk (not from any cached brief) before acting on it.
+
 ## Session 2026-08-30 - Relay cycle 117, queue row 92: reply-sync forced on demand instead of waited for; same single reply reconfirmed still mismatched; dimension 1 held at 8.
 
 **PR sweep at cycle start:** one open PR (#408, row 96's docs-only follow-on,
