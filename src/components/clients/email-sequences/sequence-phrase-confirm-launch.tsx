@@ -70,9 +70,30 @@ export function SequencePhraseConfirmLaunch({
       setError("Form is not ready. Refresh the page.");
       return;
     }
-    submittedRef.current = true;
     phraseInput.value = confirmationPhrase;
-    form.requestSubmit();
+    // Row 109 — `requestSubmit()` fires no submit event and throws no
+    // exception when the form fails native constraint validation; it just
+    // does nothing. Checked explicitly so that case reads as a message in
+    // the dialog rather than a click that looks like it did nothing.
+    if (!form.checkValidity()) {
+      setError("This form isn't ready to submit — refresh the page and try again.");
+      return;
+    }
+    try {
+      submittedRef.current = true;
+      form.requestSubmit();
+    } catch (err) {
+      // A synchronous throw here used to vanish into the console with the
+      // dialog closing and the screen unchanged — the exact silence this row
+      // exists to close. Keep the dialog open and let the operator retry.
+      submittedRef.current = false;
+      setError(
+        err instanceof Error
+          ? `Could not submit: ${err.message}`
+          : "Could not submit. Refresh the page and try again.",
+      );
+      return;
+    }
     closeModal();
   };
 
