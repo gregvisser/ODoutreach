@@ -1,5 +1,13 @@
 # Cycle 165 - row 128
 
+## Merge
+
+PR #467, CI green (verify + E2E Playwright both passed), squash-merged to
+`origin/main` as `c88702c3321c932b0a0a1d598ba95f78b693475a`, confirmed via
+`git ls-remote origin refs/heads/main`. This QUEUE.md hash line is a small
+follow-up commit on top of that merge, the same pattern earlier rows (e.g.
+151) used, since the hash cannot be known until after the merge it describes.
+
 ## PR sweep
 
 `gh pr list --state open` returned zero open PRs. Nothing to merge or chase.
