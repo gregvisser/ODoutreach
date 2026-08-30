@@ -1,6 +1,75 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 162) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 164) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 164, queue row 130: Templates screen — archived hidden by default, real delete for never-used templates, usable-at-a-glance. Fully merged, nothing left open.
+
+**PR sweep first:** found PR #463 open (row 122's own merge-hash follow-up)
+with `verify` green and `E2E` still running. Working tree also carried
+cycle 163's uncommitted leftovers (the watcher's own post-cycle record
+appended to `cycle-163.md`, and row 130 added to `QUEUE.md` as `IN PROGRESS
+164`) — committed those onto the #463 branch (`8d49b6d`), waited for CI,
+merged (`e7a5d9f`).
+
+**Row 130, read the schema before writing anything:**
+`ClientEmailSequenceStep.template` and `ClientEmailSequenceStepSend.template`
+both declare `onDelete: Restrict` — the database itself already refuses to
+delete a `ClientEmailTemplate` a step or a step-send references. That is
+the delete boundary, not a policy layered on top: new pure function
+`describeTemplateDeleteEligibility` (`src/lib/email-templates/template-policy.ts`)
+reads exactly those two `_count` values, and both the query layer (show/hide
+the Delete button) and the mutation layer (`deleteEmailTemplate` in
+`src/server/email-templates/mutations.ts`) call the same function, so they
+can never disagree. Full writeup:
+`docs/ops/2026-08-30-row130-templates-hide-archive-delete-usable.md`.
+
+**Three parts shipped as one connected change** (all touch the same
+query/panel surface): (1) `loadClientEmailTemplatesOverview` gained
+`includeArchived` (default `false`); the Templates screen now hides
+ARCHIVED rows unless `?showArchived=1`, with a count of how many are
+hidden. (2) Real permanent delete, gated by the boundary above, with a
+client-side confirm and an inline plain-English refusal reason
+(`template.deleteBlockedReason`) when it fails — UI deliberately only
+surfaces Delete on the archived view as an extra safety checkpoint, not
+because the boundary itself cares about status. (3) New
+`isTemplateStatusUsableInSequence` is now the single source of truth
+`canApproveSequence` (`sequence-policy.ts`) itself calls — its three
+separate inline `status === "ARCHIVED"` checks were refactored to reuse it,
+**changing no external behaviour** (all 22 pre-existing sequence-policy
+tests pass unmodified). Every status tile and template row now shows an
+explicit "Usable" / "Not usable" pill.
+
+**Found and fixed one incidental defect** while proving the new archived
+view renders: `e2e/screen-walk.spec.ts`'s `walk()` computed `finalUrl` as
+pathname-only, silently dropping any query string even without a redirect
+— invisible until this row's `client-templates-archived` (`?showArchived=1`)
+entry became the first `SCREENS` row to carry one. Fixed to keep
+`pathname + search`. Both `screen-walk.spec.ts` edits (new screen, then
+this fix) are recorded in `.bidlow/FROZEN.json` via `freeze-specs.mjs
+--amend` — the frozen-specs gate in `_standards` blocked the first `gh pr
+create` until that was done; this is the correct, sanctioned way to touch
+that ledger from inside a client repo (no rule content was edited).
+
+**Red-first proven:** `git stash push` on the four implementation files
+(`template-policy.ts`, `sequence-policy.ts`, `mutations.ts`, `queries.ts`),
+kept the new test files in place, reran — 14 failures. `git stash pop`
+restored the implementation, reran green.
+
+Gates: lint 0, typecheck 0, 362 files / 3772 tests passed, build succeeded.
+
+**Nothing left open.** PR #464 (the feature) squash-merged to `origin/main`
+as `88164bc`; PR #465 (QUEUE.md close-out + `cycle-164.md`) squash-merged as
+`4151c48`. Both confirmed via `git ls-remote origin refs/heads/main`.
+`gh pr list --state open` is empty at session end.
+
+**One thing carried forward, not acted on (third session running into it
+now):** an untracked file `ODOUTREACH-PROJECT-INSTRUCTIONS.md` sits at the
+repo root — draft Claude Project instructions referencing
+`C:\Bidlowbusiness\_odoutreach-handover\`. Per the repository-boundary rule
+this does not belong in a client code repo. Cycle 163 flagged it and left it;
+this session flagged it again and left it — still nobody's row to act on. If
+a future session is tempted to just delete it, don't — either move it to
+`C:\Bidlowbusiness` or ask Greg; it may be in-progress work.
 
 ## Session 2026-08-30 - Relay cycle 162, queue row 127: found and fixed the real write path stripping QUEUE.md's UTF-8 BOM; PR #461 open, CI running, not yet merged.
 
