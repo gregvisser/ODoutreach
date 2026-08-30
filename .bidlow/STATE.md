@@ -1,6 +1,80 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 158) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 160) - Tier P (Client Production)**
+
+## Session 2026-08-30 - Relay cycle 160, queue row 129: the workspace-scoped Anthropic key Greg added at 18:48 UTC WORKS. Row 113/126's HTTP 400 is gone. Merged as `7daa9a4`.
+
+**Row 129, the actual assignment:** re-verify the AI features now that Greg
+replaced `ANTHROPIC_API_KEY` with a key created inside a NEW Anthropic
+workspace (`ODoutreach`, `wrkspc_01Nd6QgCKXdPbyFHV4regqTJ`) — scoped keys
+don't need the `anthropic-workspace-id` header row 126 exists to add.
+
+**Confirmed the restart before drawing any conclusion from a failure** (the
+row's own warning, after the supervisor's earlier near-miss of only checking
+a setting NAME): Azure activity log shows `Microsoft.Web/sites/config/write`
+at 18:49:02 UTC; the container's own boot log shows a fresh `next start` /
+`Ready in 299ms` at 18:58:23 UTC — after the write, so every call below ran
+against the new value.
+
+**Re-ran `review-campaign` and `draft-sequence` live against `bidlowai`**
+through the real screens (minted `next-auth` session for
+`greg@opensdoors.co.uk` + headless Playwright against the direct App Service
+origin — same established technique as cycles 106–157). **Both succeeded**
+with genuine Anthropic completions and real recorded spend, read from the
+production app log's own `costMicroUsd` fields: `draft-sequence` $0.004174
+(5 drafts written), `review-campaign` $0.004468 (scored 5/100 on an
+already-sent test sequence — advice only, no send/template state changed).
+**This is the first real AI spend this product has ever recorded.** One
+transient `anthropic_http_503: credential validation failed` on the very
+first post-restart call, self-resolved on retry ~35s later — a brand-new
+key/workspace propagation window, NOT a recurrence of the workspace-id 400.
+The three volume-gated features (send-times, title-messages, rep-performance)
+refused again for the same legitimate reason as cycle 157 — `bidlowai` has
+too little history — correct evidence-gate behaviour, not a defect.
+
+**CR-10 reconfirmed, unconditionally, because the key changed and this is the
+assertion that matters most:** `ai-feature-data-policy.ts` (the #420 file)
+is byte-for-byte unchanged on the deployed commit; `COVERED_PROCESSORS` is
+still a hardcoded empty set, so `classify-inbound-reply` still refuses every
+call before it reaches Anthropic, outcome code `no_processor_allowance`. **No
+data-protection incident.**
+
+**Row 126 (the `anthropic-workspace-id` header fix) is no longer a required
+fix** for this key — it authenticates and completes real calls with no header
+sent. Left untouched, still `TODO`, for whoever judges whether to build the
+header anyway as general robustness for a future non-scoped key.
+
+Full evidence: `docs/ops/AI-FEATURES-REVERIFY-2026-08-30-cycle160.md`. Docs +
+`QUEUE.md` only, no app code changed — `npm run lint` 0 problems, the
+`relay/queue-file-integrity.test.ts` suite (9/9) re-run since QUEUE.md was
+touched, full suite not re-run (consistent with prior docs-only rows, e.g.
+cycle 157's row 113 write-up).
+
+**Housekeeping carried forward from cycle 159, which was cut off
+mid-session** (its own log says: "RESTART REQUIRED - this watcher is running
+a STALE copy of its own script" — **inert until Greg runs `relay-start.cmd`
+by hand, not done by this session**): cycle 159 had already merged row 125's
+real fix as `11604ed` before being cut off, but left `cycle-158.md`'s "What
+it did" section incomplete-on-disk and never committed `cycle-159.md` at
+all. Both committed in this session's PR. Also deleted a spent one-off
+`poll-sync-replies.sh` helper (its own comment said "deleted after use";
+row 125's own out-of-hours-run proof is still NOT obtained — whoever next
+touches row 125 should re-check `gh run list --workflow=sync-replies.yml`
+for a `schedule` run after 18:44 UTC 30 August, per cycle 158's own note
+below, before assuming it's done).
+
+**One finding, not acted on (outside this row's scope):** an untracked
+`ODOUTREACH-PROJECT-INSTRUCTIONS.md` sits in the repo root — a
+Claude-Projects setup/handover document, not code. Per the repo-boundary
+rule it belongs in `C:\Bidlowbusiness`, not here. Left alone (never
+git-added, so it hasn't touched history); flagging for whoever grooms the
+queue next.
+
+**One-way doors:** none touched. No migration, no client data change, no
+real send from anyone, `bidlowai` included (the two successful AI calls
+wrote a template draft and a review row only — neither sends email).
+
+**Nothing here contradicts `.bidlow/PROJECT.json`.**
 
 ## Session 2026-08-30 - Relay cycle 158, queue row 125: reply sync now runs continuously; sending unchanged. PR sweep merged #454 (row 128) first. Row 125 work merged as `11604ed`; QUEUE.md left PARTIAL pending confirmation of a real out-of-hours workflow run — check that first if picking this up.
 
