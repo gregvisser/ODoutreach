@@ -464,6 +464,88 @@ describe("sendSequenceStepBatch — governance gate", () => {
       prismaMock.clientEmailSequenceStepSend.update,
     ).not.toHaveBeenCalled();
   });
+
+  it("names the missing unsubscribe rail instead of the generic re-plan message when composition loses send-readiness at dispatch (row 106)", async () => {
+    // Row 99/cycle-107 root cause reproduced: a null Client.defaultSenderEmail
+    // means the composed BODY {{unsubscribe_link}} is empty at dispatch time,
+    // even though the plan-time classifier's placeholder fallback ("[unsubscribe
+    // link — provided at dispatch]") let the row through as READY. The mailbox
+    // pool's address is a working mailto rail, so the earlier, coarser
+    // governance gate is satisfied and this recipient reaches the real
+    // dispatch-time composeSequenceEmail check.
+    mountSequence();
+    mountMailboxPool();
+    prismaMock.client.findUniqueOrThrow.mockResolvedValue({
+      id: "c1",
+      name: "Acme Corp",
+      status: "ONBOARDING",
+      defaultSenderEmail: null,
+      launchApprovedAt: null,
+      launchApprovalMode: null,
+      onboarding: {
+        formData: { senderCompanyName: "Acme", emailSignature: "Regards,\nAcme" },
+      },
+    } as never);
+    // Allowlisted recipient — governance for this row is not the thing under
+    // test; the point is that it clears governance and still gets blocked at
+    // composition time.
+    mountReadyRow("ada@bidlow.co.uk", "ss-lost-readiness");
+    // Pacing is a separate, unrelated gate that also runs inside the real
+    // transaction body this test exercises — switch it off so it can't hold
+    // the row back before composition is even reached.
+    const origPacing = process.env.MAILBOX_SEND_PACING;
+    process.env.MAILBOX_SEND_PACING = "false";
+
+    try {
+      const stepSendUpdate = vi.fn().mockResolvedValue({});
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            mailboxSendReservation: {
+              count: vi.fn().mockResolvedValue(0),
+              findFirst: vi.fn().mockResolvedValue(null),
+              create: vi.fn().mockResolvedValue({ id: "resv-1" }),
+              update: vi.fn().mockResolvedValue({}),
+            },
+            clientEmailSequenceStepSend: { update: stepSendUpdate },
+          }),
+      );
+
+      const result = await sendSequenceStepBatch({
+        staff,
+        clientId: "c1",
+        sequenceId: "seq-1",
+        category: "INTRODUCTION",
+        confirmationPhrase: "SEND INTRODUCTION",
+      });
+
+      expect(result.counts.queued).toBe(0);
+      expect(result.blocked).toHaveLength(1);
+
+      const reason = result.blocked[0].reason;
+      // The defect this row exists to fix: the generic message named no cause.
+      expect(reason).not.toBe(
+        "Composition lost send-readiness between planning and dispatch; re-plan.",
+      );
+      expect(reason.toLowerCase()).toContain("unsubscribe");
+      // Row 99 put the fix exactly here — the message must say so.
+      expect(reason).toContain("Mailboxes tab");
+      // Operator-facing: never the raw placeholder key.
+      expect(reason).not.toContain("{{");
+
+      // The guard itself must still refuse — this row changes the message,
+      // never whether the send is allowed.
+      expect(stepSendUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "ss-lost-readiness" },
+          data: expect.objectContaining({ status: "BLOCKED", blockedReason: reason }),
+        }),
+      );
+    } finally {
+      if (origPacing === undefined) delete process.env.MAILBOX_SEND_PACING;
+      else process.env.MAILBOX_SEND_PACING = origPacing;
+    }
+  });
 });
 
 function afterEachRestoreEnv(): void {

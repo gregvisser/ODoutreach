@@ -123,10 +123,15 @@ function humanizeBlockedReason(raw: string): string {
   // Once the client is live a "Review recipients" refresh clears it.
   if (lower.includes("blocked_client_inactive") || lower.includes("not active"))
     return "Checked before the client went live — refresh recipients";
+  // A reason that already names its own fix (e.g. "open Review recipients" /
+  // "Mailboxes tab") is more useful than the generic copy below — pass it
+  // through rather than flattening it back to a diagnosis with no next step.
   if (lower.includes("missing email") || lower.includes("no email"))
-    return "Recipient has no email address";
+    return raw.includes("Review recipients")
+      ? raw
+      : "Recipient has no email address";
   if (lower.includes("unsubscribe"))
-    return "Missing unsubscribe link";
+    return raw.includes("Mailboxes tab") ? raw : "Missing unsubscribe link";
   if (lower.includes("unknown placeholder"))
     return raw;
   if (lower.includes("allowlist") || lower.includes("governed_test"))
