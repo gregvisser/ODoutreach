@@ -1,6 +1,6 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 137) - Tier P (Client Production)**
+**Updated 2026-08-30 (cycle 143) - Tier P (Client Production)**
 
 ## Session 2026-08-30 - Relay cycle 137, queue row 110: gate re-confirmed not met, left TODO. No code changed.
 
@@ -7363,20 +7363,89 @@ Merged to `main` as `f462914` (PR #439, CI green on `verify` and `E2E
 client data touched; all changes are staff-facing copy/wording plus two new
 small, pure, tested humanizer modules.
 
+## Cycles 141-142 (not recorded here at the time — noted now so this file doesn't read as if nothing happened between 140 and 143)
+
+Between this file's last entry (cycle 140) and the session below (cycle 143),
+two more cycles ran and are fully on `main` but were never written up in
+STATE.md: **cycle 141** (row 113 — measured that `ANTHROPIC_API_KEY` is
+absent from the production App Service by name; closed `BLOCKED 141`, see
+`.bidlow/relay/QUEUE.md` row 113 and its own log) and **cycle 142** (row 116
+— App Service application/HTTP logs and Application Insights were confirmed
+dead, Sentry's characterisation was corrected to already-live, the two dead
+Azure channels were wired to Log Analytics with a red-first email-scrub on
+`src/lib/logger.ts` first; merged as `#442`; raised row 117 for the still-missing
+Launch-journey e2e coverage rather than fixing it inline). Full detail lives
+in `.bidlow/relay/log/cycle-141.md` and `cycle-142.md`, not repeated here.
+
+## Cycle 143 — row 110: Microsoft Graph reply-match gate re-checked, still not met; fixed a queue-order defect
+
+**What happened:** Row 110 (the Microsoft Graph half of the definitive reply
+match) is explicitly gated — it may not start until row 108's Gmail fix is
+merged, deployed, AND observed working in production. It is merged and
+deployed (`d083bfc`), but "observed working" has never been true: re-ran the
+repo's own `mailbox-credential-probe.yml` fresh (run `33307493700`,
+2026-08-30T10:52Z) rather than trusting cycles 136/137's earlier reading, and
+confirmed **zero Google mailboxes are `CONNECTED`** in production right now —
+both `greentheuk.com` Google mailboxes sit in the stranded/pending group, not
+the 27 that can send. Same structural block, reconfirmed rather than assumed.
+Left row 110 `TODO` with that evidence quoted in the status cell. No
+Microsoft Graph code, test, or send-path file was touched — nothing to build
+until a Gmail mailbox actually reconnects and sends (see row 84, `BLOCKED`,
+and the standing mailbox-credential-health record: this needs a human
+sign-in at each client plus a decision on publishing the Google OAuth app,
+which Greg has twice declined).
+
+**Queue-order defect found and fixed:** row 110's own text specifies the
+exact order the supervisor's six rows must stay in — `115, 111, 112, 113,
+116, then row 110's neighbours, with 114 near the end and the BLOCKED rows
+(92, 84, 48) at the very back`. On disk, row 113 (which resolved `BLOCKED
+141` during cycle 141) had drifted to sit at the very end, after the other
+BLOCKED rows, rather than between 112 and 116. Restored it to the specified
+position — content and status untouched, diff scoped to exactly rows 110 and
+113. All six of rows 111-116, including row 115's live send authorisation,
+confirmed present.
+
+**Also cleaned up:** cycle 142 was killed at the 45-minute deadline. Its
+actual row-116 work was already fully merged (`#442`) before the kill fired
+— `git diff` of the pre-kill commit against `origin/main` was empty — so
+nothing there needed redoing. What hadn't been committed was cycle 142's own
+timeout log; carried `cycle-142.md` forward into this session's commit,
+unedited, matching the pattern cycle 136 set for cycle 135's orphaned log.
+An unrelated untracked file, `ODOUTREACH-PROJECT-INSTRUCTIONS.md` (draft
+copy for a Claude Project's Instructions field, not application code or a
+relay artefact), was found sitting in the working tree and deliberately left
+untouched and uncommitted — it doesn't belong to this row and per the
+repository-boundary rule this kind of artefact belongs in
+`C:\Bidlowbusiness`, not the code repo.
+
+**Gates:** none applicable — no application code changed this session
+(queue-file and log edits only).
+
+**Nothing contradicts `PROJECT.json`.** No schema, no migration, no send, no
+client data touched.
+
 ## Pick up first, next session
 
 1. Check `.bidlow/relay/QUEUE.md` for the next open row — this file is
    maintained by an autonomous relay cycle and the queue is the live source
-   of truth for what's next, not this STATE.md entry.
-2. Finding 3's follow-up (above): thread a "has prior sync history despite a
-   missing spreadsheetId" signal into the Overview readiness panel so its
-   "Not configured" text can distinguish that case from genuinely-never-set-up,
-   the way the Do-not-contact tab now can.
-3. The reply-matcher leg-1 fix (from the cycle-130 entry earlier in this
-   file) — two provider-specific send-path changes, scoped as its own row —
-   was still not started as of cycle 133 and has not been revisited since;
-   confirm against the current queue before assuming it's still open.
-4. If a 5th chart series is ever genuinely needed, read
+   of truth for what's next, not this STATE.md entry. Per row 110's own
+   ordering rule, the intended priority is **115, 111, 112, 113, 116, then
+   110's neighbours (108/110), 114 near the end, BLOCKED rows (92, 84, 48) at
+   the very back** — the picker should now see that order correctly again
+   after this session's fix.
+2. Row 110 (Graph reply-matching) stays `TODO`, gated on a real Gmail send
+   succeeding through row 108's code path. That needs a Google mailbox to
+   actually reconnect — a human action (row 84, `BLOCKED`) — not another
+   measurement cycle. Re-running the probe more often will not change the
+   answer until that happens.
+3. Finding 3's follow-up (cycle 140, above): thread a "has prior sync history
+   despite a missing spreadsheetId" signal into the Overview readiness panel
+   so its "Not configured" text can distinguish that case from
+   genuinely-never-set-up, the way the Do-not-contact tab now can.
+4. The reply-matcher leg-1 fix (from the cycle-130 entry earlier in this
+   file) was the Gmail half and is now done (row 108, `DONE 135`); the
+   Microsoft Graph half is row 110, gated as above.
+5. If a 5th chart series is ever genuinely needed, read
    `docs/ops/CHART-SERIES-CONTRAST-2026-08-30.md` first — it names exactly
    what does and doesn't work and why, so the search isn't repeated from
    scratch.
