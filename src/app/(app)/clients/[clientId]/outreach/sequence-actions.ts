@@ -575,10 +575,17 @@ export async function sendClientEmailSequenceIntroductionAction(
   if (!sequenceId) {
     redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
   }
-  await requireClientAccess(staff, clientId);
-  await requireClientEmailSequenceMutator(staff, clientId);
 
+  // Row 109 — `requireClientAccess` / `requireClientEmailSequenceMutator` used to
+  // sit BEFORE this try/catch, so any failure there (a permission edge case, a
+  // transient DB hiccup) threw uncaught and the operator saw no outcome at all —
+  // the exact silence this row exists to close. Every check that can fail once
+  // `clientId` is known now runs inside the block that always redirects back
+  // with a named reason.
   try {
+    await requireClientAccess(staff, clientId);
+    await requireClientEmailSequenceMutator(staff, clientId);
+
     const result = await sendSequenceIntroductionBatch({
       staff,
       clientId,
@@ -679,14 +686,17 @@ export async function sendClientEmailSequenceStepAction(
       sequenceId,
     );
   }
-  await requireClientAccess(staff, clientId);
-  await requireClientEmailSequenceMutator(staff, clientId);
-
   const categoryLabel = category === "INTRODUCTION"
     ? "introduction"
     : category.toLowerCase().replace(/_/g, " ");
 
+  // Row 109 — same fix as the introduction action above: the access/mutator
+  // checks moved inside the try/catch so a failure here always redirects back
+  // with a named reason instead of throwing uncaught.
   try {
+    await requireClientAccess(staff, clientId);
+    await requireClientEmailSequenceMutator(staff, clientId);
+
     const result = await sendSequenceStepBatch({
       staff,
       clientId,
