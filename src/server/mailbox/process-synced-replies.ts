@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { emailDomain, isInternalMail } from "@/lib/inbox/internal-mail";
-import { normalizeEmail } from "@/lib/normalize";
+import { canonicalizeEmailForMatching, normalizeEmail } from "@/lib/normalize";
 import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
@@ -36,6 +36,16 @@ import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
  *      `rfc822MessageId = null` here stops unrelated thread replies (with a
  *      different subject) from being mislinked to modern Gmail sends.
  *   4. If nothing matches, skip — don't create unlinked noise.
+ *
+ * Legs 2 and 3 compare the recipient CANONICALLY (`canonicalizeEmailForMatching`
+ * in @/lib/normalize), not by a literal `toEmail` equality in the database
+ * query — row 100: Gmail drops a `+tag` alias when a human hits Reply, so a
+ * send to `user+tag@domain` and a reply `From: user@domain` are the same
+ * mailbox and must be candidates for the same match. Every other constraint
+ * (client, mailbox identity, sentAt <= received, status, and leg 2's subject
+ * equality) still narrows the query itself; only the recipient comparison
+ * moved from SQL to an in-code canonical check on the narrowed result, so
+ * fetching remains bounded and no existing safety constraint was dropped.
  *
  * Idempotent: skips if an InboundReply already exists for this providerMessageId.
  */
@@ -178,18 +188,21 @@ export async function processSyncedMessageForReply(input: {
   if (!outbound && looksLikeReplyBySubject) {
     const baseSubject = stripReplyPrefixes(subject);
     if (baseSubject.length > 0) {
-      outbound = await prisma.outboundEmail.findFirst({
+      const candidates = await prisma.outboundEmail.findMany({
         where: {
           clientId: input.clientId,
           mailboxIdentityId: input.mailboxIdentityId,
-          toEmail: from,
           sentAt: { not: null, lte: input.receivedAt },
           status: { in: ["SENT", "DELIVERED", "REPLIED"] },
           subject: { equals: baseSubject, mode: "insensitive" },
         },
         orderBy: { sentAt: "desc" },
-        select: { id: true, contactId: true, status: true },
+        select: { id: true, contactId: true, status: true, toEmail: true },
       });
+      outbound =
+        candidates.find(
+          (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
+        ) ?? null;
       matchMethod = "BY_CONTACT_EMAIL";
     }
   }
@@ -201,18 +214,21 @@ export async function processSyncedMessageForReply(input: {
   //    loosely matched by an unrelated thread from the same contact (the
   //    subject-anchored leg above is the safe path for stamped sends).
   if (!outbound) {
-    outbound = await prisma.outboundEmail.findFirst({
+    const candidates = await prisma.outboundEmail.findMany({
       where: {
         clientId: input.clientId,
         mailboxIdentityId: input.mailboxIdentityId,
-        toEmail: from,
         sentAt: { not: null, lte: input.receivedAt },
         status: { in: ["SENT", "DELIVERED", "REPLIED"] },
         rfc822MessageId: null,
       },
       orderBy: { sentAt: "desc" },
-      select: { id: true, contactId: true, status: true },
+      select: { id: true, contactId: true, status: true, toEmail: true },
     });
+    outbound =
+      candidates.find(
+        (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
+      ) ?? null;
     matchMethod = "BY_CONTACT_EMAIL";
   }
 

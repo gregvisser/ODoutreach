@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { suppressionDomainCandidates } from "./normalize";
+import { canonicalizeEmailForMatching, suppressionDomainCandidates } from "./normalize";
+
+describe("canonicalizeEmailForMatching", () => {
+  it("strips a plus-tag from the local part", () => {
+    expect(canonicalizeEmailForMatching("greg.visser64+cycle109@gmail.com")).toBe(
+      "greg.visser64@gmail.com",
+    );
+  });
+
+  it("treats the bare address and its plus-alias as identical", () => {
+    expect(canonicalizeEmailForMatching("user@example.com")).toBe(
+      canonicalizeEmailForMatching("user+anything@example.com"),
+    );
+  });
+
+  it("normalizes case and whitespace first", () => {
+    expect(canonicalizeEmailForMatching("  USER+Tag@Example.COM  ")).toBe("user@example.com");
+  });
+
+  it("leaves an address with no plus tag unchanged (besides normalizeEmail)", () => {
+    expect(canonicalizeEmailForMatching("user@example.com")).toBe("user@example.com");
+  });
+
+  it("does not touch anything after the @ — no accidental domain stripping", () => {
+    expect(canonicalizeEmailForMatching("user@sub+domain.example.com")).toBe(
+      "user@sub+domain.example.com",
+    );
+  });
+});
 
 describe("suppressionDomainCandidates", () => {
   it("returns the apex itself for a two-label domain", () => {

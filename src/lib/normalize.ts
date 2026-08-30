@@ -9,6 +9,28 @@ export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * Canonical identity for reply-MATCHING only: `normalizeEmail` plus stripping
+ * a `+tag` suffix from the local part. Gmail (and other providers using the
+ * same convention) drop the alias when a human hits Reply, so an outbound
+ * sent to `user+tag@domain` and a reply arriving `From: user@domain` must be
+ * recognised as the same mailbox or a plus-aliased send can never be matched
+ * back to its own reply (row 100 — a real reply was filed against an older,
+ * bare-address send instead of the one it actually replied to).
+ *
+ * Deliberately NOT used for suppression, unsubscribe or contact de-duplication
+ * — those stay on the literal address on purpose, per RULING 3 in this file's
+ * neighbouring domain-candidate logic: collapsing aliases there is a business
+ * decision, not a string-matching one.
+ */
+export function canonicalizeEmailForMatching(raw: string): string {
+  const n = normalizeEmail(raw);
+  const at = n.indexOf("@");
+  if (at < 0) return n;
+  const local = n.slice(0, at).split("+")[0];
+  return `${local}${n.slice(at)}`;
+}
+
 export function isValidEmailFormat(email: string): boolean {
   return EMAIL_RE.test(normalizeEmail(email));
 }

@@ -24,7 +24,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
   inboundReply: { findFirst: vi.fn(), create: vi.fn() },
-  outboundEmail: { findFirst: vi.fn(), update: vi.fn() },
+  outboundEmail: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
 }));
 
 const suppressReplyOptOutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -32,6 +32,12 @@ const suppressReplyOptOutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undef
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/normalize", () => ({
   normalizeEmail: (e: string) => e.toLowerCase().trim(),
+  canonicalizeEmailForMatching: (e: string) => {
+    const n = e.toLowerCase().trim();
+    const at = n.indexOf("@");
+    if (at < 0) return n;
+    return `${n.slice(0, at).split("+")[0]}${n.slice(at)}`;
+  },
 }));
 vi.mock("@/server/email/outbound/lifecycle", () => ({
   canApplyReplyMilestone: () => false,
@@ -60,11 +66,15 @@ beforeEach(() => {
   suppressReplyOptOutMock.mockClear();
   prismaMock.inboundReply.findFirst.mockResolvedValue(null);
   prismaMock.inboundReply.create.mockResolvedValue({ id: "reply-1" });
-  prismaMock.outboundEmail.findFirst.mockResolvedValue({
-    id: "outbound-1",
-    contactId: "contact-1",
-    status: "SENT",
-  });
+  prismaMock.outboundEmail.findFirst.mockResolvedValue(null);
+  prismaMock.outboundEmail.findMany.mockResolvedValue([
+    {
+      id: "outbound-1",
+      contactId: "contact-1",
+      status: "SENT",
+      toEmail: "sam@example.com",
+    },
+  ]);
 });
 
 const baseInput = {
