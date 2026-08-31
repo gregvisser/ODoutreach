@@ -70,6 +70,30 @@ under `.bidlow/relay/log/` and finding `cycle-199.md`. Committed alongside
 this row's own changes so the test suite is genuinely green, not because row
 137 required it.
 
+## A real bug CI caught, and the fix
+
+The first push (PR #516) failed CI's `verify` job on
+`relay/stale-watcher-visible.test.ts`, which dot-sources a **copy** of
+`relay-watch.ps1` from a shallow scratch directory to exercise the
+stale-watcher check in isolation. At that shallow depth, the naive
+three-level `Split-Path` walk used to compute `$ProjectsRoot` genuinely runs
+out and returns an empty string, and `Join-Path` refuses an empty `-Path`
+under `$ErrorActionPreference = "Stop"` — which crashed the **entire script
+load**, not just deck regeneration, because that computation sat at the top
+of the file and ran unconditionally.
+
+Fixed by wrapping the walk in try/catch and falling back to `$RepoRoot`
+itself if it produces an empty path or throws. The fallback deck paths
+simply will not exist in that shape, and `Invoke-DeckRegeneration`'s own
+`Test-Path` guard already turns "does not exist" into a normal, logged
+no-op — so the fallback is safe by construction, not just convenient.
+Reproduced locally with a scratch copy of the script one level under a
+drive root (`C:\rwsc\relay-watch.ps1`, the same shape the CI harness hits)
+before the fix threw and after the fix loaded cleanly with
+`$ProjectsRoot=[C:\rwsc]`. Re-ran `relay/stale-watcher-visible.test.ts`
+directly (14/14 passed) and the full suite (369 files / 3827 tests, all
+green) after the fix.
+
 ## Red-first proof
 
 The new self-test section calls a function, `Invoke-DeckRegeneration`, that

@@ -74,7 +74,23 @@ $LogDir     = Join-Path $RelayDir "log"
 # and that default is exactly what the brief says to stop relying on.
 # $DeckScriptPath / $DeckOutputPath point at the one named exception to "no
 # cycle writes outside its own repository" - see Invoke-DeckRegeneration below.
-$ProjectsRoot   = Split-Path (Split-Path (Split-Path $RepoRoot -Parent) -Parent) -Parent
+#
+# THIS MUST NEVER THROW AT LOAD TIME. relay-selftest.ps1's own harnesses (see
+# relay/stale-watcher-visible.test.ts) dot-source a COPY of this file from a
+# shallow scratch directory that has no three real parents, so Split-Path
+# legitimately runs out and returns "" - and Join-Path refuses an empty Path
+# under $ErrorActionPreference = "Stop", which used to crash the ENTIRE script
+# load, not just deck regeneration, breaking every test that loads this file.
+# Falling back to $RepoRoot itself keeps the load safe in that shape; the
+# fallback deck paths simply will not exist there, and
+# Invoke-DeckRegeneration's own Test-Path guard already turns "does not
+# exist" into a normal, logged no-op rather than a crash.
+$ProjectsRoot = try {
+    $walked = Split-Path (Split-Path (Split-Path $RepoRoot -Parent) -Parent) -Parent
+    if ([string]::IsNullOrEmpty($walked)) { $RepoRoot } else { $walked }
+} catch {
+    $RepoRoot
+}
 $DeckScriptPath = Join-Path $ProjectsRoot "_standards\bidlow-deck.mjs"
 $DeckOutputPath = Join-Path $ProjectsRoot "bidlow-deck.html"
 
