@@ -1,6 +1,58 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 192, DONE) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 194, DONE) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 194, queue row 134 (housekeeping only, no code)
+
+Row 134 (Greg's four questions) was **already fully done** — answered by
+cycle 192 (`dab1019`, PR #505) and re-verified by cycle 193 (`06171af`/
+`e59bf20`, PR #507/#508), all three confirmed as genuine ancestors of
+`origin/main` via `git merge-base --is-ancestor`. This session did NOT
+redo the investigation. It:
+
+1. Committed cycle 193's leftover full log (`.bidlow/relay/log/cycle-193.md`)
+   which had only landed as an 88-line stub in the prior merge.
+2. Recorded in `.bidlow/relay/RESTART-REQUIRED.md` that the stale-watcher
+   reopen loop (documented there since cycle 184/190 for row 143) is **not
+   confined to row 143** — it hit row 134 too (reopened 3 times: cycles
+   192→193→194).
+3. Found row 134 fixed live, mid-session, by a **concurrent editor**
+   ("Cowork" — same process credited in cycle 193's log for a prior edit to
+   this shared `QUEUE.md`), which applied row 143's own decoy-stamp
+   technique directly: status now reads `DONE 192 - ... STAMPED 192 ON
+   PURPOSE ... Do not restamp it. Do not redo it.` — stamping the cycle
+   that did the real work (not the closing cycle) permanently exempts the
+   row from the stale guard's `DONE <just-ran-cycle>` match, independent of
+   whether the watcher is ever restarted. Left it exactly as found.
+
+Merged as `8b3f5fd` (PR #509), confirmed via `git ls-remote origin
+refs/heads/main`. Gates: lint 0, typecheck 0 (no `src/`/`prisma/`/test file
+touched — docs/queue-log only).
+
+**Half-done / not started:** nothing from row 134 itself. Rows **146-149**
+(raised by cycle 192 from this row's findings — Universe→sequence CTA link,
+flip `SEND_DISPATCH_RECHECK_ENABLED`, fix 12 training-content drift defects,
+build a training-only AI ask-box) are all still `TODO`, correctly not
+started by this row.
+
+**Decision, not a one-way door:** none made this session — pure docs/log
+housekeeping.
+
+**Contradicts `.bidlow/PROJECT.json`?** Not checked directly, but no
+finding here is new versus what cycles 192/193 already established.
+
+**STANDING FACT, unresolved across many sessions — next session should
+lead with this:** `relay-watch.ps1` restart still has not happened. Every
+cycle log through 194 shows `Loaded at launch: 51AF85ED01BF` vs on-disk
+`FFDB8B83837A` (last real fix: `b0a9052`, cycle 184).
+`.bidlow/relay/row-reopen-counts.json` still does not exist, proving the
+loop-breaker code has never executed live. Only Greg running
+`relay-start.cmd` in the ODoutreach folder fixes this — no cycle can do it
+from inside a queue row. Until then, expect ANY closed row to be capable of
+reopening, and check `.bidlow/relay/RESTART-REQUIRED.md` first before
+redoing investigation on a reopened row.
+
+---
 
 ## Session 2026-08-31 - Relay cycle 192, queue row 134 (investigation-only, build nothing): answered Greg's four questions from code/screens. DONE and merged to `main` as `dab1019` (PR #505, squash), confirmed via `git ls-remote origin refs/heads/main`.
 
