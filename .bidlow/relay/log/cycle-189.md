@@ -101,9 +101,25 @@ watcher footer to `docs/row143-cycle187-sweep` (this branch, same as open PR
 squash-merge; this qualifies as docs/`.bidlow` record content, no schema, no
 send, no client data - none of the three things that require asking first).
 
-Merge commit hash and `git ls-remote` confirmation: **filled in immediately
-below, after the merge actually completed** - not guessed ahead of it, which
-is the exact mistake this cycle is correcting.
+**Merge commit hash: `eb3403512c0f4e69091172d5f5cc83bccbba06f1`.** Confirmed
+with `git ls-remote origin refs/heads/main` -> `eb3403512c0f4e69091172d5f5cc83bccbba06f1 refs/heads/main`,
+matching exactly. `gh pr view 498` confirms `state: MERGED, mergedAt:
+2026-08-31T12:12:47Z`. This is filled in after the merge actually completed,
+not guessed ahead of it - the exact mistake this cycle is correcting.
+
+`gh pr merge --delete-branch` deleted the remote branch but then failed
+locally on `Unable to create '.git/packed-refs.lock': File exists` - a
+0-byte stale lock file, no `git.exe` process holding it (`tasklist /FI
+"IMAGENAME eq git.exe"` returned no matches). Removed the stale lock,
+deleted the local branch, checked out `main`, and fast-forwarded to
+`eb34035` - confirmed by `git log --oneline -3` showing `eb34035` at HEAD as
+the top commit, matching the PR merge. Not the same defect class as the
+self-test's stale-index-lock case (different file, no live process, no
+special handling needed - a plain stale-lock cleanup was correct here).
+
+Re-ran both gates fresh against merged `main`: `relay-selftest.ps1` ->
+**SELF-TEST PASSED - 91 checks**; `npx vitest run
+relay/queue-file-integrity.test.ts` -> **9/9 PASS**.
 
 ## Scope discipline
 
