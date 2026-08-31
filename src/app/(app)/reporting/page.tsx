@@ -11,6 +11,7 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  formatBounceRate,
   formatRate,
   formatTrackedMetric,
 } from "@/lib/reports/outreach-metrics";
@@ -217,7 +218,11 @@ export default async function ReportingPage({ searchParams }: Props) {
             <MetricItem
               label="Bounces"
               value={m.bounces.toLocaleString()}
-              sub={`Rate: ${formatRate(m.bounceRate)}`}
+              sub={
+                m.sent === 0
+                  ? formatBounceRate(m.bounceRate, m.sent)
+                  : `Rate: ${formatBounceRate(m.bounceRate, m.sent)}`
+              }
               tone={m.bounces > 0 ? "error" : undefined}
               href={detailHref("bounces")}
             />
