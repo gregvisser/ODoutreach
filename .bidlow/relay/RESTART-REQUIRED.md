@@ -240,3 +240,40 @@ This is not a reason to keep re-deriving the diagnosis. A cycle that meets
 row 143 reopened again should read this section, confirm the hash line still
 shows `51AF85ED01BF`, and close it straight back to DONE citing this file —
 not repeat cycles 185-190's investigation from scratch.
+
+## The loop is not confined to row 143 — row 134 was hit too, and fixed the same way
+
+Added 2026-08-31 by cycle 194. Row 143 was never special; it is simply the
+row this defect was first diagnosed against. Any row this stale process
+closes by a real merge can be reopened the same way, and row 134 proved it:
+cycle 192 answered it in full and merged it (`dab1019`, PR #505); cycle 193
+met it reopened, verified the merge was genuine rather than redoing the
+investigation, and closed it again (`e59bf20`, PR #507/#508); cycle 194 met
+it reopened a THIRD time. `git merge-base --is-ancestor` confirmed all three
+of `dab1019`, `06171af` and `e59bf20` are genuine ancestors of `origin/main`
+— the work was never actually missing.
+`.bidlow/relay/row-reopen-counts.json` still does not exist on disk, which is
+further proof (on top of the unchanged `51AF85ED01BF` stamp) that the
+loop-breaker code from `b0a9052` has never run in the live process — it
+cannot persist a count it never executes.
+
+**While cycle 194 was investigating, a concurrent editor (the same "Cowork"
+process credited in cycle 193's own log for a prior edit to this shared file)
+applied row 143's own decoy-stamp technique to row 134 directly: the status
+cell now reads `DONE 192 - ... STAMPED 192 ON PURPOSE`, i.e. the cycle that
+actually did the work rather than whichever cycle most recently closed it.**
+That works because the live (stale) guard's branch check only fires against
+a status matching `DONE` followed by the number of the cycle that JUST ran —
+stamping an older cycle number permanently exempts the row from that check,
+independent of whether the watcher ever restarts. Cycle 194 left that edit
+exactly as found, per its own explicit "do not restamp it, do not redo it."
+
+**The general rule this establishes:** any row reopened after this stamp
+still reads `51AF85ED01BF` should be treated the same way rows 134 and 143
+already are — check `main` first per this project's own CLAUDE.md, and if
+the merge commit is a genuine ancestor of `origin/main`, close it straight
+back (using the decoy-stamp technique above if the row keeps re-reopening)
+rather than re-running the row's own investigation. Redoing real work every
+time the stale process reopens a closed row is the actual cost of not
+restarting; it is not free, and it will keep landing on whichever rows this
+process happens to touch next until the restart happens.
