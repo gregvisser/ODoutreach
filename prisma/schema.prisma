@@ -1868,6 +1868,15 @@ enum AiFeature {
   /// else — it changes no template, no campaign and no targeting, and the job
   /// titles are grouped by fixed rules in code rather than by the model.
   TITLE_MESSAGE_FIT
+  /// Answering a staff member's "how do I..." question from the app-shell
+  /// search bar. Billed to the `bidlowai` workspace, not to whichever client a
+  /// staff member happens to be looking at — this is an internal ops tool, not
+  /// client work. Retrieval is structurally confined to the static training
+  /// content (`src/lib/training/modules.ts`, `STAFF_VIDEO_SCRIPTS`,
+  /// `STAFF_HANDOVER_CHECKLIST`, `staff-handover-guide.ts`): the model is only
+  /// ever shown the handful of chunks a lexical search already matched, so it
+  /// has no client, prospect or reply data to leak even if it tried.
+  TRAINING_ASSISTANT
 }
 
 /// How an AI call ended.
@@ -2135,4 +2144,45 @@ model AiTitleMessageReview {
 
   @@index([clientId, createdAt])
   @@index([requestedByStaffUserId])
+}
+
+/// Why the app-shell "how do I..." search bar could not answer a staff
+/// question. This is the honest backlog of what the training content does not
+/// cover — see `TrainingAssistantUnansweredQuestion` below.
+enum TrainingAssistantUnansweredReason {
+  /// The lexical search over the training content found nothing relevant
+  /// enough to even ask the model — no call was made, so nothing was billed.
+  NO_MATCHING_CONTENT
+  /// Matching content was found and shown to the model, but it said it could
+  /// not answer from what it was given rather than guessing.
+  MODEL_UNSURE
+  /// `runMeteredAiCall` refused the call outright (feature switched off, no
+  /// API key, no rate for the model) — see `AiCallStatus.REFUSED`.
+  AI_CALL_REFUSED
+  /// The call was attempted and failed (timeout, provider error).
+  AI_CALL_ERROR
+}
+
+/// One staff question the app-shell search bar could not answer, logged
+/// regardless of whether the asker chose to raise a support ticket for it.
+/// Never joined to a client, a prospect or a reply — this feature only ever
+/// reads static training content, so there is nothing tenant-scoped to record.
+model TrainingAssistantUnansweredQuestion {
+  id     String                            @id @default(cuid())
+  /// The staff member's question, verbatim.
+  question String                          @db.Text
+  reason   TrainingAssistantUnansweredReason
+  /// Snapshot of the asker's email at ask time — survives staff deletion, same
+  /// convention as `SupportTicket.reporterEmail`.
+  askedByEmail String
+  /// Set once the asker raises a support ticket for this question. A plain id
+  /// rather than a Prisma relation — same convention as
+  /// `AiUsageEvent.subjectId`, deliberately loose because a ticket and an
+  /// unanswered question are two independent records with independent
+  /// lifecycles.
+  raisedSupportTicketId String?
+  createdAt             DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([raisedSupportTicketId])
 }

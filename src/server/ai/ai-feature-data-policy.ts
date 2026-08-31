@@ -69,6 +69,12 @@ export const AI_FEATURE_DATA_POLICY: Readonly<Record<AiFeature, AiFeatureDataPol
     whatItSends:
       "Aggregated send-and-reply counts by job-title family and campaign for one client, computed before the model is called — no prospect is named or quoted.",
   },
+  TRAINING_ASSISTANT: {
+    vendor: "ANTHROPIC",
+    carriesPersonalData: false,
+    whatItSends:
+      "A staff member's typed question, plus the handful of static training-content passages a lexical search already matched — no client, prospect or reply data is ever read, let alone sent.",
+  },
 };
 
 /**

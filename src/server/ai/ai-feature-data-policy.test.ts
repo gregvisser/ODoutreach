@@ -7,10 +7,10 @@ import {
 } from "./ai-feature-data-policy";
 
 /**
- * The six features shipped in row 80 (28-29 August). If a seventh is added
- * without an entry here, `AI_FEATURE_DATA_POLICY`'s `Record<AiFeature, ...>`
- * type fails to compile — this list is a readable mirror of that guarantee,
- * not a substitute for it.
+ * The six features shipped in row 80 (28-29 August) plus TRAINING_ASSISTANT
+ * (row 149, 31 August). If an eighth is added without an entry here,
+ * `AI_FEATURE_DATA_POLICY`'s `Record<AiFeature, ...>` type fails to compile —
+ * this list is a readable mirror of that guarantee, not a substitute for it.
  */
 const ALL_FEATURES = [
   "REPLY_CLASSIFICATION",
@@ -19,6 +19,7 @@ const ALL_FEATURES = [
   "SEND_TIME_ADVICE",
   "REP_PERFORMANCE",
   "TITLE_MESSAGE_FIT",
+  "TRAINING_ASSISTANT",
 ] as const;
 
 describe("AI_FEATURE_DATA_POLICY", () => {
@@ -33,7 +34,7 @@ describe("AI_FEATURE_DATA_POLICY", () => {
     expect(personalDataFeatures).toEqual(["REPLY_CLASSIFICATION"]);
   });
 
-  it("declares the other five as carrying aggregated statistics or the client's own content, not a prospect's", () => {
+  it("declares the other six as carrying aggregated statistics or the client's own content, not a prospect's", () => {
     const nonPersonalDataFeatures = ALL_FEATURES.filter(
       (feature) => feature !== "REPLY_CLASSIFICATION",
     );
@@ -60,7 +61,7 @@ describe("isPersonalDataUncovered", () => {
     expect(isPersonalDataUncovered("REPLY_CLASSIFICATION")).toBe(true);
   });
 
-  it("is false for the other five features today", () => {
+  it("is false for the other six features today", () => {
     const nonPersonalDataFeatures = ALL_FEATURES.filter(
       (feature) => feature !== "REPLY_CLASSIFICATION",
     );

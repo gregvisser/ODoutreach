@@ -77,6 +77,15 @@ export const AI_MODELS = {
    * is complete before the model sees it.
    */
   TITLE_MESSAGE_FIT: "claude-haiku-4-5-20251001",
+  /**
+   * The app-shell "how do I..." search bar. The SAME model a seventh time, and
+   * the billing reason has not changed: the one rate in this table is still
+   * flagged unverified, and a second model would put a second unchecked price
+   * on the same invoice. The work is answering from a handful of short
+   * training-content passages a lexical search already retrieved — well within
+   * this model, and cheap is right for a call that can fire from any screen.
+   */
+  TRAINING_ASSISTANT: "claude-haiku-4-5-20251001",
 } as const;
 
 export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];

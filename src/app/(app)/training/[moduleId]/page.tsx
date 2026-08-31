@@ -218,7 +218,8 @@ export default async function TrainingModulePage({ params }: Props) {
               {mod.steps.map((s, i) => (
                 <li
                   key={s.title}
-                  className="rounded-md border border-border/60 bg-background p-3"
+                  id={`step-${String(i)}`}
+                  className="scroll-mt-24 rounded-md border border-border/60 bg-background p-3"
                 >
                   <div className="flex items-start gap-3">
                     <span
@@ -264,8 +265,10 @@ export default async function TrainingModulePage({ params }: Props) {
           </CardHeader>
           <CardContent>
             <ul className="list-disc space-y-1.5 pl-5 text-sm text-foreground/90">
-              {mod.commonMistakes.map((b) => (
-                <li key={b}>{b}</li>
+              {mod.commonMistakes.map((b, i) => (
+                <li key={b} id={`mistake-${String(i)}`} className="scroll-mt-24">
+                  {b}
+                </li>
               ))}
             </ul>
           </CardContent>
