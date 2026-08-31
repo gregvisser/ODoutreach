@@ -2305,6 +2305,38 @@ margin. Whatever you build this cycle, prove it FIRES - not that it exists.
     return $true
 }
 
+# ---------------------------------------------------------------------------
+# Get-SelfTestStartupDecision - what the startup gate does with the self-test's
+# own exit code. Pulled out as a pure function, exactly like the git-matching
+# functions above, so relay-selftest.ps1 can drive it directly instead of only
+# being able to prove it by actually starting or refusing to start the relay.
+#
+# Exit code 1 (SELF-TEST FAILED) is a real, proven failure of the safety
+# machinery itself - refuse to start, unchanged from before this row.
+#
+# Exit code 2 (SELF-TEST HARNESS ERROR, see relay-selftest.ps1) means the test
+# code crashed before it could finish asking its question - on 31 August this
+# was git's own progress text on stderr being turned into a terminating error
+# under $ErrorActionPreference = "Stop". That is not evidence the safety
+# machinery is broken, so the relay starts anyway - but loudly: the caller
+# must still alert and write an artefact, never start silently as if nothing
+# happened, or the harness crash rots unnoticed exactly like the six other
+# things QUEUE.md already records as built, wired, and never firing.
+#
+# Exit code 0 is a clean pass - start, no alert needed.
+# ---------------------------------------------------------------------------
+function Get-SelfTestStartupDecision {
+    param([int]$ExitCode)
+
+    if ($ExitCode -eq 0) {
+        return [PSCustomObject]@{ ShouldStart = $true;  Severity = "ok";            AlertNeeded = $false }
+    }
+    if ($ExitCode -eq 2) {
+        return [PSCustomObject]@{ ShouldStart = $true;  Severity = "harness-error"; AlertNeeded = $true }
+    }
+    return [PSCustomObject]@{ ShouldStart = $false; Severity = "failed"; AlertNeeded = $true }
+}
+
 # ===========================================================================
 # MAIN
 # ===========================================================================
@@ -2363,7 +2395,9 @@ try {
 }
 $selfTestOutput = & $host_exe -NoProfile -ExecutionPolicy Bypass -File $selfTestScript 2>&1 | Out-String
 Write-Host $selfTestOutput
-if ($LASTEXITCODE -ne 0) {
+$selfTestDecision = Get-SelfTestStartupDecision -ExitCode $LASTEXITCODE
+
+if (-not $selfTestDecision.ShouldStart) {
     @(
         "# The relay refused to start"
         ""
@@ -2388,6 +2422,43 @@ $($selfTestOutput.Trim())
 
     Write-Line "Self-test FAILED. Refusing to run. Details written to $selfTestFailed"
     exit 1
+}
+
+if ($selfTestDecision.Severity -eq "harness-error") {
+    # The test code itself crashed before it could finish - see
+    # relay-selftest.ps1 for why that is kept distinct from a real failure.
+    # No check actually failed, so the relay starts anyway, but this must not
+    # go by silently: write the same artefact shape used for a real refusal
+    # (so it's easy to find) and send a clearly-different-worded alert, so a
+    # human still sees it without it costing a stopped morning.
+    $selfTestHarnessError = Join-Path $RelayDir "SELFTEST-HARNESS-ERROR.md"
+    @(
+        "# The relay started, but its self-test harness crashed"
+        ""
+        "Written $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')."
+        ""
+        "No check in the self-test failed. The test code itself threw before it"
+        "could finish, most likely a platform difference between this machine and"
+        "CI. That is not evidence the safety machinery is broken, so the relay"
+        "started and took work as normal - but a human should still read this,"
+        "because part of the self-test did not run and so proved nothing."
+        ""
+        "``````"
+        $selfTestOutput.Trim()
+        "``````"
+    ) | Set-Content -Path $selfTestHarnessError -Encoding utf8
+
+    Send-RelayAlert "ODoutreach relay STARTED - self-test harness crashed (not a real failure)" @"
+The relay started and is taking work as normal. Its self-test harness crashed
+before finishing, but no check actually failed - that is a bug in the test
+code, not in the safety machinery it checks, so the relay did not stop for it.
+
+Details are in $selfTestHarnessError on the machine, and below.
+
+$($selfTestOutput.Trim())
+"@ | Out-Null
+
+    Write-Line "Self-test harness crashed (no check failed) - starting anyway. Details written to $selfTestHarnessError"
 }
 
 # ---------------------------------------------------------------------------
