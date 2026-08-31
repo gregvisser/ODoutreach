@@ -149,3 +149,23 @@ the acceptance test for a restart has not appeared in any cycle log since
 follow in a same-cycle docs-only update, per this project's established
 pattern for citing a hash that only exists after the PR containing this very
 log merges.
+
+## CI caught something this log's own drafting nearly shipped
+
+The first push of this cycle's PR failed CI: `relay/queue-file-integrity.
+test.ts` flagged row 143's own status cell as unreadable. The cause was my
+own first draft of the `DONE 186` note - it quoted the command
+`` `git ls-remote --heads origin | grep -i 143` `` verbatim, with spaces
+around the pipe. `QUEUE.md`'s parser splits a row on the LAST `" | "` in the
+line, so that literal pipe inside my own status text was read as the real
+column boundary, truncating everything before it out of the status and
+leaving a fragment that starts mid-sentence and matches none of the six
+allowed status words - exactly the failure mode row 127's queue-BOM fix and
+this file's own header comment both warn about, self-inflicted this time
+rather than found in existing content. Fixed by rewording to avoid a spaced
+pipe (`` `git ls-remote --heads origin` filtered for "143" ``), re-ran
+`relay/queue-file-integrity.test.ts` locally - 9/9 green - then `lint` and
+`typecheck` again, and pushed the fix as a follow-up commit on the same
+branch before merging. A genuine, if minor, instance of this project's own
+worst defect class (something written that would have broken silently) being
+caught by CI rather than shipped - the gate did its job.
