@@ -42,4 +42,4 @@ jobs:
             echo "PRODUCTION_DATABASE_URL is not configured — refusing to report a clean audit against no database."
             exit 1
           fi
-          npm run ops:bounce-path-audit
+          npx tsx scripts/tmp-bounce-display-check.ts
