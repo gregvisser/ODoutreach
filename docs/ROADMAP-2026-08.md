@@ -84,14 +84,14 @@ protocol sense it means DMARC alignment (From: header vs DKIM `d=` or SPF
 Return-Path). In the everyday sense people use it for links not matching the sender.
 Only the first is an authentication failure.
 
-### Deliverability flags currently OFF
+### Deliverability flags — current state (updated 2026-08-31, row 147)
 
-All five require an explicit opt-in value, so all default to inactive:
+Each requires an explicit opt-in value; unset means inactive.
 
 ```
 OUTREACH_REQUIRE_ALIGNED_LINK_DOMAIN    off   ← issue C, hard block
-MAILBOX_WARMUP_RAMP                     off   ← issue B, the volume ramp
-SEND_DISPATCH_RECHECK_ENABLED           off   ← cooldown + bounce backstop
+MAILBOX_WARMUP_RAMP                     on    ← issue B, the volume ramp
+SEND_DISPATCH_RECHECK_ENABLED           on    ← cooldown + bounce backstop, enabled 2026-08-31 (row 147, docs/ops/ROW147-DISPATCH-RECHECK-ENABLED-2026-08-31-cycle205.md)
 MICROSOFT_MIME_SEND                     off
 ```
 
