@@ -1,6 +1,56 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 172) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 174) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 174, queue row 138: FOURTH cycle running to find this row already merged and closed (169 built it, 170-173 re-verified it); re-verified from scratch again (no redo), PR open, CI in progress at time of writing.
+
+Row 138 arrived reopened as `IN PROGRESS 174` in the local uncommitted
+`QUEUE.md`, exactly as it had for cycles 171-173 — even though `main`
+already carried `DONE 173` (commit `76719ab`) with cycle 173's own full
+verification trail. `STATUS.json` at session start showed `cycle: 174`,
+`lastSelfQueued: 173` — direct proof the watcher re-dispatched the row
+immediately after cycle 173 closed it. Per "check main first," did not redo
+any work: re-verified everything the row's Definition of Done requires,
+fresh — `git rev-parse main` == `git ls-remote origin refs/heads/main`
+(`76719abe7a9efe96c63247f797acf483829f4510`); `estateOutOfOrder`,
+`outOfOrderHeadline`, `.headline-ooo` present and wired into `render()` in
+`C:\Bidlowprojects\_standards\bidlow-deck.mjs`; dated backup present; ran
+`standards/bidlow-deck-out-of-order-headline.test.ts` directly — 2 passed;
+`relay/queue-file-integrity.test.ts` — 9 passed; `npm run lint` 0;
+`npm run typecheck` 0; artefact
+`docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md` present. Also
+committed `.bidlow/relay/log/cycle-173.md`'s watcher-appended footer, which
+was on disk uncommitted (same recurring pattern as cycles 171/172).
+
+**HALF-DONE AT TIME OF THIS STATE UPDATE:** opened docs-only PR **#483**
+(branch `docs/row-138-re-verify-cycle-174`) with the QUEUE.md → `DONE 174`
+edit, the cycle-173 footer commit, and this cycle's own log
+(`cycle-174.md`). `gh pr merge --auto` was rejected (auto-merge disabled on
+this repo), so a background poll of `gh pr checks 483` was started and CI
+(`verify` + `E2E`) was still `pending` as this was written. **Next action
+for this same session, or the next one if this session ends first:** once
+CI is green, squash-merge PR #483, confirm the resulting commit hash equals
+`git ls-remote origin refs/heads/main`, and update this STATE.md file with
+the final hash. If PR #483 is still open when a new session starts, check
+`gh pr checks 483` before doing anything else — it may already be green and
+just waiting to be merged.
+
+**No one-way-door decision was made.** Docs/queue-record change only — no
+code in `bidlow-deck.mjs` or anywhere else was touched this cycle, since the
+row was already satisfied. `gh pr list --state open` was empty at the start
+of the session (nothing else to sweep).
+
+**Standing issue, NOT fixed this session, now recurring for a FOURTH cycle
+in a row on this exact row:** the watcher footer appended to
+`.bidlow/relay/log/cycle-173.md` self-reports `relay-watch.ps1` running a
+stale in-memory copy of itself (row 52's known defect). This is the most
+likely explanation for why a row that is provably `DONE` on `main` keeps
+being handed back out as `IN PROGRESS`. **Not this row's file to fix** (row
+138 names exactly one file it may touch under `_standards`, and it is not
+`relay-watch.ps1`) — restart via `relay-start.cmd` remains Greg's action.
+If row 138 reopens yet again after this cycle's PR merges, the next session
+should not re-derive this finding from scratch — just requote the same
+unchanged commit hash and point back to this entry.
 
 ## Session 2026-08-31 - Relay cycle 172, queue row 138: third cycle running to find this row already merged and closed; re-verified from scratch (no redo), closed again, flagged the likely root cause. Fully merged, nothing left open.
 
