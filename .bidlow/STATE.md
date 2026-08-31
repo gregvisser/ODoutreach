@@ -1,6 +1,51 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 203, IN PROGRESS - PR open, CI running) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 204, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 204, queue row 146: merged PR #520, restamped DONE 204
+
+**What was done:** cycle 203 (see the session block immediately below) wrote
+and pushed the row 146 fix as PR #520 but was still waiting on CI when it
+ended. This cycle did the start-of-cycle PR sweep (only #520 was open),
+watched its checks to green (`verify` pass 4m15s, `E2E (Playwright)` pass
+5m41s), and merged it with `gh pr merge 520 --squash`. Merge commit is
+`b2f85e0`, confirmed via `git ls-remote origin refs/heads/main`. Restamped
+QUEUE.md row 146 from `IN PROGRESS 204` to `DONE 204` recording that hash,
+and committed cycle 203's orphaned `.bidlow/relay/log/cycle-203.md` (existed
+on disk, never `git add`ed — the same recurring defect class rows 137/146
+have both hit before). That restamp + log commit went out as its own
+docs-only PR #521 (branch `docs/row146-cycle204-queue-restamp`), watched to
+green the same way, and merged as `3a6783e`. No application code changed by
+this cycle.
+
+**Gates run and shown:** `npm run lint` 0, `npm run typecheck` 0,
+`npx vitest run -t "queue"` 81/81, `npx vitest run relay/queue-file-integrity.test.ts
+relay/cycle-log-reaches-git.test.ts` 15/15 — all before committing the
+QUEUE.md restamp. Both PRs' own CI (`verify` + `E2E (Playwright)`) also green.
+
+**Finding, not fixed here — a concurrent writer touches this same working
+tree live.** While finishing this row, `.bidlow/relay/QUEUE.md` gained a new
+row 160 (self-reload watcher work) directly on disk, mid-session, with no
+git commit behind it and a sibling file
+`.bidlow/relay/QUEUE.md.bak-before-cowork-160-selfreload` left next to it —
+the same "Cowork" concurrent actor named in row 143's history
+(`04fd936` "reconcile with Cowork's concurrent decoy-stamp fix"). This
+confirms Cowork write-locks/edits QUEUE.md directly on disk independent of
+git, not just occasionally in the past. This session did not commit that row
+160 addition (not this row's work to claim, and it kept reappearing in the
+working tree after being stashed, suggesting Cowork re-wrote it more than
+once during this session) and did not discard it either — left it as an
+uncommitted working-tree change for whichever process (Cowork itself, or the
+next cycle) owns it. **Next session: check `git status` on QUEUE.md before
+doing anything else — if row 160's addition is still sitting there
+uncommitted, that is Cowork's in-flight edit, not local damage; do not
+`git checkout --` it away.**
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched, nothing scored.
+
+**Nothing else half-done in the repo** — both PRs from this session are
+merged; row 146 is closed.
 
 ## Session 2026-08-31 - Relay cycle 203, queue row 146: Universe list-creation success message now links forward to sequence creation
 
