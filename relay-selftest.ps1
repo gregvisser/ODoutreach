@@ -37,12 +37,73 @@ function Assert-True($condition, $what) {
     }
 }
 
+# Get-SelfTestOutcome - what exit code and message this run ends with, given
+# what actually happened. Pulled out as its own pure function (same pattern as
+# the git-matching functions in relay-watch.ps1) so this row's own test cases
+# can drive it directly with a fabricated failure list / harness error,
+# instead of only being able to prove it by making the whole file crash for
+# real. See relay-watch.ps1's Get-SelfTestStartupDecision for what the caller
+# then does with the exit code this returns.
+function Get-SelfTestOutcome($Failures, $Passes, $HarnessError) {
+    $failureCount = @($Failures).Count
+
+    if ($failureCount -gt 0) {
+        # A real failure is proof the safety machinery itself is broken. That
+        # proof does not un-happen just because the harness went on to crash
+        # afterwards - a failure recorded before a crash still refuses to
+        # start, unconditionally.
+        return [PSCustomObject]@{
+            ExitCode = 1
+            Severity = "failed"
+            Message  = "SELF-TEST FAILED - $failureCount of $($Passes + $failureCount) checks"
+        }
+    }
+
+    if ($HarnessError) {
+        # No check failed - the harness itself broke before finishing. This is
+        # a bug in the test code, not proof the safety machinery is broken.
+        return [PSCustomObject]@{
+            ExitCode = 2
+            Severity = "harness-error"
+            Message  = "SELF-TEST HARNESS ERROR - $Passes check(s) passed before the harness itself crashed; none of them failed"
+        }
+    }
+
+    return [PSCustomObject]@{
+        ExitCode = 0
+        Severity = "ok"
+        Message  = "SELF-TEST PASSED - $Passes checks"
+    }
+}
+
 Write-Host ""
 Write-Host "Relay self-test - proving the safety machinery fires, not that it exists."
 Write-Host ""
 
 # Load the watcher's functions WITHOUT starting the loop.
 . (Join-Path $PSScriptRoot "relay-watch.ps1") -LoadOnly
+
+# ---------------------------------------------------------------------------
+# HARNESS ERROR vs CHECK FAILURE
+#
+# These are different events and the relay must not treat them the same way.
+# A check FAILURE is proof that the safety machinery itself is broken - the
+# thing this file exists to catch - and must keep refusing to start. A HARNESS
+# ERROR is the test code itself throwing before it could even ask its
+# question, which on 31 August was git's own progress output on stderr being
+# turned into a terminating error by $ErrorActionPreference = "Stop". That
+# specific cause is fixed below (search "row122PrevEAP"), but the row-122 git
+# walk is not the only place a future platform difference between Greg's
+# Windows machine and Linux CI could throw somewhere this file does not yet
+# guard, so everything below is wrapped in one outer try/catch: if it throws
+# anyway, that is recorded as a HARNESS ERROR, separately from $script:Failures,
+# and reported with its own distinct exit code (2, vs 1 for a real failure) so
+# relay-watch.ps1 can tell "the safety machinery is broken" apart from "the
+# test that checks the safety machinery broke" and stop treating the second
+# as proof of the first.
+# ---------------------------------------------------------------------------
+$script:HarnessError = $null
+try {
 
 # ===========================================================================
 # 1. THE TIMEOUT ACTUALLY KILLS A HUNG CYCLE
@@ -582,29 +643,29 @@ $neverMerged = { param($n) $false }
 # old code never even looked at.
 $finishedActions = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "150" `
     -Outcome "finished" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
-Assert-True ($finishedActions.Count -eq 1 -and $finishedActions[0].RowNumber -eq "117") `
-    "a row left IN PROGRESS by a cycle that exited cleanly (outcome 'finished') is still reopened (got $($finishedActions.Count) action(s))"
+Assert-True (@($finishedActions).Count -eq 1 -and $finishedActions[0].RowNumber -eq "117") `
+    "a row left IN PROGRESS by a cycle that exited cleanly (outcome 'finished') is still reopened (got $(@($finishedActions).Count) action(s))"
 Assert-True ($finishedActions[0].NewStatus -match '^TODO \(reopened - cycle 150 ended \(outcome: finished\) without writing a status word') `
     "the reopen note says the cycle ended without writing a status word, not a fabricated timeout reason (got: $($finishedActions[0].NewStatus))"
 
 # outcome "no-change" - the other clean-exit case - must fire too.
 $noChangeActions = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "150" `
     -Outcome "no-change" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
-Assert-True ($noChangeActions.Count -eq 1 -and $noChangeActions[0].RowNumber -eq "117") `
+Assert-True (@($noChangeActions).Count -eq 1 -and $noChangeActions[0].RowNumber -eq "117") `
     "a row left IN PROGRESS by a cycle that ended with no changes at all is still reopened"
 
 # Regression guard: the original timed-out wording must still read exactly as
 # it did before this row, and a row held by a DIFFERENT cycle must never move.
 $timedOutActions = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "41" `
     -Outcome "timed-out" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
-Assert-True ($timedOutActions.Count -eq 1 -and $timedOutActions[0].RowNumber -eq "9") `
-    "a timed-out cycle still reopens only its OWN row (got $($timedOutActions.Count) action(s))"
+Assert-True (@($timedOutActions).Count -eq 1 -and $timedOutActions[0].RowNumber -eq "9") `
+    "a timed-out cycle still reopens only its OWN row (got $(@($timedOutActions).Count) action(s))"
 Assert-True ($timedOutActions[0].NewStatus -match 'was killed at the 45 minute deadline') `
     "the timed-out wording is unchanged by this row (got: $($timedOutActions[0].NewStatus))"
 
 $doneUntouched = Get-StrandedRowActions -QueueRows $orphanQueue -CycleNumber "40" `
     -Outcome "finished" -CycleTimeoutMinutes 45 -MergeCheck $neverMerged
-Assert-True ($doneUntouched.Count -eq 0) `
+Assert-True (@($doneUntouched).Count -eq 0) `
     "a row already closed DONE is never touched by the stranded-row reopen"
 
 # ===========================================================================
@@ -644,6 +705,17 @@ Assert-True ($leftAloneNoBranch -eq "DONE 151 - investigation only, category (b)
 #          main, then stops finding it the moment that branch actually merges
 #          - the exact moment row 121's own carve-out must take back over. ---
 
+# Git writes ordinary progress to stderr - "To <remote>" on every push,
+# "Switched to branch" on every checkout. With $ErrorActionPreference = "Stop"
+# set at the top of this file, PowerShell turns ANY native-command stderr into a
+# terminating NativeCommandError, and redirection operators do not prevent it.
+# That bricked relay startup on 31 August: the self-test gates the watcher, so a
+# self-test that throws stops the relay entirely. Same guard pattern as
+# Test-RowMergedOnMain in relay-watch.ps1.
+$row122PrevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+
 $bareRemote    = Join-Path $env:TEMP ("relay-selftest-row122-remote-" + [guid]::NewGuid().ToString('N') + ".git")
 $scratchRow122 = Join-Path $env:TEMP ("relay-selftest-row122-repo-" + [guid]::NewGuid().ToString('N'))
 
@@ -656,13 +728,13 @@ Set-Content -Path (Join-Path $scratchRow122 "seed.txt") -Value "seed" -Encoding 
 & git -C $scratchRow122 add seed.txt *> $null
 & git -C $scratchRow122 commit -m "seed" *> $null
 & git -C $scratchRow122 branch -M main *> $null
-& git -C $scratchRow122 push origin main *> $null 2>&1
+& git -C $scratchRow122 push origin main *> $null
 
 & git -C $scratchRow122 checkout -b fix/row122-partial-merge-guard *> $null
 Set-Content -Path (Join-Path $scratchRow122 "fix.txt") -Value "fix" -Encoding ascii
 & git -C $scratchRow122 add fix.txt *> $null
 & git -C $scratchRow122 commit -m "row 122 - reopen unmerged DONE rows as PARTIAL" *> $null
-& git -C $scratchRow122 push origin fix/row122-partial-merge-guard *> $null 2>&1
+& git -C $scratchRow122 push origin fix/row122-partial-merge-guard *> $null
 & git -C $scratchRow122 checkout main *> $null
 
 $foundBranch = Find-UnmergedPushedBranchForRow -RowNumber "122" -RepoPath $scratchRow122
@@ -677,7 +749,7 @@ Assert-True ($null -eq $notFoundBranch) `
 # being found. This is the moment row 121's own carve-out must take back
 # over: once the work actually lands on main, this check gets out of the way.
 & git -C $scratchRow122 merge fix/row122-partial-merge-guard -m "merge row 122 fix" *> $null
-& git -C $scratchRow122 push origin main *> $null 2>&1
+& git -C $scratchRow122 push origin main *> $null
 $mergedBranch = Find-UnmergedPushedBranchForRow -RowNumber "122" -RepoPath $scratchRow122
 Assert-True ($null -eq $mergedBranch) `
     "once the branch actually merges into main it is no longer reported as an unmerged, pushed branch (got: $mergedBranch)"
@@ -685,14 +757,105 @@ Assert-True ($null -eq $mergedBranch) `
 Remove-Item -Path $scratchRow122 -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path $bareRemote -Recurse -Force -ErrorAction SilentlyContinue
 
+} finally {
+    $ErrorActionPreference = $row122PrevEAP
+}
+
+# ===========================================================================
+# 12. A HARNESS CRASH DOES NOT REFUSE TO START THE RELAY; A GENUINE FAILURE
+#     STILL DOES - EVEN IF A CRASH FOLLOWS IT
+#
+# This is what actually happened on 31 August: the row-122 git walk above
+# threw (fixed by the EAP/try-finally around it), the whole file died
+# uncaught, and the watcher's startup gate could not tell that apart from a
+# real safety-machinery failure - so it refused to start, three times, for a
+# test bug rather than a real one.
+#
+# First, prove the catch mechanism itself actually catches - a throw inside
+# this file's body must not be left to kill the process, because that is what
+# the try/catch wrapped around every section above (see the top of this file,
+# just after "Load the watcher's functions") depends on.
 # ===========================================================================
 
 Write-Host ""
-if ($script:Failures.Count -eq 0) {
-    Write-Host "SELF-TEST PASSED - $($script:Passes) checks." -ForegroundColor Green
-    exit 0
+Write-Host "12. A harness crash does not refuse to start the relay; a genuine failure still does"
+
+$plantedHarnessError = $null
+try {
+    & { throw "planted stderr-shaped harness crash for the self-test's own coverage" }
+} catch {
+    $plantedHarnessError = $_
+}
+Assert-True ($null -ne $plantedHarnessError) `
+    "a thrown error inside the self-test body is actually caught, not left to kill the process"
+Assert-True ($plantedHarnessError.Exception.Message -match "planted stderr-shaped harness crash") `
+    "the caught error's own message survives, so the harness-error report names the real cause"
+
+# Now the decision that crash must lead to: no check failed, so this is not
+# proof the safety machinery is broken - the relay must start anyway, loudly.
+$harnessOutcome = Get-SelfTestOutcome -Failures @() -Passes 5 -HarnessError $plantedHarnessError
+Assert-True ($harnessOutcome.ExitCode -eq 2) `
+    "a harness crash with no failed checks exits 2 (harness error), not the same code as a real failure (got: $($harnessOutcome.ExitCode))"
+Assert-True ($harnessOutcome.Severity -eq "harness-error") `
+    "a harness crash with no failed checks is reported with its own severity, not folded into 'failed' (got: $($harnessOutcome.Severity))"
+
+$harnessDecision = Get-SelfTestStartupDecision -ExitCode $harnessOutcome.ExitCode
+Assert-True ($harnessDecision.ShouldStart -eq $true) `
+    "a harness crash with no failed checks does not refuse to start the relay (got ShouldStart=$($harnessDecision.ShouldStart))"
+Assert-True ($harnessDecision.AlertNeeded -eq $true) `
+    "a harness crash still alerts a human even though it does not stop the relay - it must never pass by silently"
+
+# The other half: a check that genuinely fails must still refuse to start,
+# unchanged from before this row - this is the behaviour that must NOT move.
+$failOutcome = Get-SelfTestOutcome -Failures @("a planted genuinely failing check") -Passes 5 -HarnessError $null
+Assert-True ($failOutcome.ExitCode -eq 1) `
+    "a genuinely failing check exits 1, exactly as it always has (got: $($failOutcome.ExitCode))"
+
+$failDecision = Get-SelfTestStartupDecision -ExitCode $failOutcome.ExitCode
+Assert-True ($failDecision.ShouldStart -eq $false) `
+    "a genuinely failing check still refuses to start the relay (got ShouldStart=$($failDecision.ShouldStart))"
+
+# And the priority between the two: a failure recorded before a crash is
+# still real evidence, so the crash afterwards must not soften it back into a
+# mere harness error.
+$failThenCrashOutcome = Get-SelfTestOutcome -Failures @("a planted genuinely failing check") -Passes 5 -HarnessError $plantedHarnessError
+Assert-True ($failThenCrashOutcome.ExitCode -eq 1) `
+    "a genuine failure recorded before a harness crash still refuses to start - the crash does not un-prove the failure (got: $($failThenCrashOutcome.ExitCode))"
+
+# ===========================================================================
+
+} catch {
+    $script:HarnessError = $_
 }
 
-Write-Host "SELF-TEST FAILED - $($script:Failures.Count) of $($script:Passes + $script:Failures.Count) checks:" -ForegroundColor Red
-foreach ($f in $script:Failures) { Write-Host "  - $f" -ForegroundColor Red }
-exit 1
+Write-Host ""
+
+$outcome = Get-SelfTestOutcome -Failures $script:Failures -Passes $script:Passes -HarnessError $script:HarnessError
+
+switch ($outcome.Severity) {
+    "failed" {
+        $color = "Red"
+        Write-Host "$($outcome.Message):" -ForegroundColor $color
+        foreach ($f in $script:Failures) { Write-Host "  - $f" -ForegroundColor $color }
+        if ($script:HarnessError) {
+            Write-Host ""
+            Write-Host "Harness error after the failure(s) above:" -ForegroundColor $color
+            Write-Host $script:HarnessError.Exception.Message -ForegroundColor $color
+        }
+    }
+    "harness-error" {
+        # NOT evidence the safety machinery is broken - see the note above
+        # "1. THE TIMEOUT ACTUALLY KILLS A HUNG CYCLE" for why this is kept
+        # distinct from SELF-TEST FAILED.
+        Write-Host "$($outcome.Message)." -ForegroundColor Yellow
+        Write-Host "This is a crash in the test code, not proof the safety machinery is broken - see relay-watch.ps1's Get-SelfTestStartupDecision for how this is handled on start." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host $script:HarnessError.Exception.Message -ForegroundColor Yellow
+        Write-Host $script:HarnessError.ScriptStackTrace -ForegroundColor Yellow
+    }
+    default {
+        Write-Host "$($outcome.Message)." -ForegroundColor Green
+    }
+}
+
+exit $outcome.ExitCode
