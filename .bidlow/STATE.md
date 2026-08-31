@@ -1,6 +1,104 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 194, DONE) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 197, DONE - PR open pending CI at write time) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 197, queue row 136 (screen walk part 2 of 2, investigation-only, build nothing)
+
+Row 136 arrived `TODO`; before starting, `.bidlow/relay/QUEUE.md` and
+`.bidlow/relay/log/cycle-196.md` were already modified but uncommitted on
+disk — the relay picker's flip of row 136 to `IN PROGRESS 197`, and the
+watcher's own end-of-cycle footer for cycle 196 (which, notably, reported
+**still stale**: `Loaded at launch: 51AF85ED01BF` vs on-disk
+`FFDB8B83837A` — the restart-required condition first flagged around cycle
+184 and unresolved every cycle since; only `relay-start.cmd`, run by Greg,
+fixes this — not touched this session). Both were committed together with
+this session's own work, matching the established pattern (cycles 194/196
+did the same for their predecessors' leftovers).
+
+**The actual work:** Part 2 of 2 of the full tab-by-tab screen walk Greg
+asked for (Part 1 was row 135/cycle 195). Four parallel investigation agents
+each read one area's full source (page components + every imported query/
+action, file:line cited, on-screen copy quoted verbatim) — no code changed,
+no browser run, no live click-through, same method and same justification
+row 135 used. Areas: `google-reconnects` (dedicated, per the row's own
+priority), `settings` (incl. `internal-seed`, never reviewed before),
+`training`+`support`, `dashboard`+`reporting`+`operations`.
+
+**The row's two named priorities, answered directly:**
+1. `google-reconnects`' per-row table correctly and specifically identifies
+   the greentheuk-class "sign-in started and never finished" failure with a
+   working fix action — but its three headline summary tiles undercount it
+   entirely. `overdueCount` only counts currently-`CONNECTED` mailboxes with
+   a decaying token (`google-reconnect-roster.ts:143`,
+   `google-refresh-token-expiry.ts:121-122`); a `PENDING_CONNECTION` mailbox
+   always reads as 0 on "Already expired" no matter how long it's been dead.
+   Worst finding of the row — raised as row **154**.
+2. `settings/internal-seed` does **not** seed/create any data (a small
+   owner-gated allowlist table only, confirmed by tracing every write path —
+   never touches any client's contacts/sequences/sends). The real gap: no
+   domain/client scoping on the allowlist once its currently-off production
+   flag (`INTERNAL_SEED_ALLOWLIST_ENABLED=false`) is ever turned on — raised
+   as row **158**, framed as hardening to do before the flag is flipped, not
+   an active incident.
+
+**Six findings raised as new rows 154-159**, ranked by damage: (154)
+google-reconnects tile undercount [highest]; (155) no ambient push beyond a
+single-recipient digest with no link to the fix screen; (156) a support
+ticket can be resolved/closed with a blank note; (157) operations' three
+mutation buttons still silently swallow their result and skip revalidation
+on failure — confirmed still true, previously logged as "optional polish";
+(158) internal-seed scoping; (159) support has no reply/comment thread
+despite promising a closed loop. Two smaller training findings (orphaned
+`staff-handover` page, a checklist line naming a sidebar label that doesn't
+exist) were folded into still-open row 148 as findings (13)/(14) instead of
+duplicating a row, since 148 already owns "training content drift."
+Lower-severity findings (reporting's dead "not tracked" opens branch,
+branding's staff-not-owner gating — by design — `admin-gate.test.ts` proving
+less than its title claims, internal-seed's dead `note` field, training's
+missing progress tracking) recorded in the artefact but deliberately not
+raised as their own rows.
+
+Artefact: `docs/ops/ROW136-SCREEN-WALK-PART2-2026-08-31-cycle197.md`. Gates:
+lint 0, typecheck 0, `npm test` 369 files / 3827 tests green (no application
+code changed — docs/queue only, gates re-run anyway to confirm baseline).
+
+**Half-done, and exactly where it was left:** PR **#513**
+(`docs/row-136-screen-walk-part2-cycle197`, one commit `848fd7c`) was open
+with `verify` and `E2E (Playwright)` still `IN_PROGRESS` at the point this
+STATE.md entry was written. No merge conflicts, `mergeable: MERGEABLE`,
+nothing blocking merge once CI is green. **Next session's first job: check
+`gh pr checks 513`; if green, merge (squash), confirm via `git ls-remote
+origin refs/heads/main`, and record the merge hash as a same-cycle docs-only
+follow-up in QUEUE.md row 136 exactly as cycles 184-196 have each done for
+their own PRs.** If row 136 shows anything other than `DONE 197 - ...` when
+you read this, treat that as the already-documented stale-watcher reopen
+loop, not a new defect — re-verify against `main` first per this project's
+own `CLAUDE.md` rule, don't redo the investigation.
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched or deleted (this was a source-code read of
+seven route groups, nothing exercised live), nothing scored.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. **Merge PR #513** once CI is green (see "Half-done" above) and record the
+   hash in QUEUE.md row 136.
+2. **Check whether row 136 has reopened** before redoing any investigation —
+   per this project's own `CLAUDE.md` rule and the standing stale-watcher
+   fact above.
+3. Six new rows are open and ready to work: **154** (highest — google-
+   reconnects summary-tile undercount), 155, 156, 157, 158, 159 — plus row
+   148 now carries two more training findings (13)/(14) alongside its
+   original twelve.
+4. **The watcher restart is still outstanding** — every cycle log through
+   197 shows the same stale-hash mismatch. Only Greg running
+   `relay-start.cmd` fixes it; no cycle can do this from inside a queue row.
+5. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
+   order, after the start-of-cycle PR sweep.
+
+---
 
 ## Session 2026-08-31 - Relay cycle 194, queue row 134 (housekeeping only, no code)
 
