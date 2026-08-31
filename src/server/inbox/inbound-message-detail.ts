@@ -1,7 +1,10 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
+import {
+  readHandlingStateFromMetadata,
+  type HandlingState,
+} from "@/lib/inbox/inbound-message-handling";
 import type {
   ClientMailboxIdentity,
   InboundMailboxMessage,
@@ -40,6 +43,7 @@ export type InboundMessageDetail = {
     id: string;
     linkedOutboundEmailId: string | null;
     matchMethod: string;
+    handledAt: Date | null;
   } | null;
 };
 
@@ -83,7 +87,20 @@ export async function loadInboundMessageDetailForClient(
 
   if (!mailbox) return null;
 
-  const handling = readHandlingStateFromMetadata(message.metadata);
+  const messageHandling = readHandlingStateFromMetadata(message.metadata);
+  // Row 150 — this same conversation can also be marked "handled" from the
+  // reply-detail page (`InboundReply.handledAt`). Fold that signal in here,
+  // exactly like the two aggregate views (`replies-needing-a-person.ts`,
+  // `client-outreach-replies.ts`) already OR it with the mailbox-message
+  // metadata signal — otherwise this page can show "Unhandled" with a live
+  // Send-reply button for a conversation the reply-detail page already
+  // closed out.
+  const handling: HandlingState = {
+    ...messageHandling,
+    handledAt:
+      messageHandling.handledAt ??
+      (linkedReply?.handledAt ? linkedReply.handledAt.toISOString() : null),
+  };
 
   return {
     message,
@@ -129,6 +146,7 @@ async function findLinkedInboundReply(
   id: string;
   linkedOutboundEmailId: string | null;
   matchMethod: string;
+  handledAt: Date | null;
 } | null> {
   if (!message.providerMessageId) return null;
   const hit = await prisma.inboundReply.findFirst({
@@ -136,13 +154,19 @@ async function findLinkedInboundReply(
       clientId,
       providerMessageId: message.providerMessageId,
     },
-    select: { id: true, linkedOutboundEmailId: true, matchMethod: true },
+    select: {
+      id: true,
+      linkedOutboundEmailId: true,
+      matchMethod: true,
+      handledAt: true,
+    },
   });
   return hit
     ? {
         id: hit.id,
         linkedOutboundEmailId: hit.linkedOutboundEmailId,
         matchMethod: hit.matchMethod,
+        handledAt: hit.handledAt,
       }
     : null;
 }
