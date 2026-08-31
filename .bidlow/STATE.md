@@ -8492,3 +8492,83 @@ actually executed in the live process. **The only fix is Greg running
    recommended but not actioned for deletion across three cycles running now.
 3. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
    order, after the start-of-cycle PR sweep.
+
+## Cycle 187 — row 143: re-verify guard fix again (fourth time), comprehensive branch sweep — PR open pending CI
+
+Row 143 arrived `IN PROGRESS 187` off `DONE 186`, same already-diagnosed cause
+as cycles 185/186: the live `relay-watch.ps1` process is still running a
+stale, pre-fix, in-memory copy of itself (row 52's defect class) and reopens
+this row whenever it finds a dangling branch on `origin` mentioning row 138 or
+143. No cycle since 166 has logged the `Watcher script:` line that would prove
+a restart happened. **The only fix is Greg running `relay-start.cmd`.**
+
+Checked `main` first, per this project's own `CLAUDE.md`: unchanged at
+`40b8bab`; `b0a9052` (PR #492, the squash-merge guard + loop breaker) still an
+ordinary ancestor; `estateOutOfOrder` still at `_standards/bidlow-deck.mjs:264`
+with its backup. Fresh `relay-selftest.ps1` run before touching anything:
+**91/91 PASS**, including all three of section 13's required cases. Row 138
+unchanged, still `DONE 184`, now stable across three subsequent cycles.
+
+Also found and committed a small uncommitted leftover at session start —
+cycle 186's own end-of-cycle watcher footer plus the picker's row-143 flip to
+`IN PROGRESS 187` — as its own commit (`c4b68fa`) before starting new work,
+matching the established pattern.
+
+**The actual new work this session:** instead of reacting to the one branch
+that most recently triggered a reopen (cycles 185/186's pattern), swept
+*every* branch on `origin` mentioning row 138 or 143, using the guard's own
+whole-branch patch-id method. Five row-143 branches (from rows 143's own
+cycles 184-186 recording merge hashes/session state) were confirmed clean
+squash matches and then found already auto-deleted mid-sweep — proof
+`delete_branch_on_merge` (flipped on in cycle 185) is now working for ordinary
+merges, so future cycles should not need this cleanup at all. Deleted two more
+row-138 branches not among the six the row's own brief explicitly protects
+(`docs/row-138-re-verify-cycle-174`, clean squash match; `docs/state-cycle-179-row138`,
+not a clean patch-id match but confirmed by direct content diff to be fully
+superseded, dead content — one of the two branches originally named as loop
+wreckage). Left the six protected `docs/row-138-cycle-*-close` branches alone,
+as instructed, but found and recorded (not acted on) that one of them,
+`docs/row-138-cycle-180-close`, is *not* a clean squash match either — it's
+built on the same superseded commits as the branch just deleted — so it could
+still trigger one more false reopen of row 138 before the loop breaker refuses
+a third. Recommended all six for deletion once reviewed; none represent real
+outstanding work. Full evidence:
+`docs/ops/ROW143-REVERIFICATION-2026-08-31-cycle187.md`.
+
+Gates: `relay-selftest.ps1` 91/91; `npx vitest run relay/queue-file-integrity.test.ts`
+9/9 (checked the QUEUE.md edit didn't reintroduce cycle 186's own
+pipe-character parser defect). No application source touched, so
+lint/typecheck/full suite not re-run.
+
+**Half-done, and exactly where it was left:** PR **#498** is open with `verify`
+and `E2E (Playwright)` checks still pending (not yet green) at the point this
+STATE.md entry was written — the branch is `docs/row143-cycle187-sweep`, two
+commits (`c4b68fa` leftover-commit, `67be291` this session's actual work), no
+merge conflicts, nothing blocking merge once CI is green. **Next session's
+first job: check `gh pr checks 498`; if green, merge (squash), confirm via
+`git ls-remote origin refs/heads/main`, and record the merge hash in QUEUE.md
+row 143 as a same-cycle docs-only follow-up, exactly as cycles 184-186 each
+did.** If still pending, just wait and merge — no rework needed, nothing here
+is provisional.
+
+**Decisions made:** none touching a one-way door — no schema, no migration, no
+send, no client data, nothing scored. No repo-setting changes this session
+(unlike cycle 185, which flipped `delete_branch_on_merge` — that setting is
+confirmed still in effect and working).
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. **Merge PR #498** once CI is green (see "Half-done" above) and record the
+   hash in QUEUE.md row 143.
+2. **Check whether row 143 or row 138 has reopened again** before writing any
+   code — per this project's own `CLAUDE.md` rule for a row reopened after a
+   relay timeout. If either has, this is the same already-diagnosed
+   stale-watcher cause recurring, not a new defect — re-verify only (self-test
+   91/91), do not redo the guard work.
+3. The six `docs/row-138-cycle-175..180-close` branches remain, recommended
+   for deletion across four cycles now (183 through 187) and never actioned —
+   a person's call, not a cycle's, per the row's own instruction.
+4. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
+   order, after the start-of-cycle PR sweep.
