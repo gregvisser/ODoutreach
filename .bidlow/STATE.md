@@ -8409,3 +8409,86 @@ that only Greg does this). See project memory
    until Greg restarts the watcher, per cycle 181/182's recommendation.
 3. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
    order, after the start-of-cycle PR sweep.
+
+# Cycle 185 — row 143: the squash-merge fix was already done (cycle 183/184); this session diagnosed why it reopened itself — 2026-08-31
+
+**What was actually built or changed this session:** no new guard logic —
+row 143's squash-merge-aware guard and independent loop breaker were already
+shipped and merged by cycle 184 (`b0a9052`, PR #492) and cycle 184 had already
+closed both row 143 and row 138 with evidence, merged as `7e02591` (PR #493).
+**Note for future sessions: cycles 183 and 184 did not update this file** —
+this entry is the first `STATE.md` write since cycle 182's, and covers the
+gap by reference to `.bidlow/relay/log/cycle-183.md` / `cycle-184.md` and
+`docs/ops/ROW138-SQUASH-MERGE-LOOP-FIX-2026-08-31-cycle183.md`, not by
+reconstructing their work in full here.
+
+This session independently re-proved the fix rather than trusting the prior
+commit message: `git merge-base --is-ancestor b0a9052 main` confirmed;
+`git ls-remote origin refs/heads/main` confirmed `7e02591` before this
+session's changes; fresh `relay-selftest.ps1` run — **91/91 checks pass**,
+including all three of section 13's required squash-merge/loop-breaker cases;
+`estateOutOfOrder` confirmed still present in `_standards/bidlow-deck.mjs:264`
+(row 138's actual product deliverable, untouched this session).
+
+The actual new finding this session added: row 143 — the row that fixes the
+squash-merge-blind guard — was itself reopened by the exact bug it fixes.
+PR #492's own head branch (`docs/relay-row138-cycle182`) was never deleted
+after merging (this repo had `delete_branch_on_merge: false`), and one of its
+commits has a subject naming row 143. Proved by matching `git patch-id`
+(`bf6327e3...`) that this branch is genuinely squash-merged into `main` as
+`b0a9052`, but the *old* ancestry check — what the still-unrestarted watcher
+process actually runs — sees 3 commits ahead of `main` and calls it unmerged.
+Full proof in `docs/ops/ROW143-REVERIFICATION-2026-08-31-cycle185.md`.
+
+Two things were actually changed this session:
+1. **GitHub repo setting `delete_branch_on_merge` flipped `false` → `true`**
+   (`gh api repos/{owner}/{repo} -X PATCH -f delete_branch_on_merge=true`,
+   confirmed on read-back, and confirmed working — this session's own PR
+   branches were auto-deleted on merge). This is additive/reversible and not
+   a code change; it reduces future recurrence of this exact class of
+   dangling-branch confusion at the source, independent of the watcher
+   restart.
+2. `.bidlow/relay/QUEUE.md` row 143 closed `DONE 185` (re-verified, not
+   redone); row 138 left untouched, still correctly `DONE 184`.
+
+**Half-done, and exactly where it was left:** nothing. Both PRs this session
+opened (**#494** re-verification + repo-setting change, **#495** same-cycle
+hash follow-up) merged clean with green CI (`verify` + `E2E (Playwright)`
+both passed on each) — `main` now at `f25b8ef` (confirmed via
+`git ls-remote origin refs/heads/main`). No PRs left open at session end.
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data, nothing scored (`.bidlow/GRADES.json` untouched, as
+the row's brief required). The only judgement call was enabling
+`delete_branch_on_merge`, a repo administrative setting outside this
+project's three stop-and-ask categories (destructive migration / client data
+/ email send) — decided and actioned per this project's CLAUDE.md instruction
+not to stall on non-blocking decisions.
+
+**Root cause, unchanged and still not fixable from inside any row:** the
+relay watcher process is still running a stale in-memory copy of
+`relay-watch.ps1` (row 52's defect class). No cycle log since 166 contains
+the `Watcher script:` confirmation line that would prove a restart has
+happened. `.bidlow/relay/row-reopen-counts.json` does not exist on disk —
+further proof the loop-breaker code (which would have written it) has never
+actually executed in the live process. **The only fix is Greg running
+`relay-start.cmd`.** See project memory
+`relay-watcher-stale-restart-row138-loop.md`.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. **Check whether row 143 or row 138 has reopened again** before writing any
+   code — per this project's own `CLAUDE.md` rule for a row reopened after a
+   relay timeout. If either has, that confirms the watcher restart still has
+   not happened (not a new defect); re-verify only (self-test 91/91, patch-id
+   ancestry of `b0a9052`/`7e02591`/`f25b8ef` in `main`), do not redo the guard
+   work, and check whether `delete_branch_on_merge` actually reduced the
+   dangling-branch surface this time (it should — any PR merged since this
+   session had its branch auto-deleted).
+2. Fourteen confirmed-squash-merged junk branches remain undeleted on the
+   remote (list in `docs/ops/ROW143-REVERIFICATION-2026-08-31-cycle185.md`),
+   recommended but not actioned for deletion across three cycles running now.
+3. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
+   order, after the start-of-cycle PR sweep.
