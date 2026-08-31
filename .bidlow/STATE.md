@@ -1,6 +1,45 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 176) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 177) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 177, queue row 138: EIGHTH cycle running to find this row already merged and closed (169 built it, 170-176 re-verified it). Merged PR #485 (cycle 176's own close), re-verified the feature from scratch again (no redo), closed row 138 `DONE 177` and garbled row 141 `WONTFIX 177`.
+
+Row 138 arrived reopened as `IN PROGRESS 177` (an uncommitted local edit left
+by the picker, not yet on `main`), exactly as it had for cycles 172-176 —
+even though `main` already carried cycle 176's `DONE 176` close (commit
+`4e5bb6b`, PR #485). Root cause is unchanged since cycle 172 and confirmed
+again: the running `relay-watch.ps1` is loaded from a stale in-memory copy of
+itself (row 52's defect) and keeps re-dispatching row 138 the moment it
+closes on `main`, regardless of what `QUEUE.md` says on disk. **Fixable only
+by Greg running `relay-start.cmd` by hand — not by any code, and not by this
+or any future cycle.**
+
+This session, in order:
+1. PR sweep: found PR #485 (cycle 176's own closing commit), CI pending on
+   arrival, watched it to green (`verify` 5m41s, `E2E` 5m34s), merged it —
+   `gh pr merge` reported "already merged" (same auto-merge race prior
+   cycles hit); confirmed `main` now `4e5bb6b` via `git log` and
+   `git ls-remote origin refs/heads/main`.
+2. Independently re-ran row 138's own gates fresh (no redo of the actual
+   feature work): `standards/bidlow-deck-out-of-order-headline.test.ts` 2/2
+   pass; `npm run lint` 0; `npm run typecheck` 0;
+   `C:\Bidlowprojects\_standards\bidlow-deck.mjs` still carries
+   `estateOutOfOrder`/`outOfOrderHeadline`/`.headline-ooo`, wired into
+   `render()`; `docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md`
+   still present.
+3. Recovered cycle 176's own uncommitted watcher-footer addendum to
+   `cycle-176.md` (stashed before the PR #485 merge to avoid a checkout
+   conflict, popped back onto a fresh branch off the new `main`) and
+   committed it, matching the precedent cycles 174-176 set for this same
+   recurring pattern.
+4. Closed row 141 `WONTFIX 177` — the relay's carry-forward detector split
+   cycle 176's log mid-sentence a FOURTH time overall (after rows 124, 139,
+   140), fragmenting text that was already a nested quote-of-a-quote. Names
+   no new work.
+5. Closed row 138 `DONE 177`, naming the merge commit, no code redone, and
+   flagged in the row's own text that re-verifying an unchanged feature every
+   cycle is now pure cost — recommend either the picker be fixed at its
+   source or a human close row 138 permanently until the watcher restarts.
 
 ## Session 2026-08-31 - Relay cycle 176, queue row 138: SEVENTH cycle running to find this row already merged and closed (169 built it, 170-175 re-verified it); re-verified from scratch again (no redo), PR #485 open, CI pending at time of writing. Note: cycle 175's own STATE.md update was also missed — this entry also covers what cycle 175 did, reconstructed from `.bidlow/relay/log/cycle-175.md`.
 
