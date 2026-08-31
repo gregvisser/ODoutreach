@@ -67,6 +67,17 @@ $StatusFile = Join-Path $RelayDir "STATUS.json"
 $NoteFile   = Join-Path $RelayDir "SELF-QUEUE-NOTE.md"
 $LogDir     = Join-Path $RelayDir "log"
 
+# Row 137: the shared cross-project deck. ODoutreach's checkout is always
+# three levels below C:\Bidlowprojects (BidlowClients\<Client>\<Repo>), so the
+# projects root is derived from THIS repo's own location rather than
+# hard-coded - the deck script itself defaults --root the same hard-coded way,
+# and that default is exactly what the brief says to stop relying on.
+# $DeckScriptPath / $DeckOutputPath point at the one named exception to "no
+# cycle writes outside its own repository" - see Invoke-DeckRegeneration below.
+$ProjectsRoot   = Split-Path (Split-Path (Split-Path $RepoRoot -Parent) -Parent) -Parent
+$DeckScriptPath = Join-Path $ProjectsRoot "_standards\bidlow-deck.mjs"
+$DeckOutputPath = Join-Path $ProjectsRoot "bidlow-deck.html"
+
 # ===========================================================================
 # WHICH VERSION OF THIS SCRIPT IS THIS PROCESS ACTUALLY RUNNING?
 #
@@ -2497,6 +2508,104 @@ function Get-SelfTestStartupDecision {
 }
 
 # ===========================================================================
+# ROW 137: REGENERATE THE CROSS-PROJECT DECK AT THE END OF EACH CYCLE.
+#
+# On 31 August the deck at C:\Bidlowprojects\bidlow-deck.html was four days
+# stale - nothing regenerated it but a human remembering to run
+# `node _standards\bidlow-deck.mjs` by hand. The relay is the right home for
+# this because it is the thing that actually changes project state: if a
+# cycle ran, something may have moved, so the deck is worth refreshing; if the
+# relay never ran, nothing changed either.
+#
+# THE NON-NEGOTIABLE CONSTRAINT: a failure here must NEVER stop or delay the
+# relay. Row 122's self-test crashed on a Windows/PowerShell difference and,
+# because the self-test GATES startup, stopped the engine dead three times
+# before anyone noticed twenty minutes in. A cosmetic reporting step must have
+# LESS power than that, not more - so this function never throws. Every
+# failure path (missing node, missing script, the script exiting non-zero, a
+# locked output file) is caught here and returned as data, not an exception.
+#
+# WRITTEN ATOMICALLY: the deck script is asked to write to a temp file in the
+# SAME directory as the real output, then Move-Item -Force renames it into
+# place. A rename within one NTFS volume/directory is atomic, so a reader can
+# never see a half-written deck, and two relays racing this function (should
+# Kepak or Papaya get one later) each overwrite cleanly rather than
+# interleave. On any failure the temp file is removed and the existing
+# deck - if any - is left completely untouched.
+#
+# Parameterised (ProjectsRoot / DeckScript / OutFile / NodeExe) for exactly
+# the reason Clear-StaleIndexLock and Invoke-CycleAgent are above:
+# relay-selftest.ps1 points these at scratch fixtures instead of the real
+# _standards folder and the real bidlow-deck.html, so the two required cases -
+# a working regeneration, and a planted failing one - can be proven without
+# touching Greg's real deck or depending on every OTHER project's live state.
+# ===========================================================================
+function Invoke-DeckRegeneration {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectsRoot,
+        [Parameter(Mandatory = $true)][string]$DeckScript,
+        [Parameter(Mandatory = $true)][string]$OutFile,
+        [string]$NodeExe = "node"
+    )
+
+    $result = [pscustomobject]@{ Ok = $false; Note = "" }
+
+    try {
+        if (-not (Test-Path $DeckScript -PathType Leaf)) {
+            $result.Note = "deck script not found at '$DeckScript' - skipped, left the existing deck untouched"
+            return $result
+        }
+
+        $nodeCmd = Get-Command $NodeExe -ErrorAction SilentlyContinue
+        if (-not $nodeCmd) {
+            $result.Note = "'$NodeExe' was not found on PATH - deck regeneration skipped, left the existing deck untouched"
+            return $result
+        }
+
+        $outDir = Split-Path -Parent $OutFile
+        $tempFile = Join-Path $outDir (".bidlow-deck-tmp-{0}.html" -f ([guid]::NewGuid().ToString('N')))
+        $stdoutFile = Join-Path $outDir (".bidlow-deck-tmp-{0}.stdout.txt" -f ([guid]::NewGuid().ToString('N')))
+        $stderrFile = Join-Path $outDir (".bidlow-deck-tmp-{0}.stderr.txt" -f ([guid]::NewGuid().ToString('N')))
+
+        try {
+            $proc = Start-Process -FilePath $nodeCmd.Source `
+                -ArgumentList @($DeckScript, "--root", $ProjectsRoot, "--out", $tempFile) `
+                -NoNewWindow -Wait -PassThru `
+                -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+
+            if ($proc.ExitCode -ne 0) {
+                $stderrText = ""
+                if (Test-Path $stderrFile) { $stderrText = [string](Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue) }
+                $firstLine = ($stderrText -split "`n" | Where-Object { $_ -ne "" } | Select-Object -First 1)
+                $result.Note = "node exited $($proc.ExitCode) generating the deck - left the existing deck untouched. $firstLine".Trim()
+                return $result
+            }
+
+            if (-not (Test-Path $tempFile -PathType Leaf) -or (Get-Item $tempFile).Length -eq 0) {
+                $result.Note = "the deck script ran and exited 0 but produced no (or an empty) output file - left the existing deck untouched"
+                return $result
+            }
+
+            # The rename is the atomic step: same directory, so this is a
+            # single filesystem operation, never a delete-then-write gap.
+            Move-Item -Path $tempFile -Destination $OutFile -Force
+            $result.Ok = $true
+            $result.Note = "regenerated $OutFile"
+            return $result
+        } finally {
+            Remove-Item -Path $tempFile, $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        # Anything not already caught above - a locked $OutFile that Move-Item
+        # cannot replace, Start-Process itself throwing, or anything else
+        # unforeseen - lands here instead of escaping to the caller.
+        $result.Ok = $false
+        $result.Note = "deck regeneration threw and was caught: $(($_.Exception.Message).Trim()) - left the existing deck untouched"
+        return $result
+    }
+}
+
+# ===========================================================================
 # MAIN
 # ===========================================================================
 
@@ -3207,6 +3316,29 @@ $((@($handoff.Passages) | ForEach-Object { "* $_" }) -join "`n")
     # is already there to read.
     if ($alertSubject) {
         Send-RelayAlert $alertSubject $alertBody | Out-Null
+    }
+
+    # -----------------------------------------------------------------------
+    # ROW 137: REGENERATE THE CROSS-PROJECT DECK, AFTER THIS CYCLE'S OWN
+    # COMMIT (Invoke-CycleAgent above already ran the cycle's own git work) and
+    # AFTER the cycle's own log is written, so the deck reflects whatever this
+    # cycle actually left behind.
+    #
+    # Wrapped in its own try/catch on top of Invoke-DeckRegeneration's internal
+    # handling - belt and braces, so that even a bug inside this block itself
+    # (not just inside the function it calls) cannot stop the relay. See the
+    # function's own comment above for why this must never gate anything.
+    # -----------------------------------------------------------------------
+    try {
+        $deckResult = Invoke-DeckRegeneration -ProjectsRoot $ProjectsRoot -DeckScript $DeckScriptPath -OutFile $DeckOutputPath
+        if ($deckResult.Ok) {
+            Write-Line "Cycle ${cycle} deck regeneration: $($deckResult.Note)"
+        } else {
+            Write-Line "Cycle ${cycle} deck regeneration did not happen this cycle - $($deckResult.Note)"
+        }
+        Add-Content -Path $logFile -Value "`n`n## Cross-project deck`n`n$($deckResult.Note)" -Encoding utf8 -ErrorAction SilentlyContinue
+    } catch {
+        Write-Line "Cycle ${cycle} deck regeneration threw outside Invoke-DeckRegeneration and was swallowed here instead - $($_.Exception.Message)"
     }
 
     # A cycle ran, so the relay is demonstrably alive: restart the stall clock.
