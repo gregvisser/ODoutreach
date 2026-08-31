@@ -130,7 +130,20 @@ green, then merged with `gh pr merge --squash --delete-branch` (docs/`.bidlow`
 record content only - no schema, no send, no client data - none of the three
 things that require asking first).
 
-<!-- merge hash filled in after merge; see follow-up commit -->
+**Merge commit hashes:** PR #500 merged as `cc55d9d` - but `gh pr merge
+--squash --delete-branch` merged it via the GitHub API before failing
+*locally* on the uncommitted reconciliation below, so #500 landed the
+un-reconciled `DONE 190` text and recreated the branch on the next push.
+PR #501 (the reconciled text, rebased cleanly onto `cc55d9d`) merged as
+`04fd936c27d641e9d8a7e6adf8b0806b87652d51`. Confirmed with `git ls-remote
+origin refs/heads/main` -> `04fd936c27d641e9d8a7e6adf8b0806b87652d51
+refs/heads/main`, matching exactly, and by checking out `main` locally and
+reading row 143 back: it carries the reconciled `DONE 184` text, not the
+`DONE 190` text #500 introduced. Both merges are docs/`.bidlow`-only - no
+schema, no send, no client data.
+
+Fresh gates re-run against merged `main`: `relay-selftest.ps1` -> **SELF-TEST
+PASSED - 91 checks** (unchanged, no code touched this cycle).
 
 ## Scope discipline
 
