@@ -1,6 +1,62 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 174) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 176) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 176, queue row 138: SEVENTH cycle running to find this row already merged and closed (169 built it, 170-175 re-verified it); re-verified from scratch again (no redo), PR #485 open, CI pending at time of writing. Note: cycle 175's own STATE.md update was also missed — this entry also covers what cycle 175 did, reconstructed from `.bidlow/relay/log/cycle-175.md`.
+
+Row 138 arrived reopened as `IN PROGRESS 176`, exactly as it had for cycles
+171-175 — even though `main` already carried cycle 175's `DONE 175` close
+(commit `10bc6ab`, PR #483) and, moments later, cycle 175's own separate
+closing/footer-recovery commit (PR #484, merged as `d196ce2` during THIS
+cycle's PR sweep — cycle 175 had opened it but its process exited before CI
+went green, so it was left for this session to watch and merge). Root cause
+is unchanged since cycle 172 and confirmed again this cycle: the running
+`relay-watch.ps1` is loaded from a stale in-memory copy of itself (hash
+mismatch reported directly by the watcher's own end-of-cycle footer on both
+cycle 175's and this session's runs) and keeps re-dispatching row 138 the
+moment it closes on `main`. **This is fixable only by Greg running
+`relay-start.cmd` by hand — not by any code, and not by this or any future
+cycle.** It is queue row 52's defect.
+
+This session, in order:
+1. PR sweep: found PR #484 (cycle 175's own unmerged closing commit) with
+   CI pending, watched it to green (`verify` 4m5s, `E2E` 5m31s), merged it —
+   `main` now `d196ce2`, confirmed via `git ls-remote origin refs/heads/main`.
+2. Independently re-ran row 138's own gates fresh (no redo of the actual
+   feature work): `standards/bidlow-deck-out-of-order-headline.test.ts` 2/2
+   pass; `npm run lint` 0; `npm run typecheck` 0;
+   `C:\Bidlowprojects\_standards\bidlow-deck.mjs` still carries
+   `estateOutOfOrder`/`outOfOrderHeadline`/`.headline-ooo`, wired into
+   `render()`; `docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md`
+   still present.
+3. Recovered cycle 175's own uncommitted watcher-footer addendum to
+   `cycle-175.md` (stashed before the PR #484 merge to avoid a checkout
+   conflict, popped back after) and committed it, matching the precedent
+   cycles 174 and 175 themselves set for this same recurring pattern.
+4. Closed row 140 `WONTFIX 176` — the relay's carry-forward detector split
+   cycle 175's log mid-sentence a THIRD time overall (after rows 124 and
+   139), this time fragmenting text that was itself already a quote. Names
+   no new work. **Worth its own queue row if it keeps recurring** — the
+   detector itself was not touched (outside row 138's authorised file).
+5. Closed row 138 `DONE 176`, naming the merge commit, no code redone.
+
+**HALF-DONE AT TIME OF THIS STATE UPDATE:** opened docs-only PR **#485**
+(branch `docs/row-138-cycle-176-close`) with the QUEUE.md → `DONE 176` /
+`WONTFIX 176` edits, the cycle-175 footer commit, and this cycle's own log
+(`cycle-176.md`). `gh pr merge --auto` was rejected (auto-merge disabled on
+this repo — same as every prior cycle in this chain), so a background watch
+of `gh pr checks 485` was started; both checks were still `pending` as this
+was written. **Next action for this same session, or the next one if this
+session ends first:** once CI is green, squash-merge PR #485
+(`gh pr merge 485 --squash --delete-branch`), confirm the resulting commit
+hash equals `git ls-remote origin refs/heads/main`, and update this
+STATE.md's top entry with the final hash.
+
+**No one-way-door decision was made.** Docs/queue-record change only — no
+code in `bidlow-deck.mjs` or anywhere else was touched this cycle, since the
+row was already satisfied. Nothing here contradicts `PROJECT.json`. The
+standing open item, unchanged since cycle 172, is still the watcher restart
+— Greg's action, not code.
 
 ## Session 2026-08-31 - Relay cycle 174, queue row 138: FOURTH cycle running to find this row already merged and closed (169 built it, 170-173 re-verified it); re-verified from scratch again (no redo), PR open, CI in progress at time of writing.
 
