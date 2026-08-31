@@ -168,3 +168,75 @@ restart, whenever that is:
 `Watcher script:`. If no cycle log ever contains that line, the restart did not
 happen and the stamp is still inert — which is exactly the failure it was built to
 make visible.
+
+---
+
+# A FOURTH RESTART — URGENT, unlike the third: this one is actively costing money
+
+Written 2026-08-31 by cycle 190. **This section exists because the "third
+restart" section above says "wanted, NOT urgent, nothing is broken without
+it", and that is no longer true. Do not read this file and stop at the section
+above it — read this one.**
+
+## What is actually happening
+
+The live `relay-watch.ps1` process has not been restarted since before commit
+`b0a9052` (cycle 184, PR #492 — the squash-merge-aware guard + independent
+loop breaker that fixed row 138's nine-cycle loop). Every single cycle log
+since then — 184, 186, 188, 189, and now 190 — has printed the same stamp,
+unchanged:
+
+    Loaded at launch: 51AF85ED01BF
+    On disk now:      FFDB8B83837A
+
+That stamp means exactly what it says: the running process still holds the
+**pre-fix** guard — squash-blind, no loop breaker — in memory. Merging more
+code to `relay-watch.ps1` does not change what that process is executing.
+Only running `relay-start.cmd` does.
+
+## The cost, measured
+
+Since cycle 184 shipped the fix, **row 143 — the row created to track that
+exact fix — has itself been caught in the loop it fixed**: closed DONE by
+cycles 184, 186, 188 and 189, and reopened again for cycles 185, 187, 189 and
+190. That is six cycles (185-190) spent re-verifying a fact that was already
+true and already proven, because the process making the reopen decision has
+never seen the code that would stop it. `.bidlow/relay/row-reopen-counts.json`
+— the file the new loop breaker persists its count to — is empty on disk.
+That is not a bug in the counting; it is proof the new code has **never once
+executed in the live process**. The loop breaker exists, is tested (91
+self-test checks, including the exact cases that should trigger it), and has
+never fired for real.
+
+## What will keep happening until the restart
+
+Every cycle that closes row 143 (or any other row) by pushing a branch whose
+name or commit message names that row's number risks the same reopen, for as
+long as this process keeps running pre-`b0a9052` code. Cycle 190 checked
+whether the specific branches involved were themselves the problem (leftover,
+undeleted `docs/*row143*` branches) — they were not; GitHub deleted every one
+of them correctly on merge (`deleteBranchOnMerge: true`, confirmed via `gh
+repo view`), and `git ls-remote origin` shows none of them exist. The false
+positive was this checkout's own unpruned local remote-tracking refs, not
+anything live on `origin`. There is no branch-hygiene fix available here —
+only the restart.
+
+## The fix, and only Greg can do it
+
+Let the current cycle finish, then in the ODoutreach folder:
+
+    relay-start.cmd
+
+Same command as every restart above. It clears HALT, reads the cycle number
+back out of `STATUS.json`, and carries on. Nothing in the queue is lost.
+
+**How to know it worked:** the next cycle log's `Watcher script:` line will
+name `FFDB8B83837A` (or whatever hash `relay-watch.ps1` carries on `main` at
+the time) instead of `51AF85ED01BF`, and row 143 will stop reopening.
+
+## Until then
+
+This is not a reason to keep re-deriving the diagnosis. A cycle that meets
+row 143 reopened again should read this section, confirm the hash line still
+shows `51AF85ED01BF`, and close it straight back to DONE citing this file —
+not repeat cycles 185-190's investigation from scratch.
