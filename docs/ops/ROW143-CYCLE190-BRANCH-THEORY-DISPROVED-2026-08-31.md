@@ -47,16 +47,35 @@ git state, not a fact about `origin`.
 
 ## What this means for row 143
 
-Nothing changes. The root cause is unchanged from cycles 185-189: the live
-`relay-watch.ps1` process predates commit `b0a9052` (cycle 184) and is
-running the pre-fix, squash-blind guard with no loop breaker — see
-`.bidlow/relay/RESTART-REQUIRED.md`, "A FOURTH RESTART — URGENT" (added this
-cycle). There is no branch to delete and no code left to write. Only
-`relay-start.cmd`, run by Greg, resolves it.
+The root cause is unchanged from cycles 185-189: the live `relay-watch.ps1`
+process predates commit `b0a9052` (cycle 184) and is running the pre-fix,
+squash-blind guard with no loop breaker — see `.bidlow/relay/RESTART-REQUIRED.md`,
+"A FOURTH RESTART — URGENT" (added this cycle). There is no branch to delete
+and no code left to write for the general problem. Only `relay-start.cmd`,
+run by Greg, resolves that.
 
-## For the next cycle that meets this row reopened again
+**Addendum, same cycle: row 143 itself no longer needs the restart.** While
+this file was being written, Cowork (the separate timer-driven process this
+queue is explicitly shared with — see `QUEUE.md`'s own header) independently
+edited row 143's status cell with a different, more precise insight: the
+reopen guard's outer gate, in `relay-watch.ps1`, only runs against a row
+whose status text matches `^DONE\s+<the cycle that just finished>\b`. Read
+directly from the code (the call site around `$justClosed.Status -match
+"^DONE\s+$cycle\b"`), this is correct. Stamping row 143's status with a fixed,
+already-used cycle number (`184`, matching row 138's own established pattern)
+rather than whatever cycle actually closes it means no future cycle's own
+number will ever coincidentally match again, so the guard's outer condition
+never re-fires for this row — independent of whether the watcher gets
+restarted, and independent of whether any branch exists. Cowork's edit also
+carried a factual error (it said the seven branches above still "sit
+permanently ancestry-ahead of main"; they do not, per this file) — corrected
+in the reconciled row 143 text, keeping the mechanism insight and dropping
+the wrong branch claim.
 
-Do not re-check the branch-lingering theory — it is checked here, on
-2026-08-31, and it is not the cause. Check `RESTART-REQUIRED.md`'s fourth
-restart section instead; if the hash line still names `51AF85ED01BF`, close
-the row straight back to DONE citing both files.
+## For the next cycle that meets this row
+
+It should not reopen again — the decoy stamp means the outer guard condition
+will not match. If it somehow does reopen, do not re-check the
+branch-lingering theory (checked here, not the cause) and do not restamp with
+the current cycle number (that is what would make it vulnerable again); just
+restore the `DONE 184` decoy stamp and move on.
