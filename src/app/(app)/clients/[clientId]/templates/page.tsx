@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { AiSequenceDraftPanel } from "@/components/clients/email-templates/ai-sequence-draft-panel";
 import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
+import { SequenceTemplateStructurePanel } from "@/components/clients/email-templates/sequence-template-structure-panel";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { loadClientSequenceTemplateStructures } from "@/server/email-sequences/queries";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
 import { getClientEmailTemplateMutationAllowed } from "@/server/email-templates/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -43,12 +45,14 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
 
   const showArchivedTemplates = firstParam(sp.showArchived) === "1";
 
-  const [templatesOverview, canMutateTemplates] = await Promise.all([
-    loadClientEmailTemplatesOverview(client.id, {
-      includeArchived: showArchivedTemplates,
-    }),
-    getClientEmailTemplateMutationAllowed(staff, client.id),
-  ]);
+  const [templatesOverview, canMutateTemplates, sequenceStructures] =
+    await Promise.all([
+      loadClientEmailTemplatesOverview(client.id, {
+        includeArchived: showArchivedTemplates,
+      }),
+      getClientEmailTemplateMutationAllowed(staff, client.id),
+      loadClientSequenceTemplateStructures(client.id),
+    ]);
 
   const templatesFlash = {
     ok: firstParam(sp.template),
@@ -77,6 +81,8 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
           </p>
         </div>
       </div>
+
+      <SequenceTemplateStructurePanel structures={sequenceStructures} />
 
       <ClientEmailTemplatesPanel
         clientId={client.id}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveOutreachMetrics,
+  formatBounceRate,
   formatRate,
   formatTrackedMetric,
   type RawMetricsCounts,
@@ -265,6 +266,27 @@ describe("formatRate", () => {
 
   it("formats percentage correctly", () => {
     expect(formatRate(12.5)).toBe("12.5%");
+  });
+});
+
+/**
+ * Queue item 133, finding 3 — "the bounce rate shows nothing." Production
+ * measurement (docs/ops/BOUNCE-RATE-DISPLAY-2026-08-31.md) found the
+ * pipeline firing correctly and genuine-zero-bounce clients already showing
+ * a real "0%". The one case that read as broken was a client with no sends
+ * at all, where `formatRate` returns a bare "—" with no explanation.
+ */
+describe("formatBounceRate", () => {
+  it("says 'No emails sent yet' when nothing has been sent, instead of a bare dash", () => {
+    expect(formatBounceRate(null, 0)).toBe("No emails sent yet");
+  });
+
+  it("shows a real 0% when mail was sent and none of it bounced", () => {
+    expect(formatBounceRate(0, 42)).toBe("0%");
+  });
+
+  it("shows the real rate when there are bounces", () => {
+    expect(formatBounceRate(12.5, 40)).toBe("12.5%");
   });
 });
 

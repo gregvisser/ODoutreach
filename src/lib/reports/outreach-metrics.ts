@@ -118,3 +118,23 @@ export function formatTrackedMetric(
 ): string {
   return tracked ? value.toLocaleString() : "Not tracked";
 }
+
+/**
+ * Queue item 133, finding 3 — "the bounce rate shows nothing." Measured
+ * against production (docs/ops/BOUNCE-RATE-DISPLAY-2026-08-31.md): the
+ * bounce-detection pipeline is proven firing (real bounces exist and are
+ * counted correctly), and a client that has sent mail with zero bounces
+ * already shows a real "0%" — that case was never blank.
+ *
+ * The genuine gap is the OTHER null case `formatRate` collapses onto the
+ * same "—": a client that has not sent anything yet. A bare dash next to
+ * "Bounce rate" looks identical to a broken metric. This gives that case
+ * its own, explained, non-blank label.
+ */
+export function formatBounceRate(
+  bounceRate: number | null,
+  sent: number,
+): string {
+  if (sent === 0) return "No emails sent yet";
+  return formatRate(bounceRate);
+}

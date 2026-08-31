@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { replyOwnershipLabel } from "@/lib/inbox/reply-ownership";
 import {
+  formatBounceRate,
   formatRate,
   formatTrackedMetric,
 } from "@/lib/reports/outreach-metrics";
@@ -133,7 +134,10 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
             <MetricRow label="Reply rate" value={formatRate(metrics.replyRate)} />
             <MetricRow label="Unsubscribe rate" value={formatRate(metrics.unsubscribeRate)} />
-            <MetricRow label="Bounce rate" value={formatRate(metrics.bounceRate)} />
+            <MetricRow
+              label="Bounce rate"
+              value={formatBounceRate(metrics.bounceRate, metrics.sent)}
+            />
             <MetricRow label="Not reached" value={metrics.notReached.toLocaleString()} />
             <MetricRow label="Suppressed / skipped" value={metrics.suppressedOrSkipped.toLocaleString()} />
           </div>

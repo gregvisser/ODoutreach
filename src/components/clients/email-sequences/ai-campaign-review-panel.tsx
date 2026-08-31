@@ -12,6 +12,10 @@ import {
   scoreBand,
   type CampaignReviewFinding,
 } from "@/lib/ai/campaign-review";
+import {
+  isMostRecentlyReviewed,
+  orderSequencesByReviewRecency,
+} from "@/lib/ai/campaign-review-display-order";
 import type { StoredCampaignReview } from "@/server/ai/review-campaign";
 
 /**
@@ -59,17 +63,23 @@ function formatWhen(value: Date): string {
 function ReviewBody({
   review,
   currentStepCount,
+  defaultOpen,
 }: {
   review: StoredCampaignReview;
   currentStepCount: number;
+  /** Row 133 finding 1 — only the most recently reviewed sequence starts open. */
+  defaultOpen: boolean;
 }) {
   const band = scoreBand(review.score);
   const changedSince = review.stepCount !== currentStepCount;
   const oldPrompt = review.promptVersion !== CAMPAIGN_REVIEW_PROMPT_VERSION;
 
   return (
-    <div className="space-y-3 rounded-md border border-border/70 p-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <details
+      open={defaultOpen}
+      className="space-y-3 rounded-md border border-border/70 p-3"
+    >
+      <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1 [&::-webkit-details-marker]:hidden">
         <span className="text-2xl font-semibold tabular-nums">
           {review.score}
           <span className="text-base font-normal text-muted-foreground"> / 100</span>
@@ -78,7 +88,7 @@ function ReviewBody({
         <span className="text-xs text-muted-foreground">
           Reviewed {formatWhen(review.createdAt)}
         </span>
-      </div>
+      </summary>
 
       {changedSince ? (
         <p className="text-sm font-medium text-amber-700 dark:text-amber-500">
@@ -124,7 +134,7 @@ function ReviewBody({
         An opinion about the writing. It does not approve any email and does not
         affect whether this campaign can be launched.
       </p>
-    </div>
+    </details>
   );
 }
 
@@ -149,6 +159,22 @@ export function AiCampaignReviewPanel({
   reviewsBySequenceId: ReadonlyMap<string, StoredCampaignReview>;
   flash: { ok: string | null; error: string | null };
 }) {
+  // Row 133 finding 1 — the most recently reviewed sequence floats to the
+  // top and starts expanded; every other review starts collapsed, so
+  // grading several sequences no longer turns the panel into one long
+  // screen the operator has to hunt through for the one they just graded.
+  const reviewedAtBySequenceId = new Map(
+    [...reviewsBySequenceId.entries()].map(([id, review]) => [
+      id,
+      review.createdAt,
+    ]),
+  );
+  const orderedSequences = orderSequencesByReviewRecency(
+    sequences,
+    reviewedAtBySequenceId,
+  );
+  const orderedSequenceIds = orderedSequences.map((s) => s.id);
+
   return (
     <Card id="ai-campaign-review" className="border-border/80 shadow-sm">
       <CardHeader>
@@ -186,7 +212,7 @@ export function AiCampaignReviewPanel({
           </p>
         ) : (
           <ul className="space-y-4">
-            {sequences.map((sequence) => {
+            {orderedSequences.map((sequence) => {
               const review = reviewsBySequenceId.get(sequence.id) ?? null;
               return (
                 <li key={sequence.id} className="space-y-2">
@@ -227,6 +253,11 @@ export function AiCampaignReviewPanel({
                     <ReviewBody
                       review={review}
                       currentStepCount={sequence.stepCount}
+                      defaultOpen={isMostRecentlyReviewed(
+                        sequence.id,
+                        orderedSequenceIds,
+                        reviewedAtBySequenceId,
+                      )}
                     />
                   ) : null}
                 </li>

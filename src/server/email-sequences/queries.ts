@@ -186,6 +186,76 @@ async function loadContactListReadinessMap(
   return out;
 }
 
+export type SequenceTemplateStructureStep = {
+  id: string;
+  category: ClientEmailTemplateCategory;
+  position: number;
+  templateId: string;
+  templateName: string;
+  templateStatus: ClientEmailTemplateStatus;
+};
+
+export type SequenceTemplateStructure = {
+  sequenceId: string;
+  sequenceName: string;
+  sequenceStatus: ClientEmailSequenceStatus;
+  steps: SequenceTemplateStructureStep[];
+};
+
+/**
+ * Queue item 133, finding 2 — "a person cannot make out which intro goes
+ * with which follow-up." The Templates screen groups templates by CATEGORY
+ * (every client's "Introduction email" templates in one bucket, from every
+ * sequence at once), which is exactly why the pairing is invisible: category
+ * is not sequence.
+ *
+ * A template has no direct `sequenceId` column — the link only exists via
+ * `ClientEmailSequenceStep`, one row per (sequence, template, position). This
+ * is a small, purpose-built query for that join: one sequence, its steps, in
+ * send order, each naming its template. Deliberately NOT the full
+ * `loadClientEmailSequencesOverview` — that also loads contact-list members
+ * and enrollment previews the Templates page has no use for, and would
+ * duplicate real query cost on a page that only needs step order + names.
+ */
+export async function loadClientSequenceTemplateStructures(
+  clientId: string,
+): Promise<SequenceTemplateStructure[]> {
+  if (!clientId) return [];
+
+  const rows = await prisma.clientEmailSequence.findMany({
+    where: { clientId },
+    orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      steps: {
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          category: true,
+          position: true,
+          template: { select: { id: true, name: true, status: true } },
+        },
+      },
+    },
+  });
+
+  return rows.map((sequence) => ({
+    sequenceId: sequence.id,
+    sequenceName: sequence.name,
+    sequenceStatus: sequence.status,
+    steps: sequence.steps.map((step) => ({
+      id: step.id,
+      category: step.category,
+      position: step.position,
+      templateId: step.template.id,
+      templateName: step.template.name,
+      templateStatus: step.template.status,
+    })),
+  }));
+}
+
 /**
  * Load every sequence + option list needed to render the Outreach page
  * "Email sequences" section. Returns counts, per-sequence summaries,
