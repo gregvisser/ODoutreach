@@ -1474,6 +1474,86 @@ function Get-DoneWithoutMergeStatus {
 # (Get-DoneWithUnmergedBranchStatus) that relay-selftest.ps1 can drive
 # directly against a fixed branch name, without a live git repository.
 # ===========================================================================
+# ===========================================================================
+# ROW 138: "AHEAD OF MAIN BY ANCESTRY" IS THE WRONG QUESTION IN A REPO THAT
+# SQUASH-MERGES EVERY PR
+#
+# `git log origin/main..branch` answers "does main already contain this
+# branch's own commit objects". A squash merge writes a BRAND NEW commit onto
+# main whose diff equals the branch's diff but whose hash, parent and commit
+# message are all different from anything the branch ever pushed - so that
+# question stays "no" forever, for every branch this repo ever merges. Row
+# 138 lived this for nine straight cycles: the real work merged once (cycle
+# 169, commit 5fe6cd3), and every cycle after it re-verified that, closed the
+# row, pushed a fresh branch, and had this exact ancestry check call the new
+# branch "unmerged" - because by ancestry, it always is.
+#
+# The question that actually matters is "is this branch's CONTENT already on
+# main", and `git patch-id` answers it directly: two diffs that produce the
+# same effective change hash to the same patch-id regardless of which commits
+# carried them. A squash merge is, by definition, one commit on main whose
+# diff is exactly the union of the branch's own diffs since it forked - so
+# comparing the patch-id of the branch's WHOLE diff (merge-base..tip) against
+# the patch-id of every individual commit main has gained since that same
+# fork point catches a squash merge of any number of commits, not just a
+# single-commit branch. See relay-selftest.ps1 section 13 for the proof,
+# including the branch shape (two commits, squashed to one) several of the
+# real row-138-cycle-*-close branches actually had.
+# ===========================================================================
+function Get-DiffPatchId {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoPath,
+        [Parameter(Mandatory = $true)][string]$FromRef,
+        [Parameter(Mandatory = $true)][string]$ToRef
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $diffText = (& git -C $RepoPath diff $FromRef $ToRef 2>$null | Out-String)
+        if ([string]::IsNullOrWhiteSpace($diffText)) { return $null }
+        $patchIdLine = ($diffText | & git -C $RepoPath patch-id --stable 2>$null | Out-String)
+        if ([string]::IsNullOrWhiteSpace($patchIdLine)) { return $null }
+        return ($patchIdLine.Trim() -split '\s+')[0]
+    } catch {
+        return $null
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+function Test-BranchSquashMergedIntoMain {
+    param(
+        [Parameter(Mandatory = $true)][string]$Branch,
+        [string]$RepoPath = $RepoRoot,
+        [string]$MainRef = "origin/main"
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $mergeBase = (& git -C $RepoPath merge-base $MainRef $Branch 2>$null | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($mergeBase)) { return $false }
+
+        $branchPatchId = Get-DiffPatchId -RepoPath $RepoPath -FromRef $mergeBase -ToRef $Branch
+        # No diff at all (the branch never changed anything beyond its fork
+        # point) is not the squash-merge case this exists to catch - it is
+        # left for the plain ancestry check above to sort out either way.
+        if ([string]::IsNullOrWhiteSpace($branchPatchId)) { return $false }
+
+        $mainCommits = @(& git -C $RepoPath rev-list "$mergeBase..$MainRef" 2>$null)
+        foreach ($commit in $mainCommits) {
+            $commit = ([string]$commit).Trim()
+            if (-not $commit) { continue }
+            $commitPatchId = Get-DiffPatchId -RepoPath $RepoPath -FromRef "$commit^" -ToRef $commit
+            if ($commitPatchId -and $commitPatchId -eq $branchPatchId) { return $true }
+        }
+        return $false
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 function Find-UnmergedPushedBranchForRow {
     param(
         [Parameter(Mandatory = $true)][string]$RowNumber,
@@ -1509,6 +1589,13 @@ function Find-UnmergedPushedBranchForRow {
         if ([string]::IsNullOrWhiteSpace($ahead)) { continue }
 
         $shortName = $branch -replace '^origin/', ''
+
+        # ROW 138: ahead by ancestry is not the same as unmerged in a repo
+        # that squash-merges - see the block comment above. A branch whose
+        # whole diff already landed on main under a different commit hash is
+        # treated exactly like the plain-merge case just above: not found.
+        if (Test-BranchSquashMergedIntoMain -Branch $branch -RepoPath $RepoPath) { continue }
+
         # Checks both the branch NAME (this repo's own convention stamps the
         # row number into it, e.g. `fix/row127-queue-bom`) and its commit
         # subjects (e.g. "row 101 - verify and close CR-10"), reusing the same
@@ -1521,17 +1608,89 @@ function Find-UnmergedPushedBranchForRow {
     return $null
 }
 
+# ===========================================================================
+# ROW 138: A GUARD THAT CAN LOOP FOREVER IS WORSE THAN NO GUARD
+#
+# The patch-id fix above closes the specific hole that caused nine straight
+# reopens. It is deliberately NOT trusted to be the last hole this guard will
+# ever find - a branch rebased mid-flight, a squash that also picked up an
+# unrelated commit, a merge-base git cannot compute cleanly, and this would
+# loop again exactly as row 138 did. So this backstop is independent of
+# WHY the merge check thinks a branch is unmerged: it only counts how many
+# times in a row this guard has already reopened THIS row, and once that
+# reaches two, the third attempt is refused - the row is left DONE with a
+# plain note instead of being handed back to the queue again.
+#
+# Counting has to survive across cycles, which run as separate processes, so
+# it is persisted to a small JSON file beside QUEUE.md rather than kept in
+# memory - the same "write to disk, let the next cycle's commit pick it up"
+# pattern QUEUE.md itself already relies on (see the note near the top of
+# QUEUE.md about uncommitted watcher writes).
+# ===========================================================================
+$RowReopenCountsFile = Join-Path $RepoRoot ".bidlow/relay/row-reopen-counts.json"
+
+function Get-RowReopenCounts {
+    param([string]$Path = $RowReopenCountsFile)
+    $counts = @{}
+    if (-not (Test-Path $Path)) { return $counts }
+    try {
+        $raw = Get-Content -Path $Path -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $counts }
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+        if ($parsed) {
+            foreach ($prop in $parsed.PSObject.Properties) {
+                $counts[$prop.Name] = [int]$prop.Value
+            }
+        }
+    } catch {
+        # An unreadable or corrupt counts file is treated as "no history yet"
+        # - the safe direction, since it only costs one extra reopen, never a
+        # false loop-breaker firing on a row that was never actually looping.
+        return @{}
+    }
+    return $counts
+}
+
+function Set-RowReopenCounts {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Counts,
+        [string]$Path = $RowReopenCountsFile
+    )
+    try {
+        $dir = Split-Path -Parent $Path
+        if ($dir -and -not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        ($Counts | ConvertTo-Json -Compress) | Set-Content -Path $Path -Encoding utf8
+    } catch {
+        # Best-effort persistence only - a write failure here must never
+        # crash the watcher loop. Worst case, the count resets to zero and
+        # this row gets two more free reopens before the breaker notices.
+    }
+}
+
 function Get-DoneWithUnmergedBranchStatus {
     param(
         [Parameter(Mandatory = $true)][string]$CurrentStatus,
         [Parameter(Mandatory = $true)][string]$RowNumber,
         [Parameter(Mandatory = $true)][string]$CycleNumber,
-        [AllowNull()][string]$UnmergedBranch
+        [AllowNull()][string]$UnmergedBranch,
+        [int]$PriorReopenCount = 0
     )
     # Left alone: no pushed branch was found naming this row ahead of main -
     # either there genuinely is none (the artefact-only case row 121's
-    # carve-out protects), or the branch already merged and disappeared.
+    # carve-out protects), or the branch already merged (plain or squash) and
+    # disappeared from the ancestry gap.
     if ([string]::IsNullOrWhiteSpace($UnmergedBranch)) { return $CurrentStatus }
+
+    # THE LOOP BREAKER. This guard has already reopened this exact row twice
+    # over an "unmerged" branch and it is still finding one - reopening a
+    # third time repeats row 138's loop rather than fixing it. Give up
+    # instead: leave the row DONE, say why in plain words, and name the
+    # branch so a person has somewhere to look.
+    if ($PriorReopenCount -ge 2) {
+        return "DONE $CycleNumber - LOOP BREAKER: the unmerged-branch guard has already reopened row $RowNumber $PriorReopenCount time(s) without the branch it points at ever going away (most recently '$UnmergedBranch'), so rather than reopen it again and risk looping forever, the guard is giving up and leaving this row closed. A person should check whether '$UnmergedBranch' (and any sibling branches naming this row) genuinely still needs merging, or is safe to delete. Original: $CurrentStatus"
+    }
 
     return "PARTIAL $CycleNumber - closed DONE but branch '$UnmergedBranch' is pushed ahead of origin/main and was never merged, so it is rewritten to PARTIAL - the next cycle should finish the merge, not redo the work. Original: $CurrentStatus"
 }
@@ -2826,8 +2985,35 @@ either way.
                       Select-Object -First 1
         if ($justClosed -and $justClosed.Parsed -and $justClosed.Status -match "^DONE\s+$cycle\b") {
             $unmergedBranch = Find-UnmergedPushedBranchForRow -RowNumber $justClosed.Number
+
+            # ROW 138's LOOP BREAKER - see the block comment above
+            # Get-DoneWithUnmergedBranchStatus. Reopen counts are per row
+            # number and persisted across cycles (separate processes), so
+            # they are read fresh here and written back once the decision is
+            # made - never held in memory between calls.
+            $rowKey = [string]$justClosed.Number
+            $reopenCounts = Get-RowReopenCounts
+            $priorReopenCount = if ($reopenCounts.ContainsKey($rowKey)) { [int]$reopenCounts[$rowKey] } else { 0 }
+
             $newDoneStatus = Get-DoneWithUnmergedBranchStatus -CurrentStatus $justClosed.Status `
-                -RowNumber $justClosed.Number -CycleNumber $cycle -UnmergedBranch $unmergedBranch
+                -RowNumber $justClosed.Number -CycleNumber $cycle -UnmergedBranch $unmergedBranch `
+                -PriorReopenCount $priorReopenCount
+
+            if ($unmergedBranch) {
+                # A real reopen (PARTIAL) counts against the row; the loop
+                # breaker firing (DONE ... LOOP BREAKER) resets it - the row
+                # is being left closed, so the next genuinely new problem
+                # with this row gets its own fresh two-strike budget.
+                $reopenCounts[$rowKey] = if ($newDoneStatus -match '(?i)loop breaker') { 0 } else { $priorReopenCount + 1 }
+                Set-RowReopenCounts $reopenCounts
+            } elseif ($reopenCounts.ContainsKey($rowKey) -and $reopenCounts[$rowKey] -ne 0) {
+                # No unmerged branch found this time - the row genuinely
+                # closed clean, so any stale count from an earlier loop is
+                # cleared rather than left to fire on an unrelated future
+                # reopen of this same row number.
+                $reopenCounts[$rowKey] = 0
+                Set-RowReopenCounts $reopenCounts
+            }
 
             if ($newDoneStatus -eq $justClosed.Status) {
                 $demandsMerge = Test-RowDefinitionOfDoneDemandsMerge $justClosed.Item
@@ -2839,7 +3025,9 @@ either way.
 
             if ($newDoneStatus -ne $justClosed.Status) {
                 if (Set-QueueRowStatus $justClosed.Number $newDoneStatus) {
-                    if ($unmergedBranch) {
+                    if ($newDoneStatus -match '(?i)loop breaker') {
+                        Write-Line "Row #$($justClosed.Number) has been reopened by the unmerged-branch guard $priorReopenCount time(s) already over branch '$unmergedBranch' - the loop breaker is giving up rather than reopening it again. Left closed DONE with a note; a person should check that branch."
+                    } elseif ($unmergedBranch) {
                         Write-Line "Row #$($justClosed.Number) was closed DONE by cycle $cycle but branch '$unmergedBranch' is pushed and unmerged - rewritten to PARTIAL so the next cycle finishes the merge."
                     } else {
                         Write-Line "Row #$($justClosed.Number) was closed DONE by cycle $cycle but nothing on main mentions it - rewritten to PARTIAL so the next cycle verifies before trusting it."
