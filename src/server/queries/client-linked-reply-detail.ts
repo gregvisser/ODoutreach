@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
 
 /**
  * PR #137 — staff-safe linked reply detail.
@@ -156,7 +157,17 @@ export async function loadClientLinkedReplyDetail(args: {
   // the existing Graph/Gmail-aware message detail page. Only mailbox-synced
   // replies will have one (webhook-ingested replies won't, and that's
   // surfaced in the UI as a "reply unavailable here" affordance).
+  //
+  // Row 150 — this same correlated message is also the other place an
+  // operator can mark the conversation "handled"
+  // (`InboundMailboxMessage.metadata.handling.handledAt`). Fold that signal
+  // in here, exactly like the two aggregate views
+  // (`replies-needing-a-person.ts`, `client-outreach-replies.ts`) already
+  // OR it with `InboundReply.handledAt` — otherwise this page can show
+  // "Unclaimed" with live Claim/Mark-handled buttons for a conversation the
+  // message-detail page already closed out.
   let inboundMailboxMessageId: string | null = null;
+  let mailboxHandledAt: Date | null = null;
   if (reply.providerMessageId && reply.linkedOutbound.mailboxIdentityId) {
     const ibm = await prisma.inboundMailboxMessage.findFirst({
       where: {
@@ -164,9 +175,13 @@ export async function loadClientLinkedReplyDetail(args: {
         mailboxIdentityId: reply.linkedOutbound.mailboxIdentityId,
         providerMessageId: reply.providerMessageId,
       },
-      select: { id: true },
+      select: { id: true, metadata: true },
     });
     inboundMailboxMessageId = ibm?.id ?? null;
+    if (ibm) {
+      const handling = readHandlingStateFromMetadata(ibm.metadata);
+      mailboxHandledAt = handling.handledAt ? new Date(handling.handledAt) : null;
+    }
   }
 
   const stepSendEnrolment =
@@ -184,7 +199,7 @@ export async function loadClientLinkedReplyDetail(args: {
       matchMethod: reply.matchMethod,
       ingestionSource: reply.ingestionSource,
     },
-    handledAt: reply.handledAt,
+    handledAt: reply.handledAt ?? mailboxHandledAt,
     handledByName: reply.handledByStaff?.displayName ?? reply.handledByStaff?.email ?? null,
     handledByStaffUserId: reply.handledByStaffUserId,
     contact: {

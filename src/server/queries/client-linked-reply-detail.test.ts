@@ -237,6 +237,54 @@ describe("loadClientLinkedReplyDetail", () => {
     expect(prismaMock.inboundMailboxMessage.findFirst).not.toHaveBeenCalled();
   });
 
+  it("row 150 — falls back to the correlated mailbox message's own handled signal when InboundReply.handledAt is unset (desync fix)", async () => {
+    // Mirrors the real failure: an operator marked the conversation handled
+    // from the message-detail page (`markInboundMailboxMessageHandled`),
+    // which only ever writes `InboundMailboxMessage.metadata.handling`, not
+    // `InboundReply.handledAt`. Before row 150 this loader read
+    // `reply.handledAt` only, so the reply-detail page kept showing
+    // "Unclaimed" with live Claim/Mark-handled buttons for an already-closed
+    // conversation — the exact desync that let a second operator send a
+    // genuine duplicate reply.
+    prismaMock.inboundReply.findFirst.mockResolvedValue(baseRow());
+    prismaMock.inboundMailboxMessage.findFirst.mockResolvedValue({
+      id: "ibm-1",
+      metadata: {
+        handling: {
+          handledAt: "2026-08-31T09:00:00.000Z",
+          handledByStaffUserId: "staff-bob",
+        },
+      },
+    });
+
+    const result = await loadClientLinkedReplyDetail({
+      clientId: "c1",
+      replyId: "reply-1",
+    });
+
+    expect(result?.handledAt).toEqual(new Date("2026-08-31T09:00:00.000Z"));
+  });
+
+  it("row 150 — InboundReply.handledAt still wins when both signals are set", async () => {
+    const replyHandledAt = new Date("2026-08-30T08:00:00Z");
+    prismaMock.inboundReply.findFirst.mockResolvedValue(
+      baseRow({ handledAt: replyHandledAt, handledByStaffUserId: "staff-sarah" }),
+    );
+    prismaMock.inboundMailboxMessage.findFirst.mockResolvedValue({
+      id: "ibm-1",
+      metadata: {
+        handling: { handledAt: "2026-08-31T09:00:00.000Z" },
+      },
+    });
+
+    const result = await loadClientLinkedReplyDetail({
+      clientId: "c1",
+      replyId: "reply-1",
+    });
+
+    expect(result?.handledAt).toEqual(replyHandledAt);
+  });
+
   it("returns null enrolment + sequence when no step-sends are attached", async () => {
     prismaMock.inboundReply.findFirst.mockResolvedValue(
       baseRow({
