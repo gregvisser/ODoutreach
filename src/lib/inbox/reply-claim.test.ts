@@ -4,6 +4,7 @@ import {
   REPLY_CLAIM_STALE_AFTER_MS,
   formatClaimAge,
   resolveReplyClaimSubject,
+  selectDisplayClaim,
   selectVisibleClaim,
   type ReplyClaimRow,
 } from "./reply-claim";
@@ -115,6 +116,62 @@ describe("selectVisibleClaim", () => {
   it("returns null when there are no claims at all", () => {
     expect(
       selectVisibleClaim({ claims: [], viewerStaffUserId: "staff-bob", now: NOW }),
+    ).toBeNull();
+  });
+});
+
+describe("selectDisplayClaim", () => {
+  it("row 132 — shows the viewer their own claim as 'You', unlike selectVisibleClaim", () => {
+    const display = selectDisplayClaim({
+      claims: [claim({ staffUserId: "staff-bob" })],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(display).not.toBeNull();
+    expect(display?.name).toBe("You");
+    expect(display?.isViewer).toBe(true);
+  });
+
+  it("names somebody else's claim and marks it not the viewer's", () => {
+    const display = selectDisplayClaim({
+      claims: [claim()],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(display?.name).toBe("Sarah Okafor");
+    expect(display?.isViewer).toBe(false);
+    expect(display?.agoLabel).toBe("2 minutes ago");
+  });
+
+  it("prefers the viewer's own claim over a more recent claim by somebody else", () => {
+    const display = selectDisplayClaim({
+      claims: [
+        claim({ staffUserId: "staff-bob", claimedAt: minutesAgo(10) }),
+        claim({ staffUserId: "staff-newer", displayName: "Newer", claimedAt: minutesAgo(1) }),
+      ],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(display?.name).toBe("You");
+    expect(display?.othersCount).toBe(1);
+  });
+
+  it("hides a claim older than 30 minutes, same rule as selectVisibleClaim", () => {
+    const display = selectDisplayClaim({
+      claims: [claim({ claimedAt: minutesAgo(31) })],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(display).toBeNull();
+  });
+
+  it("returns null — never a manufactured owner — when nobody has claimed it", () => {
+    expect(
+      selectDisplayClaim({ claims: [], viewerStaffUserId: "staff-bob", now: NOW }),
     ).toBeNull();
   });
 });

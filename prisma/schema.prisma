@@ -312,6 +312,7 @@ model StaffUser {
   suppressedDomainFamiliesCreated SuppressedDomainFamily[]         @relation("SuppressedDomainFamilyCreatedBy")
   familyProposalsDecided          SuppressedDomainFamilyProposal[] @relation("FamilyProposalDecidedBy")
   replyClaims                     ReplyClaim[]
+  repliesHandled                  InboundReply[]                   @relation("InboundReplyHandledBy")
 
   @@index([invitedById])
 }
@@ -1727,13 +1728,23 @@ model InboundReply {
   /// One short sentence for the person reading the inbox.
   classificationRationale  String?              @db.Text
 
+  /// Row 132 — durable "somebody has dealt with this" state, owned by the
+  /// reply itself so every reply can carry it, not only ones correlated to
+  /// a synced mailbox message (see `InboundMailboxMessage.metadata.handling`
+  /// for that older, narrower mechanism). First write wins — see
+  /// `markInboundReplyHandled`.
+  handledAt             DateTime?
+  handledByStaffUserId  String?
+
   client         Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   contact        Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   linkedOutbound OutboundEmail? @relation("ReplyToOutbound", fields: [linkedOutboundEmailId], references: [id], onDelete: SetNull)
+  handledByStaff StaffUser?     @relation("InboundReplyHandledBy", fields: [handledByStaffUserId], references: [id], onDelete: SetNull)
 
   @@index([clientId, receivedAt])
   @@index([providerMessageId])
   @@index([linkedOutboundEmailId])
+  @@index([handledByStaffUserId])
 }
 
 // ——— Reporting aggregates (placeholder / nightly rollups) ———

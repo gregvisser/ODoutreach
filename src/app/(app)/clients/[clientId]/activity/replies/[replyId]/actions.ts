@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
+import type { ReplyClaimSubjectType } from "@/lib/inbox/reply-claim";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
+import { markInboundReplyHandled } from "@/server/inbox/mark-reply-handled";
 import { requireClientAccess } from "@/server/tenant/access";
 
 /**
@@ -132,4 +134,39 @@ export async function pauseEnrollmentAction(input: {
   revalidatePath(`/clients/${input.clientId}/activity/replies/${input.replyId}`);
   revalidatePath(`/clients/${input.clientId}/activity`);
   return { ok: true, status: "PAUSED" };
+}
+
+export type MarkReplyHandledActionResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+/**
+ * Row 132 — "I've dealt with this." Durable, unlike the advisory claim:
+ * this is what makes the reply disappear from the cross-client "Replies
+ * waiting for a person" queue and turns its badge green everywhere else.
+ * Distinct from "Stop follow-ups" above — that halts future sequence
+ * sends; this records that a person answered or otherwise closed out the
+ * conversation, which is a different fact and can be true independently.
+ */
+export async function markReplyHandledAction(input: {
+  clientId: string;
+  replyId: string;
+  subjectType: ReplyClaimSubjectType;
+  subjectId: string;
+}): Promise<MarkReplyHandledActionResult> {
+  const staff = await requireOpensDoorsStaff();
+
+  const result = await markInboundReplyHandled({
+    staff,
+    clientId: input.clientId,
+    replyId: input.replyId,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+  });
+  if (!result.ok) return { ok: false, reason: result.reason };
+
+  revalidatePath(`/clients/${input.clientId}/activity/replies/${input.replyId}`);
+  revalidatePath(`/clients/${input.clientId}/activity`);
+  revalidatePath("/replies");
+  return { ok: true };
 }

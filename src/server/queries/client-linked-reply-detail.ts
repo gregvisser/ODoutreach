@@ -37,6 +37,10 @@ export type LinkedReplyDetail = {
     matchMethod: string;
     ingestionSource: string;
   };
+  /** Row 132 — durable "somebody dealt with this", owned by the reply. */
+  handledAt: Date | null;
+  handledByName: string | null;
+  handledByStaffUserId: string | null;
   contact: {
     id: string | null;
     fullName: string | null;
@@ -96,6 +100,9 @@ export async function loadClientLinkedReplyDetail(args: {
       matchMethod: true,
       ingestionSource: true,
       providerMessageId: true,
+      handledAt: true,
+      handledByStaffUserId: true,
+      handledByStaff: { select: { displayName: true, email: true } },
       contact: {
         select: {
           id: true,
@@ -177,6 +184,9 @@ export async function loadClientLinkedReplyDetail(args: {
       matchMethod: reply.matchMethod,
       ingestionSource: reply.ingestionSource,
     },
+    handledAt: reply.handledAt,
+    handledByName: reply.handledByStaff?.displayName ?? reply.handledByStaff?.email ?? null,
+    handledByStaffUserId: reply.handledByStaffUserId,
     contact: {
       id: reply.contact?.id ?? null,
       fullName: reply.contact?.fullName ?? null,
