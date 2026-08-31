@@ -20,7 +20,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     title: "Daily workflow checklist",
     bullets: [
       "Open the client workspace and check the Overview.",
-      "Check Mailboxes for reconnect warnings and daily capacity — the page shows connection status; full signatures are configured by administrators.",
+      "Check Mailboxes for reconnect warnings and daily capacity — any staff member can reconnect a mailbox or set its signature (including the one-click Set branded signatures button) directly from this page.",
       "Import contacts from CSV or RocketReach in Sources only when you are ready to save them to a list; each import is also deduplicated into the global Universe.",
       "Check Do-not-contact before any outreach.",
       "Build one introduction email; add follow-ups only if needed.",
@@ -35,7 +35,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     bullets: [
       "Create a client from Clients -> New client.",
       "Complete the Brief with business profile, target audience, offer, exclusions, and compliance notes.",
-      "Administrators configure connected mailboxes, full branded signatures/disclaimers, and proof sends from Mailboxes (advanced); operators review connection status and capacity.",
+      "Any staff member can connect mailboxes, set branded signatures/disclaimers, and send an internal verification email from Mailboxes — connection status and capacity are visible to everyone on the workspace.",
     ],
   },
   {
@@ -84,8 +84,8 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "Admin operations (off the sidebar by design)",
     bullets: [
-      "Normal staff use Overview, Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity, and Training.",
-      "Admin Operations is for support troubleshooting of queues, failures, and delivery infrastructure. It is intentionally not in the sidebar (removed in PR #135) and is reached from internal links and from action-redirect targets in the outbound flow.",
+      "Normal staff use Overview, Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Activity, and Training.",
+      "Admin Operations is for support troubleshooting of queues, failures, and delivery infrastructure. It is intentionally not in the sidebar and is reached from internal links and from action-redirect targets in the outbound flow.",
       "Do not requeue or change technical state unless you understand the failed record.",
     ],
   },
@@ -115,7 +115,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "10-minute handover script",
     bullets: [
-      "Open OpensDoors, show Overview and the client tabs (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity).",
+      "Open OpensDoors, show Overview and the client tabs (Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Activity).",
       "Show Mailboxes, capacity, signatures, and reconnect warning states. Read the explainer card.",
       "Show Sources import choices, Universe, and explain RocketReach credits and the confirmation phrase requirement.",
       "Show Do-not-contact (titled \"People blocked from outreach\" at the cross-client view) and explain why it is a hard safety check.",

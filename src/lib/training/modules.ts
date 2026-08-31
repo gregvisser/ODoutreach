@@ -147,7 +147,6 @@ export const OPENSDOORS_TRAINING_EXAMPLE = {
       "Would you be open to a brief 15-minute chat next week to explore how Opensdoors could help {{company_name}} achieve its growth goals?",
       "",
       "Best,",
-      "{{email_signature}}",
     ].join("\n"),
   },
   capacity: {
@@ -224,7 +223,7 @@ const onboardingModule: TrainingModule = {
     {
       title: "Click Create workspace",
       detail:
-        "You land on the Overview. The tab row along the top is how you move around the workspace: Overview · Brief · Mailboxes · Do-not-contact · Sources · Lists · Templates · Outreach · Activity. Further down, the Launch readiness panel lists the seven modules that decide whether this client can go live — Brief, Mailboxes, Sources, Do-not-contact, Lists, Outreach, Activity — each with a status pill and a link. The client stays in ONBOARDING until every required step is complete.",
+        "You land on the Overview. The tab row along the top is how you move around the workspace: Overview · Brief · Mailboxes · Setup help · Do-not-contact · Sources · Lists · Templates · Outreach · Activity. Further down, the Launch readiness panel lists the seven modules that decide whether this client can go live — Brief, Mailboxes, Sources, Do-not-contact, Lists, Outreach, Activity — each with a status pill and a link. The client stays in ONBOARDING until every required step is complete.",
     },
     {
       title: "Bookmark the Overview",
@@ -410,7 +409,7 @@ const mailboxesModule: TrainingModule = {
   details: [
     `OpensDoors runs outreach from up to ${String(ex.capacity.maxMailboxes)} connected mailboxes per workspace. Each mailbox sends up to ${String(ex.capacity.perMailboxDailyCap)} messages per day, for a workspace total of ${String(ex.capacity.dailyTheoreticalMax)} sends per day.`,
     "Each mailbox has its own sender name, signature, and daily counter. The workspace pools capacity: the planner prefers the mailbox with the most remaining slots, breaking ties with the primary address. It is not a personal lock on a mailbox for one operator.",
-    "Connection is admin-managed. An admin presses Connect for each row; the person who can sign in to that Microsoft or Google mailbox finishes the prompt in the window that opens.",
+    "Connecting a mailbox is open to any signed-in staff member, not just admins. Any staff member presses Connect for a row; the person who can sign in to that Microsoft or Google mailbox finishes the prompt in the window that opens.",
   ],
   screenshots: [
     {
@@ -444,12 +443,17 @@ const mailboxesModule: TrainingModule = {
     {
       title: "Confirm the per-mailbox signature",
       detail:
-        "Google Workspace mailboxes can pull the signature directly from Gmail with Sync from Gmail. Microsoft 365 mailboxes don't expose the signature over API — an admin pastes the approved signature via Edit manual signature.",
+        "Google Workspace mailboxes can pull the signature directly from Gmail with Sync from Gmail. Microsoft 365 mailboxes don't expose the signature over API — any staff member pastes the approved signature via the mailbox's Set signature button, or uses the one-click Set branded signatures button to generate a client-branded signature for every connected mailbox that doesn't already have one.",
     },
     {
       title: "Check the daily capacity line",
       detail:
         "The table header summarises the workspace pool: active count, per-mailbox day cap, and sent today. With five connected mailboxes the theoretical ceiling is 150/day; with three it is 90.",
+    },
+    {
+      title: "Send yourself a verification email before a real launch",
+      detail:
+        "The Mailbox verification card (button: Send verification email) sends exactly one internal check from a connected mailbox so you can confirm layout and signature before a real send. This used to live on Outreach; it lives on Mailboxes now.",
     },
     {
       title: "Do not reconnect or disconnect during training",
@@ -463,10 +467,11 @@ const mailboxesModule: TrainingModule = {
     "Every mailbox has a non-empty signature, either synced from Gmail or pasted manually.",
     'Header reads "Active mailboxes: 5/5" and capacity is "150/day" for a fully staffed OpensDoors workspace.',
     "Sender readiness shows a live email provider (not a non-delivery transport) when the client is approved for real outreach delivery.",
+    "When you send a verification email, it lands in the inbox you chose and matches what preview showed on Outreach.",
   ],
   commonMistakes: [
     "Launching with three connected mailboxes and assuming 150/day — check the header; the capacity is 3 × 30 = 90.",
-    "Forgetting that Microsoft 365 signatures don't sync — every Microsoft mailbox needs a signature pasted in OpensDoors (Edit manual signature), or the send goes out with no sign-off and launch stays blocked.",
+    "Forgetting that Microsoft 365 signatures don't sync — every Microsoft mailbox needs a signature set in OpensDoors (Set signature, or the one-click Set branded signatures for every mailbox at once), or the send goes out with no sign-off and launch stays blocked.",
     "Reconnecting a mailbox mid-campaign to 'fix' a non-issue — this interrupts sending and invalidates cached tokens.",
     "Treating connection error as cosmetic — a stale mailbox silently consumes zero capacity until it reconnects.",
   ],
@@ -513,7 +518,7 @@ const sourcesModule: TrainingModule = {
     "Each client workspace has a Sources tab for CSV upload and RocketReach search. Upload → Preview → Confirm saves people to Universe (shared, one row per person) and to the list you name in that workspace. Open Universe to filter individual contacts and create another list for any client. Deleting a client list does not remove people from Universe. Sequences always target one client list.",
   details: [
     "Imports don't bypass Do-not-contact. The block-list is applied at enrollment time, so safe-to-import and safe-to-email are two different things.",
-    "Contact rows are valid if they have at least one of: email, Linkedin profile URL, mobile number, or office number. They are ready-to-email only if they also have an email address — only ready-to-email contacts are included in sends.",
+    "A row needs a usable email address to be saved as a contact at all. LinkedIn URL, mobile number and office number are recorded as extra identifiers on an email-bearing row, but a row with only one of those and no email is marked skipped in the preview and is never persisted to Universe or the list, however many other channels it has.",
   ],
   screenshots: [
     {
@@ -547,9 +552,9 @@ const sourcesModule: TrainingModule = {
         "Keep batches small — 10 at a time is the cap and the right size for review. Preview the result before committing.",
     },
     {
-      title: "Confirm every row is valid",
+      title: "Check the preview for skipped rows",
       detail:
-        "A valid row needs at least one contactable channel (email, Linkedin URL, mobile number, office number). Rows without any channel are surfaced as invalid and excluded.",
+        "The preview marks every row created, updated, attached or skipped, with a reason. A row with no usable email is skipped — even if it has a LinkedIn URL, mobile number or office number — because email is required to persist a contact today. Only rows with an email reach Universe and the list.",
     },
     {
       title: "Send the list to Contacts",
@@ -560,7 +565,7 @@ const sourcesModule: TrainingModule = {
   whatGoodLooksLike: [
     "Every import belongs to a named list — never a dumping ground list called \"Imports\" or \"All\".",
     "List name includes the client, segment and month so the next operator knows what it is.",
-    "Preview shows a clean split between Valid contacts and Ready-to-email.",
+    "Preview shows a clean split between rows that will be saved (have a usable email) and rows that will be skipped (no usable email, whatever else they have).",
     "Do-not-contact is already configured before you import — so the Lists KPIs reflect real eligibility.",
     "No PII leaks into internal notes or sheet URLs; the data stays in the workspace store.",
   ],
@@ -732,7 +737,7 @@ const suppressionModule: TrainingModule = {
     {
       title: "Click Sync once each",
       detail:
-        'First sync pulls every row into the client\'s Do-not-contact store. The connection status reads "Emails · Last sync succeeded · last sync <timestamp>" when healthy. (No raw enum chips like EMAIL/SUCCESS — that copy was retired in PR #138.)',
+        'First sync pulls every row into the client\'s Do-not-contact store. The connection status reads "Emails · Last sync succeeded · last sync <timestamp>" when healthy.',
     },
     {
       title: "Re-read the status before every launch",
@@ -808,17 +813,18 @@ const outreachModule: TrainingModule = {
   title: "Outreach — templates and sequences",
   tagline: "Build OpensDoors Friendly Introduction 1 into a production sequence you can launch.",
   purpose:
-    "The Outreach tab is where templates and sequences are built, launch readiness is checked, and you choose contacts, sending mailbox, intro timing, and optional follow-ups. Sequences need an Introduction step; follow-ups are added only if you want them. Saving a template or sequence does not send email — scheduling and launch are separate actions. A small optional limited-batch tool still exists for operators who type the exact confirmation phrase with strict limits.",
+    "The Outreach tab is where sequences are built and launched — pick a list, choose the sending mailbox, attach templates to an Introduction step and optional follow-ups, and check launch readiness. Templates themselves are created and edited on the Templates tab, not here. Sequences need an Introduction step; follow-ups are added only if you want them. Saving a sequence does not send email — scheduling and launch are separate actions. A small optional limited-batch tool still exists for operators who type the exact confirmation phrase with strict limits.",
   details: [
-    "Templates are scoped to a client and a category (Introduction, Follow-up 1–5). Sequences pick saved templates by category; you only need an Introduction to start, then use Add follow-up for additional steps when needed.",
+    "Templates are scoped to a client and a category (Introduction, Follow-up 1–5) and live on the Templates tab. Sequences on Outreach pick saved templates by category; you only need an Introduction to start, then use Add follow-up for additional steps when needed.",
     'The worked example template for OpensDoors is "OpensDoors Friendly Introduction 1". Study its placeholders — {{first_name}} and {{company_name}} personalise each send. Do not add a signature or {{email_signature}} to the body: the signature saved on the sending mailbox is appended automatically at send.',
+    "Any contact emailed by any client in the last 10 days is automatically held back from a new sequence — a workspace-wide 10-day outreach cooldown, shown on the preparation screen as \"Recently contacted (10-day cooldown)\". Any staff member can press Re-engage (bypass cooldown) to send anyway for that one preparation; Do-not-contact, unsubscribes and hard bounces are still enforced regardless.",
   ],
   screenshots: [
     {
       src: "/training/training-outreach.png",
-      alt: "Outreach page showing templates KPI cards (Total, Approved, Ready for review, Draft, Archived) and the New template form",
+      alt: "Outreach page showing the sequence builder and launch readiness panel",
       caption:
-        "Outreach — templates overview, status KPI cards, and the New template form. Saving a template does not send email.",
+        "Outreach — build and launch sequences here. Templates themselves (status KPI cards, the New template form) live on the Templates tab.",
       width: FULL_W,
       height: FULL_H,
     },
@@ -826,16 +832,16 @@ const outreachModule: TrainingModule = {
       src: "/training/training-outreach-placeholders.png",
       alt: "Supported placeholders reference — first_name, last_name, company_name, sender_name, sender_company_name, email_signature, unsubscribe_link",
       caption:
-        'Supported placeholders. Use {{ key }} in subject or content. Unknown placeholders block approval. {{sender_company_name}} is the sending client; {{company_name}} is the target.',
+        'Supported placeholders, shown on the Templates tab. Use {{ key }} in subject or content. Unknown placeholders block approval. {{sender_company_name}} is the sending client; {{company_name}} is the target.',
       width: FULL_W,
       height: FULL_H,
     },
   ],
   steps: [
     {
-      title: "Draft a template against a category",
+      title: "Draft a template on the Templates tab",
       detail:
-        'Click New template, pick a category (Introduction for the first send), give it a name like "OpensDoors Friendly Introduction 1", write the subject and body.',
+        'Templates are created and edited on the Templates tab, not Outreach. Click New template there, pick a category (Introduction for the first send), give it a name like "OpensDoors Friendly Introduction 1", write the subject and body.',
     },
     {
       title: "Use supported placeholders only",
@@ -858,9 +864,9 @@ const outreachModule: TrainingModule = {
         "Readiness shows real blockers (missing Introduction, no list, no connected mailbox, unsubscribe not ready, etc.). Meeting readiness means you can schedule production sends — launch is still a deliberate action.",
     },
     {
-      title: "Optional: internal verification or limited first batch",
+      title: "Optional: limited first batch",
       detail:
-        "For internal layout checks, use internal verification to an allowlisted address. A separate small-batch path uses a typed confirmation phrase for a capped first run; production sequence launches use the main path above.",
+        "A small-batch path uses a typed confirmation phrase for a capped first run before a full launch; production sequence launches use the main path above. For internal layout checks, send yourself a verification email from the Mailboxes tab instead — that card no longer lives on Outreach.",
     },
   ],
   whatGoodLooksLike: [
@@ -868,7 +874,6 @@ const outreachModule: TrainingModule = {
     "Subject and body preview cleanly for a typical OpensDoors prospect — no stray brace, no unresolved placeholder.",
     "Signature renders as expected in preview: only the chosen sending mailbox's own signature is used — a client brief does not substitute for a missing mailbox signature.",
     "Launch readiness is clear before any real-prospect send: contacts, mailbox, timing, and compliance gates are satisfied.",
-    "When you use the internal verification path, the message lands in the allowlisted inbox and matches what you saw in preview.",
   ],
   commonMistakes: [
     'Using {{company_name}} and {{sender_company_name}} interchangeably — {{company_name}} is the target company; {{sender_company_name}} is OpensDoors (the sender).',
@@ -923,7 +928,7 @@ const activityModule: TrainingModule = {
   title: "Activity, replies and inbound messages",
   tagline: "Monitor every send, reply and unsubscribe from inside ODoutreach.",
   purpose:
-    "Once a sequence is live the work shifts from setup to monitoring. The Activity tab shows sends, replies, imports, mailbox events, unsubscribes and warnings — newest first, per client and cross-client. You never have to open Outlook to triage replies; ODoutreach renders the full inbound body and linked contact inline.",
+    "Once a sequence is live the work shifts from setup to monitoring. Each client's own Activity tab shows sends, replies, imports, mailbox events, unsubscribes and warnings for that workspace, newest first. You never have to open Outlook to triage replies; ODoutreach renders the full inbound body and linked contact inline.",
   details: [
     "Activity is append-only. Every send, reply and unsubscribe becomes an event with a timestamp, a mailbox, and (for sends and replies) a contact and sequence step reference. That history is how you audit what went out and what came back.",
   ],
@@ -940,16 +945,16 @@ const activityModule: TrainingModule = {
       src: "/training/training-activity-global.png",
       alt: "Global Activity page showing Sent emails table across clients and Replies panel",
       caption:
-        "Global Activity — Sent emails and Replies across every client you can access. Filter by workspace with the pills at the top.",
+        "Global Activity — admin-only, shown here for reference. Every other staff member is redirected to Clients; use the per-client Activity tab day to day.",
       width: FULL_W,
       height: FULL_H,
     },
   ],
   steps: [
     {
-      title: "Open Activity (per-client or global)",
+      title: "Open a client's Activity tab",
       detail:
-        "From a client's sub-nav, click Activity for just that workspace. From the sidebar, click Activity for a cross-client feed with workspace filter pills.",
+        "From a client's sub-nav, click Activity. There is no cross-client Activity link in the sidebar — the global /activity route is admin-only and redirects anyone else back to Clients, so per-client Activity is the view you use day to day.",
     },
     {
       title: "Read the KPI strip",
@@ -977,7 +982,7 @@ const activityModule: TrainingModule = {
     "Warnings/Errors is zero or small and understood; every non-zero has an investigation note.",
     "Sent count matches what you expected from mailbox capacity; shortfalls trace to a specific stuck mailbox.",
     "Every reply to OpensDoors outreach is handled inside ODoutreach — no replies sent from Outlook directly.",
-    "The global Activity view shows balanced sending across the five OpensDoors mailboxes, not one mailbox carrying the load.",
+    "OpensDoors' own per-client Activity view shows balanced sending across the five OpensDoors mailboxes, not one mailbox carrying the load.",
   ],
   commonMistakes: [
     'Replying from Outlook — the portal loses the thread linkage back to the sequence.',
@@ -998,9 +1003,9 @@ const activityModule: TrainingModule = {
     },
   ],
   portalLink: {
-    label: "Open cross-client Activity",
-    href: "/activity",
-    description: "Sends and replies across every workspace you can access.",
+    label: "Open Activity in the portal",
+    href: "/clients",
+    description: "Inside the OpensDoors workspace, click Activity. The global /activity route is admin-only.",
   },
   relatedPortalLinks: [
     {
@@ -1027,7 +1032,7 @@ const settingsModule: TrainingModule = {
   title: "Settings and admin",
   tagline: "What admins configure — and what ordinary operators should not touch.",
   purpose:
-    "Settings is for platform-level configuration, not per-client work. Team access, sign-in/security, sending defaults and integration credentials live here. Per-client configuration (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity) always lives inside the client workspace.",
+    "Settings is for platform-level configuration, not per-client work. Team access, sign-in/security, sending defaults and integration credentials live here. Per-client configuration (Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Activity) always lives inside the client workspace.",
   details: [
     "Authentication is handled by Microsoft 365 — invitations and role changes flow through the OpensDoors tenant. Multi-factor auth, session length and conditional access are tenant-level policies, not portal switches.",
     'Blast radius matters: a wrong toggle in Settings affects every client at once. When in doubt, ask an admin — there is no fast-path fix.',
@@ -1043,9 +1048,9 @@ const settingsModule: TrainingModule = {
     },
     {
       src: "/training/training-sidebar.png",
-      alt: "Main sidebar — Reports, Clients, New client, Universe, Blocked contacts, Activity, Training, Settings",
+      alt: "Main sidebar — Reports, Replies to answer, Clients, New client, Universe, Blocked contacts, Google logins, Training, Support, Settings",
       caption:
-        "Main sidebar (post-PR-138). Reports is the staff default. Universe is the cross-client contact directory. Blocked contacts is the cross-client blocked list (the per-client tab stays Do-not-contact). Dashboard and Admin Operations are intentionally not in the sidebar.",
+        "Main sidebar. Reports is the staff default. Replies to answer is the cross-client reply queue. Universe is the cross-client contact directory. Blocked contacts is the cross-client blocked list (the per-client tab stays Do-not-contact). Google logins is the weekly Google mailbox reconnect chore. Dashboard, Admin Operations and Activity are intentionally not in the sidebar — Activity is per-client only.",
       width: SIDE_W,
       height: SIDE_H,
     },
@@ -1059,7 +1064,7 @@ const settingsModule: TrainingModule = {
     {
       title: "Read the Team access roster",
       detail:
-        "Email + Role for each staff member. Only admins can change this — operators can review it.",
+        "Email + Role for each staff member. Only admins can change a colleague's role or invite/remove staff here — but role no longer gates day-to-day workspace actions elsewhere in the app; every active staff member already has full use of Mailboxes, Sources, Outreach and the rest.",
     },
     {
       title: "Understand what lives here vs. per-client",
@@ -1233,7 +1238,7 @@ export const STAFF_HANDOVER_CHECKLIST: readonly StaffHandoverChecklistItem[] = [
   {
     step: "Check Do-not-contact",
     detail:
-      'Open the cross-client view (sidebar, titled "People blocked from outreach") or the per-client Do-not-contact tab. Verify the connection status reads "Last sync succeeded" — no raw enum chips.',
+      'Open the cross-client view (sidebar → Blocked contacts; the page itself is titled "People blocked from outreach") or the per-client Do-not-contact tab. Verify the connection status reads "Last sync succeeded" — no raw enum chips.',
     portalHref: "/suppression",
   },
   {
@@ -1412,7 +1417,7 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
       "Read the KPI strip aloud: Total contacts, Email-sendable, Sent, Queued, Not confirmed, Failed, Bounced, Replies, Unsubscribed, Suppressed.",
       "Open one list (Open list button).",
       "Walk the table: name, employer, job title, status badge, sequence, mailbox, sent time, opens, latest event.",
-      'Use the new search/filter/sort controls (PR #140): filter by "Sent from mailbox" and sort by Name A→Z.',
+      'Use the search/filter/sort controls: filter by "Sent from mailbox" and sort by Name A→Z.',
       "Expand one row to show the send confirmation block. Explain what Sent, not confirmed means.",
     ],
     checklist: [
@@ -1432,7 +1437,7 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
       'Open "People blocked from outreach" from the sidebar (the Blocked contacts item — the global blocked-contacts view).',
       "Show the Integration status and the Google service-account email staff share their sheets with.",
       "Walk the Connected sheets table — read the connection badge labels (no raw enums).",
-      'Demonstrate the new PR #140 search / kind filter / sort controls — but do NOT click Sync on camera.',
+      'Demonstrate the search / kind filter / sort controls — but do NOT click Sync on camera.',
       "Open the per-client Do-not-contact tab for the test client and explain the per-client emails/domains split.",
       "Close: every send checks this list first; anyone on it is silently skipped.",
     ],
@@ -1472,11 +1477,11 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
     durationGuidance: "3 minutes",
     script: [
       "Open the OpensDoors test client and click Activity.",
-      "Show the per-client KPI strip and the Replies-grouped-by-mailbox panel (PR #137).",
+      "Show the per-client KPI strip and the Replies-grouped-by-mailbox panel.",
       "Click a reply event to open the reply-detail page. Read the inbound body aloud (no PII).",
       "Demonstrate Stop follow-ups for that contact — explain it cancels queued steps but never deletes history.",
       "Return to the parent Activity page and show how the timeline collapses by default.",
-      'Mention global /activity is admin-only as of PR #140 — staff should always use per-client Activity.',
+      'Mention global /activity is admin-only — staff should always use per-client Activity.',
     ],
     checklist: [
       "Use a test reply — no production PII in the inbound body.",
@@ -1493,7 +1498,7 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
     durationGuidance: "2 minutes",
     script: [
       "Open Settings from the sidebar.",
-      'Read the "Where to change what" card aloud (PR #139).',
+      'Read the "Where to change what" card aloud.',
       "Walk Team access, Sign-in and security, Sending and compliance, Integrations.",
       "Emphasise per-client items (Brief, Mailboxes, Sources, Lists, Do-not-contact, Templates, Outreach, Activity) live inside each client workspace, NOT here.",
       "Mention staff should never rotate credentials during a campaign window.",
