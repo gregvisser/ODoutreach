@@ -1,6 +1,86 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 197, DONE - PR open pending CI at write time) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 200, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 200, queue row 137: the cross-project deck now regenerates itself at the end of every relay cycle
+
+**What was built:** `relay-watch.ps1` gained a new `Invoke-DeckRegeneration`
+function, wired in after each cycle's own commit and log write, that runs
+`node _standards\bidlow-deck.mjs --root <ProjectsRoot> --out <temp file>`
+and only on success renames the temp file onto
+`C:\Bidlowprojects\bidlow-deck.html` (atomic — temp file + same-directory
+rename). Every failure mode (missing `node`, missing script, a syntax
+error, a non-zero exit, a locked destination) is caught internally, never
+thrown, and logged in that cycle's own log under "Cross-project deck" —
+never gates or delays the relay. `_standards/*` itself was **not**
+modified (`bidlow-deck.mjs`, `deck.cmd`, `deck-plain.mjs` untouched), per
+the row's explicit instruction. `relay-selftest.ps1` gained section 15 (8
+cases, 15a–15h) proving both a working regeneration and, the one that
+matters, a failed one leaving the existing deck byte-for-byte untouched and
+the cycle uninterrupted. Proven red first by stashing the implementation
+half of the change (command-not-found). Self-test count: 91 → 113 (well
+above the 74 the row cited from 31 August).
+
+**A real bug CI caught and the fix:** the first push failed CI's `verify`
+job — `relay/stale-watcher-visible.test.ts` dot-sources a copy of
+`relay-watch.ps1` from a shallow scratch path, and the naive three-level
+`Split-Path` walk for `$ProjectsRoot` ran out there and returned an empty
+string, so `Join-Path` (with `$ErrorActionPreference = "Stop"`) crashed the
+**entire script load**, not just deck regeneration. Fixed with a try/catch
+fallback to `$RepoRoot` on an empty/thrown result — the fallback deck paths
+simply won't exist in that shape, and `Invoke-DeckRegeneration`'s own
+`Test-Path` guard already turns that into a normal, logged no-op. Re-ran
+the failing test (14/14 green) and the full suite (369 files / 3827 tests
+green) after the fix, both locally and in CI.
+
+**Also fixed in passing:** `.bidlow/relay/log/cycle-199.md` existed on disk
+uncommitted from cycle 199 (the same recurring "leftover log" pattern seen
+in cycles 194/196) — committed alongside this row's work; it was failing
+`relay/cycle-log-reaches-git.test.ts`.
+
+**Finding recorded, nothing changed:** the row asked whether the deck is
+right to show ODoutreach's ASK stage still open ("you are here", 1 item
+outstanding) beside a "clear to sell" PROVE verdict at the same time.
+Verdict: **yes, correct as-is, not a reporting gap.** The deck already
+carries an explicit "5 of 8 projects are building ahead of their own
+questions" banner naming ODoutreach specifically, and every downstream
+stage tile carries its own "done out of order" tag. The one open ASK item
+(`exception_checklist_sent` + `phased_commercials`) is already recorded in
+`.bidlow/BLUEPRINT.json` as `owner: "greg"` / a commercial decision (open
+question OQ-05), not something a cycle should invent a new row to chase.
+No grade, stage, or `.bidlow/GRADES.json` touched.
+
+**Merged, confirmed on `origin/main`:** PR #516 (`517a525`, includes the
+CI-caught fix as a second commit `c465394` in the same PR) for the code +
+self-test + artefact, then a small docs-only follow-up PR #517 (`cd59d13`)
+restamping queue row 137 from `IN PROGRESS 200` to `DONE 200` with the
+confirmed hash. Both confirmed via `git ls-remote origin refs/heads/main`.
+No PRs left open on exit. Gates shown: `npm run lint` 0, `npm run typecheck`
+0, `npm test` 369 files / 3827 tests green, PowerShell parser check clean
+on both edited `.ps1` files, `relay-selftest.ps1` 113/113. Artefact:
+`docs/ops/ROW137-DECK-AUTOREGEN-2026-08-31-cycle200.md`.
+
+**Nothing half-done.** Row 137 is fully closed.
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched, no grade/stage changed. The choice to fall
+back to `$RepoRoot` (rather than a hard-coded `C:\Bidlowprojects`) when the
+projects-root walk fails is reversible and documented inline in
+`relay-watch.ps1`.
+
+**THIS CHANGE IS INERT UNTIL GREG RESTARTS THE WATCHER.** PowerShell reads
+`relay-watch.ps1` once, at launch, and the process already running when
+this merged is still executing the pre-row-137 code — the deck will keep
+going stale exactly as before until `relay-start.cmd` is run by hand. Per
+this project's own `CLAUDE.md` rule, do not restart it from inside a cycle;
+the acceptance test is a cycle log line beginning `Watcher script:` naming
+a commit at or after `517a525`. **Next session's first job, if the goal is
+to confirm the deck is actually regenerating live:** check whether Greg has
+restarted the watcher yet (look for that log line in the most recent cycle
+log under `.bidlow/relay/log/`); if not, this feature exists on `main` but
+has not fired for real yet.
+
+**Nothing here contradicts `.bidlow/PROJECT.json`.**
 
 ## Session 2026-08-31 - Relay cycle 197, queue row 136 (screen walk part 2 of 2, investigation-only, build nothing)
 
