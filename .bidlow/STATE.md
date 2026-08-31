@@ -1,6 +1,45 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 167) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 170) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 170, queue row 138: watched cycle 169's already-finished deck-headline work through CI and merge, closed the row. Fully merged, nothing left open.
+
+Row 138 asked for out-of-order estate work to become a deck headline in
+`C:\Bidlowprojects\_standards\bidlow-deck.mjs` (the shared, cross-project
+reader dashboard — outside every project's git repo). **Cycle 169 already
+did the actual work** (edited `bidlow-deck.mjs` — added `estateOutOfOrder()`
++ `outOfOrderHeadline()` + `.headline-ooo` CSS, wired into `render()`; took
+the required dated backup `bidlow-deck.mjs.bak-2026-08-31`; opened PR #476
+in this repo with a real-file-import test
+`standards/bidlow-deck-out-of-order-headline.test.ts`, the
+`vitest.config.ts` include-glob addition, and a full before/after artefact
+`docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md`) but ended
+before GitHub Actions finished, so PR #476 sat open with CI in progress.
+
+This session verified cycle 169's claims against the real files on disk
+(grepped `bidlow-deck.mjs` for the new exports/CSS, confirmed the backup
+exists) rather than re-deriving the work, then: watched PR #476's CI to
+green (`verify` + `E2E`, ~5.5 min each), squash-merged
+(`3b6300eb8c87f7d1a249931a3f4d1cbcd82e9f0e`), re-ran `npm run lint` and
+`npm run typecheck` locally on the merged `main` tree (both clean, not just
+trusted from CI), closed row 138 to `DONE 170` in `QUEUE.md`, committed the
+cycle-169 and cycle-170 relay logs, opened a second docs-only PR (#477),
+watched its CI green, and merged it too — final confirmed hash on
+`origin/main`: `5fe6cd345bbe648088d42d126e6a9dc0e5c58242`.
+
+**No one-way-door decision was made.** This was a display-only change to
+shared tooling outside this repo (explicitly Greg-authorised for this row,
+and only `bidlow-deck.mjs`), plus routine PR-merge stewardship in this
+repo. No schema, no send path, no client data touched. Nothing left open —
+`gh pr list --state open` is empty at end of session.
+
+**Standing issue, not caused by or fixed in this session:** cycle 169's log
+repeats the row-52 watcher defect — `relay-watch.ps1` on Greg's machine is
+still running a stale in-memory copy (`51AF85ED01BF` loaded vs
+`E97F4D42A323` on disk). Every fix merged to that script (or anything else
+it loads at launch) stays inert until Greg runs `relay-start.cmd` by hand.
+Not this session's job to restart it; flagging so the next session doesn't
+assume a merged watcher fix is live.
 
 ## Session 2026-08-31 - Relay cycle 167, queue row 131: reopened row turned out to be already-merged work; verified and corrected, nothing rebuilt. PR #473 open, awaiting CI/merge.
 
