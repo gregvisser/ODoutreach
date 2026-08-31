@@ -1,6 +1,53 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 200, DONE - merged) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 203, IN PROGRESS - PR open, CI running) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 203, queue row 146: Universe list-creation success message now links forward to sequence creation
+
+**What was built:** row 134 (cycle 192, finding 3) found that creating a
+list from Universe left the operator with no signal to go build a sequence
+with it. This cycle found cycle 202's work already correct and complete but
+uncommitted on disk (cycle 202 was killed mid-cycle by a watcher restart
+before it could commit — see `.bidlow/relay/log/cycle-202.md`), verified it
+rather than redoing it, and shipped it: `src/lib/universe/list-created-cta.ts`
+(pure `href`/label functions, unit-tested), a CTA rendered in the Universe
+success message (`universe-page-client.tsx`) pointing at
+`/clients/{clientId}/outreach`, and a new e2e journey
+(`e2e/universe-sequence-cta.spec.ts`) plus its fixture
+(`E2E_UNIVERSE_CONTACT` in `e2e/fixtures.ts`/`seed-e2e.ts`). Also committed
+cycle 201's and 202's orphaned `.bidlow/relay/log/*.md` files, which existed
+on disk but were never `git add`ed (the recurring class of defect row 137
+also hit).
+
+**Proof it fires:** e2e spec run locally against the existing
+`odoutreach-e2e-postgres` container (port 5434) and a real production
+build — stashed the CTA render, rebuilt, ran the spec: failed red
+(`element(s) not found`); restored, rebuilt, re-ran: passed green. Full
+transcript in `docs/ops/ROW146-UNIVERSE-SEQUENCE-CTA-2026-08-31-cycle203.md`.
+Gates run and shown: `npm run lint` 0, `npm run typecheck` 0, `npm test`
+369 files / 3829 tests green (the only failure seen mid-session was the
+expected `relay/cycle-log-reaches-git.test.ts` red for the two then-uncommitted
+cycle logs, resolved once they were staged).
+
+**Left exactly here — pick up from this, do not redo:** PR #520
+(`fix/row146-universe-sequence-cta`, commits `c78311e` + `e660807` — the
+second commit freezes the new e2e spec into `.bidlow/FROZEN.json`, required
+by the standards freeze gate before `gh pr create` would run) is open
+against `main` with CI (`verify` + `E2E (Playwright)`) still running at the
+time this was written — not yet confirmed green, not yet merged. **If PR
+#520 is green: merge it, then confirm the merge commit hash via
+`git ls-remote origin refs/heads/main`, then update `.bidlow/relay/QUEUE.md`
+row 146 from its current `IN PROGRESS 203` to `DONE 203 - <hash>` in a
+second small docs-only PR (the established pattern in this queue — see row
+137's #516/#517), and write `cycle-203.md`.** If PR #520 is red, read the
+failure and fix it as part of finishing this row — do not open a second PR
+alongside it.
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched. Additive UI change only.
+
+**Nothing else half-done in the repo** beyond PR #520 itself — working tree
+was clean before this session's edits and is limited to the branch above.
 
 ## Session 2026-08-31 - Relay cycle 200, queue row 137: the cross-project deck now regenerates itself at the end of every relay cycle
 
