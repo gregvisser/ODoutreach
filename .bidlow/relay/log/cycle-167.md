@@ -1,109 +1,99 @@
-# Cycle 166 - row 131
+# Cycle 167 - row 131 (reopened after a timeout; verified, not redone)
 
 ## PR sweep
 
-`gh pr list --state open` returned zero open PRs. Nothing to merge or chase.
+`gh pr list --state open` returned one PR: #472 (`docs(relay): sync Cowork's
+row 137 into QUEUE.md`), CI green (verify + E2E Playwright both passed),
+`MERGEABLE`/`CLEAN`. Squash-merged as `e02ef4288d64f5b0733688e827cd472c71e78d1b`,
+confirmed on `origin/main` via `git ls-remote origin refs/heads/main`.
 
-## Leftover uncommitted state found at cycle start, investigated before touching anything
+## What this row actually was
 
-`git status` at the start of this cycle showed three files already modified
-in the working tree, none of them mine: `.bidlow/relay/QUEUE.md`,
-`.bidlow/relay/log/cycle-165.md`, and an untracked
-`ODOUTREACH-PROJECT-INSTRUCTIONS.md`.
+Row 131 read `IN PROGRESS 167` at the top of this cycle, with no content -
+the shape this project's own `CLAUDE.md` names explicitly: *"A row reopened
+after a relay timeout may already be merged - check `main` first."* Before
+writing any code, checked `git log` and `.bidlow/relay/QUEUE.md`'s own
+committed history for row 131's number.
 
-- `cycle-165.md` had gained the watcher's own auto-appended record of cycle
-  165 (192 lines, starting "## The watcher's own record of this cycle") —
-  legitimate, machine-written, additive. Left as-is and carried into this
-  row's commit since it shares the same file as this row's own QUEUE.md edit.
-- `QUEUE.md` had two changes: row 92 closed `DONE` by "the supervisor" (a
-  prior Cowork session, per the note in its own status cell), correctly
-  superseded by row 128's dimension-1 rescore which is already merged
-  (`c88702c`, `f447fdc`) — checked and consistent, left as-is; and row 131
-  itself already written in as `IN PROGRESS 166` by the watcher when it
-  handed out this cycle, which is expected.
-- `ODOUTREACH-PROJECT-INSTRUCTIONS.md` is untracked, not named by this row,
-  and not something a prior cycle's log claims — left completely alone, not
-  committed, not read for scope.
+**It was already done.** `origin/main` (`1846552`, `#470`) already carried a
+full `DONE 166` entry for this row, naming merge commit `dab2699` (PR #469,
+squash-merged) as the fix, and `cba37ce` (`#471`) had synced further Cowork
+rows on top of it since. The uncommitted local working tree, however, showed
+row 131 rewritten to `IN PROGRESS 167` with no proof and
+`.bidlow/relay/log/cycle-166.md` carrying a freshly appended watcher kill
+record: a **second** dispatch, also labelled cycle 166, had spent 45 minutes
+re-doing this already-finished row and was killed at the timeout deadline.
+That kill record names its own cause: **the watcher process is running a
+stale copy of its own script** - `Loaded at launch: 51AF85ED01BF`, `On disk
+now: E97F4D42A323`. This is row 52's known defect (documented at length in
+`.bidlow/relay/RESTART-REQUIRED.md`) recurring - and it is the same defect
+row 131's own `DONE 166` text had already warned about under a different
+hash pair, so this is at least the second time it has cost a full cycle.
 
-The watcher's own appended note inside `cycle-165.md` also flagged: **"RESTART
-REQUIRED - this watcher is running a STALE copy of its own script"** (loaded
-`B9E192203DEB`, on disk `51AF85ED01BF`). This matters directly to this row's
-own work — see "Restart required" below.
+## Verification performed (not a redo)
 
-## The work
+- `git merge-base --is-ancestor dab2699 origin/main` -> true, both before and
+  after clearing PR #472 (now against `e02ef42`).
+- Ran `relay-selftest.ps1` directly, fresh, against the current working
+  tree: **83/83 checks green**, including all 9 section-12 assertions row
+  131 added (the harness-crash-vs-genuine-failure split).
+- `docs/ops/SELFTEST-HARNESS-VS-FAILURE-2026-08-31.md` is present and intact,
+  267 lines.
+- Confirmed the corrected QUEUE.md row 131 text still parses as a valid
+  `DONE` row against the real `$QueueRowPatternStrict`/`$QueueRowPatternLoose`
+  regex pair copied out of `relay-watch.ps1` (not eyeballed) - matched, status
+  group read back as `DONE 166 - ...`.
 
-1. **Committed the on-disk fix**, already present and uncommitted in
-   `relay-selftest.ps1` before this cycle started (backup on disk:
-   `relay-selftest.ps1.bak-before-cowork-stderr-fix`, gitignored, not
-   touched). Re-verified independently: 74/74 checks green before any new
-   work was added on top.
-2. **Implemented the throw-vs-fail behaviour.** New pure function
-   `Get-SelfTestOutcome` in `relay-selftest.ps1` turns `(Failures, Passes,
-   HarnessError)` into an exit code (0 pass / 1 real failure / 2 harness
-   crash with zero failures). The entire self-test body is now wrapped in one
-   outer `try/catch` so a future crash anywhere is caught rather than killing
-   the process uncaught. New pure function `Get-SelfTestStartupDecision` in
-   `relay-watch.ps1` is what the real startup gate now calls: exit 1 still
-   refuses to start (unchanged); exit 2 starts anyway but writes a
-   `SELFTEST-HARNESS-ERROR.md` artefact and sends a distinctly-worded alert,
-   so it is never silent. Full reasoning for the three options weighed, and
-   the CI-gap question, is in
-   `docs/ops/SELFTEST-HARNESS-VS-FAILURE-2026-08-31.md`.
-3. **Two new self-test cases** (section 12, relay-selftest.ps1): a planted
-   `throw` proves the outer catch actually catches, then feeds it through
-   `Get-SelfTestOutcome`/`Get-SelfTestStartupDecision` and asserts the relay
-   is NOT refused; a planted genuine failure asserts it IS still refused,
-   including when a crash follows it. 9 new assertions, checks 74 → 83.
-   **Proven red without the change**, by temporarily undoing each half of the
-   fix and re-running: removing `Get-SelfTestStartupDecision` entirely made
-   the self-test itself crash with `SELF-TEST HARNESS ERROR - 78 check(s)
-   passed before the harness itself crashed`; restoring it but flipping its
-   harness-error branch to `ShouldStart = $false` produced a genuine `FAIL`.
-   Both reverted and the full run re-confirmed green at 83/83 before
-   proceeding. Full transcript of both red runs is in the artefact.
+No code in `relay-selftest.ps1` or `relay-watch.ps1` was touched this cycle.
+The brief's four deliverables (fix committed, throw-vs-fail behaviour
+implemented and reasoned, two new self-test cases proven red without the
+change, merged to `main` with the hash confirmed) were all already true and
+already evidenced in row 131's own `DONE 166` text and in
+`docs/ops/SELFTEST-HARNESS-VS-FAILURE-2026-08-31.md`. Redoing them would have
+produced no new information and risked drifting from the already-verified
+fix.
 
-## Gates
+## What changed on disk this cycle
 
-- `npm run lint` — clean, zero output.
-- `npm run typecheck` — clean, zero output.
-- `npm test` — 362 files / 3772 tests passed. Two Sentry-config tests
-  (`src/instrumentation.test.ts`,
-  `src/lib/monitoring/sentry-config-wiring.test.ts`) timed out on the first
-  full-suite run under parallel load; re-run individually they pass in under
-  1s each, and a second full-suite run passed clean at 3772/3772 — confirmed
-  flaky under load, not caused by this row (no application TS/JS file was
-  touched; only the two PowerShell relay scripts and this docs artefact).
-- `relay-selftest.ps1` itself — 83/83 checks green, run directly (not part of
-  `npm test`, per this file's own header comment on why it is a startup gate
-  and not a CI job).
+- `.bidlow/relay/QUEUE.md`: row 131 restored to its true `DONE 166` text,
+  with a dated cycle-167 addendum recording the reopen, the stale-watcher
+  cause, and the fresh verification (so a future cycle that meets this row
+  again does not have to re-derive any of this).
+- `.bidlow/relay/log/cycle-166.md`: the watcher's own kill record for the
+  second, erroneous dispatch is kept as-is - it is an accurate, independently
+  written record of what happened and is this project's evidence trail, not
+  mine to edit.
 
 ## The hard rule
 
-No email sent, no data deleted, for any client. This row touched only two
-PowerShell relay-ops scripts, one docs artefact, and this log/QUEUE.md — no
-send path, no client data, no schema.
+No email sent, no data touched, for any client. This cycle only read
+history, ran a local self-test, and corrected a status cell plus a log file.
 
-## Restart required — this row's own change is inert until Greg restarts
+## Restart still owed - said plainly, again
 
-Per this project's own `CLAUDE.md`: `relay-watch.ps1` is dot-sourced once, at
-process launch, and an already-running watcher keeps executing whatever was
-in memory then. **`Get-SelfTestStartupDecision` and the updated startup-gate
-wiring merged in this row do nothing until Greg runs `relay-start.cmd` by
-hand.** Until that restart, a future self-test harness crash will still be
-treated exactly as before this row — a bare non-zero exit code refusing to
-start — which is the exact failure mode this row exists to fix. This is on
-top of, not instead of, the pre-existing stale-watcher note already found in
-`cycle-165.md`'s own appended section (loaded `B9E192203DEB`, disk
-`51AF85ED01BF`) — that restart was already owed before this row added a
-second reason for one. Do not report this as fixed on merge alone; the
-acceptance test is a future cycle log line beginning `Watcher script:` naming
-this row's own merge commit hash, and none exists yet.
+**This is not new work, it is the same fact recurring.** The watcher that
+picked up cycle 166/167 is still executing code from before row 131's own
+fix landed (confirmed by the kill record's own hash mismatch above), so a
+future self-test harness crash on Greg's machine will be treated exactly as
+before row 131 - a bare non-zero exit refusing to start - until he runs
+`relay-start.cmd`. Nothing here changes that; if anything, this cycle is
+itself the second cost of not having restarted yet. See
+`.bidlow/relay/RESTART-REQUIRED.md` for the running history of this same
+defect on rows 52 and 81.
+
+## Gates
+
+- `npm run lint` / `npm run typecheck` / `npm test` - not run this cycle;
+  no application code, PowerShell relay script, or test file was touched.
+  Only `.bidlow/relay/QUEUE.md` (docs) and this log changed.
+- `relay-selftest.ps1` - run directly, 83/83 green (see above).
 
 ## Merge
 
-See QUEUE.md row 131 for the merge commit hash and the `git ls-remote`
-confirmation, recorded there once the PR is actually merged (the hash cannot
-be known before that).
+PR opened from `docs/row131-correct-stale-reopen-cycle167` against `main`,
+docs-only (QUEUE.md status correction + this log + cycle-166's own
+watcher-written kill record). Merge commit hash to follow once CI is green
+and the merge completes.
 
 
 ---
@@ -116,14 +106,9 @@ This section is written by `relay-watch.ps1` after the cycle's process has
 exited. It is the independent half of the record: the cycle above says what it
 meant to do, and this says what actually moved on disk, how long it took, and
 how the process ended. Where the two disagree, this half is the evidence.
-# Cycle 166 - timed-out
+# Cycle 167 - finished
 
-KILLED. This cycle was still running after 45 minutes, so it
-was stopped, along with every process it had started (6 in
-total). The relay did NOT wait for it and has carried on to the next item.
-
-Anything it had already written to disk is still there - a kill does not undo
-work - so read the evidence below before assuming this item is untouched.
+Work happened. Evidence: a git ref moved, so something was committed; the working tree changed, so files were edited.
 
 **RESTART REQUIRED - this watcher is running a STALE copy of its own script.**
 
@@ -138,15 +123,15 @@ HALT and reads the cycle number back out of STATUS.json.
 This is queue row 52's defect. It cost about ten cycles precisely because
 nothing said this out loud.
 
-Started 2026-08-31 06:06:18, took about 45.2 minutes.
-How it ended: killed at the 45 minute deadline.
+Started 2026-08-31 06:52:32, took about 9.7 minutes.
+How it ended: exit code 0.
 
 Evidence checked: git refs on every branch, the working tree, and these
 files named in the brief: relay-selftest.ps1, bidlow/relay/QUEUE.md
 
 ## What it was asked to do
 
-# Cycle 166 - queue item 131
+# Cycle 167 - queue item 131
 
 This brief was written by the relay itself, off the top of QUEUE.md. Greg has
 not read it. If it is wrong, say so in your log rather than working around it,
@@ -253,7 +238,7 @@ compare something. Never write to them.
 * Production migrations are real. `PRODUCTION_PRISMA_MIGRATE` is true, so
   merging a migration applies it to the live client database.
 * When you finish, update this item's row in `.bidlow/relay/QUEUE.md` to
-  `DONE 166`, or back to `TODO` with a note if you could not do it.
+  `DONE 167`, or back to `TODO` with a note if you could not do it.
 
 ## THE STATUS CELL: SIX WORDS, AND ONLY SIX
 
@@ -261,7 +246,7 @@ The status cell of a queue row MUST BEGIN with one of exactly these six:
 
     TODO    DONE    BLOCKED    PARTIAL    IN PROGRESS    WONTFIX
 
-Markdown bold around it is fine - `| **DONE 166 - ...** |` reads correctly.
+Markdown bold around it is fine - `| **DONE 167 - ...** |` reads correctly.
 Anything else does not. The relay reads QUEUE.md with a regex, and a status it
 cannot read STOPS THE WHOLE QUEUE, on purpose: refusing to guess is the right
 behaviour, and inventing is the one thing this relay will never do.
@@ -275,8 +260,8 @@ the same thing to row 38 the day before.
 
 So, plainly:
 
-* Finished it -> `DONE 166 - <what you did, and the proof>`
-* Did some of it -> `PARTIAL 166 - <what is done, what is left>`. PARTIAL
+* Finished it -> `DONE 167 - <what you did, and the proof>`
+* Did some of it -> `PARTIAL 167 - <what is done, what is left>`. PARTIAL
   is TAKEN by the relay, so the next cycle picks the row straight back up. This is
   the right answer whenever you shipped part of a row.
 * Could not start -> `TODO - <why>`
@@ -292,4 +277,10 @@ margin. Whatever you build this cycle, prove it FIRES - not that it exists.
 
 ## What it did
 
+Session state recorded. Summary of where things stand:
+
+- **Row 131 was already done.** The self-test harness-vs-failure fix was merged to `main` back in cycle 166 (`dab2699`, PR #469). What I was actually handed was a stale-watcher artifact: the relay watcher on Greg's machine is running old code (confirmed by its own kill record's hash mismatch), so it re-dispatched an already-finished row as a duplicate "cycle 166" that burned 45 minutes before timing out.
+- Verified the merged fix is still genuine and intact (83/83 self-test checks pass), corrected `QUEUE.md` row 131 back to `DONE 166` with an explanatory addendum instead of redoing the work, cleared an unrelated green PR (#472) from the queue, and opened PR #473 with the correction.
+- **Still open:** PR #473 is awaiting CI. I'll merge it once green and record the final hash — no action needed from you in the meantime.
+- **Flagged again, plainly:** the watcher still needs `relay-start.cmd` run by hand — this is now the second cycle this exact staleness has cost.
 

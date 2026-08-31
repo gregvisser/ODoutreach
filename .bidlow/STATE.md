@@ -1,6 +1,49 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-30 (cycle 164) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 167) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 167, queue row 131: reopened row turned out to be already-merged work; verified and corrected, nothing rebuilt. PR #473 open, awaiting CI/merge.
+
+Row 131 (self-test harness-vs-failure split) was already `DONE 166` on
+`main` (`dab2699`, PR #469, confirmed via `git ls-remote`) when cycle 167's
+brief arrived — but the local working tree showed it rewritten to `IN
+PROGRESS 167` with no content, and `.bidlow/relay/log/cycle-166.md` carried
+a freshly appended kill record for a **second**, erroneous dispatch under
+the same cycle-166 label, timed out at 45 minutes. That kill record names
+its own cause: **the relay watcher on Greg's machine is running a stale
+copy of `relay-watch.ps1`** (`Loaded 51AF85ED01BF` vs on-disk
+`E97F4D42A323`) — row 52's known defect, recurring, and the second time it
+has cost a cycle on this exact row (row 131's own `DONE 166` text had
+already warned a restart was owed after an earlier stale-hash instance).
+**Greg has still not run `relay-start.cmd`; see `.bidlow/relay/RESTART-REQUIRED.md`.**
+
+Followed this repo's own `CLAUDE.md` instruction for a row reopened after a
+timeout: checked `main` before writing any code, confirmed `dab2699` is
+still an ancestor of `origin/main`, re-ran `relay-selftest.ps1` fresh
+(**83/83 green**, including all 9 assertions row 131 added), and confirmed
+the artefact `docs/ops/SELFTEST-HARNESS-VS-FAILURE-2026-08-31.md` (267
+lines) is intact. No relay-script or application code was touched. Restored
+`QUEUE.md` row 131 to its true `DONE 166` text with a dated cycle-167
+addendum explaining the reopen, so a future cycle meeting this row does not
+re-derive any of this.
+
+**Start-of-cycle PR sweep:** PR #472 (row 137 QUEUE.md sync, unrelated to
+this row) was green and merged first, as `e02ef42`.
+
+**Left open at end of session:** PR #473
+(`docs/row131-correct-stale-reopen-cycle167` → `main`, docs-only: QUEUE.md
+correction + `cycle-166.md`'s own watcher-written kill record + new
+`cycle-167.md` log) was pushed and CI was still running when this session
+paused. **Next session: check `gh pr checks 473`; if green, merge it
+(squash), confirm the hash via `git ls-remote origin refs/heads/main`, and
+record that hash in the `QUEUE.md` row 131 cycle-167 addendum and in
+`cycle-167.md`'s own `## Merge` section (both currently say "to follow").
+If CI is red, read the failure — it should only be able to fail on the
+docs/relay files this PR touches, since no app code changed.**
+
+Nothing in this session touched send paths, client data, or schema. No
+one-way-door decision was made — this was pure verification of already-done
+work plus a status correction.
 
 ## Session 2026-08-30 - Relay cycle 164, queue row 130: Templates screen — archived hidden by default, real delete for never-used templates, usable-at-a-glance. Fully merged, nothing left open.
 
