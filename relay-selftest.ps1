@@ -1,4 +1,4 @@
-# relay-selftest.ps1 - proves the relay's safety machinery actually FIRES.
+﻿# relay-selftest.ps1 - proves the relay's safety machinery actually FIRES.
 #
 #   Run it yourself:  .\relay-selftest.ps1
 #   The watcher runs it automatically every time it starts, and REFUSES to run
@@ -944,6 +944,158 @@ Assert-True ($failDecision.ShouldStart -eq $false) `
 $failThenCrashOutcome = Get-SelfTestOutcome -Failures @("a planted genuinely failing check") -Passes 5 -HarnessError $plantedHarnessError
 Assert-True ($failThenCrashOutcome.ExitCode -eq 1) `
     "a genuine failure recorded before a harness crash still refuses to start - the crash does not un-prove the failure (got: $($failThenCrashOutcome.ExitCode))"
+
+# ===========================================================================
+# 15. ROW 137: THE CROSS-PROJECT DECK REGENERATES AFTER A CYCLE, AND A FAILED
+#     REGENERATION NEVER STOPS OR CORRUPTS ANYTHING
+#
+# Two things have to be proven, and the brief is explicit that the second is
+# the one that matters: a working deck script must actually REPLACE the
+# deck's content (not merely run once and be trusted forever), and a BROKEN
+# deck script - missing, a syntax error, a non-zero exit, or a locked
+# destination - must leave the existing deck completely untouched, be
+# reported as data rather than thrown, and never stop the relay taking its
+# next item. Nothing here touches the real _standards\bidlow-deck.mjs or the
+# real bidlow-deck.html - every fixture below is a scratch file, exactly like
+# Clear-StaleIndexLock's own scratch repo above.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "15. The cross-project deck regenerates after a cycle; a broken deck script never stops the relay or corrupts the deck"
+
+$deckScratch = Join-Path $env:TEMP ("relay-selftest-deck-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $deckScratch -Force | Out-Null
+$deckOut = Join-Path $deckScratch "bidlow-deck.html"
+
+# 15a - a working script actually WRITES the file, and the --root the real
+# call site would pass is genuinely forwarded to it.
+$goodScript = Join-Path $deckScratch "good-deck.mjs"
+Set-Content -Path $goodScript -Encoding utf8 -Value @'
+import { writeFileSync } from "node:fs";
+const argv = process.argv.slice(2);
+const arg = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
+writeFileSync(arg("--out", null), "DECK V1 root=" + arg("--root", null), "utf8");
+'@
+
+$good = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root-v1" -DeckScript $goodScript -OutFile $deckOut
+Assert-True ($good.Ok -eq $true) `
+    "a working deck script is reported as successful (got Ok=$($good.Ok), note: $($good.Note))"
+Assert-True ((Test-Path $deckOut) -and ((Get-Content $deckOut -Raw) -match "DECK V1")) `
+    "the deck file on disk actually carries the script's real output, not a stub"
+Assert-True ((Get-Content $deckOut -Raw) -match [regex]::Escape("C:\fake-root-v1")) `
+    "the --root argument the real call site would pass is actually forwarded to the script"
+
+# 15b - REGENERATES, not just generates once: change what the script writes
+# and rerun - the earlier content must actually be replaced, proving this is
+# a live regeneration and not a one-shot that gets trusted forever.
+Set-Content -Path $goodScript -Encoding utf8 -Value @'
+import { writeFileSync } from "node:fs";
+const argv = process.argv.slice(2);
+const arg = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
+writeFileSync(arg("--out", null), "DECK V2 - regenerated", "utf8");
+'@
+$regenerated = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root-v1" -DeckScript $goodScript -OutFile $deckOut
+Assert-True ($regenerated.Ok -eq $true) "a second regeneration also succeeds"
+$deckContentAfterRegen = Get-Content $deckOut -Raw
+Assert-True ($deckContentAfterRegen -match "DECK V2" -and $deckContentAfterRegen -notmatch "DECK V1") `
+    "the deck is actually REGENERATED - the old content is gone, not appended to or left behind"
+
+$leftoverTemp = Get-ChildItem -Path $deckScratch -Filter ".bidlow-deck-tmp-*" -ErrorAction SilentlyContinue
+Assert-True (@($leftoverTemp).Count -eq 0) `
+    "no temp file from a successful run is left behind - the atomic rename actually consumed it"
+
+# 15c - THE ONE THAT MATTERS: a deck script that exits non-zero must leave
+# the existing deck completely untouched, and must be reported as data, not
+# thrown.
+Set-Content -Path $deckOut -Encoding utf8 -Value "PRE-EXISTING REAL DECK - MUST SURVIVE A FAILED REGENERATION"
+$failScript = Join-Path $deckScratch "fail-deck.mjs"
+Set-Content -Path $failScript -Encoding utf8 -Value @'
+process.stderr.write("planted self-test deck failure\n");
+process.exit(7);
+'@
+
+$threwPastFunction = $false
+try {
+    $failed = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root" -DeckScript $failScript -OutFile $deckOut
+} catch {
+    $threwPastFunction = $true
+}
+Assert-True ($threwPastFunction -eq $false) `
+    "a deck script that exits non-zero does NOT throw past Invoke-DeckRegeneration - the caller's try/catch is a backstop, not the only guard"
+Assert-True ($failed.Ok -eq $false) `
+    "a deck script that exits non-zero is reported as NOT ok (got: $($failed.Note))"
+Assert-True ($failed.Note -match "7") `
+    "the failure note names the real exit code, so a person reading the cycle log knows what happened (got: $($failed.Note))"
+Assert-True ((Get-Content $deckOut -Raw).TrimEnd() -eq "PRE-EXISTING REAL DECK - MUST SURVIVE A FAILED REGENERATION") `
+    "the existing deck is left BYTE-FOR-BYTE untouched by a failed regeneration - this is the atomic-write guarantee proving itself"
+
+$leftoverAfterFail = Get-ChildItem -Path $deckScratch -Filter ".bidlow-deck-tmp-*" -ErrorAction SilentlyContinue
+Assert-True (@($leftoverAfterFail).Count -eq 0) `
+    "no temp file is left behind after a failed run either"
+
+# 15d - A SYNTAX ERROR in the deck script - named explicitly in the brief
+# alongside a missing node and a missing script.
+$syntaxErrorScript = Join-Path $deckScratch "syntax-error-deck.mjs"
+Set-Content -Path $syntaxErrorScript -Encoding utf8 -Value "this is not valid javascript {{{"
+Set-Content -Path $deckOut -Encoding utf8 -Value "SURVIVES A SYNTAX ERROR TOO"
+$syntaxResult = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root" -DeckScript $syntaxErrorScript -OutFile $deckOut
+Assert-True ($syntaxResult.Ok -eq $false) `
+    "a deck script with a syntax error is reported as NOT ok, not silently ignored (note: $($syntaxResult.Note))"
+Assert-True ((Get-Content $deckOut -Raw).TrimEnd() -eq "SURVIVES A SYNTAX ERROR TOO") `
+    "a syntax error leaves the existing deck untouched, same as any other failure"
+
+# 15e - the deck script does not exist at all.
+Set-Content -Path $deckOut -Encoding utf8 -Value "SURVIVES A MISSING SCRIPT TOO"
+$missingScriptResult = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root" -DeckScript (Join-Path $deckScratch "does-not-exist.mjs") -OutFile $deckOut
+Assert-True ($missingScriptResult.Ok -eq $false) `
+    "a missing deck script is reported as NOT ok"
+Assert-True ($missingScriptResult.Note -match "(?i)not found") `
+    "the note says the script was not found, not a generic failure (got: $($missingScriptResult.Note))"
+Assert-True ((Get-Content $deckOut -Raw).TrimEnd() -eq "SURVIVES A MISSING SCRIPT TOO") `
+    "a missing script leaves the existing deck untouched"
+
+# 15f - node itself is not on PATH under the name given.
+$missingNodeResult = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root" -DeckScript $goodScript -OutFile $deckOut -NodeExe "this-is-not-a-real-node-relay-selftest.exe"
+Assert-True ($missingNodeResult.Ok -eq $false) `
+    "a missing node executable is reported as NOT ok, not thrown"
+Assert-True ((Get-Content $deckOut -Raw).TrimEnd() -eq "SURVIVES A MISSING SCRIPT TOO") `
+    "a missing node executable leaves the existing deck untouched too"
+
+# 15g - THE PART THAT PROVES "the relay still completes its cycle normally":
+# the real call site in relay-watch.ps1 wraps Invoke-DeckRegeneration in its
+# OWN try/catch on top of the function's internal handling (belt and braces -
+# see the comment at that call site). Replaying that exact shape here proves
+# control genuinely returns to the line after the block, with something
+# logged, rather than the whole cycle dying.
+$reachedAfterDeckBlock = $false
+try {
+    $callSiteResult = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root" -DeckScript $failScript -OutFile $deckOut
+    $callSiteLine = if ($callSiteResult.Ok) { "regenerated" } else { "deck regeneration did not happen this cycle - $($callSiteResult.Note)" }
+} catch {
+    $callSiteLine = "deck regeneration threw outside Invoke-DeckRegeneration and was swallowed here instead - $($_.Exception.Message)"
+}
+$reachedAfterDeckBlock = $true
+Assert-True ($reachedAfterDeckBlock -eq $true) `
+    "execution reaches the line after the deck-regeneration block even when the deck script fails - the cycle is not stopped or delayed"
+Assert-True ($callSiteLine -match "(?i)did not happen this cycle") `
+    "the failure is captured into a plain-English line ready for the cycle log, exactly as relay-watch.ps1's call site writes it (got: $callSiteLine)"
+
+# 15h - a LOCKED destination file (the fourth failure mode the brief names
+# explicitly) is caught, not thrown, and its original content survives.
+$lockedOut = Join-Path $deckScratch "locked-deck.html"
+Set-Content -Path $lockedOut -Encoding utf8 -Value "LOCKED - MUST SURVIVE"
+$lockStream = [System.IO.File]::Open($lockedOut, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+try {
+    $lockedResult = Invoke-DeckRegeneration -ProjectsRoot "C:\fake-root" -DeckScript $goodScript -OutFile $lockedOut
+    Assert-True ($lockedResult.Ok -eq $false) `
+        "a locked destination file is reported as NOT ok rather than throwing (note: $($lockedResult.Note))"
+} finally {
+    $lockStream.Close()
+}
+Assert-True ((Get-Content $lockedOut -Raw).TrimEnd() -eq "LOCKED - MUST SURVIVE") `
+    "a locked destination file's original content survives a failed regeneration attempt against it"
+
+Remove-Item -Path $deckScratch -Recurse -Force -ErrorAction SilentlyContinue
 
 # ===========================================================================
 
