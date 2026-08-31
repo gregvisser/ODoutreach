@@ -1098,6 +1098,131 @@ Assert-True ((Get-Content $lockedOut -Raw).TrimEnd() -eq "LOCKED - MUST SURVIVE"
 Remove-Item -Path $deckScratch -Recurse -Force -ErrorAction SilentlyContinue
 
 # ===========================================================================
+# 16. THE WATCHER RELOADS ITSELF WHEN ITS OWN SCRIPT CHANGES - QUEUE ROW 160.
+#
+# Queue row 52 cost roughly ten cycles, and RESTART-REQUIRED.md records four
+# more restarts of exactly the same shape - the worst costing six cycles
+# re-verifying work that was already correctly merged, because the running
+# process had never seen the fix. Every one of those needed a human to notice
+# and run relay-start.cmd. Greg asked for this directly on 31 August 2026: a
+# stale watcher is a blocker he cannot see, and he should not have to notice
+# it. This is the startup-gate proof that the fix actually fires, alongside
+# relay/watcher-self-reload.test.ts's CI proof.
+#
+# Nothing below touches the real .bidlow\relay\STATUS.json or a real
+# relay-watch.ps1 process - $StatusFile is repointed at a scratch path before
+# Save-Status is ever called, and every spawn is an injected -Launcher, never
+# a real Start-Process.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "16. The watcher reloads itself when relay-watch.ps1 changes on disk, and never mid-cycle"
+
+# 16a - unchanged: does NOT flag a reload.
+$unchanged = Test-WatcherSelfReloadNeeded -LoadedHash "SAMEHASH" -ScriptPath "C:\does-not-matter.ps1" `
+    -HashCheck { param($p) "SAMEHASH" }
+Assert-True ($unchanged.ShouldReload -eq $false) `
+    "an unchanged script hash does not trigger a reload"
+
+# 16b - changed: DOES flag a reload.
+$changed = Test-WatcherSelfReloadNeeded -LoadedHash "SAMEHASH" -ScriptPath "C:\does-not-matter.ps1" `
+    -HashCheck { param($p) "DIFFERENTHASH" }
+Assert-True ($changed.ShouldReload -eq $true) `
+    "a changed script hash DOES trigger a reload"
+Assert-True ($changed.CurrentHash -eq "DIFFERENTHASH") `
+    "the reload decision reports the hash actually found on disk"
+
+# 16c - fail safe, not fail shut: an unreadable hash is "cannot tell", never
+# a reload. A watchdog that can brick the relay on a bad read is worse than a
+# stale one - see the two-hour brick this same file caused on 31 August.
+$unreadable = Test-WatcherSelfReloadNeeded -LoadedHash $null -ScriptPath "C:\does-not-matter.ps1"
+Assert-True ($unreadable.ShouldReload -eq $false -and $unreadable.Note -match "(?i)cannot tell") `
+    "a missing launch-time hash is treated as 'cannot tell', not as a reload"
+
+$readThrows = Test-WatcherSelfReloadNeeded -LoadedHash "SAMEHASH" -ScriptPath "C:\does-not-matter.ps1" `
+    -HashCheck { param($p) throw "disk unreadable" }
+Assert-True ($readThrows.ShouldReload -eq $false -and $readThrows.Note -match "(?i)cannot tell") `
+    "a disk read that throws is treated as 'cannot tell', not as a reload"
+
+# 16d - THE ONE THAT MATTERS: real file I/O, no injected hashes. A copy is
+# loaded (the "launch"), the copy is really edited on disk afterwards (the
+# "merge"), and the function is asked whether ITS OWN copy is now stale using
+# the real default HashCheck. This reproduces row 52's actual scenario.
+$reloadScratch = Join-Path $env:TEMP ("relay-selftest-reload-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $reloadScratch -Force | Out-Null
+$watcherCopy = Join-Path $reloadScratch "relay-watch.ps1"
+Copy-Item -Path (Join-Path $PSScriptRoot "relay-watch.ps1") -Destination $watcherCopy -Force
+
+$copyHashBeforeEdit = (Get-FileHash -Path $watcherCopy -Algorithm SHA256).Hash
+Add-Content -Path $watcherCopy -Value "# a change merged after launch" -Encoding utf8
+$realStale = Test-WatcherSelfReloadNeeded -LoadedHash $copyHashBeforeEdit -ScriptPath $watcherCopy
+Assert-True ($realStale.ShouldReload -eq $true) `
+    "a script really replaced on disk after being loaded is detected with real file I/O, not just injected hashes"
+
+$copyHashAfterEdit = (Get-FileHash -Path $watcherCopy -Algorithm SHA256).Hash
+$realFresh = Test-WatcherSelfReloadNeeded -LoadedHash $copyHashAfterEdit -ScriptPath $watcherCopy
+Assert-True ($realFresh.ShouldReload -eq $false) `
+    "the same real file reports no reload needed once the loaded hash matches what is actually on disk"
+
+Remove-Item -Path $reloadScratch -Recurse -Force -ErrorAction SilentlyContinue
+
+# 16e - a successful spawn reports the new process's id, via an injected
+# launcher so this never starts a real second watcher.
+$spawnOk = Start-FreshWatcherProcess -ScriptPath "C:\fake\relay-watch.ps1" -Exe "C:\fake\powershell.exe" `
+    -Launcher { param($exe, $scriptArgs) [pscustomobject]@{ Id = 4242 } }
+Assert-True ($spawnOk.Spawned -eq $true -and $spawnOk.NewPid -eq 4242) `
+    "a successful spawn reports Spawned=true and the new process id"
+
+# 16f - THE ONE THAT MATTERS: a failed spawn leaves the current process
+# running rather than exiting. If Start-FreshWatcherProcess let the
+# launcher's exception escape, THIS SELF-TEST would crash right here instead
+# of recording a check - so simply reaching the Assert-True below, with the
+# launcher's own message captured, is the proof.
+$spawnThrew = Start-FreshWatcherProcess -ScriptPath "C:\fake\relay-watch.ps1" -Exe "C:\fake\powershell.exe" `
+    -Launcher { param($exe, $scriptArgs) throw "launcher exploded on purpose" }
+Assert-True ($spawnThrew.Spawned -eq $false -and $spawnThrew.Error -match "launcher exploded on purpose") `
+    "a throwing launcher is caught and reported rather than allowed to kill the watcher (fail safe, not fail shut)"
+
+$spawnNull = Start-FreshWatcherProcess -ScriptPath "C:\fake\relay-watch.ps1" -Exe "C:\fake\powershell.exe" `
+    -Launcher { param($exe, $scriptArgs) $null }
+Assert-True ($spawnNull.Spawned -eq $false -and $spawnNull.Error -match "(?i)no process handle") `
+    "a launcher that returns no process handle is treated as a failed spawn, not a crash"
+
+# 16g - STATUS.json carries the running process's own script hash and start
+# time, so staleness is visible even when the reload does not fire. $StatusFile
+# is repointed at a scratch path first - relay-selftest.ps1 runs as its own
+# process (see relay-watch.ps1's startup gate), so this can never reach the
+# real .bidlow\relay\STATUS.json, but the repoint is kept anyway as the belt
+# to that process boundary's braces.
+$statusScratch = Join-Path $env:TEMP ("relay-selftest-status-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $statusScratch -Force | Out-Null
+$StatusFile = Join-Path $statusScratch "STATUS.json"
+Save-Status 9 "finished" 8
+$writtenStatus = Get-Content $StatusFile -Raw | ConvertFrom-Json
+Assert-True ($writtenStatus.cycle -eq 9) `
+    "Save-Status still writes the cycle number it is given"
+Assert-True (-not [string]::IsNullOrWhiteSpace($writtenStatus.scriptHash) -and $writtenStatus.scriptHash -eq $script:LoadedScriptHash) `
+    "STATUS.json carries the running process's own loaded script hash"
+Assert-True (-not [string]::IsNullOrWhiteSpace($writtenStatus.processStartedAt)) `
+    "STATUS.json carries the running process's start time"
+Remove-Item -Path $statusScratch -Recurse -Force -ErrorAction SilentlyContinue
+
+# 16h - WIRING: the reload check genuinely sits at the top of the main loop,
+# after the HALT check and before Invoke-CycleAgent is ever called this
+# iteration - the structural reason it cannot fire mid-cycle (Invoke-CycleAgent
+# is synchronous, so the top of the loop is only reached once every cycle this
+# process started has fully finished). This cannot be proven by running the
+# live loop - that means running a live cycle - so, same as
+# relay/watcher-self-reload.test.ts's own wiring backstop, it is proven at
+# source level instead.
+$watcherSource = Get-Content (Join-Path $PSScriptRoot "relay-watch.ps1") -Raw
+$haltIdx        = $watcherSource.IndexOf('Write-Line "HALT file found. Stopping cleanly."')
+$reloadCallIdx  = $watcherSource.IndexOf('$reloadCheck = Test-WatcherSelfReloadNeeded')
+$cycleAgentIdx  = $watcherSource.IndexOf('$run = Invoke-CycleAgent')
+Assert-True ($haltIdx -ge 0 -and $reloadCallIdx -gt $haltIdx -and $cycleAgentIdx -gt $reloadCallIdx) `
+    "the self-reload check sits after the loop's HALT check and strictly before Invoke-CycleAgent is ever called"
+
+# ===========================================================================
 
 } catch {
     $script:HarnessError = $_

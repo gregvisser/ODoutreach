@@ -136,6 +136,7 @@ describe("relay specs that start a PowerShell host", () => {
       "queue-parser.test.ts",
       "stale-watcher-visible.test.ts",
       "unmirrored-finding.test.ts",
+      "watcher-self-reload.test.ts",
     ]);
   });
 

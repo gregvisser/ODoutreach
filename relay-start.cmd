@@ -31,6 +31,12 @@ REM  WORK too, and Greg had to come and press start again roughly
 REM  every sixteen hours, including overnight.
 REM
 REM  Exit code 42 means only "this process is full, start another".
+REM  Exit code 44 means the watcher noticed its OWN script changed on
+REM  disk and already started its replacement itself (a separate,
+REM  independent process, own window) before exiting - see
+REM  Start-FreshWatcherProcess in relay-watch.ps1. This window's job
+REM  is done; it does NOT also start a new watcher, or two would be
+REM  running at once.
 REM  Every other exit means stop and stay stopped: a HALT file
 REM  Greg created, a failed self-test, a crash. So the loop below
 REM  is safe - it cannot turn a real stop into an infinite retry.
@@ -47,6 +53,7 @@ set RELAY_GENERATION=1
 
 :relayloop
 powershell -ExecutionPolicy Bypass -File "%~dp0relay-watch.ps1"
+if errorlevel 44 goto reloaded
 if errorlevel 43 goto relaystop
 if errorlevel 42 goto rollover
 goto relaystop
@@ -61,6 +68,17 @@ echo  nothing needs you. Leave this window open.
 echo ------------------------------------------------------------
 echo.
 goto relayloop
+
+:reloaded
+echo.
+echo ------------------------------------------------------------
+echo  relay-watch.ps1 changed on disk, so this window's watcher
+echo  started its own replacement in a NEW window and handed over -
+echo  nothing is lost, nothing needs you. The relay is running in
+echo  that other window now; this one is done and can be closed.
+echo ------------------------------------------------------------
+echo.
+goto :eof
 
 :relaystop
 echo.
