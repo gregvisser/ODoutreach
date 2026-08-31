@@ -1,6 +1,75 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 190) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 192, IN PROGRESS) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 192, queue row 134 (investigation-only, build nothing): answering Greg's four questions from code/screens. IN PROGRESS at time of writing.
+
+**Prior housekeeping this cycle:** `gh pr list --state open` returned zero
+open PRs - nothing to sweep. Confirmed local `main` (`9b109c8`) matches
+`origin/main` exactly via `git ls-remote`. Found cycle 191's uncommitted
+work still on disk (it was killed at the 45-minute deadline after merging
+but before committing its own QUEUE.md close): row 133 already closed
+`DONE 191` with its code merged as `9b109c8` (PR #504), plus an untracked
+`.bidlow/relay/log/cycle-191.md`. Kept both - they are cycle 191's real,
+already-merged work, not mine to discard. The relay itself had already
+stamped row 134 `IN PROGRESS 192` in the same uncommitted diff before this
+session started.
+
+**Row 134 progress (four parallel Explore-agent investigations, all with
+file:line citations):**
+1. **Universe -> new list for new sequence: list creation YES, sequence
+   creation NO, and they are decoupled with no link between them.** Click
+   path: Universe tab -> select contacts -> "Create list from selected
+   contacts" panel -> pick client + name -> Create list
+   (`src/components/universe/universe-page-client.tsx:253-326`, action
+   `src/app/(app)/universe/actions.ts:27-74`). Creating a sequence is a
+   SEPARATE flow under Clients -> [client] -> Outreach -> New sequence,
+   which the just-created list then appears in. Gap: the post-create
+   success message on Universe has no "now go build a sequence with this
+   list" link even though it has both `clientId` and the new list, despite
+   `ClientEmailSequence.contactListId` being a required FK
+   (`prisma/schema.prisma:1366`) - a plausible operator dead-end. Candidate
+   finding, not fixed here.
+2. **Cooldown enforcement is real and tested, but has an unguarded gap.**
+   `OUTREACH_COOLDOWN_DAYS = 10` in
+   `src/lib/email-sequences/recent-send-cooldown.ts:16`, enforced
+   unconditionally at PLAN/scheduling time
+   (`src/server/email-sequences/step-sends.ts:340-417` ->
+   `src/lib/email-sequences/sequence-send-policy.ts:264-271`, proven by a
+   real-Postgres integration test,
+   `step-sends.integration.test.ts:364-399`, run and green). NOT
+   re-verified at dispatch time in production: the dispatch-time re-check
+   (`src/server/email/outbound/dispatch-recheck.ts`) is wired into
+   `execute-one.ts:277-302` and has its own passing tests, but is gated
+   behind `SEND_DISPATCH_RECHECK_ENABLED`, which is absent from `.env` and
+   therefore OFF by default (confirmed in
+   `docs/ROADMAP-2026-08.md:94`). The value is a hardcoded TS constant, not
+   configurable per-client, no env var, no admin UI - a real gap in the
+   client-facing "we won't over-email inside the window" promise for
+   long-queued rows.
+3. **Training module audit - still running as of this STATE.md write.**
+4. **AI ask-box in Training: feasible, cheap (~$1-30/month at plausible
+   volume, Haiku 4.5 pricing), but only if scoped strictly to static
+   training content with no free-text path that could carry a
+   client/prospect name or reply text - CR-10's `carriesPersonalData`
+   policy in `src/server/ai/ai-feature-data-policy.ts` refuses any feature
+   marked as carrying personal data unconditionally (no Anthropic Art.28
+   processor allowance recorded), so a general support box that answers
+   "why did this prospect bounce" using real data would ship dead, same as
+   `REPLY_CLASSIFICATION` today. Recommend: training-FAQ box only, not a
+   general support box.
+
+**What's left when this session picks back up (or the next one, if this
+cycle times out):** wait for the training-module-audit agent, write the
+dated `docs/ops/ROW134-...` artefact synthesizing all four answers with
+ranked findings and recommendations, raise the two real candidate findings
+above (Universe->sequence link gap; dispatch-time cooldown re-check
+default-off) as their own QUEUE.md rows rather than fixing them in this
+row, commit (QUEUE.md + the cycle-191 log + the new artefact + row 134's
+own close), branch -> PR -> green CI -> merge, verify merge hash via
+`git ls-remote origin refs/heads/main`, and set row 134 to
+`DONE 192 - ...`. No code was changed this cycle by design (row 134 is
+investigation-only); nothing else in the repo was touched.
 
 ## Session 2026-08-31 - Relay cycle 190, queue row 143: closed the row 138 loop's own tracking row for good with a decoy cycle-stamp, not another re-verification. Merged PRs #500, #501, #502. `main` now `b90fc24`. No PRs left open on exit.
 
