@@ -1,6 +1,81 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 207, DONE - merged) - Tier P (Client Production)**
+**Updated 2026-09-01 (cycle 213, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-09-01 - Relay cycle 213, queue row 150: no code change — closed a stuck-PR loop, not a bug
+
+**What was done:** row 150's brief asked to fix a reply-handled desync
+between the reply-detail and message-detail pages (raised by row 135/cycle
+195, finding 1 — a real duplicate-send risk). That fix was **already built
+and merged** in cycle 210 (commit `0aec211`, PR #533): both
+`loadClientLinkedReplyDetail` and `loadInboundMessageDetailForClient` now OR
+their own "handled" signal with the other screen's, matching the pattern the
+two aggregate views already used (row 132). Cycle 211 found nothing new and
+stopped waiting. Cycle 212 wrote the DONE record into QUEUE.md and pushed it
+as PR #534 — but the cycle ended before merging it, so `main`'s own copy of
+row 150 was still stuck reading `IN PROGRESS 210`, and the watcher handed the
+row back out for cycle 213 with a fresh "IN PROGRESS 213" edit sitting
+uncommitted in the working tree.
+
+This is the documented pattern in this project's `CLAUDE.md` ("a row reopened
+after a relay timeout may already be merged — check main first"), just with a
+stuck PR instead of a timeout as the cause. Checked `main` first, confirmed
+the fix, tests, and artefact were all real and already there, and closed the
+loop rather than redoing anything:
+1. Discarded the stray uncommitted "IN PROGRESS 213" edit (it was never
+   committed anywhere).
+2. Merged the stuck PR #534 directly (merge commit `e7b4f1a`).
+3. Committed cycle 212's log (`.bidlow/relay/log/cycle-212.md`) — required by
+   `relay/cycle-log-reaches-git.test.ts`, verified red without it, green with
+   it — and rewrote the row 150 status cell to `DONE 213` with the merged
+   history, in a new docs-only PR #535.
+4. Watched CI to green, merged (squash, merge commit `a6c3487`), confirmed on
+   `origin/main` via `git ls-remote origin refs/heads/main`.
+
+**No application code changed this session.** Zero risk of a real send or a
+migration — this was entirely a QUEUE.md/git-hygiene fix.
+
+**Gates run and shown:** `npm run lint` 0, `npm run typecheck` 0, `npm test`
+377 files / 3917 tests green (includes `cycle-log-reaches-git.test.ts`, the
+one that was red until cycle 212's log was added to a commit).
+
+**Decisions made, and why:** none — nothing in this session hit the three
+stop-and-ask conditions (destructive migration, client data, email send).
+Not a one-way door.
+
+**A structural gap worth naming, not yet queued as its own row:** a PR that
+records a `DONE` status can itself be left unmerged at the end of a cycle
+(cycle 212's PR #534 sat green for a full cycle before this session merged
+it), which reopens the *already-finished* row for the next cycle. The
+existing "clear the green PRs" start-of-cycle sweep is what actually catches
+this — cycle 213 did the sweep and would have caught #534 even without this
+row's brief pointing at it directly. No code fix needed; flagging in case the
+pattern recurs enough to be worth a queue row of its own.
+
+**Nothing half-done.** Row 150 is fully closed on `main`, `gh pr list --state
+open` is empty. One untracked file, `.bidlow/relay/row-reopen-counts.json`
+(`{"150":1}`), was left alone — it looks like new watcher runtime state (a
+reopen counter, not currently in `.gitignore`'s named-exceptions list
+alongside `STATUS.json`/`CURRENT.md`), but it wasn't named in this row's file
+list, so deciding whether it should be tracked or ignored is out of scope
+here.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. Do the start-of-cycle PR sweep (`gh pr list --state open`) — was empty at
+   the end of this session, but always check first; this exact session is the
+   proof of what happens when that sweep is skipped.
+2. Next `TODO` rows in `.bidlow/relay/QUEUE.md`, in file order: **row 151**
+   (raised by row 135/cycle 195, finding 2 — Sources import screen silently
+   drops email-less contacts without telling staff) and **row 152** (same
+   source, finding 3 — a contact list's detail page has no actions and
+   doesn't say it's read-only).
+3. Consider whether `.bidlow/relay/row-reopen-counts.json` (untracked, new
+   this session) should be added to `.gitignore` alongside `STATUS.json` — it
+   looks like local watcher state, not something to commit, but it isn't
+   currently in the ignore list.
 
 ## Session 2026-08-31 - Relay cycle 207, queue row 148: fixed all fourteen training-content drift defects
 
