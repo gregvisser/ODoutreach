@@ -1,6 +1,90 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 205, DONE - merged) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 207, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 207, queue row 148: fixed all fourteen training-content drift defects
+
+**What was done:** row 148 (raised by row 134/cycle 192, twelve findings; two
+more folded in from row 136/cycle 197) asked for copy-only fixes to
+`src/lib/training/modules.ts` and `src/lib/training/staff-handover-guide.ts`
+so the training content matches the live product. Start-of-cycle PR sweep
+found zero open PRs. Re-verified every cited file:line against current code
+before editing (several had drifted since cycle 192/197) using Grep/Read, not
+by trusting the evidence doc blindly. Fixed all fourteen: the
+`{{email_signature}}` regression in the worked-example template body; the
+Sources module's false claim that LinkedIn/phone-only rows are "valid" and
+imported (they're skipped — `EMAIL_REQUIRED_FOR_PERSISTENCE`); mailbox
+connect/reconnect/signature language wrongly described as admin-only
+(`canAccessMailboxSetupTools` is unconditionally `true`); the Activity module
+teaching a removed cross-client sidebar link (rewrote purpose/steps/
+whatGoodLooksLike/portalLink to per-client only); the new "Setup help" tab
+missing from every tab-row list; the Outreach module conflating template
+authoring with the Outreach tab (templates now live on a separate Templates
+tab); "internal verification" taught as an Outreach step when
+`InternalProofSendCard` now renders on Mailboxes (moved the step); a stale
+sidebar screenshot missing three live items and listing one removed one; the
+manual-signature button misnamed "Edit manual signature" (real button: "Set
+signature") with the one-click "Set branded signatures" generator
+undocumented; the real 10-day cooldown and its "Re-engage (bypass cooldown)"
+override undocumented; PR-number/raw-enum dev-isms rendered to operators in
+five spots; Settings' "Only admins can change this" reading broader than what
+`requireStaffAdmin` actually gates (staff roster only, not day-to-day
+actions); the `staff-handover` guide being unreachable from the training
+index (added a link); and a printed checklist line misquoting the sidebar
+label ("People blocked from outreach" is the page's own H1, not sidebar
+text — the real sidebar label is "Blocked contacts").
+
+**Proof it fires:** new file `src/lib/training/row148-drift-fixes.test.ts`,
+20 assertions (one to four per finding), confirmed red against the
+unmodified source first (`npx vitest run` → 20/20 failed), then green after
+each fix. The pre-existing lock-down test `modules-staff-readiness.test.ts`
+was re-checked line by line and needed no changes — in particular the
+onboarding module's seven-item Launch-readiness substring was left untouched;
+"Setup help" was added only to the separate tab-row sentence in the same
+string.
+
+**Gates run and shown:** `npm run lint` 0, `npx tsc --noEmit` 0, `npm test`
+372 files / 3882 tests green (was 3862 before this row's new test file — the
++20 matches).
+
+Evidence: `docs/ops/ROW148-TRAINING-DRIFT-FIXES-2026-08-31-cycle207.md`.
+Merged as PR #529 (`66bec14`, CI: `verify` 5m44s, `E2E (Playwright)` 6m3s),
+then recorded that merge hash into QUEUE.md row 148 as a same-cycle docs-only
+follow-up, PR #530 (`d4984b8`, CI green the same way) — the established
+two-PR pattern from rows 137/143/146/147. QUEUE.md row 148 is `DONE 207`.
+Both confirmed on `main` via `git ls-remote origin refs/heads/main` →
+`d4984b8ccd42f0cdb9454ed80f3f555b02e8a56c`.
+
+**Decisions made, and why:** none of the fourteen fixes touched schema, sent
+email, or moved client data, so none required stopping to ask — all copy
+inside `src/lib/training/` plus one navigation link. Not a one-way door:
+every change is reversible by editing the same static strings back.
+
+**Nothing half-done.** Row 148 is fully closed — no follow-up PR pending, no
+open PRs left (`gh pr list --state open` empty at the start of this session
+and empty again now).
+
+**One pre-existing local file left untouched, out of this row's scope:**
+`.bidlow/relay/log/cycle-206.md` had an uncommitted watcher-appended tail
+already sitting in the working tree before this session started (the
+watcher's own end-of-cycle record for cycle 206, not committed by that
+cycle). It was not part of row 148's file list, so it was deliberately left
+uncommitted rather than folded into this row's PRs. The next session should
+check `git status` and commit it (or let the relay do so) if it is still
+sitting there.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. Do the start-of-cycle PR sweep (`gh pr list --state open`) — should be
+   empty, but always check first.
+2. Check `git status` for the orphaned `.bidlow/relay/log/cycle-206.md`
+   change noted above and commit it if still uncommitted.
+3. Pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file order —
+   row 149 (an AI search bar over training content, replacing the earlier
+   narrower ask-box idea; explicitly blocked behind row 148, which is now
+   done) is next, followed by rows 150-152 (raised by row 135/cycle 195).
 
 ## Session 2026-08-31 - Relay cycle 205, queue row 147: enabled SEND_DISPATCH_RECHECK_ENABLED in production
 
