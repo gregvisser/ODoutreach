@@ -352,6 +352,27 @@
       "authorised_by": "Claude (agent), relay cycle 164, row 130",
       "what": "Fixed finalUrl to keep the query string (was pathname-only, so any screen with ?query could never pass the not-redirected assertion) - needed for the new client-templates-archived entry to actually prove anything",
       "sha256_after": "c9795927164f08fe3bdcfd86f430f2003ae5b6845c48399d4cec1863555b2e5d"
+    },
+    {
+      "file": "e2e/fixtures.ts",
+      "date": "2026-08-31",
+      "authorised_by": "relay cycle 202 (autonomous, queue item 146) — NOT Greg-authorised",
+      "what": "Adds E2E_UNIVERSE_CONTACT: a single Universe contact fixture to drive the Universe create-list -> build-a-sequence CTA e2e journey. Additive only - no existing fixture or assertion was weakened.",
+      "sha256_after": "1eb58c9b5e962d75bc9d03352ffd2027359bfb8f4c569bca3f77a306fddd0286"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-31",
+      "authorised_by": "relay cycle 202 (autonomous, queue item 146) — NOT Greg-authorised",
+      "what": "Adds an upsert seeding E2E_UNIVERSE_CONTACT (a single Universe contact row) to drive the Universe create-list -> build-a-sequence CTA e2e journey. Additive only - no existing fixture upsert changed.",
+      "sha256_after": "4acb11b05809f672b6fff8a54f61dc5edc762a316a0c4071cd226240cb5d71eb"
+    },
+    {
+      "file": "e2e/seed-e2e.ts",
+      "date": "2026-08-31",
+      "authorised_by": "relay cycle 202 (autonomous, queue item 146) — NOT Greg-authorised",
+      "what": "Imports E2E_UNIVERSE_CONTACT alongside the upsert added in the prior amendment on this file (same edit, same reason).",
+      "sha256_after": "1fb682e751c8a1d4d62479c355a15cfcb6c7e96e73776b9613ec7f99855a2e75"
     }
   ]
 }

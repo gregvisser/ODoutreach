@@ -45,6 +45,7 @@ import {
   E2E_SUPER_ADMIN,
   E2E_SUPPRESSION,
   e2eSuppressedEmail,
+  E2E_UNIVERSE_CONTACT,
 } from "./fixtures";
 import { assertSafeTestDatabase } from "./safe-database";
 
@@ -107,6 +108,18 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         emailDomain: "example.test",
       },
       update: { email: E2E_CONTACT.email, isSuppressed: false },
+    });
+
+    /** Row 146: a Universe contact to drive the "create list -> build a sequence" CTA journey. */
+    await prisma.contactUniverse.upsert({
+      where: { id: E2E_UNIVERSE_CONTACT.id },
+      create: {
+        id: E2E_UNIVERSE_CONTACT.id,
+        emailNormalized: E2E_UNIVERSE_CONTACT.email,
+        fullName: E2E_UNIVERSE_CONTACT.fullName,
+        firstSeenSourceType: "MANUAL",
+      },
+      update: { fullName: E2E_UNIVERSE_CONTACT.fullName },
     });
 
     await prisma.outboundEmail.upsert({

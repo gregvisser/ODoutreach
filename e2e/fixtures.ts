@@ -300,6 +300,18 @@ export const E2E_REPLIES_WAITING = {
   topRationale: "Asked for a call this week.",
 } as const;
 
+/**
+ * A Universe contact for row 146's "build a sequence with this list" CTA
+ * journey. `fullName` is a distinctive search term so the spec can find it
+ * via the same `q` filter an operator would type, rather than assuming
+ * sort/paging order.
+ */
+export const E2E_UNIVERSE_CONTACT = {
+  id: "e2e-universe-contact-0000000001",
+  email: "universe-cta@example.test",
+  fullName: "E2E Universe Cta Fixture",
+} as const;
+
 export const E2E_STORAGE_STATE = {
   superAdmin: "e2e/.auth/super-admin.json",
   staff: "e2e/.auth/staff.json",
