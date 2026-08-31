@@ -1,6 +1,48 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 177) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 179) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 179, queue row 138: TENTH cycle running to find this row already merged and closed (169 built it, 170 closed it, 171-178 re-verified it). Merged PR #487 (cycle 178's own close) and PR #488 (this cycle's own close), re-verified the feature from scratch again (no redo), closed row 138 `DONE 179`. No PRs left open on exit.
+
+Row 138 arrived reopened, same as every cycle since 171, even though `main`
+already carried cycle 178's `DONE 178` close moments before this session's
+PR sweep landed it. Root cause is unchanged since cycle 172, confirmed again:
+`relay-watch.ps1` is running a stale in-memory copy of itself (row 52's
+defect) and keeps re-dispatching row 138 the instant it closes on `main`,
+regardless of the DONE status the closing commit just wrote to disk.
+**Fixable only by Greg running `relay-start.cmd` by hand — not by any code,
+and not by this or any future cycle.**
+
+This session, in order:
+1. PR sweep: found PR #487 (cycle 178's own closing commit), CI pending on
+   arrival, watched it to green (`verify` 4m20s, `E2E` 5m53s) with
+   `gh pr checks 487 --watch`, merged it — `main` now `2aff384`, confirmed
+   via `git ls-remote origin refs/heads/main`. No other open PRs.
+2. Independently re-ran row 138's own gates fresh (no redo of the actual
+   feature work): `standards/bidlow-deck-out-of-order-headline.test.ts` 2/2
+   pass; `npm run lint` 0; `npm run typecheck` 0;
+   `C:\Bidlowprojects\_standards\bidlow-deck.mjs` still carries
+   `estateOutOfOrder`/`outOfOrderHeadline`/`.headline-ooo`, wired into
+   `render()`; dated backup and
+   `docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md` still present.
+3. Recovered cycle 178's own uncommitted end-of-cycle watcher-footer
+   addendum to `cycle-178.md` (~185 lines, stashed before the PR #487 merge
+   to avoid a checkout conflict, popped back onto a fresh branch off the new
+   `main`) and committed it separately (`5c763dc`), matching the precedent
+   cycles 174-178 set for this same recurring pattern. Also found the
+   working tree carried a one-line `QUEUE.md` diff on row 124 that was
+   CRLF-only noise (byte-identical content once line endings normalised) —
+   discarded, not committed.
+4. Closed row 138 `DONE 179` in a new PR (#488), watched its CI to green
+   (`verify` 5m44s, `E2E` 5m55s), merged it — `main` now `c665959`, confirmed
+   via `git ls-remote origin refs/heads/main`. No PRs left open.
+5. Repeated cycle 178's recommendation in the row's own text, now with a
+   full cycle count: seven consecutive cycles (173-179) have re-verified an
+   unchanged feature end to end because the row keeps reopening independent
+   of its own DONE status. Recommend, again, a human either restart the
+   watcher (`relay-start.cmd`) or pull row 138 from the live queue — the
+   next re-verification will cost exactly as much and learn exactly as
+   little as this one did.
 
 ## Session 2026-08-31 - Relay cycle 177, queue row 138: EIGHTH cycle running to find this row already merged and closed (169 built it, 170-176 re-verified it). Merged PR #485 (cycle 176's own close), re-verified the feature from scratch again (no redo), closed row 138 `DONE 177` and garbled row 141 `WONTFIX 177`.
 
