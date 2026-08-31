@@ -13,6 +13,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { TrainingAssistantSearch } from "@/components/training/training-assistant-search";
 
 import { AppSidebar } from "./app-sidebar";
 
@@ -58,6 +59,7 @@ export function AppHeader({ brand }: { brand: BrandProp }) {
         />
       </div>
       <div className="flex items-center gap-3">
+        <TrainingAssistantSearch />
         <span className="hidden max-w-[200px] truncate text-sm text-muted-foreground sm:inline">
           {session?.user?.email ?? session?.user?.name ?? ""}
         </span>

@@ -39,7 +39,8 @@ export default async function StaffHandoverGuidePage() {
       {STAFF_HANDOVER_SECTIONS.map((section, index) => (
         <Card
           key={section.title}
-          className="break-inside-avoid border-border/80 shadow-sm print:border print:shadow-none"
+          id={`handover-section-${String(index)}`}
+          className="scroll-mt-24 break-inside-avoid border-border/80 shadow-sm print:border print:shadow-none"
         >
           <CardHeader>
             <CardTitle className="text-xl">
