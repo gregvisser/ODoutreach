@@ -28,6 +28,7 @@
     "e2e/streamed-content-single-copy.spec.ts": "8aa581c6520fa305d3e138361f941f10d17762c20ae151690a2990a6ae872813",
     "e2e/suppression-search.spec.ts": "29a1b77cab16d3c9b09252d1d21bcdb5e035317896d2fd8a986648f47870b642",
     "e2e/training-screenshots.spec.ts": "492323b6615bb35ba12279dc063aaed001a74b698cde738ef8a770b63fea036f",
+    "e2e/universe-sequence-cta.spec.ts": "35dd116ec8a0491e3114bd4747a28da60f7bddfaaba9f5cfb475b4929141e211",
     "specs/BC-01-tenant-isolation.md": "fd5d97e41a9b9d873288b6e5716474d83e2e4ea0acdda14ffa1af79e401a0828"
   },
   "amendments": [
