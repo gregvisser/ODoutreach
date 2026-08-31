@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { replyOwnershipLabel } from "@/lib/inbox/reply-ownership";
 import {
   formatRate,
   formatTrackedMetric,
@@ -48,7 +49,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
 
   const [timeline, replyGroups, metrics] = await Promise.all([
     loadClientActivityTimeline(bundle.client.id, { mode }),
-    loadClientOutreachReplies(bundle.client.id),
+    loadClientOutreachReplies(bundle.client.id, staff.id),
     loadClientOutreachMetrics(bundle.client.id, accessible),
   ]);
 
@@ -63,6 +64,10 @@ export default async function ClientActivityPage({ params, searchParams }: Props
     replies: g.replies.map((r) => ({
       ...r,
       receivedAt: r.receivedAt.toISOString(),
+      // Row 132 — resolved to plain text/tone here (server side) rather than
+      // passing the raw state, so the client panel below never has to
+      // serialize a Date across the boundary.
+      ownership: replyOwnershipLabel(r.ownership),
     })),
   }));
 

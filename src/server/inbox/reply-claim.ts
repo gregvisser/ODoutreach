@@ -3,7 +3,10 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import {
   REPLY_CLAIM_STALE_AFTER_MS,
+  replyClaimSubjectKey,
+  selectDisplayClaim,
   selectVisibleClaim,
+  type DisplayReplyClaim,
   type ReplyClaimSubject,
   type VisibleReplyClaim,
 } from "@/lib/inbox/reply-claim";
@@ -96,6 +99,84 @@ export async function loadVisibleReplyClaim(args: {
   } catch {
     return null;
   }
+}
+
+/**
+ * Row 132 — the claim to show for EVERY reply on a list screen, in one
+ * query. Unlike `loadVisibleReplyClaim` (one subject, hides the viewer's own
+ * claim — built for the "warn the second person" banner), this includes the
+ * viewer's own claim, because a list row answering "who has this" needs
+ * "you" as a possible answer.
+ *
+ * Subjects with no live claim are simply absent from the returned map —
+ * callers treat a missing key the same as `null`.
+ */
+export async function loadDisplayClaimsForSubjects(args: {
+  clientId: string;
+  subjects: ReplyClaimSubject[];
+  viewerStaffUserId: string;
+  now?: Date;
+}): Promise<Map<string, DisplayReplyClaim>> {
+  const now = args.now ?? new Date();
+  const out = new Map<string, DisplayReplyClaim>();
+  if (args.subjects.length === 0) return out;
+
+  try {
+    const rows = await prisma.replyClaim.findMany({
+      where: {
+        clientId: args.clientId,
+        OR: args.subjects.map((s) => ({
+          subjectType: s.subjectType,
+          subjectId: s.subjectId,
+        })),
+        claimedAt: { gt: new Date(now.getTime() - REPLY_CLAIM_STALE_AFTER_MS) },
+      },
+      select: {
+        subjectType: true,
+        subjectId: true,
+        staffUserId: true,
+        claimedAt: true,
+        staffUser: { select: { displayName: true, email: true } },
+      },
+    });
+
+    const claimsBySubject = new Map<
+      string,
+      { staffUserId: string; displayName: string | null; email: string; claimedAt: Date }[]
+    >();
+    for (const row of rows) {
+      const key = replyClaimSubjectKey({
+        subjectType: row.subjectType,
+        subjectId: row.subjectId,
+      });
+      const list = claimsBySubject.get(key) ?? [];
+      list.push({
+        staffUserId: row.staffUserId,
+        displayName: row.staffUser.displayName,
+        email: row.staffUser.email,
+        claimedAt: row.claimedAt,
+      });
+      claimsBySubject.set(key, list);
+    }
+
+    for (const subject of args.subjects) {
+      const key = replyClaimSubjectKey(subject);
+      const claims = claimsBySubject.get(key);
+      if (!claims) continue;
+      const display = selectDisplayClaim({
+        claims,
+        viewerStaffUserId: args.viewerStaffUserId,
+        now,
+      });
+      if (display) out.set(key, display);
+    }
+  } catch {
+    // Advisory only — see the module comment. Whatever failed, an empty map
+    // ("say nothing") is the safe fallback, never a thrown error.
+    return new Map();
+  }
+
+  return out;
 }
 
 /**

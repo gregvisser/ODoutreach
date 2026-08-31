@@ -20,9 +20,11 @@ vi.mock("@/lib/db", () => ({
 
 import {
   claimReplyForStaff,
+  loadDisplayClaimsForSubjects,
   loadVisibleReplyClaim,
   releaseReplyClaims,
 } from "./reply-claim";
+import { replyClaimSubjectKey } from "@/lib/inbox/reply-claim";
 
 const SUBJECT = { subjectType: "INBOUND_MESSAGE" as const, subjectId: "msg-1" };
 const NOW = new Date("2026-08-26T12:00:00.000Z");
@@ -188,6 +190,85 @@ describe("loadVisibleReplyClaim", () => {
     });
 
     expect(visible).toBeNull();
+  });
+});
+
+describe("loadDisplayClaimsForSubjects — row 132, batched for a list screen", () => {
+  const SUBJECT_A = { subjectType: "INBOUND_REPLY" as const, subjectId: "reply-1" };
+  const SUBJECT_B = { subjectType: "INBOUND_REPLY" as const, subjectId: "reply-2" };
+
+  it("returns an empty map without querying when there are no subjects", async () => {
+    const result = await loadDisplayClaimsForSubjects({
+      clientId: "client-a",
+      subjects: [],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(result.size).toBe(0);
+    expect(claimFindMany).not.toHaveBeenCalled();
+  });
+
+  it("keys results by subject, including the viewer's own claim (unlike loadVisibleReplyClaim)", async () => {
+    claimFindMany.mockResolvedValue([
+      {
+        subjectType: "INBOUND_REPLY",
+        subjectId: "reply-1",
+        staffUserId: "staff-bob",
+        claimedAt: minutesAgo(1),
+        staffUser: { displayName: "Bob", email: "bob@opensdoors.co.uk" },
+      },
+      {
+        subjectType: "INBOUND_REPLY",
+        subjectId: "reply-2",
+        staffUserId: "staff-sarah",
+        claimedAt: minutesAgo(5),
+        staffUser: { displayName: "Sarah Okafor", email: "sarah@opensdoors.co.uk" },
+      },
+    ]);
+
+    const result = await loadDisplayClaimsForSubjects({
+      clientId: "client-a",
+      subjects: [SUBJECT_A, SUBJECT_B],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(result.size).toBe(2);
+    expect(result.get(replyClaimSubjectKey(SUBJECT_A))).toMatchObject({
+      name: "You",
+      isViewer: true,
+    });
+    expect(result.get(replyClaimSubjectKey(SUBJECT_B))).toMatchObject({
+      name: "Sarah Okafor",
+      isViewer: false,
+    });
+  });
+
+  it("leaves a subject with no live claim out of the map entirely", async () => {
+    claimFindMany.mockResolvedValue([]);
+
+    const result = await loadDisplayClaimsForSubjects({
+      clientId: "client-a",
+      subjects: [SUBJECT_A],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(result.has(replyClaimSubjectKey(SUBJECT_A))).toBe(false);
+  });
+
+  it("degrades to an empty map when the batched lookup fails", async () => {
+    claimFindMany.mockRejectedValue(new Error("db down"));
+
+    const result = await loadDisplayClaimsForSubjects({
+      clientId: "client-a",
+      subjects: [SUBJECT_A],
+      viewerStaffUserId: "staff-bob",
+      now: NOW,
+    });
+
+    expect(result.size).toBe(0);
   });
 });
 

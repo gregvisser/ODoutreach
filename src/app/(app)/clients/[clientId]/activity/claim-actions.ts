@@ -1,6 +1,8 @@
 "use server";
 
-import { claimReplyForStaff } from "@/server/inbox/reply-claim";
+import { revalidatePath } from "next/cache";
+
+import { claimReplyForStaff, releaseReplyClaims } from "@/server/inbox/reply-claim";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientAccess } from "@/server/tenant/access";
 import type { ReplyClaimSubjectType } from "@/lib/inbox/reply-claim";
@@ -20,6 +22,9 @@ export async function claimReplyAction(input: {
   clientId: string;
   subjectType: ReplyClaimSubjectType;
   subjectId: string;
+  /** Revalidated after claiming — set by an explicit "Claim" button so its
+   * own screen updates; omitted by the passive auto-claim-on-mount notice. */
+  revalidateReplyPath?: string;
 }): Promise<{ ok: boolean }> {
   const staff = await requireOpensDoorsStaff();
   await requireClientAccess(staff, input.clientId);
@@ -29,6 +34,35 @@ export async function claimReplyAction(input: {
     subject: { subjectType: input.subjectType, subjectId: input.subjectId },
     staffUserId: staff.id,
   });
+
+  if (input.revalidateReplyPath) revalidatePath(input.revalidateReplyPath);
+
+  return { ok: true };
+}
+
+/**
+ * Row 132 — an explicit "release" so a person can hand a reply back without
+ * waiting for the 30-minute auto-expiry or one of the other actions that
+ * happen to clear it (replying, suppressing, marking handled). Advisory,
+ * same as claiming: any staff member may release, not only the one who
+ * claimed it — nothing here is a lock.
+ */
+export async function releaseReplyClaimAction(input: {
+  clientId: string;
+  subjectType: ReplyClaimSubjectType;
+  subjectId: string;
+  /** Revalidated after release so the badge updates without a manual refresh. */
+  revalidateReplyPath?: string;
+}): Promise<{ ok: boolean }> {
+  const staff = await requireOpensDoorsStaff();
+  await requireClientAccess(staff, input.clientId);
+
+  await releaseReplyClaims({
+    clientId: input.clientId,
+    subject: { subjectType: input.subjectType, subjectId: input.subjectId },
+  });
+
+  if (input.revalidateReplyPath) revalidatePath(input.revalidateReplyPath);
 
   return { ok: true };
 }
