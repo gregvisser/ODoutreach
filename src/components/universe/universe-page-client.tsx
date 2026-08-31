@@ -30,6 +30,10 @@ import {
   parseUniverseVisibleColumns,
   type UniverseContactFieldKey,
 } from "@/lib/universe/column-config";
+import {
+  universeListSequenceCtaHref,
+  universeListSequenceCtaLabel,
+} from "@/lib/universe/list-created-cta";
 import { cn } from "@/lib/utils";
 import type { UniverseTableRow } from "@/server/queries/contact-universe-list";
 
@@ -83,6 +87,9 @@ export function UniversePageClient({
   const [listName, setListName] = useState("");
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [successCta, setSuccessCta] = useState<{ href: string; label: string } | null>(
+    null,
+  );
 
   // The URL is the source of truth for column visibility (the toggle panel
   // pushes a new URL on every change). Parse the server-serialized list back
@@ -263,14 +270,24 @@ export function UniversePageClient({
           </p>
         </div>
         {actionMessage ? (
-          <p className="text-sm rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-            {actionMessage}
-          </p>
+          <div className="text-sm rounded-md border border-primary/30 bg-primary/5 px-3 py-2 space-y-2">
+            <p>{actionMessage}</p>
+            {successCta ? (
+              <Link
+                prefetch={false}
+                href={successCta.href}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              >
+                {successCta.label}
+              </Link>
+            ) : null}
+          </div>
         ) : null}
         <form
           className="grid gap-3 md:grid-cols-2 lg:grid-cols-4"
           action={async (fd) => {
             setActionMessage(null);
+            setSuccessCta(null);
             const res = await createListFromUniverseAction(fd);
             if (!res.ok) {
               setActionMessage(res.error);
@@ -280,6 +297,13 @@ export function UniversePageClient({
             setActionMessage(
               `Created list “${r.listName}” with ${String(r.addedToList)} contacts (${String(r.materializedNewContacts)} new in this workspace, ${String(r.reusedExistingContacts)} already in this workspace). Rows skipped in the list: ${String(r.listSkippedDuplicates)}; skipped with no email: ${String(r.skippedNoEmail)}.`,
             );
+            const submittedClientId = String(fd.get("clientId") ?? "").trim();
+            if (submittedClientId) {
+              setSuccessCta({
+                href: universeListSequenceCtaHref(submittedClientId),
+                label: universeListSequenceCtaLabel(r.listName),
+              });
+            }
             setSelected(new Set());
           }}
         >
