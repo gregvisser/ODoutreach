@@ -1,6 +1,74 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 204, DONE - merged) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 205, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 205, queue row 147: enabled SEND_DISPATCH_RECHECK_ENABLED in production
+
+**What was done:** row 147 (raised by row 134/cycle 192, finding 4) asked for
+a config-only flip: `SEND_DISPATCH_RECHECK_ENABLED` was already built, wired
+into `execute-one.ts:277-302`, and covered by 11 passing unit tests, but
+absent from production config (default off). Confirmed the "before" state via
+`az webapp config appsettings list --name app-opensdoors-outreach-prod
+--resource-group rg-opensdoors-outreach-prod` (flag absent). Checked the
+prerequisite order from the earlier deliverability engagement
+(`docs/ROADMAP-2026-08.md`: `MAILBOX_WARMUP_RAMP` on, then a stable window,
+then this flag) — `MAILBOX_WARMUP_RAMP` and `BOUNCE_SUPPRESSION_ENABLED` were
+already on/true in prod, so the prerequisite was already satisfied and row
+134's own audit independently recommended flipping this flag now. Ran the
+full `src/server/email/outbound/` suite as a pre-flip baseline (13 files, 199
+tests, green), then set `SEND_DISPATCH_RECHECK_ENABLED=true` via
+`az webapp config appsettings set`. The setting change restarts the App
+Service; confirmed via `/api/health` (200) and `/api/build-info` that this
+was a config restart and not a redeploy (commit unchanged at that point).
+Re-ran the same 199-test suite after the flip for parity — still green.
+`npm run lint` / `npm run typecheck` both 0. Corrected two stale "off" lines
+in `docs/ROADMAP-2026-08.md` (`SEND_DISPATCH_RECHECK_ENABLED` and
+`MAILBOX_WARMUP_RAMP` were both already flipped). Also committed cycle 204's
+orphaned `.bidlow/relay/log/cycle-204.md` (existed on disk, never
+`git add`ed — the same recurring log-orphan defect class rows 137/146 have
+both hit before). Full evidence:
+`docs/ops/ROW147-DISPATCH-RECHECK-ENABLED-2026-08-31-cycle205.md`.
+
+Merged as PR #523 (`de2990a`, CI: `verify` 5m28s, `E2E (Playwright)` 5m25s),
+then recorded that merge hash into QUEUE.md row 147 as a same-cycle docs-only
+follow-up, PR #524 (`21aaf9c`, CI green the same way) — matching the
+established two-PR pattern from rows 137/143/146. QUEUE.md row 147 is
+`DONE 205`. Both confirmed on `main` via `git ls-remote origin
+refs/heads/main` → `21aaf9c8fd863cc1639ac923bad5290e17e7937b`. Note: because
+this second PR touched `main`, it triggered a real redeploy (not just a
+config restart) — post-merge `/api/build-info` now reads commit `de2990a`
+(then further advances to `21aaf9c` after that PR's own deploy), confirmed
+healthy (`/api/health` 200) both times.
+
+**Decisions made, and why:** proceeded without stopping to ask, because this
+row's own brief explicitly says the flag change "should not need to stop and
+ask... flagged for visibility since it changes live send behaviour" and it is
+none of the three named stop conditions (not a destructive migration, doesn't
+touch client data, causes no email to be sent — the flag can only *add* a
+block at dispatch, never bypass an existing one). Not a one-way door: the
+flag can be flipped back to unset/false at any time with the identical `az`
+command, restoring today's exact dispatch behaviour.
+
+**Gates run and shown:** `npm run lint` 0, `npm run typecheck` 0,
+`npx vitest run src/server/email/outbound/` 13 files / 199 tests, run twice
+(before and after the flag flip), both green.
+
+**Nothing half-done.** Row 147 is fully closed — no follow-up PR pending, no
+open PRs left (`gh pr list --state open` was empty at the start of this
+session and is empty again now).
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. Do the start-of-cycle PR sweep (`gh pr list --state open`) — should be
+   empty, but always check first.
+2. Pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file order (row
+   148 — the twelve training-content drift fixes raised by row 134 — is next
+   after 147; row 149's AI ask-box is after that).
+3. The six `docs/row-138-cycle-175..180-close` branches (see prior session
+   entries below) were not touched this session — still a person's call, not
+   a cycle's.
 
 ## Session 2026-08-31 - Relay cycle 204, queue row 146: merged PR #520, restamped DONE 204
 
