@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { format } from "date-fns";
 
+import { ReplyOwnershipBadge } from "@/components/activity/reply-ownership-badge";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -33,6 +34,9 @@ type ReplyRow = {
   outboundSubject: string | null;
   classification: ReplyClassification | null;
   classificationRationale: string | null;
+  /** Row 132 — who has this open, or has dealt with it. Already resolved to
+   * plain text server-side (see `replyOwnershipLabel`). */
+  ownership: { text: string; tone: "muted" | "warn" | "ok" };
 };
 
 type MailboxGroup = {
@@ -142,6 +146,11 @@ function MailboxGroupRow({
                       </Badge>
                     );
                   })()}
+                  <ReplyOwnershipBadge
+                    testId="client-reply-ownership"
+                    text={r.ownership.text}
+                    tone={r.ownership.tone}
+                  />
                 </div>
                 {r.sequenceName && (
                   <p className="text-xs text-muted-foreground">

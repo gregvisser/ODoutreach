@@ -13,15 +13,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * - No sends, syncs, or mutations are executed.
  */
 
-const { inboundReplyFindMany, mailboxFindMany } = vi.hoisted(() => ({
-  inboundReplyFindMany: vi.fn().mockResolvedValue([]),
-  mailboxFindMany: vi.fn().mockResolvedValue([]),
-}));
+const { inboundReplyFindMany, mailboxFindMany, mailboxMessageFindMany, replyClaimFindMany } =
+  vi.hoisted(() => ({
+    inboundReplyFindMany: vi.fn().mockResolvedValue([]),
+    mailboxFindMany: vi.fn().mockResolvedValue([]),
+    mailboxMessageFindMany: vi.fn().mockResolvedValue([]),
+    replyClaimFindMany: vi.fn().mockResolvedValue([]),
+  }));
+
+vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     inboundReply: { findMany: inboundReplyFindMany },
     clientMailboxIdentity: { findMany: mailboxFindMany },
+    inboundMailboxMessage: { findMany: mailboxMessageFindMany },
+    replyClaim: { findMany: replyClaimFindMany },
   },
 }));
 
@@ -58,6 +65,8 @@ describe("loadClientOutreachReplies (PR #130)", () => {
   beforeEach(() => {
     inboundReplyFindMany.mockReset().mockResolvedValue([]);
     mailboxFindMany.mockReset().mockResolvedValue([]);
+    mailboxMessageFindMany.mockReset().mockResolvedValue([]);
+    replyClaimFindMany.mockReset().mockResolvedValue([]);
   });
 
   it("returns empty array for empty clientId", async () => {
@@ -197,6 +206,74 @@ describe("loadClientOutreachReplies (PR #130)", () => {
       where: { clientId: string };
     };
     expect(call.where.clientId).toBe("client-42");
+  });
+
+  describe("row 132 — ownership state on each reply row", () => {
+    it("a fresh reply, never claimed or handled, is unclaimed", async () => {
+      inboundReplyFindMany.mockResolvedValue([linkedReply()]);
+
+      const result = await loadClientOutreachReplies("client-1");
+      expect(result[0]!.replies[0]!.ownership).toEqual({ kind: "unclaimed" });
+    });
+
+    it("a reply marked handled directly on InboundReply shows Handled by name", async () => {
+      inboundReplyFindMany.mockResolvedValue([
+        linkedReply({
+          handledAt: new Date("2026-08-31T09:00:00Z"),
+          handledByStaffUserId: "staff-sarah",
+          handledByStaff: { displayName: "Sarah Okafor", email: "sarah@opensdoors.co.uk" },
+        }),
+      ]);
+
+      const result = await loadClientOutreachReplies("client-1", "staff-bob");
+      expect(result[0]!.replies[0]!.ownership).toMatchObject({
+        kind: "handled",
+        byName: "Sarah Okafor",
+        isViewer: false,
+      });
+    });
+
+    it("the viewer who handled it themselves is told 'you', not their own name", async () => {
+      inboundReplyFindMany.mockResolvedValue([
+        linkedReply({
+          handledAt: new Date("2026-08-31T09:00:00Z"),
+          handledByStaffUserId: "staff-bob",
+          handledByStaff: { displayName: "Bob Ellis", email: "bob@opensdoors.co.uk" },
+        }),
+      ]);
+
+      const result = await loadClientOutreachReplies("client-1", "staff-bob");
+      expect(result[0]!.replies[0]!.ownership).toMatchObject({
+        kind: "handled",
+        isViewer: true,
+      });
+    });
+
+    it("does not query claims when no viewer is given (server render with no session yet)", async () => {
+      inboundReplyFindMany.mockResolvedValue([linkedReply()]);
+
+      await loadClientOutreachReplies("client-1");
+      expect(replyClaimFindMany).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a live claim as the ownership state when nothing is handled yet", async () => {
+      inboundReplyFindMany.mockResolvedValue([linkedReply({ id: "reply-1" })]);
+      replyClaimFindMany.mockResolvedValue([
+        {
+          subjectType: "INBOUND_REPLY",
+          subjectId: "reply-1",
+          staffUserId: "staff-sarah",
+          claimedAt: new Date(),
+          staffUser: { displayName: "Sarah Okafor", email: "sarah@opensdoors.co.uk" },
+        },
+      ]);
+
+      const result = await loadClientOutreachReplies("client-1", "staff-bob");
+      expect(result[0]!.replies[0]!.ownership).toMatchObject({
+        kind: "claimed",
+        name: "Sarah Okafor",
+      });
+    });
   });
 
   it("does not execute any writes or send operations", async () => {

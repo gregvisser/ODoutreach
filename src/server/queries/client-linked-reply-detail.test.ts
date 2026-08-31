@@ -39,6 +39,9 @@ function baseRow(overrides: Record<string, unknown> = {}) {
     matchMethod: "BY_CONTACT_EMAIL",
     ingestionSource: "mailbox_sync",
     providerMessageId: "msg-1",
+    handledAt: null,
+    handledByStaffUserId: null,
+    handledByStaff: null,
     contact: {
       id: "ct-1",
       fullName: "Jane Doe",
@@ -174,6 +177,39 @@ describe("loadClientLinkedReplyDetail", () => {
     expect(result!.sequence?.name).toBe("Q2 outreach");
     expect(result!.enrollment?.status).toBe("COMPLETED");
     expect(result!.inboundMailboxMessageId).toBe("ibm-1");
+  });
+
+  it("row 132 — an untouched reply reports no handled state", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue(baseRow());
+
+    const result = await loadClientLinkedReplyDetail({
+      clientId: "c1",
+      replyId: "reply-1",
+    });
+
+    expect(result?.handledAt).toBeNull();
+    expect(result?.handledByName).toBeNull();
+    expect(result?.handledByStaffUserId).toBeNull();
+  });
+
+  it("row 132 — surfaces who handled it and when, falling back to email when no display name", async () => {
+    const handledAt = new Date("2026-08-31T09:00:00Z");
+    prismaMock.inboundReply.findFirst.mockResolvedValue(
+      baseRow({
+        handledAt,
+        handledByStaffUserId: "staff-sarah",
+        handledByStaff: { displayName: null, email: "sarah@opensdoors.co.uk" },
+      }),
+    );
+
+    const result = await loadClientLinkedReplyDetail({
+      clientId: "c1",
+      replyId: "reply-1",
+    });
+
+    expect(result?.handledAt).toEqual(handledAt);
+    expect(result?.handledByName).toBe("sarah@opensdoors.co.uk");
+    expect(result?.handledByStaffUserId).toBe("staff-sarah");
   });
 
   it("returns null inboundMailboxMessageId when no correlated message exists", async () => {

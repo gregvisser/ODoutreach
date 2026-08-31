@@ -17,15 +17,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ReplyOwnershipBadge } from "@/components/activity/reply-ownership-badge";
 import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import {
   UNCLASSIFIED_BADGE,
   replyClassificationBadge,
 } from "@/lib/ai/reply-classification-display";
-import type { TriagedReply } from "@/lib/inbox/needs-a-person";
+import {
+  replyOwnershipLabel,
+  resolveReplyOwnershipState,
+} from "@/lib/inbox/reply-ownership";
 import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { getRepliesNeedingAPerson } from "@/server/queries/replies-needing-a-person";
+import {
+  getRepliesNeedingAPerson,
+  type TriagedReplyWithClaim,
+} from "@/server/queries/replies-needing-a-person";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +58,7 @@ export const dynamic = "force-dynamic";
 export default async function RepliesNeedingAPersonPage() {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
-  const queue = await getRepliesNeedingAPerson(accessible);
+  const queue = await getRepliesNeedingAPerson(accessible, staff.id);
 
   // When classification cannot run, every reply arrives here unlabelled and is
   // routed to a person anyway — which is correct, but a screen full of "Not
@@ -138,6 +145,7 @@ export default async function RepliesNeedingAPersonPage() {
                     <TableHead>Client</TableHead>
                     <TableHead>What they said</TableHead>
                     <TableHead>Waiting</TableHead>
+                    <TableHead>Who has this</TableHead>
                     <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -177,6 +185,9 @@ export default async function RepliesNeedingAPersonPage() {
                       </TableCell>
                       <TableCell>
                         <WaitingCell entry={entry} />
+                      </TableCell>
+                      <TableCell>
+                        <OwnerCell entry={entry} />
                       </TableCell>
                       <TableCell className="text-right">
                         <Link
@@ -243,7 +254,7 @@ function SummaryCard({
   );
 }
 
-function ClassificationBadge({ entry }: { entry: TriagedReply }) {
+function ClassificationBadge({ entry }: { entry: TriagedReplyWithClaim }) {
   const badge =
     entry.classification === null
       ? UNCLASSIFIED_BADGE
@@ -260,7 +271,7 @@ function ClassificationBadge({ entry }: { entry: TriagedReply }) {
  * is never the only signal — the duration is always spelled out beside it, so
  * the row reads the same to somebody who cannot see the colour.
  */
-function WaitingCell({ entry }: { entry: TriagedReply }) {
+function WaitingCell({ entry }: { entry: TriagedReplyWithClaim }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span
@@ -276,4 +287,21 @@ function WaitingCell({ entry }: { entry: TriagedReply }) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Row 132 — every reply on this screen is by definition still waiting (a
+ * handled one drops off the list entirely), so the only two states that can
+ * show here are "unclaimed" and "claimed by somebody".
+ */
+function OwnerCell({ entry }: { entry: TriagedReplyWithClaim }) {
+  const { text, tone } = replyOwnershipLabel(
+    resolveReplyOwnershipState({
+      handledAt: null,
+      handledByName: null,
+      handledByIsViewer: false,
+      claim: entry.claim,
+    }),
+  );
+  return <ReplyOwnershipBadge testId="replies-waiting-owner" text={text} tone={tone} />;
 }

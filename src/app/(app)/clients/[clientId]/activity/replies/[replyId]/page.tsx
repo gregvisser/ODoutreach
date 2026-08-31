@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 
 import { ClientLinkedReplyDetail } from "@/components/activity/client-linked-reply-detail";
 import { ReplyClaimNotice } from "@/components/activity/reply-claim-notice";
+import { ReplyOwnershipCard } from "@/components/activity/reply-ownership-card";
 import { AddToDoNotContactButtons } from "@/components/suppression/add-to-dnc";
-import { resolveReplyClaimSubject } from "@/lib/inbox/reply-claim";
+import { replyClaimSubjectKey, resolveReplyClaimSubject } from "@/lib/inbox/reply-claim";
+import { replyOwnershipLabel, resolveReplyOwnershipState } from "@/lib/inbox/reply-ownership";
 import { detectRemovalIntent } from "@/lib/unsubscribe/detect-removal-intent";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { loadVisibleReplyClaim } from "@/server/inbox/reply-claim";
+import { loadDisplayClaimsForSubjects, loadVisibleReplyClaim } from "@/server/inbox/reply-claim";
 import { loadClientLinkedReplyDetail } from "@/server/queries/client-linked-reply-detail";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -42,6 +44,21 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
     viewerStaffUserId: staff.id,
   });
 
+  // Row 132 — the self-inclusive version, for the persistent ownership card
+  // below (unlike `replyClaim` above, which is built to say nothing about
+  // the viewer's own claim).
+  const displayClaims = await loadDisplayClaimsForSubjects({
+    clientId,
+    subjects: [claimSubject],
+    viewerStaffUserId: staff.id,
+  });
+  const ownershipState = resolveReplyOwnershipState({
+    handledAt: detail.handledAt,
+    handledByName: detail.handledByName,
+    handledByIsViewer: detail.handledByStaffUserId === staff.id,
+    claim: displayClaims.get(replyClaimSubjectKey(claimSubject)) ?? null,
+  });
+
   // F6 (b) — flag, don't auto-act. If the prospect's own words read as an
   // unsubscribe/removal request, surface a loud compliance banner with the
   // existing one-click Do-not-contact action so staff can't miss it. The
@@ -54,6 +71,15 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-6">
+      <ReplyOwnershipCard
+        clientId={clientId}
+        replyId={replyId}
+        subjectType={claimSubject.subjectType}
+        subjectId={claimSubject.subjectId}
+        label={replyOwnershipLabel(ownershipState)}
+        isClaimed={ownershipState.kind === "claimed"}
+        isHandled={ownershipState.kind === "handled"}
+      />
       <ReplyClaimNotice
         clientId={clientId}
         subjectType={claimSubject.subjectType}
