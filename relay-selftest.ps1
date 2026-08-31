@@ -762,7 +762,130 @@ Remove-Item -Path $bareRemote -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ===========================================================================
-# 12. A HARNESS CRASH DOES NOT REFUSE TO START THE RELAY; A GENUINE FAILURE
+# 13. ROW 138'S NINE-CYCLE LOOP: SQUASH MERGES ARE RECOGNISED, AND A LOOP
+#     BREAKER STOPS ANY ROW THIS GUARD STILL CANNOT SETTLE
+#
+# Row 122's own guard above (section 11b) proves it finds a branch pushed
+# ahead of main and stops finding it once that branch REGULAR-merges - the
+# branch's commits become ancestors of main, so `git log origin/main..branch`
+# goes empty. This repository does not regular-merge. Every PR is
+# squash-merged, which writes a brand-new commit onto main carrying none of
+# the branch's own commit hashes - so the branch stays "ahead of main" by
+# ancestry FOREVER, no matter how completely its content already landed.
+# Cycles 172-181 lived this: row 138's real work merged once, in cycle 169
+# (commit 5fe6cd3), and every cycle since re-verified that, closed the row,
+# pushed a new branch naming row 138, watched THIS guard call that branch
+# unmerged, and had the row reopened - one junk branch per wasted cycle.
+#
+# 13a/13b prove Find-UnmergedPushedBranchForRow now answers the question that
+# actually matters - "is this branch's content already on main", by
+# comparing patch-ids - not "is this branch's own commit an ancestor of
+# main". 13c proves the independent backstop: even if some future branch
+# shape defeats the patch-id match, a row cannot be reopened by this guard
+# more than twice before it gives up rather than loop forever.
+# ===========================================================================
+
+Write-Host ""
+Write-Host "13. Squash-merged branches are recognised as merged; a genuinely unmerged branch still reopens; a loop breaker stops a third reopen"
+
+$row138PrevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+
+$bareRemote138 = Join-Path $env:TEMP ("relay-selftest-row138-remote-" + [guid]::NewGuid().ToString('N') + ".git")
+$scratchRow138 = Join-Path $env:TEMP ("relay-selftest-row138-repo-" + [guid]::NewGuid().ToString('N'))
+
+& git init --bare $bareRemote138 *> $null
+& git init $scratchRow138 *> $null
+& git -C $scratchRow138 config user.email "relay-selftest@example.com" *> $null
+& git -C $scratchRow138 config user.name "relay selftest" *> $null
+& git -C $scratchRow138 remote add origin $bareRemote138 *> $null
+Set-Content -Path (Join-Path $scratchRow138 "seed.txt") -Value "seed" -Encoding ascii
+& git -C $scratchRow138 add seed.txt *> $null
+& git -C $scratchRow138 commit -m "seed" *> $null
+& git -C $scratchRow138 branch -M main *> $null
+& git -C $scratchRow138 push origin main *> $null
+
+# A branch that will be SQUASH-merged, carrying TWO commits - several of the
+# real row-138-cycle-*-close branches carried 2 or 3, and patch-id matching
+# has to work against the whole branch diff, not just a single commit.
+& git -C $scratchRow138 checkout -b docs/row138-cycle999-close *> $null
+Set-Content -Path (Join-Path $scratchRow138 "row138a.txt") -Value "a" -Encoding ascii
+& git -C $scratchRow138 add row138a.txt *> $null
+& git -C $scratchRow138 commit -m "row 138 - close as re-verified (part one)" *> $null
+Set-Content -Path (Join-Path $scratchRow138 "row138b.txt") -Value "b" -Encoding ascii
+& git -C $scratchRow138 add row138b.txt *> $null
+& git -C $scratchRow138 commit -m "row 138 - close as re-verified (part two)" *> $null
+& git -C $scratchRow138 push origin docs/row138-cycle999-close *> $null
+& git -C $scratchRow138 checkout main *> $null
+
+# Document the defect itself before proving the fix: ancestry alone still
+# calls this branch "ahead" even once it is about to be squash-merged - this
+# is the exact reason the old check could never terminate.
+$aheadByAncestry = (& git -C $scratchRow138 log --oneline "origin/main..docs/row138-cycle999-close" 2>$null | Out-String)
+Assert-True (-not [string]::IsNullOrWhiteSpace($aheadByAncestry)) `
+    "a soon-to-be-squash-merged branch's own commits are ancestry-ahead of main before the squash, same as any other pushed branch"
+
+# Now actually squash-merge it, the way this repo's branch protection does on
+# every PR: one new commit on main whose diff equals the branch's whole
+# diff, sharing none of the branch's own commit hashes with main.
+& git -C $scratchRow138 merge --squash docs/row138-cycle999-close *> $null
+& git -C $scratchRow138 commit -m "docs(relay): row 138 - close as re-verified (cycle 999) (#999)" *> $null
+& git -C $scratchRow138 push origin main *> $null
+
+# 13a - THE FIX: a squash-merged branch is no longer reported as unmerged,
+# even though it is still ancestry-ahead of main by construction.
+$foundAfterSquash = Find-UnmergedPushedBranchForRow -RowNumber "138" -RepoPath $scratchRow138
+Assert-True ($null -eq $foundAfterSquash) `
+    "a genuinely squash-merged branch naming row 138 is no longer reported as unmerged, even though it is still ancestry-ahead of main (got: $foundAfterSquash)"
+
+# 13b - ROW 122'S PROTECTION MUST STILL WORK: a branch pushed to origin that
+# has never been merged - not squashed, not regular-merged, nothing - must
+# still be found and must still reopen the row. This is the case the brief
+# explicitly forbids weakening.
+& git -C $scratchRow138 checkout -b docs/row138-cycle998-still-open *> $null
+Set-Content -Path (Join-Path $scratchRow138 "row138-open.txt") -Value "open" -Encoding ascii
+& git -C $scratchRow138 add row138-open.txt *> $null
+& git -C $scratchRow138 commit -m "row 138 - genuinely unmerged work, still pending" *> $null
+& git -C $scratchRow138 push origin docs/row138-cycle998-still-open *> $null
+& git -C $scratchRow138 checkout main *> $null
+
+$foundStillOpen = Find-UnmergedPushedBranchForRow -RowNumber "138" -RepoPath $scratchRow138
+Assert-True ($foundStillOpen -eq "docs/row138-cycle998-still-open") `
+    "a branch pushed to origin that genuinely has never been merged - not even by squash - is still found and still reopens the row (got: $foundStillOpen)"
+
+Remove-Item -Path $scratchRow138 -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $bareRemote138 -Recurse -Force -ErrorAction SilentlyContinue
+
+} finally {
+    $ErrorActionPreference = $row138PrevEAP
+}
+
+# 13c - THE LOOP BREAKER: independent of the merge logic above, a row cannot
+# be reopened by this guard more than twice. This is the backstop for
+# whatever branch shape the patch-id match above does not anticipate - a
+# guard that can loop forever is worse than no guard.
+$loopFirst = Get-DoneWithUnmergedBranchStatus -CurrentStatus "DONE 175 - re-verified" `
+    -RowNumber "138" -CycleNumber "175" -UnmergedBranch "docs/row-138-cycle-175-close" -PriorReopenCount 0
+Assert-True ($loopFirst -match '^PARTIAL 175') `
+    "the first reopen behaves exactly as before - PARTIAL, not the loop breaker (got: $loopFirst)"
+
+$loopSecond = Get-DoneWithUnmergedBranchStatus -CurrentStatus "DONE 176 - re-verified" `
+    -RowNumber "138" -CycleNumber "176" -UnmergedBranch "docs/row-138-cycle-176-close" -PriorReopenCount 1
+Assert-True ($loopSecond -match '^PARTIAL 176') `
+    "the second reopen is still PARTIAL - the loop breaker only fires after this one (got: $loopSecond)"
+
+$loopThird = Get-DoneWithUnmergedBranchStatus -CurrentStatus "DONE 177 - re-verified" `
+    -RowNumber "138" -CycleNumber "177" -UnmergedBranch "docs/row-138-cycle-177-close" -PriorReopenCount 2
+Assert-True ($loopThird -match '^DONE 177') `
+    "the third reopen attempt is refused - the row stays DONE instead of going PARTIAL a third time (got: $loopThird)"
+Assert-True ($loopThird -match '(?i)loop breaker') `
+    "the refused reopen says plainly that the guard gave up, not just that it happened to stay DONE (got: $loopThird)"
+Assert-True ($loopThird -match [regex]::Escape("docs/row-138-cycle-177-close")) `
+    "the loop-breaker message names the branch that triggered it, so a person has somewhere to look (got: $loopThird)"
+
+# ===========================================================================
+# 14. A HARNESS CRASH DOES NOT REFUSE TO START THE RELAY; A GENUINE FAILURE
 #     STILL DOES - EVEN IF A CRASH FOLLOWS IT
 #
 # This is what actually happened on 31 August: the row-122 git walk above
@@ -778,7 +901,7 @@ Remove-Item -Path $bareRemote -Recurse -Force -ErrorAction SilentlyContinue
 # ===========================================================================
 
 Write-Host ""
-Write-Host "12. A harness crash does not refuse to start the relay; a genuine failure still does"
+Write-Host "14. A harness crash does not refuse to start the relay; a genuine failure still does"
 
 $plantedHarnessError = $null
 try {

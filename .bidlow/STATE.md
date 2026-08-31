@@ -8341,3 +8341,71 @@ rather than a fresh decision.
 4. CR-10's commercial half (whether to ever pursue an Art.28 DPA with
    Anthropic) is still open and is Greg's call, unaffected by this session's
    engineering-half closure.
+
+# Cycle 182 — row 138: the watcher-restart loop, still unbroken (12th cycle) — 2026-08-31
+
+**What was actually built or changed this session:** nothing new in the
+product. Row 138 (deck out-of-order headline) is not new work — it was built
+and merged once, in cycle 169, as commit `5fe6cd3`, and has not regressed
+since. This session re-verified that unchanged state for the 12th
+consecutive cycle (169, 171–182): `standards/bidlow-deck-out-of-order-headline.test.ts`
+2/2 passed, `npm run lint` 0, `npm run typecheck` 0, `bidlow-deck.mjs` +
+its dated backup `bidlow-deck.mjs.bak-2026-08-31` + the doc artefact
+`docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md` all confirmed
+present and unedited under `C:\Bidlowprojects\_standards\`. Wrote
+`.bidlow/relay/log/cycle-182.md`, updated `.bidlow/relay/QUEUE.md` row 138
+to `DONE 182`, and committed cycle 181's pending watcher footer to
+`cycle-181.md` (found uncommitted at session start, same pattern as every
+prior cycle in this loop).
+
+**Half-done, and exactly where it was left:** PR **#492**
+(`docs/relay-row138-cycle182`) is open against `main`; CI (`verify` +
+`E2E (Playwright)`) was still `pending` at the point this STATE.md update
+was written (checked repeatedly over ~10+ minutes, no result yet). It has
+**not merged**. Next session/action: run `gh pr checks 492`, and once green,
+`gh pr merge 492 --squash` (auto-merge is disabled on this repo — confirmed
+by a failed `gh pr merge --auto` attempt this session, `GraphQL: Auto merge
+is not allowed for this repository`), then confirm with
+`git ls-remote origin refs/heads/main` and quote the merge hash in the
+QUEUE.md row / relay log per this row's Definition of Done. If checks come
+back red, read the failure before assuming it's the same content — this PR
+is docs-only (QUEUE.md + two log files) so a real failure here would be
+surprising and worth investigating rather than retrying blind.
+
+**Decisions made:** none touching a one-way door. No schema, no migration,
+no send, no client data. The only judgement call was following the
+established minimum-verification pattern from cycles 171–181 (requote the
+hash, re-run the existing gates) rather than re-deriving the finding from
+scratch — this is the same precedent every prior cycle in this loop used.
+
+**Root cause, unchanged and still not fixable from inside this row:** the
+relay watcher process is running a stale in-memory copy of
+`relay-watch.ps1` (row 52's defect class — PowerShell reads a script once at
+launch and runs from memory thereafter). Cycle 181's footer measured this
+directly: `Loaded at launch: 51AF85ED01BF` vs `On disk now: E97F4D42A323`.
+Every merge to `relay-watch.ps1` since that watcher process started is inert
+until the process is restarted. This has now cost 12 cycles re-verifying an
+already-correct change. **The only fix is Greg running `relay-start.cmd`**
+(do not restart it automatically — this project's CLAUDE.md is explicit
+that only Greg does this). See project memory
+`relay-watcher-stale-restart-row138-loop.md`.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session
+
+1. **Confirm PR #492 merged** (`gh pr checks 492`, then merge if green;
+   confirm via `git ls-remote origin refs/heads/main`). If it's already
+   merged by the time you read this, row 138 in QUEUE.md should read `DONE
+   182` with the real hash — if it still says `IN PROGRESS` or has
+   reopened again under a higher cycle number, that is the same watcher
+   staleness repeating; check `main` first before redoing any work, exactly
+   as cycles 169–182 have each had to do.
+2. **If row 138 has reopened yet again under a new cycle number,** the
+   correct action is the same minimal re-verification this session did, not
+   a rebuild — and it is worth escalating the note in the log more plainly,
+   since 12+ cycles on one already-solved row is a real cost. Consider
+   whether QUEUE.md itself should be edited to pull row 138 out of rotation
+   until Greg restarts the watcher, per cycle 181/182's recommendation.
+3. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
+   order, after the start-of-cycle PR sweep.
