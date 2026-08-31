@@ -59,6 +59,12 @@ export default async function TrainingIndexPage() {
           >
             Open Clients in the portal
           </Link>
+          <Link prefetch={false}
+            href="/training/staff-handover"
+            className={buttonVariants({ variant: "ghost", size: "lg" })}
+          >
+            Printable staff handover guide →
+          </Link>
         </div>
       </header>
 
