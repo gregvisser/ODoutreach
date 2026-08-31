@@ -9202,3 +9202,99 @@ confirmed still in effect and working).
    a person's call, not a cycle's, per the row's own instruction.
 4. Otherwise pick up the next `TODO` row in `.bidlow/relay/QUEUE.md` in file
    order, after the start-of-cycle PR sweep.
+
+(Note: several dozen cycles have run since the entry above — rows into the
+160s+ have shipped. See the bottom of this file for the current position;
+the numbered list above is stale and left as historical record, not a live
+instruction.)
+
+## Cycle 210 — row 150: close the reply-handled desync between the two nested detail pages — PR open pending CI
+
+Row 150 arrived `TODO` (raised by row 135/cycle195 finding 1, the
+highest-damage finding of that row: a reply marked handled on one detail
+page could still show as answerable, with a live send/reply button, on the
+other reachable-from-it detail page for the same conversation — a real
+duplicate-send path to a prospect). No open PRs existed to sweep at the start
+of this cycle (`gh pr list --state open` returned empty).
+
+**Root cause, confirmed against current source:** two durable "handled"
+signals exist for the same conversation — `InboundReply.handledAt` (written
+only by the reply-detail page's "Mark handled") and
+`InboundMailboxMessage.metadata.handling.handledAt` (written only by the
+message-detail page's "Mark handled (no reply)" / auto-set on sending a
+reply from there). Row 132 already taught the two *aggregate* views
+(`/replies` queue, client Activity Replies panel) to OR these together, but
+never taught the two *detail* pages that actually let an operator act:
+`loadClientLinkedReplyDetail` (feeds the reply-detail page) read
+`InboundReply.handledAt` only; `loadInboundMessageDetailForClient` (feeds the
+message-detail page) read the mailbox-message metadata only.
+
+**The fix (data-level, matches the row's minimum bar, not the "or better"
+option):** both loaders now fold in the other side's signal as a fallback,
+exactly mirroring the two aggregate queries' existing OR pattern —
+`src/server/queries/client-linked-reply-detail.ts` (now also reads the
+correlated `InboundMailboxMessage.metadata` it was already fetching for the
+deep-link) and `src/server/inbox/inbound-message-detail.ts` (now also reads
+`InboundReply.handledAt` off the `findLinkedInboundReply` lookup it already
+ran for the "this message is a linked reply" banner). No schema change, no
+migration — both fields already existed. **Deliberately not done:** the
+row's "or better" option (converge on one durable field written by both
+action paths, swap the message-detail page's hand-rolled badge for the
+shared `ReplyOwnershipBadge`) — that is a larger, independently-reviewable
+change (a new write path + a UI rework) and the OR-fold already fully closes
+the desync; recorded in the artefact as a candidate for its own queue row if
+Greg wants it.
+
+**Proof it fires, red-first, verified by hand this cycle (not asserted):**
+new tests in `src/server/queries/client-linked-reply-detail.test.ts` (2 new
+cases) and a new file `src/server/inbox/inbound-message-detail.test.ts` (8
+cases, none existed before). For each loader, `git stash push` on just that
+loader file reproduced the red failure (`expected null to equal <date>`) with
+the new tests still in place, then `git stash pop` restored green — done in
+both directions, not just claimed.
+
+Gates run and shown: `npm run lint` — 0 problems. `npm run typecheck` — 0
+errors. `npm test` — 3916 passing across 377 files (376 files green; the one
+failing file, `relay/cycle-log-reaches-git.test.ts`, failed only because
+cycle 209's own log was still untracked at the start of this cycle — fixed by
+committing it in this same commit, per that test's own stated purpose).
+
+Artefact: `docs/ops/ROW150-REPLY-HANDLED-DESYNC-FIX-2026-08-31-cycle210.md`.
+
+**Half-done, and exactly where it was left:** PR **#533**
+(`fix/row-150-reply-handled-desync`) is open with `verify` and
+`E2E (Playwright)` both still `pending` at the point this STATE.md entry was
+written. QUEUE.md row 150 was auto-flipped to `IN PROGRESS 210` by the
+picker at cycle start (committed as part of `3c1e7e5`, the same commit as the
+fix, tests, artefact, and cycle 209's orphaned log). **Next session's first
+job: run `gh pr checks 533`; once green, merge (`gh pr merge 533 --squash`),
+confirm the merge commit on `origin/main` via `git ls-remote origin
+refs/heads/main`, and restamp QUEUE.md row 150 to `DONE 210 - ...` with the
+confirmed hash, following the exact pattern rows 197/200/204/205/206/207 (and
+209, whose own restamp is itself still owed) used for a same-cycle
+docs-only merge-hash follow-up commit.** If CI is still pending, just wait
+and merge — nothing here is provisional or needs rework.
+
+**Also still owed from cycle 209 (not touched this session, flagged so it
+isn't lost):** row 149's QUEUE.md cell still reads "Merge hash to be
+recorded in a follow-up commit once confirmed on `origin/main` via
+`git ls-remote`" — that follow-up was never done. Worth doing in the same
+pass as row 150's restamp, since both are now just "confirm hash, edit one
+QUEUE.md cell."
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched, nothing scored. This row's own definition
+of done explicitly says "do not score anything."
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session (current — supersedes the cycle-187 list above)
+
+1. **Merge PR #533** once CI is green, confirm via `git ls-remote`, restamp
+   QUEUE.md row 150 to `DONE 210`.
+2. While there, also close out row 149's still-owed merge-hash restamp (see
+   above) — same mechanical follow-up, same commit is fine.
+3. Otherwise, start-of-cycle PR sweep (`gh pr list --state open`), then the
+   next `TODO` row in `.bidlow/relay/QUEUE.md` in file order. Rows 151-153
+   (raised by the same row 135/cycle195 walk as this row) are the most
+   likely next candidates if still `TODO`.
