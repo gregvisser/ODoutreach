@@ -1,8 +1,8 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 192, IN PROGRESS) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 192, DONE) - Tier P (Client Production)**
 
-## Session 2026-08-31 - Relay cycle 192, queue row 134 (investigation-only, build nothing): answering Greg's four questions from code/screens. IN PROGRESS at time of writing.
+## Session 2026-08-31 - Relay cycle 192, queue row 134 (investigation-only, build nothing): answered Greg's four questions from code/screens. DONE and merged to `main` as `dab1019` (PR #505, squash), confirmed via `git ls-remote origin refs/heads/main`.
 
 **Prior housekeeping this cycle:** `gh pr list --state open` returned zero
 open PRs - nothing to sweep. Confirmed local `main` (`9b109c8`) matches
@@ -59,17 +59,25 @@ file:line citations):**
    `REPLY_CLASSIFICATION` today. Recommend: training-FAQ box only, not a
    general support box.
 
-**What's left when this session picks back up (or the next one, if this
-cycle times out):** wait for the training-module-audit agent, write the
-dated `docs/ops/ROW134-...` artefact synthesizing all four answers with
-ranked findings and recommendations, raise the two real candidate findings
-above (Universe->sequence link gap; dispatch-time cooldown re-check
-default-off) as their own QUEUE.md rows rather than fixing them in this
-row, commit (QUEUE.md + the cycle-191 log + the new artefact + row 134's
-own close), branch -> PR -> green CI -> merge, verify merge hash via
-`git ls-remote origin refs/heads/main`, and set row 134 to
-`DONE 192 - ...`. No code was changed this cycle by design (row 134 is
+**Completed this session:** the training-module-audit agent finished with a
+much fuller picture than the quick manual pass above found on its own
+(12 confirmed drift defects, not 2 - worst is a regressed
+`{{email_signature}}` in the worked example, the exact bug the module warns
+against two paragraphs later). The artefact
+(`docs/ops/ROW134-FOUR-QUESTIONS-2026-08-31-cycle192.md`) was rewritten to
+carry the full 12-finding list. Four follow-up rows raised in `QUEUE.md`:
+**146** (Universe->sequence link), **147** (turn on
+`SEND_DISPATCH_RECHECK_ENABLED` - code/tests already exist), **148** (all
+12 training-content fixes, one PR), **149** (training-only AI ask-box,
+scoped to avoid CR-10 violation). Merged to `main` as `dab1019` (PR #505,
+squash - two commits squashed together, a docs-only reconciliation of a
+concurrent QUEUE.md edit from Cowork lost no content, verified row-by-row
+before committing). No code changed this cycle by design (row 134 is
 investigation-only); nothing else in the repo was touched.
+
+**Next session should pick up:** rows 146-149, in the priority order the
+artefact gives (148's finding 1 - the `{{email_signature}}` regression -
+is the highest-damage single item across all four rows).
 
 ## Session 2026-08-31 - Relay cycle 190, queue row 143: closed the row 138 loop's own tracking row for good with a decoy cycle-stamp, not another re-verification. Merged PRs #500, #501, #502. `main` now `b90fc24`. No PRs left open on exit.
 
