@@ -1,6 +1,49 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-08-31 (cycle 170) - Tier P (Client Production)**
+**Updated 2026-08-31 (cycle 172) - Tier P (Client Production)**
+
+## Session 2026-08-31 - Relay cycle 172, queue row 138: third cycle running to find this row already merged and closed; re-verified from scratch (no redo), closed again, flagged the likely root cause. Fully merged, nothing left open.
+
+Row 138 (deck out-of-order headline) arrived reopened as `IN PROGRESS 172`
+in the local uncommitted `QUEUE.md`, exactly as it had for cycle 171 one
+cycle earlier — even though `main` already carried `DONE 171` with cycle
+171's own full verification trail (commit `653da59`). Per this repo's
+"check main first" rule, did not redo any work: re-verified everything the
+row's Definition of Done requires, fresh, on this tree — `git rev-parse
+main` == `git ls-remote origin refs/heads/main`
+(`653da599e103a078e20d55fcac9978869fe4512f`); `estateOutOfOrder`,
+`outOfOrderHeadline`, `.headline-ooo` present and wired into `render()` in
+`C:\Bidlowprojects\_standards\bidlow-deck.mjs`; dated backup
+`bidlow-deck.mjs.bak-2026-08-31` present; ran
+`standards/bidlow-deck-out-of-order-headline.test.ts` directly — 2 passed;
+`npm run lint` 0; `npm run typecheck` 0; artefact
+`docs/ops/DECK-OUT-OF-ORDER-HEADLINE-2026-08-31-cycle169.md` present. Also
+restored `.bidlow/relay/log/cycle-171.md`'s watcher-appended footer, which
+was on disk uncommitted (same pattern cycle 171 fixed for cycle-170.md).
+Opened a docs-only PR (#480), watched CI green (`verify` + `E2E`, both
+pass), squash-merged. **Final confirmed hash on `origin/main`:
+`4480491bacbafd5a41d633b078e8c5e5fd80e2ce`**, confirmed via `git ls-remote`.
+
+**No one-way-door decision was made.** Docs/queue-record change only — no
+code in `bidlow-deck.mjs` or anywhere else was touched this cycle, since
+the row was already satisfied. `gh pr list --state open` was empty at the
+start of the session (nothing to sweep) and again at the end.
+
+**Standing issue, NOT fixed this session, now recurring for a THIRD
+cycle in a row on this exact row:** the watcher footer appended to
+`.bidlow/relay/log/cycle-171.md` self-reports `relay-watch.ps1` is running
+a stale in-memory copy of itself (`Loaded 51AF85ED01BF` vs on-disk
+`E97F4D42A323` — row 52's known defect). This is the most likely explanation
+for why a row that is provably `DONE` on `main` keeps being handed back out
+as `IN PROGRESS`: something in the picker/dispatch logic the stale process
+is running does not agree with what is actually on disk. **Not this row's
+file to fix** (row 138 names exactly one file it may touch under
+`_standards`, and it is not `relay-watch.ps1`) — flagging plainly for the
+next session and for Greg: **run `relay-start.cmd` to pick up whatever fix
+already landed for row 52.** Until that restart happens, expect row 138 (or
+any other closed row) to keep reopening, and expect every future session to
+have to re-run this same "check main first" verification rather than
+assuming a closed row stays closed.
 
 ## Session 2026-08-31 - Relay cycle 170, queue row 138: watched cycle 169's already-finished deck-headline work through CI and merge, closed the row. Fully merged, nothing left open.
 
