@@ -1,19 +1,35 @@
 /**
  * TEMPORARY, one-off diagnostic for row 133 defect (3) — deleted before merge.
- * READ-ONLY. Answers: for the clients that own the 11 known-BOUNCED rows,
- * what does the Reports/Activity page actually compute and show today, and
- * are those bounces excluded by the internal-seed allowlist?
+ * READ-ONLY. No 'server-only' imports (runs under bare tsx, not Next's
+ * bundler) — replicates the production predicates inline instead of
+ * importing the modules that carry that guard.
  */
 import { prisma } from "@/lib/db";
-import { isInternalSeedAllowlistEnabled, listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
-import { loadClientOutreachMetrics } from "@/server/queries/outreach-metrics";
-import { formatRate } from "@/lib/reports/outreach-metrics";
+
+const SEED_FLAG = (process.env.INTERNAL_SEED_ALLOWLIST_ENABLED ?? "")
+  .trim()
+  .toLowerCase();
+const PROVEN_SEND_STATUSES = ["SENT", "DELIVERED", "REPLIED", "BOUNCED"];
+
+function safeRate(numerator: number, denominator: number): number | null {
+  if (denominator === 0) return null;
+  return Math.round((numerator / denominator) * 1000) / 10;
+}
+function formatRate(rate: number | null): string {
+  return rate === null ? "—" : `${rate}%`;
+}
 
 async function main(): Promise<void> {
   try {
-    const seedEnabled = isInternalSeedAllowlistEnabled();
-    const seedEmails = await listActiveInternalSeedEmails();
-    console.log(`INTERNAL_SEED_ALLOWLIST_ENABLED=${seedEnabled}, active seed emails: ${seedEmails.length}`);
+    console.log(`INTERNAL_SEED_ALLOWLIST_ENABLED=${SEED_FLAG === "true"}`);
+    const seedRows = SEED_FLAG === "true"
+      ? await prisma.internalSeedAddress.findMany({
+          where: { isActive: true },
+          select: { email: true },
+        })
+      : [];
+    const seedEmails = seedRows.map((r) => r.email);
+    console.log(`Active seed emails: ${seedEmails.length}`);
 
     const bounced = await prisma.outboundEmail.findMany({
       where: { OR: [{ status: "BOUNCED" }, { bouncedAt: { not: null } }] },
@@ -30,28 +46,31 @@ async function main(): Promise<void> {
       byClient.set(row.clientId, entry);
     }
 
-    const clients = await prisma.client.findMany({
-      where: { id: { in: [...byClient.keys()] } },
-      select: { id: true, name: true },
-    });
-    const accessible = clients.map((c) => c.id);
-
-    for (const c of clients) {
-      const info = byClient.get(c.id);
-      console.log(`\nClient ${c.name} (${c.id}): ${info?.count} bounced row(s), ${info?.seedExcluded} on active seed allowlist.`);
-      console.log(`  toEmail samples: ${info?.sample.join(", ")}`);
-      const metrics = await loadClientOutreachMetrics(c.id, accessible);
-      console.log(`  Reports/Activity would show: sent=${metrics.sent}, bounces=${metrics.bounces}, bounceRate=${formatRate(metrics.bounceRate)}`);
-    }
-
-    // Also check every client with zero bounce rows at all, to see whether
-    // their display is "0%" (sent>0, 0 bounces) or "—" (sent=0).
     const allClients = await prisma.client.findMany({ select: { id: true, name: true } });
-    const allIds = allClients.map((c) => c.id);
-    console.log("\n--- Every client's current bounce display ---");
+
     for (const c of allClients) {
-      const metrics = await loadClientOutreachMetrics(c.id, allIds);
-      console.log(`${c.name}: sent=${metrics.sent} bounces=${metrics.bounces} bounceRate=${formatRate(metrics.bounceRate)}`);
+      const info = byClient.get(c.id);
+      const seedExclusion = seedEmails.length > 0 ? { toEmail: { notIn: seedEmails } } : {};
+      const sent = await prisma.outboundEmail.count({
+        where: {
+          clientId: c.id,
+          ...seedExclusion,
+          status: { in: PROVEN_SEND_STATUSES },
+          OR: [{ sentAt: { not: null } }, { providerMessageId: { not: null } }],
+        },
+      });
+      const bounces = await prisma.outboundEmail.count({
+        where: { clientId: c.id, ...seedExclusion, status: "BOUNCED" },
+      });
+      const rate = safeRate(bounces, sent);
+      const line = `${c.name}: sent=${sent} bounces=${bounces} bounceRate=${formatRate(rate)}`;
+      if (info) {
+        console.log(
+          `\n${line}\n  RAW bounced rows for this client (before seed exclusion): ${info.count}, of which ${info.seedExcluded} are on the active seed allowlist.\n  toEmail samples: ${info.sample.join(", ")}`,
+        );
+      } else {
+        console.log(line);
+      }
     }
   } finally {
     await prisma.$disconnect();
