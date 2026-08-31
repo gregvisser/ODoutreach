@@ -119,6 +119,14 @@ $script:LoadedScriptHash = try {
 } catch {
     $null
 }
+
+# The moment THIS process actually started, captured once at module load for
+# the same reason as the hash above: nothing later can ask "when did I start?"
+# once time has moved on. Save-Status writes both into STATUS.json so a human
+# (or a future check) can see how old the running process is, and whether it
+# is running current code, without needing to find its PID - see queue row
+# 160's "make staleness visible even when the reload does not fire".
+$script:ProcessStartedAt = Get-Date -Format "o"
 # ===========================================================================
 
 # The runaway guard. It counts cycles run by THIS watcher process, NOT the
@@ -260,12 +268,20 @@ function Save-Status($cycle, $outcome, $lastSelfQueued, $refusedAt) {
     # $refusedAt is deliberately the LAST parameter and deliberately optional.
     # Every call site that does not pass it clears it, which is what we want:
     # any call that records real progress means the refusal is over.
+    #
+    # scriptHash / processStartedAt are read from module-scope, not passed in,
+    # so every call site gets them for free and none can forget to. They are
+    # write-only diagnostics for a human (or Get-StaleWatcherNote's cousin
+    # below) to see which code THIS process is running and how long it has
+    # been up, without reading a cycle log first.
     $status = [pscustomobject]@{
-        cycle          = $cycle
-        lastOutcome    = $outcome
-        updated        = (Get-Date -Format "o")
-        lastSelfQueued = $lastSelfQueued
-        refusedAt      = $refusedAt
+        cycle            = $cycle
+        lastOutcome      = $outcome
+        updated          = (Get-Date -Format "o")
+        lastSelfQueued   = $lastSelfQueued
+        refusedAt        = $refusedAt
+        scriptHash       = $script:LoadedScriptHash
+        processStartedAt = $script:ProcessStartedAt
     }
     $status | ConvertTo-Json | Set-Content -Path $StatusFile -Encoding utf8
 }
@@ -2622,6 +2638,143 @@ function Invoke-DeckRegeneration {
 }
 
 # ===========================================================================
+# SELF-RELOAD - THE WATCHER PICKS UP ITS OWN CODE CHANGES WITHOUT BEING TOLD
+#
+# Queue row 52's ten-cycle loss (see Get-StaleWatcherNote above) was never a
+# one-off: RESTART-REQUIRED.md records four more of exactly the same shape,
+# the last one costing six cycles (185-190) re-verifying work that was already
+# correctly merged, because the process making the decision had never seen the
+# fix. Every one of those was closed only by Greg noticing and running
+# relay-start.cmd by hand. Greg asked for this directly on 31 August 2026: a
+# stale watcher is a blocker he cannot see, and he should not have to notice
+# it.
+#
+# WHAT THIS DOES AND DOES NOT DO
+#
+# It cannot make THIS process run new code - PowerShell reads a script once,
+# at launch, and nothing afterwards can change what is already parsed into
+# memory. What it CAN do is notice, between cycles, that the file on disk has
+# moved on, start a brand new process to pick it up, and get out of the way.
+#
+# BETWEEN CYCLES ONLY, NEVER MID-CYCLE. This is enforced by WHERE it is
+# called, not by a flag: the call site (see MAIN below) sits at the very top
+# of the while loop, immediately after the HALT check and before a row is
+# ever picked or Invoke-CycleAgent is ever called. Invoke-CycleAgent is
+# synchronous - the loop body blocks on it until the whole process tree it
+# started has exited - so the top of the loop is reached only once every
+# cycle this process has started has completely finished, or on the very
+# first iteration, before this process has run a cycle at all. Either way,
+# nothing is "mid-cycle" at that point, and every row this process was
+# holding has already been resolved (given back or closed) by the code that
+# runs right after Invoke-CycleAgent returns, earlier in the same iteration -
+# so no row can be left IN PROGRESS across a reload.
+# relay/watcher-self-reload.test.ts asserts the call site sits there in
+# source, appears exactly once, and appears before Invoke-CycleAgent is ever
+# invoked.
+#
+# FAIL SAFE, NOT FAIL SHUT. On 31 August a change to THIS FILE bricked the
+# relay for two hours before the self-test caught it - a watchdog that can
+# brick the relay is worse than a stale one. So: an unreadable hash is
+# treated as "cannot tell", never as "reload" - Test-WatcherSelfReloadNeeded
+# below only ever returns ShouldReload for a change it positively proved. And
+# a spawn that fails leaves Start-FreshWatcherProcess returning
+# Spawned = $false, which the call site treats as "log it plainly and carry
+# on running the current process" - never as a reason to exit with nothing
+# left running.
+#
+# HANDING OVER CLEANLY. The new process reads STATUS.json and QUEUE.md fresh,
+# exactly as any restart already does - nothing here touches either file, so
+# the cycle counter is never reset, only continued. See Save-Status above for
+# where the running process's own hash and start time are recorded, so a
+# human can see at a glance whether a given STATUS.json reflects current code.
+# ===========================================================================
+
+# Pure: takes the hash captured at launch and the path to re-read, and says
+# whether the two disagree. Injectable -HashCheck for the same reason
+# Invoke-CycleAgent takes -Exe/-ExeArgs: the self-test drives this against a
+# real temp file it edits itself, never against relay-watch.ps1 mid-run.
+function Test-WatcherSelfReloadNeeded {
+    param(
+        # AllowNull/AllowEmptyString: same trap as Get-StaleWatcherNote above
+        # - a MANDATORY [string] would reject $null before the "cannot tell"
+        # branch could ever be reached.
+        [Parameter(Mandatory = $true)][AllowNull()][AllowEmptyString()][string]$LoadedHash,
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [scriptblock]$HashCheck = { param($path) (Get-FileHash -Path $path -Algorithm SHA256).Hash }
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LoadedHash)) {
+        return [pscustomobject]@{
+            ShouldReload = $false
+            CurrentHash  = $null
+            Note         = "the hash captured at launch is missing, so this cannot tell whether the file has changed"
+        }
+    }
+
+    $current = $null
+    try {
+        $current = & $HashCheck $ScriptPath
+    } catch {
+        $current = $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($current)) {
+        return [pscustomobject]@{
+            ShouldReload = $false
+            CurrentHash  = $null
+            Note         = "could not read $ScriptPath from disk just now, so this cannot tell whether it has changed"
+        }
+    }
+
+    if ($current -eq $LoadedHash) {
+        return [pscustomobject]@{
+            ShouldReload = $false
+            CurrentHash  = $current
+            Note         = "unchanged - this process is already running the current code"
+        }
+    }
+
+    return [pscustomobject]@{
+        ShouldReload = $true
+        CurrentHash  = $current
+        Note         = "relay-watch.ps1 has changed on disk since this process loaded it"
+    }
+}
+
+# Side-effecting: actually starts the fresh process, running the SAME
+# PowerShell host that is executing right now (passed in as -Exe), so a
+# dev shell running under pwsh hands over to pwsh and a production window
+# running under powershell.exe hands over to powershell.exe - the new process
+# does not need to guess.
+#
+# -Launcher is injectable for the same reason as -HashCheck above: the
+# self-test proves a THROWING launcher is caught and reported rather than
+# allowed to kill the current process, and proves a successful one is called
+# with the right arguments, without either test ever spawning a second real
+# watcher.
+function Start-FreshWatcherProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [Parameter(Mandatory = $true)][string]$Exe,
+        [scriptblock]$Launcher = {
+            param($exe, $scriptArgs)
+            Start-Process -FilePath $exe -ArgumentList $scriptArgs -PassThru
+        }
+    )
+
+    try {
+        $scriptArgs = @("-ExecutionPolicy", "Bypass", "-File", $ScriptPath)
+        $proc = & $Launcher $Exe $scriptArgs
+        if ($null -eq $proc -or -not $proc.Id) {
+            return [pscustomobject]@{ Spawned = $false; NewPid = $null; Error = "the launcher returned no process handle" }
+        }
+        return [pscustomobject]@{ Spawned = $true; NewPid = $proc.Id; Error = $null }
+    } catch {
+        return [pscustomobject]@{ Spawned = $false; NewPid = $null; Error = $_.Exception.Message }
+    }
+}
+
+# ===========================================================================
 # MAIN
 # ===========================================================================
 
@@ -2810,6 +2963,29 @@ while ($true) {
     if (Test-Path $HaltFile) {
         Write-Line "HALT file found. Stopping cleanly."
         exit 0
+    }
+
+    # ---------------------------------------------------------------------
+    # SELF-RELOAD CHECK. See the block comment above Test-WatcherSelfReloadNeeded
+    # for why THIS is where it lives: the very top of the loop, before any row
+    # is picked and before Invoke-CycleAgent is ever called this iteration, so
+    # it can only ever run between cycles.
+    # ---------------------------------------------------------------------
+    $reloadCheck = Test-WatcherSelfReloadNeeded -LoadedHash $script:LoadedScriptHash -ScriptPath $PSCommandPath
+    if ($reloadCheck.ShouldReload) {
+        Write-Line "relay-watch.ps1 has changed on disk since this process started. Starting a fresh watcher so the next cycle runs current code."
+        $selfHostExe = try { (Get-Process -Id $PID).Path } catch { $null }
+        if ([string]::IsNullOrWhiteSpace($selfHostExe)) {
+            Write-Line "Could not work out which PowerShell host this process is running under, so no fresh watcher was started. Carrying on with the current (stale) process rather than stopping."
+        } else {
+            $reloadResult = Start-FreshWatcherProcess -ScriptPath $PSCommandPath -Exe $selfHostExe
+            if ($reloadResult.Spawned) {
+                Write-Line "New watcher started (PID $($reloadResult.NewPid)), reading STATUS.json and QUEUE.md fresh - the cycle counter is untouched. Handing over and exiting cleanly."
+                exit 44
+            } else {
+                Write-Line "Could not start a fresh watcher: $($reloadResult.Error). Carrying on with the current (stale) process rather than stopping with nothing running."
+            }
+        }
     }
 
     # Has the loop gone quiet with work still waiting?
