@@ -3,10 +3,10 @@ import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
 import {
-  requeueFailedFormAction,
-  releaseStaleFormAction,
-  verifySenderFormAction,
-} from "@/app/(app)/operations/outbound/form-actions";
+  ReleaseStaleLocksButton,
+  RequeueFailedButton,
+  VerifySenderReadyButton,
+} from "@/components/ops/operator-mutation-buttons";
 import {
   SenderReadinessHeadlineBadge,
   SenderReadinessPanel,
@@ -182,11 +182,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
               PROCESSING past claim expiry with no provider message id — release back to QUEUED
             </CardDescription>
           </div>
-          <form action={releaseStaleFormAction}>
-            <button type="submit" className={cn(buttonVariants({ size: "sm" }))}>
-              Release stale locks
-            </button>
-          </form>
+          <ReleaseStaleLocksButton />
         </CardHeader>
       </Card>
 
@@ -200,12 +196,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                 does not replace Resend dashboard checks.
               </CardDescription>
             </div>
-            <form action={verifySenderFormAction}>
-              <input type="hidden" name="clientId" value={clientFilter} />
-              <button type="submit" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-                Mark VERIFIED_READY
-              </button>
-            </form>
+            <VerifySenderReadyButton clientId={clientFilter} />
           </CardHeader>
           <CardContent>
             <SenderReadinessPanel report={selectedSenderReport} />
@@ -372,13 +363,7 @@ function OpsTable({
                     Detail
                   </Link>
                   {requeue ? (
-                    <form className="inline-block ml-2" action={requeueFailedFormAction}>
-                      <input type="hidden" name="outboundEmailId" value={row.id} />
-                      <input type="hidden" name="clientId" value={row.clientId} />
-                      <button type="submit" className={cn(buttonVariants({ size: "sm" }))}>
-                        Requeue
-                      </button>
-                    </form>
+                    <RequeueFailedButton outboundEmailId={row.id} clientId={row.clientId} />
                   ) : null}
                 </TableCell>
               </TableRow>
