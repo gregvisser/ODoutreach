@@ -309,6 +309,7 @@ model StaffUser {
   clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
   supportTicketsCreated           SupportTicket[]                  @relation("SupportTicketCreatedBy")
   supportTicketsApproved          SupportTicket[]                  @relation("SupportTicketApprovedBy")
+  supportTicketCommentsPosted     SupportTicketComment[]           @relation("SupportTicketCommentAuthor")
   suppressedDomainFamiliesCreated SuppressedDomainFamily[]         @relation("SuppressedDomainFamilyCreatedBy")
   familyProposalsDecided          SuppressedDomainFamilyProposal[] @relation("FamilyProposalDecidedBy")
   replyClaims                     ReplyClaim[]
@@ -361,6 +362,7 @@ model SupportTicket {
   createdBy   StaffUser?                @relation("SupportTicketCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   approvedBy  StaffUser?                @relation("SupportTicketApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
   attachments SupportTicketAttachment[]
+  comments    SupportTicketComment[]
 
   @@index([status, createdAt])
   @@index([createdByStaffUserId])
@@ -379,6 +381,26 @@ model SupportTicketAttachment {
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
+}
+
+/// Row 159 (raised by row 136, cycle 197, finding 6): an append-only reply
+/// thread on a ticket, visible to the reporter and the owner, so a developer
+/// can ask a clarifying question or narrate progress before the ticket is
+/// resolved instead of that falling outside the tool entirely.
+model SupportTicketComment {
+  id                String   @id @default(cuid())
+  ticketId          String
+  /// Free-text reply body.
+  body              String   @db.Text
+  authorStaffUserId String?
+  /// Snapshot of the author's email at post time (survives staff deletion).
+  authorEmail       String
+  createdAt         DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author StaffUser?    @relation("SupportTicketCommentAuthor", fields: [authorStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
 }
 
 // ——— Tenant / workspace ———

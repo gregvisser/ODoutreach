@@ -1,20 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireOpensDoorsStaff, revalidatePath, findUnique, update } =
-  vi.hoisted(() => ({
-    requireOpensDoorsStaff: vi.fn(),
-    revalidatePath: vi.fn(),
-    findUnique: vi.fn(),
-    update: vi.fn(),
-  }));
+const {
+  requireOpensDoorsStaff,
+  revalidatePath,
+  findUnique,
+  update,
+  commentCreate,
+} = vi.hoisted(() => ({
+  requireOpensDoorsStaff: vi.fn(),
+  revalidatePath: vi.fn(),
+  findUnique: vi.fn(),
+  update: vi.fn(),
+  commentCreate: vi.fn(),
+}));
 
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/server/auth/staff", () => ({ requireOpensDoorsStaff }));
 vi.mock("@/lib/db", () => ({
-  prisma: { supportTicket: { findUnique, update } },
+  prisma: {
+    supportTicket: { findUnique, update },
+    supportTicketComment: { create: commentCreate },
+  },
 }));
 
-import { reopenSupportTicket, resolveSupportTicket } from "./actions";
+import {
+  addSupportTicketComment,
+  reopenSupportTicket,
+  resolveSupportTicket,
+} from "./actions";
 
 const owner = { id: "s1", email: "owner@x.test", isSuperAdmin: true };
 const staffUser = { id: "s2", email: "staff@x.test", isSuperAdmin: false };
@@ -128,5 +141,60 @@ describe("reopenSupportTicket (owner-only + status guard)", () => {
     const r = await reopenSupportTicket({ ticketId: "t1" });
     expect(r).toEqual({ ok: false, error: expect.stringContaining("resolved") });
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("addSupportTicketComment (row 159 — reply thread)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    commentCreate.mockResolvedValue({ id: "c1" });
+  });
+
+  it("rejects a blank reply and never writes a comment", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(staffUser);
+    const r = await addSupportTicketComment({ ticketId: "t1", body: "" });
+    expect(r).toEqual({ ok: false, error: expect.stringContaining("Write something") });
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(commentCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a whitespace-only reply", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(staffUser);
+    const r = await addSupportTicketComment({ ticketId: "t1", body: "   " });
+    expect(r.ok).toBe(false);
+    expect(commentCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns not found for a missing ticket and never writes a comment", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(staffUser);
+    findUnique.mockResolvedValue(null);
+    const r = await addSupportTicketComment({ ticketId: "missing", body: "any update?" });
+    expect(r).toEqual({ ok: false, error: expect.stringContaining("not found") });
+    expect(commentCreate).not.toHaveBeenCalled();
+  });
+
+  it("posts a reply for any signed-in staff, not just the owner", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(staffUser);
+    findUnique.mockResolvedValue({ id: "t1" });
+    const r = await addSupportTicketComment({ ticketId: "t1", body: "Can you attach a screenshot?" });
+    expect(r).toEqual({ ok: true });
+    expect(commentCreate).toHaveBeenCalledWith({
+      data: {
+        ticketId: "t1",
+        body: "Can you attach a screenshot?",
+        authorStaffUserId: staffUser.id,
+        authorEmail: staffUser.email,
+      },
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/support/t1");
+  });
+
+  it("trims the reply body before storing it", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(owner);
+    findUnique.mockResolvedValue({ id: "t1" });
+    await addSupportTicketComment({ ticketId: "t1", body: "  fixed the redirect  " });
+    expect(commentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ body: "fixed the redirect" }) }),
+    );
   });
 });
