@@ -10,7 +10,7 @@
  * model in prisma/schema.prisma.
  */
 
-import { normalizeEmail } from "@/lib/normalize";
+import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 
 /** The default seed addresses, matching the migration seed. */
 export const INTERNAL_SEED_DEFAULT_ADDRESSES: ReadonlyArray<{
@@ -58,4 +58,32 @@ export function isEmailInSeedSet(
   const n = normalizeSeedEmail(email);
   if (!n) return false;
   return seedSet.has(n);
+}
+
+/**
+ * The only domain the internal-seed allowlist may ever hold. Matches the
+ * domain of every `INTERNAL_SEED_DEFAULT_ADDRESSES` entry and the on-screen
+ * copy ("OpensDoors-internal test inboxes", `settings/internal-seed/page.tsx`).
+ *
+ * The allowlist it gates is consumed globally — suppression, bounce handling,
+ * dispatch re-check, metrics, step-sends — across every client's outreach once
+ * `INTERNAL_SEED_ALLOWLIST_ENABLED` is turned on. Without this check, an
+ * address on any domain could be added and would silently become
+ * always-deliverable / suppression-exempt for every client, not just
+ * OpensDoors' own test inboxes. See
+ * `docs/ops/ROW136-SCREEN-WALK-PART2-2026-08-31-cycle197.md` finding 5.
+ */
+export const INTERNAL_SEED_ALLOWED_DOMAIN = "opensdoors.co.uk";
+
+/**
+ * True only when `email` normalizes to an address on the exact allowed
+ * domain — a suffix/lookalike domain (e.g. `opensdoors.co.uk.evil.com`) is
+ * rejected, not just a bare substring match.
+ */
+export function isSeedEmailDomainAllowed(
+  email: string | null | undefined,
+): boolean {
+  const normalized = normalizeSeedEmail(email);
+  if (!normalized) return false;
+  return extractDomainFromEmail(normalized) === INTERNAL_SEED_ALLOWED_DOMAIN;
 }

@@ -1,7 +1,10 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { normalizeSeedEmail } from "@/lib/internal-seed/seed-allowlist-policy";
+import {
+  isSeedEmailDomainAllowed,
+  normalizeSeedEmail,
+} from "@/lib/internal-seed/seed-allowlist-policy";
 
 /**
  * Feature A (production hardening) — database-backed, flag-gated runtime for the
@@ -92,7 +95,13 @@ export async function listAllInternalSeedAddresses(): Promise<
 /**
  * Add (or re-activate) a seed address. Idempotent on the unique email: an
  * existing row is re-activated and its label/note refreshed rather than
- * duplicated. Returns `null` when the email is blank/invalid.
+ * duplicated. Returns `null` when the email is blank/invalid, or when it is
+ * not on the allowed internal domain (`isSeedEmailDomainAllowed` —
+ * `INTERNAL_SEED_ALLOWED_DOMAIN`). The allowlist this writes to is consumed
+ * globally across every client's outreach once
+ * `INTERNAL_SEED_ALLOWLIST_ENABLED` is on, so this scope check is the only
+ * thing standing between "OpensDoors test inbox" and "any address on any
+ * domain, exempt from suppression for every client."
  */
 export async function upsertInternalSeedAddress(input: {
   email: string;
@@ -102,6 +111,7 @@ export async function upsertInternalSeedAddress(input: {
 }): Promise<InternalSeedAddressRow | null> {
   const email = normalizeSeedEmail(input.email);
   if (!email || !email.includes("@")) return null;
+  if (!isSeedEmailDomainAllowed(email)) return null;
   const label = input.label?.trim() || null;
   const note = input.note?.trim() || null;
   return prisma.internalSeedAddress.upsert({
