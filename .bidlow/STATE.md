@@ -9549,12 +9549,90 @@ CLI tools.
 
 **Nothing found this session contradicts `.bidlow/PROJECT.json`.**
 
-## Pick up first, next session (current — supersedes the cycle-210 list above)
+## Cycle 221 — row 158: internal-seed allowlist had no domain scoping — DONE, merged and verified
+
+**Note first:** row 157 (operations/outbound button feedback) was done in the
+intervening cycle 220 and merged as PR #552/#553 (merge commits `07c720f`,
+`4c6f774`) — visible in `QUEUE.md`, not yet its own entry in this file. Not
+redone or touched this session.
+
+**What was built:** `upsertInternalSeedAddress`
+(`src/server/internal-seed/seed-allowlist.ts`) — the only write path for the
+owner-only `/settings/internal-seed` admin screen — accepted any string
+containing `@`, with no domain or client restriction. The allowlist it feeds is
+consumed globally (suppression, bounce handling, dispatch re-check, metrics,
+step-sends) once `INTERNAL_SEED_ALLOWLIST_ENABLED` is turned on (currently
+`false` in production — this was a latent gap, not a live incident). On-screen
+copy calls the entries "OpensDoors-internal test inboxes" but nothing in code
+enforced that. Added `INTERNAL_SEED_ALLOWED_DOMAIN = "opensdoors.co.uk"` and a
+pure `isSeedEmailDomainAllowed(email)` predicate in
+`src/lib/internal-seed/seed-allowlist-policy.ts` (exact-domain match via
+`extractDomainFromEmail`, not a substring/`endsWith` check, so
+`attacker@opensdoors.co.uk.evil.com` is correctly rejected, not matched — the
+domain chosen matches all six default seed addresses and the on-screen copy).
+Enforced it in `upsertInternalSeedAddress` immediately after the existing
+blank/shape check, before any Prisma call. Considered the row's alternative
+("or explicitly to the `bidlowai` test client") and rejected it:
+`InternalSeedAddress` has no client relation at all — it exempts an *address*
+globally by design — so domain scoping is the correct minimal fix, not client
+scoping bolted onto a table that was never shaped for it.
+
+**Proof it fires, red-first:** new `src/server/internal-seed/seed-allowlist.test.ts`
+(mocks `@/lib/db`, no real database) — confirmed **red** before the fix in this
+session's terminal output: `prospect@acme.com` and the lookalike-suffix
+`attacker@opensdoors.co.uk.evil.com` both returned a written row and called
+`prisma.internalSeedAddress.upsert` (`AssertionError: expected {...} to be
+null`). **Green** after: both return `null` and `upsert` is never called; a
+real `Adam@OpensDoors.co.uk` (mixed case) still normalizes and writes
+correctly; the pre-existing blank/invalid-string rejection is unchanged. Also
+extended `src/lib/internal-seed/seed-allowlist-policy.test.ts` with direct
+unit coverage of the new pure predicate (all six defaults pass; `acme.com` /
+`bidlow.co.uk` / the lookalike suffix rejected; case-insensitive;
+blank/null/undefined rejected).
+
+Gates run and shown: `npm run lint` — 0 problems. `npm run typecheck`
+(`tsc --noEmit`) — 0 errors. `npm test` — 3973 passing across 387 files (the
+only failure seen in a pre-fix full run was the relay's own
+`relay/cycle-log-reaches-git.test.ts`, flagging this session's own
+not-yet-committed `cycle-220.md` — resolved by committing it in the same PR,
+the expected start-of-cycle pattern).
+
+Artefact: `docs/ops/ROW158-INTERNAL-SEED-DOMAIN-SCOPING-2026-09-01-cycle221.md`.
+
+**Merged and confirmed, nothing half-done.** PR #554 (code, tests, artefact,
+previous cycle's log) merged `--squash --delete-branch`; CI green (verify
+5m19s, E2E (Playwright) 5m48s). Merge commit
+`dbb9d07fcfeb213b3d31b6bec57955a09ec77078` confirmed on `origin/main` via
+`git ls-remote origin refs/heads/main`. Then PR #555 (docs-only QUEUE.md
+restamp to `DONE 221` with that hash) merged the same way; CI green (verify
+5m22s, E2E 5m28s); confirmed merge commit `debeb8b` on `origin/main`. `main`
+is at `debeb8b` at the end of this session. No PRs left open (start-of-cycle
+sweep via `gh pr list --state open` was also empty).
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched, no email sent.
+`INTERNAL_SEED_ALLOWLIST_ENABLED` was deliberately **not** touched — still
+`false` in production, per the row's explicit instruction; this row is pure
+hardening ahead of that future, separate decision. No scoring artefact
+produced (`.bidlow/GRADES.json` untouched), per the row's "DO NOT SCORE
+ANYTHING" instruction.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session (current — supersedes the cycle-219 list above)
 
 1. Start-of-cycle PR sweep (`gh pr list --state open`) — should be empty,
    but always check first; PRs left open rot fast in this repo.
-2. Next `TODO` row in `.bidlow/relay/QUEUE.md` in file order: row 157
-   (operations/outbound buttons give zero feedback — raised by the same row
-   136/cycle 197 walk as row 156), then row 158 (internal-seed allowlist
-   scoping), then row 159 (support reply thread — needs an ASSESS-FIRST
-   decision before building).
+2. Next `TODO` row in `.bidlow/relay/QUEUE.md` in file order: row 159 (support
+   has no reply/comment thread — needs an ASSESS-FIRST decision before
+   building: confirm with Greg, or record the decision yourself per the
+   standing rules, whether a full reply thread is worth building now versus
+   softening the on-screen promise to match current behaviour), then row 144
+   (a stranded cycle-188 finding — turn into a real item or close WONTFIX),
+   then row 145 (the field-knowledge gate on CHECK — large, `_standards`-touching,
+   read the row in full before starting; only three named files under
+   `_standards` are authorised).
+3. This file (`STATE.md`) has no entry yet for row 157/cycle 220 (operations
+   mutation-button feedback) — already merged (PR #552/#553), just not written
+   up here. Worth a short backfill entry if the next session has spare time,
+   but not blocking.
