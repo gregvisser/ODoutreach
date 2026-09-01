@@ -16,6 +16,8 @@ export type NavItem = {
   title: string;
   href: string;
   icon: LucideIcon;
+  /** A count badge, e.g. "3 mailboxes need reconnecting". Absent means no badge. */
+  badge?: number;
 };
 
 /**
@@ -73,3 +75,19 @@ export const mainNav: NavItem[] = [
   { title: "Support", href: "/support", icon: LifeBuoy },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
+
+/**
+ * Row 155 (raised by row 136, cycle 197, finding 2): the sidebar's "Google
+ * logins" entry was a static label with no badge or count, so nobody but the
+ * digest's one recipient (Greg) had any ambient reason to open the page —
+ * and the digest's own cron drifts 57-85%. This is the pure seam between a
+ * real DB count (read server-side, in `layout.tsx`) and the static shape the
+ * PR #139 audit already locks down; it never mutates `mainNav` itself.
+ */
+export function buildMainNav(googleReconnectsAttentionCount: number): NavItem[] {
+  return mainNav.map((item) =>
+    item.href === "/google-reconnects" && googleReconnectsAttentionCount > 0
+      ? { ...item, badge: googleReconnectsAttentionCount }
+      : item,
+  );
+}

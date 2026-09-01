@@ -20,6 +20,7 @@
  */
 import {
   buildAlertEmail,
+  DEFAULT_ALERT_APP_BASE_URL,
   type GoogleReconnectAlert,
   type JobConclusion,
   type JobRunSummary,
@@ -289,6 +290,7 @@ async function readGoogleReconnects(now: Date): Promise<GoogleReconnectAlert> {
       overdueCount: roster.overdueCount,
       totalGoogleMailboxes: roster.totalGoogleMailboxes,
       dueSoonByClient: roster.dueSoonByClient.map((group) => ({
+        clientId: group.clientId,
         clientName: group.clientName,
         entries: group.entries.map((entry) => ({
           email: entry.email,
@@ -384,6 +386,7 @@ async function readStrandedMailboxes(now: Date): Promise<StrandedMailboxAlert> {
       liveCount: roster.liveCount,
       sendableCount: roster.sendableCount,
       strandedByClient: roster.strandedByClient.map((group) => ({
+        clientId: group.clientId,
         clientName: group.clientName,
         entries: group.entries.map((entry) => ({
           maskedEmail: entry.maskedEmail,
@@ -417,7 +420,7 @@ async function appIsReachable(baseUrl: string): Promise<boolean> {
 async function main(): Promise<void> {
   const repo = process.env.GITHUB_REPOSITORY?.trim() || "gregvisser/ODoutreach";
   const token = required("GITHUB_TOKEN");
-  const appUrl = process.env.ALERT_APP_URL?.trim() || "https://opensdoors.bidlow.co.uk";
+  const appUrl = process.env.ALERT_APP_URL?.trim() || DEFAULT_ALERT_APP_BASE_URL;
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const isWeekend = [0, 6].includes(new Date().getUTCDay());
@@ -470,6 +473,7 @@ async function main(): Promise<void> {
     emailsSent: 0,
     googleReconnects,
     strandedMailboxes,
+    appBaseUrl: appUrl,
   });
 
   console.log(`subject: ${email.subject}`);

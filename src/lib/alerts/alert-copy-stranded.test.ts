@@ -45,6 +45,7 @@ const SIX_STRANDED = checked({
   sendableCount: 27,
   strandedByClient: [
     {
+      clientId: "client_protech",
       clientName: "Protech Roofing",
       entries: [
         { maskedEmail: "in***@protech.example", label: "67 days — was working" },
@@ -120,6 +121,7 @@ describe("the daily digest — mailboxes stranded", () => {
         sendableCount: 26,
         strandedByClient: [
           {
+            clientId: "client_chevron",
             clientName: "Chevron Security",
             entries: [{ maskedEmail: "sa***@chevron.example", label: "today — was working" }],
           },
@@ -128,6 +130,28 @@ describe("the daily digest — mailboxes stranded", () => {
     });
     expect(email.severity).toBe("PARTIAL");
     expect(email.subject).toContain("newly off the air");
+  });
+
+  it("row 155: gives every stranded-mailbox line a link to that client's Mailboxes tab", () => {
+    const email = buildAlertEmail({
+      jobs: HEALTHY_JOBS,
+      emailsSent: 0,
+      strandedMailboxes: SIX_STRANDED,
+      appBaseUrl: "https://opensdoors.bidlow.co.uk",
+    });
+    const lines = email.body.split("\n");
+    const working = lines.find((line) => line.includes("in***@protech.example"));
+    const neverConnected = lines.find((line) => line.includes("he***@protech.example"));
+    expect(working).toContain("https://opensdoors.bidlow.co.uk/clients/client_protech/mailboxes");
+    expect(neverConnected).toContain(
+      "https://opensdoors.bidlow.co.uk/clients/client_protech/mailboxes",
+    );
+  });
+
+  it("row 155: still links each line when no appBaseUrl is supplied, using the shared default", () => {
+    const email = buildAlertEmail({ jobs: HEALTHY_JOBS, emailsSent: 0, strandedMailboxes: SIX_STRANDED });
+    const line = email.body.split("\n").find((l) => l.includes("in***@protech.example"));
+    expect(line).toMatch(/https?:\/\/\S+\/clients\/client_protech\/mailboxes/);
   });
 
   it("never outranks a job that is actually broken — act now beats act today", () => {
