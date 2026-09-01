@@ -1,6 +1,77 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-09-01 (cycle 215, DONE - merged) - Tier P (Client Production)**
+**Updated 2026-09-01 (cycle 217, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-09-01 - Relay cycle 217, queue row 154: Google-reconnects "Already expired" tile missed never-connected mailboxes
+
+**What was done:** row 154 (raised by row 136/cycle197 finding 1 — highest-damage
+finding of that row). `/google-reconnects`' "Already expired" headline tile
+(`overdueCount`) only counted mailboxes whose `CONNECTED` Google token had
+decayed. A mailbox stuck in `PENDING_CONNECTION` — a sign-in started and never
+finished, greentheuk's exact 59-day-stuck failure — was never `CONNECTED`, so it
+never had a token to decay and never counted, even though the tile's own caption
+reads "these mailboxes are not sending." The per-row table was already correct
+(it shows "Not connected — a sign-in was started and never finished. Press
+Connect."); only the summary tally was wrong.
+
+**Scope correction made during investigation:** the brief's framing implied all
+three headline tiles were wrong. On inspection only `overdueCount` was — the
+"Need reconnecting" tile (`dueSoonCount`) already counted non-connected rows
+correctly, because `needsAttention` defaults `true` for any row with no
+countdown (`google-reconnect-roster.ts:105`). Recorded the narrower finding
+in the artefact rather than "fixing" something that already worked.
+
+Fixed by adding `roster.notConnectedCount` (any Google row with
+`countdown === null`: PENDING_CONNECTION / CONNECTION_ERROR / DISCONNECTED /
+DRAFT) to `src/lib/mailboxes/google-reconnect-roster.ts`, and a fourth "Not
+connected" summary tile on `src/app/(app)/google-reconnects/page.tsx` reading
+it. Chose a **distinct tile** over broadening "Already expired" — the brief
+allowed either — so a decayed-token failure and a never-connected failure
+(different root causes, different remediation copy already correct per-row)
+aren't collapsed into one ambiguous number. Grid changed `sm:grid-cols-3` →
+`sm:grid-cols-2 lg:grid-cols-4` to fit the fourth card.
+
+Both fixes proven red-first: new test in `google-reconnect-roster.test.ts`
+(seeds PENDING_CONNECTION/CONNECTION_ERROR/DISCONNECTED mailboxes, asserts
+`notConnectedCount === 3`) failed red (`expected undefined to be 3`) before the
+roster change, green after; new `google-reconnects-page-copy.test.ts` (proves
+the page actually wires `roster.notConnectedCount` into a tile) proven red by
+`git stash push -- page.tsx` then restored.
+
+**Gates run and shown:** `npm run lint` 0, `npx tsc --noEmit` 0, `npm test` 380
+files / 3925 tests green (one pre-existing guard test,
+`relay/cycle-log-reaches-git.test.ts`, initially flagged the *previous* cycle's
+untracked log file `cycle-216.md` — resolved by committing it in the same PR,
+per the test's own instructions; this is the standing expected pattern at the
+start of every cycle, not a defect in this row's work).
+
+**Merged in two PRs, both green CI, both squash-merged, confirmed via
+`git ls-remote origin refs/heads/main`:** #544 (the fix, merge commit
+`4248f28fbce34edcab3e11684dddec0663cbc42d`) and #545 (QUEUE.md merge-hash
+record, merge commit `fa7a4b7e304891aecf6bf49e78e241967f4abe54`). Artefact:
+`docs/ops/ROW154-GOOGLE-RECONNECTS-NOT-CONNECTED-TILE-2026-09-01-cycle217.md`.
+No schema change, no migration, no send-path code touched, no real email sent,
+no client data moved. Green-PR sweep at cycle start found nothing open to merge
+(`gh pr list --state open` returned empty).
+
+**Housekeeping note:** at session start, `.bidlow/relay/QUEUE.md` had an
+uncommitted, stray edit marking row 154 `IN PROGRESS 217` with no corresponding
+branch or commit anywhere — consistent with this same session having started
+the row once already before a context reset, with no memory of what (if
+anything) was found. Discarded it (`git checkout -- .bidlow/relay/QUEUE.md`)
+and re-did the investigation from scratch rather than trusting it. Also
+deliberately did **not** write this session's own `.bidlow/relay/log/cycle-217.md`
+— per this project's established convention (confirmed by
+`relay/cycle-log-reaches-git.test.ts`'s own error text), the watcher writes
+that file after the agent process exits, and committing it is the *next*
+cycle's job, not this one's.
+
+**Nothing left half-done.** Next session: pick up the queue at row 155
+(nothing outside the single-recipient, no-link daily digest ever surfaces a
+broken Google mailbox to staff other than Greg) — see `.bidlow/relay/QUEUE.md`.
+Rows 156 (support ticket can be resolved with a blank note) and 157
+(operations mutation buttons give no success/failure feedback) are next in
+the same row-136 batch after that.
 
 ## Session 2026-09-01 - Relay cycle 215, queue row 152: list detail page read-only statement, sequence CTA, Subject fallback fix
 
