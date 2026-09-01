@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import type { SupportTicketPriority } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import { isResolutionNoteReady, MIN_RESOLUTION_NOTE_LENGTH } from "@/lib/support/support-labels";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 export type SupportActionResult =
@@ -117,12 +118,20 @@ export async function resolveSupportTicket(input: {
     return { ok: false, error: "This ticket is already resolved." };
   }
 
+  const resolutionNote = input.resolutionNote.trim();
+  if (!isResolutionNoteReady(resolutionNote)) {
+    return {
+      ok: false,
+      error: `Explain what was fixed in a bit more detail (at least ${MIN_RESOLUTION_NOTE_LENGTH} characters).`,
+    };
+  }
+
   await prisma.supportTicket.update({
     where: { id: existing.id },
     data: {
       status: "RESOLVED",
       resolvedAt: new Date(),
-      resolutionNote: input.resolutionNote.trim() || null,
+      resolutionNote,
     },
   });
   revalidatePath("/support");

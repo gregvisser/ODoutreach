@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { isResolutionNoteReady, MIN_RESOLUTION_NOTE_LENGTH } from "@/lib/support/support-labels";
 import { cn } from "@/lib/utils";
 
 import {
@@ -54,6 +55,7 @@ export function SupportTicketDetailActions({
   }
 
   const isResolved = status === "RESOLVED";
+  const noteReady = isResolutionNoteReady(resolutionText);
 
   return (
     <Card className="border-border/80 shadow-sm">
@@ -114,10 +116,15 @@ export function SupportTicketDetailActions({
               placeholder="What was done / deployed…"
               disabled={pending}
             />
+            <p className="text-xs text-muted-foreground">
+              {noteReady
+                ? "The reporter will see this note."
+                : `Explain what was fixed in a bit more detail (at least ${MIN_RESOLUTION_NOTE_LENGTH} characters) — the reporter reads this.`}
+            </p>
             <Button
               type="button"
               size="sm"
-              disabled={pending}
+              disabled={pending || !noteReady}
               onClick={() =>
                 run(
                   resolveSupportTicket({ ticketId, resolutionNote: resolutionText }),
