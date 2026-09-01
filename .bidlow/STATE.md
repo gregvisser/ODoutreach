@@ -1,6 +1,55 @@
 # STATE — OpensDoors Outreach
 
-**Updated 2026-09-01 (cycle 213, DONE - merged) - Tier P (Client Production)**
+**Updated 2026-09-01 (cycle 215, DONE - merged) - Tier P (Client Production)**
+
+## Session 2026-09-01 - Relay cycle 215, queue row 152: list detail page read-only statement, sequence CTA, Subject fallback fix
+
+**What was done:** row 152 (raised by row 135/cycle195 finding 3). The
+contact list detail page (`/clients/[clientId]/lists/[listId]`) had no
+actions beyond a breadcrumb link, never said it was read-only (unlike the
+Contacts tab one level up), and had no forward path to building a sequence
+from it — independently reproducing row 146's gap on a screen an operator
+returns to repeatedly, not just a one-time success message. A second
+smaller defect on the same page: the expanded contact row's "Subject"
+field fell back to showing the sending mailbox's own email address when no
+subject preview was captured, reading as a data bug.
+
+Checked row 146 first per this project's own rule against duplicating
+shipped work — confirmed `DONE 204` (`b2f85e0`) only covers the Universe
+list-creation success message, not this page, so no overlap. Fixed:
+1. `src/app/(app)/clients/[clientId]/lists/[listId]/page.tsx` — added a
+   plain "This page is read-only" statement plus a "Build a sequence
+   with..." link, reusing row 146's own `universeListSequenceCtaHref` /
+   `universeListSequenceCtaLabel` helpers so the two forward paths can't
+   drift apart.
+2. `src/server/queries/client-contact-list-detail.ts:297` — Subject
+   fallback changed from `?? outbound?.mailbox?.email` to an explicit
+   `"Subject not captured"` string when a send exists with no captured
+   preview (still shows the generic "—" when nothing was ever sent).
+
+Both fixes proven red-first: new test file
+`list-detail-page-copy.test.ts` (2 assertions) failed against the
+unmodified page, and a new case in `client-contact-list-detail.test.ts`
+failed with the subject literally equal to the mailbox address — both
+pass after the change.
+
+**Gates run and shown:** `npm run lint` 0, `npx tsc --noEmit` 0, `npm
+test` 378 files / 3921 tests green (one pre-existing guard test flagged
+this cycle's own not-yet-committed log — resolved by committing it in the
+same PR, the standing expected pattern at the start of every cycle).
+
+**Merged in two PRs, both green CI, both squash-merged, confirmed via
+`git ls-remote origin refs/heads/main`:** #539 (the fix, merge commit
+`9e7df3b7420b1082c631d1bbe30248ef140c1cd9`) and #540 (QUEUE.md merge-hash
+record, merge commit `c349930`). Artefact:
+`docs/ops/ROW152-LIST-DETAIL-READONLY-AND-SEQUENCE-CTA-2026-09-01-cycle215.md`.
+No schema change, no migration, no send-path code touched, no real email
+sent, no client data moved. Green-PR sweep at cycle start found nothing
+open to merge (`gh pr list --state open` returned `[]`).
+
+**Nothing left half-done.** Next session: pick up the queue at row 153
+(new-client form's "After create" setup-order copy contradicts the real
+8-step checklist) — see `.bidlow/relay/QUEUE.md`.
 
 ## Session 2026-09-01 - Relay cycle 213, queue row 150: no code change — closed a stuck-PR loop, not a bug
 
