@@ -9493,3 +9493,68 @@ of done explicitly says "do not score anything."
    next `TODO` row in `.bidlow/relay/QUEUE.md` in file order. Rows 151-153
    (raised by the same row 135/cycle195 walk as this row) are the most
    likely next candidates if still `TODO`.
+
+## Cycle 219 — row 156: support tickets can be resolved with a blank resolution note — DONE, merged and verified
+
+**What was built:** `resolveSupportTicket()` accepted
+`input.resolutionNote.trim() || null` with no minimum, so a ticket could be
+resolved and closed with a blank note and the reporter never learned what was
+fixed, even though ticket creation already enforced a real 10-character floor
+on the description. Added a single shared, unit-tested predicate —
+`isResolutionNoteReady` / `MIN_RESOLUTION_NOTE_LENGTH` (= 10, mirroring the
+description's own floor) in `src/lib/support/support-labels.ts` — imported by
+both the server action (real enforcement: `resolveSupportTicket` now rejects
+a too-short note before ever calling `prisma.supportTicket.update`) and the
+resolve form (`support-ticket-detail-actions.tsx`: "Resolve & close" is now
+`disabled={pending || !noteReady}` with an on-screen hint) so the two can't
+drift apart. Deliberately left `scripts/support-agent/resolve-ticket.ts`
+(a separate developer CLI writing to Prisma directly) untouched — it already
+refuses an empty `--note` and wasn't named by the brief.
+
+**Proof it fires, red-first, verified by hand (not asserted):** three test
+files, each proven red by `git stash push -- <file>` (temporarily reverting
+just that file) and re-running, then `git stash pop` to restore:
+`src/lib/support/support-labels.test.ts` (new, 6 cases on the pure
+predicate), 3 new cases in `src/app/(app)/support/actions.test.ts` (blank /
+whitespace-only / too-short notes, asserting `ok:false` and `update` never
+called), and `src/components/support/support-ticket-detail-actions-copy.test.ts`
+(new) — this repo has no jsdom/render harness (`vitest.config.ts` runs
+`environment: "node"`, `include` only matches `*.test.ts`, no
+`@testing-library/react` dependency), so — matching the established
+precedent from row 154/155 — this asserts the real component source wires
+the shared predicate onto the button's `disabled` attribute and the hint
+text, rather than duplicating a length check inline.
+
+Gates run and shown: `npm run lint` — 0 problems. `npm run typecheck` — 0
+errors. `npm test` — 3945 passing across 383 files (382 files green plus
+`relay/cycle-log-reaches-git.test.ts`, which required committing the
+previous cycle's untracked `cycle-218.md` as part of this cycle's commit —
+the expected start-of-cycle state, per that test's own stated purpose).
+
+Artefact: `docs/ops/ROW156-SUPPORT-RESOLUTION-NOTE-MINIMUM-2026-09-01-cycle219.md`.
+
+**Merged and confirmed, nothing half-done.** PR #549 (code, tests, artefact,
+previous cycle's log) merged `--squash --delete-branch`; CI green (verify
+4m7s, E2E (Playwright) 5m21s). Merge commit `d10692e34d76d06bd15eeabb9707047a9e24665c`
+confirmed on `origin/main` via `git ls-remote origin refs/heads/main`. Then
+PR #550 (docs-only QUEUE.md restamp to `DONE 219` with that hash) merged the
+same way; CI green (verify 5m32s, E2E 5m39s); confirmed merge commit
+`cc1b73088b3fbc4f2842d0521363f49661c03e12` on `origin/main`. `main` is at
+`cc1b730` at the end of this session. No PRs left open.
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched. Scope-limited by design: did not touch
+ticket creation validation, status transitions, or the `scripts/support-agent/*`
+CLI tools.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session (current — supersedes the cycle-210 list above)
+
+1. Start-of-cycle PR sweep (`gh pr list --state open`) — should be empty,
+   but always check first; PRs left open rot fast in this repo.
+2. Next `TODO` row in `.bidlow/relay/QUEUE.md` in file order: row 157
+   (operations/outbound buttons give zero feedback — raised by the same row
+   136/cycle 197 walk as row 156), then row 158 (internal-seed allowlist
+   scoping), then row 159 (support reply thread — needs an ASSESS-FIRST
+   decision before building).
