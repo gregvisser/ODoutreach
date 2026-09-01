@@ -263,7 +263,7 @@ export const CONTACT_IMPORT_CONTRACT_SUMMARY = {
   rules: [
     "Fields may be empty — only the twelve headings above are needed.",
     "Valid contact: not suppressed and has email, Linkedin URL, mobile number, or office number. Ready to email: valid and has email.",
-    "Email is required to save a row today; Linkedin-only / phone-only persistence is a follow-up.",
+    "A row needs a usable email address to be saved as a contact today. Linkedin, mobile, and office number are recorded as extra identifiers on an email-bearing row, but a row with none of those and no email is skipped and never saved, however many other channels it has.",
     "Older spreadsheet column names (for example Location, Title, or LinkedIn) are still accepted when they clearly mean the same field.",
   ],
 } as const;

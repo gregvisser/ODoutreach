@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { CONTACT_IMPORT_CONTRACT_SUMMARY } from "@/lib/contact-import-contract";
+
 const sourcesPagePath = join(
   process.cwd(),
   "src/app/(app)/clients/[clientId]/sources/page.tsx",
@@ -34,6 +36,26 @@ describe("Client Sources page copy", () => {
     expect(src).toContain("STAFF_VISIBLE_CONTACT_IMPORT_HEADERS");
     expect(src).toContain("What we import for every contact");
     expect(src).toContain("Contact import fields");
+  });
+
+  // Row 151 (raised by row 135/cycle195 finding 2): the page used to say a
+  // LinkedIn/mobile/office-only contact "must have at least one of email,
+  // LinkedIn, mobile, or office number to be saved" — implying it is saved
+  // without outreach. EMAIL_REQUIRED_FOR_PERSISTENCE means it is never
+  // persisted at all. The copy must say that plainly, and must not repeat
+  // the old false claim.
+  it("states plainly that a row with no usable email is skipped, not saved (row 151)", () => {
+    const src = readFileSync(sourcesPagePath, "utf8");
+    expect(src).not.toContain(
+      "A contact must have at least one of email, LinkedIn, mobile, or office number to be saved.",
+    );
+    // The page must render the shared contract constant rather than its own
+    // hardcoded copy, so this claim cannot drift from the write behaviour
+    // (`EMAIL_REQUIRED_FOR_PERSISTENCE`) or from the training module again.
+    expect(src).toContain("CONTACT_IMPORT_CONTRACT_SUMMARY");
+    expect(CONTACT_IMPORT_CONTRACT_SUMMARY.rules.join(" ")).toMatch(
+      /skipped and never saved/,
+    );
   });
 });
 
