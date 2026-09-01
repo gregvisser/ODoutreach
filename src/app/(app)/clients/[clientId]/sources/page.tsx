@@ -11,7 +11,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { STAFF_VISIBLE_CONTACT_IMPORT_HEADERS } from "@/lib/contact-import-contract";
+import {
+  CONTACT_IMPORT_CONTRACT_SUMMARY,
+  STAFF_VISIBLE_CONTACT_IMPORT_HEADERS,
+} from "@/lib/contact-import-contract";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listContactListsForClient } from "@/server/contacts/contact-lists";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
@@ -109,9 +112,8 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
             ))}
           </ul>
           <p className="mt-3 text-xs text-muted-foreground">
-            Fields can be empty. A contact must have at least one of email,
-            LinkedIn, mobile, or office number to be saved. Today, email is
-            still required to deliver outreach.
+            {CONTACT_IMPORT_CONTRACT_SUMMARY.rules[0]}{" "}
+            {CONTACT_IMPORT_CONTRACT_SUMMARY.rules[2]}
           </p>
         </CardContent>
       </Card>
