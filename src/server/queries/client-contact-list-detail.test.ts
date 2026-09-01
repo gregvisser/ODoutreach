@@ -467,6 +467,24 @@ describe("loadClientContactListDetail", () => {
     expect(result!.contacts[0].sendStatus).toBe("Queued");
   });
 
+  // Row 152 (raised by row 135/cycle195 finding 3): the expanded contact
+  // row's "Subject" field fell back to the mailbox's own email address
+  // when no subject preview was captured — reading as a data bug to
+  // anyone who expanded that row, since it looked like the subject line
+  // literally was the sender's own address.
+  it("does not fall back to the mailbox address for Subject when no subject preview was captured (row 152)", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    stepSendFindMany.mockResolvedValueOnce([
+      makeStepSend("c1", { subjectPreview: null }),
+    ]);
+
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    const subject = result!.contacts[0].subject;
+    expect(subject).not.toBe("sender@opensdoors.com");
+    expect(subject).toMatch(/not captured/i);
+  });
+
   it("joins by contactId not name — duplicate names do not steal proof", async () => {
     contactListFindFirst.mockResolvedValueOnce(makeList());
     contactListMemberFindMany.mockResolvedValueOnce([

@@ -294,7 +294,7 @@ export async function loadClientContactListDetail(
       sequenceName: ss?.sequence?.name ?? null,
       stepName: ss?.step?.template?.category ?? null,
       mailboxLabel: mailboxLabel ?? null,
-      subject: ss?.subjectPreview ?? outbound?.mailbox?.email ?? null,
+      subject: ss?.subjectPreview ?? (outbound ? "Subject not captured" : null),
       sendStatus: deliveryStatus,
       skipReason,
       sentAt: outbound?.sentAt ?? null,
