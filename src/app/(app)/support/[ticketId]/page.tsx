@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SupportTicketDetailActions } from "@/components/support/support-ticket-detail-actions";
+import { SupportTicketComments } from "@/components/support/support-ticket-comments";
 import {
   supportPriorityBadgeClass,
   supportPriorityLabel,
@@ -33,6 +34,10 @@ export default async function SupportTicketDetailPage({ params }: Props) {
       createdBy: { select: { displayName: true, email: true } },
       attachments: {
         select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
+      },
+      comments: {
+        orderBy: { createdAt: "asc" },
+        include: { author: { select: { displayName: true, email: true } } },
       },
     },
   });
@@ -134,6 +139,28 @@ export default async function SupportTicketDetailPage({ params }: Props) {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Replies</CardTitle>
+          <CardDescription>
+            Ask a question or narrate progress before the ticket is resolved.
+            Visible to the reporter and the developer.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SupportTicketComments
+            ticketId={ticket.id}
+            comments={ticket.comments.map((c) => ({
+              id: c.id,
+              body: c.body,
+              createdAt: c.createdAt,
+              authorEmail: c.authorEmail,
+              authorName: c.author?.displayName ?? null,
+            }))}
+          />
+        </CardContent>
+      </Card>
 
       <SupportTicketDetailActions
         ticketId={ticket.id}

@@ -139,6 +139,44 @@ export async function resolveSupportTicket(input: {
   return { ok: true };
 }
 
+const MIN_COMMENT_LENGTH = 2;
+
+/**
+ * Post a reply on a ticket's thread. Any signed-in staff can post — the
+ * reporter and the owner already both see every ticket on `/support` today,
+ * so this mirrors that existing visibility rather than adding a new
+ * restriction. Append-only: there is no edit or delete action.
+ */
+export async function addSupportTicketComment(input: {
+  ticketId: string;
+  body: string;
+}): Promise<SupportActionResult> {
+  const staff = await requireOpensDoorsStaff();
+
+  const body = input.body.trim();
+  if (body.length < MIN_COMMENT_LENGTH) {
+    return { ok: false, error: "Write something before posting." };
+  }
+
+  const ticket = await prisma.supportTicket.findUnique({
+    where: { id: input.ticketId },
+    select: { id: true },
+  });
+  if (!ticket) return { ok: false, error: "Ticket not found." };
+
+  await prisma.supportTicketComment.create({
+    data: {
+      ticketId: ticket.id,
+      body,
+      authorStaffUserId: staff.id,
+      authorEmail: staff.email,
+    },
+  });
+
+  revalidatePath(`/support/${ticket.id}`);
+  return { ok: true };
+}
+
 /**
  * Reopen a resolved ticket (owner-only) if it turns out the issue wasn't
  * actually fixed. Clears the resolution so the ticket is a clean OPEN again.
