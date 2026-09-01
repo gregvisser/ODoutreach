@@ -54,18 +54,24 @@ export default async function GoogleReconnectsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           title="Need reconnecting"
           value={roster.dueSoonCount}
-          hint="Expired, or expiring within two days"
+          hint="Expired, expiring within two days, or never connected"
           tone={roster.dueSoonCount > 0 ? "warn" : "ok"}
         />
         <SummaryCard
           title="Already expired"
           value={roster.overdueCount}
-          hint="These mailboxes are not sending"
+          hint="A live login decayed — these mailboxes are not sending"
           tone={roster.overdueCount > 0 ? "bad" : "ok"}
+        />
+        <SummaryCard
+          title="Not connected"
+          value={roster.notConnectedCount}
+          hint="Sign-in never finished, failed, or was disconnected — also not sending"
+          tone={roster.notConnectedCount > 0 ? "bad" : "ok"}
         />
         <SummaryCard
           title="Google mailboxes"
