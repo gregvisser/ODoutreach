@@ -36,7 +36,7 @@ describe("resolveSupportTicket (owner-only + status guard)", () => {
   it("resolves an open ticket for the owner", async () => {
     requireOpensDoorsStaff.mockResolvedValue(owner);
     findUnique.mockResolvedValue({ id: "t1", status: "OPEN" });
-    const r = await resolveSupportTicket({ ticketId: "t1", resolutionNote: "fixed" });
+    const r = await resolveSupportTicket({ ticketId: "t1", resolutionNote: "fixed the bug" });
     expect(r).toEqual({ ok: true });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -44,6 +44,33 @@ describe("resolveSupportTicket (owner-only + status guard)", () => {
         data: expect.objectContaining({ status: "RESOLVED" }),
       }),
     );
+  });
+
+  it("rejects a blank resolution note and never touches the ticket (row 156)", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(owner);
+    findUnique.mockResolvedValue({ id: "t1", status: "OPEN" });
+    const r = await resolveSupportTicket({ ticketId: "t1", resolutionNote: "" });
+    expect(r).toEqual({
+      ok: false,
+      error: expect.stringContaining("at least 10 characters"),
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a whitespace-only resolution note (row 156)", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(owner);
+    findUnique.mockResolvedValue({ id: "t1", status: "OPEN" });
+    const r = await resolveSupportTicket({ ticketId: "t1", resolutionNote: "       " });
+    expect(r.ok).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a too-short resolution note (row 156)", async () => {
+    requireOpensDoorsStaff.mockResolvedValue(owner);
+    findUnique.mockResolvedValue({ id: "t1", status: "OPEN" });
+    const r = await resolveSupportTicket({ ticketId: "t1", resolutionNote: "fixed it" });
+    expect(r.ok).toBe(false);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("refuses to re-resolve an already-resolved ticket (the audit's missing status guard)", async () => {

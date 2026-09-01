@@ -1,5 +1,18 @@
 /** Pure label/style helpers for support tickets (no server imports). */
 
+/**
+ * Mirrors the ticket description's own 10-character floor
+ * (`src/app/(app)/support/actions.ts`'s `createSupportTicket`), so a
+ * resolution note can't be blank or trivial while the report that prompted it
+ * had to clear the same bar.
+ */
+export const MIN_RESOLUTION_NOTE_LENGTH = 10;
+
+/** True once a resolution note is long enough to close a ticket. */
+export function isResolutionNoteReady(note: string): boolean {
+  return note.trim().length >= MIN_RESOLUTION_NOTE_LENGTH;
+}
+
 export function supportPriorityLabel(p: string): string {
   switch (p) {
     case "LOW":
