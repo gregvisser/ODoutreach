@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -8,6 +9,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import {
+  universeListSequenceCtaHref,
+  universeListSequenceCtaLabel,
+} from "@/lib/universe/list-created-cta";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientContactListDetail } from "@/server/queries/client-contact-list-detail";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -95,6 +101,26 @@ export default async function ListDetailPage({ params }: Props) {
             ? "Archived list — contacts remain available in Universe."
             : `Created ${DATE_FMT.format(detail.createdAt)} · Updated ${DATE_FMT.format(detail.updatedAt)}`}
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            This page is read-only — it shows this list&rsquo;s outreach status.
+            To add or remove contacts, use the{" "}
+            <Link prefetch={false}
+              href={`/clients/${clientId}/sources`}
+              className="underline underline-offset-2"
+            >
+              Sources
+            </Link>{" "}
+            tab.
+          </p>
+          <Link
+            prefetch={false}
+            href={universeListSequenceCtaHref(clientId)}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto")}
+          >
+            {universeListSequenceCtaLabel(detail.listName)}
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 lg:grid-cols-10">
