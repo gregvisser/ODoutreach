@@ -52,6 +52,14 @@ export type GoogleReconnectRoster = {
   dueSoonByClient: GoogleReconnectClientGroup[];
   totalGoogleMailboxes: number;
   overdueCount: number;
+  /**
+   * Google rows with no live token at all — PENDING_CONNECTION,
+   * CONNECTION_ERROR, DISCONNECTED, or DRAFT. `overdueCount` only counts a
+   * token that decayed after being CONNECTED; a mailbox stuck at a
+   * half-finished sign-in never had one to decay, so it needs its own tally
+   * or it is invisible to every headline tile (row 154).
+   */
+  notConnectedCount: number;
   dueSoonCount: number;
 };
 
@@ -141,6 +149,7 @@ export function buildGoogleReconnectRoster(
     dueSoonByClient: [...groups.values()],
     totalGoogleMailboxes: entries.length,
     overdueCount: entries.filter((e) => e.countdown?.status === "overdue").length,
+    notConnectedCount: entries.filter((e) => e.countdown === null).length,
     dueSoonCount: dueSoon.length,
   };
 }

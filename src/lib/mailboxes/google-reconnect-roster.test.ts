@@ -113,6 +113,33 @@ describe("buildGoogleReconnectRoster — what the day-five alert is given", () =
     expect(roster.dueSoonCount).toBe(3);
   });
 
+  // Row 154 (raised by row 136/cycle197 finding 1): a mailbox stuck in
+  // PENDING_CONNECTION — a sign-in started and never finished, greentheuk's
+  // exact 59-day-stuck state — has `countdown: null` (it is never CONNECTED),
+  // so it could never contribute to `overdueCount`, and the "Already expired"
+  // tile on /google-reconnects read 0 while a real mailbox was dead for
+  // weeks. `notConnectedCount` is the count the page's new "Not connected"
+  // tile reads, so this class of failure always shows as a non-zero headline
+  // number, not just correctly in the per-row table.
+  it("counts not-connected mailboxes separately, so a stuck sign-in is never invisible in the headline tiles (row 154)", () => {
+    const roster = buildGoogleReconnectRoster(
+      [
+        mailbox({ email: "ok@x.com", daysAgo: 2 }),
+        mailbox({ email: "overdue@x.com", daysAgo: 8 }),
+        mailbox({ email: "stranded@x.com", connectionStatus: "PENDING_CONNECTION" }),
+        mailbox({ email: "errored@x.com", connectionStatus: "CONNECTION_ERROR" }),
+        mailbox({ email: "disconnected@x.com", connectionStatus: "DISCONNECTED" }),
+      ],
+      NOW,
+    );
+    // Real token expiry stays its own number...
+    expect(roster.overdueCount).toBe(1);
+    // ...but every mailbox with no live token at all — PENDING_CONNECTION,
+    // CONNECTION_ERROR, DISCONNECTED — is now tallied too, so the headline
+    // area cannot read "nothing broken" while three mailboxes are dead.
+    expect(roster.notConnectedCount).toBe(3);
+  });
+
   it("groups the due mailboxes by client, because that is who gets telephoned", () => {
     const roster = buildGoogleReconnectRoster(
       [
