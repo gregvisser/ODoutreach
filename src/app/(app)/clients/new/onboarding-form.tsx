@@ -171,9 +171,10 @@ export function OnboardingForm() {
           <p className="font-medium text-foreground">After create</p>
           <p className="mt-1">
             You&apos;ll land on the workspace overview. Complete the setup
-            modules in order: Brief → Mailboxes → Sources → Suppression →
-            Contacts → Templates → Sequences → Activity. The client stays in{" "}
-            <strong>ONBOARDING</strong> until launch is explicitly approved.
+            modules in order: Brief → Mailboxes → Suppression → Contacts →
+            Templates → Sequences → Enrollments → Launch. The client stays
+            in <strong>ONBOARDING</strong> until launch is explicitly
+            approved.
           </p>
         </div>
 
