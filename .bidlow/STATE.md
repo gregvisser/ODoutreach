@@ -9636,3 +9636,86 @@ ANYTHING" instruction.
    mutation-button feedback) — already merged (PR #552/#553), just not written
    up here. Worth a short backfill entry if the next session has spare time,
    but not blocking.
+
+## Cycle 223 — row 144: stranded cycle-188 fragment closed WONTFIX — DONE, merged and verified
+
+**Note first, gap since the last entry:** two rows from the "pick up first"
+list above were done in intervening cycles and merged, but have no entry of
+their own in this file yet — row 159 (cycle 222, support reply/comment
+thread: built the full append-only thread rather than softening the copy,
+new `SupportTicketComment` table, additive migration, merged PR #557/#558,
+merge commits `2bd21c1`/`c276efe`), and (already flagged above) row 157
+(cycle 220, operations button feedback, PR #552/#553). Neither redone or
+touched this session. Both visible in `QUEUE.md` as `DONE`.
+
+**What this session did:** row 144 was not real work — it was a fragment of
+cycle 188's log that the relay's carry-forward detector had copied into
+`QUEUE.md` as its own row, mid-sentence, with no interpretation (same defect
+class as rows 124/139/140/141/142, all previously closed the same way). The
+full source sentence (`.bidlow/relay/log/cycle-188.md` lines 101-107) told a
+*future* cycle what to do **if** row 138 or row 143 reopened again *before
+the relay watcher was restarted*. Rather than assume that condition was
+still live, checked it: (1) the restart itself has happened — every cycle
+log from 203 through 222 opens with a `Watcher script: <hash> - the file on
+disk is identical` line, so the live process has run current code since at
+least cycle 203; (2) rows 138 and 143 have stayed `DONE 184` unbroken since
+cycle 190, over thirty cycles; (3) the wider stale-watcher class this
+sentence warned about did reopen two *other* rows before the restart landed
+(row 134 in cycle 193, row 137 in cycle 201), and both times the handling
+cycle correctly re-verified rather than redid the work — exactly the
+discipline the fragment was asking for, already proven out without ever
+needing to cite it by name. Nothing left to build; closed
+`WONTFIX 223` with all three checks quoted in the queue cell itself.
+
+**An ordering defect caught by the existing gate, fixed same-session:**
+closing row 144 straight to `WONTFIX` without moving it made it the first
+halting row in file order ahead of row 145 (`TODO`) —
+`relay/queue-file-integrity.test.ts`'s "keeps BLOCKED and WONTFIX rows below
+every row still to be done" check failed correctly (`#145 ... sits below
+#144, which is WONTFIX and stops the picker`). Swapped rows 144/145 in file
+order; re-ran the test, 9/9 green.
+
+**Gates run and shown:** `npx vitest run relay/queue-file-integrity.test.ts`
+— 9/9 pass (one red failure caught and fixed mid-session, above).
+`relay-selftest.ps1` — SELF-TEST PASSED, 127 checks (above the 74 floor). No
+application source touched, so `npm run lint`/`typecheck`/`npm test` were not
+re-run, matching this repo's established precedent for docs-only relay
+changes (cycles 185-188/193/201).
+
+**Merged and confirmed, nothing half-done.** PR #559 (the WONTFIX close +
+committing cycle 222's previously-uncommitted log + the row swap) merged
+`--squash --delete-branch`; CI green (verify 5m52s, E2E 6m6s); merge commit
+`9b43e3776439cf8d217f713a0447e78e8a540bd0` confirmed on `origin/main` via
+`git ls-remote`. Then PR #560 (docs-only, recording that hash back into row
+144's own cell) merged the same way; CI green (verify 5m44s, E2E 5m50s);
+merge commit `97379b74513ce97b50fdd7f9eed6ce6575311101` confirmed on
+`origin/main`. `main` is at `97379b7` at the end of this session. No PRs
+left open (start-of-cycle sweep via `gh pr list --state open` returned `[]`).
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched, no email sent, nothing scored
+(`.bidlow/GRADES.json` untouched).
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session (current — supersedes the cycle-221 list above)
+
+1. Start-of-cycle PR sweep (`gh pr list --state open`) — should be empty,
+   but always check first; PRs left open rot fast in this repo.
+2. Next `TODO` row in `.bidlow/relay/QUEUE.md` in file order: row 145 (the
+   field-knowledge gate on CHECK — large, `_standards`-touching; read the row
+   in full before starting; only three named files under `_standards` are
+   authorised: `lib.mjs`, `session-start.mjs`, `gate-build.mjs`; the
+   grandfather clause for ODoutreach's own already-closed CHECK is the most
+   important assertion in that row — prove ODoutreach still builds before
+   claiming anything).
+3. This file has no entry yet for row 157/cycle 220 (operations mutation-button
+   feedback, PR #552/#553) or row 159/cycle 222 (support reply thread, PR
+   #557/#558) — both already merged, just not individually written up here.
+   Worth a short backfill if a future session has spare time, but not
+   blocking.
+4. Rows 138 and 143 (the row-122 squash-merge guard + loop breaker) have now
+   stayed `DONE 184` unbroken for over thirty cycles (190-223) since the
+   watcher restart landed by cycle 203 — this class of defect looks closed
+   for good, not just quiet. No action needed unless one of them reopens
+   again, which would now be a genuinely new finding, not "known cause."
