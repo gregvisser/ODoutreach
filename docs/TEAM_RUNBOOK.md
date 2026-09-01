@@ -87,7 +87,15 @@ On each client's **Do-not-contact** tab:
 
 - **Import contacts:** client → **Sources** → upload a CSV (preview first, then
   Confirm). You stay on the page and see "imported N / attached M / skipped K".
+- **Set up a sequence:** client → **Templates** → write and save an
+  Introduction template (plus any Follow-up 1–5 templates you want) — a
+  template must be **Saved** before it can go in a sequence. Then client →
+  **Outreach** → **New sequence** → name it, pick the target list and a
+  mailbox → add the Introduction step (required) and up to five Follow-up
+  steps, each with its template and delay → **Save sequence**.
 - **Launch a sequence:** client → **Outreach** → Review recipients → Launch.
+  (Launch stays locked until the mailbox has a saved signature, has sending
+  capacity, and the Introduction template is finished.)
 - **Replies** land on the client's **Activity** tab; opt-outs and bounces add
   themselves to do-not-contact automatically.
 - **Reports:** the **Reports** tab has live counts per client and a date range.
