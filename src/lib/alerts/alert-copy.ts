@@ -63,6 +63,7 @@ export type GoogleReconnectAlert =
       totalGoogleMailboxes: number;
       /** Grouped by client, most urgent first — a client is who gets telephoned. */
       dueSoonByClient: {
+        clientId: string;
         clientName: string;
         entries: { email: string; label: string }[];
       }[];
@@ -97,6 +98,7 @@ export type StrandedMailboxAlert =
       sendableCount: number;
       /** Grouped by client, most recent first — a client is who gets telephoned. */
       strandedByClient: {
+        clientId: string;
         clientName: string;
         entries: { maskedEmail: string; label: string }[];
       }[];
@@ -139,6 +141,22 @@ function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
+/**
+ * Where the app lives, for links inside the digest.
+ *
+ * Row 155: before this, a broken-mailbox line read `"${entry.email} —
+ * ${entry.label}"` with nothing to click — even Greg, the digest's one
+ * recipient, had to already know the URL. Exported so `scripts/ops-alert.ts`
+ * can use the same value it falls back to for `ALERT_APP_URL`, rather than
+ * two literals drifting apart.
+ */
+export const DEFAULT_ALERT_APP_BASE_URL = "https://opensdoors.bidlow.co.uk";
+
+/** A direct link to the one screen that fixes this: that client's Mailboxes tab. */
+function mailboxesTabLink(appBaseUrl: string, clientId: string): string {
+  return `${appBaseUrl.replace(/\/+$/, "")}/clients/${clientId}/mailboxes`;
+}
+
 export function buildAlertEmail(input: {
   jobs: readonly JobRunSummary[];
   emailsSent: number;
@@ -156,8 +174,11 @@ export function buildAlertEmail(input: {
    * failed" — the same distinction the Google field draws.
    */
   strandedMailboxes?: StrandedMailboxAlert;
+  /** Where the app lives, for the link on every broken-mailbox line (row 155). */
+  appBaseUrl?: string;
 }): AlertEmail {
   const window = input.window ?? "the last 24 hours";
+  const appBaseUrl = input.appBaseUrl ?? DEFAULT_ALERT_APP_BASE_URL;
   const jobs = input.jobs;
   const google = input.googleReconnects;
   const googleBlind = google !== undefined && google.checked === false;
@@ -332,8 +353,9 @@ export function buildAlertEmail(input: {
       );
       for (const group of google.dueSoonByClient) {
         lines.push(`      ${group.clientName}`);
+        const link = mailboxesTabLink(appBaseUrl, group.clientId);
         for (const entry of group.entries) {
-          lines.push(`        ${entry.email} — ${entry.label}`);
+          lines.push(`        ${entry.email} — ${entry.label} — ${link}`);
         }
       }
     }
@@ -367,8 +389,9 @@ export function buildAlertEmail(input: {
       );
       for (const group of stranded.strandedByClient) {
         lines.push(`      ${group.clientName}`);
+        const link = mailboxesTabLink(appBaseUrl, group.clientId);
         for (const entry of group.entries) {
-          lines.push(`        ${entry.maskedEmail} — ${entry.label}`);
+          lines.push(`        ${entry.maskedEmail} — ${entry.label} — ${link}`);
         }
       }
       lines.push(

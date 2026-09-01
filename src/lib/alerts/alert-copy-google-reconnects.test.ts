@@ -16,7 +16,11 @@ function checked(overrides: Partial<{
   dueSoonCount: number;
   overdueCount: number;
   totalGoogleMailboxes: number;
-  dueSoonByClient: { clientName: string; entries: { email: string; label: string }[] }[];
+  dueSoonByClient: {
+    clientId: string;
+    clientName: string;
+    entries: { email: string; label: string }[];
+  }[];
 }> = {}) {
   return {
     checked: true as const,
@@ -56,6 +60,7 @@ describe("the daily digest — Google reconnects due", () => {
     totalGoogleMailboxes: 8,
     dueSoonByClient: [
       {
+        clientId: "client_trainhugger",
         clientName: "Train Hugger",
         entries: [
           { email: "a@trainhugger.com", label: "Google — reconnect by 4 Sep 2026, 2 days left" },
@@ -63,6 +68,7 @@ describe("the daily digest — Google reconnects due", () => {
         ],
       },
       {
+        clientId: "client_opensdoors",
         clientName: "OpensDoors",
         entries: [
           { email: "c@opensdoors.co.uk", label: "Google — reconnect by 5 Sep 2026, 1 day left" },
@@ -106,6 +112,34 @@ describe("the daily digest — Google reconnects due", () => {
       googleReconnects: checked({ dueSoonCount: 1, overdueCount: 0 }),
     });
     expect(email.subject).toBe("ODoutreach PARTIAL — 1 Google login due to be reconnected");
+  });
+
+  it("row 155: gives every broken-mailbox line a link to that client's Mailboxes tab, not just the client name", () => {
+    const email = buildAlertEmail({
+      jobs: HEALTHY_JOBS,
+      emailsSent: 0,
+      googleReconnects: dueInput,
+      appBaseUrl: "https://opensdoors.bidlow.co.uk",
+    });
+    const lines = email.body.split("\n");
+    const trainHuggerA = lines.find((line) => line.includes("a@trainhugger.com"));
+    const trainHuggerB = lines.find((line) => line.includes("b@trainhugger.com"));
+    const opensDoors = lines.find((line) => line.includes("c@opensdoors.co.uk"));
+    expect(trainHuggerA).toContain(
+      "https://opensdoors.bidlow.co.uk/clients/client_trainhugger/mailboxes",
+    );
+    expect(trainHuggerB).toContain(
+      "https://opensdoors.bidlow.co.uk/clients/client_trainhugger/mailboxes",
+    );
+    expect(opensDoors).toContain(
+      "https://opensdoors.bidlow.co.uk/clients/client_opensdoors/mailboxes",
+    );
+  });
+
+  it("row 155: still links each line when no appBaseUrl is supplied, using the shared default", () => {
+    const email = buildAlertEmail({ jobs: HEALTHY_JOBS, emailsSent: 0, googleReconnects: dueInput });
+    const line = email.body.split("\n").find((l) => l.includes("a@trainhugger.com"));
+    expect(line).toMatch(/https?:\/\/\S+\/clients\/client_trainhugger\/mailboxes/);
   });
 
   it("does not hide a broken job behind a reconnect notice", () => {

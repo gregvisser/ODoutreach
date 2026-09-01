@@ -25,7 +25,13 @@ type BrandProp = {
   logoAltText: string;
 };
 
-export function AppHeader({ brand }: { brand: BrandProp }) {
+export function AppHeader({
+  brand,
+  googleReconnectsAttentionCount = 0,
+}: {
+  brand: BrandProp;
+  googleReconnectsAttentionCount?: number;
+}) {
   const { data: session } = useSession();
 
   return (
@@ -45,7 +51,11 @@ export function AppHeader({ brand }: { brand: BrandProp }) {
             <SheetHeader className="sr-only">
               <SheetTitle>Navigation</SheetTitle>
             </SheetHeader>
-            <AppSidebar className="border-0" brand={brand} />
+            <AppSidebar
+              className="border-0"
+              brand={brand}
+              googleReconnectsAttentionCount={googleReconnectsAttentionCount}
+            />
           </SheetContent>
         </Sheet>
       </div>

@@ -60,3 +60,45 @@ export async function getGoogleReconnectRoster(
 
   return buildGoogleReconnectRoster(inputs, now);
 }
+
+/**
+ * The count for the sidebar's "Google logins" badge (row 155).
+ *
+ * Unscoped by accessible-client-ids on purpose: roles were removed (see
+ * `src/server/tenant/access.ts`), so every active staff member sees every
+ * live client's mailboxes already, and this runs on every page load — it
+ * reads the same shape `readGoogleReconnects` in `scripts/ops-alert.ts` reads
+ * so the badge and the digest cannot disagree about who is due.
+ */
+export async function getGoogleReconnectNeedsAttentionCount(now: Date = new Date()): Promise<number> {
+  const rows = await prisma.clientMailboxIdentity.findMany({
+    where: {
+      provider: "GOOGLE",
+      isActive: true,
+      workspaceRemovedAt: null,
+      client: { deletedAt: null },
+    },
+    select: {
+      id: true,
+      clientId: true,
+      email: true,
+      provider: true,
+      connectionStatus: true,
+      connectedAt: true,
+      client: { select: { name: true, slug: true } },
+    },
+  });
+
+  const inputs: GoogleReconnectRosterInput[] = rows.map((row) => ({
+    mailboxId: row.id,
+    clientId: row.clientId,
+    clientName: row.client.name,
+    clientSlug: row.client.slug,
+    provider: row.provider,
+    connectionStatus: row.connectionStatus,
+    connectedAt: row.connectedAt,
+    email: row.email,
+  }));
+
+  return buildGoogleReconnectRoster(inputs, now).dueSoonCount;
+}

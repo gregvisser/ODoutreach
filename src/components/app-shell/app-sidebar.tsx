@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-import { mainNav } from "./nav-config";
+import { buildMainNav } from "./nav-config";
 
 type BrandProp = {
   markUrl: string;
@@ -17,11 +17,15 @@ type BrandProp = {
 export function AppSidebar({
   className,
   brand,
+  googleReconnectsAttentionCount = 0,
 }: {
   className?: string;
   brand: BrandProp;
+  /** Row 155: badges "Google logins" whenever a mailbox needs reconnecting. */
+  googleReconnectsAttentionCount?: number;
 }) {
   const pathname = usePathname();
+  const items = buildMainNav(googleReconnectsAttentionCount);
 
   return (
     <aside
@@ -68,7 +72,7 @@ export function AppSidebar({
         if the App Service plan is scaled up (it is B1, single instance).
       */}
       <nav className="flex-1 space-y-0.5 p-3">
-        {mainNav.map((item) => {
+        {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
@@ -86,6 +90,14 @@ export function AppSidebar({
             >
               <Icon className="h-4 w-4 shrink-0 opacity-80" />
               {item.title}
+              {item.badge !== undefined && (
+                <span
+                  className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-destructive-foreground"
+                  aria-label={`${item.badge} need attention`}
+                >
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}
