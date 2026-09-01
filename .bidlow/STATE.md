@@ -9719,3 +9719,88 @@ no send, no client data touched, no email sent, nothing scored
    watcher restart landed by cycle 203 — this class of defect looks closed
    for good, not just quiet. No action needed unless one of them reopens
    again, which would now be a genuinely new finding, not "known cause."
+
+## Cycle 225 — row 145: field-knowledge gate on CHECK — merged, cycle 224's stranded PR closed out
+
+**What this session found:** row 145's actual work was already done. Cycle 224
+built the whole gate — `checklistFieldKnowledgeScore` / `governingChecklistFields`
+/ `fieldKnowledgeOverrideValid` / `fieldKnowledgeGateFailure` in `lib.mjs`, wired
+into `gate-build.mjs`'s existing PreToolUse hook ahead of the `.bidlow/`
+exempt-path bypass, surfaced in `session-start.mjs` — across the three
+authorised `_standards` files only, plus 5 red-first tests in
+`standards/field-knowledge-gate.test.ts` (spawns the real `gate-build.mjs` as a
+child process, JSON on stdin, exit code as verdict) and the dated artefact
+`docs/ops/ROW145-FIELD-KNOWLEDGE-GATE-ON-CHECK-2026-09-01-cycle224.md`. It
+opened PR #562 with fully green CI (`verify` + `E2E (Playwright)` both
+SUCCESS, `mergeStateStatus: CLEAN`) and then ended the session without
+merging it — the working tree still carried an uncommitted watcher edit
+re-flagging row 145 `IN PROGRESS 225` and bumping `row-reopen-counts.json` to
+`{"145":1}`.
+
+**What this session did:** verified rather than redid, per this repo's own
+standing rule for a reopened row. Confirmed the three `_standards` files
+(outside git — that folder is not a repo) actually contain the claimed
+functions on disk; ran the 5 gate tests locally (5/5 green); stashed the
+watcher's uncommitted re-open edit; merged PR #562
+(`gh pr merge 562 --squash --delete-branch`); confirmed merge commit
+`67eabf49ddb97e5e166d847105ee4b84b7930537` on `origin/main` via
+`git ls-remote`. Then, on merged `main`, re-ran the full proof ODoutreach
+still builds: `npm run lint` 0 errors, `npx tsc --noEmit` 0 errors, `npm test`
+389 files / 3986 tests green (one flaky pair — network-dependent Sentry config
+tests timing out under parallel load — passed both in isolation and on a
+clean full rerun, confirmed unrelated: this PR never touched anything under
+`monitoring/`), `npm run build -- --webpack` succeeded. Also drove
+`gate-build.mjs` directly with a `Write` to `.bidlow/relay/QUEUE.md` and got
+exit 0 (allow) — direct proof the relay's own tooling can still write files,
+the row's most important assertion. Popped the stash back, rewrote row 145's
+`QUEUE.md` cell to `DONE 225` with the confirmed hash, and committed cycle
+224's own previously-untracked log (`.bidlow/relay/log/cycle-224.md`) — this
+repo's standing convention that the next cycle tracks the previous one's log,
+held by `relay/cycle-log-reaches-git.test.ts`. That went out as a second,
+docs-only PR (#563), green CI, merged the same way; merge commit
+`b7b03a4ccfd82c7528f99b788b04d3aa7270bba0` confirmed on `origin/main`.
+
+**Decisions made:** none touching a one-way door — no schema, no migration,
+no send, no client data touched, no email sent, nothing scored
+(`.bidlow/GRADES.json` untouched, `_standards/checklists/*.md` untouched,
+`bidlow-deck.mjs` untouched — all explicitly out of scope for this row and
+left that way). The grandfather clause was verified structurally, not just
+asserted: `fieldKnowledgeGateFailure` returns `null` before it even reads a
+score when `.bidlow/PROJECT.json.lifecycle === "live"`, and ODoutreach's own
+`PROJECT.json` reads exactly that — proven against ODoutreach's own real,
+on-disk `DOMAIN.json` in the test suite, not only a synthetic fixture.
+
+**Nothing left half-done.** No PRs open at end of session
+(`gh pr list --state open` returned empty after #563 merged). `main` is at
+`b7b03a4` at the end of this session.
+
+**Finding for next session, not acted on here: the queue looks drained.**
+A full scan of every row in `.bidlow/relay/QUEUE.md`, in file order, found
+**no `TODO` or `PARTIAL` rows left at all** — every one of the 144 rows is
+either `DONE`, `WONTFIX` (rows 139-142, 144), or `BLOCKED` (rows 48, 84, 110,
+each explicitly marked "DO NOT take this row" by a prior supervisor decision).
+This has not been true in any session logged in this file before now. Confirm
+this is real before assuming there is nothing to do — re-run the same scan,
+and if it still holds, the right next step is asking Greg for new queue rows
+rather than inventing work.
+
+**Nothing found this session contradicts `.bidlow/PROJECT.json`.**
+
+## Pick up first, next session (current — supersedes the cycle-223 list above)
+
+1. Start-of-cycle PR sweep (`gh pr list --state open`) — should be empty, but
+   always check first; PRs left open rot fast in this repo.
+2. Re-verify the "queue looks drained" finding above before doing anything
+   else — scan `.bidlow/relay/QUEUE.md` in file order for any row whose status
+   is not `DONE`/`WONTFIX`/`BLOCKED`. If it is genuinely empty, this project
+   has no queued work; say so rather than manufacturing a row to fill the
+   cycle.
+3. This file still has no entry of its own for row 157/cycle 220 (operations
+   mutation-button feedback, PR #552/#553) or row 159/cycle 222 (support reply
+   thread, PR #557/#558) — both already merged, just not individually written
+   up here. Worth a short backfill if a future session has spare time, but not
+   blocking.
+4. Rows 138 and 143 (the row-122 squash-merge guard + loop breaker) have now
+   stayed `DONE 184` unbroken for well over thirty cycles since the watcher
+   restart landed by cycle 203 — no action needed unless one of them reopens
+   again.
