@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
 import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
@@ -73,6 +74,7 @@ export type HardBounceSuppressionResult = {
 
 export async function suppressRecipientForHardBounce(
   input: HardBounceSuppressionInput,
+  transaction?: Prisma.TransactionClient,
 ): Promise<HardBounceSuppressionResult> {
   const email = normalizeEmail(input.email);
 
@@ -91,7 +93,7 @@ export async function suppressRecipientForHardBounce(
   // seed/allowlist address. Flag-gated: when INTERNAL_SEED_ALLOWLIST_ENABLED is
   // off, `isInternalSeedAddress` returns false without a query, so this is a
   // no-op and the bounce/complaint path behaves exactly as before.
-  if (await isInternalSeedAddress(email)) {
+  if (await (transaction ? isInternalSeedAddress(email, transaction) : isInternalSeedAddress(email))) {
     return {
       suppressed: false,
       newlyCreated: false,
@@ -101,7 +103,7 @@ export async function suppressRecipientForHardBounce(
     };
   }
 
-  return prisma.$transaction(async (tx) => {
+  const apply = async (tx: Prisma.TransactionClient): Promise<HardBounceSuppressionResult> => {
     const existing = await tx.suppressedEmail.findUnique({
       where: { clientId_email: { clientId: input.clientId, email } },
       select: { id: true },
@@ -173,5 +175,6 @@ export async function suppressRecipientForHardBounce(
       normalizedEmail: email,
       contactsFlagged: flagged.count,
     };
-  });
+  };
+  return transaction ? apply(transaction) : prisma.$transaction(apply);
 }

@@ -42,12 +42,13 @@ vi.mock("@/server/mailbox/google-mailbox-access", () => ({
 }));
 const { buildRfc } = vi.hoisted(() => ({
   // Typed so the assertions below can read the HTML body off the call args.
-  buildRfc: vi.fn<(args: { bodyHtml?: string }) => string>(() => "rfc"),
+  buildRfc: vi.fn<(args: { bodyHtml?: string; bodyText?: string }) => string>(() => "rfc"),
 }));
 vi.mock("@/server/mailbox/gmail-sendmail", () => ({
   buildRfc5322PlainTextEmail: (...a: unknown[]) => (buildRfc as (...x: unknown[]) => string)(...a),
   sendGmailUsersMessagesSend: (...a: unknown[]) => sendGmail(...a),
   generateRfc822MessageId: () => "<test-msg-id@workspace.test>",
+  fetchDeliveredGmailMessageId: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),
@@ -254,5 +255,30 @@ describe("executeOutboundSend — the open-tracking pixel is per-client and off 
     await executeOutboundSend("out1");
 
     expect(sentHtml()).not.toContain(PIXEL_PATH);
+  });
+});
+
+describe("tracking sender alignment", () => {
+  it("omits a pixel verified for a different sending domain", async () => {
+    clientFindUnique.mockResolvedValue({
+      outreachLinkDomain: "go.different.test", outreachLinkDomainVerifiedAt: VERIFIED_AT,
+      openTrackingEnabledAt: OPTED_IN_AT, trackingDnsVerifiedAt: DNS_VERIFIED_AT,
+    });
+    expect((await executeOutboundSend("out1")).ok).toBe(true);
+    expect(sentHtml()).not.toContain(PIXEL_PATH);
+    expect(sentHtml()).not.toContain("go.different.test");
+  });
+});
+
+describe("tracking-off link preservation", () => {
+  it("keeps the original body URL in both email parts without a tracking host", async () => {
+    const originalUrl = "https://workspace.test/offer?source=letter";
+    findUnique.mockResolvedValue({ ...baseRow, bodySnapshot: "Read " + originalUrl });
+    clientFindUnique.mockResolvedValue({ outreachLinkDomain: null, outreachLinkDomainVerifiedAt: null,
+      openTrackingEnabledAt: null, trackingDnsVerifiedAt: null });
+    expect((await executeOutboundSend("out1")).ok).toBe(true);
+    expect(buildRfc.mock.calls[0][0].bodyText).toContain(originalUrl);
+    expect(sentHtml()).toContain(originalUrl);
+    expect(sentHtml()).not.toContain("/api/track/");
   });
 });

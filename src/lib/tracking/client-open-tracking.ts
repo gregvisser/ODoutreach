@@ -26,6 +26,7 @@
 
 import {
   isClientLinkDomainReady,
+  isGoDomainAllowedForClient,
   resolveClientLinkBaseUrl,
   type ClientLinkDomainFields,
 } from "@/lib/clients/client-link-domain";
@@ -148,4 +149,16 @@ export function buildOpenTrackingPixelUrlForClient(
   const id = correlationId?.trim();
   if (!id) return null;
   return `${decision.baseUrl}/api/track/open/${encodeURIComponent(id)}`;
+}
+
+/** Final send-time guard: client opt-in must also align with this sender. */
+export function buildOpenTrackingPixelUrlForSender(
+  correlationId: string,
+  client: ClientOpenTrackingFields,
+  senderEmail: string,
+  now: Date = new Date(),
+): string | null {
+  if (!senderEmail.includes("@") ||
+      !isGoDomainAllowedForClient(client.outreachLinkDomain ?? "", [senderEmail])) return null;
+  return buildOpenTrackingPixelUrlForClient(correlationId, client, now);
 }

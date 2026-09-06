@@ -1,13 +1,11 @@
 import "server-only";
 
-import { prisma } from "@/lib/db";
 import type { InboundMatchMethod } from "@/generated/prisma/enums";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
 import { normalizeEmail } from "@/lib/normalize";
 import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
-import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { resolveInternalDomainsForClient } from "@/server/inbox/internal-domains";
-import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
+import { applyLinkedReplyEffects, withReplyIdentityTransaction } from "./reply-processing";
 
 /**
  * Inbound payload from ESP webhook or dev simulator.
@@ -37,7 +35,7 @@ export type IngestResult = {
    *   - "internal_mail": both ends are on a workspace-owned domain (F4), so it
    *     is internal staff mail, never a prospect reply — nothing is stored.
    *   - "duplicate": a reply with this providerMessageId already exists for the
-   *     client (an ESP webhook replay), so the existing row is returned untouched.
+   *     client (an ESP webhook replay), so its protective effects are replayed without inserting another reply.
    */
   skipped?: "internal_mail" | "duplicate";
 };
@@ -77,103 +75,96 @@ export async function ingestInboundForClient(params: {
     return { id: null, matchMethod: "UNLINKED", skipped: "internal_mail" };
   }
 
-  // 2) Reply de-dup. An ESP retries its webhook on any timeout, so the same
-  //    message can arrive several times. If a reply with this providerMessageId
-  //    already exists for the client, return it untouched rather than creating a
-  //    duplicate (which would double-count repliesLinked and re-run the REPLIED
-  //    / stop-follow-ups side effects). Mirrors processSyncedMessageForReply.
-  if (providerMessageId) {
-    const dup = await prisma.inboundReply.findFirst({
-      where: { clientId, providerMessageId },
-      select: { id: true, matchMethod: true },
-    });
-    if (dup) {
-      return { id: dup.id, matchMethod: dup.matchMethod, skipped: "duplicate" };
-    }
-  }
-
-  let linkedOutboundEmailId: string | null = null;
-  let contactId: string | null = null;
-  let matchMethod: InboundMatchMethod = "UNLINKED";
-
-  if (payload.inReplyToProviderId?.trim()) {
-    const outbound = await prisma.outboundEmail.findFirst({
-      where: {
-        clientId,
-        providerMessageId: payload.inReplyToProviderId.trim(),
-      },
-      select: { id: true, contactId: true },
-    });
-    if (outbound) {
-      linkedOutboundEmailId = outbound.id;
-      contactId = outbound.contactId;
-      matchMethod = "BY_OUTBOUND_PROVIDER_ID";
-    }
-  }
-
-  if (!contactId) {
-    const contact = await prisma.contact.findFirst({
-      where: { clientId, email: from },
-      select: { id: true },
-    });
-    if (contact) {
-      contactId = contact.id;
-      if (matchMethod === "UNLINKED") {
-        matchMethod = "BY_CONTACT_EMAIL";
+  const result = await withReplyIdentityTransaction<IngestResult>(
+    clientId, providerMessageId, async (prisma) => {
+      // Reuse the saved association and finish any interrupted protective writes.
+      if (providerMessageId) {
+        const dup = await prisma.inboundReply.findFirst({
+          where: { clientId, providerMessageId },
+          select: { id: true, matchMethod: true, linkedOutboundEmailId: true,
+            contactId: true, fromEmail: true, subject: true, bodyPreview: true,
+            snippet: true, receivedAt: true, ingestionSource: true },
+        });
+        if (dup) {
+          await applyLinkedReplyEffects(prisma, {
+            ...dup, clientId, bodyText: dup.bodyPreview ?? dup.snippet,
+            detectOptOut: dup.ingestionSource === "mailbox_sync",
+          });
+          return { id: dup.id, matchMethod: dup.matchMethod, skipped: "duplicate" };
+        }
       }
-    }
-  }
 
-  if (linkedOutboundEmailId && matchMethod === "BY_CONTACT_EMAIL") {
-    const ob = await prisma.outboundEmail.findFirst({
-      where: { id: linkedOutboundEmailId, clientId },
-      select: { contactId: true },
-    });
-    if (ob?.contactId) {
-      contactId = ob.contactId;
-    }
-  }
+      let linkedOutboundEmailId: string | null = null;
+      let contactId: string | null = null;
+      let matchMethod: InboundMatchMethod = "UNLINKED";
 
-  const row = await prisma.inboundReply.create({
-    data: {
-      clientId,
-      contactId,
-      linkedOutboundEmailId,
-      fromEmail: from,
-      toEmail: to,
-      subject: payload.subject ?? null,
-      snippet: payload.snippet ?? null,
-      bodyPreview: payload.bodyPreview ?? null,
-      receivedAt,
-      providerMessageId,
-      inReplyToProviderId: payload.inReplyToProviderId?.trim() ?? null,
-      ingestionSource,
-      matchMethod,
-    },
-  });
+      if (payload.inReplyToProviderId?.trim()) {
+        const outbound = await prisma.outboundEmail.findFirst({
+          where: {
+            clientId,
+            providerMessageId: payload.inReplyToProviderId.trim(),
+          },
+          select: { id: true, contactId: true },
+        });
+        if (outbound) {
+          linkedOutboundEmailId = outbound.id;
+          contactId = outbound.contactId;
+          matchMethod = "BY_OUTBOUND_PROVIDER_ID";
+        }
+      }
 
-  if (linkedOutboundEmailId) {
-    const ob = await prisma.outboundEmail.findFirst({
-      where: { id: linkedOutboundEmailId, clientId },
-      select: { id: true, status: true },
-    });
-    if (ob && canApplyReplyMilestone(ob.status)) {
-      await prisma.outboundEmail.update({
-        where: { id: ob.id },
-        data: { status: "REPLIED" },
+      if (!contactId) {
+        const contact = await prisma.contact.findFirst({
+          where: { clientId, email: from },
+          select: { id: true },
+        });
+        if (contact) {
+          contactId = contact.id;
+          if (matchMethod === "UNLINKED") {
+            matchMethod = "BY_CONTACT_EMAIL";
+          }
+        }
+      }
+
+      if (linkedOutboundEmailId && matchMethod === "BY_CONTACT_EMAIL") {
+        const ob = await prisma.outboundEmail.findFirst({
+          where: { id: linkedOutboundEmailId, clientId },
+          select: { contactId: true },
+        });
+        if (ob?.contactId) {
+          contactId = ob.contactId;
+        }
+      }
+
+      const row = await prisma.inboundReply.create({
+        data: {
+          clientId,
+          contactId,
+          linkedOutboundEmailId,
+          fromEmail: from,
+          toEmail: to,
+          subject: payload.subject ?? null,
+          snippet: payload.snippet ?? null,
+          bodyPreview: payload.bodyPreview ?? null,
+          receivedAt,
+          providerMessageId,
+          inReplyToProviderId: payload.inReplyToProviderId?.trim() ?? null,
+          ingestionSource,
+          matchMethod,
+        },
       });
-    }
-    // PR #137 — stop follow-ups for the matching sequence enrolment.
-    await stopFollowUpsForLinkedReply({
-      clientId,
-      outboundEmailId: linkedOutboundEmailId,
-    });
+
+      await applyLinkedReplyEffects(prisma, {
+        clientId, linkedOutboundEmailId, contactId, fromEmail: from,
+        subject: payload.subject ?? null, bodyText: payload.bodyPreview ?? payload.snippet ?? null,
+        receivedAt, detectOptOut: false,
+      });
+
+      return { id: row.id, matchMethod };
+    },
+  );
+  if (result.id && !result.skipped) {
+    await classifyInboundReplyQuietly({ replyId: result.id });
   }
-
-  // Row 80 — label the reply for routing. Outside the `linkedOutboundEmailId`
-  // branch deliberately: an UNLINKED reply is exactly the one nobody is
-  // watching, so it is the one that most needs a label. Never throws.
-  await classifyInboundReplyQuietly({ replyId: row.id });
-
-  return { id: row.id, matchMethod };
+  return result;
 }

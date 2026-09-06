@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildTrackingDnsAnswers,
+  verifyClientTrackingDns,
   resolveClientTrackingDnsProvider,
   sweepTrackingDnsRegressions,
   type TrackingDnsResolver,
@@ -330,5 +331,22 @@ describe("sweepTrackingDnsRegressions — the scheduled re-check that DISABLES",
     expect(result.checked).toBe(0);
     expect(record).not.toHaveBeenCalled();
     expect(disable).not.toHaveBeenCalled();
+  });
+});
+
+describe("tracking DNS mailbox selection", () => {
+  it("verifies the tracking domain's mailbox rather than the first unrelated mailbox", async () => {
+    const resolver = goodResolver();
+    const result = await verifyClientTrackingDns({ ...CLIENT, mailboxes: [
+      { email: "first@unrelated.test", provider: "GOOGLE" }, ...CLIENT.mailboxes,
+    ] }, resolver);
+    expect(result.pass).toBe(true);
+    expect(resolver.resolveTxt).not.toHaveBeenCalledWith("unrelated.test");
+  });
+  it("refuses a tracking host without a matching sender before making DNS requests", async () => {
+    const resolver = goodResolver();
+    const result = await verifyClientTrackingDns({ ...CLIENT, outreachLinkDomain: "go.unrelated.test" }, resolver);
+    expect(result.pass).toBe(false);
+    expect(resolver.resolveTxt).not.toHaveBeenCalled();
   });
 });

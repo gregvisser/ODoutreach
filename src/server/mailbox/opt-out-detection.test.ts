@@ -35,8 +35,12 @@ afterEach(() => {
 });
 
 describe("suppressReplyOptOut (H3)", () => {
-  it("no-ops with the flag OFF", async () => {
+  it("honours STOP without feature configuration", async () => {
     delete process.env[FLAG];
+    expect((await suppressReplyOptOut(input({ bodyText: "STOP" }))).suppressed).toBe(true);
+  });
+  it("no-ops with the flag OFF", async () => {
+    process.env[FLAG] = "false";
     const r = await suppressReplyOptOut(input());
     expect(r.suppressed).toBe(false);
     expect(suppressMock).not.toHaveBeenCalled();

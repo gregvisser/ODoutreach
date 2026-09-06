@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { classifyOptOutReply } from "@/lib/inbox/opt-out-detection";
 import { normalizeEmail } from "@/lib/normalize";
 import { suppressRecipientForHardBounce } from "@/server/email/bounce-suppression";
@@ -13,14 +14,14 @@ import { suppressRecipientForHardBounce } from "@/server/email/bounce-suppressio
  * existing `suppressRecipientForHardBounce(reason:"complaint")` — append-only +
  * idempotent + seed-allowlist-aware.
  *
- * Flag-gated by `MAILBOX_COMPLAINT_DETECTION_ENABLED` (DEFAULT OFF): when off,
+ * Enabled by default. `MAILBOX_COMPLAINT_DETECTION_ENABLED=false` is an explicit override; when off,
  * no classification or query runs, so reply processing is unchanged.
  */
 export function isMailboxComplaintDetectionEnabled(): boolean {
   return (
     (process.env.MAILBOX_COMPLAINT_DETECTION_ENABLED ?? "")
       .trim()
-      .toLowerCase() === "true"
+      .toLowerCase() !== "false"
   );
 }
 
@@ -35,7 +36,7 @@ export async function suppressReplyOptOut(input: {
   contactId: string | null;
   outboundEmailId: string;
   receivedAt: Date;
-}): Promise<ReplyOptOutResult> {
+}, transaction?: Prisma.TransactionClient): Promise<ReplyOptOutResult> {
   if (!isMailboxComplaintDetectionEnabled()) return { suppressed: false };
 
   const verdict = classifyOptOutReply({
@@ -58,7 +59,7 @@ export async function suppressReplyOptOut(input: {
     providerEventType: "reply_opt_out",
     at: input.receivedAt,
     reason: "complaint",
-  });
+  }, transaction);
 
   return { suppressed: result.suppressed, recipient: email };
 }
