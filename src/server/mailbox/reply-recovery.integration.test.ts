@@ -268,3 +268,41 @@ describe("paged inbox to database journey (simulated provider HTTP)", () => {
     expect(await prisma.inboundMailboxMessage.count()).toBe(1);
   });
 });
+
+describe("durable inbox progress", () => {
+  it.each(["GOOGLE", "MICROSOFT"] as const)("resumes %s backlog and still checks newest mail", async (provider) => {
+    await prisma.clientMailboxIdentity.update({ where: { id: input.mailboxIdentityId }, data: { provider } });
+    const requested: number[] = [];
+    const graphBase = "https://graph.microsoft.com/v1.0/users/sender%40sender.test/mailFolders/inbox/messages";
+    const cursorFor = (page: number) => provider === "GOOGLE" ? String(page) : graphBase + "?$skip=" + page;
+    let failPage: number | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (request: string) => {
+      const url = new URL(request);
+      const page = Number(url.searchParams.get(provider === "GOOGLE" ? "pageToken" : "$skip") || "0");
+      requested.push(page);
+      if (page === failPage) return new Response(JSON.stringify({ error: { message: "temporary failure" } }), { status: 503 });
+      const next = page < 8 ? cursorFor(page + 1) : undefined;
+      const body = provider === "GOOGLE" ? { nextPageToken: next } : { value: [], "@odata.nextLink": next };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    const run = () => syncMailboxInboxForMailbox({ clientId: input.clientId, mailboxIdentityId: input.mailboxIdentityId, staffUserId: null });
+    const cursor = async () => (await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: input.mailboxIdentityId } })).inboxSyncCursor;
+    expectedProviderCalls = 4;
+    expect(await run()).toMatchObject({ ok: true });
+    expect(requested).toEqual([0, 1, 2, 3]);
+    expect(await cursor()).toBe(cursorFor(4));
+    failPage = 5;
+    expectedProviderCalls += 3;
+    expect(await run()).toMatchObject({ ok: false });
+    expect(await cursor()).toBe(cursorFor(4));
+    failPage = null;
+    expectedProviderCalls += 4;
+    expect(await run()).toMatchObject({ ok: true });
+    expect(requested.slice(-4)).toEqual([0, 4, 5, 6]);
+    expect(await cursor()).toBe(cursorFor(7));
+    expectedProviderCalls += 3;
+    expect(await run()).toMatchObject({ ok: true });
+    expect(requested.slice(-3)).toEqual([0, 7, 8]);
+    expect(await cursor()).toBeNull();
+  });
+});

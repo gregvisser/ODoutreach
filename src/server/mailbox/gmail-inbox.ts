@@ -1,4 +1,5 @@
 import "server-only";
+import { InboxCursorExpiredError, type InboxPageOptions } from "./inbox-pagination";
 
 import { normalizeEmail } from "@/lib/normalize";
 
@@ -208,7 +209,7 @@ function clip(s: string, n: number): string {
  */
 export async function listGmailInboxMessageRefs(
   accessToken: string,
-  options: { maxResults?: number } = {},
+  options: { maxResults?: number } & InboxPageOptions = {},
 ): Promise<GmailApiMessageRef[]> {
   const max = Math.min(Math.max(options.maxResults ?? 25, 1), 50);
   const url = new URL(`${GMAIL}/users/me/messages`);
@@ -217,7 +218,7 @@ export async function listGmailInboxMessageRefs(
   const refs: GmailApiMessageRef[] = [];
   const seenPages = new Set<string>();
   const seenMessages = new Set<string>();
-  let pageToken = "";
+  let pageToken = options.cursor || "";
   do {
     if (seenPages.has(pageToken) || seenPages.size >= 1000) {
       throw new Error("Gmail inbox pagination did not complete; retry required");
@@ -234,6 +235,9 @@ export async function listGmailInboxMessageRefs(
       nextPageToken?: string;
       error?: { message?: string };
     };
+    if (options.cursor && (res.status === 400 || res.status === 410)) {
+      throw new InboxCursorExpiredError("Gmail inbox continuation expired; restart required");
+    }
     if (!res.ok) {
       throw new Error(`Gmail inbox list failed: ${body.error?.message ?? res.status}`);
     }
@@ -250,7 +254,9 @@ export async function listGmailInboxMessageRefs(
       throw new Error("Gmail inbox returned an invalid continuation token");
     }
     pageToken = body.nextPageToken || "";
+    if (options.onContinuation && seenPages.size >= (options.maxPages ?? 1000)) break;
   } while (pageToken);
+  options.onContinuation?.(pageToken || null);
   return refs;
 }
 
@@ -285,7 +291,7 @@ export async function getGmailMessageMetadata(
  */
 export async function fetchGmailInboxMessagesForSync(
   accessToken: string,
-  options: { maxResults?: number } = {},
+  options: { maxResults?: number } & InboxPageOptions = {},
 ): Promise<MappedGmailInboxRow[]> {
   const refs = await listGmailInboxMessageRefs(accessToken, options);
   const out: MappedGmailInboxRow[] = [];

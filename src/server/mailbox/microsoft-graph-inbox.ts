@@ -1,4 +1,5 @@
 import "server-only";
+import { InboxCursorExpiredError, type InboxPageOptions } from "./inbox-pagination";
 
 import { normalizeMicrosoftMessageBody } from "@/lib/inbox/inbound-body-normalization";
 import { normalizeEmail } from "@/lib/normalize";
@@ -32,7 +33,7 @@ const PREVIEW_MAX = 4000;
 export async function listMicrosoftGraphInboxMessages(
   accessToken: string,
   mailboxUserPrincipalName: string,
-  options: { top?: number } = {},
+  options: { top?: number } & InboxPageOptions = {},
 ): Promise<MicrosoftGraphMessage[]> {
   const top = Math.min(Math.max(options.top ?? 25, 1), 50);
   const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
@@ -58,7 +59,7 @@ export async function listMicrosoftGraphInboxMessages(
   const messages: MicrosoftGraphMessage[] = [];
   const seenPages = new Set<string>();
   const seenMessages = new Set<string>();
-  let next: string | undefined = url.toString();
+  let next: string | undefined = options.cursor || url.toString();
   while (next) {
     const pageUrl = new URL(next);
     // Never forward a mailbox token to a different host, user, or resource.
@@ -78,6 +79,9 @@ export async function listMicrosoftGraphInboxMessages(
     const body = await res.json() as MicrosoftGraphInboxListResponse & {
       error?: { code?: string; message?: string };
     };
+    if (options.cursor && (res.status === 400 || res.status === 410)) {
+      throw new InboxCursorExpiredError("Graph inbox continuation expired; restart required");
+    }
     if (!res.ok) {
       throw new Error(`Graph Mail.Read failed: ${body.error?.code ?? res.status} — ${body.error?.message ?? "Graph request failed"}`);
     }
@@ -93,7 +97,9 @@ export async function listMicrosoftGraphInboxMessages(
       throw new Error("Graph inbox returned an invalid continuation URL");
     }
     next = continuation || undefined;
+    if (options.onContinuation && seenPages.size >= (options.maxPages ?? 1000)) break;
   }
+  options.onContinuation?.(next ?? null);
   return messages;
 }
 

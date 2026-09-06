@@ -648,6 +648,8 @@ model ClientMailboxIdentity {
   /// Counters reset when `now` passes `dailyWindowResetAt` (worker/sync responsibility in later slices)
   emailsSentToday          Int                     @default(0)
   dailyWindowResetAt       DateTime?
+  /// Saved provider continuation, advanced only after the page is processed.
+  inboxSyncCursor          String?                 @db.Text
   lastSyncAt               DateTime?
   lastError                String?                 @db.Text
   /// Per-mailbox sender identity. Populated from Gmail `users.settings.sendAs` when
