@@ -14,27 +14,8 @@
  * an outcome a human can read — never silence, never a raw error, which is
  * what row 109 fixed and what this spec now stands guard on.
  *
- * KNOWN UPSTREAM RACE, NOT A REGRESSION IN THIS APP — measured while building
- * this spec: React 19's Server Action `useTransition` occasionally never
- * resolves client-side when the action itself completes very fast (ours
- * does, under a second), leaving the trigger stuck on "Working…" forever
- * with no navigation applied, even though the action succeeded — matches
- * https://github.com/vercel/next.js/discussions/88767. Confirmed by network
- * tracing every run, pass and fail alike: the POST always returns 303 with
- * the correct `x-action-redirect` header well under a second; only the
- * CLIENT's application of that redirect is what sometimes hangs (repro rate
- * roughly 50-80% locally, entirely independent of this spec's own wait
- * strategy or of the confirm dialog's close-timing — both were tried and
- * ruled out). Since asserting on the client's own soft-navigation would make
- * this spec flaky for a reason that has nothing to do with the Launch
- * journey, the spec instead reads the server's own redirect target directly
- * off the action response and, if the client hasn't already gotten there
- * itself within a few seconds, navigates there directly — exactly what an
- * operator hitting this same framework race would do by refreshing. This
- * still proves everything row 109 cares about end to end: a real dispatch
- * happened, and the SCREEN shows a readable outcome, not silence. It would
- * still fail red if the server-side dispatch itself broke (wrong status, no
- * redirect header, or the target screen not showing a readable outcome).
+ * The browser must apply the action result itself. Test-driven navigation
+ * would hide the user-visible failure this journey is intended to catch.
  *
  * SEND SAFETY — a confirmed Launch here creates a real `OutboundEmail` row
  * (`status: QUEUED`) in the throwaway e2e database, exactly as it would in
@@ -55,6 +36,7 @@ import {
 } from "./fixtures";
 
 test.describe("Launch journey — sequence introduction dispatch", () => {
+  test.describe.configure({ retries: 0 });
   test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 
   test("clicking Launch on a ready sequence shows a readable outcome, not silence", async ({
@@ -94,8 +76,7 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
 
     const confirm = dialog.getByRole("button", { name: "Launch sequence" });
     // Capture the action's own response alongside the click: it carries the
-    // server's redirect target on `x-action-redirect` regardless of whether
-    // the client ever applies it — see the KNOWN UPSTREAM RACE note above.
+    // server's redirect target; the browser must then apply it without help.
     const [actionResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.request().method() === "POST" && res.url().includes("/outreach"),
@@ -109,10 +90,6 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
         "Launch action's response carried no x-action-redirect header — the exact silent failure row 109 exists to prevent.",
       );
     }
-    // Strip the trailing `;push`/`;replace` navigation-type marker Next.js
-    // appends after the URL (and, here, after the URL's own `#fragment`).
-    const redirectPath = redirectHeader.replace(/;(push|replace)$/, "");
-
     // The flash banner is the ONE `bg-emerald-50` (ok) / `bg-destructive/5`
     // (error) div directly inside the Sequences card — a text-based match
     // would also hit the "Introduction email" dispatch-block heading and its
@@ -124,17 +101,6 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
       .locator("#client-email-sequences")
       .locator('[class~="bg-emerald-50"], [class~="bg-destructive/5"]')
       .first();
-    try {
-      // The healthy path: the client applies the redirect on its own within
-      // a few seconds, same as a human would experience it.
-      await expect(outcomeBanner).toBeVisible({ timeout: 5_000 });
-    } catch {
-      // The known-race path: the client never applied it. Go directly to the
-      // server's own redirect target, the same recovery a stuck operator
-      // would reach for by refreshing.
-      await page.goto(redirectPath);
-    }
-
     // The exact failure row 109 existed to fix: Greg clicked Launch and
     // nothing told him what happened. Assert the outcome is present, visible,
     // non-empty, and describes what happened to the introduction, not a raw
