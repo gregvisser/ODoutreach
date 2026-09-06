@@ -56,10 +56,8 @@ const inviteSchema = z.object({
     if (typeof value !== "string") return value;
     return value.trim();
   }, z.string().email()),
-  // Roles no longer gate features — every active staff member gets the full
-  // app. We still persist a role for schema compatibility + the last-active-
-  // admin lockout guard, defaulting new staff to full ("ADMIN") access.
-  role: staffRoleSchema.default("ADMIN"),
+  // Everyday staff receive operator access; elevation requires an explicit owner action.
+  role: staffRoleSchema.default("OPERATOR"),
   isActive: z.boolean().optional().default(true),
 });
 

@@ -118,6 +118,13 @@ describe("staff access gate", () => {
     delete process.env.STAFF_EMAIL_DOMAINS;
   });
 
+  it("enforces the configured domain even through requireStaffUser", async () => {
+    rows.push(staffRow());
+    signInSession();
+    process.env.STAFF_EMAIL_DOMAINS = "opendoors.test";
+    await expect(requireStaffUser()).rejects.toThrow("STAFF_EMAIL_NOT_ALLOWED");
+  });
+
   it("allows an active staff user after Microsoft auth", async () => {
     rows.push(staffRow());
     signInSession();

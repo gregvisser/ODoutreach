@@ -53,9 +53,9 @@ export default async function ClientsPage() {
             contacts, mailboxes, and outreach.
           </p>
         </div>
-        <Link prefetch={false} href="/clients/new" className={cn(buttonVariants())}>
+        {staff.isSuperAdmin && <Link prefetch={false} href="/clients/new" className={cn(buttonVariants())}>
           Add client
-        </Link>
+        </Link>}
       </div>
 
       <Card className="border-border/80 shadow-sm">
@@ -117,15 +117,14 @@ export default async function ClientsPage() {
                 <>
                   <p className="font-medium text-foreground">No clients yet</p>
                   <p>
-                    Add your first client to start onboarding mailboxes, contacts,
-                    and outreach.
+                    {staff.isSuperAdmin ? "Add your first client to set up mailboxes, contacts and outreach." : "The owner can add the first client workspace."}
                   </p>
-                  <Link prefetch={false}
+                  {staff.isSuperAdmin && <Link prefetch={false}
                     href="/clients/new"
                     className={cn(buttonVariants(), "mt-2 inline-flex")}
                   >
                     Add client
-                  </Link>
+                  </Link>}
                 </>
               ) : (
                 <>

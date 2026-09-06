@@ -18,14 +18,18 @@ export function AppSidebar({
   className,
   brand,
   googleReconnectsAttentionCount = 0,
+  isSuperAdmin = false,
 }: {
   className?: string;
   brand: BrandProp;
   /** Row 155: badges "Google logins" whenever a mailbox needs reconnecting. */
   googleReconnectsAttentionCount?: number;
+  isSuperAdmin?: boolean;
 }) {
   const pathname = usePathname();
-  const items = buildMainNav(googleReconnectsAttentionCount);
+  const items = buildMainNav(googleReconnectsAttentionCount).filter(
+    (item) => item.href !== "/clients/new" || isSuperAdmin,
+  );
 
   return (
     <aside

@@ -28,9 +28,11 @@ type BrandProp = {
 export function AppHeader({
   brand,
   googleReconnectsAttentionCount = 0,
+  isSuperAdmin = false,
 }: {
   brand: BrandProp;
   googleReconnectsAttentionCount?: number;
+  isSuperAdmin?: boolean;
 }) {
   const { data: session } = useSession();
 
@@ -54,6 +56,7 @@ export function AppHeader({
             <AppSidebar
               className="border-0"
               brand={brand}
+              isSuperAdmin={isSuperAdmin}
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
             />
           </SheetContent>

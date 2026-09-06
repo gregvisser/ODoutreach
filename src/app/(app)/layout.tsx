@@ -45,10 +45,11 @@ export default async function AppLayout({
       <AppSidebar
         className="hidden md:flex"
         brand={brand}
+        isSuperAdmin={gate.staff.isSuperAdmin}
         googleReconnectsAttentionCount={googleReconnectsAttentionCount}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <AppHeader brand={brand} googleReconnectsAttentionCount={googleReconnectsAttentionCount} />
+        <AppHeader brand={brand} isSuperAdmin={gate.staff.isSuperAdmin} googleReconnectsAttentionCount={googleReconnectsAttentionCount} />
         <main className="flex-1 bg-gradient-to-b from-muted/30 to-background px-4 py-8 md:px-8">
           {children}
         </main>
