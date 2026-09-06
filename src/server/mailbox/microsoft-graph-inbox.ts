@@ -6,6 +6,16 @@ import { normalizeEmail } from "@/lib/normalize";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
+function isDeclaredInboxPath(pathname: string, mailbox: string): boolean {
+  let decoded: string;
+  try { decoded = decodeURIComponent(pathname); } catch { return false; }
+  // Graph may canonicalize slash keys to OData quoted keys, or return an
+  // unescaped @. Compare the resource identity, not its URL spelling.
+  const match = decoded.match(/^\/v1\.0\/users(?:\/([^/]+)|\('((?:[^']|'')+)'\))\/mailFolders(?:\/inbox|\('inbox'\))\/messages\/?$/i);
+  const user = match?.[1] ?? match?.[2]?.replace(/''/g, "'");
+  return user !== undefined && normalizeEmail(user) === normalizeEmail(mailbox);
+}
+
 export type MicrosoftGraphInboxListResponse = {
   value?: MicrosoftGraphMessage[];
   "@odata.nextLink"?: string;
@@ -63,7 +73,7 @@ export async function listMicrosoftGraphInboxMessages(
   while (next) {
     const pageUrl = new URL(next);
     // Never forward a mailbox token to a different host, user, or resource.
-    if (pageUrl.origin !== url.origin || pageUrl.pathname !== url.pathname ||
+    if (pageUrl.origin !== url.origin || !isDeclaredInboxPath(pageUrl.pathname, mailboxUserPrincipalName) ||
         pageUrl.username || pageUrl.password || pageUrl.hash) {
       throw new Error("Graph inbox returned an unsafe continuation URL");
     }
