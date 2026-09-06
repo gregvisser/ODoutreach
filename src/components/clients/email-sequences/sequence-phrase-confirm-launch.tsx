@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 type Props = {
   /** Server action URL — same as form `action`. */
   formAction: string | ((formData: FormData) => void | Promise<void>);
+  outcomeAction?: (formData: FormData) => Promise<{ kind: "ok" | "error"; message: string }>;
+  statusHref?: string;
   /** Hidden fields and any non-submit controls that belong inside the form. */
   children: React.ReactNode;
   /** Value posted as `confirmationPhrase` — must match server normalisation. */
@@ -30,6 +32,8 @@ type Props = {
  */
 export function SequencePhraseConfirmLaunch({
   formAction,
+  outcomeAction,
+  statusHref,
   children,
   confirmationPhrase,
   modalTitle,
@@ -48,6 +52,25 @@ export function SequencePhraseConfirmLaunch({
   const titleId = useId();
   const descId = useId();
   const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
+  const [resultUncertain, setResultUncertain] = useState(false);
+
+  async function submitForOutcome(formData: FormData) {
+    if (!outcomeAction) return;
+    setOutcome(null);
+    const uncertain = () => {
+      setResultUncertain(true);
+      setOutcome({ kind: "error", message: "We could not confirm the launch result. Check the sequence status before trying again." });
+    };
+    const timer = setTimeout(uncertain, 15_000);
+    try {
+      setOutcome(await outcomeAction(formData));
+    } catch {
+      uncertain();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   // Guards against a double confirm re-firing the send batch in the brief
   // window before the page redirects. Reset each time the modal reopens.
   const submittedRef = useRef(false);
@@ -99,7 +122,7 @@ export function SequencePhraseConfirmLaunch({
 
   return (
     <>
-      <form ref={formRef} action={formAction} className={formClassName}>
+      <form ref={formRef} action={outcomeAction ? submitForOutcome : formAction} className={formClassName}>
         <input
           ref={phraseRef}
           type="hidden"
@@ -111,11 +134,16 @@ export function SequencePhraseConfirmLaunch({
         <LaunchTriggerButton
           label={triggerLabel}
           onClick={openModal}
-          disabled={disabled}
+          disabled={disabled || outcome?.kind === "ok" || resultUncertain}
           variant={variant}
           className={submitButtonClassName}
         />
       </form>
+
+      {outcome && <div role="status" className={outcome.kind === "ok" ? "rounded border bg-emerald-50 p-3 text-sm" : "rounded border bg-destructive/5 p-3 text-sm"}>
+        <p>{outcome.message}</p>
+        {statusHref && <a href={statusHref} className="mt-2 inline-block underline">Refresh sequence status</a>}
+      </div>}
 
       <dialog
         ref={dialogRef}

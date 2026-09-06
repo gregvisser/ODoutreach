@@ -2,6 +2,7 @@ import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import {
   prepareClientEmailSequenceStepSendsAction,
   sendClientEmailSequenceIntroductionAction,
+  launchClientEmailSequenceIntroductionOutcomeAction,
   sendClientEmailSequenceStepAction,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import {
@@ -485,6 +486,8 @@ function IntroSendDispatchBlock({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <SequencePhraseConfirmLaunch
           formAction={sendClientEmailSequenceIntroductionAction}
+          outcomeAction={launchClientEmailSequenceIntroductionOutcomeAction}
+          statusHref={`/clients/${clientId}/outreach?sequenceId=${sequenceId}#outreach-selected-sequence`}
           confirmationPhrase={SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE}
           modalTitle="Launch introduction sends?"
           modalBody={introModalBody}
