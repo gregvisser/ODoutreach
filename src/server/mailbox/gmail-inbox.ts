@@ -1,4 +1,5 @@
 import "server-only";
+import { InboxCursorExpiredError, type InboxPageOptions } from "./inbox-pagination";
 
 import { normalizeEmail } from "@/lib/normalize";
 
@@ -208,29 +209,55 @@ function clip(s: string, n: number): string {
  */
 export async function listGmailInboxMessageRefs(
   accessToken: string,
-  options: { maxResults?: number } = {},
+  options: { maxResults?: number } & InboxPageOptions = {},
 ): Promise<GmailApiMessageRef[]> {
   const max = Math.min(Math.max(options.maxResults ?? 25, 1), 50);
   const url = new URL(`${GMAIL}/users/me/messages`);
   url.searchParams.set("maxResults", String(max));
   url.searchParams.set("labelIds", "INBOX");
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const body = (await res.json().catch(() => ({}))) as {
-    messages?: GmailApiMessageRef[];
-    error?: { message?: string; code?: number };
-  };
-  if (!res.ok) {
-    const g = body.error;
-    const m = g?.message ?? "Gmail list failed";
-    throw new Error(`Gmail inbox list failed: ${m}`);
-  }
-  const v = body.messages;
-  if (!v || !Array.isArray(v)) {
-    return [];
-  }
-  return v;
+  const refs: GmailApiMessageRef[] = [];
+  const seenPages = new Set<string>();
+  const seenMessages = new Set<string>();
+  let pageToken = options.cursor || "";
+  do {
+    if (seenPages.has(pageToken) || seenPages.size >= 1000) {
+      throw new Error("Gmail inbox pagination did not complete; retry required");
+    }
+    seenPages.add(pageToken);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(30_000),
+    });
+    const body = await res.json() as {
+      messages?: GmailApiMessageRef[];
+      nextPageToken?: string;
+      error?: { message?: string };
+    };
+    if (options.cursor && (res.status === 400 || res.status === 410)) {
+      throw new InboxCursorExpiredError("Gmail inbox continuation expired; restart required");
+    }
+    if (!res.ok) {
+      throw new Error(`Gmail inbox list failed: ${body.error?.message ?? res.status}`);
+    }
+    // Gmail legitimately omits messages for an empty page.
+    if (body.messages !== undefined && !Array.isArray(body.messages)) {
+      throw new Error("Gmail inbox returned an invalid message page");
+    }
+    for (const ref of body.messages ?? []) {
+      if (!ref.id) throw new Error("Gmail inbox returned a message without an ID");
+      if (!seenMessages.has(ref.id)) refs.push(ref);
+      seenMessages.add(ref.id);
+    }
+    if (body.nextPageToken !== undefined && typeof body.nextPageToken !== "string") {
+      throw new Error("Gmail inbox returned an invalid continuation token");
+    }
+    pageToken = body.nextPageToken || "";
+    if (options.onContinuation && seenPages.size >= (options.maxPages ?? 1000)) break;
+  } while (pageToken);
+  options.onContinuation?.(pageToken || null);
+  return refs;
 }
 
 export async function getGmailMessageMetadata(
@@ -264,7 +291,7 @@ export async function getGmailMessageMetadata(
  */
 export async function fetchGmailInboxMessagesForSync(
   accessToken: string,
-  options: { maxResults?: number } = {},
+  options: { maxResults?: number } & InboxPageOptions = {},
 ): Promise<MappedGmailInboxRow[]> {
   const refs = await listGmailInboxMessageRefs(accessToken, options);
   const out: MappedGmailInboxRow[] = [];

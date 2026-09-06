@@ -1,6 +1,7 @@
 import "server-only";
 
 import { promises as dns } from "node:dns";
+import { isGoDomainAllowedForClient } from "@/lib/clients/client-link-domain";
 
 import {
   summariseTrackingDnsChecks,
@@ -196,8 +197,11 @@ export async function verifyClientTrackingDns(
   client: TrackedClientRow,
   resolver: TrackingDnsResolver,
 ): Promise<TrackingDnsSummary> {
-  const provider = resolveClientTrackingDnsProvider(client.mailboxes);
-  const sendingDomain = resolveClientSendingDomain(client.mailboxes);
+  const alignedMailboxes = client.mailboxes.filter((mailbox) =>
+    isGoDomainAllowedForClient(client.outreachLinkDomain ?? "", [mailbox.email]),
+  );
+  const provider = resolveClientTrackingDnsProvider(alignedMailboxes);
+  const sendingDomain = resolveClientSendingDomain(alignedMailboxes);
   if (!provider || !sendingDomain) {
     return {
       pass: false,

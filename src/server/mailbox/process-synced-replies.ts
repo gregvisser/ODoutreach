@@ -1,12 +1,9 @@
 import "server-only";
 
-import { prisma } from "@/lib/db";
 import { emailDomain, isInternalMail } from "@/lib/inbox/internal-mail";
 import { canonicalizeEmailForMatching, normalizeEmail } from "@/lib/normalize";
 import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
-import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
-import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
-import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
+import { applyLinkedReplyEffects, withReplyIdentityTransaction } from "@/server/email/inbound/reply-processing";
 
 /**
  * After mailbox inbox sync upserts an InboundMailboxMessage, this function
@@ -64,7 +61,7 @@ import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
  * moved from SQL to an in-code canonical check on the narrowed result, so
  * fetching remains bounded and no existing safety constraint was dropped.
  *
- * Idempotent: skips if an InboundReply already exists for this providerMessageId.
+ * Retries reuse the saved reply and repair its protective effects in one transaction.
  */
 
 /**
@@ -165,162 +162,151 @@ export async function processSyncedMessageForReply(input: {
   const senderIsInternal =
     senderDomain !== null && internalDomainSet.has(senderDomain);
 
-  const existing = await prisma.inboundReply.findFirst({
-    where: {
-      clientId: input.clientId,
-      providerMessageId: input.providerMessageId,
-    },
-    select: { id: true },
-  });
-  if (existing) {
-    return { created: false };
-  }
-
-  // 1) Definitive (only when we actually have an In-Reply-To header):
-  //    the reply's In-Reply-To equals the Message-ID we stamped on a
-  //    specific outbound send. Globally unique within the client.
-  // F4 — a thread-ref match is only trustworthy when the reply comes from an
-  // external party. An internal sender on the thread (a staff reply-all or
-  // forward that still carries our Message-ID) must NOT be linked to the
-  // prospect, even though the In-Reply-To matches our outbound.
-  let outbound =
-    hasInReplyTo && !senderIsInternal
-      ? await prisma.outboundEmail.findFirst({
-          where: {
-            clientId: input.clientId,
-            rfc822MessageId: inReplyTo,
-            // M5/M6 — when enabled, also require the reply to come FROM the
-            // address we emailed, so a forwarded/CC'd third party carrying our
-            // Message-ID can't be attributed to the prospect.
-            ...(input.requireThreadRefSenderMatch ? { toEmail: from } : {}),
-          },
-          orderBy: { sentAt: "desc" },
-          select: { id: true, contactId: true, status: true },
-        })
-      : null;
-  let matchMethod: "BY_THREAD_REF" | "BY_CONTACT_EMAIL" = "BY_THREAD_REF";
-
-  // 2) Subject-anchored contact match. Stamped (Gmail) sends can miss the
-  //    thread match for reasons outside our control — Gmail rewrites the
-  //    outgoing Message-ID at send time, and some recipients' clients drop
-  //    or mangle In-Reply-To — and the legacy fallback below deliberately
-  //    excludes stamped sends. Without this leg a Gmail-sent outreach reply
-  //    could NEVER link (observed in production: repliesLinked stayed 0 and
-  //    a confirmed Train Hugger lead reply never appeared for staff).
-  //    Anchoring on the reply's base subject (prefixes stripped) equalling
-  //    the subject WE sent to that exact recipient from that mailbox keeps
-  //    false positives out: an unrelated thread from the same contact has a
-  //    different subject.
-  if (!outbound && looksLikeReplyBySubject) {
-    const baseSubject = stripReplyPrefixes(subject);
-    if (baseSubject.length > 0) {
-      const candidates = await prisma.outboundEmail.findMany({
+  const result = await withReplyIdentityTransaction<{ created: boolean; replyId?: string }>(
+    input.clientId, input.providerMessageId, async (prisma) => {
+      const existing = await prisma.inboundReply.findFirst({
         where: {
           clientId: input.clientId,
-          mailboxIdentityId: input.mailboxIdentityId,
-          sentAt: { not: null, lte: input.receivedAt },
-          status: { in: ["SENT", "DELIVERED", "REPLIED"] },
-          subject: { equals: baseSubject, mode: "insensitive" },
+          providerMessageId: input.providerMessageId,
         },
-        orderBy: { sentAt: "desc" },
-        select: { id: true, contactId: true, status: true, toEmail: true },
+        select: { id: true, linkedOutboundEmailId: true, contactId: true, fromEmail: true,
+          subject: true, bodyPreview: true, snippet: true, receivedAt: true },
       });
-      outbound =
-        candidates.find(
-          (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
-        ) ?? null;
-      matchMethod = "BY_CONTACT_EMAIL";
-    }
-  }
+      if (existing) {
+        await applyLinkedReplyEffects(prisma, {
+          ...existing,
+          clientId: input.clientId,
+          // Use the saved association and sender; never rematch an old reply to a
+          // newer campaign. Fresh full body is usable only for the same sender.
+          bodyText: (from === existing.fromEmail ? input.bodyText : null)
+            ?? existing.bodyPreview ?? existing.snippet,
+          detectOptOut: true,
+        });
+        return { created: false };
+      }
 
-  // 3) Contact-email fallback: outbounds with no stamped Message-ID (legacy
-  //    Gmail or any Microsoft Graph send — we don't stamp Graph yet). Same
-  //    clientId + mailbox + recipient + sent-before-received + good status,
-  //    restricted to rfc822MessageId = null so modern Gmail sends aren't
-  //    loosely matched by an unrelated thread from the same contact (the
-  //    subject-anchored leg above is the safe path for stamped sends).
-  if (!outbound) {
-    const candidates = await prisma.outboundEmail.findMany({
-      where: {
+      // 1) Definitive (only when we actually have an In-Reply-To header):
+      //    the reply's In-Reply-To equals the Message-ID we stamped on a
+      //    specific outbound send. Globally unique within the client.
+      // F4 — a thread-ref match is only trustworthy when the reply comes from an
+      // external party. An internal sender on the thread (a staff reply-all or
+      // forward that still carries our Message-ID) must NOT be linked to the
+      // prospect, even though the In-Reply-To matches our outbound.
+      let outbound =
+        hasInReplyTo && !senderIsInternal
+          ? await prisma.outboundEmail.findFirst({
+              where: {
+                clientId: input.clientId,
+                rfc822MessageId: inReplyTo,
+                // M5/M6 — when enabled, also require the reply to come FROM the
+                // address we emailed, so a forwarded/CC'd third party carrying our
+                // Message-ID can't be attributed to the prospect.
+                ...(input.requireThreadRefSenderMatch ? { toEmail: from } : {}),
+              },
+              orderBy: { sentAt: "desc" },
+              select: { id: true, contactId: true, status: true },
+            })
+          : null;
+      let matchMethod: "BY_THREAD_REF" | "BY_CONTACT_EMAIL" = "BY_THREAD_REF";
+
+      // 2) Subject-anchored contact match. Stamped (Gmail) sends can miss the
+      //    thread match for reasons outside our control — Gmail rewrites the
+      //    outgoing Message-ID at send time, and some recipients' clients drop
+      //    or mangle In-Reply-To — and the legacy fallback below deliberately
+      //    excludes stamped sends. Without this leg a Gmail-sent outreach reply
+      //    could NEVER link (observed in production: repliesLinked stayed 0 and
+      //    a confirmed Train Hugger lead reply never appeared for staff).
+      //    Anchoring on the reply's base subject (prefixes stripped) equalling
+      //    the subject WE sent to that exact recipient from that mailbox keeps
+      //    false positives out: an unrelated thread from the same contact has a
+      //    different subject.
+      if (!outbound && looksLikeReplyBySubject) {
+        const baseSubject = stripReplyPrefixes(subject);
+        if (baseSubject.length > 0) {
+          const candidates = await prisma.outboundEmail.findMany({
+            where: {
+              clientId: input.clientId,
+              mailboxIdentityId: input.mailboxIdentityId,
+              sentAt: { not: null, lte: input.receivedAt },
+              status: { in: ["SENT", "DELIVERED", "REPLIED"] },
+              subject: { equals: baseSubject, mode: "insensitive" },
+            },
+            orderBy: { sentAt: "desc" },
+            select: { id: true, contactId: true, status: true, toEmail: true },
+          });
+          outbound =
+            candidates.find(
+              (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
+            ) ?? null;
+          matchMethod = "BY_CONTACT_EMAIL";
+        }
+      }
+
+      // 3) Contact-email fallback: outbounds with no stamped Message-ID (legacy
+      //    Gmail or any Microsoft Graph send — we don't stamp Graph yet). Same
+      //    clientId + mailbox + recipient + sent-before-received + good status,
+      //    restricted to rfc822MessageId = null so modern Gmail sends aren't
+      //    loosely matched by an unrelated thread from the same contact (the
+      //    subject-anchored leg above is the safe path for stamped sends).
+      if (!outbound) {
+        const candidates = await prisma.outboundEmail.findMany({
+          where: {
+            clientId: input.clientId,
+            mailboxIdentityId: input.mailboxIdentityId,
+            sentAt: { not: null, lte: input.receivedAt },
+            status: { in: ["SENT", "DELIVERED", "REPLIED"] },
+            rfc822MessageId: null,
+          },
+          orderBy: { sentAt: "desc" },
+          select: { id: true, contactId: true, status: true, toEmail: true },
+        });
+        outbound =
+          candidates.find(
+            (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
+          ) ?? null;
+        matchMethod = "BY_CONTACT_EMAIL";
+      }
+
+      if (!outbound) {
+        return { created: false };
+      }
+
+      const reply = await prisma.inboundReply.create({
+        data: {
+          clientId: input.clientId,
+          contactId: outbound.contactId,
+          linkedOutboundEmailId: outbound.id,
+          providerMessageId: input.providerMessageId,
+          inReplyToProviderId: inReplyTo,
+          fromEmail: from,
+          toEmail: input.toEmail ? normalizeEmail(input.toEmail) : null,
+          subject: input.subject,
+          snippet: input.snippet,
+          bodyPreview: input.bodyPreview,
+          receivedAt: input.receivedAt,
+          ingestionSource: "mailbox_sync",
+          matchMethod,
+        },
+      });
+
+      await applyLinkedReplyEffects(prisma, {
         clientId: input.clientId,
-        mailboxIdentityId: input.mailboxIdentityId,
-        sentAt: { not: null, lte: input.receivedAt },
-        status: { in: ["SENT", "DELIVERED", "REPLIED"] },
-        rfc822MessageId: null,
-      },
-      orderBy: { sentAt: "desc" },
-      select: { id: true, contactId: true, status: true, toEmail: true },
-    });
-    outbound =
-      candidates.find(
-        (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
-      ) ?? null;
-    matchMethod = "BY_CONTACT_EMAIL";
-  }
+        linkedOutboundEmailId: outbound.id,
+        contactId: outbound.contactId,
+        fromEmail: from,
+        subject: input.subject,
+        bodyText: input.bodyText ?? input.bodyPreview ?? input.snippet,
+        receivedAt: input.receivedAt,
+        detectOptOut: true,
+      });
 
-  if (!outbound) {
-    return { created: false };
-  }
-
-  const reply = await prisma.inboundReply.create({
-    data: {
-      clientId: input.clientId,
-      contactId: outbound.contactId,
-      linkedOutboundEmailId: outbound.id,
-      providerMessageId: input.providerMessageId,
-      inReplyToProviderId: inReplyTo,
-      fromEmail: from,
-      toEmail: input.toEmail ? normalizeEmail(input.toEmail) : null,
-      subject: input.subject,
-      snippet: input.snippet,
-      bodyPreview: input.bodyPreview,
-      receivedAt: input.receivedAt,
-      ingestionSource: "mailbox_sync",
-      matchMethod,
+      return { created: true, replyId: reply.id };
     },
-  });
-
-  if (canApplyReplyMilestone(outbound.status)) {
-    await prisma.outboundEmail.update({
-      where: { id: outbound.id },
-      data: { status: "REPLIED" },
-    });
+  );
+  // Advisory classification is outside the transaction and never re-charged
+  // when an existing reply is replayed to repair its protective effects.
+  if (result.created && result.replyId) {
+    await classifyInboundReplyQuietly({ replyId: result.replyId });
   }
-
-  // PR #137 — stop follow-ups for the matching sequence enrolment. Safe to
-  // call unconditionally: it's a no-op when the outbound has no step-send
-  // record, when the enrolment is already EXCLUDED/COMPLETED, or when the
-  // same reply is re-processed.
-  await stopFollowUpsForLinkedReply({
-    clientId: input.clientId,
-    outboundEmailId: outbound.id,
-  });
-
-  // H3 — if this matched reply explicitly demands to stop (opt-out / complaint),
-  // suppress the sender for FUTURE campaigns too (stopping follow-ups only ends
-  // THIS sequence). Flag-gated (`MAILBOX_COMPLAINT_DETECTION_ENABLED`); no-op
-  // when off. The sender is a known contacted prospect (we matched their send),
-  // and seed-allowlist addresses are exempt inside suppressRecipientForHardBounce.
-  await suppressReplyOptOut({
-    clientId: input.clientId,
-    fromEmail: from,
-    subject: input.subject,
-    // Full body first. This is the compliance leg: reply MATCHING never reads
-    // the body (headers and subject only), so only opt-out detection was
-    // affected -- and it is the one with a legal obligation behind it.
-    bodyText: input.bodyText ?? input.bodyPreview ?? input.snippet,
-    contactId: outbound.contactId,
-    outboundEmailId: outbound.id,
-    receivedAt: input.receivedAt,
-  });
-
-  // Row 80 — label the reply so a "yes, happy to talk" is routed to a person
-  // within minutes rather than sitting in a list. Runs LAST on purpose: every
-  // guarantee above (the reply is stored, follow-ups are stopped, an opt-out is
-  // suppressed) has already happened and cannot be affected by this. It never
-  // throws, and the label is advisory — nothing here sends, suppresses or stops
-  // anything on the strength of a model's opinion.
-  await classifyInboundReplyQuietly({ replyId: reply.id });
-
-  return { created: true, replyId: reply.id };
+  return result;
 }

@@ -4,13 +4,14 @@
 name: Deploy production (Azure Web App)
 
 on:
-  workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 concurrency:
   group: deploy-production-azure
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   id-token: write # required for azure/login OIDC
@@ -18,8 +19,12 @@ permissions:
 
 jobs:
   build-and-deploy:
-    # Only deploy from main (including manual runs — pick branch "main" in the Actions UI).
-    if: github.ref == 'refs/heads/main'
+    # Only successful trusted main CI runs can release their exact tested commit.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
       # Compile-only — same placeholders as CI (real secrets live in Azure App Service configuration).
@@ -29,7 +34,18 @@ jobs:
       AUTH_MICROSOFT_ENTRA_ID_ISSUER: "https://login.microsoftonline.com/22222222-2222-2222-2222-222222222222/v2.0/"
       DATABASE_URL: "postgresql://ci:ci@127.0.0.1:5432/ci_build?schema=public"
     steps:
+      - name: Reject superseded releases
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const main = await github.rest.git.getRef({ ...context.repo, ref: 'heads/main' });
+            if (main.data.object.sha !== context.payload.workflow_run.head_sha) {
+              core.setFailed('Main has changed since this CI run; wait for the newer version to pass CI.');
+            }
+
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v5
         with:
@@ -47,17 +63,11 @@ jobs:
       # against production (operator session / Kudu) or enable this gated step:
       #   Repository variable: PRODUCTION_PRISMA_MIGRATE = true
       #   Repository secret:    PRODUCTION_DATABASE_URL = (production Postgres URL, never log)
-      - name: Prisma migrate deploy (production database)
-        if: ${{ vars.PRODUCTION_PRISMA_MIGRATE == 'true' }}
-        env:
-          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
-        run: npx prisma migrate deploy
-
       - name: Build (webpack — avoids Turbopack workspace-root issue on CI)
         env:
           # Baked into the bundle so /api/build-info reports the live
           # commit + build time at runtime (Azure has no GITHUB_SHA).
-          NEXT_PUBLIC_BUILD_COMMIT: ${{ github.sha }}
+          NEXT_PUBLIC_BUILD_COMMIT: ${{ github.event.workflow_run.head_sha }}
           # Error monitoring. This is the ONLY build that switches Sentry on: the
           # DSN used to be hardcoded in the source, so CI's e2e build reported
           # into this same production project and burned its ingest quota until
@@ -75,6 +85,21 @@ jobs:
 
       - name: Prune devDependencies for deployment
         run: npm prune --omit=dev
+
+      - name: Recheck release is still current
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const main = await github.rest.git.getRef({ ...context.repo, ref: 'heads/main' });
+            if (main.data.object.sha !== context.payload.workflow_run.head_sha) {
+              core.setFailed('A newer main commit arrived during the build; refusing a stale deployment.');
+            }
+
+      - name: Prisma migrate deploy (production database)
+        if: ${{ vars.PRODUCTION_PRISMA_MIGRATE == 'true' }}
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npx prisma migrate deploy
 
       # Log in immediately before deploy so the OIDC/Azure token lifetime covers deployment only.
       - name: Azure login (OIDC)
@@ -102,7 +127,7 @@ jobs:
       # connectivity. This surfaces a bad deploy; it does not roll back.
       - name: Post-deploy health check
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           base="https://app-opensdoors-outreach-prod.azurewebsites.net"
           for attempt in $(seq 1 20); do

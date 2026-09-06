@@ -8,7 +8,8 @@ const prismaMock = vi.hoisted(() => ({
   outboundEmail: {
     findFirst: vi.fn(),
     findMany: vi.fn(),
-    update: vi.fn(),
+    updateMany: vi.fn(),
+    findUnique: vi.fn(),
   },
 }));
 
@@ -18,9 +19,10 @@ const stopFollowUpsMock = vi.hoisted(() =>
 
 const classifyReplyMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-vi.mock("@/lib/db", () => ({
-  prisma: prismaMock,
-}));
+vi.mock("@/lib/db", () => {
+  const tx = { ...prismaMock, $queryRaw: vi.fn().mockResolvedValue([{ value: 1 }]) };
+  return { prisma: { ...prismaMock, $transaction: (fn: (db: typeof tx) => Promise<unknown>) => fn(tx) } };
+});
 
 vi.mock("@/lib/normalize", () => ({
   normalizeEmail: (e: string) => e.toLowerCase().trim(),
@@ -106,6 +108,7 @@ const BASE_INPUT = {
 describe("processSyncedMessageForReply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.outboundEmail.findUnique.mockImplementation(async ({ where }) => ({ id: where.id, status: "SENT" }));
     prismaMock.outboundEmail.findMany.mockResolvedValue([]);
     stopFollowUpsMock.mockResolvedValue({ enrollmentsStopped: 0 });
     classifyReplyMock.mockResolvedValue(undefined);
@@ -203,7 +206,7 @@ describe("processSyncedMessageForReply", () => {
     expect(stopFollowUpsMock).toHaveBeenCalledWith({
       clientId: "c1",
       outboundEmailId: "ob-stop",
-    });
+    }, expect.any(Object));
   });
 
   /**
@@ -255,12 +258,18 @@ describe("processSyncedMessageForReply", () => {
     expect(stopFollowUpsMock).not.toHaveBeenCalled();
   });
 
-  it("does not call stopFollowUpsForLinkedReply when reply is a duplicate", async () => {
-    prismaMock.inboundReply.findFirst.mockResolvedValue({ id: "existing" });
-
+  it("repairs follow-up effects for an existing reply without rematching it", async () => {
+    prismaMock.inboundReply.findFirst.mockResolvedValue({
+      id: "existing", linkedOutboundEmailId: "original-outbound", contactId: "ct1",
+      fromEmail: BASE_INPUT.fromEmail, subject: BASE_INPUT.subject,
+      bodyPreview: BASE_INPUT.bodyPreview, snippet: BASE_INPUT.snippet, receivedAt: BASE_INPUT.receivedAt,
+    });
     await processSyncedMessageForReply(BASE_INPUT);
-
-    expect(stopFollowUpsMock).not.toHaveBeenCalled();
+    expect(stopFollowUpsMock).toHaveBeenCalledWith({ clientId: "c1", outboundEmailId: "original-outbound" }, expect.any(Object));
+    expect(prismaMock.outboundEmail.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.outboundEmail.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
+    expect(classifyReplyMock).not.toHaveBeenCalled();
   });
 
   it("falls back to contact-email match for legacy sends (BY_CONTACT_EMAIL)", async () => {
@@ -387,8 +396,8 @@ describe("processSyncedMessageForReply", () => {
 
     await processSyncedMessageForReply(BASE_INPUT);
 
-    expect(prismaMock.outboundEmail.update).toHaveBeenCalledWith({
-      where: { id: "ob1" },
+    expect(prismaMock.outboundEmail.updateMany).toHaveBeenCalledWith({
+      where: { id: "ob1", clientId: "c1", status: "SENT" },
       data: { status: "REPLIED" },
     });
   });
@@ -400,12 +409,13 @@ describe("processSyncedMessageForReply", () => {
       contactId: "ct2",
       status: "DELIVERED",
     });
+    prismaMock.outboundEmail.findUnique.mockResolvedValue({ id: "ob2", status: "DELIVERED" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply2" });
 
     await processSyncedMessageForReply(BASE_INPUT);
 
-    expect(prismaMock.outboundEmail.update).toHaveBeenCalledWith({
-      where: { id: "ob2" },
+    expect(prismaMock.outboundEmail.updateMany).toHaveBeenCalledWith({
+      where: { id: "ob2", clientId: "c1", status: "DELIVERED" },
       data: { status: "REPLIED" },
     });
   });
@@ -417,14 +427,12 @@ describe("processSyncedMessageForReply", () => {
       contactId: "ct3",
       status: "REPLIED",
     });
+    prismaMock.outboundEmail.findUnique.mockResolvedValue({ id: "ob3", status: "REPLIED" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply3" });
 
     await processSyncedMessageForReply(BASE_INPUT);
 
-    expect(prismaMock.outboundEmail.update).toHaveBeenCalledWith({
-      where: { id: "ob3" },
-      data: { status: "REPLIED" },
-    });
+    expect(prismaMock.outboundEmail.updateMany).not.toHaveBeenCalled();
   });
 
   it("does not update BOUNCED outbound to REPLIED", async () => {
@@ -434,11 +442,12 @@ describe("processSyncedMessageForReply", () => {
       contactId: "ct4",
       status: "BOUNCED",
     });
+    prismaMock.outboundEmail.findUnique.mockResolvedValue({ id: "ob4", status: "BOUNCED" });
     prismaMock.inboundReply.create.mockResolvedValue({ id: "reply4" });
 
     await processSyncedMessageForReply(BASE_INPUT);
 
-    expect(prismaMock.outboundEmail.update).not.toHaveBeenCalled();
+    expect(prismaMock.outboundEmail.updateMany).not.toHaveBeenCalled();
   });
 
   it("skips if InboundReply already exists for this providerMessageId", async () => {

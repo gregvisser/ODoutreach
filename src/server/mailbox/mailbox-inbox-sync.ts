@@ -1,4 +1,5 @@
 import "server-only";
+import { InboxCursorExpiredError } from "./inbox-pagination";
 
 import { prisma } from "@/lib/db";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
@@ -106,6 +107,7 @@ export type InboxSyncResult = {
   ingested: number;
   totalSeen: number;
   repliesLinked: number;
+  backlogPending?: boolean;
 } | { ok: false; error: string };
 
 export async function syncMailboxInboxForMailbox(input: {
@@ -174,10 +176,23 @@ export async function syncMicrosoftInboxForMailbox(input: {
     return { ok: false, error: msg };
   }
 
+  let nextCursor: string | null = null;
   let items: Awaited<ReturnType<typeof listMicrosoftGraphInboxMessages>>;
   try {
-    items = await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, { top });
+    items = await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, {
+      top, maxPages: 1, onContinuation: (cursor) => { nextCursor = cursor; },
+    });
+    const backlogCursor = mailbox.inboxSyncCursor || nextCursor;
+    if (backlogCursor) {
+      items.push(...await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, {
+        top, cursor: backlogCursor, maxPages: 3,
+        onContinuation: (cursor) => { nextCursor = cursor; },
+      }));
+    }
   } catch (e) {
+    if (e instanceof InboxCursorExpiredError) {
+      await prisma.clientMailboxIdentity.updateMany({ where: { id: mailbox.id, inboxSyncCursor: mailbox.inboxSyncCursor ?? null }, data: { inboxSyncCursor: null } });
+    }
     const msg = e instanceof Error ? e.message : "Graph fetch failed";
     // A 401 from Graph can be the credentials, not the request — so this path
     // classifies too, and flips the mailbox out of CONNECTED when it is.
@@ -326,6 +341,11 @@ export async function syncMicrosoftInboxForMailbox(input: {
     n += 1;
   }
 
+  // Compare-and-set prevents overlapping syncs from moving a newer cursor backwards.
+  await prisma.clientMailboxIdentity.updateMany({
+    where: { id: mailbox.id, inboxSyncCursor: mailbox.inboxSyncCursor ?? null },
+    data: { inboxSyncCursor: nextCursor },
+  });
   const now = new Date();
   await prisma.clientMailboxIdentity.update({
     where: { id: mailbox.id },
@@ -342,6 +362,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       ingested: n,
       totalSeen: items.length,
       repliesLinked,
+      backlogPending: nextCursor !== null,
       skippedInternal,
       bouncesSuppressed,
       bouncesStamped,
@@ -352,7 +373,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
     },
   });
 
-  return { ok: true, ingested: n, totalSeen: items.length, repliesLinked };
+  return { ok: true, ingested: n, totalSeen: items.length, repliesLinked, backlogPending: nextCursor !== null };
 }
 
 export async function syncGoogleInboxForMailbox(input: {
@@ -393,10 +414,23 @@ export async function syncGoogleInboxForMailbox(input: {
     return { ok: false, error: msg };
   }
 
+  let nextCursor: string | null = null;
   let rows: Awaited<ReturnType<typeof fetchGmailInboxMessagesForSync>>;
   try {
-    rows = await fetchGmailInboxMessagesForSync(access, { maxResults: top });
+    rows = await fetchGmailInboxMessagesForSync(access, {
+      maxResults: top, maxPages: 1, onContinuation: (cursor) => { nextCursor = cursor; },
+    });
+    const backlogCursor = mailbox.inboxSyncCursor || nextCursor;
+    if (backlogCursor) {
+      rows.push(...await fetchGmailInboxMessagesForSync(access, {
+        maxResults: top, cursor: backlogCursor, maxPages: 3,
+        onContinuation: (cursor) => { nextCursor = cursor; },
+      }));
+    }
   } catch (e) {
+    if (e instanceof InboxCursorExpiredError) {
+      await prisma.clientMailboxIdentity.updateMany({ where: { id: mailbox.id, inboxSyncCursor: mailbox.inboxSyncCursor ?? null }, data: { inboxSyncCursor: null } });
+    }
     const msg = e instanceof Error ? e.message : "Gmail fetch failed";
     // See the Graph path above — a 401 here can be the credentials too.
     await recordMailboxSyncFailure({
@@ -539,6 +573,11 @@ export async function syncGoogleInboxForMailbox(input: {
     n += 1;
   }
 
+  // Compare-and-set prevents overlapping syncs from moving a newer cursor backwards.
+  await prisma.clientMailboxIdentity.updateMany({
+    where: { id: mailbox.id, inboxSyncCursor: mailbox.inboxSyncCursor ?? null },
+    data: { inboxSyncCursor: nextCursor },
+  });
   const now = new Date();
   await prisma.clientMailboxIdentity.update({
     where: { id: mailbox.id },
@@ -555,6 +594,7 @@ export async function syncGoogleInboxForMailbox(input: {
       ingested: n,
       totalSeen: rows.length,
       repliesLinked,
+      backlogPending: nextCursor !== null,
       skippedInternal,
       bouncesSuppressed,
       bouncesStamped,
@@ -563,7 +603,7 @@ export async function syncGoogleInboxForMailbox(input: {
     },
   });
 
-  return { ok: true, ingested: n, totalSeen: rows.length, repliesLinked };
+  return { ok: true, ingested: n, totalSeen: rows.length, repliesLinked, backlogPending: nextCursor !== null };
 }
 
 export type ReplySyncBatchResult = {

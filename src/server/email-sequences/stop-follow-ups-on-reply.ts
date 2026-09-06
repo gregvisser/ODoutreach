@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 
 /**
@@ -27,11 +28,11 @@ import { prisma } from "@/lib/db";
 export async function stopFollowUpsForLinkedReply(args: {
   clientId: string;
   outboundEmailId: string;
-}): Promise<{ enrollmentsStopped: number }> {
+}, db: Prisma.TransactionClient = prisma): Promise<{ enrollmentsStopped: number }> {
   const { clientId, outboundEmailId } = args;
   if (!clientId || !outboundEmailId) return { enrollmentsStopped: 0 };
 
-  const stepSends = await prisma.clientEmailSequenceStepSend.findMany({
+  const stepSends = await db.clientEmailSequenceStepSend.findMany({
     where: {
       clientId,
       outboundEmailId,
@@ -58,7 +59,7 @@ export async function stopFollowUpsForLinkedReply(args: {
 
   if (targetEnrollmentIds.size === 0) return { enrollmentsStopped: 0 };
 
-  const result = await prisma.clientEmailSequenceEnrollment.updateMany({
+  const result = await db.clientEmailSequenceEnrollment.updateMany({
     where: {
       id: { in: Array.from(targetEnrollmentIds) },
       clientId,

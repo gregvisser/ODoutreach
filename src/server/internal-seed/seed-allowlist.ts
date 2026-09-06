@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
   isSeedEmailDomainAllowed,
@@ -48,11 +49,14 @@ export async function listActiveInternalSeedEmails(): Promise<string[]> {
  * address. Default (flag OFF) is always `false`, preserving prior behaviour and
  * doing no I/O. Used by the suppression gate and the suppression-write guards.
  */
-export async function isInternalSeedAddress(email: string): Promise<boolean> {
+export async function isInternalSeedAddress(
+  email: string,
+  db: Prisma.TransactionClient = prisma,
+): Promise<boolean> {
   if (!isInternalSeedAllowlistEnabled()) return false;
   const normalized = normalizeSeedEmail(email);
   if (!normalized) return false;
-  const hit = await prisma.internalSeedAddress.findFirst({
+  const hit = await db.internalSeedAddress.findFirst({
     where: { email: normalized, isActive: true },
     select: { id: true },
   });

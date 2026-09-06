@@ -50,7 +50,7 @@ import {
 import { buildMailboxGovernedEmailBodies } from "@/lib/unsubscribe/outreach-mailbox-bodies";
 import { appendOpenTrackingPixel } from "@/lib/tracking/open-pixel";
 import {
-  buildOpenTrackingPixelUrlForClient,
+  buildOpenTrackingPixelUrlForSender,
   CLIENT_OPEN_TRACKING_SELECT,
 } from "@/lib/tracking/client-open-tracking";
 import { getOutboundEmailProvider } from "../providers";
@@ -679,7 +679,7 @@ async function sendViaConnectedMailboxOrFail(
       // /api/track/open endpoint can record opens. Null — no pixel — unless
       // this client is opted in and their link domain is verified.
       const gmailPixelUrl = trackingClient
-        ? buildOpenTrackingPixelUrlForClient(row.correlationId, trackingClient)
+        ? buildOpenTrackingPixelUrlForSender(row.correlationId, trackingClient, fromForLog)
         : null;
       const gmailHtml = gmailPixelUrl
         ? appendOpenTrackingPixel(bodyParts.html, gmailPixelUrl)
@@ -810,7 +810,7 @@ async function sendViaConnectedMailboxOrFail(
   });
   // Open tracking pixel (see Gmail path above) — same per-client opt-in.
   const graphPixelUrl = trackingClient
-    ? buildOpenTrackingPixelUrlForClient(row.correlationId, trackingClient)
+    ? buildOpenTrackingPixelUrlForSender(row.correlationId, trackingClient, fromForLog)
     : null;
   const graphHtml = graphPixelUrl
     ? appendOpenTrackingPixel(bodyParts.html, graphPixelUrl)

@@ -30,19 +30,22 @@ const {
   classifyReply: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({
-  prisma: {
+vi.mock("@/lib/db", () => {
+  const tx = {
+    $queryRaw: vi.fn().mockResolvedValue([{ value: 1 }]),
     inboundReply: {
       findFirst: (...a: unknown[]) => inboundFindFirst(...a),
       create: (...a: unknown[]) => inboundCreate(...a),
     },
     outboundEmail: {
       findFirst: (...a: unknown[]) => outboundFindFirst(...a),
-      update: (...a: unknown[]) => outboundUpdate(...a),
+      updateMany: (...a: unknown[]) => outboundUpdate(...a),
+      findUnique: vi.fn(async ({ where }) => ({ id: where.id, status: "SENT" })),
     },
     contact: { findFirst: (...a: unknown[]) => contactFindFirst(...a) },
-  },
-}));
+  };
+  return { prisma: { ...tx, $transaction: (fn: (db: typeof tx) => Promise<unknown>) => fn(tx) } };
+});
 
 vi.mock("@/server/inbox/internal-domains", () => ({
   resolveInternalDomainsForClient: (...a: unknown[]) => resolveInternalDomains(...a),

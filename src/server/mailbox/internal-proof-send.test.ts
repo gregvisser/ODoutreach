@@ -59,6 +59,7 @@ const baseMailbox: ClientMailboxIdentity = {
   isSendingEnabled: true,
   emailsSentToday: 0,
   dailyWindowResetAt: null,
+  inboxSyncCursor: null,
   lastSyncAt: null,
   lastError: null,
   oauthState: null,

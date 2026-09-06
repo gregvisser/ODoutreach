@@ -24,12 +24,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
   inboundReply: { findFirst: vi.fn(), create: vi.fn() },
-  outboundEmail: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+  outboundEmail: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(async ({ where }) => ({ id: where.id, status: "SENT" })) },
 }));
 
 const suppressReplyOptOutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
+vi.mock("@/lib/db", () => {
+  const tx = { ...prismaMock, $queryRaw: vi.fn().mockResolvedValue([{ value: 1 }]) };
+  return { prisma: { ...prismaMock, $transaction: (fn: (db: typeof tx) => Promise<unknown>) => fn(tx) } };
+});
 vi.mock("@/lib/normalize", () => ({
   normalizeEmail: (e: string) => e.toLowerCase().trim(),
   canonicalizeEmailForMatching: (e: string) => {
