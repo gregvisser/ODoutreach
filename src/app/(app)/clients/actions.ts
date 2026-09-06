@@ -31,6 +31,9 @@ export async function createClientFromOnboarding(input: {
   | { ok: false; error: string; reason?: string }
 > {
   const staff = await requireOpensDoorsStaff();
+  if (!staff.isSuperAdmin) {
+    return { ok: false, error: "Only the owner can add a client workspace.", reason: "OWNER_ONLY" };
+  }
 
   const validation = validateNewClientShellInput(input);
   if (!validation.ok) {
@@ -51,35 +54,39 @@ export async function createClientFromOnboarding(input: {
     };
   }
 
-  const client = await prisma.client.create({
-    data: {
-      name: normalized.name,
-      slug: normalized.slug,
-      industry: normalized.industry,
-      website: normalized.website,
-      notes: normalized.notes,
-      status: "ONBOARDING",
-    },
-    select: { id: true, slug: true },
-  });
+  const client = await prisma.$transaction(async (tx) => {
+    const client = await tx.client.create({
+      data: {
+        name: normalized.name,
+        slug: normalized.slug,
+        industry: normalized.industry,
+        website: normalized.website,
+        notes: normalized.notes,
+        status: "ONBOARDING",
+      },
+      select: { id: true, slug: true },
+    });
 
-  await prisma.clientMembership.create({
-    data: {
-      staffUserId: staff.id,
-      clientId: client.id,
-      role: "LEAD",
-    },
-  });
+    await tx.clientMembership.create({
+      data: {
+        staffUserId: staff.id,
+        clientId: client.id,
+        role: "LEAD",
+      },
+    });
 
-  await prisma.auditLog.create({
-    data: {
-      staffUserId: staff.id,
-      clientId: client.id,
-      action: "CREATE",
-      entityType: "Client",
-      entityId: client.id,
-      metadata: { name: normalized.name, slug: normalized.slug },
-    },
+    await tx.auditLog.create({
+      data: {
+        staffUserId: staff.id,
+        clientId: client.id,
+        action: "CREATE",
+        entityType: "Client",
+        entityId: client.id,
+        metadata: { name: normalized.name, slug: normalized.slug },
+      },
+    });
+
+    return client;
   });
 
   revalidatePath("/clients");

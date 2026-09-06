@@ -130,7 +130,7 @@ export function isStaffEmailAllowed(staff: Pick<StaffUser, "email">): boolean {
 
 /**
  * Staff row must exist (or link by pre-provisioned email) and be active.
- * Domain policy is enforced in `requireOpensDoorsStaff` / `gateStaffAccess`, not here.
+ * The configured email-domain policy applies to every entry point.
  */
 export async function requireStaffUser(): Promise<StaffUser> {
   const staff = await loadStaffRecord();
@@ -139,6 +139,9 @@ export async function requireStaffUser(): Promise<StaffUser> {
   }
   if (!staff.isActive) {
     throw new Error("STAFF_INACTIVE");
+  }
+  if (!isStaffEmailAllowed(staff)) {
+    throw new Error("STAFF_EMAIL_NOT_ALLOWED");
   }
   return staff;
 }

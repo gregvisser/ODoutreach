@@ -590,6 +590,16 @@ export async function prepareClientEmailSequenceStepSendsAction(
 export async function sendClientEmailSequenceIntroductionAction(
   formData: FormData,
 ): Promise<void> {
+  const outcome = await launchClientEmailSequenceIntroductionOutcomeAction(formData);
+  const clientId = getClientIdFromForm(formData);
+  revalidatePath(`/clients/${clientId}/outreach`);
+  redirectBack(clientId, outcome, String(formData.get("sequenceId") ?? "").trim());
+}
+
+/** Return the result without appending a refreshed page to the action response. */
+export async function launchClientEmailSequenceIntroductionOutcomeAction(
+  formData: FormData,
+): Promise<ActionFlash> {
   const staff = await requireOpensDoorsStaff();
   const clientId = getClientIdFromForm(formData);
   const sequenceId = String(formData.get("sequenceId") ?? "").trim();
@@ -601,14 +611,14 @@ export async function sendClientEmailSequenceIntroductionAction(
     formData.get("confirmationPhrase"),
   );
   if (!sequenceId) {
-    redirectBack(clientId, { kind: "error", message: "Missing sequence id." });
+    return { kind: "error", message: "Missing sequence id." };
   }
 
   // Row 109 — `requireClientAccess` / `requireClientEmailSequenceMutator` used to
   // sit BEFORE this try/catch, so any failure there (a permission edge case, a
   // transient DB hiccup) threw uncaught and the operator saw no outcome at all —
   // the exact silence this row exists to close. Every check that can fail once
-  // `clientId` is known now runs inside the block that always redirects back
+  // `clientId` is known now runs inside the block that returns an outcome
   // with a named reason.
   try {
     await requireClientAccess(staff, clientId);
@@ -620,7 +630,6 @@ export async function sendClientEmailSequenceIntroductionAction(
       sequenceId,
       confirmationPhrase,
     });
-    revalidatePath(`/clients/${clientId}/outreach`);
     const dispatchOutcome = await loadSequenceDispatchOutcome(
       result.queued.map((q) => q.outboundEmailId),
     );
@@ -661,18 +670,10 @@ export async function sendClientEmailSequenceIntroductionAction(
       flashKind === "ok"
         ? parts.join(" · ")
         : `No introductions queued. ${parts.join(" · ")}`;
-    redirectBack(
-      clientId,
-      { kind: flashKind, message: flashMsg },
-      sequenceId,
-    );
+    return { kind: flashKind, message: flashMsg };
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
-    redirectBack(
-      clientId,
-      { kind: "error", message: flashForError(e) },
-      sequenceId,
-    );
+    return { kind: "error", message: flashForError(e) };
   }
 }
 

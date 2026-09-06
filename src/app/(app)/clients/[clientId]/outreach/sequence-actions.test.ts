@@ -96,9 +96,11 @@ vi.mock("@/server/email-sequences/mutations", () => ({
 }));
 
 import {
+  launchClientEmailSequenceIntroductionOutcomeAction,
   sendClientEmailSequenceIntroductionAction,
   sendClientEmailSequenceStepAction,
 } from "./sequence-actions";
+import { revalidatePath } from "next/cache";
 
 function formData(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -118,6 +120,15 @@ afterEach(() => {
 });
 
 describe("sendClientEmailSequenceIntroductionAction — a failed access/mutator check always produces a visible outcome", () => {
+  it("returns an explicit denied outcome without refreshing or redirecting the page", async () => {
+    accessMock.mockRejectedValueOnce(new Error("FORBIDDEN_CLIENT"));
+    await expect(launchClientEmailSequenceIntroductionOutcomeAction(formData({
+      clientId: "cl_1", sequenceId: "seq_1", confirmationPhrase: "SEND INTRODUCTION",
+    }))).resolves.toMatchObject({ kind: "error", message: expect.stringContaining("FORBIDDEN_CLIENT") });
+    expect(introBatchMock).not.toHaveBeenCalled();
+    expect(redirectMock).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
   it("redirects with the named reason when requireClientAccess fails, instead of throwing uncaught", async () => {
     accessMock.mockRejectedValueOnce(new Error("FORBIDDEN_CLIENT"));
 

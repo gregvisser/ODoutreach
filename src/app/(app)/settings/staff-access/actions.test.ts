@@ -70,6 +70,11 @@ describe("inviteStaffUser", () => {
     });
   });
 
+  it("defaults a new staff invitation to OPERATOR", async () => {
+    expect(await inviteStaffUser({ email: "staff@example.com" })).toMatchObject({ ok: true });
+    expect(staffUserCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ role: "OPERATOR" }) });
+  });
+
   it("writes and invites using a trimmed, lowercase staff email", async () => {
     await expect(
       inviteStaffUser({

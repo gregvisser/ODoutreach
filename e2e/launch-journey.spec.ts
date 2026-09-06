@@ -35,9 +35,26 @@ import {
   E2E_STORAGE_STATE,
 } from "./fixtures";
 
+test.use({ trace: "retain-on-failure" });
+
 test.describe("Launch journey — sequence introduction dispatch", () => {
-  test.describe.configure({ retries: 0 });
+  test.describe.configure({ retries: 0, mode: "serial" });
   test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
+
+  test("a lost action response gives an uncertain result and blocks another launch", async ({ page }) => {
+    await page.goto(`/clients/${E2E_LAUNCH_CLIENT.id}/outreach?sequenceId=${E2E_LAUNCH_SEQUENCE.id}`);
+    await page.route("**/outreach?sequenceId=*", async (route) => {
+      if (route.request().method() === "POST") await route.abort("failed");
+      else await route.continue();
+    });
+    const selected = page.getByRole("main").locator("#outreach-selected-sequence");
+    const trigger = selected.getByRole("button", { name: "Launch sequence" });
+    await trigger.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Launch sequence" }).click();
+    await expect(selected.getByRole("status")).toContainText("We could not confirm the launch result.");
+    await expect(trigger).toBeDisabled();
+    await expect(selected.getByRole("link", { name: "Refresh sequence status" })).toBeVisible();
+  });
 
   test("clicking Launch on a ready sequence shows a readable outcome, not silence", async ({
     page,
@@ -75,23 +92,17 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
     ).toBeVisible();
 
     const confirm = dialog.getByRole("button", { name: "Launch sequence" });
-    // Capture the action's own response alongside the click: it carries the
-    // server's redirect target; the browser must then apply it without help.
+    // The action returns a small outcome; the form must display it without
+    // test-driven navigation, buffering, refreshes, or automatic retries.
     const [actionResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.request().method() === "POST" && res.url().includes("/outreach"),
       ),
       confirm.click(),
     ]);
-    expect(actionResponse.status(), "Launch action did not return a redirect").toBe(303);
-    const redirectHeader = actionResponse.headers()["x-action-redirect"];
-    if (!redirectHeader) {
-      throw new Error(
-        "Launch action's response carried no x-action-redirect header — the exact silent failure row 109 exists to prevent.",
-      );
-    }
-    // The flash banner is the ONE `bg-emerald-50` (ok) / `bg-destructive/5`
-    // (error) div directly inside the Sequences card — a text-based match
+    expect(actionResponse.status(), "Launch action did not return an outcome").toBe(200);
+    // The outcome banner uses `bg-emerald-50` (ok) / `bg-destructive/5`
+    // (error) inside the Sequences card — a text-based match
     // would also hit the "Introduction email" dispatch-block heading and its
     // own "N introduction(s) sent" success box, both of which independently
     // report the same underlying count and would otherwise collide. `~=`
@@ -115,6 +126,7 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
     // would mean the journey regressed, not that it merely showed some other
     // message — row 109's own failure was silence, not a wrong message, but
     // a regression test that accepts any message at all proves nothing.
-    await expect(outcomeBanner).toHaveText(/^[1-9]\d* introductions? (queued|sent)/i);
+    await expect(outcomeBanner).toContainText(/^[1-9]\d* introductions? (queued|sent)/i);
+    await expect(trigger).toBeDisabled();
   });
 });
