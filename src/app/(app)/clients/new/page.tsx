@@ -10,7 +10,7 @@ export default async function NewClientPage() {
     return <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-2xl font-semibold">Add a client</h1>
       <p>Only the owner can add a client workspace. You can continue working with existing clients.</p>
-      <Link href="/clients">Back to clients</Link>
+      <Link prefetch={false} href="/clients">Back to clients</Link>
     </div>;
   }
   return (
