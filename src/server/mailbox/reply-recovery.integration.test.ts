@@ -236,7 +236,7 @@ describe("paged inbox to database journey (simulated provider HTTP)", () => {
   it.each(["GOOGLE", "MICROSOFT"] as const)("processes a second-page STOP through %s sync and safely replays it", async (provider) => {
     vi.stubEnv("MAILBOX_COMPLAINT_DETECTION_ENABLED", "");
     await prisma.clientMailboxIdentity.update({ where: { id: input.mailboxIdentityId }, data: { provider } });
-    const nextGraph = "https://graph.microsoft.com/v1.0/users/sender%40sender.test/mailFolders/inbox/messages?$skip=25";
+    const nextGraph = "https://graph.microsoft.com/v1.0/users('sender@sender.test')/mailFolders('inbox')/messages?$skip=25";
     const fetcher = vi.fn(async (request: string) => {
       const url = new URL(request);
       let body: unknown;
@@ -273,7 +273,7 @@ describe("durable inbox progress", () => {
   it.each(["GOOGLE", "MICROSOFT"] as const)("resumes %s backlog and still checks newest mail", async (provider) => {
     await prisma.clientMailboxIdentity.update({ where: { id: input.mailboxIdentityId }, data: { provider } });
     const requested: number[] = [];
-    const graphBase = "https://graph.microsoft.com/v1.0/users/sender%40sender.test/mailFolders/inbox/messages";
+    const graphBase = "https://graph.microsoft.com/v1.0/users('sender@sender.test')/mailFolders('inbox')/messages";
     const cursorFor = (page: number) => provider === "GOOGLE" ? String(page) : graphBase + "?$skip=" + page;
     let failPage: number | null = null;
     vi.stubGlobal("fetch", vi.fn(async (request: string) => {

@@ -7,6 +7,18 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 afterEach(() => vi.unstubAllGlobals());
 
 describe("inbox continuation", () => {
+  it.each([
+    "https://graph.microsoft.com/v1.0/users/sender@example.test/mailFolders/inbox/messages?$skip=25",
+    "https://graph.microsoft.com/v1.0/users('sender@example.test')/mailFolders('inbox')/messages?$skip=25",
+    "https://graph.microsoft.com/v1.0/users('sender%40example.test')/mailFolders/inbox/messages?$skiptoken=opaque%2Btoken",
+    "https://graph.microsoft.com/v1.0/users/SENDER%40example.test/mailFolders/Inbox/messages?$skip=25",
+  ])("accepts equivalent Graph resource spelling and preserves the full continuation: %s", async (next) => {
+    const fetcher = vi.fn().mockResolvedValueOnce(response({ value: [{ id: "first" }], "@odata.nextLink": next }))
+      .mockResolvedValueOnce(response({ value: [{ id: "older" }] }));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await listMicrosoftGraphInboxMessages("token", "sender@example.test")).toEqual([{ id: "first" }, { id: "older" }]);
+    expect(fetcher.mock.calls[1][0]).toBe(next);
+  });
   it("reads Graph continuation verbatim and deduplicates overlapping pages", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(response({ value: [{ id: "first" }], "@odata.nextLink": graphPage }))
       .mockResolvedValueOnce(response({ value: [{ id: "first" }, { id: "older-reply" }] }));
@@ -15,7 +27,14 @@ describe("inbox continuation", () => {
     expect(fetcher.mock.calls[1][0]).toBe(graphPage);
     expect(fetcher.mock.calls[1][1]).toMatchObject({ redirect: "error", headers: { Authorization: "Bearer token" } });
   });
-  it.each(["https://evil.example/inbox", "https://graph.microsoft.com/v1.0/users/another/messages"])("rejects unsafe Graph continuation %s before another request", async (next) => {
+  it.each([
+    "https://evil.example/inbox",
+    "https://graph.microsoft.com/v1.0/users/another/messages",
+    "https://graph.microsoft.com/v1.0/users('another@example.test')/mailFolders('inbox')/messages",
+    "https://graph.microsoft.com/v1.0/users('sender@example.test')/mailFolders('sentitems')/messages",
+    "https://graph.microsoft.com/v1.0/users/sender%2Fexample.test/mailFolders/inbox/messages",
+    "https://graph.microsoft.com/v1.0/users/sender@example.test/mailFolders/inbox/messages/other",
+  ])("rejects unsafe Graph continuation %s before another request", async (next) => {
     const fetcher = vi.fn().mockResolvedValue(response({ value: [], "@odata.nextLink": next }));
     vi.stubGlobal("fetch", fetcher);
     await expect(listMicrosoftGraphInboxMessages("token", "sender@example.test")).rejects.toThrow("unsafe");
