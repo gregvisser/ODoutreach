@@ -37,7 +37,7 @@ import {
 
 test.describe("Launch journey — sequence introduction dispatch", () => {
   test.describe.configure({ retries: 0 });
-  test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
+  test.use({ storageState: E2E_STORAGE_STATE.superAdmin, trace: "retain-on-failure" });
 
   test("clicking Launch on a ready sequence shows a readable outcome, not silence", async ({
     page,
