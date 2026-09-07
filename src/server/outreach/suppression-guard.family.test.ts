@@ -76,6 +76,7 @@ function matchFamilies(a: Where) {
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    companyDncEntry: { findMany: async () => [] },
     suppressedEmail: {
       findUnique: async (a: Where) => {
         const k = a.where?.clientId_email;

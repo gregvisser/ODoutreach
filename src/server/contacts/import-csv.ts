@@ -15,7 +15,7 @@ import {
 } from "@/lib/normalize";
 import { attachContactsToClientList } from "@/server/contacts/contact-lists";
 import { upsertContactUniverseAndRecordSource } from "@/server/contacts/contact-universe";
-import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
+import { evaluateSuppression, refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
 export type CsvImportSummary = {
   totalRows: number;
@@ -234,8 +234,11 @@ export async function runContactCsvImport(args: {
         continue;
       }
 
+      const initialSuppression = await evaluateSuppression(clientId, email, company || null);
       const created = await prisma.contact.create({
         data: {
+          isSuppressed: initialSuppression.suppressed,
+          lastSuppressionCheckAt: new Date(),
           clientId,
           email,
           fullName: fullName || null,

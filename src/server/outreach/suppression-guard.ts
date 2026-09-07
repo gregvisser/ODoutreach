@@ -8,10 +8,13 @@ import {
   suppressionDomainCandidates,
 } from "@/lib/normalize";
 import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
+import { evaluateRecipientCompany } from "@/server/suppression/company-names";
+import type { CompanyNameDecision } from "@/lib/suppression/company-name";
 
 export type SuppressionDecision = {
   suppressed: boolean;
-  reason: "email_list" | "domain_list" | "domain_family" | "none";
+  reason: "email_list" | "domain_list" | "domain_family" | "company_name" | "company_review" | "none";
+  companyDecision?: CompanyNameDecision;
   normalizedEmail: string;
   normalizedDomain: string;
   matchedEmail?: string;
@@ -38,6 +41,7 @@ export type SuppressionDecision = {
 export async function evaluateSuppression(
   clientId: string,
   email: string,
+  company?: string | null,
 ): Promise<SuppressionDecision> {
   const normalizedEmail = normalizeEmail(email);
   const normalizedDomain = normalizeDomain(extractDomainFromEmail(normalizedEmail));
@@ -153,12 +157,13 @@ export async function evaluateSuppression(
     }
   }
 
-  return {
-    suppressed: false,
-    reason: "none",
-    normalizedEmail,
-    normalizedDomain,
+  const companyDecision = await evaluateRecipientCompany(clientId, normalizedEmail, company);
+  if (companyDecision.outcome !== "CLEAR") return {
+    suppressed: true,
+    reason: companyDecision.outcome === "REVIEW" ? "company_review" : "company_name",
+    normalizedEmail, normalizedDomain, companyDecision,
   };
+  return { suppressed: false, reason: "none", normalizedEmail, normalizedDomain };
 }
 
 /** Narrow boolean for simple gates; prefer `evaluateSuppression` when you need audit detail. */

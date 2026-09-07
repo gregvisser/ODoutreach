@@ -9,7 +9,7 @@ import {
 } from "@/lib/normalize";
 import { attachContactsToClientList } from "@/server/contacts/contact-lists";
 import { upsertContactUniverseAndRecordSource } from "@/server/contacts/contact-universe";
-import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
+import { evaluateSuppression, refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 
 /** Documented RocketReach API v2 bases (see https://docs.rocketreach.co/reference/people-search-api). */
 export const ROCKETREACH_API_V2_SEARCH =
@@ -333,8 +333,11 @@ export async function importRocketReachPeopleForClient(
 
     const source: ContactSource = "ROCKETREACH";
 
+    const initialSuppression = await evaluateSuppression(clientId, norm, company || null);
     const contact = await prisma.contact.create({
       data: {
+        isSuppressed: initialSuppression.suppressed,
+        lastSuppressionCheckAt: new Date(),
         clientId,
         email: norm,
         emailDomain,

@@ -5,6 +5,7 @@ import { executeOutboundSend } from "./execute-one";
 import { operatorRequeueFailedSend, releaseStaleProcessingClaimsForScope } from "./operator-recovery";
 import { processOutboundSendQueue } from "./queue-processor";
 import { getOutboundOperationsSnapshot } from "@/server/queries/outbound-operations";
+import { decideCompanyName } from "@/server/suppression/company-names";
 
 // Real database and orchestration. Every sending transport is inert; unexpected
 // HTTP and DNS cannot reach a provider or a customer.
@@ -38,6 +39,54 @@ async function seed(provider: "GOOGLE" | "MICROSOFT" | "LEGACY") {
   await prisma.outboundEmail.create({ data: { id: "outbound", clientId: "client", mailboxIdentityId: provider === "LEGACY" ? null : "mailbox", status: "PROCESSING", subject: "Synthetic recovery", bodySnapshot: "Test only", toEmail: "recipient@example.test", fromAddress: "sender@example.test", claimedAt: new Date(), claimExpiresAt: new Date(Date.now() + 600_000), sendAttempt: 1 } });
   if (provider !== "LEGACY") await prisma.mailboxSendReservation.create({ data: { clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: "outbound", idempotencyKey: "synthetic", windowKey: new Date().toISOString().slice(0, 10), status: "RESERVED" } });
 }
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s company review before transport and safely retries after a human decision", async provider => {
+  await seed(provider);
+  await prisma.contact.create({ data: { clientId: "client", email: "recipient@example.test", company: "Acme Group" } });
+  const entry = await prisma.companyDncEntry.create({ data: { clientId: "client", originalName: "Acme Ltd", canonicalName: "acme" } });
+  await executeOutboundSend("outbound");
+  expect(send).not.toHaveBeenCalled();
+  expect(token).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", lastErrorCode: "COMPANY_REVIEW", dispatchStartedAt: null, retryCount: 0 });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+  // An unresolved retry still cannot send: the actual dispatcher rechecks.
+  expect(await operatorRequeueFailedSend("outbound", "client", "COMPANY_REVIEW")).toEqual({ count: 1 });
+  await processOutboundSendQueue({ limit: 1 });
+  expect(send).not.toHaveBeenCalled();
+  await prisma.staffUser.create({ data: { id: "review-staff", entraObjectId: "synthetic-review-staff", email: "reviewer@example.test", displayName: "Synthetic reviewer" } });
+  await decideCompanyName({ clientId: "client", staffUserId: "review-staff", entryId: entry.id, company: "Acme Group", outcome: "ALLOW" });
+  expect(await operatorRequeueFailedSend("outbound", "client", "COMPANY_REVIEW")).toEqual({ count: 1 });
+  await processOutboundSendQueue({ limit: 1 });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "SENT" });
+});
+
+it("blocks an exact employer name loaded after the outbound was queued", async () => {
+  await seed("GOOGLE");
+  await prisma.contact.create({ data: { clientId: "client", email: "recipient@example.test", company: "Acme Limited" } });
+  await prisma.companyDncEntry.create({ data: { clientId: "client", originalName: "Acme", canonicalName: "acme" } });
+  await executeOutboundSend("outbound");
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "BLOCKED_SUPPRESSION" });
+});
+
+it("does not let company-review recovery retry another kind of failure", async () => {
+  await seed("GOOGLE");
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { status: "FAILED", lastErrorCode: "UNRELATED_FAILURE" } });
+  expect(await operatorRequeueFailedSend("outbound", "client", "COMPANY_REVIEW")).toEqual({ count: 0 });
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("rolls back a company hold if releasing its allowance fails", async () => {
+  await seed("GOOGLE");
+  await prisma.companyDncEntry.create({ data: { clientId: "client", originalName: "Acme", canonicalName: "acme" } });
+  await prisma.$executeRawUnsafe("CREATE FUNCTION fail_outcome_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic review release interruption'; END $$");
+  await prisma.$executeRawUnsafe(`CREATE TRIGGER fail_outcome_test BEFORE UPDATE ON "MailboxSendReservation" FOR EACH ROW WHEN (NEW.status = 'RELEASED') EXECUTE FUNCTION fail_outcome_test()`);
+  await expect(executeOutboundSend("outbound")).rejects.toThrow();
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "PROCESSING", lastErrorCode: null });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RESERVED" });
+});
 async function failSave(table: "OutboundEmail" | "MailboxSendReservation") {
   await prisma.$executeRawUnsafe("CREATE FUNCTION fail_outcome_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic persistence interruption'; END $$");
   const status = table === "OutboundEmail" ? "SENT" : "CONSUMED";

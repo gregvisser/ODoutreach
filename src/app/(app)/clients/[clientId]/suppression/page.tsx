@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { CompanyDncPanel } from "@/components/suppression/company-dnc-panel";
+import { loadCompanyDncPage } from "@/server/suppression/company-names";
 
 import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
 import { ManualDncAddForm } from "@/components/suppression/add-to-dnc";
@@ -22,9 +24,10 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ companyPage?: string; heldCompanyPage?: string }>;
 };
 
-export default async function ClientSuppressionPage({ params }: Props) {
+export default async function ClientSuppressionPage({ params, searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
@@ -32,6 +35,10 @@ export default async function ClientSuppressionPage({ params }: Props) {
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+  const query = await searchParams;
+  const requestedPage = Number(query.companyPage ?? 0);
+  const requestedHeldPage = Number(query.heldCompanyPage ?? 0);
+  const companyDnc = await loadCompanyDncPage(client.id, Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? requestedPage : 0, Number.isSafeInteger(requestedHeldPage) && requestedHeldPage >= 0 ? requestedHeldPage : 0);
 
   // Live entry counts per source so staff can see at a glance that a sync
   // actually landed (the status line alone says "succeeded" but not how
@@ -93,6 +100,7 @@ export default async function ClientSuppressionPage({ params }: Props) {
         </p>
       </div>
 
+      <CompanyDncPanel clientId={client.id} data={companyDnc} />
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Quick add</CardTitle>
