@@ -272,6 +272,12 @@ export async function queueControlledPilotBatch(input: {
               mailbox: m,
               idempotencyKey,
               at,
+              allowanceCeiling: pacedAllowanceForMailbox({
+                mailboxId: m.id,
+                dailyCap: effectiveDailyCap(m, sendingDays.get(m.id) ?? 0),
+                batchSize: pacingProfile?.sendBatchSize,
+                at,
+              }),
             });
 
             if (!reserve.ok) {

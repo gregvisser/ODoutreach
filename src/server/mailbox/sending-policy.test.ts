@@ -349,3 +349,14 @@ describe("resolveGovernedSendingMailboxFromRows", () => {
     expect(r.mode === "ineligible" && r.reason).toBe("no_connected_sending_mailbox");
   });
 });
+
+
+describe("lower planner allowance under the mailbox lock", () => {
+  it.each([[5,5],[0,0],[-1,0],[NaN,0],[5000,30]])("refuses ceiling %s after %s bookings", async (allowanceCeiling, booked) => {
+    const create=vi.fn();
+    const tx=asTx({ mailboxSendReservation:{ findFirst:vi.fn().mockResolvedValue(null), count:vi.fn().mockResolvedValue(booked), create } });
+    const result=await tryReserveSendSlotInTransaction(tx,{ clientId:"c1", mailbox:baseMailbox(), idempotencyKey:"warmup", at:new Date(), allowanceCeiling });
+    expect(result.ok).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+  });
+});
