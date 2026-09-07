@@ -85,6 +85,11 @@ export async function loadClientTrackingDnsState(
   };
 }
 
+/** Distinguish an empty target database from a populated estate with tracking off. */
+export async function countClientsForTrackingDnsSweep(): Promise<number> {
+  return prisma.client.count({ where: { deletedAt: null } });
+}
+
 /** Every client with tracking switched on, with the mailboxes to check against. */
 export async function loadTrackedClientsForDnsSweep(): Promise<TrackedClientRow[]> {
   const rows = await prisma.client.findMany({

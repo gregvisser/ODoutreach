@@ -1,21 +1,6 @@
-/**
- * The sweep is WIRED — not merely written.
- *
- * QUEUE.md records six instances this week of something built, wired, reporting
- * success and never firing. It is the defect this project is worst at. A
- * scheduled job is the easiest possible place for it to happen again: the code
- * can be perfect, the tests green, and the workflow can reference an npm script
- * that does not exist, or a schedule that never runs, and nothing anywhere
- * fails. The job simply never happens, quietly, for months.
- *
- * So this file asserts the CHAIN, end to end, from the cron line to the exported
- * function. Every link is checked against the real files on disk. If somebody
- * renames the npm script, moves the entry module, or deletes the schedule, this
- * goes red rather than the sweep going silent.
- *
- * What this cannot prove is that GitHub actually runs the schedule — no test
- * can. That is why the send-time freshness gate exists as well: see
- * TRACKING_DNS_MAX_AGE_DAYS, which closes tracking with nothing running at all.
+/** Static schedule and export checks. Vitest aliases server-only here, so these
+ * cannot prove plain Node startup. tracking-dns-cli.integration.test.ts launches
+ * the real npm command against PostgreSQL without Vitest module aliases.
  */
 
 import { readFileSync } from "node:fs";
