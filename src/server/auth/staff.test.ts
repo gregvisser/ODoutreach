@@ -8,6 +8,7 @@ type StaffRow = {
   email: string;
   displayName: string | null;
   role: "ADMIN" | "MANAGER" | "OPERATOR" | "VIEWER";
+  isSuperAdmin: boolean;
   isActive: boolean;
   guestInvitationState: "NONE" | "PENDING" | "ACCEPTED";
   invitedAt: Date | null;
@@ -56,6 +57,11 @@ const { authMock, tx, rows } = vi.hoisted(() => {
           return row;
         },
       ),
+      updateMany: vi.fn(async ({ where, data }: { where: Partial<StaffRow>; data: Partial<StaffRow> }) => {
+        const matching = rows.filter((row) => Object.entries(where).every(([key, value]) => row[key as keyof StaffRow] === value));
+        matching.forEach((row) => Object.assign(row, data));
+        return { count: matching.length };
+      }),
     },
   };
 
@@ -88,6 +94,7 @@ function staffRow(overrides: Partial<StaffRow> = {}): StaffRow {
     email: "staff@example.com",
     displayName: null,
     role: "OPERATOR",
+    isSuperAdmin: false,
     isActive: true,
     guestInvitationState: "NONE",
     invitedAt: null,
