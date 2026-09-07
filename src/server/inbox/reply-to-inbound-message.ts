@@ -1,7 +1,5 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
-
 import { prisma } from "@/lib/db";
 import { recordInboundMessageHandlingInTransaction } from "./persist-inbound-message";
 import { buildReplySubject } from "@/lib/inbox/inbound-message-handling";
@@ -24,7 +22,8 @@ import {
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
 import { requireClientAccess } from "@/server/tenant/access";
-import type { StaffUser } from "@/generated/prisma/client";
+import type { Prisma, StaffUser } from "@/generated/prisma/client";
+import { isReplyRequestId } from "@/lib/inbox/reply-attempt";
 
 export const INBOUND_REPLY_METADATA_KIND = "inboundMailboxReply";
 export const INBOUND_REPLY_SUBJECT_MAX = 300;
@@ -50,6 +49,8 @@ export type ReplyToInboundMessageInput = {
   inboundMessageId: string;
   /** Operator-authored body text. Subject is derived from the original message. */
   bodyText: string;
+  /** Browser-generated identity retained until this attempt has a known result. */
+  requestId: string;
 };
 
 export type ReplyToInboundMessageResult =
@@ -60,8 +61,36 @@ export type ReplyToInboundMessageResult =
       subject: string;
       providerMessageId: string;
       providerName: string;
+      replayed?: true;
     }
-  | { ok: false; error: string; errorCode: string };
+  | { ok: false; error: string; errorCode: string; safeToStartNewAttempt?: true };
+
+async function savedReplyAttempt(
+  db: Pick<Prisma.TransactionClient, "outboundEmail">,
+  input: ReplyToInboundMessageInput,
+): Promise<ReplyToInboundMessageResult | null> {
+  const row = await db.outboundEmail.findFirst({
+    where: {
+      clientId: input.clientId,
+      AND: [
+        { metadata: { path: ["kind"], equals: INBOUND_REPLY_METADATA_KIND } },
+        { metadata: { path: ["inboundMessageId"], equals: input.inboundMessageId } },
+        { metadata: { path: ["replyRequestId"], equals: input.requestId } },
+      ],
+    },
+  });
+  if (!row) return null;
+  if (row.bodySnapshot !== input.bodyText || row.staffUserId !== input.staff.id) {
+    return { ok: false, errorCode: "REPLY_ATTEMPT_MISMATCH", error: "This reply attempt belongs to a different draft or staff member. Check the original reply before sending again." };
+  }
+  if (row.sentAt && row.providerMessageId && row.providerName) {
+    return { ok: true, outboundEmailId: row.id, correlationId: row.correlationId, subject: row.subject ?? "", providerMessageId: row.providerMessageId, providerName: row.providerName, replayed: true };
+  }
+  if (row.status === "FAILED" && !row.providerMessageId && !row.sentAt) {
+    return { ok: false, errorCode: row.lastErrorCode ?? "PROVIDER_FAILED", error: row.lastErrorMessage ?? "This reply was not sent. You can try again.", safeToStartNewAttempt: true };
+  }
+  return unconfirmedReply();
+}
 
 /**
  * Send an operator-authored reply to an ingested `InboundMailboxMessage`.
@@ -87,6 +116,10 @@ export async function replyToInboundMailboxMessage(
 ): Promise<ReplyToInboundMessageResult> {
   const { staff, clientId, inboundMessageId } = input;
   await requireClientAccess(staff, clientId);
+
+  if (!isReplyRequestId(input.requestId)) {
+    return { ok: false, errorCode: "REPLY_REQUEST_ID_REQUIRED", error: "Refresh this page before sending a reply." };
+  }
 
   const body = input.bodyText.trim();
   if (!body) {
@@ -114,6 +147,12 @@ export async function replyToInboundMailboxMessage(
       error: "That inbound message is not part of this workspace.",
     };
   }
+
+  const attemptInput = { ...input, requestId: input.requestId.toLowerCase(), bodyText: body };
+  // A replay is a read of the original outcome, not a new send. Return it even
+  // if the mailbox was disconnected or the recipient suppressed afterward.
+  const saved = await savedReplyAttempt(prisma, attemptInput);
+  if (saved) return saved;
 
   if (!message.fromEmail || !message.fromEmail.includes("@")) {
     return {
@@ -163,7 +202,7 @@ export async function replyToInboundMailboxMessage(
     };
   }
 
-  const idempotencyKey = `inboundReply:${clientId}:${inboundMessageId}:${randomUUID()}`;
+  const idempotencyKey = `inboundReply:${clientId}:${inboundMessageId}:${attemptInput.requestId}`;
   const fromAddress = normalizeEmail(mailbox.email);
 
   // Reservation + queued OutboundEmail — kept in one transaction so a
@@ -175,6 +214,7 @@ export async function replyToInboundMailboxMessage(
         correlationId: string;
       }
     | { kind: "unconfirmed" }
+    | { kind: "replay"; result: ReplyToInboundMessageResult }
     | { kind: "reserve_fail"; error: string; errorCode: string };
 
   const reserveResult = await prisma.$transaction(
@@ -185,6 +225,10 @@ export async function replyToInboundMailboxMessage(
         SELECT id FROM "InboundMailboxMessage"
         WHERE id = ${inboundMessageId} AND "clientId" = ${clientId} FOR UPDATE`;
       if (!locked.length) return { kind: "reserve_fail", errorCode: "INBOUND_NOT_FOUND", error: "That message is no longer available." };
+      // Recheck after acquiring the lock: another request may have committed
+      // while this one waited. This deduplication spans UTC ledger windows.
+      const replay = await savedReplyAttempt(tx, attemptInput);
+      if (replay) return { kind: "replay", result: replay };
       const unresolved = await tx.outboundEmail.findFirst({
         where: {
           clientId, status: "PROCESSING",
@@ -236,6 +280,7 @@ export async function replyToInboundMailboxMessage(
           attemptedAt: new Date(),
           metadata: {
             kind: INBOUND_REPLY_METADATA_KIND,
+            replyRequestId: attemptInput.requestId,
             inboundMessageId,
             mailboxProvider: mailbox.provider,
             conversationId: message.conversationId ?? null,
@@ -256,6 +301,7 @@ export async function replyToInboundMailboxMessage(
     { maxWait: 10_000, timeout: 30_000 },
   );
 
+  if (reserveResult.kind === "replay") return reserveResult.result;
   if (reserveResult.kind === "unconfirmed") return unconfirmedReply();
   if (reserveResult.kind === "reserve_fail") {
     return {
@@ -293,6 +339,7 @@ export async function replyToInboundMailboxMessage(
           ok: false,
           errorCode: result.code ?? "PROVIDER_FAILED",
           error: result.error,
+          safeToStartNewAttempt: true,
         };
       }
       await finaliseReplySent({
@@ -347,6 +394,7 @@ export async function replyToInboundMailboxMessage(
           ok: false,
           errorCode: result.code ?? "PROVIDER_FAILED",
           error: result.error,
+          safeToStartNewAttempt: true,
         };
       }
       await finaliseReplySent({
@@ -376,6 +424,7 @@ export async function replyToInboundMailboxMessage(
       ok: false,
       errorCode: "UNSUPPORTED_PROVIDER",
       error: "Reply is only supported on Microsoft 365 and Google Workspace mailboxes.",
+      safeToStartNewAttempt: true,
     };
   } catch (e) {
     if (dispatchStarted) return unconfirmedReply();
@@ -389,6 +438,7 @@ export async function replyToInboundMailboxMessage(
       ok: false,
       errorCode: "EXCEPTION",
       error: msg,
+      safeToStartNewAttempt: true,
     };
   }
 }

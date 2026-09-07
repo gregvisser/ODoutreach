@@ -5,6 +5,7 @@ import { replyToInboundMailboxMessage } from "./reply-to-inbound-message";
 import { readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import { releaseStaleProcessingClaimsForScope } from "@/server/email/outbound/operator-recovery";
+import { randomUUID } from "node:crypto";
 
 vi.mock("@/server/mailbox/google-mailbox-access", () => ({ getGoogleGmailAccessTokenForMailbox: vi.fn(async () => "synthetic-token") }));
 vi.mock("@/server/mailbox/microsoft-mailbox-access", () => ({ getMicrosoftGraphAccessTokenForMailbox: vi.fn(async () => "synthetic-token") }));
@@ -35,9 +36,10 @@ afterEach(async () => {
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
-async function send(inboundMessageId = "message", clientId = "client") {
+async function send(inboundMessageId = "message", clientId = "client", requestId: string = randomUUID(), bodyText = "A synthetic reply.") {
   const staff = await prisma.staffUser.findUniqueOrThrow({ where: { id: "staff" } });
-  return replyToInboundMailboxMessage({ staff, clientId, inboundMessageId, bodyText: "A synthetic reply." });
+  const input = { staff, clientId, inboundMessageId, bodyText, requestId };
+  return replyToInboundMailboxMessage(input);
 }
 async function failSave(table: "OutboundEmail" | "InboundMailboxMessage") {
   await prisma.$executeRawUnsafe(`CREATE FUNCTION fail_reply_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic persistence interruption'; END $$`);
@@ -144,4 +146,79 @@ it("refuses a reply under the wrong client before any dispatch or reservation", 
   expect(await send("message", "other")).toMatchObject({ ok: false, errorCode: "INBOUND_NOT_FOUND" });
   expect(await prisma.outboundEmail.count()).toBe(0);
   expect(transport).not.toHaveBeenCalled();
+});
+
+it("returns the saved result when the browser retries after losing a successful confirmation", async () => {
+  const requestId = randomUUID();
+  const sent = await send("message", "client", requestId);
+  expect(sent.ok).toBe(true);
+  const replay = await send("message", "client", requestId);
+  expect(replay).toMatchObject(sent);
+  expect(await prisma.outboundEmail.count()).toBe(1);
+  expect(await prisma.mailboxSendReservation.count()).toBe(1);
+  expect(transport).toHaveBeenCalledTimes(1);
+});
+
+it("keeps successful request identity across UTC ledger windows and mailbox disconnection", async () => {
+  const requestId = randomUUID();
+  const sent = await send("message", "client", requestId);
+  await prisma.mailboxSendReservation.updateMany({ data: { windowKey: "2025-01-01" } });
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { connectionStatus: "DISCONNECTED" } });
+  expect(await send("message", "client", requestId.toUpperCase())).toMatchObject(sent);
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.count()).toBe(1);
+});
+
+it("refuses reuse of an attempt with changed content or a different staff member", async () => {
+  const requestId = randomUUID();
+  await send("message", "client", requestId);
+  expect(await send("message", "client", requestId, "Changed draft")).toMatchObject({ ok: false, errorCode: "REPLY_ATTEMPT_MISMATCH" });
+  const other = await prisma.staffUser.create({ data: { entraObjectId: "other-staff", email: "other@example.test" } });
+  expect(await replyToInboundMailboxMessage({ staff: other, clientId: "client", inboundMessageId: "message", requestId, bodyText: "A synthetic reply." })).toMatchObject({ ok: false, errorCode: "REPLY_ATTEMPT_MISMATCH" });
+  expect(transport).toHaveBeenCalledTimes(1);
+});
+
+it("replays a definite rejection without dispatching and requires a fresh attempt to send", async () => {
+  const requestId = randomUUID();
+  transport.mockImplementationOnce(async () => new Response("synthetic token rejection", { status: 401 }));
+  const failed = await send("message", "client", requestId);
+  expect(failed).toMatchObject({ ok: false, errorCode: "401", safeToStartNewAttempt: true });
+  expect(await send("message", "client", requestId)).toMatchObject(failed);
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect((await send()).ok).toBe(true);
+  expect(transport).toHaveBeenCalledTimes(2);
+});
+
+it("never re-dispatches an unconfirmed attempt on a same-identity retry", async () => {
+  const requestId = randomUUID();
+  transport.mockRejectedValueOnce(new Error("synthetic response loss"));
+  await send("message", "client", requestId);
+  expect(await send("message", "client", requestId)).toMatchObject({ ok: false, errorCode: "REPLY_OUTCOME_UNCONFIRMED" });
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await prisma.outboundEmail.count()).toBe(1);
+});
+
+it.each(["", "not-a-uuid", "x".repeat(1000)])("rejects an invalid request identity before reserving or sending", async (requestId) => {
+  expect(await send("message", "client", requestId)).toMatchObject({ ok: false, errorCode: "REPLY_REQUEST_ID_REQUIRED" });
+  expect(transport).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.count()).toBe(0);
+});
+
+it("serializes simultaneous submissions of the same request identity", async () => {
+  const requestId = randomUUID();
+  const outcomes = await Promise.all([send("message", "client", requestId), send("message", "client", requestId)]);
+  expect(outcomes.some(result => result.ok)).toBe(true);
+  expect(await send("message", "client", requestId)).toMatchObject({ ok: true, replayed: true });
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await prisma.outboundEmail.count()).toBe(1);
+  expect(await prisma.mailboxSendReservation.count()).toBe(1);
+});
+
+it("returns a prior send confirmation after opt-out but refuses a fresh reply", async () => {
+  const requestId = randomUUID();
+  const sent = await send("message", "client", requestId);
+  await prisma.suppressedEmail.create({ data: { clientId: "client", email: "prospect@example.test" } });
+  expect(await send("message", "client", requestId)).toMatchObject(sent);
+  expect(await send()).toMatchObject({ ok: false, errorCode: "SUPPRESSED_RECIPIENT" });
+  expect(transport).toHaveBeenCalledTimes(1);
 });
