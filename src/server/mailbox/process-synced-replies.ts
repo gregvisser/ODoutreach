@@ -4,6 +4,7 @@ import { emailDomain, isInternalMail } from "@/lib/inbox/internal-mail";
 import { canonicalizeEmailForMatching, normalizeEmail } from "@/lib/normalize";
 import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
 import { applyLinkedReplyEffects, withReplyIdentityTransaction } from "@/server/email/inbound/reply-processing";
+import { suppressReplyOptOut } from "./opt-out-detection";
 
 /**
  * After mailbox inbox sync upserts an InboundMailboxMessage, this function
@@ -43,12 +44,10 @@ import { applyLinkedReplyEffects, withReplyIdentityTransaction } from "@/server/
  *      reply's base subject (Re:/Fwd: prefixes stripped). Required because
  *      Gmail rewrites outgoing Message-IDs, so a stamped send can miss the
  *      thread match through no fault of ours.
- *   3. BY_CONTACT_EMAIL legacy fallback: outbounds with NO stamped
- *      Message-ID (Microsoft Graph sends, and legacy Gmail). Match same
- *      clientId, same mailboxIdentityId, toEmail = inbound fromEmail,
- *      sentAt <= received, status sent/delivered/replied. Requiring
- *      `rfc822MessageId = null` here stops unrelated thread replies (with a
- *      different subject) from being mislinked to modern Gmail sends.
+ *   3. A sender-only legacy candidate is evidence we contacted that address,
+ *      not evidence this conversation replies to that send. Honour an explicit
+ *      opt-out, but do not create a campaign reply or stop its enrollment.
+ *      The mailbox sync retains the message under its existing raw-store rules.
  *   4. If nothing matches, skip — don't create unlinked noise.
  *
  * Legs 2 and 3 compare the recipient CANONICALLY (`canonicalizeEmailForMatching`
@@ -242,12 +241,9 @@ export async function processSyncedMessageForReply(input: {
         }
       }
 
-      // 3) Contact-email fallback: outbounds with no stamped Message-ID (legacy
-      //    Gmail or any Microsoft Graph send — we don't stamp Graph yet). Same
-      //    clientId + mailbox + recipient + sent-before-received + good status,
-      //    restricted to rfc822MessageId = null so modern Gmail sends aren't
-      //    loosely matched by an unrelated thread from the same contact (the
-      //    subject-anchored leg above is the safe path for stamped sends).
+      // Sender identity alone cannot establish a campaign reply. Retain the
+      // legacy contacted-address check only for opt-out protection. This runs
+      // in the same transaction on retries, without fabricating a reply link.
       if (!outbound) {
         const candidates = await prisma.outboundEmail.findMany({
           where: {
@@ -260,14 +256,22 @@ export async function processSyncedMessageForReply(input: {
           orderBy: { sentAt: "desc" },
           select: { id: true, contactId: true, status: true, toEmail: true },
         });
-        outbound =
+        const contacted =
           candidates.find(
             (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
           ) ?? null;
-        matchMethod = "BY_CONTACT_EMAIL";
-      }
-
-      if (!outbound) {
+        if (contacted) {
+          await suppressReplyOptOut({
+            clientId: input.clientId,
+            fromEmail: from,
+            subject: input.subject,
+            bodyText: input.bodyText ?? input.bodyPreview ?? input.snippet,
+            contactId: contacted.contactId,
+            // Contact history for the suppression audit, not a reply association.
+            outboundEmailId: contacted.id,
+            receivedAt: input.receivedAt,
+          }, prisma);
+        }
         return { created: false };
       }
 

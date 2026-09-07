@@ -126,6 +126,43 @@ afterAll(async () => {
 });
 
 describe("reply recovery against real PostgreSQL", () => {
+  it.each([false, true])("does not attach an unrelated legacy conversation; opt-out=%s", async (optOut) => {
+    await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { rfc822MessageId: null } });
+    const unrelated = { ...input, inReplyToHeader: null, subject: "Re: Different conversation",
+      bodyText: optOut ? "Please stop emailing me" : "Thanks for the meeting notes",
+      bodyPreview: "Thanks", snippet: "Thanks" };
+    expect(await processSyncedMessageForReply(unrelated)).toEqual({ created: false });
+    expect(await prisma.inboundReply.count()).toBe(0);
+    expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "reply-outbound" } })).status).toBe("SENT");
+    expect((await prisma.clientEmailSequenceEnrollment.findUniqueOrThrow({ where: { id: "reply-enrollment" } })).status).toBe("PENDING");
+    expect(await prisma.suppressedEmail.count({ where: { clientId: input.clientId } })).toBe(optOut ? 1 : 0);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: "reply-contact" } })).isSuppressed).toBe(optOut);
+    expect(await prisma.suppressedEmail.count({ where: { clientId: "other-client" } })).toBe(0);
+    await processSyncedMessageForReply(unrelated);
+    expect(await prisma.auditLog.count({ where: { entityType: "SuppressedEmail" } })).toBe(optOut ? 1 : 0);
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("still links a subject-matched legacy reply and stops its follow-ups", async () => {
+    await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { rfc822MessageId: null } });
+    expect((await processSyncedMessageForReply({ ...input, inReplyToHeader: null })).created).toBe(true);
+    await assertRecovered();
+  });
+
+  it("rolls back failed sender-only opt-out effects and completes them on retry", async () => {
+    await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { rfc822MessageId: null } });
+    const unrelated = { ...input, inReplyToHeader: null, subject: "Re: Different conversation" };
+    await failAt("Contact", "UPDATE");
+    await expect(processSyncedMessageForReply(unrelated)).rejects.toThrow("reply recovery injected failure");
+    expect(await prisma.suppressedEmail.count()).toBe(0);
+    expect(await prisma.inboundReply.count()).toBe(0);
+    await removeFaults();
+    expect(await processSyncedMessageForReply(unrelated)).toEqual({ created: false });
+    expect(await prisma.suppressedEmail.count()).toBe(1);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: "reply-contact" } })).isSuppressed).toBe(true);
+    expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "reply-outbound" } })).status).toBe("SENT");
+  });
+
   it.each(faultTargets)("rolls back and retries a failure at %s", async (_, table, event) => {
     await failAt(table, event);
     await expect(processSyncedMessageForReply(input)).rejects.toThrow("reply recovery injected failure");
@@ -233,15 +270,20 @@ describe("default opt-out protection", () => {
 });
 
 describe("paged inbox to database journey (simulated provider HTTP)", () => {
-  it.each(["GOOGLE", "MICROSOFT"] as const)("processes a second-page STOP through %s sync and safely replays it", async (provider) => {
+  it.each([
+    ["GOOGLE", true], ["MICROSOFT", true],
+    ["GOOGLE", false], ["MICROSOFT", false],
+  ] as const)("processes a second-page STOP through %s sync and safely replays it; linked=%s", async (provider, linked) => {
     vi.stubEnv("MAILBOX_COMPLAINT_DETECTION_ENABLED", "");
+    const replySubject = linked ? input.subject : "Re: Different conversation";
+    if (!linked) await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { rfc822MessageId: null } });
     await prisma.clientMailboxIdentity.update({ where: { id: input.mailboxIdentityId }, data: { provider } });
     const nextGraph = "https://graph.microsoft.com/v1.0/users('sender@sender.test')/mailFolders('inbox')/messages?$skip=25";
     const fetcher = vi.fn(async (request: string) => {
       const url = new URL(request);
       let body: unknown;
       if (provider === "MICROSOFT") {
-        body = url.searchParams.has("$skip") ? { value: [{ id: input.providerMessageId, subject: input.subject,
+        body = url.searchParams.has("$skip") ? { value: [{ id: input.providerMessageId, subject: replySubject,
           from: { emailAddress: { address: input.fromEmail } }, toRecipients: [{ emailAddress: { address: input.toEmail } }],
           body: { contentType: "text", content: "STOP" }, receivedDateTime: receivedAt.toISOString(),
           internetMessageHeaders: [{ name: "In-Reply-To", value: input.inReplyToHeader }],
@@ -252,7 +294,7 @@ describe("paged inbox to database journey (simulated provider HTTP)", () => {
         body = { id: input.providerMessageId, internalDate: String(receivedAt.getTime()), payload: {
           mimeType: "text/plain", body: { data: Buffer.from("STOP").toString("base64url") }, headers: [
             { name: "From", value: input.fromEmail }, { name: "To", value: input.toEmail },
-            { name: "Subject", value: input.subject }, { name: "In-Reply-To", value: input.inReplyToHeader },
+            { name: "Subject", value: replySubject }, { name: "In-Reply-To", value: input.inReplyToHeader },
           ],
         } };
       }
@@ -262,9 +304,19 @@ describe("paged inbox to database journey (simulated provider HTTP)", () => {
     for (let attempt = 0; attempt < 2; attempt++) {
       expectedProviderCalls += provider === "GOOGLE" ? 3 : 2;
       const result = await syncMailboxInboxForMailbox({ clientId: input.clientId, mailboxIdentityId: input.mailboxIdentityId, staffUserId: null });
-      expect(result).toMatchObject({ ok: true, repliesLinked: attempt === 0 ? 1 : 0 });
-      await assertRecovered();
+      expect(result).toMatchObject({ ok: true, repliesLinked: linked && attempt === 0 ? 1 : 0 });
+      if (linked) {
+        await assertRecovered();
+      } else {
+        expect(await prisma.inboundReply.count()).toBe(0);
+        expect(await prisma.suppressedEmail.count()).toBe(1);
+        expect((await prisma.contact.findUniqueOrThrow({ where: { id: "reply-contact" } })).isSuppressed).toBe(true);
+        expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "reply-outbound" } })).status).toBe("SENT");
+        expect((await prisma.clientEmailSequenceEnrollment.findUniqueOrThrow({ where: { id: "reply-enrollment" } })).status).toBe("PENDING");
+      }
       const stored = await prisma.inboundMailboxMessage.findFirstOrThrow({ where: { providerMessageId: input.providerMessageId } });
+      expect(stored.subject).toBe(replySubject);
+      expect(stored.bodyText).toContain("STOP");
       const handling = { handledAt: receivedAt.toISOString(), handledByStaffUserId: "operator", lastRepliedAt: receivedAt.toISOString(), replyOutboundEmailIds: ["reply-outbound"] };
       if (attempt === 0) {
         await prisma.inboundMailboxMessage.update({ where: { id: stored.id }, data: { metadata: { ...(stored.metadata as object), handling } } });
