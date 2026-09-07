@@ -3,6 +3,17 @@ import { E2E_REPLY_QUEUE as fixture, E2E_STORAGE_STATE } from "./fixtures";
 
 test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 
+test("a retry at the daily limit explains why it was refused", async ({ page }) => {
+  await page.goto(`/operations/outbound?client=${fixture.clientId}`);
+  const row = page.getByRole("main").getByRole("row").filter({ hasText: fixture.cappedRecipient });
+  await row.getByRole("button", { name: "Requeue", exact: true }).click();
+  await expect(row.getByRole("status")).toContainText("This mailbox has no daily sending allowance left.");
+  await expect(row.getByRole("status")).toContainText("The email was not requeued");
+  await page.reload();
+  await expect(row.getByText("FAILED", { exact: true })).toBeVisible();
+  // A real server action against local synthetic data; no queue processing.
+});
+
 test("operations shows an unconfirmed send for review without offering retry", async ({ page }) => {
   await page.goto(`/operations/outbound?client=${fixture.clientId}`);
   const main = page.getByRole("main");

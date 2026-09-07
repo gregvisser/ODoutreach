@@ -31,7 +31,11 @@ test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 
 /** Rows in the Directory table specifically — not the CSV form's markup. */
 function directoryRows(page: Page) {
-  return page.locator("[data-testid='contacts-directory'] tbody tr");
+  // React can temporarily park a hidden streamed copy outside main. Count the
+  // displayed directory, while still detecting duplicate content inside main.
+  return page
+    .getByRole("main")
+    .locator("[data-testid='contacts-directory'] tbody tr");
 }
 
 test.describe("/contacts pages the directory instead of dumping it", () => {
@@ -40,6 +44,9 @@ test.describe("/contacts pages the directory instead of dumping it", () => {
   }) => {
     await page.goto("/contacts");
 
+    await expect(
+      page.getByRole("main").getByTestId("contacts-directory"),
+    ).toHaveCount(1);
     const rows = directoryRows(page);
     await expect(rows.first()).toBeVisible();
     const painted = await rows.count();

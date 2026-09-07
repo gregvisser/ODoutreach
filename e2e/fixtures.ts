@@ -68,6 +68,8 @@ export const E2E_REPLY_QUEUE = {
   ordinaryRecipient: "ordinary-queue-recipient@example.test",
   heldId: "e2e-outbound-unconfirmed",
   heldRecipient: "unconfirmed-recipient@example.test",
+  cappedId: "e2e-retry-at-cap",
+  cappedRecipient: "capped-retry@example.test",
 } as const;
 
 /**

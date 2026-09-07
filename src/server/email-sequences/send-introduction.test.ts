@@ -501,6 +501,8 @@ describe("sendSequenceStepBatch — governance gate", () => {
       prismaMock.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) =>
           fn({
+            $queryRaw: vi.fn().mockResolvedValue([{ id: "m1" }]),
+            clientMailboxIdentity: { findFirst: vi.fn(async () => (await prismaMock.clientMailboxIdentity.findMany())[0]) },
             mailboxSendReservation: {
               count: vi.fn().mockResolvedValue(0),
               findFirst: vi.fn().mockResolvedValue(null),

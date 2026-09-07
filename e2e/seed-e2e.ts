@@ -674,7 +674,7 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
 
     const replyQueue = E2E_REPLY_QUEUE;
     await prisma.client.upsert({ where: { id: replyQueue.clientId }, create: { id: replyQueue.clientId, name: "E2E Reply Queue", slug: "e2e-reply-queue" }, update: { deletedAt: null } });
-    const replyQueueMailbox = { ...recoveryMailbox, clientId: replyQueue.clientId, email: "reply-queue@example.test", emailNormalized: "reply-queue@example.test" };
+    const replyQueueMailbox = { ...recoveryMailbox, dailySendCap: 1, clientId: replyQueue.clientId, email: "reply-queue@example.test", emailNormalized: "reply-queue@example.test" };
     await prisma.clientMailboxIdentity.upsert({ where: { id: replyQueue.mailboxId }, create: { id: replyQueue.mailboxId, ...replyQueueMailbox }, update: replyQueueMailbox });
     const replyQueueMessage = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, providerMessageId: "synthetic-retry-original", fromEmail: replyQueue.replyRecipient, subject: "Reply queue fixture", receivedAt: recoveredAt };
     await prisma.inboundMailboxMessage.upsert({ where: { id: replyQueue.messageId }, create: { id: replyQueue.messageId, ...replyQueueMessage }, update: replyQueueMessage });
@@ -685,6 +685,10 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
     }
     const heldData = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, toEmail: replyQueue.heldRecipient, subject: "Synthetic unconfirmed send", bodySnapshot: "Test only; never dispatch", status: "PROCESSING" as const, providerMessageId: null, dispatchStartedAt: recoveredAt, claimExpiresAt: null, lastErrorCode: "SEND_OUTCOME_UNCONFIRMED" };
     await prisma.outboundEmail.upsert({ where: { id: replyQueue.heldId }, create: { id: replyQueue.heldId, ...heldData }, update: heldData });
+    const cappedData = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, toEmail: replyQueue.cappedRecipient, subject: "Synthetic retry at cap", bodySnapshot: "Never dispatch", status: "FAILED" as const, providerMessageId: null, dispatchStartedAt: null };
+    await prisma.outboundEmail.upsert({ where: { id: replyQueue.cappedId }, create: { id: replyQueue.cappedId, ...cappedData }, update: cappedData });
+    const usedCapacity = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, idempotencyKey: "e2e-used-capacity", windowKey: new Date().toISOString().slice(0, 10), status: "CONSUMED" as const };
+    await prisma.mailboxSendReservation.upsert({ where: { id: "e2e-used-capacity" }, create: { id: "e2e-used-capacity", ...usedCapacity }, update: usedCapacity });
   } finally {
     await prisma.$disconnect();
     await pool.end();

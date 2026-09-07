@@ -16,7 +16,11 @@ import {
 } from "./sending-policy";
 
 function asTx(over: Record<string, unknown>) {
-  return over as unknown as Prisma.TransactionClient;
+  return {
+    $queryRaw: vi.fn().mockResolvedValue([{ id: "m1" }]),
+    clientMailboxIdentity: { findFirst: vi.fn().mockResolvedValue(baseMailbox()) },
+    ...over,
+  } as unknown as Prisma.TransactionClient;
 }
 
 function baseMailbox(

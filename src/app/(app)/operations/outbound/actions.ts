@@ -89,8 +89,8 @@ export async function operatorRequeueFailedAction(input: {
   if (r.count === 0) {
     return {
       ok: false,
-      error:
-        "Could not requeue. Mailbox replies must be recovered from their original message. Other sends must be FAILED with no provider message id.",
+      error: r.error ??
+        "Could not requeue. Mailbox replies must be recovered from their original message. Other sends must be FAILED with no provider message id or unconfirmed sending attempt.",
     };
   }
 
