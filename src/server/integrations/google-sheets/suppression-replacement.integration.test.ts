@@ -15,7 +15,7 @@ vi.mock("@/server/outreach/suppression-guard", () => ({ refreshContactSuppressio
 import { syncSuppressionSourceFromGoogle } from "./suppression-sync";
 
 beforeEach(async () => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External HTTP forbidden"); }));
   await resetIntegrationDatabase();
   await prisma.client.createMany({ data: ["client", "other"].map((id) => ({ id, name: id, slug: id })) });
@@ -42,12 +42,19 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
 
   it.each([10, 15])("preserves all existing blocks when %i new entries conceal their removal", async (newCount) => {
     await seed();
-    valuesGet.mockResolvedValue({ data: { values: Array.from({ length: newCount }, (_, i) => [value(`new-${i}`)]) } });
+    const additions = Array.from({ length: newCount }, (_, i) => value(`new-${i}`));
+    valuesGet.mockResolvedValue({ data: { values: additions.map((entry) => [entry]) } });
     const result = await syncSuppressionSourceFromGoogle({ sourceId: "source" });
     expect(result.ok).toBe(false);
     expect(result.blockedShrink).toMatchObject({ previousCount: 10, wouldWrite: newCount, removed: 10 });
-    expect(await stored()).toEqual([...originals].sort());
-    expect(refreshFlags).not.toHaveBeenCalled();
+    expect(await stored()).toEqual([...originals, ...additions].sort());
+    expect(result.addedWithoutRemoving).toBe(newCount);
+    expect(result.error).toContain(`Added ${newCount} new blocked`);
+    expect(refreshFlags).toHaveBeenCalledWith("client");
+
+    // A scheduled retry must neither duplicate nor remove these protections.
+    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false, addedWithoutRemoving: 0 });
+    expect(await stored()).toEqual([...originals, ...additions].sort());
   });
 
   it("allows additions, retains manual and other-client blocks, and normalises duplicates", async () => {
@@ -65,6 +72,7 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
     valuesGet.mockResolvedValue({ data: { values: Array.from({ length: 15 }, (_, i) => [value(`new-${i}`)]) } });
     const result = await syncSuppressionSourceFromGoogle({ sourceId: "source", dryRun: true });
     expect(result).toMatchObject({ ok: false, dryRun: true, blockedShrink: { removed: 10, wouldWrite: 15 } });
+    expect(result.addedWithoutRemoving).toBeUndefined();
     expect(await stored()).toEqual([...originals].sort());
     expect(await prisma.suppressionSource.findUniqueOrThrow({ where: { id: "source" } })).toEqual(sourceBefore);
     expect(refreshFlags).not.toHaveBeenCalled();
@@ -84,10 +92,10 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
     expect(await stored()).toEqual([value("replacement")]);
   });
 
-  it("does not commit two conflicting replacements based on the same old list", async () => {
+  it("does not commit two conflicting destructive replacements based on the same old list", async () => {
     await seed();
     // Each removes five original entries (allowed). After either commits, the
-    // other would remove all ten entries and must fail instead of using a stale diff.
+    // other would remove all ten entries and must refuse those removals.
     const first = [...originals.slice(0, 5), ...Array.from({ length: 5 }, (_, i) => value(`first-${i}`))];
     const second = [...originals.slice(5), ...Array.from({ length: 5 }, (_, i) => value(`second-${i}`))];
     valuesGet.mockResolvedValueOnce({ data: { values: first.map((entry) => [entry]) } });
@@ -97,7 +105,26 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
       syncSuppressionSourceFromGoogle({ sourceId: "source" }),
     ]);
     expect(results.filter((result) => result.ok)).toHaveLength(1);
-    // DB reads can reorder which invocation reaches the synthetic sheet first.
-    expect([first.sort(), second.sort()]).toContainEqual(await stored());
+    const refused = results.find((result) => !result.ok)!;
+    if (refused.addedWithoutRemoving === 10) {
+      expect(await stored()).toEqual([...first, ...second].sort());
+    } else {
+      // A serialization conflict rolls the second transaction back entirely.
+      // DB reads can reorder which invocation reaches the synthetic sheet first.
+      expect(refused.addedWithoutRemoving).toBeUndefined();
+      expect([first.sort(), second.sort()]).toContainEqual(await stored());
+    }
+  });
+
+  it("retries flag refresh after an additive commit without losing new or old blocks", async () => {
+    await seed();
+    const additions = Array.from({ length: 10 }, (_, i) => value(`new-${i}`));
+    valuesGet.mockResolvedValue({ data: { values: additions.map((entry) => [entry]) } });
+    refreshFlags.mockRejectedValueOnce(new Error("synthetic refresh failure"));
+    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false });
+    expect(await stored()).toEqual([...originals, ...additions].sort());
+    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false, addedWithoutRemoving: 0 });
+    expect(refreshFlags).toHaveBeenCalledTimes(2);
+    expect(await stored()).toEqual([...originals, ...additions].sort());
   });
 });

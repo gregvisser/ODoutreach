@@ -74,11 +74,13 @@ export type SuppressionSyncResult = {
   /** Non-fatal hint when sync succeeded but nothing usable was found in cells. */
   warning?: string;
   /**
-   * Set instead of writing when the replace was refused for removing too much.
+   * Set when removals were refused. New blocks may still have been added.
    * Present so a caller can offer the confirmation; its absence on a failure
    * means the sync failed for some other reason and confirming would not help.
    */
   blockedShrink?: SuppressionReplaceRefusal;
+  /** New blocks retained even though removals were refused. Never set by a dry run. */
+  addedWithoutRemoving?: number;
 };
 
 function flattenSheetValues(values: string[][] | null | undefined): string[] {
@@ -274,9 +276,16 @@ export async function syncSuppressionSourceFromGoogle(
     // blocked still is. Recorded as ERROR and WITHOUT stamping lastSyncedAt,
     // because a list that silently stopped updating is how this started.
     if (outcome.refused) {
+      const noun = kind === "EMAIL" ? "addresses" : "domains";
+      const message = outcome.refusal.reason + (outcome.added > 0
+        ? ` Added ${outcome.added} new blocked ${noun} without removing any existing blocks.`
+        : "");
+      // Refresh from the retained union, including on retries where the new
+      // rows already exist. A prior post-commit refresh may have failed.
+      if (!dryRun) await refreshContactSuppressionFlagsForClient(clientId);
       await recordStatus({
         syncStatus: "ERROR",
-        lastError: outcome.refusal.reason.slice(0, 2000),
+        lastError: message.slice(0, 2000),
         // Remembered even though the sync was refused: the refusal is about
         // how MANY rows the sheet holds, not about which tab they are on, and
         // Google has already served this range. A source parked in a refused
@@ -286,11 +295,12 @@ export async function syncSuppressionSourceFromGoogle(
       });
       return {
         ok: false,
-        error: outcome.refusal.reason,
+        error: message,
         blockedShrink: outcome.refusal,
         previousCount: outcome.refusal.previousCount,
         resolvedRange: range,
         ...(dryRun ? { dryRun: true as const } : {}),
+        ...(!dryRun ? { addedWithoutRemoving: outcome.added } : {}),
       };
     }
 
@@ -376,7 +386,7 @@ export async function syncSuppressionSourceFromGoogle(
 
 type ApplyOutcome =
   | { refused: false; written: number; previousCount: number }
-  | { refused: true; refusal: SuppressionReplaceRefusal };
+  | { refused: true; refusal: SuppressionReplaceRefusal; added: number };
 
 async function applySheetToSuppressionTables(args: {
   clientId: string;
@@ -417,31 +427,31 @@ async function applySheetToSuppressionTables(args: {
       });
       const previousCount = previous.length;
       const refusal = refusalFor(emails, previous.map((row) => row.email));
-      if (refusal) return { refused: true, refusal };
 
       // Placed AFTER the guard so a dry run reports the same verdict the real
       // sync would reach, and BEFORE the delete so it reaches it for free.
-      if (dryRun)
-        return { refused: false, written: list.length, previousCount };
+      if (dryRun) return refusal
+        ? { refused: true, refusal, added: 0 }
+        : { refused: false, written: list.length, previousCount };
 
-      await tx.suppressedEmail.deleteMany({
+      if (!refusal) await tx.suppressedEmail.deleteMany({
         where: { clientId, sourceId },
       });
-
-      if (list.length === 0)
-        return { refused: false, written: 0, previousCount };
 
       // Chunked inserts keep each statement bounded; the bulk transaction
       // timeout (vs Prisma's 5s default) lets a large DNC list commit
       // atomically instead of failing with an expired-transaction error.
+      let added = 0;
       for (const batch of chunk(
         list.map((email) => ({ clientId, sourceId, email })),
       )) {
-        await tx.suppressedEmail.createMany({
+        const result = await tx.suppressedEmail.createMany({
           data: batch,
           skipDuplicates: true,
         });
+        added += result.count;
       }
+      if (refusal) return { refused: true, refusal, added };
       return { refused: false, written: list.length, previousCount };
     }, { ...BULK_TRANSACTION_OPTIONS, isolationLevel: "Serializable" });
   }
@@ -477,24 +487,28 @@ async function applySheetToSuppressionTables(args: {
     });
     const previousCount = previous.length;
     const refusal = refusalFor(domains, previous.map((row) => row.domain));
-    if (refusal) return { refused: true, refusal };
 
-    if (dryRun) return { refused: false, written: list.length, previousCount };
+    if (dryRun) return refusal
+      ? { refused: true, refusal, added: 0 }
+      : { refused: false, written: list.length, previousCount };
 
-    await tx.suppressedDomain.deleteMany({
+    if (!refusal) await tx.suppressedDomain.deleteMany({
       where: { clientId, sourceId },
     });
 
-    if (list.length === 0) return { refused: false, written: 0, previousCount };
-
+    // Refusing a removal must not discard new do-not-contact instructions.
+    // Unique keys preserve manual/source ownership when an entry exists already.
+    let added = 0;
     for (const batch of chunk(
       list.map((domain) => ({ clientId, sourceId, domain })),
     )) {
-      await tx.suppressedDomain.createMany({
+      const result = await tx.suppressedDomain.createMany({
         data: batch,
         skipDuplicates: true,
       });
+      added += result.count;
     }
+    if (refusal) return { refused: true, refusal, added };
     return { refused: false, written: list.length, previousCount };
     // Serialization conflicts fail safely; the next scheduled run retries.
   }, { ...BULK_TRANSACTION_OPTIONS, isolationLevel: "Serializable" });
