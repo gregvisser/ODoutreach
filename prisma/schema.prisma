@@ -1618,6 +1618,8 @@ model OutboundEmail {
   /// Worker claim — stale claims can be stolen after claimExpiresAt
   claimedAt              DateTime?
   claimExpiresAt         DateTime?
+  /// Persisted before provider dispatch; non-null forbids blind retry after an uncertain outcome.
+  dispatchStartedAt      DateTime?
   /// Increments each time a worker claims this row from QUEUED → PROCESSING (idempotency scope)
   sendAttempt            Int                 @default(0)
   /// Deterministic per claim — passed to ESP Idempotency-Key when supported

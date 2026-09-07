@@ -180,7 +180,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
           <div>
             <CardTitle>Stale processing claims</CardTitle>
             <CardDescription>
-              PROCESSING past claim expiry with no provider message id — release back to QUEUED
+              Release expired claims that have not started sending. Unconfirmed sends stay held for review.
             </CardDescription>
           </div>
           <ReleaseStaleLocksButton />
@@ -204,6 +204,13 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
           </CardContent>
         </Card>
       ) : null}
+
+      <OpsTable
+        title="Sending unconfirmed — review required"
+        description="These emails may already have been sent. Check the sending mailbox and provider evidence before deciding what happened. Automatic retry is blocked."
+        rows={snap.unconfirmed}
+        empty="No unconfirmed sends."
+      />
 
       <OpsTable
         title="Old QUEUED (waiting &gt; 30m)"
@@ -316,6 +323,7 @@ function OpsTable({
     lastErrorMessage?: string | null;
     failureReason?: string | null;
     metadata?: unknown;
+    dispatchStartedAt?: Date | null;
     client: { name: string };
   }[];
   empty: string;
@@ -371,6 +379,8 @@ function OpsTable({
                       ) : "Original message link unavailable"}
                       <p>Review this reply there; it cannot be retried from this queue.</p>
                     </div>
+                  ) : row.dispatchStartedAt ? (
+                    <p className="mt-1 text-xs">Sending unconfirmed. Do not resend; review mailbox evidence.</p>
                   ) : requeue ? (
                     <RequeueFailedButton outboundEmailId={row.id} clientId={row.clientId} />
                   ) : null}

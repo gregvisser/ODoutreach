@@ -33,6 +33,7 @@ export async function processOutboundSendQueue(opts: {
       SELECT "OutboundEmail"."id"
       FROM "OutboundEmail"
       WHERE "OutboundEmail"."status" = 'QUEUED'::"OutboundEmailStatus"
+        AND "OutboundEmail"."dispatchStartedAt" IS NULL
         -- Historical/manual queue entries must not dispatch threaded replies
         -- through the ordinary send path or overwrite their recovery metadata.
         AND ("OutboundEmail"."metadata"->>'kind') IS DISTINCT FROM ${INBOUND_REPLY_METADATA_KIND}

@@ -66,6 +66,8 @@ export const E2E_REPLY_QUEUE = {
   ordinaryId: "e2e-reply-queue-ordinary",
   replyRecipient: "reply-queue-recipient@example.test",
   ordinaryRecipient: "ordinary-queue-recipient@example.test",
+  heldId: "e2e-outbound-unconfirmed",
+  heldRecipient: "unconfirmed-recipient@example.test",
 } as const;
 
 /**

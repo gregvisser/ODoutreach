@@ -3,6 +3,18 @@ import { E2E_REPLY_QUEUE as fixture, E2E_STORAGE_STATE } from "./fixtures";
 
 test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 
+test("operations shows an unconfirmed send for review without offering retry", async ({ page }) => {
+  await page.goto(`/operations/outbound?client=${fixture.clientId}`);
+  const main = page.getByRole("main");
+  await expect(main.getByText("Sending unconfirmed — review required", { exact: true })).toBeVisible();
+  const held = main.getByRole("row").filter({ hasText: fixture.heldRecipient });
+  await expect(held).toHaveCount(1);
+  await expect(held.getByText("Sending unconfirmed. Do not resend; review mailbox evidence.", { exact: true })).toBeVisible();
+  await expect(held.getByRole("button", { name: "Requeue", exact: true })).toHaveCount(0);
+  await expect(held.getByRole("link", { name: "Detail", exact: true })).toHaveAttribute("href", `/activity/outbound/${fixture.heldId}`);
+  await expect(main.getByRole("row").filter({ hasText: fixture.ordinaryRecipient }).getByRole("button", { name: "Requeue", exact: true })).toBeEnabled();
+});
+
 test("operations directs a failed mailbox reply to its original message and keeps ordinary retry available", async ({ page }) => {
   await page.goto(`/operations/outbound?client=${fixture.clientId}`);
   const content = page.getByRole("main");

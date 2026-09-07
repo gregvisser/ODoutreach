@@ -32,6 +32,7 @@ import {
   sendMicrosoftGraphMimeSendMail,
   sendMicrosoftGraphSendMail,
 } from "@/server/mailbox/microsoft-graph-sendmail";
+import { beginOutboundDispatch, persistAcceptedOutbound, providerDefinitelyRejected, unconfirmedSend } from "./send-outcome";
 import { isSendPreflightDedupEnabled } from "./send-preflight-dedup";
 import {
   evaluateOutboundDispatchRecheck,
@@ -58,8 +59,8 @@ import { getOutboundEmailProvider } from "../providers";
 import {
   humanizeGovernanceRejection,
   mailboxIneligibleForGovernedSendExecution,
-  markReservationConsumedForOutbound,
   markReservationReleasedForOutbound,
+  markReservationReleasedForOutboundInTransaction,
 } from "@/server/mailbox/sending-policy";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 import {
@@ -208,6 +209,8 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     return { ok: true };
   }
 
+  if (row.dispatchStartedAt) return unconfirmedSend();
+
   if (row.status !== "PROCESSING") {
     return { ok: true };
   }
@@ -254,8 +257,8 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   const to = normalizeEmail(row.toEmail);
   const decision = await evaluateSuppression(row.clientId, to);
   if (decision.suppressed) {
-    await prisma.outboundEmail.updateMany({
-      where: { id: row.id, status: "PROCESSING", providerMessageId: null },
+    const blocked = await prisma.outboundEmail.updateMany({
+      where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null },
       data: {
         status: "BLOCKED_SUPPRESSION",
         suppressionSnapshot: decision as object,
@@ -267,7 +270,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
         lastErrorCode: "SUPPRESSED",
       },
     });
-    if (row.mailboxIdentityId) {
+    if (blocked.count > 0 && row.mailboxIdentityId) {
       await markReservationReleasedForOutbound(row.id);
     }
     return { ok: true };
@@ -288,8 +291,8 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
       now: new Date(),
     });
     if (recheck.block) {
-      await prisma.outboundEmail.updateMany({
-        where: { id: row.id, status: "PROCESSING", providerMessageId: null },
+      const blocked = await prisma.outboundEmail.updateMany({
+        where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null },
         data: {
           status: "BLOCKED_SUPPRESSION",
           claimedAt: null,
@@ -301,7 +304,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
           lastErrorMessage: recheck.reason.slice(0, 2000),
         },
       });
-      if (row.mailboxIdentityId) {
+      if (blocked.count > 0 && row.mailboxIdentityId) {
         await markReservationReleasedForOutbound(row.id);
       }
       return { ok: true };
@@ -408,8 +411,11 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     unsubscribeUrl: listUnsub ? extractHostedListUnsubscribeUrl(listUnsub.listUnsubscribe) : null,
   });
 
+  let dispatchStarted = false;
   try {
     const provider = getOutboundEmailProvider();
+    if (!(await beginOutboundDispatch(row))) return unconfirmedSend();
+    dispatchStarted = true;
     const result = await provider.send({
       correlationId: row.correlationId,
       from: row.fromAddress?.trim() ? row.fromAddress : resolvedFrom,
@@ -423,16 +429,18 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     });
 
     if (result.ok === false) {
+      if (!providerDefinitelyRejected(result.code)) return unconfirmedSend();
       return await handleSendFailure(
         row.id,
         row.retryCount,
         result.error,
         result.code,
         row.mailboxIdentityId,
+        true,
       );
     }
 
-    const updated = await prisma.outboundEmail.updateMany({
+    const updated = await persistAcceptedOutbound({
       where: {
         id: row.id,
         status: "PROCESSING",
@@ -461,6 +469,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
 
     return { ok: true };
   } catch (e) {
+    if (dispatchStarted) return unconfirmedSend();
     const msg = e instanceof Error ? e.message : String(e);
     return await handleSendFailure(
       row.id,
@@ -477,8 +486,8 @@ async function markFailed(id: string, code: string, message: string) {
     where: { id },
     select: { mailboxIdentityId: true },
   });
-  await prisma.outboundEmail.updateMany({
-    where: { id, status: "PROCESSING", providerMessageId: null },
+  const updated = await prisma.outboundEmail.updateMany({
+    where: { id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null },
     data: {
       status: "FAILED",
       claimedAt: null,
@@ -488,7 +497,7 @@ async function markFailed(id: string, code: string, message: string) {
       failureReason: message.slice(0, 2000),
     },
   });
-  if (row?.mailboxIdentityId) {
+  if (updated.count > 0 && row?.mailboxIdentityId) {
     await markReservationReleasedForOutbound(id);
   }
 }
@@ -499,47 +508,52 @@ async function handleSendFailure(
   error: string,
   code: string | undefined,
   mailboxIdentityId: string | null,
+  dispatchWasStarted = false,
 ): Promise<{ ok: false; error: string }> {
   const max = maxOutboundSendRetries();
   const retryable = isRetryableSendFailure(code, error);
   const next = retryCount + 1;
 
-  if (retryable && next <= max) {
-    const nextAt = computeNextRetryAt(retryCount);
-    await prisma.outboundEmail.updateMany({
-      where: { id, status: "PROCESSING", providerMessageId: null },
+  return prisma.$transaction(async (tx) => {
+    if (retryable && next <= max) {
+      const nextAt = computeNextRetryAt(retryCount);
+      await tx.outboundEmail.updateMany({
+        where: { id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: dispatchWasStarted ? { not: null } : null },
+        data: {
+          dispatchStartedAt: null,
+          status: "QUEUED",
+          retryCount: next,
+          nextRetryAt: nextAt,
+          claimedAt: null,
+          claimExpiresAt: null,
+          providerIdempotencyKey: null,
+          lastErrorCode: code ?? "RETRYABLE",
+          lastErrorMessage: error.slice(0, 2000),
+          failureReason: error.slice(0, 2000),
+          lastAttemptAt: new Date(),
+        },
+      });
+      return { ok: false as const, error };
+    }
+
+    const updated = await tx.outboundEmail.updateMany({
+      where: { id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: dispatchWasStarted ? { not: null } : null },
       data: {
-        status: "QUEUED",
-        retryCount: next,
-        nextRetryAt: nextAt,
+        dispatchStartedAt: null,
+        status: "FAILED",
         claimedAt: null,
         claimExpiresAt: null,
         providerIdempotencyKey: null,
-        lastErrorCode: code ?? "RETRYABLE",
+        lastErrorCode: code ?? "FAILED",
         lastErrorMessage: error.slice(0, 2000),
         failureReason: error.slice(0, 2000),
-        lastAttemptAt: new Date(),
       },
     });
-    return { ok: false, error };
-  }
-
-  await prisma.outboundEmail.updateMany({
-    where: { id, status: "PROCESSING", providerMessageId: null },
-    data: {
-      status: "FAILED",
-      claimedAt: null,
-      claimExpiresAt: null,
-      providerIdempotencyKey: null,
-      lastErrorCode: code ?? "FAILED",
-      lastErrorMessage: error.slice(0, 2000),
-      failureReason: error.slice(0, 2000),
-    },
+    if (updated.count > 0 && mailboxIdentityId) {
+      await markReservationReleasedForOutboundInTransaction(tx, id);
+    }
+    return { ok: false as const, error };
   });
-  if (mailboxIdentityId) {
-    await markReservationReleasedForOutbound(id);
-  }
-  return { ok: false, error };
 }
 
 async function sendViaConnectedMailboxOrFail(
@@ -646,6 +660,7 @@ async function sendViaConnectedMailboxOrFail(
           ]
         : []),
     ];
+    let dispatchStarted = false;
     try {
       const accessToken = await getGoogleGmailAccessTokenForMailbox(mailbox.id);
       // H1/H2 preflight: on a retry, if this exact Message-ID already landed
@@ -657,7 +672,9 @@ async function sendViaConnectedMailboxOrFail(
           rfc822MessageId,
         });
         if (lookup.status === "found") {
-          const reconciled = await prisma.outboundEmail.updateMany({
+          if (!(await beginOutboundDispatch(row, rfc822MessageId))) return unconfirmedSend();
+          dispatchStarted = true;
+          await persistAcceptedOutbound({
             where: { id: row.id, status: "PROCESSING", providerMessageId: null },
             data: {
               status: "SENT",
@@ -676,9 +693,6 @@ async function sendViaConnectedMailboxOrFail(
               toDomain: extractDomainFromEmail(to) || row.toDomain,
             },
           });
-          if (reconciled.count > 0) {
-            await markReservationConsumedForOutbound(row.id);
-          }
           return { ok: true };
         }
       }
@@ -699,11 +713,14 @@ async function sendViaConnectedMailboxOrFail(
         bodyHtml: gmailHtml,
         extraHeaders: gmailExtraHeaders,
       });
+      if (!(await beginOutboundDispatch(row, rfc822MessageId))) return unconfirmedSend();
+      dispatchStarted = true;
       const result = await sendGmailUsersMessagesSend({
         accessToken,
         rfc5322Message: rfc,
       });
       if (result.ok === false) {
+        if (!providerDefinitelyRejected(result.code)) return unconfirmedSend();
         if (row.mailboxIdentityId && isMailboxReauthRequiredError("GOOGLE", result.error)) {
           await markMailboxReauthRequired(
             row.mailboxIdentityId,
@@ -718,9 +735,10 @@ async function sendViaConnectedMailboxOrFail(
           result.error,
           result.code,
           row.mailboxIdentityId,
+          true,
         );
       }
-      const updated = await prisma.outboundEmail.updateMany({
+      const updated = await persistAcceptedOutbound({
         where: { id: row.id, status: "PROCESSING", providerMessageId: null },
         data: {
           status: "SENT",
@@ -741,7 +759,6 @@ async function sendViaConnectedMailboxOrFail(
       if (updated.count === 0) {
         return { ok: true };
       }
-      await markReservationConsumedForOutbound(row.id);
       // Row 108 — best-effort, never allowed to affect the outcome above.
       // captureDeliveredGmailMessageIdBestEffort swallows every failure itself;
       // this send is already recorded as SENT regardless of what happens next.
@@ -753,6 +770,7 @@ async function sendViaConnectedMailboxOrFail(
       });
       return { ok: true };
     } catch (e) {
+      if (dispatchStarted) return unconfirmedSend();
       const msg = e instanceof Error ? e.message : String(e);
       if (row.mailboxIdentityId && isMailboxReauthRequiredError("GOOGLE", msg)) {
         await markMailboxReauthRequired(row.mailboxIdentityId, row.clientId, "GOOGLE", msg);
@@ -823,6 +841,7 @@ async function sendViaConnectedMailboxOrFail(
     ? appendOpenTrackingPixel(bodyParts.html, graphPixelUrl)
     : bodyParts.html;
 
+  let dispatchStarted = false;
   try {
     const accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
     // H1/H2 best-effort preflight (Graph can't stamp or look up our Message-ID):
@@ -842,7 +861,9 @@ async function sendViaConnectedMailboxOrFail(
         sinceIso,
       });
       if (lookup.status === "found") {
-        const reconciled = await prisma.outboundEmail.updateMany({
+        if (!(await beginOutboundDispatch(row))) return unconfirmedSend();
+        dispatchStarted = true;
+        await persistAcceptedOutbound({
           where: { id: row.id, status: "PROCESSING", providerMessageId: null },
           data: {
             status: "SENT",
@@ -860,9 +881,6 @@ async function sendViaConnectedMailboxOrFail(
             toDomain: extractDomainFromEmail(to) || row.toDomain,
           },
         });
-        if (reconciled.count > 0) {
-          await markReservationConsumedForOutbound(row.id);
-        }
         return { ok: true };
       }
     }
@@ -872,6 +890,8 @@ async function sendViaConnectedMailboxOrFail(
     // (HTML-only scores as spam) AND real List-Unsubscribe + List-Unsubscribe-Post
     // headers (true one-click unsubscribe) — neither of which Graph JSON allows.
     // Built with the same MIME helper the Gmail path already uses in production.
+    if (!(await beginOutboundDispatch(row))) return unconfirmedSend();
+    dispatchStarted = true;
     const result = isMicrosoftMimeSendEnabled()
       ? await sendMicrosoftGraphMimeSendMail({
           accessToken,
@@ -909,6 +929,7 @@ async function sendViaConnectedMailboxOrFail(
           },
         });
     if (result.ok === false) {
+      if (!providerDefinitelyRejected(result.code)) return unconfirmedSend();
       if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", result.error)) {
         await markMailboxReauthRequired(
           row.mailboxIdentityId,
@@ -923,6 +944,7 @@ async function sendViaConnectedMailboxOrFail(
         result.error,
         result.code,
         row.mailboxIdentityId,
+        true,
       );
     }
     // No `rfc822MessageId` here — deliberate, not an oversight. Both Graph send
@@ -935,7 +957,7 @@ async function sendViaConnectedMailboxOrFail(
     // stamped). Capturing the real one would mean switching to the create-draft
     // (POST /messages, which returns `internetMessageId`) + send-by-id pattern —
     // a materially bigger change to this send path than adding a field here.
-    const updated = await prisma.outboundEmail.updateMany({
+    const updated = await persistAcceptedOutbound({
       where: { id: row.id, status: "PROCESSING", providerMessageId: null },
       data: {
         status: "SENT",
@@ -955,9 +977,9 @@ async function sendViaConnectedMailboxOrFail(
     if (updated.count === 0) {
       return { ok: true };
     }
-    await markReservationConsumedForOutbound(row.id);
     return { ok: true };
   } catch (e) {
+    if (dispatchStarted) return unconfirmedSend();
     const msg = e instanceof Error ? e.message : String(e);
     if (row.mailboxIdentityId && isMailboxReauthRequiredError("MICROSOFT", msg)) {
       await markMailboxReauthRequired(row.mailboxIdentityId, row.clientId, "MICROSOFT", msg);

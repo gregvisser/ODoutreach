@@ -33,12 +33,15 @@ const { markConsumed, markReleased, getGoogleToken, sendGmail, evalSupp, fetchDe
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ outboundEmail: { findUnique, updateMany } })),
     outboundEmail: { findUnique, updateMany },
     clientMailboxIdentity: { findFirst: findFirstMbox },
     client: { findUnique: vi.fn().mockResolvedValue(null) },
   },
 }));
 vi.mock("@/server/mailbox/sending-policy", () => ({
+  markReservationConsumedForOutboundInTransaction: (_tx: unknown, id: string) => markConsumed(id),
+  markReservationReleasedForOutboundInTransaction: (_tx: unknown, id: string) => markReleased(id),
   humanizeGovernanceRejection: vi.fn((c: string) => c),
   mailboxIneligibleForGovernedSendExecution: vi.fn(
     (m: { connectionStatus: string } | { connectionStatus?: string }) =>
@@ -160,8 +163,8 @@ describe("executeOutboundSend — Gmail post-send Message-ID read-back (row 108)
     const rfcWrites = (updateMany.mock.calls as Array<[{ data?: { rfc822MessageId?: string } }]>)
       .map((call) => call[0]?.data?.rfc822MessageId)
       .filter((v): v is string => typeof v === "string");
-    // Only the original send-time write should have set rfc822MessageId.
-    expect(rfcWrites).toEqual([GENERATED_MESSAGE_ID]);
+    // The durable pre-dispatch record and the accepted result retain the same ID.
+    expect(rfcWrites).toEqual([GENERATED_MESSAGE_ID, GENERATED_MESSAGE_ID]);
   });
 
   it("THE SAFETY CONTRACT: a throwing read-back never affects the recorded send outcome", async () => {
