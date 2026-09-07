@@ -8,7 +8,8 @@ import type { StaffUser } from "@/generated/prisma/client";
 
 /**
  * Loads the StaffUser for the current Entra session: match by `entraObjectId` (oid), or by
- * normalized email then persist `entraObjectId` on first login (pre-provisioned row only).
+ * the recorded guest identity. Email can bind only a pending legacy invitation
+ * without a recorded Graph identity, and that first-login binding is atomic.
  * Does not create rows — unknown Microsoft identities stay unauthorized.
  */
 async function loadStaffRecord(): Promise<StaffUser | null> {
@@ -66,18 +67,29 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
     // Owner identities must be provisioned explicitly. An email match must
     // never transfer owner privileges to a different Microsoft identity.
     if (byEmail.isSuperAdmin) return null;
+    if (byEmail.guestInvitationState !== "PENDING" || byEmail.graphInvitedUserObjectId) {
+      return null;
+    }
 
-    return tx.staffUser.update({
-      where: { id: byEmail.id, isSuperAdmin: false },
+    // Recheck eligibility in the write: concurrent first logins must not both
+    // acquire the same staff account, or replace the winner after its commit.
+    await tx.staffUser.updateMany({
+      where: {
+        id: byEmail.id,
+        entraObjectId: byEmail.entraObjectId,
+        isSuperAdmin: false,
+        guestInvitationState: "PENDING",
+        graphInvitedUserObjectId: null,
+      },
       data: {
         entraObjectId,
         displayName: displayName ?? byEmail.displayName,
         email,
-        ...(byEmail.guestInvitationState === "PENDING"
-          ? { guestInvitationState: "ACCEPTED" as const }
-          : {}),
+        guestInvitationState: "ACCEPTED",
       },
     });
+    const bound = await tx.staffUser.findUnique({ where: { id: byEmail.id } });
+    return bound?.entraObjectId === entraObjectId && !bound.isSuperAdmin ? bound : null;
   });
 }
 
