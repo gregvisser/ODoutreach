@@ -5,11 +5,15 @@ import { countBookedSendSlotsInUtcWindow, lockSendingMailboxInTransaction, recom
 
 import { mailboxDailySendCap, startOfNextUtcDay } from "@/lib/mailbox-identities";
 
+import { effectiveDailyCap, isWarmupRampEnabled } from "@/lib/mailboxes/mailbox-warmup";
+import { countMailboxSendingDays } from "@/server/mailbox/mailbox-sending-history";
+import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
+
 export const UNCONFIRMED_SEND_MESSAGE = "Sending is unconfirmed. Do not resend this email; ask an administrator to check the sending mailbox and provider evidence.";
 export function unconfirmedSend() { return { ok: false as const, error: UNCONFIRMED_SEND_MESSAGE }; }
 
 /** One durable dispatch owner. A crash after this write must never become a blind retry. */
-export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?: string) {
+export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?: string, reconcilingAcceptedSend = false) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${row.id} FOR UPDATE`;
     const current = await tx.outboundEmail.findFirst({ where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null, sendAttempt: row.sendAttempt, claimedAt: row.claimedAt } });
@@ -26,12 +30,24 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
       const windowKey = utcDateKeyForInstant(now);
       const booked = await countBookedSendSlotsInUtcWindow(tx, mailbox.id, windowKey);
       const alreadyBookedToday = reservation.windowKey === windowKey;
-      if (booked - (alreadyBookedToday ? 1 : 0) >= mailboxDailySendCap(mailbox.dailySendCap)) {
-        const error = "This mailbox has no daily sending allowance left. This email stays queued for the next day.";
-        await tx.outboundEmail.update({ where: { id: current.id }, data: { status: "QUEUED", nextRetryAt: startOfNextUtcDay(now), claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null, lastErrorCode: "MAILBOX_DAILY_CAP", lastErrorMessage: error } });
+      // A positive provider lookup reconciles an existing send; it must not
+      // request new allowance or move that send into a different day.
+      const kind = current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
+        ? current.metadata.kind : undefined;
+      // Inline replies have their own send path. Preserve the existing internal
+      // test/proof exemption; ordinary contact and sequence outreach must warm up.
+      const warmupApplies = !reconcilingAcceptedSend && isWarmupRampEnabled() && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend";
+      const hardCap = mailboxDailySendCap(mailbox.dailySendCap);
+      const cap = warmupApplies ? effectiveDailyCap(mailbox, await countMailboxSendingDays(mailbox.id, tx)) : hardCap;
+      const limitedByWarmup = cap < hardCap;
+      if (!reconcilingAcceptedSend && booked - (alreadyBookedToday ? 1 : 0) >= cap) {
+        const error = limitedByWarmup
+          ? "This mailbox has used today's warm-up allowance. This email stays queued for the next day."
+          : "This mailbox has no daily sending allowance left. This email stays queued for the next day.";
+        await tx.outboundEmail.update({ where: { id: current.id }, data: { status: "QUEUED", nextRetryAt: startOfNextUtcDay(now), claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null, lastErrorCode: limitedByWarmup ? "MAILBOX_WARMUP_CAP" : "MAILBOX_DAILY_CAP", lastErrorMessage: error } });
         return { ok: false as const, error };
       }
-      if (!alreadyBookedToday) {
+      if (!reconcilingAcceptedSend && !alreadyBookedToday) {
         await tx.mailboxSendReservation.update({ where: { id: reservation.id }, data: { windowKey } });
         await recomputeMailboxLedgerCounterInTransaction(tx, mailbox.id, now);
       }

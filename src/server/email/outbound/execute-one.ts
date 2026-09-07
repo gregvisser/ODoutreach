@@ -673,7 +673,7 @@ async function sendViaConnectedMailboxOrFail(
           rfc822MessageId,
         });
         if (lookup.status === "found") {
-          const dispatchPermission = await beginOutboundDispatch(row, rfc822MessageId);
+          const dispatchPermission = await beginOutboundDispatch(row, rfc822MessageId, true);
           if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
           dispatchStarted = true;
           await persistAcceptedOutbound({
@@ -864,7 +864,7 @@ async function sendViaConnectedMailboxOrFail(
         sinceIso,
       });
       if (lookup.status === "found") {
-        const dispatchPermission = await beginOutboundDispatch(row);
+        const dispatchPermission = await beginOutboundDispatch(row, undefined, true);
         if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
         dispatchStarted = true;
         await persistAcceptedOutbound({

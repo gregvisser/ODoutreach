@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 
 /**
  * How many distinct days has this mailbox actually SENT on?
@@ -22,8 +23,9 @@ import { prisma } from "@/lib/db";
  */
 export async function countMailboxSendingDays(
   mailboxIdentityId: string,
+  db: Pick<Prisma.TransactionClient, "$queryRaw"> = prisma,
 ): Promise<number> {
-  const rows = await prisma.$queryRaw<{ days: bigint }[]>`
+  const rows = await db.$queryRaw<{ days: bigint }[]>`
     SELECT COUNT(DISTINCT DATE("sentAt" AT TIME ZONE 'UTC')) AS days
     FROM "OutboundEmail"
     WHERE "mailboxIdentityId" = ${mailboxIdentityId}
