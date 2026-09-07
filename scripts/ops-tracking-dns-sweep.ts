@@ -23,27 +23,35 @@
  * tracking switched on.
  */
 
-import {
-  liveTrackingDnsResolver,
-  loadTrackedClientsForDnsSweep,
-  sweepTrackingDnsRegressions,
-  disableTrackingForDnsRegression,
-  persistTrackingDnsCheck,
-} from "../src/server/clients/tracking-dns-sweep-entry";
-
 async function main(): Promise<void> {
-  if (!process.env.DATABASE_URL) {
+  if (!process.env.DATABASE_URL?.trim()) {
     console.error(
       "DATABASE_URL is not configured — refusing to report a clean tracking-DNS sweep against no database.",
     );
     process.exit(1);
   }
 
+  // Validate configuration before importing the database module. The npm
+  // command explicitly selects the server-only package's react-server export.
+  const {
+    countClientsForTrackingDnsSweep,
+    liveTrackingDnsResolver,
+    loadTrackedClientsForDnsSweep,
+    sweepTrackingDnsRegressions,
+    disableTrackingForDnsRegression,
+    persistTrackingDnsCheck,
+  } = await import("../src/server/clients/tracking-dns-sweep-entry");
+
+  const currentClients = await countClientsForTrackingDnsSweep();
+  if (currentClients === 0) {
+    console.error("No current clients found — refusing to report a clean tracking-DNS sweep against an empty database.");
+    process.exit(1);
+  }
   const clients = await loadTrackedClientsForDnsSweep();
   const now = new Date();
 
   console.log(
-    `Tracking-DNS sweep starting: ${String(clients.length)} client(s) currently have open tracking ON.`,
+    `Tracking-DNS sweep starting: ${currentClients} current client(s) in the database; ${String(clients.length)} currently have open tracking ON.`,
   );
 
   const result = await sweepTrackingDnsRegressions({
@@ -52,11 +60,10 @@ async function main(): Promise<void> {
     now,
     disableTracking: async (input) => {
       console.error(
-        `DISABLED open tracking for ${input.clientName} (${input.clientId}) — failed: ${input.failedLabels.join(", ")}`,
+        `Disabling open tracking for a client — failed checks: ${input.failedLabels.join(", ")}`,
       );
-      for (const check of input.summary.checks.filter((c) => !c.pass)) {
-        console.error(`  ${check.label}: ${check.detail}`);
-      }
+      // Workflow logs are public. Client identities and DNS details belong in
+      // the application audit record written by this operation.
       await disableTrackingForDnsRegression(input);
     },
     recordCheck: persistTrackingDnsCheck,
@@ -72,7 +79,7 @@ async function main(): Promise<void> {
   // customer's IT department.
   if (result.disabled.length > 0) {
     console.error(
-      `::warning::Open tracking was switched OFF for ${String(result.disabled.length)} client(s) whose DNS regressed: ${result.disabled.join(", ")}`,
+      `::warning::Open tracking was switched OFF for ${String(result.disabled.length)} client(s). See the application audit log for affected clients and DNS details.`,
     );
   }
 }
@@ -80,6 +87,6 @@ async function main(): Promise<void> {
 main()
   .then(() => process.exit(0))
   .catch((e: unknown) => {
-    console.error("Tracking-DNS sweep FAILED:", e);
+    console.error("Tracking-DNS sweep FAILED:", e instanceof Error ? e.name : "Unknown error");
     process.exit(1);
   });

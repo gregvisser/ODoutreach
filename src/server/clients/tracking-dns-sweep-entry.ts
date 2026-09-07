@@ -26,6 +26,7 @@ export {
 } from "./tracking-dns-verification";
 
 export {
+  countClientsForTrackingDnsSweep,
   loadTrackedClientsForDnsSweep,
   persistTrackingDnsCheck,
   disableTrackingForDnsRegression,
