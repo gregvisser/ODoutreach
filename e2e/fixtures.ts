@@ -46,6 +46,17 @@ export const E2E_OUTBOUND_EMAIL = {
   subject: "E2E fixture subject",
 } as const;
 
+/** A saved reply confirmation; no test needs to contact a sending provider. */
+export const E2E_REPLY_RECOVERY = {
+  clientId: "e2e-reply-recovery-client",
+  mailboxId: "e2e-reply-recovery-mailbox",
+  messageId: "e2e-reply-recovery-message",
+  outboundId: "e2e-reply-recovery-outbound",
+  reservationId: "e2e-reply-recovery-reservation",
+  requestId: "14c120e2-a746-435b-9d99-cae2a16a23bc",
+  bodyText: "Synthetic reply saved before its browser confirmation was lost.",
+} as const;
+
 /**
  * ---------------------------------------------------------------------------
  * Cross-tenant isolation fixtures. Ported from the BOutreach fork 2026-08-20.

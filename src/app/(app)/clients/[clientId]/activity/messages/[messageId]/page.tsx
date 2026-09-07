@@ -229,6 +229,7 @@ export default async function InboundMessageDetailPage({ params }: Props) {
             </p>
           ) : (
             <InboundMessageReplyForm
+              staffUserId={staff.id}
               clientId={clientId}
               inboundMessageId={message.id}
               replyToEmail={message.fromEmail}

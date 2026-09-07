@@ -21,6 +21,7 @@ export async function replyToInboundMailboxMessageAction(input: {
   clientId: string;
   inboundMessageId: string;
   bodyText: string;
+  requestId: string;
 }): Promise<ReplyToInboundMessageResult> {
   const staff = await requireOpensDoorsStaff();
   const result = await replyToInboundMailboxMessage({
@@ -28,6 +29,7 @@ export async function replyToInboundMailboxMessageAction(input: {
     clientId: input.clientId,
     inboundMessageId: input.inboundMessageId,
     bodyText: input.bodyText,
+    requestId: input.requestId,
   });
   if (result.ok) {
     revalidatePath(

@@ -40,6 +40,7 @@ import {
   E2E_MEMBER_A,
   E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
+  E2E_REPLY_RECOVERY,
   E2E_REPLIES_WAITING,
   E2E_STAFF,
   E2E_SUPER_ADMIN,
@@ -646,6 +647,29 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         },
       ],
     });
+    const recovery = E2E_REPLY_RECOVERY;
+    const replyStaff = await prisma.staffUser.findUniqueOrThrow({ where: { entraObjectId: E2E_STAFF.entraObjectId } });
+    await prisma.client.upsert({
+      where: { id: recovery.clientId }, create: { id: recovery.clientId, name: "E2E Reply Recovery", slug: "e2e-reply-recovery" }, update: { deletedAt: null },
+    });
+    const recoveryMailbox = { clientId: recovery.clientId, provider: "GOOGLE" as const, email: "reply-recovery@example.test", emailNormalized: "reply-recovery@example.test", isActive: true, connectionStatus: "CONNECTED" as const, canSend: true, isSendingEnabled: true };
+    await prisma.clientMailboxIdentity.upsert({ where: { id: recovery.mailboxId }, create: { id: recovery.mailboxId, ...recoveryMailbox }, update: recoveryMailbox });
+    // No MailboxIdentitySecret exists: even a regressed fresh-send path cannot
+    // obtain a provider token. Runtime env also blanks all provider credentials.
+    const recoveredAt = new Date("2026-08-01T12:00:00Z");
+    const recoveryMessage = {
+      clientId: recovery.clientId, mailboxIdentityId: recovery.mailboxId, providerMessageId: "synthetic-original", fromEmail: "prospect@example.test", subject: "Reply recovery fixture", receivedAt: recoveredAt,
+      metadata: { handling: { handledAt: recoveredAt.toISOString(), handledByStaffUserId: replyStaff.id, lastRepliedAt: recoveredAt.toISOString(), replyOutboundEmailIds: [recovery.outboundId] } },
+    };
+    await prisma.inboundMailboxMessage.upsert({ where: { id: recovery.messageId }, create: { id: recovery.messageId, ...recoveryMessage }, update: recoveryMessage });
+    const recoveryOutbound = {
+      clientId: recovery.clientId, mailboxIdentityId: recovery.mailboxId, staffUserId: replyStaff.id, toEmail: "prospect@example.test", subject: "Re: Reply recovery fixture", bodySnapshot: recovery.bodyText,
+      status: "SENT" as const, sentAt: recoveredAt, providerMessageId: "gmail:synthetic-already-sent", providerName: "google_gmail",
+      metadata: { kind: "inboundMailboxReply", inboundMessageId: recovery.messageId, replyRequestId: recovery.requestId },
+    };
+    await prisma.outboundEmail.upsert({ where: { id: recovery.outboundId }, create: { id: recovery.outboundId, ...recoveryOutbound }, update: recoveryOutbound });
+    const recoveryReservation = { clientId: recovery.clientId, mailboxIdentityId: recovery.mailboxId, outboundEmailId: recovery.outboundId, idempotencyKey: `inboundReply:${recovery.clientId}:${recovery.messageId}:${recovery.requestId}`, windowKey: "2026-08-01", status: "CONSUMED" as const };
+    await prisma.mailboxSendReservation.upsert({ where: { id: recovery.reservationId }, create: { id: recovery.reservationId, ...recoveryReservation }, update: recoveryReservation });
   } finally {
     await prisma.$disconnect();
     await pool.end();
