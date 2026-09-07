@@ -194,8 +194,8 @@ jobs:
           path: evidence-e2e.json
           retention-days: 30
 
-      - name: Upload Playwright report on failure
-        if: failure()
+      - name: Upload browser evidence including retry-only failures
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

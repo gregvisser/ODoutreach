@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 
 import {
   deleteComplianceAttachmentAction,
@@ -21,6 +21,11 @@ import { cn } from "@/lib/utils";
 import type { BriefTaxonomyKind } from "@/generated/prisma/enums";
 
 type StaffOption = { id: string; email: string; displayName: string | null };
+
+const subscribeToReady = () => () => {};
+// Before hydration, a native form submit would reload and discard typed fields.
+const clientReady = () => true;
+const serverReady = () => false;
 
 type TaxonomyState = {
   SERVICE_AREA: string[];
@@ -81,6 +86,7 @@ export function OpensDoorsBriefGuidedForm({
   complianceFiles,
 }: Props) {
   const router = useRouter();
+  const ready = useSyncExternalStore(subscribeToReady, clientReady, serverReady);
   const [form, setForm] = useState<OpensDoorsBriefFields>(initial);
   const [website, setWebsite] = useState(clientRow.website);
   const [industry, setIndustry] = useState(clientRow.industry);
@@ -196,7 +202,9 @@ export function OpensDoorsBriefGuidedForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-10">
+    <form onSubmit={onSubmit} aria-busy={!ready}>
+      {!ready && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading form…</p>}
+      <fieldset disabled={!ready} className="min-w-0 space-y-10">
       <section className="space-y-4">
         <h2 className="text-lg font-semibold tracking-tight">A. Company identity</h2>
         <p className="text-sm text-muted-foreground">
@@ -480,6 +488,7 @@ export function OpensDoorsBriefGuidedForm({
           </p>
         ) : null}
       </div>
+      </fieldset>
     </form>
   );
 }
