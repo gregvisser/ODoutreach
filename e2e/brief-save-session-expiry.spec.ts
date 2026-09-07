@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { E2E_CLIENT, E2E_STORAGE_STATE } from "./fixtures";
 
+test.use({ trace: "retain-on-failure" });
+
 /**
  * Regression for a support ticket: a staff member filling in the (long)
  * client Brief form hit Save and the whole page crashed to the app-wide
@@ -21,6 +23,7 @@ import { E2E_CLIENT, E2E_STORAGE_STATE } from "./fixtures";
  * survives with the reporter's data intact.
  */
 test.describe("client brief — save request fails", () => {
+  test.describe.configure({ retries: 0 });
   test.use({ storageState: E2E_STORAGE_STATE.staff });
 
   test("a failed save shows an inline error and keeps the typed data, instead of crashing the page", async ({
@@ -45,7 +48,10 @@ test.describe("client brief — save request fails", () => {
       await route.continue();
     });
 
-    await page.getByRole("button", { name: "Save brief" }).click();
+    await Promise.all([
+      page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === `/clients/${E2E_CLIENT.id}/brief`),
+      page.getByRole("button", { name: "Save brief" }).click(),
+    ]);
 
     // Must NOT crash to the app-wide error boundary.
     await expect(
