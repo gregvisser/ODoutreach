@@ -25,53 +25,15 @@ jobs:
   sync-replies:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
       - name: Call reply sync endpoint
         env:
           REPLY_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/replies/sync
           PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
-        run: |
-          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
-            echo "PROCESS_QUEUE_SECRET is not configured; skipping reply sync."
-            exit 0
-          fi
-          response_file="/tmp/reply-sync-response.json"
-          status="000"
-          if ! status=$(curl -sS -o "$response_file" -w "%{http_code}" \
-            -X POST "$REPLY_SYNC_URL" \
-            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
-            -H "Content-Type: application/json" \
-            --data '{"perMailboxTop":25,"maxMailboxes":50}'); then
-            curl_exit=$?
-            echo "Reply sync curl failed before a valid HTTP response. curl_exit=${curl_exit}"
-            status="000"
-          fi
-          echo "Reply sync HTTP status: ${status}"
-          if [ -f "$response_file" ]; then
-            cat "$response_file"
-          else
-            echo "Reply sync response body was not written."
-          fi
-          # The body is checked as well as the status, and that is not belt and
-          # braces. A PARTIAL run answers 207, which IS a 2xx, so a status-only
-          # check would pass it — and a status-only check is exactly how a run
-          # went green while 8 of 35 mailboxes were failing.
-          ok=$(jq -r 'try .ok catch "" ' "$response_file" 2>/dev/null || echo "")
-          failed=$(jq -r 'try .failedCount catch 0' "$response_file" 2>/dev/null || echo 0)
-          total=$(jq -r 'try .processed catch 0' "$response_file" 2>/dev/null || echo 0)
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            exit 1
-          fi
-          if [ "$ok" != "true" ]; then
-            echo "Reply sync reported a PARTIAL run: ${failed} item(s) failed."
-            echo "reply sync partial: ${failed} of ${total} mailboxes failed" >> /tmp/run-problems.txt
-            # And WHICH mailboxes. "8 of 35 failed" sends someone hunting
-            # through 35; "jo@x.co.uk: Reconnect required" is a job. Capped at
-            # five here so the subject-bearing line above is never buried.
-            jq -r 'try (.errors // [])[] catch empty' "$response_file" 2>/dev/null               | head -5               | while IFS= read -r reason; do
-                  echo "  ${reason}"
-                  echo "reply sync: ${reason}" >> /tmp/run-problems.txt
-                done
-          fi
+        run: node scripts/run-reply-sync.mjs
 
       # Re-sync every configured do-not-contact sheet so staff additions to
       # the DNC sheets reach the suppression tables — and therefore the
@@ -89,6 +51,7 @@ jobs:
       # A blocklist that quietly stopped updating is how someone who asked
       # never to be contacted gets contacted.
       - name: Sync do-not-contact sheets
+        if: always()
         env:
           SUPPRESSION_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/suppression/sync-all
           PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}

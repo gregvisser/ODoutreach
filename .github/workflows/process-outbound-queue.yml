@@ -14,6 +14,10 @@ jobs:
   process-queue:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
       # Pull fresh replies FIRST: a reply that just arrived pauses its
       # enrolment (stop-follow-ups-on-reply) BEFORE the advancer below can
       # dispatch the next step to someone who already answered. Running it
@@ -24,27 +28,8 @@ jobs:
         env:
           REPLY_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/replies/sync
           PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
-        run: |
-          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
-            echo "PROCESS_QUEUE_SECRET is not configured; skipping reply sync."
-            exit 0
-          fi
-          status=$(curl -sS -o /tmp/pre-advance-replies.json -w "%{http_code}" \
-            -X POST "$REPLY_SYNC_URL" \
-            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
-            -H "Content-Type: application/json" \
-            --data '{"perMailboxTop":15,"maxMailboxes":50}') || status="000"
-          echo "Pre-advance reply sync HTTP status: ${status}"
-          cat /tmp/pre-advance-replies.json 2>/dev/null || true
-          ok=$(jq -r 'try .ok catch ""' /tmp/pre-advance-replies.json 2>/dev/null || echo "")
-          failed=$(jq -r 'try .failedCount catch 0' /tmp/pre-advance-replies.json 2>/dev/null || echo 0)
-          if [ "$ok" = "false" ]; then
-            echo "Pre-advance reply sync was PARTIAL: ${failed} item(s) failed; continuing."
-            echo "pre-advance reply sync partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
-          fi
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            echo "Reply sync did not succeed (status ${status}); continuing."
-          fi
+        # Keep the existing non-fatal pre-sync policy; the runner records failures.
+        run: node scripts/run-reply-sync.mjs || true
 
       # Stage + dispatch any follow-ups whose delay has elapsed BEFORE the
       # drain, so a due follow-up is queued and sent in the same tick. The

@@ -2,6 +2,7 @@ import "server-only";
 import { InboxCursorExpiredError } from "./inbox-pagination";
 
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { persistSyncedInboundMessage } from "@/server/inbox/persist-inbound-message";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import { fetchGmailInboxMessagesForSync } from "@/server/mailbox/gmail-inbox";
@@ -629,9 +630,25 @@ export type ReplySyncBatchResult = {
 /** Enough to act on, not enough to flood an alert email. */
 const MAX_REPORTED_ERRORS = 20;
 
+const RECEIVING_MAILBOXES = {
+  workspaceRemovedAt: null, isActive: true, canReceive: true,
+  connectionStatus: "CONNECTED", provider: { in: ["MICROSOFT", "GOOGLE"] },
+  client: { status: "ACTIVE" },
+} satisfies Prisma.ClientMailboxIdentityWhereInput;
+
+/** A snapshot prevents failures or changing sync timestamps starving other mailboxes. */
+export async function listReplySyncMailboxIds(): Promise<string[]> {
+  const rows = await prisma.clientMailboxIdentity.findMany({
+    where: RECEIVING_MAILBOXES, orderBy: { id: "asc" }, select: { id: true }, take: 1001,
+  });
+  if (rows.length > 1000) throw new Error("Reply sync plan exceeds the supported mailbox limit");
+  return rows.map((row) => row.id);
+}
+
 export async function syncActiveMailboxRepliesBatch(input: {
   perMailboxTop?: number;
   maxMailboxes?: number;
+  mailboxId?: string;
   syncOne?: typeof syncMailboxInboxForMailbox;
 } = {}): Promise<ReplySyncBatchResult> {
   const perMailboxTop = Math.max(1, Math.min(input.perMailboxTop ?? DEFAULT_TOP, 50));
@@ -639,14 +656,10 @@ export async function syncActiveMailboxRepliesBatch(input: {
   const syncOne = input.syncOne ?? syncMailboxInboxForMailbox;
   const mailboxes = await prisma.clientMailboxIdentity.findMany({
     where: {
-      workspaceRemovedAt: null,
-      isActive: true,
-      canReceive: true,
-      connectionStatus: "CONNECTED",
-      provider: { in: ["MICROSOFT", "GOOGLE"] },
-      client: { status: "ACTIVE" },
+      ...RECEIVING_MAILBOXES,
+      ...(input.mailboxId ? { id: input.mailboxId } : {}),
     },
-    orderBy: [{ lastSyncAt: "asc" }, { updatedAt: "asc" }],
+    orderBy: [{ lastSyncAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: maxMailboxes,
     // `email` is selected so a failure can name the mailbox. Without it the
     // alert can only report a number.
@@ -660,12 +673,19 @@ export async function syncActiveMailboxRepliesBatch(input: {
   let repliesLinked = 0;
   const errors: string[] = [];
   for (const mailbox of mailboxes) {
-    const result = await syncOne({
-      clientId: mailbox.clientId,
-      mailboxIdentityId: mailbox.id,
-      staffUserId: null,
-      top: perMailboxTop,
-    });
+    let result: InboxSyncResult;
+    try {
+      result = await syncOne({
+        clientId: mailbox.clientId,
+        mailboxIdentityId: mailbox.id,
+        staffUserId: null,
+        top: perMailboxTop,
+      });
+    } catch (error) {
+      // Report this mailbox and keep the sweep moving. A later scheduled
+      // sweep retries it; do not lose every other mailbox's result.
+      result = { ok: false, error: error instanceof Error ? error.message : "Inbox sync failed" };
+    }
     if (result.ok) {
       succeeded += 1;
       ingested += result.ingested;
