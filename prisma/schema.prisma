@@ -525,6 +525,8 @@ model Client {
   suppressionSources              SuppressionSource[]
   suppressedEmails                SuppressedEmail[]
   suppressedDomains               SuppressedDomain[]
+  companyDncEntries               CompanyDncEntry[]
+  companyDncDecisions             CompanyDncDecision[]
   suppressedDomainFamilies        SuppressedDomainFamily[]
   suppressedDomainFamilyProposals SuppressedDomainFamilyProposal[]
   campaigns                       Campaign[]
@@ -1833,6 +1835,43 @@ model GlobalBrandSetting {
 }
 
 // ——— Audit ———
+
+/// Immutable names, added per client. Removal/replacement needs a separate
+/// explicit workflow; importing another list never deletes existing blocks.
+model CompanyDncEntry {
+  id            String   @id @default(cuid())
+  clientId      String
+  originalName  String
+  canonicalName String
+  createdAt     DateTime @default(now())
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  decisions     CompanyDncDecision[]
+
+  @@unique([clientId, canonicalName])
+  @@unique([id, clientId])
+}
+
+enum CompanyDncReviewOutcome {
+  ALLOW
+  BLOCK
+}
+
+/// A human decision covers ONE employer spelling and ONE immutable entry.
+/// New employer names, entries or matching-rule versions do not inherit it.
+/// No row means REVIEW; an exact match can never be overridden with ALLOW.
+model CompanyDncDecision {
+  id            String                  @id @default(cuid())
+  clientId      String
+  entryId       String
+  companyKey    String
+  ruleVersion   Int
+  outcome       CompanyDncReviewOutcome
+  decidedAt     DateTime                @default(now())
+  client        Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  entry         CompanyDncEntry         @relation(fields: [entryId, clientId], references: [id, clientId], onDelete: Cascade)
+
+  @@unique([clientId, entryId, companyKey, ruleVersion])
+}
 
 model AuditLog {
   id          String      @id @default(cuid())
