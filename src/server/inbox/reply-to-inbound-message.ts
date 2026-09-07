@@ -3,7 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
-import { recordInboundMessageHandling } from "./persist-inbound-message";
+import { recordInboundMessageHandlingInTransaction } from "./persist-inbound-message";
 import { buildReplySubject } from "@/lib/inbox/inbound-message-handling";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { releaseReplyClaims } from "@/server/inbox/reply-claim";
@@ -19,8 +19,8 @@ import {
   humanizeGovernanceRejection,
   linkReservationToOutboundInTransaction,
   mailboxIneligibleForGovernedSendExecution,
-  markReservationConsumedForOutbound,
-  markReservationReleasedForOutbound,
+  markReservationConsumedForOutboundInTransaction,
+  markReservationReleasedForOutboundInTransaction,
   tryReserveSendSlotInTransaction,
 } from "@/server/mailbox/sending-policy";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -29,6 +29,20 @@ import type { StaffUser } from "@/generated/prisma/client";
 export const INBOUND_REPLY_METADATA_KIND = "inboundMailboxReply";
 export const INBOUND_REPLY_SUBJECT_MAX = 300;
 export const INBOUND_REPLY_BODY_MAX = 50_000;
+
+function unconfirmedReply(): ReplyToInboundMessageResult {
+  return {
+    ok: false,
+    errorCode: "REPLY_OUTCOME_UNCONFIRMED",
+    error: "A reply to this message is still sending, or its result could not be saved. Sending another reply here is blocked to avoid a duplicate. Check the mailbox's Sent folder and ask your administrator to reconcile the result before trying again.",
+  };
+}
+
+// Only explicit rejection responses permit a fresh send. Timeouts, server
+// errors and malformed success responses cannot prove the provider did not send.
+function isDefiniteRejection(code: string | undefined): boolean {
+  return ["400", "401", "403", "404", "405", "413", "415", "422", "429"].includes(code ?? "");
+}
 
 export type ReplyToInboundMessageInput = {
   staff: StaffUser;
@@ -64,8 +78,9 @@ export type ReplyToInboundMessageResult =
  *      CONSUMED, and `InboundMailboxMessage.metadata.handling` updated
  *      with `handledAt`, `handledByStaffUserId`, `lastRepliedAt`, and
  *      the new OutboundEmail id.
- *   7. On provider failure: OutboundEmail marked `FAILED`, reservation
- *      RELEASED, no handling mutation.
+ *   7. Only a definite rejection (or failure before dispatch) marks FAILED
+ *      and releases the reservation. Uncertain sends stay PROCESSING and
+ *      block further replies to that message pending reconciliation.
  */
 export async function replyToInboundMailboxMessage(
   input: ReplyToInboundMessageInput,
@@ -159,10 +174,28 @@ export async function replyToInboundMailboxMessage(
         outboundEmailId: string;
         correlationId: string;
       }
+    | { kind: "unconfirmed" }
     | { kind: "reserve_fail"; error: string; errorCode: string };
 
   const reserveResult = await prisma.$transaction(
     async (tx): Promise<ReserveOutcome> => {
+      // Serialize competing replies on the received message. This lock is
+      // separate from the advisory staff claim and held only while reserving.
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "InboundMailboxMessage"
+        WHERE id = ${inboundMessageId} AND "clientId" = ${clientId} FOR UPDATE`;
+      if (!locked.length) return { kind: "reserve_fail", errorCode: "INBOUND_NOT_FOUND", error: "That message is no longer available." };
+      const unresolved = await tx.outboundEmail.findFirst({
+        where: {
+          clientId, status: "PROCESSING",
+          AND: [
+            { metadata: { path: ["kind"], equals: INBOUND_REPLY_METADATA_KIND } },
+            { metadata: { path: ["inboundMessageId"], equals: inboundMessageId } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (unresolved) return { kind: "unconfirmed" };
       const freshMailbox = await tx.clientMailboxIdentity.findFirstOrThrow({
         where: { id: mailbox.id, clientId },
       });
@@ -223,6 +256,7 @@ export async function replyToInboundMailboxMessage(
     { maxWait: 10_000, timeout: 30_000 },
   );
 
+  if (reserveResult.kind === "unconfirmed") return unconfirmedReply();
   if (reserveResult.kind === "reserve_fail") {
     return {
       ok: false,
@@ -233,13 +267,14 @@ export async function replyToInboundMailboxMessage(
 
   const { outboundEmailId, correlationId } = reserveResult;
 
-  // Provider dispatch (inline). Success → mark SENT + consume reservation
-  // + update inbound handling. Failure → mark FAILED + release reservation.
+  // Once dispatch starts, a thrown error cannot establish non-delivery.
+  let dispatchStarted = false;
   try {
     if (mailbox.provider === "MICROSOFT") {
       const accessToken = await getMicrosoftGraphAccessTokenForMailbox(
         mailbox.id,
       );
+      dispatchStarted = true;
       const result = await sendMicrosoftGraphReply({
         accessToken,
         mailboxUserPrincipalName: mailbox.emailNormalized,
@@ -248,6 +283,7 @@ export async function replyToInboundMailboxMessage(
         correlationId,
       });
       if (!result.ok) {
+        if (!isDefiniteRejection(result.code)) return unconfirmedReply();
         await markOutboundFailedAndReleaseReservation(
           outboundEmailId,
           result.error,
@@ -294,12 +330,14 @@ export async function replyToInboundMailboxMessage(
         bodyText: body,
         inReplyToMessageId: internetMessageId,
       });
+      dispatchStarted = true;
       const result = await sendGmailReply({
         accessToken,
         rfc5322Message: rfc,
         threadId,
       });
       if (!result.ok) {
+        if (!isDefiniteRejection(result.code)) return unconfirmedReply();
         await markOutboundFailedAndReleaseReservation(
           outboundEmailId,
           result.error,
@@ -340,6 +378,7 @@ export async function replyToInboundMailboxMessage(
       error: "Reply is only supported on Microsoft 365 and Google Workspace mailboxes.",
     };
   } catch (e) {
+    if (dispatchStarted) return unconfirmedReply();
     const msg = e instanceof Error ? e.message : String(e);
     await markOutboundFailedAndReleaseReservation(
       outboundEmailId,
@@ -378,16 +417,18 @@ async function markOutboundFailedAndReleaseReservation(
   error: string,
   code: string | undefined,
 ): Promise<void> {
-  await prisma.outboundEmail.updateMany({
-    where: { id: outboundEmailId, providerMessageId: null },
-    data: {
-      status: "FAILED",
-      failureReason: error.slice(0, 2000),
-      lastErrorCode: (code ?? "PROVIDER_FAILED").slice(0, 120),
-      lastErrorMessage: error.slice(0, 2000),
-    },
+  await prisma.$transaction(async (tx) => {
+    const failed = await tx.outboundEmail.updateMany({
+      where: { id: outboundEmailId, providerMessageId: null, status: "PROCESSING" },
+      data: {
+        status: "FAILED",
+        failureReason: error.slice(0, 2000),
+        lastErrorCode: (code ?? "PROVIDER_FAILED").slice(0, 120),
+        lastErrorMessage: error.slice(0, 2000),
+      },
+    });
+    if (failed.count) await markReservationReleasedForOutboundInTransaction(tx, outboundEmailId);
   });
-  await markReservationReleasedForOutbound(outboundEmailId);
 }
 
 async function finaliseReplySent(input: {
@@ -399,24 +440,32 @@ async function finaliseReplySent(input: {
   staffUserId: string;
 }): Promise<void> {
   const now = new Date();
-  await prisma.outboundEmail.updateMany({
-    where: {
-      id: input.outboundEmailId,
-      providerMessageId: null,
-    },
-    data: {
-      status: "SENT",
-      providerMessageId: input.providerMessageId,
-      providerName: input.providerName,
-      sentAt: now,
-    },
-  });
-  await markReservationConsumedForOutbound(input.outboundEmailId);
+  await prisma.$transaction(async (tx) => {
+    // Match reservation's lock order: message, outbound record, mailbox ledger.
+    await tx.$queryRaw`SELECT id FROM "InboundMailboxMessage"
+      WHERE id = ${input.inboundMessageId} AND "clientId" = ${input.clientId} FOR UPDATE`;
+    const sent = await tx.outboundEmail.updateMany({
+      where: {
+        id: input.outboundEmailId,
+        clientId: input.clientId,
+        status: "PROCESSING",
+        providerMessageId: null,
+      },
+      data: {
+        status: "SENT",
+        providerMessageId: input.providerMessageId,
+        providerName: input.providerName,
+        sentAt: now,
+      },
+    });
+    if (sent.count !== 1) throw new Error("Reply status could not be finalised.");
+    await markReservationConsumedForOutboundInTransaction(tx, input.outboundEmailId);
+    const handling = await recordInboundMessageHandlingInTransaction(tx, { ...input, now });
+    if (!handling) throw new Error("Reply message no longer exists.");
+  }, { maxWait: 10_000, timeout: 30_000 });
 
   // The reply has left the building — the advisory "X is looking at this"
-  // marker has done its job and goes, before the metadata bookkeeping below
-  // (which can bail early). Who actually replied is recorded permanently on
-  // the OutboundEmail row.
+  // marker has done its job. Release it after durable bookkeeping commits.
   await releaseReplyClaims({
     clientId: input.clientId,
     subject: {
@@ -424,6 +473,4 @@ async function finaliseReplySent(input: {
       subjectId: input.inboundMessageId,
     },
   });
-
-  await recordInboundMessageHandling({ clientId: input.clientId, inboundMessageId: input.inboundMessageId, staffUserId: input.staffUserId, outboundEmailId: input.outboundEmailId, now });
 }
