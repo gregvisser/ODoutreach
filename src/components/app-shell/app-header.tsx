@@ -2,6 +2,7 @@
 
 import { signOut, useSession } from "next-auth/react";
 import { Menu } from "lucide-react";
+import { useState } from "react";
 
 import { AppBrandLogo } from "@/components/brand/app-brand-logo";
 import { buttonVariants } from "@/components/ui/button";
@@ -35,11 +36,12 @@ export function AppHeader({
   isSuperAdmin?: boolean;
 }) {
   const { data: session } = useSession();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 grid h-20 grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md md:px-8">
       <div className="flex items-center gap-3">
-        <Sheet>
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger
             className={cn(
               buttonVariants({ variant: "ghost", size: "icon" }),
@@ -54,6 +56,7 @@ export function AppHeader({
               <SheetTitle>Navigation</SheetTitle>
             </SheetHeader>
             <AppSidebar
+              onNavigate={() => setMenuOpen(false)}
               className="border-0"
               brand={brand}
               isSuperAdmin={isSuperAdmin}

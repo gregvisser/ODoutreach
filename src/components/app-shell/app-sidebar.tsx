@@ -19,12 +19,14 @@ export function AppSidebar({
   brand,
   googleReconnectsAttentionCount = 0,
   isSuperAdmin = false,
+  onNavigate,
 }: {
   className?: string;
   brand: BrandProp;
   /** Row 155: badges "Google logins" whenever a mailbox needs reconnecting. */
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const items = buildMainNav(googleReconnectsAttentionCount).filter(
@@ -40,6 +42,7 @@ export function AppSidebar({
     >
       <Link
         href="/reporting"
+        onNavigate={onNavigate}
         prefetch={false}
         className="flex h-20 items-center gap-3 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
         aria-label={`${brand.brandName} ${brand.productName} home`}
@@ -84,6 +87,7 @@ export function AppSidebar({
             <Link
               key={item.href}
               href={item.href}
+              onNavigate={onNavigate}
               prefetch={false}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
