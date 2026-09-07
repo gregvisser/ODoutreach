@@ -31,6 +31,7 @@ import {
 import type { MailboxOutreachRowInput } from "@/lib/outreach-mailbox-transport";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
 import { cn } from "@/lib/utils";
+import { inboundReplyMessageHref, isInboundMailboxReply } from "@/lib/inbox/inbound-reply-metadata";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getOutboundOperationsSnapshot } from "@/server/queries/outbound-operations";
@@ -218,8 +219,8 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
       />
 
       <OpsTable
-        title="FAILED — safe operator retry"
-        description="Only rows with no provider message id"
+        title="Failed sends — review or retry"
+        description="Mailbox replies must be reviewed from the original message. Ordinary failed sends without a provider message id can be requeued here."
         rows={snap.failedNoProvider}
         empty="None — or failures already have provider ids (manual review only)."
         requeue
@@ -314,6 +315,7 @@ function OpsTable({
     lastErrorCode?: string | null;
     lastErrorMessage?: string | null;
     failureReason?: string | null;
+    metadata?: unknown;
     client: { name: string };
   }[];
   empty: string;
@@ -362,7 +364,14 @@ function OpsTable({
                   >
                     Detail
                   </Link>
-                  {requeue ? (
+                  {isInboundMailboxReply(row.metadata) ? (
+                    <div className="mt-1 text-xs">
+                      {inboundReplyMessageHref(row.clientId, row.metadata) ? (
+                        <Link prefetch={false} className="underline" href={inboundReplyMessageHref(row.clientId, row.metadata)!}>Open original message</Link>
+                      ) : "Original message link unavailable"}
+                      <p>Review this reply there; it cannot be retried from this queue.</p>
+                    </div>
+                  ) : requeue ? (
                     <RequeueFailedButton outboundEmailId={row.id} clientId={row.clientId} />
                   ) : null}
                 </TableCell>

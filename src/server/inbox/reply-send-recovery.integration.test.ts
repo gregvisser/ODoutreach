@@ -222,3 +222,12 @@ it("returns a prior send confirmation after opt-out but refuses a fresh reply", 
   expect(await send()).toMatchObject({ ok: false, errorCode: "SUPPRESSED_RECIPIENT" });
   expect(transport).toHaveBeenCalledTimes(1);
 });
+
+it("holds a historical generic-queued reply when a fresh reply is attempted", async () => {
+  transport.mockRejectedValueOnce(new Error("synthetic lost outcome"));
+  await send();
+  await prisma.outboundEmail.updateMany({ data: { status: "QUEUED" } });
+  expect(await send()).toMatchObject({ ok: false, errorCode: "REPLY_OUTCOME_UNCONFIRMED" });
+  expect(await prisma.outboundEmail.count()).toBe(1);
+  expect(transport).toHaveBeenCalledTimes(1);
+});

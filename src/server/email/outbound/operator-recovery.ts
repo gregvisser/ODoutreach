@@ -1,10 +1,11 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { GENERIC_OUTBOUND_ONLY } from "./generic-outbound-filter";
 
 /**
  * Releases PROCESSING rows whose claim expired and no provider id was recorded.
- * Scoped to accessible client ids — does not touch other tenants.
+ * Scoped to accessible client ids. Inline replies require their own recovery.
  */
 export async function releaseStaleProcessingClaimsForScope(accessibleClientIds: string[]) {
   if (accessibleClientIds.length === 0) {
@@ -17,6 +18,7 @@ export async function releaseStaleProcessingClaimsForScope(accessibleClientIds: 
       status: "PROCESSING",
       providerMessageId: null,
       claimExpiresAt: { lt: now },
+      AND: [GENERIC_OUTBOUND_ONLY],
     },
     data: {
       status: "QUEUED",
@@ -32,7 +34,7 @@ export async function releaseStaleProcessingClaimsForScope(accessibleClientIds: 
 
 /**
  * Operator-initiated retry for FAILED rows that never received a provider message id.
- * This is NOT a second send for an already-accepted message — it re-enters the queue.
+ * Mailbox replies never enter this generic queue; recover them from the message.
  */
 export async function operatorRequeueFailedSend(outboundEmailId: string, clientId: string) {
   return prisma.outboundEmail.updateMany({
@@ -41,6 +43,7 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
       clientId,
       status: "FAILED",
       providerMessageId: null,
+      AND: [GENERIC_OUTBOUND_ONLY],
     },
     data: {
       status: "QUEUED",

@@ -24,8 +24,9 @@ import {
 import { requireClientAccess } from "@/server/tenant/access";
 import type { Prisma, StaffUser } from "@/generated/prisma/client";
 import { isReplyRequestId } from "@/lib/inbox/reply-attempt";
+import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 
-export const INBOUND_REPLY_METADATA_KIND = "inboundMailboxReply";
+export { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 export const INBOUND_REPLY_SUBJECT_MAX = 300;
 export const INBOUND_REPLY_BODY_MAX = 50_000;
 
@@ -231,7 +232,9 @@ export async function replyToInboundMailboxMessage(
       if (replay) return { kind: "replay", result: replay };
       const unresolved = await tx.outboundEmail.findFirst({
         where: {
-          clientId, status: "PROCESSING",
+          // QUEUED can be a historical generic retry of an inline reply. It
+          // remains held too; ignoring it here could create a fresh duplicate.
+          clientId, status: { in: ["PROCESSING", "QUEUED"] },
           AND: [
             { metadata: { path: ["kind"], equals: INBOUND_REPLY_METADATA_KIND } },
             { metadata: { path: ["inboundMessageId"], equals: inboundMessageId } },
