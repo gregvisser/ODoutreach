@@ -209,6 +209,14 @@ export type TryReserveResult =
       alreadyQueued: true;
     };
 
+/** Serialize allowance bookings for a mailbox, including ordinary sends and retries. */
+export async function lockSendingMailboxInTransaction(tx: Prisma.TransactionClient, mailboxId: string, clientId: string) {
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "ClientMailboxIdentity" WHERE id = ${mailboxId} AND "clientId" = ${clientId} FOR UPDATE`;
+  if (locked.length === 0) return null;
+  return tx.clientMailboxIdentity.findFirst({ where: { id: mailboxId, clientId } });
+}
+
 /**
  * Reserves a send slot in the current UTC day window, or returns an existing
  * in-flight or completed idempotent key without double-booking a cap slot.
@@ -222,7 +230,9 @@ export async function tryReserveSendSlotInTransaction(
     at: Date;
   },
 ): Promise<TryReserveResult> {
-  const { clientId, mailbox, idempotencyKey, at } = input;
+  const { clientId, idempotencyKey, at } = input;
+  const mailbox = await lockSendingMailboxInTransaction(tx, input.mailbox.id, clientId);
+  if (!mailbox) return { ok: false, error: "The sending mailbox is no longer available in this workspace.", errorCode: "MAILBOX_MISSING", reason: "MAILBOX_MISSING" };
   const windowKey = utcDateKeyForInstant(at);
   const cap = Math.max(1, mailbox.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP);
 
