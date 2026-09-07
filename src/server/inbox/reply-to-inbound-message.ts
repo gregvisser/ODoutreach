@@ -34,7 +34,7 @@ function unconfirmedReply(): ReplyToInboundMessageResult {
   return {
     ok: false,
     errorCode: "REPLY_OUTCOME_UNCONFIRMED",
-    error: "A reply to this message is still sending, or its result could not be saved. Sending another reply here is blocked to avoid a duplicate. Check the mailbox's Sent folder and ask your administrator to reconcile the result before trying again.",
+    error: "A reply to this message is still sending, or its result could not be confirmed. Please do not resend it: that could create a duplicate. Check the mailbox's Sent folder and ask your administrator to reconcile the result before trying again.",
   };
 }
 
