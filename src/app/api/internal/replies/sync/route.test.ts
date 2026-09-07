@@ -5,6 +5,7 @@ const { syncActiveClientMailboxInboxesMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/server/mailbox/mailbox-inbox-sync", () => ({
+  listReplySyncMailboxIds: async () => ["mailbox-one", "mailbox-two"],
   syncActiveClientMailboxInboxes: syncActiveClientMailboxInboxesMock,
 }));
 
@@ -55,15 +56,30 @@ describe("POST /api/internal/replies/sync", () => {
     });
 
     const res = await POST(
-      req("correct", { perMailboxTop: 999, maxMailboxes: 999 }) as never,
+      req("correct", { batchProtocol: 1, mailboxId: "mailbox-one", perMailboxTop: 999, maxMailboxes: 999 }) as never,
     );
     const json = (await res.json()) as { ok: boolean; processed: number };
 
     expect(res.status).toBe(200);
     expect(json).toMatchObject({ ok: true, processed: 1 });
     expect(syncActiveClientMailboxInboxesMock).toHaveBeenCalledWith({
-      perMailboxTop: 50,
-      maxMailboxes: 100,
+      perMailboxTop: 10,
+      maxMailboxes: 1,
+      mailboxId: "mailbox-one",
     });
+  });
+
+  it("plans the eligible mailboxes without syncing them", async () => {
+    vi.stubEnv("PROCESS_QUEUE_SECRET", "correct");
+    const res = await POST(req("correct", { batchProtocol: 1, planOnly: true }) as never);
+    expect(await res.json()).toEqual({ batchProtocol: 1, mailboxIds: ["mailbox-one", "mailbox-two"] });
+    expect(syncActiveClientMailboxInboxesMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { batchProtocol: 1 }, { batchProtocol: 1, mailboxId: "" }])("rejects incomplete bulk requests instead of starting an estate-wide sync", async (body) => {
+    vi.stubEnv("PROCESS_QUEUE_SECRET", "correct");
+    const res = await POST(req("correct", body) as never);
+    expect([400, 409]).toContain(res.status);
+    expect(syncActiveClientMailboxInboxesMock).not.toHaveBeenCalled();
   });
 });
