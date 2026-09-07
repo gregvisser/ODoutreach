@@ -666,12 +666,11 @@ describe("processSyncedMessageForReply", () => {
     );
   });
 
-  it("row 100: leg 3 picks the NEWER of two candidates once alias-canonicalized, not the older exact toEmail match", async () => {
+  it("does not link an unrelated subject even when legacy candidates share the sender's alias", async () => {
     // Reproduces the real production mismatch (docs/ops/REPLY-MATCHER-PLUS-ALIAS-FIX-2026-08-30.md):
     // an older send's toEmail equals the reply's alias-dropped From exactly; a
-    // newer send's toEmail is the same mailbox with a Gmail "+tag" alias. Gmail
-    // drops the alias on Reply, so both are candidates once canonicalized, and
-    // the NEWER one (correct) must win over the OLDER one (exact string match).
+    // newer send's toEmail is the same mailbox with a Gmail "+tag" alias.
+    // Neither is evidence for a different conversation's subject.
     prismaMock.inboundReply.findFirst.mockResolvedValue(null);
     prismaMock.outboundEmail.findFirst.mockResolvedValue(null); // leg 1 miss — neither send stamped an rfc822MessageId
     prismaMock.outboundEmail.findMany
@@ -700,10 +699,10 @@ describe("processSyncedMessageForReply", () => {
       subject: "RE: Some other subject entirely",
     });
 
-    expect(result.created).toBe(true);
-    expect(prismaMock.inboundReply.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ linkedOutboundEmailId: "ob-newer" }),
-    });
+    expect(result.created).toBe(false);
+    expect(prismaMock.inboundReply.create).not.toHaveBeenCalled();
+    expect(stopFollowUpsMock).not.toHaveBeenCalled();
+    expect(prismaMock.outboundEmail.updateMany).not.toHaveBeenCalled();
   });
 
   it("normalizes email before matching (legacy fallback)", async () => {
