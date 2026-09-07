@@ -44,8 +44,11 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
       where: { graphInvitedUserObjectId: entraObjectId },
     });
     if (byInvitedGuestObjectId) {
+      // A recorded guest identity may sign in without replacing the owner's
+      // separately provisioned primary Microsoft identity.
+      if (byInvitedGuestObjectId.isSuperAdmin) return byInvitedGuestObjectId;
       return tx.staffUser.update({
-        where: { id: byInvitedGuestObjectId.id },
+        where: { id: byInvitedGuestObjectId.id, isSuperAdmin: false },
         data: {
           entraObjectId,
           displayName: displayName ?? byInvitedGuestObjectId.displayName,
@@ -60,9 +63,12 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
 
     const byEmail = await tx.staffUser.findUnique({ where: { email } });
     if (!byEmail) return null;
+    // Owner identities must be provisioned explicitly. An email match must
+    // never transfer owner privileges to a different Microsoft identity.
+    if (byEmail.isSuperAdmin) return null;
 
     return tx.staffUser.update({
-      where: { id: byEmail.id },
+      where: { id: byEmail.id, isSuperAdmin: false },
       data: {
         entraObjectId,
         displayName: displayName ?? byEmail.displayName,
