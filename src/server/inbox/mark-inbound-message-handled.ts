@@ -1,10 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/db";
-import {
-  mergeHandlingIntoMetadata,
-  readHandlingStateFromMetadata,
-} from "@/lib/inbox/inbound-message-handling";
+import { recordInboundMessageHandling } from "./persist-inbound-message";
 import { releaseReplyClaims } from "@/server/inbox/reply-claim";
 import { requireClientAccess } from "@/server/tenant/access";
 import type { StaffUser } from "@/generated/prisma/client";
@@ -26,11 +22,8 @@ export async function markInboundMailboxMessageHandled(input: {
   const { staff, clientId, inboundMessageId } = input;
   await requireClientAccess(staff, clientId);
 
-  const row = await prisma.inboundMailboxMessage.findFirst({
-    where: { id: inboundMessageId, clientId },
-    select: { id: true, metadata: true },
-  });
-  if (!row) {
+  const handling = await recordInboundMessageHandling({ clientId, inboundMessageId, staffUserId: staff.id });
+  if (!handling) {
     return {
       ok: false,
       errorCode: "INBOUND_NOT_FOUND",
@@ -38,28 +31,12 @@ export async function markInboundMailboxMessageHandled(input: {
     };
   }
 
-  const current = readHandlingStateFromMetadata(row.metadata);
-  const now = new Date().toISOString();
-  const handledAt = current.handledAt ?? now;
-  const handledByStaffUserId =
-    current.handledByStaffUserId ?? staff.id;
-
-  const nextMetadata = mergeHandlingIntoMetadata(row.metadata, {
-    handledAt,
-    handledByStaffUserId,
-  });
-
-  await prisma.inboundMailboxMessage.update({
-    where: { id: row.id },
-    data: { metadata: nextMetadata as object },
-  });
-
   // Somebody acted — the advisory "X is looking at this" marker has served
   // its purpose and goes. Who handled it is recorded permanently above.
   await releaseReplyClaims({
     clientId,
-    subject: { subjectType: "INBOUND_MESSAGE", subjectId: row.id },
+    subject: { subjectType: "INBOUND_MESSAGE", subjectId: inboundMessageId },
   });
 
-  return { ok: true, handledAt, handledByStaffUserId };
+  return { ok: true, ...handling };
 }
