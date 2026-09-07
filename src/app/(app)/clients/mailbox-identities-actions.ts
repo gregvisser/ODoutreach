@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { isValidEmailFormat, normalizeEmail } from "@/lib/normalize";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
+  MAX_MAILBOX_DAILY_SEND_CAP,
   assertActiveMailboxLimit,
   assertPrimaryRequiresActive,
   assertPrimaryRequiresConnected,
@@ -38,7 +39,7 @@ const createSchema = z.object({
   provider: providerSchema,
   email: z.string().min(3).max(320),
   ...baseFields,
-  dailySendCap: z.coerce.number().int().min(1).max(5000).default(30),
+  dailySendCap: z.coerce.number().int().min(1).max(MAX_MAILBOX_DAILY_SEND_CAP, "Each mailbox can send at most 30 emails per day.").default(30),
 });
 
 const updateSchema = z.object({
@@ -47,7 +48,7 @@ const updateSchema = z.object({
   /** Optional — only present when correcting a mailbox added with the wrong provider. */
   provider: providerSchema.optional(),
   ...baseFields,
-  dailySendCap: z.coerce.number().int().min(1).max(5000),
+  dailySendCap: z.coerce.number().int().min(1).max(MAX_MAILBOX_DAILY_SEND_CAP, "Each mailbox can send at most 30 emails per day."),
 });
 
 export type MailboxActionResult =

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
+import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { mailboxIneligibleReasonFromStaticState } from "@/server/mailbox/sending-policy";
 import { prisma } from "@/lib/db";
@@ -48,7 +48,7 @@ export async function getMailboxSendingReadinessForClient(
   }
 
   return mailboxes.map((m) => {
-    const c = Math.max(1, m.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP);
+    const c = mailboxDailySendCap(m.dailySendCap);
     const b = booked.get(m.id) ?? 0;
     const staticReason = mailboxIneligibleReasonFromStaticState(
       m,

@@ -414,7 +414,8 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   let dispatchStarted = false;
   try {
     const provider = getOutboundEmailProvider();
-    if (!(await beginOutboundDispatch(row))) return unconfirmedSend();
+    const dispatchPermission = await beginOutboundDispatch(row);
+    if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
     dispatchStarted = true;
     const result = await provider.send({
       correlationId: row.correlationId,
@@ -672,7 +673,8 @@ async function sendViaConnectedMailboxOrFail(
           rfc822MessageId,
         });
         if (lookup.status === "found") {
-          if (!(await beginOutboundDispatch(row, rfc822MessageId))) return unconfirmedSend();
+          const dispatchPermission = await beginOutboundDispatch(row, rfc822MessageId);
+          if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
           dispatchStarted = true;
           await persistAcceptedOutbound({
             where: { id: row.id, status: "PROCESSING", providerMessageId: null },
@@ -713,7 +715,8 @@ async function sendViaConnectedMailboxOrFail(
         bodyHtml: gmailHtml,
         extraHeaders: gmailExtraHeaders,
       });
-      if (!(await beginOutboundDispatch(row, rfc822MessageId))) return unconfirmedSend();
+      const dispatchPermission = await beginOutboundDispatch(row, rfc822MessageId);
+      if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
       dispatchStarted = true;
       const result = await sendGmailUsersMessagesSend({
         accessToken,
@@ -861,7 +864,8 @@ async function sendViaConnectedMailboxOrFail(
         sinceIso,
       });
       if (lookup.status === "found") {
-        if (!(await beginOutboundDispatch(row))) return unconfirmedSend();
+        const dispatchPermission = await beginOutboundDispatch(row);
+        if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
         dispatchStarted = true;
         await persistAcceptedOutbound({
           where: { id: row.id, status: "PROCESSING", providerMessageId: null },
@@ -890,7 +894,8 @@ async function sendViaConnectedMailboxOrFail(
     // (HTML-only scores as spam) AND real List-Unsubscribe + List-Unsubscribe-Post
     // headers (true one-click unsubscribe) — neither of which Graph JSON allows.
     // Built with the same MIME helper the Gmail path already uses in production.
-    if (!(await beginOutboundDispatch(row))) return unconfirmedSend();
+    const dispatchPermission = await beginOutboundDispatch(row);
+    if (dispatchPermission !== true) return dispatchPermission || unconfirmedSend();
     dispatchStarted = true;
     const result = isMicrosoftMimeSendEnabled()
       ? await sendMicrosoftGraphMimeSendMail({

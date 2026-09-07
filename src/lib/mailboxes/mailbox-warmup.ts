@@ -1,4 +1,4 @@
-import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
+import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 
 /**
  * Organic mailbox warm-up ramp.
@@ -16,8 +16,7 @@ import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
  * full configured `dailySendCap` as the hard ceiling for every send type.
  *
  * Safe + system-wide: gated by `MAILBOX_WARMUP_RAMP === "on"`. When off (the
- * default) every result equals the configured cap exactly, so behaviour is
- * byte-identical to before.
+ * default) the configured cap applies, subject to the 30/day product ceiling.
  *
  * ANCHOR CORRECTED 2026-08-24. This previously ramped on the mailbox's AGE
  * (`connectedAt`, else `createdAt`), and any mailbox older than the ramp window
@@ -85,16 +84,13 @@ export function warmupDailyCap(steadyCap: number, sendingDays: number): number {
  * `sendingDays` is the number of distinct days this mailbox has actually sent
  * on — resolve it with `countMailboxSendingDays`. A mailbox that has never sent
  * passes 0 and starts at the bottom of the ramp no matter how long ago it was
- * connected. When warm-up is disabled this equals the configured cap exactly.
+ * connected. When warm-up is disabled this uses the configured cap, capped at 30.
  */
 export function effectiveDailyCap(
   mailbox: { dailySendCap: number; connectedAt?: Date | null; createdAt: Date },
   sendingDays: number,
 ): number {
-  const steady = Math.max(
-    1,
-    mailbox.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP,
-  );
+  const steady = mailboxDailySendCap(mailbox.dailySendCap);
   if (!isWarmupRampEnabled()) return steady;
   return warmupDailyCap(steady, sendingDays);
 }

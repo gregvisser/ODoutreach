@@ -2,6 +2,13 @@ import type { MailboxConnectionStatus } from "@/generated/prisma/enums";
 
 /** OpensDoors product rule: per-mailbox daily send cap (not pooled across mailboxes). */
 export const DEFAULT_MAILBOX_DAILY_SEND_CAP = 30;
+export const MAX_MAILBOX_DAILY_SEND_CAP = 30;
+
+/** Enforce the product ceiling even for settings saved before it was introduced. */
+export function mailboxDailySendCap(configured: number): number {
+  if (!Number.isFinite(configured)) return 1;
+  return Math.min(MAX_MAILBOX_DAILY_SEND_CAP, Math.max(1, Math.floor(configured || DEFAULT_MAILBOX_DAILY_SEND_CAP)));
+}
 
 /** Maximum active mailbox identities per client workspace. */
 export const MAX_ACTIVE_MAILBOXES_PER_CLIENT = 5;
@@ -38,7 +45,7 @@ export function startOfNextUtcDay(from: Date): Date {
  * for gating we treat the mailbox as not blocked by yesterday's count.
  */
 export function isUnderDailySendCap(input: MailboxEligibilityInput, now: Date): boolean {
-  const cap = Math.max(1, input.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP);
+  const cap = mailboxDailySendCap(input.dailySendCap);
   if (input.emailsSentToday <= 0) return true;
   if (!input.dailyWindowResetAt) {
     return input.emailsSentToday < cap;

@@ -30,7 +30,11 @@ const { markConsumed, markReleased, getGoogleToken, sendGmail, evalSupp } = vi.h
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ outboundEmail: { findUnique, updateMany } })),
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "out1" }]),
+      outboundEmail: { findUnique, findFirst: findUnique, updateMany },
+      mailboxSendReservation: { findUnique: vi.fn(async () => ({ id:"slot", clientId:"c1", mailboxIdentityId:"m1", status:"RESERVED", windowKey:new Date().toISOString().slice(0,10) })) },
+    })),
     outboundEmail: { findUnique, updateMany },
     clientMailboxIdentity: { findFirst: findFirstMbox },
     // Open-tracking pixel reads the client's aligned link domain; null = fall
@@ -39,6 +43,11 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 vi.mock("@/server/mailbox/sending-policy", () => ({
+  // Available allowance fixture; concurrency and rollover are covered with real PostgreSQL.
+  countBookedSendSlotsInUtcWindow: vi.fn().mockResolvedValue(1),
+  lockSendingMailboxInTransaction: vi.fn().mockResolvedValue({ id:"m1", clientId:"c1", dailySendCap:30 }),
+  recomputeMailboxLedgerCounterInTransaction: vi.fn(),
+  utcDateKeyForInstant: (at: Date) => at.toISOString().slice(0,10),
   markReservationConsumedForOutboundInTransaction: (_tx: unknown, id: string) => markConsumed(id),
   markReservationReleasedForOutboundInTransaction: (_tx: unknown, id: string) => markReleased(id),
   humanizeGovernanceRejection: vi.fn((c: string) => c),

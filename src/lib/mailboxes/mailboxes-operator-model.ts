@@ -1,3 +1,4 @@
+import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 /**
  * Pure view-model helpers for the operator Mailboxes page (no I/O, no Prisma).
  */
@@ -308,7 +309,7 @@ export function computePoolDailyMax(
 ): number {
   if (activeRows.length === 0) return 0;
   return activeRows.reduce((acc, row) => {
-    const cap = sendingReadinessByMailboxId?.[row.id]?.cap ?? row.dailySendCap;
+    const cap = sendingReadinessByMailboxId?.[row.id]?.cap ?? mailboxDailySendCap(row.dailySendCap);
     return acc + Math.max(0, cap);
   }, 0);
 }

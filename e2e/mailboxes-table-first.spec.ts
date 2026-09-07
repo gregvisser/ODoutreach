@@ -139,3 +139,19 @@ test.describe("Mailboxes shows the mailboxes first", () => {
     ).toBeVisible();
   });
 });
+
+
+test("mailbox settings explain and enforce the 30 total daily ceiling", async ({ page }) => {
+  await page.goto(MAILBOXES_URL);
+  const row = page.getByRole("main").getByRole("row").filter({ hasText:E2E_MAILBOXES[0]!.email });
+  await row.getByRole("button", { name:"Edit", exact:true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Up to 30 emails total per mailbox per day, shared across campaigns. Warm-up may allow fewer.")).toBeVisible();
+  const cap = dialog.getByLabel("Daily send cap", { exact:true });
+  await expect(cap).toHaveAttribute("max", "30");
+  await cap.fill("31");
+  expect(await cap.evaluate((input: HTMLInputElement) => input.validity.rangeOverflow)).toBe(true);
+  await cap.fill("30");
+  expect(await cap.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
+  // No save, mailbox connection or email is triggered by this check.
+});

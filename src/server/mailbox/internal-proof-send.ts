@@ -1,3 +1,4 @@
+import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 import "server-only";
 
 import { randomUUID } from "node:crypto";
@@ -251,7 +252,7 @@ export async function queueSelectedMailboxInternalProofSend(input: {
       status: { in: ["RESERVED", "CONSUMED"] },
     },
   });
-  const remainingForMailbox = Math.max(0, Math.max(1, mailbox.dailySendCap || 30) - bookedAfter);
+  const remainingForMailbox = Math.max(0, mailboxDailySendCap(mailbox.dailySendCap) - bookedAfter);
 
   return {
     ok: true,

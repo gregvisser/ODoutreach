@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  mailboxDailySendCap,
   assertActiveMailboxLimit,
   assertPrimaryRequiresActive,
   assertPrimaryRequiresConnected,
@@ -137,5 +138,15 @@ describe("isUnderDailySendCap", () => {
         new Date("2026-04-17T12:00:00.000Z"),
       ),
     ).toBe(false);
+  });
+});
+
+
+describe("mailbox daily product ceiling", () => {
+  it.each([[5000,30],[31,30],[30,30],[5,5],[0,30],[-5,1],[NaN,1],[Infinity,1]])("limits saved %s to %s", (configured, expected) => {
+    expect(mailboxDailySendCap(configured)).toBe(expected);
+  });
+  it("does not advertise a 31st slot for a legacy high setting", () => {
+    expect(isUnderDailySendCap({ isActive:true, connectionStatus:"CONNECTED", canSend:true, isSendingEnabled:true, dailySendCap:5000, emailsSentToday:30, dailyWindowResetAt:null }, new Date())).toBe(false);
   });
 });
