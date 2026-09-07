@@ -5,6 +5,7 @@ import { Menu } from "lucide-react";
 import { useState } from "react";
 
 import { AppBrandLogo } from "@/components/brand/app-brand-logo";
+import { SwitchAccountButton } from "@/components/auth/switch-account-button";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -51,7 +52,7 @@ export function AppHeader({
           >
             <Menu className="h-5 w-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="w-72 p-0">
+          <SheetContent side="left" className="w-72 overflow-y-auto p-0">
             <SheetHeader className="sr-only">
               <SheetTitle>Navigation</SheetTitle>
             </SheetHeader>
@@ -62,6 +63,12 @@ export function AppHeader({
               isSuperAdmin={isSuperAdmin}
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
             />
+            <div className="px-3 pb-4">
+              <p className="mb-2 truncate text-xs text-muted-foreground">
+                {session?.user?.email}
+              </p>
+              <SwitchAccountButton />
+            </div>
           </SheetContent>
         </Sheet>
       </div>
@@ -79,6 +86,7 @@ export function AppHeader({
         <span className="hidden max-w-[200px] truncate text-sm text-muted-foreground sm:inline">
           {session?.user?.email ?? session?.user?.name ?? ""}
         </span>
+        <SwitchAccountButton className="hidden md:block" />
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/sign-in" })}
