@@ -239,16 +239,68 @@ it.each(["GOOGLE", "MICROSOFT"] as const)("does not send a %s message whose allo
 });
 
 
-it("serializes two old queue entries competing for today's final slot", async () => {
+it.each([["off",29,30],["on",4,5]] as const)("serializes two older queue entries with warm-up=%s", async (warmup, prior, cap) => {
+  vi.stubEnv("MAILBOX_WARMUP_RAMP",warmup);
   await seed("GOOGLE");
   await prisma.clientMailboxIdentity.update({ where:{ id:"mailbox" }, data:{ dailySendCap:5000 } });
   await prisma.mailboxSendReservation.updateMany({ where:{ outboundEmailId:"outbound" }, data:{ windowKey:"2020-01-01" } });
   await prisma.outboundEmail.create({ data:{ id:"second", clientId:"client", mailboxIdentityId:"mailbox", status:"PROCESSING", subject:"Synthetic second", bodySnapshot:"Never real mail", toEmail:"second@example.test", fromAddress:"sender@example.test", claimedAt:new Date(), sendAttempt:1 } });
   await prisma.mailboxSendReservation.create({ data:{ clientId:"client", mailboxIdentityId:"mailbox", outboundEmailId:"second", idempotencyKey:"second", windowKey:"2020-01-01", status:"RESERVED" } });
-  await prisma.mailboxSendReservation.createMany({ data:Array.from({ length:29 }, (_,n)=>({ clientId:"client", mailboxIdentityId:"mailbox", idempotencyKey:"prior-"+n, windowKey:new Date().toISOString().slice(0,10), status:"CONSUMED" as const })) });
+  await prisma.mailboxSendReservation.createMany({ data:Array.from({ length:prior }, (_,n)=>({ clientId:"client", mailboxIdentityId:"mailbox", idempotencyKey:"prior-"+n, windowKey:new Date().toISOString().slice(0,10), status:"CONSUMED" as const })) });
   const results = await Promise.all([executeOutboundSend("outbound"), executeOutboundSend("second")]);
   expect(results.filter(r=>r.ok)).toHaveLength(1);
   expect(send).toHaveBeenCalledTimes(1);
-  expect(await prisma.outboundEmail.count({ where:{ status:"QUEUED", lastErrorCode:"MAILBOX_DAILY_CAP" } })).toBe(1);
-  expect(await prisma.mailboxSendReservation.count({ where:{ windowKey:new Date().toISOString().slice(0,10), status:{ in:["RESERVED","CONSUMED"] } } })).toBe(30);
+  expect(await prisma.outboundEmail.count({ where:{ status:"QUEUED", lastErrorCode: warmup === "on" ? "MAILBOX_WARMUP_CAP" : "MAILBOX_DAILY_CAP" } })).toBe(1);
+  expect(await prisma.mailboxSendReservation.count({ where:{ windowKey:new Date().toISOString().slice(0,10), status:{ in:["RESERVED","CONSUMED"] } } })).toBe(cap);
+});
+
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds an older %s outreach email when today's five warm-up slots are used", async provider => {
+  vi.stubEnv("MAILBOX_WARMUP_RAMP","on");
+  await seed(provider);
+  await prisma.outboundEmail.update({ where:{id:"outbound"}, data:{ metadata:{kind:"sequenceIntroductionSend"} } });
+  await prisma.mailboxSendReservation.updateMany({ where:{outboundEmailId:"outbound"}, data:{windowKey:"2020-01-01"} });
+  await prisma.mailboxSendReservation.createMany({data:Array.from({length:5},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"warmup-used-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({where:{id:"outbound"}})).toMatchObject({status:"QUEUED",dispatchStartedAt:null,lastErrorCode:"MAILBOX_WARMUP_CAP"});
+});
+
+
+it.each(["sequenceFollowUpSend", "controlledPilotSend", null])("applies dispatch warm-up to outreach kind %s", async kind => {
+  vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); await seed("GOOGLE");
+  await prisma.outboundEmail.update({where:{id:"outbound"},data:{metadata:kind?{kind}:{}}});
+  await prisma.mailboxSendReservation.createMany({data:Array.from({length:5},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"used-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+});
+
+it.each(["internalProofSend", "governedTestSend"])("preserves the internal %s warm-up exemption within the hard daily cap", async kind => {
+  vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); await seed("GOOGLE");
+  await prisma.outboundEmail.update({where:{id:"outbound"},data:{metadata:{kind}}});
+  await prisma.mailboxSendReservation.createMany({data:Array.from({length:5},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"used-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
+  expect((await executeOutboundSend("outbound")).ok).toBe(true);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it("uses actual sending history so an established mailbox can use its higher allowance", async()=>{
+  vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); await seed("GOOGLE");
+  await prisma.outboundEmail.createMany({data:Array.from({length:25},(_,n)=>({id:"history-"+n,clientId:"client",mailboxIdentityId:"mailbox",toEmail:"history@example.test",status:"SENT" as const,sentAt:new Date(Date.now()-(n+1)*86400000)}))});
+  await prisma.mailboxSendReservation.createMany({data:Array.from({length:5},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"used-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
+  expect((await executeOutboundSend("outbound")).ok).toBe(true);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("records an already accepted %s send without booking new warm-up allowance", async provider=>{
+  vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); vi.stubEnv("SEND_PREFLIGHT_DEDUP_ENABLED","true");
+  await seed(provider);
+  await prisma.outboundEmail.update({where:{id:"outbound"},data:{sendAttempt:2}});
+  await prisma.mailboxSendReservation.updateMany({where:{outboundEmailId:"outbound"},data:{windowKey:"2020-01-01"}});
+  await prisma.mailboxSendReservation.createMany({data:Array.from({length:30},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"full-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
+  lookup.mockResolvedValue({status:"found",providerMessageId:"synthetic-existing"});
+  expect((await executeOutboundSend("outbound")).ok).toBe(true);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({where:{id:"outbound"}})).toMatchObject({status:"SENT",providerMessageId:"synthetic-existing"});
+  expect(await prisma.mailboxSendReservation.findUniqueOrThrow({where:{outboundEmailId:"outbound"}})).toMatchObject({status:"CONSUMED",windowKey:"2020-01-01"});
 });
