@@ -307,7 +307,7 @@ export const E2E_REPLIES_WAITING = {
    * the ones somebody has to read, then the diary job.
    */
   expectedOrder: [
-    { email: "waiting-positive-old@example.test", hoursAgo: 6 },
+    { email: "waiting-positive-old@example.test", hoursAgo: 45 * 24 },
     { email: "waiting-positive-new@example.test", hoursAgo: 0.17 },
     { email: "waiting-referral@example.test", hoursAgo: 2 },
     { email: "waiting-unclassified@example.test", hoursAgo: 1 },

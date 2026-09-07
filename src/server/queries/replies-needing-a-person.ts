@@ -25,14 +25,20 @@ import { loadDisplayClaimsForSubjects } from "@/server/inbox/reply-claim";
  * only thing keeping one client's prospects out of another's list.
  */
 
-/**
- * How far back the screen looks.
- *
- * A reply nobody answered in a month is not going to be answered off the back
- * of this list, and an unbounded query over every reply ever would grow without
- * limit. Thirty days keeps the query bounded and the screen believable.
- */
-export const NEEDS_A_PERSON_WINDOW_DAYS = 30;
+// Age does not resolve a reply. Page the candidates instead of expiring them.
+export function parseRepliesCursor(
+  value: unknown,
+): { receivedAt: Date; id: string } | null {
+  if (typeof value !== "string" || value.length > 180) return null;
+  const [date, id, extra] = value.split("|");
+  if (extra !== undefined || !date || !id || !/^[a-zA-Z0-9_-]{1,128}$/.test(id))
+    return null;
+  const receivedAt = new Date(date);
+  return Number.isFinite(receivedAt.getTime()) &&
+    receivedAt.toISOString() === date
+    ? { receivedAt, id }
+    : null;
+}
 
 /**
  * Hard ceiling on rows pulled into memory. Well above any realistic backlog
@@ -50,36 +56,40 @@ export type RepliesNeedingAPerson = Omit<NeedsAPersonQueue, "entries"> & {
   entries: TriagedReplyWithClaim[];
   /** True when the row cap was hit and the list is not the whole story. */
   truncated: boolean;
-  windowDays: number;
+  nextCursor: string | null;
 };
 
 export async function getRepliesNeedingAPerson(
   accessibleClientIds: string[],
   viewerStaffUserId: string,
   now: Date = new Date(),
+  before: { receivedAt: Date; id: string } | null = null,
 ): Promise<RepliesNeedingAPerson> {
   const empty: RepliesNeedingAPerson = {
     ...buildNeedsAPersonQueue({ facts: [], now }),
     entries: [],
     truncated: false,
-    windowDays: NEEDS_A_PERSON_WINDOW_DAYS,
+    nextCursor: null,
   };
   if (accessibleClientIds.length === 0) return empty;
 
-  const since = new Date(
-    now.getTime() - NEEDS_A_PERSON_WINDOW_DAYS * 86_400_000,
-  );
-
-  const replies = await prisma.inboundReply.findMany({
+  const candidates = await prisma.inboundReply.findMany({
     where: {
       clientId: { in: accessibleClientIds },
-      receivedAt: { gte: since },
+      handledAt: null,
+      ...(before
+        ? {
+            OR: [
+              { receivedAt: { lt: before.receivedAt } },
+              { receivedAt: before.receivedAt, id: { lt: before.id } },
+            ],
+          }
+        : {}),
     },
-    // Newest first for the CAP only — so that if the ceiling is ever hit it is
-    // the oldest, coldest replies that fall off rather than today's. The queue
-    // itself re-sorts to longest-waiting-first afterwards.
-    orderBy: { receivedAt: "desc" },
-    take: MAX_ROWS,
+    // Stable keyset paging also works if the boundary reply is handled/deleted.
+    // Urgency ordering is applied within each page after handling is resolved.
+    orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+    take: MAX_ROWS + 1,
     select: {
       id: true,
       clientId: true,
@@ -100,6 +110,12 @@ export async function getRepliesNeedingAPerson(
       linkedOutbound: { select: { mailboxIdentityId: true } },
     },
   });
+  const replies = candidates.slice(0, MAX_ROWS);
+  const boundary = replies.at(-1);
+  const nextCursor =
+    candidates.length > MAX_ROWS && boundary
+      ? `${boundary.receivedAt.toISOString()}|${boundary.id}`
+      : null;
 
   if (replies.length === 0) return empty;
 
@@ -113,7 +129,11 @@ export async function getRepliesNeedingAPerson(
 
   const handlingByKey = new Map<
     string,
-    { inboundMailboxMessageId: string; handledAt: Date | null; repliedAt: Date | null }
+    {
+      inboundMailboxMessageId: string;
+      handledAt: Date | null;
+      repliedAt: Date | null;
+    }
   >();
   if (providerMessageIds.length > 0) {
     const messages = await prisma.inboundMailboxMessage.findMany({
@@ -148,42 +168,42 @@ export async function getRepliesNeedingAPerson(
     }
   }
 
-  const facts: (ReplyTriageFact & { inboundMailboxMessageId: string | null })[] = replies.map(
-    (reply) => {
-      const mailboxIdentityId = reply.linkedOutbound?.mailboxIdentityId ?? null;
-      const handling =
-        reply.providerMessageId && mailboxIdentityId
-          ? handlingByKey.get(
-              correlationKey(
-                reply.clientId,
-                mailboxIdentityId,
-                reply.providerMessageId,
-              ),
-            )
-          : undefined;
+  const facts: (ReplyTriageFact & {
+    inboundMailboxMessageId: string | null;
+  })[] = replies.map((reply) => {
+    const mailboxIdentityId = reply.linkedOutbound?.mailboxIdentityId ?? null;
+    const handling =
+      reply.providerMessageId && mailboxIdentityId
+        ? handlingByKey.get(
+            correlationKey(
+              reply.clientId,
+              mailboxIdentityId,
+              reply.providerMessageId,
+            ),
+          )
+        : undefined;
 
-      return {
-        replyId: reply.id,
-        clientId: reply.clientId,
-        clientName: reply.client.name,
-        fromEmail: reply.fromEmail,
-        subject: reply.subject,
-        receivedAt: reply.receivedAt,
-        classification: reply.classification,
-        classificationRationale: reply.classificationRationale,
-        // Row 132 — either the reply's own direct "handled" mark, or the
-        // older mailbox-message-scoped one. Whichever fired first wins the
-        // race; both mean the same thing to this screen.
-        handledAt: reply.handledAt ?? handling?.handledAt ?? null,
-        repliedAt: handling?.repliedAt ?? null,
-        inboundMailboxMessageId: handling?.inboundMailboxMessageId ?? null,
-        // A reply whose contact record is missing is NOT treated as suppressed.
-        // Every unknown here resolves towards "a person should look", which is
-        // the only safe direction for this screen.
-        contactSuppressed: reply.contact?.isSuppressed ?? false,
-      };
-    },
-  );
+    return {
+      replyId: reply.id,
+      clientId: reply.clientId,
+      clientName: reply.client.name,
+      fromEmail: reply.fromEmail,
+      subject: reply.subject,
+      receivedAt: reply.receivedAt,
+      classification: reply.classification,
+      classificationRationale: reply.classificationRationale,
+      // Row 132 — either the reply's own direct "handled" mark, or the
+      // older mailbox-message-scoped one. Whichever fired first wins the
+      // race; both mean the same thing to this screen.
+      handledAt: reply.handledAt ?? handling?.handledAt ?? null,
+      repliedAt: handling?.repliedAt ?? null,
+      inboundMailboxMessageId: handling?.inboundMailboxMessageId ?? null,
+      // A reply whose contact record is missing is NOT treated as suppressed.
+      // Every unknown here resolves towards "a person should look", which is
+      // the only safe direction for this screen.
+      contactSuppressed: reply.contact?.isSuppressed ?? false,
+    };
+  });
 
   const queue = buildNeedsAPersonQueue({ facts, now });
 
@@ -202,9 +222,14 @@ export async function getRepliesNeedingAPerson(
   );
   return {
     ...queue,
-    entries: await attachClaims(queue.entries, subjectByReplyId, viewerStaffUserId, now),
-    truncated: replies.length === MAX_ROWS,
-    windowDays: NEEDS_A_PERSON_WINDOW_DAYS,
+    entries: await attachClaims(
+      queue.entries,
+      subjectByReplyId,
+      viewerStaffUserId,
+      now,
+    ),
+    truncated: nextCursor !== null,
+    nextCursor,
   };
 }
 
@@ -215,7 +240,10 @@ export async function getRepliesNeedingAPerson(
  */
 async function attachClaims(
   entries: TriagedReply[],
-  subjectByReplyId: Map<string, { subjectType: "INBOUND_MESSAGE" | "INBOUND_REPLY"; subjectId: string }>,
+  subjectByReplyId: Map<
+    string,
+    { subjectType: "INBOUND_MESSAGE" | "INBOUND_REPLY"; subjectId: string }
+  >,
   viewerStaffUserId: string,
   now: Date,
 ): Promise<TriagedReplyWithClaim[]> {
@@ -242,7 +270,10 @@ async function attachClaims(
   return entries.map((entry) => {
     const subject = subjectByReplyId.get(entry.replyId);
     const claims = claimsByClientId.get(entry.clientId);
-    const claim = subject && claims ? (claims.get(replyClaimSubjectKey(subject)) ?? null) : null;
+    const claim =
+      subject && claims
+        ? (claims.get(replyClaimSubjectKey(subject)) ?? null)
+        : null;
     return { ...entry, claim };
   });
 }

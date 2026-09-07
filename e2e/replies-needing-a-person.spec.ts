@@ -30,6 +30,34 @@ const SHOWN = E2E_REPLIES_WAITING.expectedOrder;
 test.describe("Replies waiting for a person", () => {
   test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 
+  test("older reply pages retain unanswered replies and return to the newest page", async ({
+    page,
+  }) => {
+    const before = `${new Date(Date.now() - 24 * 3_600_000).toISOString()}|boundary`;
+    await page.goto(`/replies?before=${encodeURIComponent(before)}`);
+    const main = page.getByRole("main");
+    await expect(main.getByText(SHOWN[0].email, { exact: true })).toBeVisible();
+    await expect(main.getByText(SHOWN[1].email, { exact: true })).toHaveCount(
+      0,
+    );
+    await main
+      .getByRole("link", { name: "Newest replies", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/replies$/);
+    await expect(main.getByTestId("replies-waiting-row")).toHaveCount(
+      SHOWN.length,
+    );
+    await page.goto(
+      `/replies?before=${encodeURIComponent("1900-01-01T00:00:00.000Z|boundary")}`,
+    );
+    await expect(
+      main.getByText("No replies need a person on this page.", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("link", { name: "Newest replies", exact: true }),
+    ).toBeVisible();
+  });
+
   test("lists everyone still waiting, across clients, most urgent first", async ({
     page,
   }) => {
@@ -37,7 +65,10 @@ test.describe("Replies waiting for a person", () => {
 
     const main = page.locator("main");
     await expect(
-      main.getByRole("heading", { name: "Replies waiting for a person", level: 1 }),
+      main.getByRole("heading", {
+        name: "Replies waiting for a person",
+        level: 1,
+      }),
     ).toBeVisible();
 
     // The table is populated at all — the first thing that would silently fail.
@@ -103,14 +134,19 @@ test.describe("Replies waiting for a person", () => {
   }) => {
     await page.goto("/replies");
 
-    const firstRow = page.locator("main").getByTestId("replies-waiting-row").first();
+    const firstRow = page
+      .locator("main")
+      .getByTestId("replies-waiting-row")
+      .first();
 
     // The model's one-line reason, so a person can triage without opening it.
     await expect(firstRow).toContainText(E2E_REPLIES_WAITING.topRationale);
-    // Six hours is past the four-hour threshold for a booking.
+    // An unanswered positive reply remains visible after forty-five days.
     await expect(firstRow).toContainText("Waiting too long");
     // And the row goes somewhere — a queue you cannot act from is a report.
-    await expect(firstRow.getByRole("link", { name: "Open reply" })).toHaveAttribute(
+    await expect(
+      firstRow.getByRole("link", { name: "Open reply" }),
+    ).toHaveAttribute(
       "href",
       new RegExp(`^/clients/${E2E_CLIENT.id}/activity/replies/`),
     );
@@ -126,7 +162,10 @@ test.describe("Replies waiting for a person", () => {
     await page.getByRole("link", { name: "Replies to answer" }).first().click();
     await expect(page).toHaveURL(/\/replies$/);
     await expect(
-      page.getByRole("heading", { name: "Replies waiting for a person", level: 1 }),
+      page.getByRole("heading", {
+        name: "Replies waiting for a person",
+        level: 1,
+      }),
     ).toBeVisible();
   });
 });
