@@ -52,10 +52,30 @@ export async function markInboundReplyHandled(input: {
     };
   }
 
-  await prisma.inboundReply.update({
-    where: { id: row.id },
+  const updated = await prisma.inboundReply.updateMany({
+    where: {
+      id: row.id,
+      clientId,
+      OR: [{ handledAt: null }, { handledByStaffUserId: null }],
+    },
     data: { handledAt: now, handledByStaffUserId: staff.id },
   });
+
+  let handledAt = now;
+  let handledByStaffUserId = staff.id;
+  if (updated.count === 0) {
+    // Another operator completed it after our initial read. Return that
+    // durable result rather than overwriting it or claiming it was ours.
+    const winner = await prisma.inboundReply.findFirst({
+      where: { id: row.id, clientId },
+      select: { handledAt: true, handledByStaffUserId: true },
+    });
+    if (!winner?.handledAt || !winner.handledByStaffUserId) {
+      return { ok: false, reason: "The reply changed. Refresh it before trying again." };
+    }
+    handledAt = winner.handledAt;
+    handledByStaffUserId = winner.handledByStaffUserId;
+  }
 
   // Somebody acted — the advisory "X has this open" marker has served its
   // purpose and goes. Who handled it is recorded permanently above.
@@ -67,5 +87,5 @@ export async function markInboundReplyHandled(input: {
     },
   });
 
-  return { ok: true, handledAt: now, handledByStaffUserId: staff.id };
+  return { ok: true, handledAt, handledByStaffUserId };
 }
