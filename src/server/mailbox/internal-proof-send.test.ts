@@ -16,6 +16,7 @@ const { prismaMock } = vi.hoisted(() => {
     unsubscribeToken: { create: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
   };
   return { prismaMock };
 });
@@ -95,6 +96,7 @@ function validInput(overrides: Partial<Parameters<typeof queueSelectedMailboxInt
 }
 
 function setupHappyPath(mailbox = baseMailbox) {
+  prismaMock.$queryRaw.mockResolvedValue([{ id: mailbox.id }]);
   prismaMock.client.findFirst.mockResolvedValue({
     id: "client-1",
     defaultSenderEmail: null,
