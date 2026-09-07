@@ -121,7 +121,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
         suppressedDomain: {
-          count: async () => 0,
+          findMany: async () => [],
           deleteMany: async () => ({ count: 0 }),
           createMany: async () => ({ count: 1 }),
         },
@@ -225,7 +225,7 @@ describe("do-not-contact sync — a resolved tab is remembered, not re-derived",
       ((fn: (tx: unknown) => unknown) =>
         fn({
           suppressedDomain: {
-            count: async () => 373,
+            findMany: async () => Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })),
             deleteMany: async () => ({ count: 0 }),
             createMany: async () => ({ count: 0 }),
           },

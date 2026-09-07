@@ -21,7 +21,7 @@ const {
   metaGet,
   sourceFindUnique,
   sourceUpdate,
-  domainCount,
+  domainFindMany,
   domainDeleteMany,
   domainCreateMany,
   refreshContactSuppressionFlagsForClient,
@@ -30,7 +30,7 @@ const {
   metaGet: vi.fn(),
   sourceFindUnique: vi.fn(),
   sourceUpdate: vi.fn(),
-  domainCount: vi.fn(),
+  domainFindMany: vi.fn(),
   domainDeleteMany: vi.fn(),
   domainCreateMany: vi.fn(),
   refreshContactSuppressionFlagsForClient: vi.fn(),
@@ -62,7 +62,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
         suppressedDomain: {
-          count: domainCount,
+          findMany: domainFindMany,
           deleteMany: domainDeleteMany,
           createMany: domainCreateMany,
         },
@@ -100,7 +100,7 @@ describe("suppression sync — resolving the tab instead of guessing Sheet1", ()
     vi.clearAllMocks();
     valuesGet.mockResolvedValue({ data: { values: [["blocked.example"]] } });
     sourceUpdate.mockResolvedValue({});
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     domainDeleteMany.mockResolvedValue({ count: 0 });
     domainCreateMany.mockResolvedValue({ count: 1 });
   });
@@ -176,7 +176,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
   // The worst outcome this product has: 373 blocked domains become sendable.
   it("ABORTS a 373-to-0 sync and leaves the 373 in place", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(373);
+    domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
@@ -189,7 +189,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
 
   it("ABORTS a sync that would remove most of a list", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(373);
+    domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [["still-blocked.example"]] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
@@ -201,7 +201,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
   // Pareto FM's actual state: nothing stored, so nothing can be lost.
   it("allows a sync into an empty list — there is nothing to protect", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({ data: { values: [["blocked.example"]] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
@@ -212,7 +212,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
 
   it("allows an ordinary edit that removes a couple of rows", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(6);
+    domainFindMany.mockResolvedValue(["a", "b", "c", "d", "e", "f"].map((s) => ({ domain: `${s}.example` })));
     valuesGet.mockResolvedValue({
       data: { values: [["a.example"], ["b.example"], ["c.example"], ["d.example"]] },
     });
@@ -225,7 +225,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
 
   it("lets an operator who confirms the shrink through", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(373);
+    domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
 
     const r = await syncSuppressionSourceFromGoogle({
@@ -239,7 +239,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
 
   it("reports the blocked shrink so the caller can offer that confirmation", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(373);
+    domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });

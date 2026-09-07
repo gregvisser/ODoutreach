@@ -49,9 +49,8 @@ const HISTORIC_TAB = "Sheet1";
  * well. Those 32 work precisely because their sheet does have a "Sheet1". If
  * any one of them keeps "Sheet1" in second place, "read the first tab" would
  * silently repoint a healthy live blocklist at a different tab — and
- * `decideSuppressionReplace` refuses a shrink or a zero, not a substitution of
- * roughly equal size. The fix for two broken clients would have become a
- * quiet risk to thirty-two working ones.
+ * even a guarded replacement should not silently choose another source.
+ * Preserving the existing tab avoids unnecessary changes to working lists.
  *
  * Preferring an existing "Sheet1" removes that entirely: every list that reads
  * correctly today reads the identical tab tomorrow, and only sheets that never

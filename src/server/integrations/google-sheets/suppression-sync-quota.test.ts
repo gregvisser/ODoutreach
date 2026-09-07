@@ -20,7 +20,7 @@ const {
   metaGet,
   sourceFindUnique,
   sourceUpdate,
-  domainCount,
+  domainFindMany,
   domainDeleteMany,
   domainCreateMany,
   refreshContactSuppressionFlagsForClient,
@@ -29,7 +29,7 @@ const {
   metaGet: vi.fn(),
   sourceFindUnique: vi.fn(),
   sourceUpdate: vi.fn(),
-  domainCount: vi.fn(),
+  domainFindMany: vi.fn(),
   domainDeleteMany: vi.fn(),
   domainCreateMany: vi.fn(),
   refreshContactSuppressionFlagsForClient: vi.fn(),
@@ -64,7 +64,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
         suppressedDomain: {
-          count: domainCount,
+          findMany: domainFindMany,
           deleteMany: domainDeleteMany,
           createMany: domainCreateMany,
         },
@@ -106,7 +106,7 @@ describe("suppression sync — the Google read quota gate is in the path", () =>
     metaGet.mockResolvedValue(tabs("Domains"));
     valuesGet.mockResolvedValue({ data: { values: [["blocked.example"]] } });
     sourceUpdate.mockResolvedValue({});
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     domainDeleteMany.mockResolvedValue({ count: 0 });
     domainCreateMany.mockResolvedValue({ count: 1 });
   });

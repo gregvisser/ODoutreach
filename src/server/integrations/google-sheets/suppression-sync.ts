@@ -390,15 +390,15 @@ async function applySheetToSuppressionTables(args: {
   const { clientId, sourceId, kind, cells, confirmShrink, dryRun } = args;
 
   /**
-   * Runs inside the transaction, after the count and BEFORE the delete — the
-   * only place the guard can refuse without anything already being gone.
+   * Compare entries inside the transaction, before deleting anything.
+   * Serializable isolation prevents concurrent syncs from using a stale diff.
    */
   const refusalFor = (
-    wouldWrite: number,
-    previousCount: number,
+    nextEntries: ReadonlySet<string>,
+    previousEntries: readonly string[],
   ): SuppressionReplaceRefusal | null => {
     if (confirmShrink) return null;
-    const decision = decideSuppressionReplace(kind, wouldWrite, previousCount);
+    const decision = decideSuppressionReplace(kind, nextEntries, previousEntries);
     return decision.allowed ? null : decision.refusal;
   };
 
@@ -411,11 +411,12 @@ async function applySheetToSuppressionTables(args: {
     const list = [...emails];
 
     return await prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
-      const previousCount = await tx.suppressedEmail.count({
+      const previous = await tx.suppressedEmail.findMany({
         where: { clientId, sourceId },
+        select: { email: true },
       });
-
-      const refusal = refusalFor(list.length, previousCount);
+      const previousCount = previous.length;
+      const refusal = refusalFor(emails, previous.map((row) => row.email));
       if (refusal) return { refused: true, refusal };
 
       // Placed AFTER the guard so a dry run reports the same verdict the real
@@ -442,7 +443,7 @@ async function applySheetToSuppressionTables(args: {
         });
       }
       return { refused: false, written: list.length, previousCount };
-    }, BULK_TRANSACTION_OPTIONS);
+    }, { ...BULK_TRANSACTION_OPTIONS, isolationLevel: "Serializable" });
   }
 
   const domains = new Set<string>();
@@ -470,11 +471,12 @@ async function applySheetToSuppressionTables(args: {
   const list = [...domains];
 
   return await prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
-    const previousCount = await tx.suppressedDomain.count({
+    const previous = await tx.suppressedDomain.findMany({
       where: { clientId, sourceId },
+      select: { domain: true },
     });
-
-    const refusal = refusalFor(list.length, previousCount);
+    const previousCount = previous.length;
+    const refusal = refusalFor(domains, previous.map((row) => row.domain));
     if (refusal) return { refused: true, refusal };
 
     if (dryRun) return { refused: false, written: list.length, previousCount };
@@ -494,5 +496,6 @@ async function applySheetToSuppressionTables(args: {
       });
     }
     return { refused: false, written: list.length, previousCount };
-  }, BULK_TRANSACTION_OPTIONS);
+    // Serialization conflicts fail safely; the next scheduled run retries.
+  }, { ...BULK_TRANSACTION_OPTIONS, isolationLevel: "Serializable" });
 }
