@@ -16,6 +16,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { prismaMock, getMicrosoftTokenMock, listGraphMock, auditMock, replyMock, bounceMock } =
   vi.hoisted(() => ({
     prismaMock: {
+      $transaction: vi.fn(),
+      $executeRaw: vi.fn().mockResolvedValue(1),
       clientMailboxIdentity: {
         findFirst: vi.fn(),
         findMany: vi.fn(),
@@ -114,7 +116,8 @@ function arrange(liveRowsForAddress: Array<typeof OWNER>, syncing: typeof OWNER)
   prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(mailboxRow(syncing));
   prismaMock.clientMailboxIdentity.findMany.mockResolvedValue(liveRowsForAddress);
   prismaMock.clientMailboxIdentity.update.mockResolvedValue({});
-  prismaMock.inboundMailboxMessage.upsert.mockResolvedValue({});
+  prismaMock.inboundMailboxMessage.upsert.mockResolvedValue({ id: "stored-message" });
+  prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock));
   listGraphMock.mockResolvedValue([graphMessage()]);
   getMicrosoftTokenMock.mockResolvedValue("access-token");
   bounceMock.mockResolvedValue({ suppressed: false, statusStamped: false });

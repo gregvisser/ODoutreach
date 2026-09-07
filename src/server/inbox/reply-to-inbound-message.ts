@@ -3,12 +3,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/db";
-import {
-  appendReplyOutboundId,
-  buildReplySubject,
-  mergeHandlingIntoMetadata,
-  readHandlingStateFromMetadata,
-} from "@/lib/inbox/inbound-message-handling";
+import { recordInboundMessageHandling } from "./persist-inbound-message";
+import { buildReplySubject } from "@/lib/inbox/inbound-message-handling";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { releaseReplyClaims } from "@/server/inbox/reply-claim";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
@@ -429,25 +425,5 @@ async function finaliseReplySent(input: {
     },
   });
 
-  const existing = await prisma.inboundMailboxMessage.findUnique({
-    where: { id: input.inboundMessageId },
-    select: { metadata: true },
-  });
-  if (!existing) return;
-
-  const current = readHandlingStateFromMetadata(existing.metadata);
-  const nextState = appendReplyOutboundId(current, input.outboundEmailId);
-  const iso = now.toISOString();
-  const nextMetadata = mergeHandlingIntoMetadata(existing.metadata, {
-    handledAt: current.handledAt ?? iso,
-    handledByStaffUserId:
-      current.handledByStaffUserId ?? input.staffUserId,
-    lastRepliedAt: iso,
-    replyOutboundEmailIds: nextState.replyOutboundEmailIds,
-  });
-
-  await prisma.inboundMailboxMessage.update({
-    where: { id: input.inboundMessageId },
-    data: { metadata: nextMetadata as object },
-  });
+  await recordInboundMessageHandling({ clientId: input.clientId, inboundMessageId: input.inboundMessageId, staffUserId: input.staffUserId, outboundEmailId: input.outboundEmailId, now });
 }

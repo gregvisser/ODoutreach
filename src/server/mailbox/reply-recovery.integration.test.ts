@@ -264,6 +264,13 @@ describe("paged inbox to database journey (simulated provider HTTP)", () => {
       const result = await syncMailboxInboxForMailbox({ clientId: input.clientId, mailboxIdentityId: input.mailboxIdentityId, staffUserId: null });
       expect(result).toMatchObject({ ok: true, repliesLinked: attempt === 0 ? 1 : 0 });
       await assertRecovered();
+      const stored = await prisma.inboundMailboxMessage.findFirstOrThrow({ where: { providerMessageId: input.providerMessageId } });
+      const handling = { handledAt: receivedAt.toISOString(), handledByStaffUserId: "operator", lastRepliedAt: receivedAt.toISOString(), replyOutboundEmailIds: ["reply-outbound"] };
+      if (attempt === 0) {
+        await prisma.inboundMailboxMessage.update({ where: { id: stored.id }, data: { metadata: { ...(stored.metadata as object), handling } } });
+      } else {
+        expect(stored.metadata).toMatchObject({ handling });
+      }
     }
     expect(await prisma.inboundMailboxMessage.count()).toBe(1);
   });

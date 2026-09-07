@@ -2,6 +2,7 @@ import "server-only";
 import { InboxCursorExpiredError } from "./inbox-pagination";
 
 import { prisma } from "@/lib/db";
+import { persistSyncedInboundMessage } from "@/server/inbox/persist-inbound-message";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import { fetchGmailInboxMessagesForSync } from "@/server/mailbox/gmail-inbox";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
@@ -267,7 +268,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
     }
     const meta: Record<string, string | null | boolean> = row.metadata;
     if (rawStore.allowed) {
-      await prisma.inboundMailboxMessage.upsert({
+      await persistSyncedInboundMessage({
         where: {
           mailboxIdentityId_providerMessageId: {
             mailboxIdentityId,
@@ -314,7 +315,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
               }
             : {}),
         },
-      });
+      }, meta);
     } else {
       rawCopiesWithheld += 1;
     }
@@ -500,7 +501,7 @@ export async function syncGoogleInboxForMailbox(input: {
     }
     const meta = row.metadata;
     if (rawStore.allowed) {
-      await prisma.inboundMailboxMessage.upsert({
+      await persistSyncedInboundMessage({
         where: {
           mailboxIdentityId_providerMessageId: {
             mailboxIdentityId,
@@ -548,7 +549,7 @@ export async function syncGoogleInboxForMailbox(input: {
               }
             : {}),
         },
-      });
+      }, meta);
     } else {
       rawCopiesWithheld += 1;
     }
