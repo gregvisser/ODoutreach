@@ -53,6 +53,17 @@ afterAll(async () => {
 });
 
 describe("runContactCsvImport — happy path", () => {
+  it("imports company matches as held contacts instead of sendable audience", async () => {
+    await prisma.companyDncEntry.create({ data: { clientId: CLIENT_ID, originalName: "Acme", canonicalName: "acme" } });
+    await importCsv("email,first_name,company\nexact@example.test,Exact,Acme Ltd\nnear@example.test,Near,Acme Group\nclear@example.test,Clear,Birch Tree");
+    const contacts = await prisma.contact.findMany({ where: { clientId: CLIENT_ID }, orderBy: { email: "asc" }, select: { email: true, isSuppressed: true } });
+    expect(contacts).toEqual([
+      { email: "clear@example.test", isSuppressed: false },
+      { email: "exact@example.test", isSuppressed: true },
+      { email: "near@example.test", isSuppressed: true },
+    ]);
+    expect(await prisma.outboundEmail.count({ where: { clientId: CLIENT_ID } })).toBe(0);
+  });
   it("creates contacts and attaches them to the target list", async () => {
     const { summary, batchId } = await importCsv(
       [

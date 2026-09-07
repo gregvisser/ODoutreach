@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { closeIntegrationPool, resetIntegrationDatabase } from "@/test/integration/database";
-import { addCompanyNames, decideCompanyName, evaluateCompanyName } from "./company-names";
+import { addCompanyNames, decideCompanyName, evaluateCompanyName, loadCompanyDncPage } from "./company-names";
 
 const clientId = "company-dnc-client", staffUserId = "company-dnc-staff";
 const add = (text: string) => addCompanyNames({ clientId, staffUserId, text, format: "text" });
@@ -15,6 +15,19 @@ afterEach(() => { expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); }
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
 describe("company-name DNC persistence and decisions", () => {
+  it("exposes later contact and held-email pages with accurate totals", async () => {
+    await add("Acme");
+    await prisma.contact.createMany({ data: Array.from({ length: 51 }, (_, i) => ({ id: `page-contact-${String(i).padStart(3, "0")}`, clientId, company: "Acme Group", email: `person${i}@example.test` })) });
+    await prisma.outboundEmail.createMany({ data: Array.from({ length: 51 }, (_, i) => ({ id: `page-outbound-${String(i).padStart(3, "0")}`, clientId, toEmail: `person${i}@example.test`, fromAddress: "sender@example.test", subject: "Synthetic held mail", bodySnapshot: "Not sent", status: "FAILED" as const, lastErrorCode: "COMPANY_REVIEW" })) });
+    const first = await loadCompanyDncPage(clientId, 0, 0);
+    const second = await loadCompanyDncPage(clientId, 1, 1);
+    expect(first).toMatchObject({ totalContacts: 51, checkedContacts: 50, heldTotal: 51 });
+    expect(first.heldEmails).toHaveLength(50);
+    expect(second).toMatchObject({ totalContacts: 51, checkedContacts: 1, heldTotal: 51, page: 1, heldPage: 1 });
+    expect(second.contacts[0].id).toBe("page-contact-050");
+    expect(second.heldEmails[0].id).toBe("page-outbound-050");
+    expect(await loadCompanyDncPage("other-company-client", 0)).toMatchObject({ contacts: [], heldEmails: [], heldTotal: 0, entryTotal: 0 });
+  });
   it("imports additively and preserves existing original names", async () => {
     expect(await add("Acme Limited\nBirch Group")).toMatchObject({ ok: true, added: 2 });
     expect(await add("ACME LTD\nOak Inc")).toMatchObject({ ok: true, added: 1, duplicates: 1 });

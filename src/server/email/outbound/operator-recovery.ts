@@ -46,7 +46,7 @@ export async function releaseStaleProcessingClaimsForScope(accessibleClientIds: 
  * Operator-initiated retry for FAILED rows that never received a provider message id.
  * Mailbox replies never enter this generic queue; recover them from the message.
  */
-export async function operatorRequeueFailedSend(outboundEmailId: string, clientId: string): Promise<{ count: number; error?: string }> {
+export async function operatorRequeueFailedSend(outboundEmailId: string, clientId: string, expectedErrorCode?: "COMPANY_REVIEW"): Promise<{ count: number; error?: string }> {
   try {
     return await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${outboundEmailId} AND "clientId" = ${clientId} FOR UPDATE`;
@@ -54,6 +54,7 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
         id: outboundEmailId,
         clientId,
         status: "FAILED" as const,
+        ...(expectedErrorCode ? { lastErrorCode: expectedErrorCode } : {}),
         providerMessageId: null,
         dispatchStartedAt: null,
         AND: [GENERIC_OUTBOUND_ONLY],

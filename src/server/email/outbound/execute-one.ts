@@ -256,6 +256,21 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
 
   const to = normalizeEmail(row.toEmail);
   const decision = await evaluateSuppression(row.clientId, to);
+  if (decision.reason === "company_review") {
+    await prisma.$transaction(async tx => {
+      const held = await tx.outboundEmail.updateMany({
+        where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null },
+        data: {
+          status: "FAILED", suppressionSnapshot: decision as object,
+          claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null,
+          lastProviderEventType: "company_review_required", lastErrorCode: "COMPANY_REVIEW",
+          lastErrorMessage: "Held for company-name review. Resolve the match on this client's do-not-contact page before retrying this email.",
+        },
+      });
+      if (held.count) await markReservationReleasedForOutboundInTransaction(tx, row.id);
+    });
+    return { ok: true };
+  }
   if (decision.suppressed) {
     const blocked = await prisma.outboundEmail.updateMany({
       where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null },

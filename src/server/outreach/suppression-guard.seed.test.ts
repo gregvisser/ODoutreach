@@ -11,6 +11,7 @@ const { seedFindFirst, suppEmailFindUnique, suppDomainFindMany } = vi.hoisted(
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    companyDncEntry: { findMany: async () => [] },
     internalSeedAddress: {
       findFirst: (...a: unknown[]) => seedFindFirst(...a),
     },

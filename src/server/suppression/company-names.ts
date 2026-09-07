@@ -10,6 +10,20 @@ type CompanyDb = Pick<Prisma.TransactionClient, "companyDncEntry" | "companyDncD
 export async function evaluateCompanyName(clientId: string, company: string | null | undefined, db: CompanyDb = prisma): Promise<CompanyNameDecision> {
   const entries = await db.companyDncEntry.findMany({ where: { clientId }, orderBy: { id: "asc" } });
   const match = matchCompanyName(company, entries);
+  return resolveCompanyMatch(clientId, match, db);
+}
+
+/** Existing recipients are resolved within the sending client's own contacts. */
+export async function evaluateRecipientCompany(clientId: string, email: string, company?: string | null): Promise<CompanyNameDecision> {
+  const entries = await prisma.companyDncEntry.findMany({ where: { clientId }, orderBy: { id: "asc" } });
+  if (!entries.length) return matchCompanyName(null, []);
+  const employer = company === undefined
+    ? (await prisma.contact.findUnique({ where: { clientId_email: { clientId, email } }, select: { company: true } }))?.company
+    : company;
+  return resolveCompanyMatch(clientId, matchCompanyName(employer, entries), prisma);
+}
+
+async function resolveCompanyMatch(clientId: string, match: CompanyNameDecision, db: CompanyDb): Promise<CompanyNameDecision> {
   if (match.outcome !== "REVIEW" || !match.matchedEntryIds.length) return match;
   const decisions = await db.companyDncDecision.findMany({ where: {
     clientId, companyKey: match.canonicalName, ruleVersion: COMPANY_NAME_MATCH_VERSION,
@@ -20,6 +34,28 @@ export async function evaluateCompanyName(clientId: string, company: string | nu
   const allowed = new Set(decisions.filter(decision => decision.outcome === "ALLOW").map(decision => decision.entryId));
   const pending = match.matchedEntryIds.filter(id => !allowed.has(id));
   return { ...match, outcome: pending.length ? "REVIEW" : "CLEAR", matchedEntryIds: pending };
+}
+
+/** A bounded contact page, with honest totals even when a page has no holds. */
+export async function loadCompanyDncPage(clientId: string, page: number, heldPage = 0) {
+  const pageSize = 50;
+  const entries = await prisma.companyDncEntry.findMany({ where: { clientId }, orderBy: { originalName: "asc" } });
+  const totalContacts = entries.length ? await prisma.contact.count({ where: { clientId } }) : 0;
+  const currentPage = Math.max(0, Math.min(page, Math.max(0, Math.ceil(totalContacts / pageSize) - 1)));
+  const contacts = totalContacts ? await prisma.contact.findMany({ where: { clientId }, orderBy: { id: "asc" }, skip: currentPage * pageSize, take: pageSize, select: { id: true, company: true, email: true, fullName: true } }) : [];
+  const reviewed = await Promise.all(contacts.map(async contact => ({
+    ...contact, decision: await resolveCompanyMatch(clientId, matchCompanyName(contact.company, entries), prisma),
+  })));
+  const heldWhere = { clientId, status: "FAILED" as const, lastErrorCode: "COMPANY_REVIEW", providerMessageId: null, dispatchStartedAt: null };
+  const heldTotal = await prisma.outboundEmail.count({ where: heldWhere });
+  const currentHeldPage = Math.max(0, Math.min(heldPage, Math.max(0, Math.ceil(heldTotal / pageSize) - 1)));
+  const heldEmails = await prisma.outboundEmail.findMany({ where: heldWhere, orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: currentHeldPage * pageSize, take: pageSize, select: { id: true, toEmail: true, subject: true } });
+  return {
+    entries: entries.slice(0, 200), entryTotal: entries.length, page: currentPage, pageSize, totalContacts, checkedContacts: contacts.length,
+    contacts: reviewed.filter(contact => contact.decision.outcome !== "CLEAR").map(contact => ({
+      ...contact, matches: entries.filter(entry => contact.decision.matchedEntryIds.includes(entry.id)).map(entry => ({ id: entry.id, originalName: entry.originalName })),
+    })), heldEmails, heldTotal, heldPage: currentHeldPage,
+  };
 }
 
 /** Internal service: the server action must establish staff/client permission. */

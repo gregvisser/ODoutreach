@@ -20,6 +20,7 @@ const { suppressedEmailFindUnique, suppressedDomainFindMany } = vi.hoisted(
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    companyDncEntry: { findMany: async () => [] },
     suppressedEmail: { findUnique: (...a: unknown[]) => suppressedEmailFindUnique(...a) },
     suppressedDomain: { findMany: (...a: unknown[]) => suppressedDomainFindMany(...a) },
     // RULING 3: related-company families. Empty here — these fixtures exercise
