@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   getRepliesNeedingAPerson,
+  parseRepliesCursor,
   type TriagedReplyWithClaim,
 } from "@/server/queries/replies-needing-a-person";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -55,10 +56,20 @@ export const dynamic = "force-dynamic";
  * Nothing on this page mutates anything. It is a list and a set of links to
  * the reply-detail page where the buttons already live.
  */
-export default async function RepliesNeedingAPersonPage() {
+export default async function RepliesNeedingAPersonPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ before?: string | string[] }>;
+}) {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
-  const queue = await getRepliesNeedingAPerson(accessible, staff.id);
+  const before = parseRepliesCursor((await searchParams).before);
+  const queue = await getRepliesNeedingAPerson(
+    accessible,
+    staff.id,
+    new Date(),
+    before,
+  );
 
   // When classification cannot run, every reply arrives here unlabelled and is
   // routed to a person anyway — which is correct, but a screen full of "Not
@@ -76,10 +87,10 @@ export default async function RepliesNeedingAPersonPage() {
           Replies waiting for a person
         </h1>
         <p className="text-muted-foreground max-w-3xl text-sm">
-          Everyone who has written back and not yet had an answer, across every
-          client workspace. People asking to talk come first, then the longest
-          wait. Replies somebody has answered, marked handled, or added to
-          do-not-contact drop off this list automatically.
+          Review unanswered replies across every client workspace. On each page,
+          people asking to talk come first, then the longest wait. Replies
+          somebody has answered, marked handled, or added to do-not-contact drop
+          off this list automatically.
         </p>
       </div>
 
@@ -100,9 +111,9 @@ export default async function RepliesNeedingAPersonPage() {
         />
         <SummaryCard
           testId="replies-total-waiting"
-          title="Waiting in total"
+          title="Waiting on this page"
           value={queue.totalWaiting}
-          hint={`Replies from the last ${String(queue.windowDays)} days`}
+          hint="Unanswered replies do not expire"
           tone="ok"
         />
       </div>
@@ -130,11 +141,35 @@ export default async function RepliesNeedingAPersonPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {before || queue.nextCursor ? (
+            <nav
+              aria-label="Reply pages"
+              className="mb-4 flex flex-wrap items-center gap-4 text-sm"
+            >
+              {before ? (
+                <Link prefetch={false} className="underline" href="/replies">
+                  Newest replies
+                </Link>
+              ) : null}
+              {queue.nextCursor ? (
+                <Link
+                  prefetch={false}
+                  className="underline"
+                  href={`/replies?before=${encodeURIComponent(queue.nextCursor)}`}
+                >
+                  Older replies
+                </Link>
+              ) : null}
+              {queue.nextCursor ? (
+                <p>More replies remain to review. Counts apply to this page.</p>
+              ) : null}
+            </nav>
+          ) : null}
           {queue.entries.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              Nobody is waiting. Every reply from the last{" "}
-              {String(queue.windowDays)} days has been answered, marked handled,
-              or was a no.
+              {before || queue.nextCursor
+                ? "No replies need a person on this page."
+                : "No replies currently need a person."}
             </p>
           ) : (
             <>
@@ -151,7 +186,10 @@ export default async function RepliesNeedingAPersonPage() {
                 </TableHeader>
                 <TableBody>
                   {queue.entries.map((entry) => (
-                    <TableRow key={entry.replyId} data-testid="replies-waiting-row">
+                    <TableRow
+                      key={entry.replyId}
+                      data-testid="replies-waiting-row"
+                    >
                       <TableCell className="font-medium">
                         <div className="flex flex-col gap-0.5">
                           <span data-testid="replies-waiting-from">
@@ -204,13 +242,6 @@ export default async function RepliesNeedingAPersonPage() {
                   ))}
                 </TableBody>
               </Table>
-              {queue.truncated ? (
-                <p className="text-muted-foreground mt-4 text-xs">
-                  This list is capped, and the cap was reached — there are older
-                  replies from the last {String(queue.windowDays)} days that are
-                  not shown. Work the list down and they will appear.
-                </p>
-              ) : null}
             </>
           )}
         </CardContent>
@@ -303,5 +334,11 @@ function OwnerCell({ entry }: { entry: TriagedReplyWithClaim }) {
       claim: entry.claim,
     }),
   );
-  return <ReplyOwnershipBadge testId="replies-waiting-owner" text={text} tone={tone} />;
+  return (
+    <ReplyOwnershipBadge
+      testId="replies-waiting-owner"
+      text={text}
+      tone={tone}
+    />
+  );
 }
