@@ -17,6 +17,7 @@ export async function releaseStaleProcessingClaimsForScope(accessibleClientIds: 
       clientId: { in: accessibleClientIds },
       status: "PROCESSING",
       providerMessageId: null,
+      dispatchStartedAt: null,
       claimExpiresAt: { lt: now },
       AND: [GENERIC_OUTBOUND_ONLY],
     },
@@ -43,6 +44,7 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
       clientId,
       status: "FAILED",
       providerMessageId: null,
+      dispatchStartedAt: null,
       AND: [GENERIC_OUTBOUND_ONLY],
     },
     data: {

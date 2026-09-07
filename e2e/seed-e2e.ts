@@ -683,6 +683,8 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
       const failedData = { clientId: replyQueue.clientId, staffUserId: replyStaff.id, mailboxIdentityId: reply ? replyQueue.mailboxId : null, toEmail: reply ? replyQueue.replyRecipient : replyQueue.ordinaryRecipient, subject: "Synthetic failed send", bodySnapshot: "Synthetic fixture; never dispatch", status: "FAILED" as const, providerMessageId: null, createdAt: recoveredAt, updatedAt: recoveredAt, metadata: reply ? { kind: "inboundMailboxReply", inboundMessageId: replyQueue.messageId } : { kind: "ordinaryFixture" } };
       await prisma.outboundEmail.upsert({ where: { id }, create: { id, ...failedData }, update: failedData });
     }
+    const heldData = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, toEmail: replyQueue.heldRecipient, subject: "Synthetic unconfirmed send", bodySnapshot: "Test only; never dispatch", status: "PROCESSING" as const, providerMessageId: null, dispatchStartedAt: recoveredAt, claimExpiresAt: null, lastErrorCode: "SEND_OUTCOME_UNCONFIRMED" };
+    await prisma.outboundEmail.upsert({ where: { id: replyQueue.heldId }, create: { id: replyQueue.heldId, ...heldData }, update: heldData });
   } finally {
     await prisma.$disconnect();
     await pool.end();

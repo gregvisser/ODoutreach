@@ -30,6 +30,7 @@ const { markConsumed, markReleased, getGoogleToken, sendGmail, evalSupp } = vi.h
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ outboundEmail: { findUnique, updateMany } })),
     outboundEmail: { findUnique, updateMany },
     clientMailboxIdentity: { findFirst: findFirstMbox },
     // Open-tracking pixel reads the client's aligned link domain; null = fall
@@ -38,6 +39,8 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 vi.mock("@/server/mailbox/sending-policy", () => ({
+  markReservationConsumedForOutboundInTransaction: (_tx: unknown, id: string) => markConsumed(id),
+  markReservationReleasedForOutboundInTransaction: (_tx: unknown, id: string) => markReleased(id),
   humanizeGovernanceRejection: vi.fn((c: string) => c),
   mailboxIneligibleForGovernedSendExecution: vi.fn(
     (m: { connectionStatus: string } | { connectionStatus?: string }) =>

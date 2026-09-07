@@ -16,6 +16,7 @@ export async function getOutboundOperationsSnapshot(
     return {
       stuckQueued: [],
       staleProcessing: [],
+      unconfirmed: [],
       failedNoProvider: [],
       bounced: [],
       recentEvents: [],
@@ -33,8 +34,13 @@ export async function getOutboundOperationsSnapshot(
   const stuckBefore = new Date(Date.now() - STUCK_QUEUE_MINUTES * 60 * 1000);
   const now = new Date();
 
-  const [stuckQueued, staleProcessing, failedNoProvider, bounced, recentEvents] =
+  const [unconfirmed, stuckQueued, staleProcessing, failedNoProvider, bounced, recentEvents] =
     await Promise.all([
+      prisma.outboundEmail.findMany({
+        where: { ...scope, dispatchStartedAt: { not: null }, providerMessageId: null, status: { in: ["PROCESSING", "FAILED", "QUEUED"] } },
+        orderBy: { dispatchStartedAt: "asc" }, take: 50,
+        include: { client: { select: { name: true } }, mailbox: { select: { email: true } } },
+      }),
       prisma.outboundEmail.findMany({
         where: {
           ...scope,
@@ -120,6 +126,7 @@ export async function getOutboundOperationsSnapshot(
     ]);
 
   return {
+    unconfirmed,
     stuckQueued,
     staleProcessing,
     failedNoProvider,
