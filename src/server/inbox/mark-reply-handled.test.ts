@@ -4,16 +4,16 @@ import type { StaffIdentity } from "@/server/tenant/access";
 
 vi.mock("server-only", () => ({}));
 
-const { replyFindFirst, replyUpdate, claimDeleteMany, requireClientAccess } = vi.hoisted(() => ({
+const { replyFindFirst, replyUpdateMany, claimDeleteMany, requireClientAccess } = vi.hoisted(() => ({
   replyFindFirst: vi.fn(),
-  replyUpdate: vi.fn(),
+  replyUpdateMany: vi.fn(),
   claimDeleteMany: vi.fn().mockResolvedValue({ count: 0 }),
   requireClientAccess: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    inboundReply: { findFirst: replyFindFirst, update: replyUpdate },
+    inboundReply: { findFirst: replyFindFirst, updateMany: replyUpdateMany },
     replyClaim: { deleteMany: claimDeleteMany },
   },
 }));
@@ -34,7 +34,7 @@ beforeEach(() => {
 describe("markInboundReplyHandled — row 132, the durable 'somebody dealt with this' state", () => {
   it("re-verifies staff access to the client before touching anything", async () => {
     replyFindFirst.mockResolvedValue({ id: "reply-1", handledAt: null, handledByStaffUserId: null });
-    replyUpdate.mockResolvedValue({});
+    replyUpdateMany.mockResolvedValue({ count: 1 });
 
     await markInboundReplyHandled({
       staff: STAFF,
@@ -57,12 +57,12 @@ describe("markInboundReplyHandled — row 132, the durable 'somebody dealt with 
     });
 
     expect(result.ok).toBe(false);
-    expect(replyUpdate).not.toHaveBeenCalled();
+    expect(replyUpdateMany).not.toHaveBeenCalled();
   });
 
   it("writes handledAt and handledByStaffUserId, scoped to this reply", async () => {
     replyFindFirst.mockResolvedValue({ id: "reply-1", handledAt: null, handledByStaffUserId: null });
-    replyUpdate.mockResolvedValue({});
+    replyUpdateMany.mockResolvedValue({ count: 1 });
 
     const result = await markInboundReplyHandled({
       staff: STAFF,
@@ -72,8 +72,8 @@ describe("markInboundReplyHandled — row 132, the durable 'somebody dealt with 
     });
 
     expect(result).toEqual({ ok: true, handledAt: NOW, handledByStaffUserId: "staff-sarah" });
-    expect(replyUpdate).toHaveBeenCalledWith({
-      where: { id: "reply-1" },
+    expect(replyUpdateMany).toHaveBeenCalledWith({
+      where: { id: "reply-1", clientId: "client-a", OR: [{ handledAt: null }, { handledByStaffUserId: null }] },
       data: { handledAt: NOW, handledByStaffUserId: "staff-sarah" },
     });
   });
@@ -99,12 +99,12 @@ describe("markInboundReplyHandled — row 132, the durable 'somebody dealt with 
       handledByStaffUserId: "staff-bob",
     });
     // Nothing to write — the state is already what it should be.
-    expect(replyUpdate).not.toHaveBeenCalled();
+    expect(replyUpdateMany).not.toHaveBeenCalled();
   });
 
   it("releases every claim on the conversation once handled — nobody should still see 'X has this'", async () => {
     replyFindFirst.mockResolvedValue({ id: "reply-1", handledAt: null, handledByStaffUserId: null });
-    replyUpdate.mockResolvedValue({});
+    replyUpdateMany.mockResolvedValue({ count: 1 });
 
     await markInboundReplyHandled({
       staff: STAFF,
@@ -122,7 +122,7 @@ describe("markInboundReplyHandled — row 132, the durable 'somebody dealt with 
 
   it("falls back to releasing by the reply's own id when no correlated subject is given", async () => {
     replyFindFirst.mockResolvedValue({ id: "reply-1", handledAt: null, handledByStaffUserId: null });
-    replyUpdate.mockResolvedValue({});
+    replyUpdateMany.mockResolvedValue({ count: 1 });
 
     await markInboundReplyHandled({
       staff: STAFF,
