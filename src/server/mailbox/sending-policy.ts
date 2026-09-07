@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
+import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { prisma } from "@/lib/db";
@@ -108,7 +108,7 @@ function isUnderCounterCap(
   cap: number,
   emailsSentToday: number,
 ): boolean {
-  const c = Math.max(1, cap);
+  const c = mailboxDailySendCap(cap);
   if (emailsSentToday <= 0) return true;
   if (!dailyWindowResetAt) return emailsSentToday < c;
   if (now.getTime() >= dailyWindowResetAt.getTime()) return true;
@@ -234,7 +234,7 @@ export async function tryReserveSendSlotInTransaction(
   const mailbox = await lockSendingMailboxInTransaction(tx, input.mailbox.id, clientId);
   if (!mailbox) return { ok: false, error: "The sending mailbox is no longer available in this workspace.", errorCode: "MAILBOX_MISSING", reason: "MAILBOX_MISSING" };
   const windowKey = utcDateKeyForInstant(at);
-  const cap = Math.max(1, mailbox.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP);
+  const cap = mailboxDailySendCap(mailbox.dailySendCap);
 
   const staticReason = mailboxIneligibleReasonFromStaticState(
     mailbox,

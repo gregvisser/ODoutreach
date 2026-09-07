@@ -81,6 +81,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_MAILBOX_DAILY_SEND_CAP,
+  MAX_MAILBOX_DAILY_SEND_CAP,
+  mailboxDailySendCap,
   isMailboxSendingEligible,
 } from "@/lib/mailbox-identities";
 import { MAILBOX_PRIMARY_DISCONNECTED_WARNING } from "@/lib/mailboxes/mailbox-primary-operator-copy";
@@ -792,7 +794,7 @@ export function ClientMailboxIdentitiesPanel({
                         </span>
                       ) : (
                         <span>
-                          {row.emailsSentToday} / {row.dailySendCap}
+                          {row.emailsSentToday} / {mailboxDailySendCap(row.dailySendCap)}
                         </span>
                       )}
                     </TableCell>
@@ -1519,7 +1521,7 @@ function MailboxForm(props: MailboxFormProps) {
   const [canSend, setCanSend] = useState(initial?.canSend ?? true);
   const [canReceive, setCanReceive] = useState(initial?.canReceive ?? true);
   const [dailySendCap, setDailySendCap] = useState(
-    String(initial?.dailySendCap ?? DEFAULT_MAILBOX_DAILY_SEND_CAP),
+    String(mailboxDailySendCap(initial?.dailySendCap ?? DEFAULT_MAILBOX_DAILY_SEND_CAP)),
   );
   const [isSendingEnabled, setIsSendingEnabled] = useState(
     initial?.isSendingEnabled ?? true,
@@ -1696,11 +1698,12 @@ function MailboxForm(props: MailboxFormProps) {
             id="mb-cap"
             type="number"
             min={1}
-            max={5000}
+            max={MAX_MAILBOX_DAILY_SEND_CAP}
             className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             value={dailySendCap}
             onChange={(e) => setDailySendCap(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">Up to 30 emails total per mailbox per day, shared across campaigns. Warm-up may allow fewer.</p>
         </div>
 
         <div className="space-y-1.5">

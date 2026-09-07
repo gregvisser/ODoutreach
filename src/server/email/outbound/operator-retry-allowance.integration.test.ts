@@ -128,8 +128,23 @@ it("reports lost confirmation honestly and does not book twice after a committed
   });
   try {
     expect(await operatorRequeueFailedSend("outbound", "client")).toMatchObject({ count: 0, error: "Could not confirm the retry. Refresh this page before trying again." });
-  } finally { interrupted.mockRestore(); }
+  } finally { interrupted.mockRestore(); prisma.$transaction = original; }
   expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "QUEUED" });
   expect((await operatorRequeueFailedSend("outbound", "client")).count).toBe(0);
   expect(await prisma.mailboxSendReservation.count({ where: { status: "RESERVED" } })).toBe(1);
+});
+
+
+it("caps competing retry and ordinary bookings at 30 despite an older 5000 setting", async () => {
+  const mailbox = await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { dailySendCap: 5000 } });
+  await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 29 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: "used-" + n, windowKey: today(), status: "CONSUMED" as const })) });
+  const [retry, normal] = await Promise.all([
+    operatorRequeueFailedSend("outbound", "client"),
+    prisma.$transaction(tx => tryReserveSendSlotInTransaction(tx, { clientId: "client", mailbox, idempotencyKey: "thirtieth", at: new Date() })),
+  ]);
+  expect(retry.count + (normal.ok ? 1 : 0)).toBe(1);
+  expect(await prisma.mailboxSendReservation.count({ where: { status: { in: ["RESERVED", "CONSUMED"] }, windowKey: today() } })).toBe(30);
+  const next = await prisma.$transaction(tx => tryReserveSendSlotInTransaction(tx, { clientId: "client", mailbox, idempotencyKey: "thirty-first", at: new Date() }));
+  expect(next.ok).toBe(false);
+  expect(await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "mailbox" } })).toMatchObject({ dailySendCap: 5000 });
 });

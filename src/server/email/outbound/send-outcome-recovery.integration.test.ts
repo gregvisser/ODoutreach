@@ -208,3 +208,47 @@ it.each(["408", "200"])("holds ambiguous response code %s", async (code) => {
   expect((await executeOutboundSend("outbound")).ok).toBe(false);
   await expectHeld();
 });
+
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("defers a previous-day %s reservation when today already has 30 bookings", async provider => {
+  await seed(provider);
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { dailySendCap: 5000 } });
+  await prisma.mailboxSendReservation.updateMany({ where: { outboundEmailId: "outbound" }, data: { windowKey: "2020-01-01" } });
+  await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 30 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: "used-" + n, windowKey: new Date().toISOString().slice(0,10), status: "CONSUMED" as const })) });
+  expect(await executeOutboundSend("outbound")).toMatchObject({ ok:false, error: expect.stringContaining("stays queued") });
+  expect(send).not.toHaveBeenCalled();
+  const held = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  expect(held).toMatchObject({ status:"QUEUED", dispatchStartedAt:null, lastErrorCode:"MAILBOX_DAILY_CAP", retryCount:0 });
+  expect(held.nextRetryAt!.getTime()).toBeGreaterThan(Date.now());
+  expect(await prisma.mailboxSendReservation.findUniqueOrThrow({ where: { outboundEmailId:"outbound" } })).toMatchObject({ status:"RESERVED", windowKey:"2020-01-01" });
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("rebooks an older %s queue entry into today's allowance before sending", async provider => {
+  await seed(provider);
+  await prisma.mailboxSendReservation.updateMany({ where: { outboundEmailId:"outbound" }, data: { windowKey:"2020-01-01" } });
+  expect(await executeOutboundSend("outbound")).toMatchObject({ ok:true });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.findUniqueOrThrow({ where: { outboundEmailId:"outbound" } })).toMatchObject({ status:"CONSUMED", windowKey:new Date().toISOString().slice(0,10) });
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("does not send a %s message whose allowance was already consumed", async provider => {
+  await seed(provider);
+  await prisma.mailboxSendReservation.updateMany({ where: { outboundEmailId:"outbound" }, data: { status:"CONSUMED" } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+});
+
+
+it("serializes two old queue entries competing for today's final slot", async () => {
+  await seed("GOOGLE");
+  await prisma.clientMailboxIdentity.update({ where:{ id:"mailbox" }, data:{ dailySendCap:5000 } });
+  await prisma.mailboxSendReservation.updateMany({ where:{ outboundEmailId:"outbound" }, data:{ windowKey:"2020-01-01" } });
+  await prisma.outboundEmail.create({ data:{ id:"second", clientId:"client", mailboxIdentityId:"mailbox", status:"PROCESSING", subject:"Synthetic second", bodySnapshot:"Never real mail", toEmail:"second@example.test", fromAddress:"sender@example.test", claimedAt:new Date(), sendAttempt:1 } });
+  await prisma.mailboxSendReservation.create({ data:{ clientId:"client", mailboxIdentityId:"mailbox", outboundEmailId:"second", idempotencyKey:"second", windowKey:"2020-01-01", status:"RESERVED" } });
+  await prisma.mailboxSendReservation.createMany({ data:Array.from({ length:29 }, (_,n)=>({ clientId:"client", mailboxIdentityId:"mailbox", idempotencyKey:"prior-"+n, windowKey:new Date().toISOString().slice(0,10), status:"CONSUMED" as const })) });
+  const results = await Promise.all([executeOutboundSend("outbound"), executeOutboundSend("second")]);
+  expect(results.filter(r=>r.ok)).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(await prisma.outboundEmail.count({ where:{ status:"QUEUED", lastErrorCode:"MAILBOX_DAILY_CAP" } })).toBe(1);
+  expect(await prisma.mailboxSendReservation.count({ where:{ windowKey:new Date().toISOString().slice(0,10), status:{ in:["RESERVED","CONSUMED"] } } })).toBe(30);
+});

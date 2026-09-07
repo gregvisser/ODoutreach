@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { GENERIC_OUTBOUND_ONLY } from "./generic-outbound-filter";
-import { DEFAULT_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
+import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 import {
   countBookedSendSlotsInUtcWindow,
   humanizeGovernanceRejection,
@@ -77,7 +77,7 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
           return { count: 0, error: "This email still holds allowance from an earlier day. Review the old attempt before retrying." };
         }
         const alreadyReserved = reservation?.status === "RESERVED";
-        const cap = Math.max(1, mailbox.dailySendCap || DEFAULT_MAILBOX_DAILY_SEND_CAP);
+        const cap = mailboxDailySendCap(mailbox.dailySendCap);
         const booked = await countBookedSendSlotsInUtcWindow(tx, mailbox.id, windowKey);
         if (booked - (alreadyReserved ? 1 : 0) >= cap) {
           return { count: 0, error: "This mailbox has no daily sending allowance left. The email was not requeued; try again after the daily allowance resets." };

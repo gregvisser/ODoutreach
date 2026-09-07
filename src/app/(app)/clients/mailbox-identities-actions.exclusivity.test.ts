@@ -43,6 +43,7 @@ vi.mock("@/server/mailbox/mailbox-primary-consistency", () => ({
 
 import {
   createClientMailboxIdentity,
+  updateClientMailboxIdentity,
   restoreClientMailboxToWorkspace,
 } from "./mailbox-identities-actions";
 
@@ -81,6 +82,12 @@ describe("adding a mailbox that already belongs to another workspace", () => {
     requireMutatorMock.mockResolvedValue(undefined);
     // No clash within this workspace — the only check that existed before.
     prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(null);
+  });
+
+  it.each([31,5000])("rejects a daily cap of %s on creation and update before writing", async dailySendCap => {
+    expect((await createClientMailboxIdentity({ ...createInput, dailySendCap })).ok).toBe(false);
+    expect((await updateClientMailboxIdentity({ ...createInput, mailboxId:"mailbox", dailySendCap })).ok).toBe(false);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it("is refused, and nothing is written", async () => {
