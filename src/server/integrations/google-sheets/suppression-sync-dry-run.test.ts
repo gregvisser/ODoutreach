@@ -21,7 +21,7 @@ const {
   metaGet,
   sourceFindUnique,
   sourceUpdate,
-  domainCount,
+  domainFindMany,
   domainDeleteMany,
   domainCreateMany,
   refreshContactSuppressionFlagsForClient,
@@ -30,7 +30,7 @@ const {
   metaGet: vi.fn(),
   sourceFindUnique: vi.fn(),
   sourceUpdate: vi.fn(),
-  domainCount: vi.fn(),
+  domainFindMany: vi.fn(),
   domainDeleteMany: vi.fn(),
   domainCreateMany: vi.fn(),
   refreshContactSuppressionFlagsForClient: vi.fn(),
@@ -65,7 +65,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
         suppressedDomain: {
-          count: domainCount,
+          findMany: domainFindMany,
           deleteMany: domainDeleteMany,
           createMany: domainCreateMany,
         },
@@ -113,7 +113,7 @@ describe("a dry run reports without writing", () => {
   // Pareto FM's live state: nothing stored, sheet never read successfully.
   it("says what it WOULD write and touches nothing", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({
       data: { values: [["a.example"], ["b.example"], ["c.example"]] },
     });
@@ -132,7 +132,7 @@ describe("a dry run reports without writing", () => {
 
   it("never reports rowsWritten, because a dry run wrote no rows", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({ data: { values: [["a.example"]] } });
 
     const r = await syncSuppressionSourceFromGoogle({
@@ -146,7 +146,7 @@ describe("a dry run reports without writing", () => {
   // The question that could not be answered without pressing Sync.
   it("names the tab it resolved, so the answer can be checked against the Sheet", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({ data: { values: [["a.example"]] } });
     metaGet.mockResolvedValue(tabs("Domains", "Company Names"));
 
@@ -160,7 +160,7 @@ describe("a dry run reports without writing", () => {
 
   it("reports the resolved range on a REAL sync too, not only a dry run", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({ data: { values: [["a.example"]] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
@@ -174,7 +174,7 @@ describe("a dry run reports without writing", () => {
   // WITHOUT being the thing that finds out the hard way.
   it("shows the guard would refuse a 373-to-0, and still deletes nothing", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(373);
+    domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
 
     const r = await syncSuppressionSourceFromGoogle({
@@ -193,7 +193,7 @@ describe("a dry run reports without writing", () => {
 
   it("does not record the refusal on the source row during a dry run", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(373);
+    domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
 
     await syncSuppressionSourceFromGoogle({ sourceId: "src-1", dryRun: true });
@@ -205,7 +205,7 @@ describe("a dry run reports without writing", () => {
 
   it("honours an explicit saved range, exactly as the real sync does", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow("Company Names!B:B"));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({ data: { values: [["a.example"]] } });
 
     const r = await syncSuppressionSourceFromGoogle({
@@ -221,7 +221,7 @@ describe("a dry run reports without writing", () => {
   // preview is a different program that happens to read the same sheet.
   it("counts what the real sync would store, not raw cells", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
-    domainCount.mockResolvedValue(0);
+    domainFindMany.mockResolvedValue([]);
     valuesGet.mockResolvedValue({
       data: {
         values: [

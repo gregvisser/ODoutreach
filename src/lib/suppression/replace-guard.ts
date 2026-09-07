@@ -14,12 +14,9 @@ import type { SuppressionListKind } from "@/generated/prisma/enums";
  * the product exists to prevent, and it cannot be undone. Fail toward keeping
  * people blocked, every time.
  *
- * KNOWN LIMIT, stated rather than implied: this compares COUNTS, so a sync
- * that replaces 373 entries with 373 completely different ones passes. That
- * catches the failure actually seen in production — a misresolved tab reading
- * as empty or near-empty — and not a same-size substitution, which would need
- * the previous rows read and diffed. If that case ever appears, this is the
- * function to change.
+ * Compare the actual previous entries with the replacement. New additions
+ * must not conceal removals by keeping the total unchanged or making it grow.
+ * Callers read the previous entries inside the replacement transaction.
  */
 
 /**
@@ -53,14 +50,16 @@ export function allowedRemovals(previousCount: number): number {
 
 export function decideSuppressionReplace(
   kind: SuppressionListKind,
-  wouldWrite: number,
-  previousCount: number,
+  nextEntries: ReadonlySet<string>,
+  previousEntries: readonly string[],
 ): SuppressionReplaceDecision {
+  const previousCount = previousEntries.length;
+  const wouldWrite = nextEntries.size;
   // Nothing stored means nothing to lose. This is the state of a client whose
   // list has never synced — the fix must be able to fill it.
   if (previousCount <= 0) return { allowed: true };
 
-  const removed = previousCount - wouldWrite;
+  const removed = previousEntries.filter((entry) => !nextEntries.has(entry)).length;
   if (removed <= 0) return { allowed: true };
 
   const noun = kind === "EMAIL" ? "addresses" : "domains";
@@ -93,7 +92,7 @@ export function decideSuppressionReplace(
         wouldWrite,
         removed,
         reason:
-          `Sync refused: this would have removed ${String(removed)} of ${String(previousCount)} blocked ${noun}, leaving ${String(wouldWrite)}. ` +
+          `Sync refused: this would remove ${String(removed)} of ${String(previousCount)} existing blocked ${noun}. The replacement list would contain ${String(wouldWrite)} ${noun}. ` +
           `Nothing was deleted — the ${String(previousCount)} are still blocked. ` +
           `If rows were removed from the sheet by mistake, put them back and sync again. If the removal is deliberate, use "Remove them anyway" to confirm it.`,
       },
