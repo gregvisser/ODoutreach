@@ -141,24 +141,25 @@ export default async function RepliesNeedingAPersonPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Paging uses native links so an early click cannot be lost during
+              client-router hydration. Each page is a bounded server read. */}
           {before || queue.nextCursor ? (
             <nav
               aria-label="Reply pages"
               className="mb-4 flex flex-wrap items-center gap-4 text-sm"
             >
               {before ? (
-                <Link prefetch={false} className="underline" href="/replies">
+                <a className="underline" href="/replies">
                   Newest replies
-                </Link>
+                </a>
               ) : null}
               {queue.nextCursor ? (
-                <Link
-                  prefetch={false}
+                <a
                   className="underline"
                   href={`/replies?before=${encodeURIComponent(queue.nextCursor)}`}
                 >
                   Older replies
-                </Link>
+                </a>
               ) : null}
               {queue.nextCursor ? (
                 <p>More replies remain to review. Counts apply to this page.</p>
