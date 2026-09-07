@@ -76,6 +76,39 @@ export type LinkedReplyDetail = {
   inboundMailboxMessageId: string | null;
 };
 
+/** Historical records remain reviewable without guessing a campaign or mailbox.
+ * The page applies staff/workspace access before calling either detail loader.
+ * Only a genuinely absent outbound link qualifies for this limited fallback;
+ * a foreign or otherwise invalid surviving link must still fail closed.
+ */
+export async function loadClientOrphanReplyDetail(args: {
+  clientId: string;
+  replyId: string;
+}): Promise<Pick<LinkedReplyDetail, "reply" | "handledAt" | "handledByName" | "handledByStaffUserId" | "inboundMailboxMessageId"> | null> {
+  if (!args.clientId || !args.replyId) return null;
+  const row = await prisma.inboundReply.findFirst({
+    where: { id: args.replyId, clientId: args.clientId, linkedOutboundEmailId: null },
+    select: {
+      id: true, fromEmail: true, toEmail: true, subject: true, snippet: true,
+      bodyPreview: true, receivedAt: true, matchMethod: true, ingestionSource: true,
+      handledAt: true, handledByStaffUserId: true,
+      handledByStaff: { select: { displayName: true, email: true } },
+    },
+  });
+  if (!row) return null;
+  return {
+    reply: {
+      id: row.id, fromEmail: row.fromEmail, toEmail: row.toEmail,
+      subject: row.subject, snippet: row.snippet, bodyPreview: row.bodyPreview,
+      receivedAt: row.receivedAt, matchMethod: row.matchMethod, ingestionSource: row.ingestionSource,
+    },
+    handledAt: row.handledAt,
+    handledByName: row.handledByStaff?.displayName ?? row.handledByStaff?.email ?? null,
+    handledByStaffUserId: row.handledByStaffUserId,
+    inboundMailboxMessageId: null,
+  };
+}
+
 export async function loadClientLinkedReplyDetail(args: {
   clientId: string;
   replyId: string;
