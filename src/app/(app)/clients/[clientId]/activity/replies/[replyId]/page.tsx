@@ -9,7 +9,7 @@ import { replyOwnershipLabel, resolveReplyOwnershipState } from "@/lib/inbox/rep
 import { detectRemovalIntent } from "@/lib/unsubscribe/detect-removal-intent";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadDisplayClaimsForSubjects, loadVisibleReplyClaim } from "@/server/inbox/reply-claim";
-import { loadClientLinkedReplyDetail } from "@/server/queries/client-linked-reply-detail";
+import { loadClientLinkedReplyDetail, loadClientOrphanReplyDetail } from "@/server/queries/client-linked-reply-detail";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -27,7 +27,8 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
 
-  const detail = await loadClientLinkedReplyDetail({ clientId, replyId });
+  const linkedDetail = await loadClientLinkedReplyDetail({ clientId, replyId });
+  const detail = linkedDetail ?? await loadClientOrphanReplyDetail({ clientId, replyId });
   if (!detail) notFound();
 
   // Advisory claiming. This page and the inbound-message detail page are two
@@ -80,12 +81,12 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
         isClaimed={ownershipState.kind === "claimed"}
         isHandled={ownershipState.kind === "handled"}
       />
-      <ReplyClaimNotice
+      {linkedDetail ? <ReplyClaimNotice
         clientId={clientId}
         subjectType={claimSubject.subjectType}
         subjectId={claimSubject.subjectId}
         claim={replyClaim}
-      />
+      /> : null}
       {removalIntent.detected ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-4">
           <p className="text-sm font-semibold text-destructive">
@@ -106,33 +107,49 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
           </div>
         </div>
       ) : null}
-      <ClientLinkedReplyDetail
+      {linkedDetail ? <ClientLinkedReplyDetail
         clientId={clientId}
         detail={{
-        ...detail,
+        ...linkedDetail,
         reply: {
           ...detail.reply,
           receivedAt: detail.reply.receivedAt.toISOString(),
         },
         linkedOutbound: {
-          ...detail.linkedOutbound,
-          sentAt: detail.linkedOutbound.sentAt
-            ? detail.linkedOutbound.sentAt.toISOString()
+          ...linkedDetail.linkedOutbound,
+          sentAt: linkedDetail.linkedOutbound.sentAt
+            ? linkedDetail.linkedOutbound.sentAt.toISOString()
             : null,
         },
-        enrollment: detail.enrollment
+        enrollment: linkedDetail.enrollment
           ? {
-              ...detail.enrollment,
-              completedAt: detail.enrollment.completedAt
-                ? detail.enrollment.completedAt.toISOString()
+              ...linkedDetail.enrollment,
+              completedAt: linkedDetail.enrollment.completedAt
+                ? linkedDetail.enrollment.completedAt.toISOString()
                 : null,
-              pausedAt: detail.enrollment.pausedAt
-                ? detail.enrollment.pausedAt.toISOString()
+              pausedAt: linkedDetail.enrollment.pausedAt
+                ? linkedDetail.enrollment.pausedAt.toISOString()
                 : null,
             }
           : null,
       }}
-      />
+      /> : (
+        <section className="space-y-4 rounded-lg border bg-card p-5">
+          <a href="/replies" className="text-sm underline">Back to waiting replies</a>
+          <h1 className="break-words text-2xl font-semibold">{detail.reply.subject || "Historical reply"}</h1>
+          <div className="rounded-md border p-3 text-sm">
+            <p className="font-medium">The original campaign link is unavailable.</p>
+            <p className="mt-1 text-muted-foreground">You can review this saved record and mark it handled. To send a reply, use the original mailbox.</p>
+          </div>
+          <dl className="space-y-2 break-words text-sm">
+            <div><dt className="font-medium">From</dt><dd>{detail.reply.fromEmail}</dd></div>
+            {detail.reply.toEmail ? <div><dt className="font-medium">To</dt><dd>{detail.reply.toEmail}</dd></div> : null}
+            <div><dt className="font-medium">Received</dt><dd><time dateTime={detail.reply.receivedAt.toISOString()}>{detail.reply.receivedAt.toLocaleString("en-GB", { timeZone: "Europe/London" })} (UK time)</time></dd></div>
+          </dl>
+          <h2 className="font-semibold">Saved message preview</h2>
+          <p className="whitespace-pre-wrap break-words text-sm">{detail.reply.bodyPreview || detail.reply.snippet || "No message text was saved."}</p>
+        </section>
+      )}
       {removalIntent.detected ? null : (
         <AddToDoNotContactButtons
           clientId={clientId}
