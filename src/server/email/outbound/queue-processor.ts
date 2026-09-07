@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 
 import { executeOutboundSend } from "./execute-one";
 
@@ -32,6 +33,9 @@ export async function processOutboundSendQueue(opts: {
       SELECT "OutboundEmail"."id"
       FROM "OutboundEmail"
       WHERE "OutboundEmail"."status" = 'QUEUED'::"OutboundEmailStatus"
+        -- Historical/manual queue entries must not dispatch threaded replies
+        -- through the ordinary send path or overwrite their recovery metadata.
+        AND ("OutboundEmail"."metadata"->>'kind') IS DISTINCT FROM ${INBOUND_REPLY_METADATA_KIND}
         AND ("OutboundEmail"."nextRetryAt" IS NULL OR "OutboundEmail"."nextRetryAt" <= ${now})
         AND (
           "OutboundEmail"."claimedAt" IS NULL

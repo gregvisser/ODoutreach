@@ -162,6 +162,18 @@ function expectNothingSent(): void {
 }
 
 describe("executeOutboundSend — rows it must refuse to send", () => {
+  it("refuses an inline reply before any dispatch and preserves its unresolved reservation", async () => {
+    const mailbox = await prisma.clientMailboxIdentity.create({ data: { clientId: CLIENT_ID, provider: "GOOGLE", email: "reply@example.test", emailNormalized: "reply@example.test" } });
+    const id = await makeOutbound("inline-reply");
+    const before = await prisma.outboundEmail.update({ where: { id }, data: { mailboxIdentityId: mailbox.id, metadata: { kind: "inboundMailboxReply", inboundMessageId: "original", replyRequestId: "synthetic-id" } } });
+    const reservation = await prisma.mailboxSendReservation.create({ data: { clientId: CLIENT_ID, mailboxIdentityId: mailbox.id, outboundEmailId: id, idempotencyKey: "inline-test", windowKey: "2026-09-07", status: "RESERVED" } });
+    expect(await executeOutboundSend(id)).toEqual({ ok: false, error: "Mailbox replies must be recovered from their original message, not the outbound queue." });
+    expect(await rowById(id)).toEqual(before);
+    expect(await prisma.mailboxSendReservation.findUniqueOrThrow({ where: { id: reservation.id } })).toEqual(reservation);
+    expectNothingSent();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("reports an unknown outbound id without sending", async () => {
     const result = await executeOutboundSend("does-not-exist");
 

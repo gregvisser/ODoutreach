@@ -57,6 +57,17 @@ export const E2E_REPLY_RECOVERY = {
   bodyText: "Synthetic reply saved before its browser confirmation was lost.",
 } as const;
 
+/** FAILED rows for operations UI, separate from the saved-reply recovery fixture. */
+export const E2E_REPLY_QUEUE = {
+  clientId: "e2e-reply-queue-client",
+  mailboxId: "e2e-reply-queue-mailbox",
+  messageId: "e2e-reply-queue-message",
+  replyId: "e2e-reply-queue-failed",
+  ordinaryId: "e2e-reply-queue-ordinary",
+  replyRecipient: "reply-queue-recipient@example.test",
+  ordinaryRecipient: "ordinary-queue-recipient@example.test",
+} as const;
+
 /**
  * ---------------------------------------------------------------------------
  * Cross-tenant isolation fixtures. Ported from the BOutreach fork 2026-08-20.

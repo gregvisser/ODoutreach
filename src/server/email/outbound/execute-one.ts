@@ -2,6 +2,7 @@ import "server-only";
 
 import type { OutboundEmail } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { isInboundMailboxReply } from "@/lib/inbox/inbound-reply-metadata";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { resolveValidatedSenderForClient } from "@/server/email/sender-identity";
@@ -209,6 +210,12 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
 
   if (row.status !== "PROCESSING") {
     return { ok: true };
+  }
+
+  // Defense for direct callers and rows claimed before the queue filter was
+  // deployed. Preserve uncertain outcomes and their reservations unchanged.
+  if (isInboundMailboxReply(row.metadata)) {
+    return { ok: false, error: "Mailbox replies must be recovered from their original message, not the outbound queue." };
   }
 
   // ── The autonomous-actor safety gate ──────────────────────────────────────

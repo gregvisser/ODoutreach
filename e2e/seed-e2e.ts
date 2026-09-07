@@ -41,6 +41,7 @@ import {
   E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
   E2E_REPLY_RECOVERY,
+  E2E_REPLY_QUEUE,
   E2E_REPLIES_WAITING,
   E2E_STAFF,
   E2E_SUPER_ADMIN,
@@ -670,6 +671,18 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
     await prisma.outboundEmail.upsert({ where: { id: recovery.outboundId }, create: { id: recovery.outboundId, ...recoveryOutbound }, update: recoveryOutbound });
     const recoveryReservation = { clientId: recovery.clientId, mailboxIdentityId: recovery.mailboxId, outboundEmailId: recovery.outboundId, idempotencyKey: `inboundReply:${recovery.clientId}:${recovery.messageId}:${recovery.requestId}`, windowKey: "2026-08-01", status: "CONSUMED" as const };
     await prisma.mailboxSendReservation.upsert({ where: { id: recovery.reservationId }, create: { id: recovery.reservationId, ...recoveryReservation }, update: recoveryReservation });
+
+    const replyQueue = E2E_REPLY_QUEUE;
+    await prisma.client.upsert({ where: { id: replyQueue.clientId }, create: { id: replyQueue.clientId, name: "E2E Reply Queue", slug: "e2e-reply-queue" }, update: { deletedAt: null } });
+    const replyQueueMailbox = { ...recoveryMailbox, clientId: replyQueue.clientId, email: "reply-queue@example.test", emailNormalized: "reply-queue@example.test" };
+    await prisma.clientMailboxIdentity.upsert({ where: { id: replyQueue.mailboxId }, create: { id: replyQueue.mailboxId, ...replyQueueMailbox }, update: replyQueueMailbox });
+    const replyQueueMessage = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, providerMessageId: "synthetic-retry-original", fromEmail: replyQueue.replyRecipient, subject: "Reply queue fixture", receivedAt: recoveredAt };
+    await prisma.inboundMailboxMessage.upsert({ where: { id: replyQueue.messageId }, create: { id: replyQueue.messageId, ...replyQueueMessage }, update: replyQueueMessage });
+    for (const reply of [true, false]) {
+      const id = reply ? replyQueue.replyId : replyQueue.ordinaryId;
+      const failedData = { clientId: replyQueue.clientId, staffUserId: replyStaff.id, mailboxIdentityId: reply ? replyQueue.mailboxId : null, toEmail: reply ? replyQueue.replyRecipient : replyQueue.ordinaryRecipient, subject: "Synthetic failed send", bodySnapshot: "Synthetic fixture; never dispatch", status: "FAILED" as const, providerMessageId: null, createdAt: recoveredAt, updatedAt: recoveredAt, metadata: reply ? { kind: "inboundMailboxReply", inboundMessageId: replyQueue.messageId } : { kind: "ordinaryFixture" } };
+      await prisma.outboundEmail.upsert({ where: { id }, create: { id, ...failedData }, update: failedData });
+    }
   } finally {
     await prisma.$disconnect();
     await pool.end();

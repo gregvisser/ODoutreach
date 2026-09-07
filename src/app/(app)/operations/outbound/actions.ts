@@ -90,7 +90,7 @@ export async function operatorRequeueFailedAction(input: {
     return {
       ok: false,
       error:
-        "Could not requeue — only FAILED rows without a provider message id can be safely retried this way.",
+        "Could not requeue. Mailbox replies must be recovered from their original message. Other sends must be FAILED with no provider message id.",
     };
   }
 
