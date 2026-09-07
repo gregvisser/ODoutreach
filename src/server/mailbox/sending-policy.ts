@@ -228,13 +228,19 @@ export async function tryReserveSendSlotInTransaction(
     mailbox: ClientMailboxIdentity;
     idempotencyKey: string;
     at: Date;
+    /** Optional lower planner allowance (warm-up/pacing); can never raise the mailbox cap. */
+    allowanceCeiling?: number;
   },
 ): Promise<TryReserveResult> {
   const { clientId, idempotencyKey, at } = input;
   const mailbox = await lockSendingMailboxInTransaction(tx, input.mailbox.id, clientId);
   if (!mailbox) return { ok: false, error: "The sending mailbox is no longer available in this workspace.", errorCode: "MAILBOX_MISSING", reason: "MAILBOX_MISSING" };
   const windowKey = utcDateKeyForInstant(at);
-  const cap = mailboxDailySendCap(mailbox.dailySendCap);
+  const cap = Math.min(
+    mailboxDailySendCap(mailbox.dailySendCap),
+    input.allowanceCeiling === undefined ? Infinity :
+      Number.isFinite(input.allowanceCeiling) ? Math.max(0, Math.floor(input.allowanceCeiling)) : 0,
+  );
 
   const staticReason = mailboxIneligibleReasonFromStaticState(
     mailbox,

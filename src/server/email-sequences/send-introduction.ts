@@ -1022,6 +1022,12 @@ export async function sendSequenceStepBatch(input: {
               mailbox: m,
               idempotencyKey,
               at,
+              allowanceCeiling: pacedAllowanceForMailbox({
+                mailboxId: m.id,
+                dailyCap: effectiveDailyCap(m, sendingDays.get(m.id) ?? 0),
+                batchSize: client.sendBatchSize,
+                at,
+              }),
             });
 
             if (!reserve.ok) continue;
