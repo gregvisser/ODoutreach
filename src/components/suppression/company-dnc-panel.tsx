@@ -7,6 +7,8 @@ import { previewCompanyNameImport } from "@/lib/suppression/company-name-import"
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { MissingCompanyForm } from "./missing-company-form";
+import { refreshCompanyContactChecksAction } from "@/app/(app)/clients/contact-company-actions";
 
 type CompanyPage = Awaited<ReturnType<typeof loadCompanyDncPage>>;
 export function CompanyDncPanel({ clientId, data: serverData }: { clientId: string; data: CompanyPage }) {
@@ -68,12 +70,13 @@ export function CompanyDncPanel({ clientId, data: serverData }: { clientId: stri
     </details>
     {data.entryTotal > 0 && <div className="space-y-3">
       <h3 className="font-semibold">Contacts blocked or waiting for review</h3>
+      <Button type="button" variant="outline" disabled={pending} onClick={() => run(() => refreshCompanyContactChecksAction({ clientId, ...pageFields }))}>Refresh contact checks</Button>
       <p className="text-sm">Checked contacts {data.totalContacts ? data.page * data.pageSize + 1 : 0}–{data.page * data.pageSize + data.checkedContacts} of {data.totalContacts}. Company-name results only; other blocks can still apply.</p>
       {!data.contacts.length && <p>No company-name holds on this page.</p>}
-      {data.contacts.map(contact => <div key={contact.id} className="space-y-2 rounded border p-3">
+      {data.contacts.map(contact => <div key={contact.id} role="group" aria-label={`Contact review: ${contact.fullName || contact.email || contact.id}`} className="space-y-2 rounded border p-3">
         <p className="font-medium">{contact.fullName || contact.email || "Contact"} — {contact.company || "Company missing"}</p>
         <p>{contact.decision.outcome === "BLOCK" ? "Blocked" : "Needs review"}</p>
-        {!contact.company && <p>Add the employer on the <a className="underline" href={`/clients/${clientId}/contacts`}>contacts page</a> before this person can be checked.</p>}
+        {!contact.company?.trim() && <MissingCompanyForm clientId={clientId} contactId={contact.id} {...pageFields} disabled={pending} onSaved={(next, notice) => { setSavedPage({ base: serverData, value: next }); setMessage(notice); }} />}
         {contact.matches.map(entry => <div key={entry.id} className="flex flex-wrap items-center gap-2">
           <span>Listed name: {entry.originalName}</span>
           {contact.decision.outcome === "REVIEW" && contact.company && <>
