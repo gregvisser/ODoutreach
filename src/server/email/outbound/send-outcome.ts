@@ -8,6 +8,7 @@ import { mailboxDailySendCap, startOfNextUtcDay } from "@/lib/mailbox-identities
 import { effectiveDailyCap, isWarmupRampEnabled } from "@/lib/mailboxes/mailbox-warmup";
 import { countMailboxSendingDays } from "@/server/mailbox/mailbox-sending-history";
 import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
+import { isSendPacingEnabled, minuteOfDayUtc, sendSlotsForDay, sendsPermittedByNow } from "@/lib/mailboxes/send-pacing";
 
 export const UNCONFIRMED_SEND_MESSAGE = "Sending is unconfirmed. Do not resend this email; ask an administrator to check the sending mailbox and provider evidence.";
 export function unconfirmedSend() { return { ok: false as const, error: UNCONFIRMED_SEND_MESSAGE }; }
@@ -46,6 +47,30 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
           : "This mailbox has no daily sending allowance left. This email stays queued for the next day.";
         await tx.outboundEmail.update({ where: { id: current.id }, data: { status: "QUEUED", nextRetryAt: startOfNextUtcDay(now), claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null, lastErrorCode: limitedByWarmup ? "MAILBOX_WARMUP_CAP" : "MAILBOX_DAILY_CAP", lastErrorMessage: error } });
         return { ok: false as const, error };
+      }
+      if (!reconcilingAcceptedSend && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend" && isSendPacingEnabled()) {
+        const client = await tx.client.findUniqueOrThrow({ where: { id: current.clientId }, select: { sendBatchSize: true } });
+        const pacing = { mailboxId: mailbox.id, dateKey: windowKey, dailyCap: cap, batchSize: client.sendBatchSize };
+        const minute = minuteOfDayUtc(now);
+        const dayStart = new Date(`${windowKey}T00:00:00Z`);
+        const dayEnd = startOfNextUtcDay(now);
+        // Pending reservations are not sends: counting all of them would hold
+        // every prebooked message until the day's final batch. Count accepted
+        // sends and fenced attempts under the same mailbox lock instead.
+        const occupied = await tx.outboundEmail.count({ where: {
+          clientId: current.clientId, mailboxIdentityId: mailbox.id,
+          OR: [
+            { sentAt: { gte: dayStart, lt: dayEnd } },
+            { sentAt: null, dispatchStartedAt: { gte: dayStart, lt: dayEnd } },
+          ],
+        } });
+        if (occupied >= sendsPermittedByNow({ ...pacing, nowMinuteOfDay: minute })) {
+          const nextSlot = sendSlotsForDay(pacing).find((slot, index) => index >= occupied && slot > minute);
+          const nextRetryAt = nextSlot === undefined ? dayEnd : new Date(dayStart.getTime() + nextSlot * 60_000);
+          const error = "This email is waiting for the mailbox's next scheduled batch. It stays queued.";
+          await tx.outboundEmail.update({ where: { id: current.id }, data: { status: "QUEUED", nextRetryAt, claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null, lastErrorCode: "MAILBOX_SEND_PACING", lastErrorMessage: error } });
+          return { ok: false as const, error };
+        }
       }
       if (!reconcilingAcceptedSend && !alreadyBookedToday) {
         await tx.mailboxSendReservation.update({ where: { id: reservation.id }, data: { windowKey } });

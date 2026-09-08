@@ -6,6 +6,7 @@ import { operatorRequeueFailedSend, releaseStaleProcessingClaimsForScope } from 
 import { processOutboundSendQueue } from "./queue-processor";
 import { getOutboundOperationsSnapshot } from "@/server/queries/outbound-operations";
 import { decideCompanyName } from "@/server/suppression/company-names";
+import { sendSlotsForDay } from "@/lib/mailboxes/send-pacing";
 
 // Real database and orchestration. Every sending transport is inert; unexpected
 // HTTP and DNS cannot reach a provider or a customer.
@@ -27,6 +28,7 @@ beforeEach(async () => {
   await prisma.client.create({ data: { id: "client", name: "Outcome test", slug: "outcome-test", defaultSenderEmail: "sender@example.test", senderIdentityStatus: "VERIFIED_READY" } });
 });
 afterEach(async () => {
+  vi.useRealTimers();
   for (const table of ["OutboundEmail", "MailboxSendReservation"]) await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS fail_outcome_test ON "${table}"`);
   await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS fail_outcome_test()");
   vi.unstubAllGlobals();
@@ -39,6 +41,51 @@ async function seed(provider: "GOOGLE" | "MICROSOFT" | "LEGACY") {
   await prisma.outboundEmail.create({ data: { id: "outbound", clientId: "client", mailboxIdentityId: provider === "LEGACY" ? null : "mailbox", status: "PROCESSING", subject: "Synthetic recovery", bodySnapshot: "Test only", toEmail: "recipient@example.test", fromAddress: "sender@example.test", claimedAt: new Date(), claimExpiresAt: new Date(Date.now() + 600_000), sendAttempt: 1 } });
   if (provider !== "LEGACY") await prisma.mailboxSendReservation.create({ data: { clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: "outbound", idempotencyKey: "synthetic", windowKey: new Date().toISOString().slice(0, 10), status: "RESERVED" } });
 }
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds older %s queue entries until today's paced window opens", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T06:59:00Z"));
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await seed(provider);
+  await prisma.mailboxSendReservation.updateMany({ data: { windowKey: "2026-09-07" } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "QUEUED", lastErrorCode: "MAILBOX_SEND_PACING", retryCount: 0, dispatchStartedAt: null });
+});
+
+it.each(["2026-09-07", "2026-09-08"])("serializes dispatches reserved on %s into paced batches without stranding today's bookings", async reservationDay => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const slots = sendSlotsForDay({ mailboxId: "mailbox", dateKey: "2026-09-08", dailyCap: 30, batchSize: 1 });
+  const midnight = Date.parse("2026-09-08T00:00:00Z");
+  vi.setSystemTime(new Date(midnight + slots[0] * 60_000));
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await seed("GOOGLE");
+  await prisma.client.update({ where: { id: "client" }, data: { sendBatchSize: 1 } });
+  await prisma.outboundEmail.create({ data: { id: "second", clientId: "client", mailboxIdentityId: "mailbox", status: "PROCESSING", subject: "Second paced message", bodySnapshot: "Synthetic", toEmail: "second@example.test", fromAddress: "sender@example.test", claimedAt: new Date(), sendAttempt: 1 } });
+  await prisma.mailboxSendReservation.create({ data: { clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: "second", idempotencyKey: "second", windowKey: "2026-09-07", status: "RESERVED" } });
+  await prisma.mailboxSendReservation.updateMany({ data: { windowKey: reservationDay } });
+  const results = await Promise.all([executeOutboundSend("outbound"), executeOutboundSend("second")]);
+  expect(results.filter(result => result.ok)).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+  const held = await prisma.outboundEmail.findFirstOrThrow({ where: { status: "QUEUED" } });
+  expect(held.nextRetryAt?.getTime()).toBe(midnight + slots[1] * 60_000);
+  vi.setSystemTime(new Date(midnight + slots[1] * 60_000));
+  await processOutboundSendQueue({ limit: 1 });
+  expect(send).toHaveBeenCalledTimes(2);
+});
+
+it("counts an unconfirmed fenced attempt in the current paced batch without resending it", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const slots = sendSlotsForDay({ mailboxId: "mailbox", dateKey: "2026-09-08", dailyCap: 30, batchSize: 1 });
+  vi.setSystemTime(new Date(Date.parse("2026-09-08T00:00:00Z") + slots[0] * 60_000));
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await seed("GOOGLE");
+  await prisma.client.update({ where: { id: "client" }, data: { sendBatchSize: 1 } });
+  await prisma.outboundEmail.create({ data: { id: "uncertain", clientId: "client", mailboxIdentityId: "mailbox", status: "PROCESSING", subject: "Unknown result", bodySnapshot: "Synthetic", toEmail: "unknown@example.test", fromAddress: "sender@example.test", dispatchStartedAt: new Date(), lastErrorCode: "SEND_OUTCOME_UNCONFIRMED" } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "uncertain" } })).toMatchObject({ status: "PROCESSING", lastErrorCode: "SEND_OUTCOME_UNCONFIRMED", dispatchStartedAt: new Date() });
+});
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s company review before transport and safely retries after a human decision", async provider => {
   await seed(provider);
@@ -325,6 +372,8 @@ it.each(["sequenceFollowUpSend", "controlledPilotSend", null])("applies dispatch
 });
 
 it.each(["internalProofSend", "governedTestSend"])("preserves the internal %s warm-up exemption within the hard daily cap", async kind => {
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-09-08T06:59:00Z"));
   vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); await seed("GOOGLE");
   await prisma.outboundEmail.update({where:{id:"outbound"},data:{metadata:{kind}}});
   await prisma.mailboxSendReservation.createMany({data:Array.from({length:5},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"used-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
@@ -342,6 +391,8 @@ it("uses actual sending history so an established mailbox can use its higher all
 
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("records an already accepted %s send without booking new warm-up allowance", async provider=>{
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-09-08T06:59:00Z"));
   vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); vi.stubEnv("SEND_PREFLIGHT_DEDUP_ENABLED","true");
   await seed(provider);
   await prisma.outboundEmail.update({where:{id:"outbound"},data:{sendAttempt:2}});
