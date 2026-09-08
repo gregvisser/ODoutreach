@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SendEmailResult } from "@/server/email/providers/types";
+import { encodeMimeSubject } from "./mime-subject";
 
 const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
@@ -24,7 +25,7 @@ export function buildReplyRfc5322PlainTextEmail(input: {
   const lines: string[] = [
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeMimeSubject(subject)}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",

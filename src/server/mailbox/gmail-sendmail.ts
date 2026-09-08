@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "crypto";
+import { encodeMimeSubject } from "./mime-subject";
 
 import type {
   MailboxMessageLookupResult,
@@ -151,7 +152,7 @@ export function buildRfc5322PlainTextEmail(input: {
       ...safeExtra,
       `From: ${from}`,
       `To: ${to}`,
-      `Subject: ${subject}`,
+      `Subject: ${encodeMimeSubject(subject)}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
       "",
@@ -173,7 +174,7 @@ export function buildRfc5322PlainTextEmail(input: {
     ...safeExtra,
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeMimeSubject(subject)}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
