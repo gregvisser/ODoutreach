@@ -43,6 +43,13 @@ enum ClientAccountGrade {
   STANDARD
 }
 
+/// The service level agreed with the customer. Separate from legacy batch pacing.
+enum ClientServiceTier {
+  MAINTENANCE
+  GROWTH
+  STRATEGIC
+}
+
 /// PR K — Launch approval mode recorded alongside `Client.launchApprovedAt`.
 /// CONTROLLED_INTERNAL: approved for staff/allowlisted recipient pilots only
 /// (current operational mode; does not require one-click unsubscribe).
@@ -304,6 +311,7 @@ model StaffUser {
   aiTitleMessageRequested         AiTitleMessageReview[]           @relation("AiTitleMessageRequestedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
+  clientsServiceTierSet           Client[]                         @relation("ClientServiceTierSetBy")
   clientsAutonomousSendSet        Client[]                         @relation("ClientAutonomousSendSetBy")
   clientsAsBriefAccountManager    Client[]                         @relation("ClientBriefAccountManager")
   clientComplianceFilesUploaded   ClientComplianceAttachment[]     @relation("ClientComplianceUpload")
@@ -453,6 +461,11 @@ model Client {
   /// into the slow path would silently change live behaviour for every
   /// existing client.
   accountGrade                     ClientAccountGrade?
+  /// No automatic mapping from legacy grades or automatic sending enablement.
+  serviceTier                      ClientServiceTier?
+  serviceTierSetByStaffUserId       String?
+  serviceTierSetAt                  DateTime?
+  serviceTierRevision               Int @default(0)
   /// Who last set `accountGrade`, shown ON SCREEN next to the control. A change
   /// that decides how a client's outreach is released must have a name against
   /// it; the full history is appended to AuditLog as well.
@@ -549,6 +562,7 @@ model Client {
   unsubscribeTokens               UnsubscribeToken[]
   launchApprovedBy                StaffUser?                       @relation("ClientLaunchApprovedBy", fields: [launchApprovedByStaffUserId], references: [id], onDelete: SetNull)
   accountGradeSetBy               StaffUser?                       @relation("ClientAccountGradeSetBy", fields: [accountGradeSetByStaffUserId], references: [id], onDelete: SetNull)
+  serviceTierSetBy                StaffUser?                       @relation("ClientServiceTierSetBy", fields: [serviceTierSetByStaffUserId], references: [id], onDelete: SetNull)
   autonomousSendSetBy             StaffUser?                       @relation("ClientAutonomousSendSetBy", fields: [autonomousSendSetByStaffUserId], references: [id], onDelete: SetNull)
   briefAccountManager             StaffUser?                       @relation("ClientBriefAccountManager", fields: [briefAssignedAccountManagerId], references: [id], onDelete: SetNull)
   briefTaxonomyLinks              ClientBriefTermLink[]
@@ -571,6 +585,8 @@ model Client {
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
   @@index([accountGradeSetByStaffUserId])
+  @@index([serviceTierSetByStaffUserId])
+  @@index([serviceTier])
   @@index([autonomousSendSetByStaffUserId])
 }
 

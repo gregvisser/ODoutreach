@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ClientAccountGradeCard } from "@/components/clients/client-account-grade-card";
+import { ClientServiceTierCard } from "@/components/clients/client-service-tier-card";
 import { ClientAutonomousSendCard } from "@/components/clients/client-autonomous-send-card";
 import { ClientGettingStartedCard } from "@/components/clients/client-getting-started-card";
 import { ClientLaunchBlockersCard } from "@/components/clients/client-launch-blockers-card";
@@ -270,7 +271,17 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
 
       <ClientLaunchBlockersCard clientId={client.id} blockers={launchBlockers} />
 
-      <ClientAccountGradeCard
+      <ClientServiceTierCard key={`${client.id}:${client.serviceTierRevision}`} clientId={client.id} initial={{
+        tier: client.serviceTier,
+        revision: client.serviceTierRevision,
+        setAt: client.serviceTierSetAt?.toISOString() ?? null,
+        setByName: client.serviceTierSetBy?.displayName ?? client.serviceTierSetBy?.email ?? null,
+      }} />
+
+      <details className="rounded-lg border p-4">
+        <summary className="cursor-pointer font-medium">Existing manual batch protection</summary>
+        <p className="my-3 text-sm">These existing controls set extra batch pacing. They are separate from the customer grade above.</p>
+        <ClientAccountGradeCard
         clientId={client.id}
         grade={client.accountGrade}
         attributionLine={formatAccountGradeAttribution({
@@ -281,6 +292,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
         })}
         canMutate={bundle.canMutateMailboxes}
       />
+      </details>
 
       <ClientAutonomousSendCard
         clientId={client.id}
