@@ -9,6 +9,7 @@ import { decideCompanyName } from "@/server/suppression/company-names";
 import { sendSlotsForDay } from "@/lib/mailboxes/send-pacing";
 import { countMailboxSendingDays, countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
+import { calendarSendSlotsForDay } from "@/lib/mailboxes/calendar-send-pacing";
 
 // Real database and orchestration. Every sending transport is inert; unexpected
 // HTTP and DNS cannot reach a provider or a customer.
@@ -43,6 +44,70 @@ async function seed(provider: "GOOGLE" | "MICROSOFT" | "LEGACY") {
   await prisma.outboundEmail.create({ data: { id: "outbound", clientId: "client", mailboxIdentityId: provider === "LEGACY" ? null : "mailbox", status: "PROCESSING", subject: "Synthetic recovery", bodySnapshot: "Test only", toEmail: "recipient@example.test", fromAddress: "sender@example.test", claimedAt: new Date(), claimExpiresAt: new Date(Date.now() + 600_000), sendAttempt: 1 } });
   if (provider !== "LEGACY") await prisma.mailboxSendReservation.create({ data: { clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: "outbound", idempotencyKey: "synthetic", windowKey: new Date().toISOString().slice(0, 10), status: "RESERVED" } });
 }
+
+async function seedCalendar(timeZone = "America/Los_Angeles") {
+  await prisma.clientSendingCalendar.create({ data: { clientId: "client", timeZone, weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1080, previousDayEndsAt: new Date("2026-09-01T00:00Z"), effectiveAt: new Date(timeZone === "America/Los_Angeles" ? "2026-09-01T07:00Z" : "2026-09-01T23:00Z"), createdByStaffUserId: "synthetic-staff" } });
+}
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s at the local daily cap across UTC midnight", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-09T00:10Z"));
+  vi.stubEnv("MAILBOX_SEND_PACING", "false");
+  await seed(provider);
+  await seedCalendar();
+  await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 30 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: `local-used-${n}`, windowKey: "2026-09-08T07:00:00.000Z", status: "CONSUMED" as const })) });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "QUEUED", lastErrorCode: "MAILBOX_DAILY_CAP", nextRetryAt: new Date("2026-09-09T07:00Z"), dispatchStartedAt: null });
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s outside local hours even with pacing disabled, then resumes at opening", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T15:59Z"));
+  vi.stubEnv("MAILBOX_SEND_PACING", "false");
+  await seed(provider);
+  await seedCalendar();
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "QUEUED", lastErrorCode: "CLIENT_CALENDAR_CLOSED", nextRetryAt: new Date("2026-09-08T16:00Z"), dispatchStartedAt: null, retryCount: 0 });
+  vi.setSystemTime(new Date("2026-09-08T16:00Z"));
+  await processOutboundSendQueue({ limit: 1 });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.findUniqueOrThrow({ where: { outboundEmailId: "outbound" } })).toMatchObject({ status: "CONSUMED", windowKey: "2026-09-08T07:00:00.000Z" });
+});
+
+it.each(["internalProofSend", "governedTestSend"])("keeps %s exempt from calendar hours but inside local daily accounting", async kind => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T15:00Z"));
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await seed("GOOGLE");
+  await seedCalendar();
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { kind } } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(true);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.findUniqueOrThrow({ where: { outboundEmailId: "outbound" } })).toMatchObject({ status: "CONSUMED", windowKey: "2026-09-08T07:00:00.000Z" });
+});
+
+it("serializes queued outreach into the configured calendar's paced batches", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const calendar = { timeZone: "America/Los_Angeles", weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1080 };
+  const schedule = calendarSendSlotsForDay(calendar, { mailboxId: "mailbox", at: new Date("2026-09-08T16:00Z"), dailyCap: 30, batchSize: 1 });
+  if (!schedule.ok) throw Error(schedule.error);
+  vi.setSystemTime(schedule.slots[0]);
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await seed("GOOGLE");
+  await seedCalendar();
+  await prisma.client.update({ where: { id: "client" }, data: { sendBatchSize: 1 } });
+  await prisma.outboundEmail.create({ data: { id: "second-calendar", clientId: "client", mailboxIdentityId: "mailbox", toEmail: "second@example.test", fromAddress: "sender@example.test", subject: "Synthetic calendar batch", bodySnapshot: "No real mail", status: "PROCESSING", claimedAt: new Date(), sendAttempt: 1 } });
+  await prisma.mailboxSendReservation.create({ data: { clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: "second-calendar", idempotencyKey: "second-calendar", windowKey: "2026-09-07", status: "RESERVED" } });
+  const results = await Promise.all([executeOutboundSend("outbound"), executeOutboundSend("second-calendar")]);
+  expect(results.filter(result => result.ok)).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(await prisma.outboundEmail.findFirstOrThrow({ where: { status: "QUEUED" } })).toMatchObject({ lastErrorCode: "MAILBOX_SEND_PACING", nextRetryAt: schedule.slots[1], retryCount: 0, dispatchStartedAt: null });
+  vi.setSystemTime(schedule.slots[1]);
+  await processOutboundSendQueue({ limit: 1 });
+  expect(send).toHaveBeenCalledTimes(2);
+});
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("keeps the fifth %s warm-up day's allowance fixed until midnight", async provider => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -425,6 +490,9 @@ it.each(["GOOGLE", "MICROSOFT"] as const)("records an already accepted %s send w
   vi.stubEnv("MAILBOX_WARMUP_RAMP","on"); vi.stubEnv("SEND_PREFLIGHT_DEDUP_ENABLED","true");
   await seed(provider);
   await prisma.outboundEmail.update({where:{id:"outbound"},data:{sendAttempt:2}});
+  // A calendar that is currently closed cannot turn a positive provider lookup
+  // into a new send or require fresh allowance for an accepted outcome.
+  await seedCalendar();
   await prisma.mailboxSendReservation.updateMany({where:{outboundEmailId:"outbound"},data:{windowKey:"2020-01-01"}});
   await prisma.mailboxSendReservation.createMany({data:Array.from({length:30},(_,n)=>({clientId:"client",mailboxIdentityId:"mailbox",idempotencyKey:"full-"+n,windowKey:new Date().toISOString().slice(0,10),status:"CONSUMED" as const}))});
   lookup.mockResolvedValue({status:"found",providerMessageId:"synthetic-existing"});

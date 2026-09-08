@@ -42,6 +42,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({
       $queryRaw: vi.fn().mockResolvedValue([{ id: "out1" }]),
       outboundEmail: { findUnique, findFirst: findUnique, updateMany },
+      clientSendingCalendar: { findMany: async () => [] },
       mailboxSendReservation: { findUnique: vi.fn(async () => ({ id:"slot", clientId:"c1", mailboxIdentityId:"m1", status:"RESERVED", windowKey:new Date().toISOString().slice(0,10) })) },
     })),
     outboundEmail: { findUnique, updateMany },

@@ -31,9 +31,7 @@ export async function createClientFromOnboarding(input: {
   | { ok: false; error: string; reason?: string }
 > {
   const staff = await requireOpensDoorsStaff();
-  if (!staff.isSuperAdmin) {
-    return { ok: false, error: "Only the owner can add a client workspace.", reason: "OWNER_ONLY" };
-  }
+  // Client setup is an everyday operation for every authenticated OpenDoors staff member.
 
   const validation = validateNewClientShellInput(input);
   if (!validation.ok) {

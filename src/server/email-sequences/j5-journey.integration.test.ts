@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prisma } from "@/lib/db";
 import { SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE } from "@/lib/email-sequences/sequence-send-execution-constants";
@@ -335,10 +335,19 @@ afterAll(async () => {
   await prisma.$disconnect();
   await closeIntegrationPool();
 });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
-  it("carries one prospect through every stage, and refuses to email them after they opt out", async () => {
+  it.each(["legacy", "local-calendar"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {
     const staff = await loadStaff();
+    if (mode === "local-calendar") {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-09T00:10Z"));
+      vi.stubEnv("MAILBOX_WARMUP_RAMP", "on");
+      await prisma.clientSendingCalendar.create({ data: { clientId: CLIENT_ID, timeZone: "America/Los_Angeles", weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1080, previousDayEndsAt: new Date("2026-09-01T00:00Z"), effectiveAt: new Date("2026-09-01T07:00Z"), createdByStaffUserId: STAFF_ID } });
+      const dates = ["2026-09-02T12:00Z", "2026-09-03T12:00Z", "2026-09-04T12:00Z", "2026-09-05T23:50Z", "2026-09-06T00:10Z"];
+      await prisma.outboundEmail.createMany({ data: dates.map((sentAt, n) => ({ id: `j5-calendar-history-${n}`, clientId: CLIENT_ID, mailboxIdentityId: MAILBOX_ID, toEmail: "history@example.test", status: "SENT" as const, sentAt: new Date(sentAt) })) });
+    }
 
     // ---- 1. ENROL ---------------------------------------------------------
     const enrolment = await enrollSequenceContacts({
@@ -368,6 +377,10 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
     });
     expect(batch.blocked).toEqual([]);
     expect(batch.counts.queued).toBe(1);
+    if (mode === "local-calendar") {
+      expect(batch.aggregateRemainingAfter).toBe(4);
+      expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ windowKey: "2026-09-08T07:00:00.000Z" });
+    }
 
     const outboundId = batch.queued[0].outboundEmailId;
     const queuedRow = await prisma.outboundEmail.findUniqueOrThrow({

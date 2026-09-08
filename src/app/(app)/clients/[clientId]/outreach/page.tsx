@@ -223,6 +223,7 @@ export default async function ClientOutreachPage({
 
       <AiSendTimePanel
         clientId={client.id}
+        customCalendar={!!(bundle.calendarSettings.current || bundle.calendarSettings.pending)}
         canMutate={canMutateSequences}
         aiEnabled={areAiFeaturesEnabled()}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}

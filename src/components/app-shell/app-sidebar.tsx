@@ -18,7 +18,6 @@ export function AppSidebar({
   className,
   brand,
   googleReconnectsAttentionCount = 0,
-  isSuperAdmin = false,
   onNavigate,
 }: {
   className?: string;
@@ -29,9 +28,7 @@ export function AppSidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = buildMainNav(googleReconnectsAttentionCount).filter(
-    (item) => item.href !== "/clients/new" || isSuperAdmin,
-  );
+  const items = buildMainNav(googleReconnectsAttentionCount);
 
   return (
     <aside

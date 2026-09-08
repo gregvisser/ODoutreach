@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { isLegacyScheduledWindow } from "@/lib/mailboxes/scheduled-outreach-policy";
 
 import {
   assessSendTimeEvidence,
@@ -214,16 +215,18 @@ describe("windowReachability — can the automatic sender actually reach this ti
     expect(windowReachability(2, 19, 20)).toBe("summer_only");
   });
 
-  it("is driven by the REAL cron, not a hand-copied number", () => {
-    // If someone edits the cron schedule, this test goes red rather than the
-    // product quietly telling operators that an unreachable hour is reachable.
+  it("agrees with the server's legacy policy while the workflow uses the versioned calendar scheduler", () => {
     const workflow = readFileSync(
       path.join(process.cwd(), ".github/workflows/process-outbound-queue.yml"),
       "utf8",
     );
-    const match = /cron:\s*"\*\/\d+\s+(\d+)-(\d+)\s+\*\s+\*\s+1-5"/.exec(workflow);
-    expect(match).not.toBeNull();
-    expect(AUTOMATIC_SENDER_UTC_HOURS.first).toBe(Number(match?.[1]));
-    expect(AUTOMATIC_SENDER_UTC_HOURS.last).toBe(Number(match?.[2]));
+    expect(workflow).toContain('cron: "*/5 * * * *"');
+    expect(workflow).toContain('/api/internal/scheduled-outreach/v1');
+    expect(workflow).toContain('node scripts/run-scheduled-outreach.mjs');
+    expect(workflow).not.toContain('/api/internal/outbound/process-queue');
+    for (let day = 6; day <= 12; day++) for (let hour = 0; hour < 24; hour++) {
+      const at = new Date(Date.UTC(2026, 8, day, hour));
+      expect(isLegacyScheduledWindow(at)).toBe(at.getUTCDay() >= 1 && at.getUTCDay() <= 5 && hour >= AUTOMATIC_SENDER_UTC_HOURS.first && hour <= AUTOMATIC_SENDER_UTC_HOURS.last);
+    }
   });
 });

@@ -28,9 +28,8 @@ import {
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
-import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
-import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
+import { loadClientCalendarPlanningContext } from "@/server/mailbox/client-sending-calendar";
+import { pacedAllowanceForSendingWindow } from "@/lib/mailboxes/calendar-send-pacing";
 
 export type ControlledPilotBatchResult =
   | {
@@ -152,7 +151,6 @@ export async function queueControlledPilotBatch(input: {
   }
 
   const at = new Date();
-  const windowKey = utcDateKeyForInstant(at);
 
   type Target = { to: string; toDomain: string | null };
   const targets: Target[] = [];
@@ -221,7 +219,8 @@ export async function queueControlledPilotBatch(input: {
 
   // Warm-up anchors on days actually SENT on, not on connection age. Resolved
   // before the transaction so no extra query runs under the reservation lock.
-  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id), at);
+  const { window: sendingWindow, sendingDays } = await loadClientCalendarPlanningContext(clientId, pool.map((m) => m.id), at);
+  const windowKey = sendingWindow.key;
 
   try {
     const txResult = await prisma.$transaction(
@@ -233,7 +232,7 @@ export async function queueControlledPilotBatch(input: {
           // entry means it has never sent — 0, never "allow".
           const cap = effectiveDailyCap(m, sendingDays.get(m.id) ?? 0);
           // See the note in send-introduction.ts - pacing withholds, never adds.
-          const allowedNow = pacedAllowanceForMailbox({
+          const allowedNow = pacedAllowanceForSendingWindow(sendingWindow, {
             mailboxId: m.id,
             dailyCap: cap,
             batchSize: pacingProfile?.sendBatchSize,
@@ -272,7 +271,7 @@ export async function queueControlledPilotBatch(input: {
               mailbox: m,
               idempotencyKey,
               at,
-              allowanceCeiling: pacedAllowanceForMailbox({
+              allowanceCeiling: pacedAllowanceForSendingWindow(sendingWindow, {
                 mailboxId: m.id,
                 dailyCap: effectiveDailyCap(m, sendingDays.get(m.id) ?? 0),
                 batchSize: pacingProfile?.sendBatchSize,

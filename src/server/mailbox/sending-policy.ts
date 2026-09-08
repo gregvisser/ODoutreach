@@ -2,9 +2,9 @@ import "server-only";
 
 import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { prisma } from "@/lib/db";
 import type { Prisma, ClientMailboxIdentity, MailboxConnectionStatus } from "@/generated/prisma/client";
+import { loadClientSendingWindow } from "./client-sending-calendar";
 
 // Re-export for tests
 export { utcDateKeyForInstant } from "@/lib/sending-window";
@@ -183,6 +183,7 @@ export async function loadGovernedSendingMailbox(
   return resolveGovernedSendingMailboxFromRows(rows);
 }
 
+/** Historical API name; keys now also support configured local accounting days. */
 export async function countBookedSendSlotsInUtcWindow(
   tx: Prisma.TransactionClient,
   mailboxIdentityId: string,
@@ -218,7 +219,7 @@ export async function lockSendingMailboxInTransaction(tx: Prisma.TransactionClie
 }
 
 /**
- * Reserves a send slot in the current UTC day window, or returns an existing
+ * Reserves a send slot in the client's accounting day, or returns an existing
  * in-flight or completed idempotent key without double-booking a cap slot.
  */
 export async function tryReserveSendSlotInTransaction(
@@ -235,7 +236,8 @@ export async function tryReserveSendSlotInTransaction(
   const { clientId, idempotencyKey, at } = input;
   const mailbox = await lockSendingMailboxInTransaction(tx, input.mailbox.id, clientId);
   if (!mailbox) return { ok: false, error: "The sending mailbox is no longer available in this workspace.", errorCode: "MAILBOX_MISSING", reason: "MAILBOX_MISSING" };
-  const windowKey = utcDateKeyForInstant(at);
+  const sendingWindow = await loadClientSendingWindow(clientId, at, tx);
+  const windowKey = sendingWindow.key;
   const cap = Math.min(
     mailboxDailySendCap(mailbox.dailySendCap),
     input.allowanceCeiling === undefined ? Infinity :
@@ -261,9 +263,11 @@ export async function tryReserveSendSlotInTransaction(
   const existing = await tx.mailboxSendReservation.findFirst({
     where: {
       mailboxIdentityId: mailbox.id,
-      windowKey,
+      // Calendar changes must not turn the same attempt into another send.
+      ...(sendingWindow.calendar ? {} : { windowKey }),
       idempotencyKey,
     },
+    orderBy: { createdAt: "desc" },
   });
 
   if (existing) {
@@ -289,7 +293,7 @@ export async function tryReserveSendSlotInTransaction(
       return {
         ok: true,
         reservationId: existing.id,
-        windowKey,
+        windowKey: existing.windowKey,
         duplicate: true,
         outboundEmailId: null,
       };
@@ -308,7 +312,7 @@ export async function tryReserveSendSlotInTransaction(
   if (booked >= cap) {
     return {
       ok: false,
-      error: `Daily send cap reached for this mailbox (${String(cap)} / UTC day).`,
+      error: `Daily send cap reached for this mailbox (${String(cap)} / ${sendingWindow.calendar?.timeZone ?? "UTC"} day).`,
       errorCode: "MAILBOX_DAILY_CAP",
       reason: "daily_ledger_cap_reached",
     };
@@ -390,19 +394,11 @@ export async function recomputeMailboxLedgerCounterInTransaction(
   mailboxIdentityId: string,
   at: Date,
 ) {
-  const windowKey = utcDateKeyForInstant(at);
+  const mailbox = await tx.clientMailboxIdentity.findUniqueOrThrow({ where: { id: mailboxIdentityId }, select: { clientId: true } });
+  const sendingWindow = await loadClientSendingWindow(mailbox.clientId, at, tx);
+  const windowKey = sendingWindow.key;
   const c = await countBookedSendSlotsInUtcWindow(tx, mailboxIdentityId, windowKey);
-  const nextReset = new Date(
-    Date.UTC(
-      at.getUTCFullYear(),
-      at.getUTCMonth(),
-      at.getUTCDate() + 1,
-      0,
-      0,
-      0,
-      0,
-    ),
-  );
+  const nextReset = sendingWindow.endsAt;
   await tx.clientMailboxIdentity.update({
     where: { id: mailboxIdentityId },
     data: { emailsSentToday: c, dailyWindowResetAt: nextReset },

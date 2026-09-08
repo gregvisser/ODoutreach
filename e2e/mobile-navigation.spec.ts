@@ -17,14 +17,14 @@ test("staff navigation reveals the destination and can be reopened", async ({
   await expect(menu).toBeVisible();
   await expect(
     menu.getByRole("link", { name: "New client", exact: true }),
-  ).toHaveCount(0);
-  await menu.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings$/);
+  ).toBeVisible();
+  await menu.getByRole("link", { name: "New client", exact: true }).click();
+  await expect(page).toHaveURL(/\/clients\/new$/);
   await expect(menu).toBeHidden();
   await expect(
     page
       .getByRole("main")
-      .getByRole("heading", { name: "Settings", exact: true }),
+      .getByRole("heading", { name: "Add a client", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Open menu" }).click();
   await expect(menu).toBeVisible();

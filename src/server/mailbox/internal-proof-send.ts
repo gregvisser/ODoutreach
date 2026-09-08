@@ -19,7 +19,7 @@ import {
   prepareContactSendCompliance,
 } from "@/lib/unsubscribe/contact-send-compliance";
 import { hashUnsubscribeToken } from "@/lib/unsubscribe/unsubscribe-token";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
+import { loadClientSendingWindow } from "@/server/mailbox/client-sending-calendar";
 import { evaluateSuppression } from "@/server/outreach/suppression-guard";
 import { requireClientAccess } from "@/server/tenant/access";
 import {
@@ -141,7 +141,6 @@ export async function queueSelectedMailboxInternalProofSend(input: {
   const toDomain = extractDomainFromEmail(to) || null;
   const idempotencyKey = `internalProof:${clientId}:${mailbox.id}:${randomUUID()}`;
   const at = new Date();
-  const windowKey = utcDateKeyForInstant(at);
 
   const txResult = await prisma.$transaction(async (tx) => {
     const m = await tx.clientMailboxIdentity.findFirstOrThrow({
@@ -245,6 +244,7 @@ export async function queueSelectedMailboxInternalProofSend(input: {
   }
 
   await triggerOutboundQueueDrain();
+  const windowKey = (await loadClientSendingWindow(clientId, new Date())).key;
   const bookedAfter = await prisma.mailboxSendReservation.count({
     where: {
       mailboxIdentityId: mailbox.id,

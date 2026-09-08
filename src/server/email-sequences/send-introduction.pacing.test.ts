@@ -22,6 +22,7 @@ import type { StaffUser } from "@/generated/prisma/client";
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     client: { findUniqueOrThrow: vi.fn() },
+    clientSendingCalendar: { findMany: async () => [] },
     clientEmailSequence: { findUnique: vi.fn() },
     clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },

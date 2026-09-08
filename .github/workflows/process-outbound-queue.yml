@@ -1,14 +1,17 @@
-# Drain the outbound send queue so QUEUED emails are sent via connected mailboxes.
+# The server selects open client calendars; unset clients retain weekday UTC hours.
 name: Process outbound queue
 
 on:
   workflow_dispatch:
   schedule:
-    # Every 5 minutes during UK business hours, weekdays only.
-    - cron: "*/5 7-18 * * 1-5"
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
+
+concurrency:
+  group: odoutreach-scheduled-outreach
+  cancel-in-progress: false
 
 jobs:
   process-queue:
@@ -17,94 +20,11 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: '20'
-      # Pull fresh replies FIRST: a reply that just arrived pauses its
-      # enrolment (stop-follow-ups-on-reply) BEFORE the advancer below can
-      # dispatch the next step to someone who already answered. Running it
-      # here also cuts reply latency — this workflow fires far more often
-      # than the dedicated 15-minute replies schedule does in practice
-      # (GitHub cron drift stretches that one to ~hourly). Non-fatal.
-      - name: Sync replies before advancing
+          node-version: '22'
+      # Old deployments return 404. Never fall back to unscoped endpoints.
+      # The runner syncs replies before follow-up advance and queue drain.
+      - name: Process open client calendars
         env:
-          REPLY_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/replies/sync
+          SCHEDULED_OUTREACH_URL: https://opensdoors.bidlow.co.uk/api/internal/scheduled-outreach/v1
           PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
-        # Keep the existing non-fatal pre-sync policy; the runner records failures.
-        run: node scripts/run-reply-sync.mjs || true
-
-      # Stage + dispatch any follow-ups whose delay has elapsed BEFORE the
-      # drain, so a due follow-up is queued and sent in the same tick. The
-      # advancer is idempotent and delay-guarded (it cannot fire a
-      # follow-up early or twice), so a failure here must not block the
-      # drain — we log and continue.
-      - name: Advance due sequence follow-ups
-        env:
-          ADVANCE_FOLLOWUPS_URL: https://opensdoors.bidlow.co.uk/api/internal/sequences/advance
-          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
-        run: |
-          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
-            echo "PROCESS_QUEUE_SECRET is not configured; skipping follow-up advance."
-            exit 0
-          fi
-          status=$(curl -sS -o /tmp/advance-response.json -w "%{http_code}" \
-            -X POST "$ADVANCE_FOLLOWUPS_URL" \
-            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
-            -H "Content-Type: application/json" \
-            --data '{}') || status="000"
-          echo "Follow-up advancer HTTP status: ${status}"
-          cat /tmp/advance-response.json 2>/dev/null || true
-          # Deliberately does NOT stop the queue drain — a follow-up problem must
-          # not block sending. But it is recorded, so the RUN still ends red.
-          # "Continue anyway" and "pretend it worked" are different things, and
-          # conflating them is what let a green tick hide eight broken mailboxes.
-          ok=$(jq -r 'try .ok catch ""' /tmp/advance-response.json 2>/dev/null || echo "")
-          failed=$(jq -r 'try .failedCount catch 0' /tmp/advance-response.json 2>/dev/null || echo 0)
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            echo "Follow-up advance did not succeed (status ${status}); continuing to queue drain."
-            echo "follow-up advance failed (HTTP ${status})" >> /tmp/run-problems.txt
-          elif [ "$ok" != "true" ]; then
-            echo "Follow-up advance was PARTIAL: ${failed} item(s) failed; continuing to queue drain."
-            echo "follow-up advance partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
-          fi
-
-      - name: Call outbound queue processor
-        env:
-          PROCESS_QUEUE_URL: https://opensdoors.bidlow.co.uk/api/internal/outbound/process-queue
-          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
-        run: |
-          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
-            echo "PROCESS_QUEUE_SECRET is not configured; skipping queue processing."
-            exit 0
-          fi
-          status=$(curl -sS -o /tmp/queue-response.json -w "%{http_code}" \
-            -X POST "$PROCESS_QUEUE_URL" \
-            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
-            -H "Content-Type: application/json" \
-            --data '{"limit":25}')
-          echo "Queue processor HTTP status: ${status}"
-          cat /tmp/queue-response.json
-          # A PARTIAL run answers 207, which IS a 2xx — a status-only check
-          # would wave it through.
-          ok=$(jq -r 'try .ok catch ""' /tmp/queue-response.json 2>/dev/null || echo "")
-          failed=$(jq -r 'try .failedCount catch 0' /tmp/queue-response.json 2>/dev/null || echo 0)
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            exit 1
-          fi
-          if [ "$ok" != "true" ]; then
-            echo "Queue drain reported a PARTIAL run: ${failed} item(s) failed."
-            echo "queue drain partial: ${failed} item(s) failed" >> /tmp/run-problems.txt
-          fi
-
-      # Anything recorded by a deliberately non-blocking step above still ends
-      # the run red. A job that carried on is not a job that succeeded.
-      - name: Fail run — PARTIAL
-        if: always()
-        run: |
-          if [ -s /tmp/run-problems.txt ]; then
-            echo "This run had problems that did not stop it:"
-            cat /tmp/run-problems.txt
-            while IFS= read -r line; do
-              echo "::error title=PARTIAL::${line}"
-            done < /tmp/run-problems.txt
-            exit 1
-          fi
-          echo "No problems recorded."
+        run: node scripts/run-scheduled-outreach.mjs

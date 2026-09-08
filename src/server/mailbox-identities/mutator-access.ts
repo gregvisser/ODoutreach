@@ -8,10 +8,9 @@ import { canAccessClient } from "@/server/tenant/access";
 export { mailboxMutatorAllowedFromRoles } from "@/lib/mailbox-mutator-policy";
 
 /**
- * Staff may manage mailbox identities if they can access the client and:
- * - global ADMIN/MANAGER, or
- * - staff OPERATOR with client membership LEAD or CONTRIBUTOR.
- * Client-level VIEWER membership cannot mutate; staff VIEWER cannot mutate.
+ * Uses the shared active-staff policy for an accessible live client. Legacy
+ * role and membership values remain for compatibility; the policy no longer
+ * restricts mailbox changes by those values. Callers authenticate active staff.
  */
 export async function getClientMailboxMutationAllowed(
   staff: Pick<StaffUser, "id" | "role">,

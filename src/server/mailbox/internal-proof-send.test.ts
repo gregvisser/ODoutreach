@@ -6,6 +6,7 @@ const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     client: { findFirst: vi.fn() },
     clientMailboxIdentity: { findFirst: vi.fn(), findFirstOrThrow: vi.fn() },
+    clientSendingCalendar: { findMany: vi.fn() },
     outboundEmail: { create: vi.fn(), findFirstOrThrow: vi.fn() },
     mailboxSendReservation: {
       count: vi.fn(),
@@ -134,6 +135,7 @@ describe("queueSelectedMailboxInternalProofSend", () => {
       }
     }
     vi.mocked(evaluateSuppression).mockReset();
+    prismaMock.clientSendingCalendar.findMany.mockResolvedValue([]);
     vi.mocked(triggerOutboundQueueDrain).mockReset();
     vi.mocked(triggerOutboundQueueDrain).mockResolvedValue(undefined);
     delete process.env.AUTH_URL;

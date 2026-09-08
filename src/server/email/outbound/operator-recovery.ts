@@ -9,8 +9,8 @@ import {
   lockSendingMailboxInTransaction,
   mailboxIneligibleForGovernedSendExecution,
   recomputeMailboxLedgerCounterInTransaction,
-  utcDateKeyForInstant,
 } from "@/server/mailbox/sending-policy";
+import { loadClientSendingWindow } from "@/server/mailbox/client-sending-calendar";
 
 /**
  * Releases PROCESSING rows whose claim expired and no provider id was recorded.
@@ -63,17 +63,18 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
       if (!row) return { count: 0 };
       const client = await tx.client.findFirst({ where: { id: clientId, deletedAt: null, status: { notIn: ["PAUSED", "ARCHIVED"] } }, select: { id: true } });
       if (!client) return { count: 0, error: "This workspace is paused, archived or unavailable. The email was not requeued." };
-      const now = new Date();
+      let now = new Date();
       if (row.mailboxIdentityId) {
         const mailbox = await lockSendingMailboxInTransaction(tx, row.mailboxIdentityId, clientId);
         if (!mailbox) return { count: 0, error: "The sending mailbox is no longer available in this workspace." };
+        now = new Date();
         const reason = mailboxIneligibleForGovernedSendExecution(mailbox);
         if (reason) return { count: 0, error: humanizeGovernanceRejection(reason, mailbox) };
         const reservation = await tx.mailboxSendReservation.findUnique({ where: { outboundEmailId } });
         if (reservation && (reservation.clientId !== clientId || reservation.mailboxIdentityId !== mailbox.id || reservation.status === "CONSUMED")) {
           return { count: 0, error: "This email has conflicting or already-used allowance records. Review them before retrying." };
         }
-        const windowKey = utcDateKeyForInstant(now);
+        const windowKey = (await loadClientSendingWindow(clientId, now, tx)).key;
         if (reservation?.status === "RESERVED" && reservation.windowKey !== windowKey) {
           return { count: 0, error: "This email still holds allowance from an earlier day. Review the old attempt before retrying." };
         }

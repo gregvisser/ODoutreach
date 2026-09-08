@@ -637,9 +637,9 @@ const RECEIVING_MAILBOXES = {
 } satisfies Prisma.ClientMailboxIdentityWhereInput;
 
 /** A snapshot prevents failures or changing sync timestamps starving other mailboxes. */
-export async function listReplySyncMailboxIds(): Promise<string[]> {
+export async function listReplySyncMailboxIds(clientIds?: string[]): Promise<string[]> {
   const rows = await prisma.clientMailboxIdentity.findMany({
-    where: RECEIVING_MAILBOXES, orderBy: { id: "asc" }, select: { id: true }, take: 1001,
+    where: { ...RECEIVING_MAILBOXES, ...(clientIds ? { clientId: { in: clientIds } } : {}) }, orderBy: { id: "asc" }, select: { id: true }, take: 1001,
   });
   if (rows.length > 1000) throw new Error("Reply sync plan exceeds the supported mailbox limit");
   return rows.map((row) => row.id);
@@ -649,6 +649,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
   perMailboxTop?: number;
   maxMailboxes?: number;
   mailboxId?: string;
+  clientIds?: string[];
   syncOne?: typeof syncMailboxInboxForMailbox;
 } = {}): Promise<ReplySyncBatchResult> {
   const perMailboxTop = Math.max(1, Math.min(input.perMailboxTop ?? DEFAULT_TOP, 50));
@@ -658,6 +659,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
     where: {
       ...RECEIVING_MAILBOXES,
       ...(input.mailboxId ? { id: input.mailboxId } : {}),
+      ...(input.clientIds ? { clientId: { in: input.clientIds } } : {}),
     },
     orderBy: [{ lastSyncAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: maxMailboxes,

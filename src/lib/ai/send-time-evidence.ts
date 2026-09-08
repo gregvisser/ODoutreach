@@ -24,12 +24,12 @@
  *    than in the prompt because a prompt is advice and a filter is structure.
  *
  * 3. WHETHER THE APPLICATION COULD EVEN OBEY THE ANSWER.
- *    Nothing in this database decides when mail leaves. The only thing that does
- *    is a GitHub Actions cron in `.github/workflows/process-outbound-queue.yml`,
- *    which fires on UTC hours. So a recommendation of "07:00" is reachable in
+ *    Clients without a custom calendar retain server-enforced UTC hours.
+ *    Under that legacy schedule, a recommendation of "07:00" is reachable in
  *    winter and impossible in summer, and one of "Saturday" is never reachable
  *    at all. `windowReachability` says which, so the panel can print it instead
  *    of letting an operator assume the system has started doing what it was told.
+ *    These reachability labels do not apply to custom calendars.
  *
  * NOTHING HERE SCHEDULES ANYTHING. There is no path from this file to the send
  * pipeline, and that is the point: see `send-time-advice.ts` for the guardrail
@@ -77,7 +77,8 @@ export const MIN_TOTAL_REPLIES = 20;
  * real workflow and asserts these two numbers still match it, so editing the
  * cron turns a test red rather than quietly making this module lie.
  */
-export const AUTOMATIC_SENDER_UTC_HOURS = { first: 7, last: 18 } as const;
+export { LEGACY_SCHEDULED_UTC_HOURS as AUTOMATIC_SENDER_UTC_HOURS } from "@/lib/mailboxes/scheduled-outreach-policy";
+import { LEGACY_SCHEDULED_UTC_HOURS as AUTOMATIC_SENDER_UTC_HOURS } from "@/lib/mailboxes/scheduled-outreach-policy";
 
 /** Weekday numbering matches `Date#getDay()`: 0 = Sunday … 6 = Saturday. */
 const WEEKDAY_LABELS = [

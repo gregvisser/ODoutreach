@@ -19,6 +19,7 @@ function asTx(over: Record<string, unknown>) {
   return {
     $queryRaw: vi.fn().mockResolvedValue([{ id: "m1" }]),
     clientMailboxIdentity: { findFirst: vi.fn().mockResolvedValue(baseMailbox()) },
+    clientSendingCalendar: { findMany: vi.fn().mockResolvedValue([]) },
     ...over,
   } as unknown as Prisma.TransactionClient;
 }
