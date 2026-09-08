@@ -1,5 +1,5 @@
 import "server-only";
-import { AUTOMATED_SEQUENCE_SEND_ORIGIN, AUTOMATED_SEND_HELD_MESSAGE } from "@/lib/email-sequences/send-origin";
+import { AUTOMATED_SEQUENCE_SEND_ORIGIN, automaticSequenceHoldReason } from "@/lib/email-sequences/send-origin";
 
 import type {
   ClientEmailSequenceStepSendStatus,
@@ -517,12 +517,14 @@ export async function sendSequenceStepBatch(input: {
         // Drives the corporate four-at-a-time release gate.
         accountGrade: true,
         autonomousSendEnabled: true,
+        serviceTier: true,
         onboarding: { select: { formData: true } },
       },
     }),
   ]);
-  if (automated && client.autonomousSendEnabled !== true) {
-    throw new SequenceStepSendError("AUTOMATED_SEND_DISABLED", AUTOMATED_SEND_HELD_MESSAGE, category);
+  const automaticHold = automated ? automaticSequenceHoldReason(client) : null;
+  if (automaticHold) {
+    throw new SequenceStepSendError("AUTOMATED_SEND_DISABLED", automaticHold, category);
   }
   const pool = executionEligibleMailboxes(identities);
   if (pool.length === 0) {

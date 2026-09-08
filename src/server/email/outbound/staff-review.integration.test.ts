@@ -24,6 +24,13 @@ afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool();
 async function input() {
   return { clientId: "client", outboundEmailId: "held", staffUserId: "staff", reviewToken: heldEmailReviewToken(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })) };
 }
+it("allows a deliberate single-email review for Strategic without changing its saved switch", async () => {
+  await prisma.client.update({ where: { id: "client" }, data: { serviceTier: "STRATEGIC", autonomousSendEnabled: true } });
+  expect(await approveHeldEmail(await input())).toMatchObject({ ok: true });
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })).toMatchObject({ status: "QUEUED", staffUserId: "staff", metadata: { sendOrigin: STAFF_REVIEWED_SEND_ORIGIN } });
+  expect(await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).toMatchObject({ serviceTier: "STRATEGIC", autonomousSendEnabled: true });
+});
+
 it("lets ordinary staff approve exactly one saved email and keeps automatic sending off", async () => {
   const data = await loadHeldEmailsForStaff("client", 0);
   expect(data.emails[0]).toMatchObject({ subject: "Please review", body: "Synthetic saved email" });

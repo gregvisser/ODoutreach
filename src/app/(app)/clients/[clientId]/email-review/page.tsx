@@ -15,7 +15,7 @@ export default async function EmailReviewPage({ params, searchParams }: { params
   const base = `/clients/${clientId}/email-review`;
   return <section className="space-y-6">
     <h1 className="text-2xl font-semibold">Emails waiting for your approval</h1>
-    <p>These automatic follow-ups were held because automatic sending was off or not configured. Review each email before choosing to queue it. Approving one email leaves the client’s automatic sending setting unchanged.</p>
+    <p>These automatic follow-ups were held because automatic sending was unavailable or the client is Strategic. Review each email before choosing to queue it. Approving one email leaves the client’s automatic sending setting unchanged.</p>
     <p>Current mailbox limits, warm-up, sending days and do-not-contact checks still apply. Approval queues the email; it does not prove delivery.</p>
     <a href={`${base}?page=${page}`} className="underline">Refresh review status</a>
     {data.emails.length ? data.emails.map(email => <HeldEmailReview key={`${email.id}:${email.reviewToken}`} clientId={clientId} email={email} />) : <p>No emails waiting on this page.</p>}

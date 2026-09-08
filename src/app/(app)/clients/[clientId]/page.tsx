@@ -297,6 +297,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
       <ClientAutonomousSendCard
         clientId={client.id}
         enabled={client.autonomousSendEnabled}
+        strategic={client.serviceTier === "STRATEGIC"}
         attributionLine={formatAutonomousSendAttribution({
           enabled: client.autonomousSendEnabled,
           setByName:

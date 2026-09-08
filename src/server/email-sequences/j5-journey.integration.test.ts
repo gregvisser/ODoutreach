@@ -338,8 +338,19 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
-  it.each(["legacy", "local-calendar", "automated"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {
+  it("refuses automated preparation for Strategic before reserving or queueing an email", async () => {
     const staff = await loadStaff();
+    await prisma.client.update({ where: { id: CLIENT_ID }, data: { serviceTier: "STRATEGIC", autonomousSendEnabled: true } });
+    await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
+    await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID });
+    await expect(sendSequenceStepBatch({ staff, clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE, initiatedByAutomation: true })).rejects.toMatchObject({ code: "AUTOMATED_SEND_DISABLED" });
+    expect(await prisma.outboundEmail.count()).toBe(0);
+    expect(await prisma.mailboxSendReservation.count()).toBe(0);
+  });
+
+  it.each(["legacy", "local-calendar", "automated", "strategic-human"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {
+    const staff = await loadStaff();
+    if (mode === "strategic-human") await prisma.client.update({ where: { id: CLIENT_ID }, data: { serviceTier: "STRATEGIC", autonomousSendEnabled: true } });
     if (mode === "automated") await prisma.client.update({ where: { id: CLIENT_ID }, data: { autonomousSendEnabled: true } });
     if (mode === "local-calendar") {
       vi.useFakeTimers({ toFake: ["Date"] });

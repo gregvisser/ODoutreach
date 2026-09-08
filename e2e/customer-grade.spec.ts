@@ -14,7 +14,7 @@ test.beforeAll(async () => {
   await pool.query('INSERT INTO "Client" (id,name,slug,"inboundIngestToken",status,"accountGrade","autonomousSendEnabled","updatedAt") VALUES ($1,$2,$1,$1,\'ACTIVE\',\'CORPORATE\',false,NOW())', [clientId, "Synthetic customer grade"]);
 });
 test.beforeEach(async () => {
-  await pool.query('UPDATE "Client" SET "serviceTier"=NULL,"serviceTierSetAt"=NULL,"serviceTierSetByStaffUserId"=NULL,"serviceTierRevision"=0 WHERE id=$1', [clientId]);
+  await pool.query('UPDATE "Client" SET "serviceTier"=NULL,"serviceTierSetAt"=NULL,"serviceTierSetByStaffUserId"=NULL,"serviceTierRevision"=0,"autonomousSendEnabled"=false WHERE id=$1', [clientId]);
   await pool.query('DELETE FROM "AuditLog" WHERE "clientId"=$1', [clientId]);
 });
 test.afterAll(async () => { await pool?.query('DELETE FROM "Client" WHERE id=$1', [clientId]); await pool?.end(); });
@@ -25,7 +25,7 @@ test("ordinary staff reach the grade on mobile and persist all three agreed choi
   for (const [value, label] of [["MAINTENANCE", "Maintenance"], ["GROWTH", "Growth"], ["STRATEGIC", "Strategic"]]) {
     await panel.getByLabel("Choose customer grade", { exact: true }).selectOption(value);
     await panel.getByRole("button", { name: "Save customer grade" }).click();
-    await expect(panel.getByRole("status")).toHaveText("Customer grade saved. Sending settings are unchanged.");
+    await expect(panel.getByRole("status")).toHaveText("Customer grade saved. Refresh to see the current sending controls.");
     await expect(panel.getByRole("button", { name: "Save customer grade" })).toBeDisabled();
     await panel.getByRole("link", { name: "Refresh customer grade" }).click();
     await expect(panel).toContainText(`Current grade: ${label}`);
@@ -37,6 +37,22 @@ test("ordinary staff reach the grade on mobile and persist all three agreed choi
   expect((await pool.query('SELECT id FROM "AuditLog" WHERE "clientId"=$1', [clientId])).rowCount).toBe(3);
   expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
 });
+test("Strategic turns Machine sending off with a visible human-review instruction", async ({ page }) => {
+  await pool.query('UPDATE "Client" SET "autonomousSendEnabled"=true WHERE id=$1', [clientId]);
+  await page.goto(`${url}/mailboxes`);
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Customer grade", exact: true });
+  await panel.getByLabel("Choose customer grade", { exact: true }).selectOption("STRATEGIC");
+  await panel.getByRole("button", { name: "Save customer grade" }).click();
+  await expect(panel.getByRole("status")).toContainText("Customer grade saved.");
+  await panel.getByRole("link", { name: "Refresh customer grade" }).click();
+  await expect(page.getByText("Strategic clients require human review of automatic follow-ups. Automatic follow-ups are paused, even if Machine sending was previously selected. Review held emails in Email approvals.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Machine sending", exact: true })).toHaveCount(0);
+  expect((await pool.query('SELECT "serviceTier","autonomousSendEnabled" FROM "Client" WHERE id=$1', [clientId])).rows).toEqual([{ serviceTier: "STRATEGIC", autonomousSendEnabled: false }]);
+  expect((await pool.query('SELECT id FROM "AuditLog" WHERE "clientId"=$1 AND metadata->>\'reason\'=\'strategic_grade\'', [clientId])).rowCount).toBe(1);
+  expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
+});
+
 test.describe("controlled lost acknowledgement", () => {
   test.use({ serviceWorkers: "block" });
   test("a lost save response locks the form and refresh recovers the single grade change", async ({ page }) => {

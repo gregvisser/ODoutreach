@@ -47,3 +47,12 @@ it("does not use an inactive administrator as its system actor", async () => {
   expect(plan).not.toHaveBeenCalled();
   expect(dispatch).not.toHaveBeenCalled();
 });
+
+it("does not plan or advance Strategic clients even with a saved machine-send opt-in", async () => {
+  await client("strategic", true);
+  await prisma.client.update({ where: { id: "strategic" }, data: { serviceTier: "STRATEGIC" } });
+  const result = await advanceDueSequenceFollowUps();
+  expect(result).toMatchObject({ clientsProcessed: 0, followUpsQueued: 0, errors: [] });
+  expect(plan).not.toHaveBeenCalled();
+  expect(dispatch).not.toHaveBeenCalled();
+});

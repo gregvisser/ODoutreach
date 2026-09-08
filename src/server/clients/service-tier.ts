@@ -15,6 +15,12 @@ export async function setClientServiceTier(input: { clientId: string; staffUserI
       if (client.serviceTierRevision !== input.expectedRevision) return { ok: false as const, error: "Someone has changed this grade. Refresh and review the latest choice." };
       const now = new Date();
       await tx.client.update({ where: { id: client.id }, data: { serviceTier: input.tier, serviceTierSetByStaffUserId: staff.id, serviceTierSetAt: now, serviceTierRevision: { increment: 1 } } });
+      if (input.tier === "STRATEGIC" && client.autonomousSendEnabled !== false) {
+        await tx.client.update({ where: { id: client.id }, data: { autonomousSendEnabled: false, autonomousSendSetByStaffUserId: staff.id, autonomousSendSetAt: now } });
+        await tx.auditLog.create({ data: { clientId: client.id, staffUserId: staff.id, action: "UPDATE", entityType: "Client", entityId: client.id,
+          metadata: { kind: "autonomous_send_set", previousEnabled: client.autonomousSendEnabled, enabled: false, setting: "HUMAN", reason: "strategic_grade" },
+        } });
+      }
       await tx.auditLog.create({ data: { clientId: client.id, staffUserId: staff.id, action: "UPDATE", entityType: "Client", entityId: client.id,
         metadata: { kind: "customer_service_tier_set", previousTier: client.serviceTier, tier: input.tier },
       } });

@@ -18,6 +18,7 @@ type Props = {
   clientId: string;
   /** `Client.autonomousSendEnabled` — three states, `null` meaning nobody decided. */
   enabled: boolean | null;
+  strategic?: boolean;
   /**
    * The signature line, already formatted on the server by
    * `formatAutonomousSendAttribution`. Null when nobody has set the switch.
@@ -47,6 +48,7 @@ type Props = {
 export function ClientAutonomousSendCard({
   clientId,
   enabled,
+  strategic = false,
   attributionLine,
   canMutate,
 }: Props) {
@@ -73,11 +75,11 @@ export function ClientAutonomousSendCard({
         <CardTitle className="text-base">Autonomous sending</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        {strategic ? <p className="text-sm">Strategic clients require human review of automatic follow-ups. Automatic follow-ups are paused, even if Machine sending was previously selected. Review held emails in Email approvals.</p> : <p className="text-sm text-muted-foreground leading-relaxed">
           Who sends this client&apos;s outreach.{" "}
           <strong className="text-foreground">{autonomousSendLabel(enabled)}</strong> —{" "}
           {autonomousSendDescription(enabled)}
-        </p>
+        </p>}
 
         {/* The signature. Deliberately prominent and deliberately plain. */}
         {attributionLine ? (
@@ -91,7 +93,7 @@ export function ClientAutonomousSendCard({
           </p>
         )}
 
-        {canMutate ? (
+        {canMutate && !strategic ? (
           <div className="flex flex-wrap gap-2">
             {AUTONOMOUS_SEND_SETTINGS.map((option) => {
               const isCurrent = option === current;

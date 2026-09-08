@@ -16,7 +16,7 @@ export function ClientServiceTierCard({ clientId, initial }: { clientId: string;
     busy.current = true; setPending(true);
     try {
       const result = await setClientServiceTierAction({ clientId, tier: choice, expectedRevision: snapshot.revision });
-      if (result.ok) { setSnapshot(result.snapshot); setMessage("Customer grade saved. Sending settings are unchanged."); }
+      if (result.ok) { setSnapshot(result.snapshot); setMessage("Customer grade saved. Refresh to see the current sending controls."); }
       else setMessage(result.error);
       setLocked(true);
     } catch { setMessage("We could not confirm the grade change. Refresh this page before trying again."); setLocked(true); }
@@ -24,8 +24,9 @@ export function ClientServiceTierCard({ clientId, initial }: { clientId: string;
   }
   return <section aria-label="Customer grade" className="space-y-3 rounded-lg border p-4">
     <h2 className="font-semibold">Customer grade</h2>
-    <p className="text-sm">Record the service level agreed with this client. This choice records the grade; sending approval and automation are controlled separately.</p>
+    <p className="text-sm">Record the service level agreed with this client. Choosing Strategic turns automatic sending off; held follow-ups need human review in Email approvals. Changing the grade later does not turn automatic sending back on.</p>
     <p><strong>Current grade:</strong> {snapshot.tier ? SERVICE_TIER_LABELS[snapshot.tier] : "Not set"}</p>
+    {snapshot.tier === "STRATEGIC" && <p className="text-sm">Automatic follow-ups are paused for this client. You can still send manually after reviewing the email.</p>}
     {snapshot.setAt ? <p className="text-sm">Set by {snapshot.setByName ?? "a former staff member"} on {new Date(snapshot.setAt).toLocaleString("en-GB", { timeZone: "Europe/London" })} (UK time).</p> : <p className="text-sm">No customer grade has been chosen yet.</p>}
     <label htmlFor={`customer-grade-${clientId}`} className="block text-sm">Choose customer grade</label>
       <select id={`customer-grade-${clientId}`} className="mt-1 block w-full rounded border bg-background p-2" value={choice} disabled={pending || locked} onChange={event => setChoice(event.target.value as ServiceTier | "")}>

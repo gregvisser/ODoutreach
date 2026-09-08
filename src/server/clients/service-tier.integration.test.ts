@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
 import { setClientServiceTier } from "./service-tier";
+import { setClientAutonomousSend } from "./autonomous-send";
 import { SERVICE_TIERS } from "@/lib/clients/service-tier";
 
 beforeEach(async () => {
@@ -18,6 +19,38 @@ afterEach(async () => {
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 const input = { clientId: "client", staffUserId: "staff", tier: "GROWTH" as const, expectedRevision: 0 };
+const machine = { clientId: "client", staffUserId: "staff", setting: "MACHINE" as const };
+it("turns automation off for Strategic and requires a fresh choice after leaving it", async () => {
+  expect(await setClientAutonomousSend(machine)).toMatchObject({ ok: true });
+  expect(await setClientServiceTier({ ...input, tier: "STRATEGIC" })).toMatchObject({ ok: true });
+  expect(await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).toMatchObject({ autonomousSendEnabled: false, autonomousSendSetByStaffUserId: "staff" });
+  expect(await prisma.auditLog.findFirst({ where: { metadata: { path: ["reason"], equals: "strategic_grade" } } })).toMatchObject({ staffUserId: "staff", metadata: { previousEnabled: true, enabled: false } });
+  expect(await setClientAutonomousSend(machine)).toMatchObject({ ok: false });
+  expect(await setClientServiceTier({ ...input, expectedRevision: 1 })).toMatchObject({ ok: true });
+  expect((await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).autonomousSendEnabled).toBe(false);
+  expect(await setClientAutonomousSend(machine)).toMatchObject({ ok: true });
+});
+it("serializes Strategic selection against a concurrent machine-enable request", async () => {
+  const results = await Promise.all([setClientServiceTier({ ...input, tier: "STRATEGIC" }), setClientAutonomousSend(machine)]);
+  expect(results[0]).toMatchObject({ ok: true });
+  expect(await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).toMatchObject({ serviceTier: "STRATEGIC", autonomousSendEnabled: false });
+});
+it("rolls back both grade and sending decision when the sending audit fails", async () => {
+  await prisma.client.update({ where: { id: "client" }, data: { autonomousSendEnabled: true } });
+  await prisma.$executeRawUnsafe("CREATE FUNCTION fail_grade_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.metadata->>'kind' = 'autonomous_send_set' THEN RAISE EXCEPTION 'synthetic sending audit failure'; END IF; RETURN NEW; END $$");
+  await prisma.$executeRawUnsafe('CREATE TRIGGER fail_grade_audit BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION fail_grade_audit()');
+  expect(await setClientServiceTier({ ...input, tier: "STRATEGIC" })).toMatchObject({ ok: false, uncertain: true });
+  expect(await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).toMatchObject({ serviceTier: null, serviceTierRevision: 0, autonomousSendEnabled: true, autonomousSendSetByStaffUserId: null });
+  expect(await prisma.auditLog.count()).toBe(0);
+});
+it.each(["inactive", "domain", "deleted"])("rejects %s access when changing automatic sending", async mode => {
+  if (mode === "inactive") await prisma.staffUser.update({ where: { id: "staff" }, data: { isActive: false } });
+  if (mode === "domain") await prisma.staffUser.update({ where: { id: "staff" }, data: { email: "staff@other.test" } });
+  if (mode === "deleted") await prisma.client.update({ where: { id: "client" }, data: { deletedAt: new Date() } });
+  expect(await setClientAutonomousSend(machine)).toMatchObject({ ok: false });
+  expect(await prisma.auditLog.count()).toBe(0);
+});
+
 it.each(SERVICE_TIERS)("records %s for ordinary staff without changing sending consent or legacy pacing", async tier => {
   expect(await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).toMatchObject({ serviceTier: null, serviceTierRevision: 0 });
   expect(await setClientServiceTier({ ...input, tier })).toMatchObject({ ok: true, snapshot: { tier, revision: 1, setByName: "Ordinary staff" } });

@@ -66,6 +66,21 @@ it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s automated work when permissi
   expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
 });
 
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s automated work if the client becomes Strategic before dispatch", async provider => {
+  vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "0");
+  await seed(provider);
+  await prisma.client.update({ where: { id: "client" }, data: { status: "ACTIVE", autonomousSendEnabled: true, serviceTier: "MAINTENANCE" } });
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
+  token.mockImplementation(async () => {
+    await prisma.client.update({ where: { id: "client" }, data: { serviceTier: "STRATEGIC" } });
+    return "synthetic-token";
+  });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", dispatchStartedAt: null, lastErrorCode: "AUTOMATED_SEND_DISABLED" });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+});
+
 it("rolls back the automated hold if releasing its allowance fails, then recovers atomically", async () => {
   await seed("GOOGLE");
   await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });

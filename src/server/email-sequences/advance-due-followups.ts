@@ -126,10 +126,11 @@ export async function advanceDueSequenceFollowUps(opts?: {
       ...(opts?.clientId ? { id: opts.clientId } : {}),
       ...relayClientFilter,
     },
-    select: { id: true },
+    select: { id: true, serviceTier: true },
   });
 
   for (const client of clients) {
+    if (client.serviceTier === "STRATEGIC") continue;
     result.clientsProcessed += 1;
 
     const sequences = await prisma.clientEmailSequence.findMany({

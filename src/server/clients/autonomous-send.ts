@@ -25,6 +25,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { isStaffEmailAllowed } from "@/lib/staff-email-policy";
 import {
   autonomousSendSettingToColumn,
   type AutonomousSendSetting,
@@ -57,18 +58,17 @@ export async function setClientAutonomousSend(input: {
 }): Promise<SetAutonomousSendResult> {
   const now = input.now ?? new Date();
 
-  const client = await prisma.client.findFirst({
-    where: { id: input.clientId, deletedAt: null },
-    select: { id: true, autonomousSendEnabled: true },
-  });
-  if (!client) {
-    return { ok: false, error: "Client not found." };
-  }
-
-  const previousEnabled = client.autonomousSendEnabled;
   const enabled = autonomousSendSettingToColumn(input.setting);
 
-  const updated = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "StaffUser" WHERE id = ${input.staffUserId} FOR SHARE`;
+    const staff = await tx.staffUser.findUnique({ where: { id: input.staffUserId } });
+    if (!staff?.isActive || !isStaffEmailAllowed(staff)) return { ok: false as const, error: "Your staff access has changed. Sign in again." };
+    await tx.$queryRaw`SELECT id FROM "Client" WHERE id = ${input.clientId} FOR UPDATE`;
+    const client = await tx.client.findFirst({ where: { id: input.clientId, deletedAt: null } });
+    if (!client) return { ok: false as const, error: "Client not found." };
+    if (enabled && client.serviceTier === "STRATEGIC") return { ok: false as const, error: "Strategic clients require human sending. Changing the grade does not enable automatic sending." };
+    const previousEnabled = client.autonomousSendEnabled;
     const row = await tx.client.update({
       where: { id: input.clientId },
       data: {
@@ -102,16 +102,14 @@ export async function setClientAutonomousSend(input: {
       },
     });
 
-    return row;
+    return {
+      ok: true as const,
+      attribution: {
+        enabled: row.autonomousSendEnabled,
+        setAt: row.autonomousSendSetAt,
+        setByName:
+          row.autonomousSendSetBy?.displayName ?? row.autonomousSendSetBy?.email ?? null,
+      },
+    };
   });
-
-  return {
-    ok: true,
-    attribution: {
-      enabled: updated.autonomousSendEnabled,
-      setAt: updated.autonomousSendSetAt,
-      setByName:
-        updated.autonomousSendSetBy?.displayName ?? updated.autonomousSendSetBy?.email ?? null,
-    },
-  };
 }
