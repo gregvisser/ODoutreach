@@ -4,6 +4,7 @@ import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integrati
 import { replyToInboundMailboxMessage } from "./reply-to-inbound-message";
 import { readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
+import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import { releaseStaleProcessingClaimsForScope } from "@/server/email/outbound/operator-recovery";
 import { randomUUID } from "node:crypto";
 
@@ -29,10 +30,12 @@ beforeEach(async () => {
   } });
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS fail_reply_test ON "OutboundEmail"');
   await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS fail_reply_test ON "InboundMailboxMessage"');
   await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS fail_reply_test()');
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
@@ -46,6 +49,49 @@ async function failSave(table: "OutboundEmail" | "InboundMailboxMessage") {
   const when = table === "OutboundEmail" ? ` WHEN (NEW.status = 'SENT')` : "";
   await prisma.$executeRawUnsafe(`CREATE TRIGGER fail_reply_test BEFORE UPDATE ON "${table}" FOR EACH ROW${when} EXECUTE FUNCTION fail_reply_test()`);
 }
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("rechecks %s reply allowance after token retrieval crosses midnight", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T23:59:50Z"));
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider } });
+  const token = provider === "GOOGLE" ? getGoogleGmailAccessTokenForMailbox : getMicrosoftGraphAccessTokenForMailbox;
+  vi.mocked(token).mockImplementationOnce(async () => {
+    vi.setSystemTime(new Date("2026-09-09T00:00:10Z"));
+    await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 30 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: `new-day-used-${n}`, windowKey: "2026-09-09", status: "CONSUMED" as const })) });
+    return "synthetic-token";
+  });
+  if (provider === "MICROSOFT") transport.mockImplementation(async () => new Response(null, { status: 202 }));
+  expect(await send()).toMatchObject({ ok: false, errorCode: "MAILBOX_DAILY_CAP", safeToStartNewAttempt: true });
+  expect(transport).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findFirstOrThrow()).toMatchObject({ status: "FAILED", sentAt: null, dispatchStartedAt: null });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow({ where: { outboundEmailId: { not: null } } })).toMatchObject({ status: "RELEASED", windowKey: "2026-09-08" });
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("rebooks a %s reply into the actual dispatch day when capacity remains", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T23:59:50Z"));
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider } });
+  const token = provider === "GOOGLE" ? getGoogleGmailAccessTokenForMailbox : getMicrosoftGraphAccessTokenForMailbox;
+  vi.mocked(token).mockImplementationOnce(async () => { vi.setSystemTime(new Date("2026-09-09T00:00:10Z")); return "synthetic-token"; });
+  if (provider === "MICROSOFT") transport.mockImplementation(async () => new Response(null, { status: 202 }));
+  expect((await send()).ok).toBe(true);
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "CONSUMED", windowKey: "2026-09-09" });
+  expect(await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "mailbox" } })).toMatchObject({ emailsSentToday: 1, dailyWindowResetAt: new Date("2026-09-10T00:00Z") });
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("keeps human %s replies exempt from cold-outreach warm-up and pacing", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T00:10Z"));
+  vi.stubEnv("MAILBOX_WARMUP_RAMP", "on");
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider } });
+  await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 5 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: `used-${n}`, windowKey: "2026-09-08", status: "CONSUMED" as const })) });
+  if (provider === "MICROSOFT") transport.mockImplementation(async () => new Response(null, { status: 202 }));
+  expect((await send()).ok).toBe(true);
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.count({ where: { status: "CONSUMED" } })).toBe(6);
+});
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("keeps an accepted %s reply unresolved and prevents another dispatch when saving fails", async (provider) => {
   await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider } });

@@ -10,6 +10,7 @@ import { countCalendarSendingDays, loadClientSendingWindow } from "@/server/mail
 import { nextSendingCalendarWindow, resolveSendingCalendarDay } from "@/lib/mailboxes/sending-calendar";
 import { calendarSendSlotsForDay } from "@/lib/mailboxes/calendar-send-pacing";
 import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
+import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 import { isSendPacingEnabled, minuteOfDayUtc, sendSlotsForDay, sendsPermittedByNow } from "@/lib/mailboxes/send-pacing";
 
 export const UNCONFIRMED_SEND_MESSAGE = "Sending is unconfirmed. Do not resend this email; ask an administrator to check the sending mailbox and provider evidence.";
@@ -42,9 +43,10 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
         // request new allowance or move that send into a different day.
         const kind = current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
           ? current.metadata.kind : undefined;
-        // Inline replies have their own send path. Preserve the existing internal
-        // test/proof exemption; ordinary contact and sequence outreach must warm up.
-        const warmupApplies = !reconcilingAcceptedSend && isWarmupRampEnabled() && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend";
+        // Human replies and internal tests share the hard daily cap. Preserve their
+        // exemption from outreach warm-up, calendar hours and pacing.
+        const outreachExempt = kind === INBOUND_REPLY_METADATA_KIND || kind === INTERNAL_PROOF_METADATA_KIND || kind === "governedTestSend";
+        const warmupApplies = isWarmupRampEnabled() && !outreachExempt;
         const hardCap = mailboxDailySendCap(mailbox.dailySendCap);
         const cap = warmupApplies ? effectiveDailyCap(mailbox, await countCalendarSendingDays(mailbox.id, now, tx)) : hardCap;
         const limitedByWarmup = cap < hardCap;
@@ -55,7 +57,7 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
           await tx.outboundEmail.update({ where: { id: current.id }, data: { status: "QUEUED", nextRetryAt: sendingWindow.endsAt, claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null, lastErrorCode: limitedByWarmup ? "MAILBOX_WARMUP_CAP" : "MAILBOX_DAILY_CAP", lastErrorMessage: error } });
           return { ok: false as const, error };
         }
-        const ordinaryOutreach = !reconcilingAcceptedSend && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend";
+        const ordinaryOutreach = !outreachExempt;
         if (ordinaryOutreach && (sendingWindow.calendar || sendingWindow.pausedUntil)) {
           const day = sendingWindow.calendar ? resolveSendingCalendarDay(sendingWindow.calendar, now) : null;
           if (day && !day.ok) throw Error(day.error);
@@ -69,7 +71,7 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
             return { ok: false as const, error };
           }
         }
-        if (!reconcilingAcceptedSend && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend" && isSendPacingEnabled()) {
+        if (!outreachExempt && isSendPacingEnabled()) {
           const client = await tx.client.findUniqueOrThrow({ where: { id: current.clientId }, select: { sendBatchSize: true } });
           const pacing = { mailboxId: mailbox.id, dateKey: windowKey, dailyCap: cap, batchSize: client.sendBatchSize };
           const minute = minuteOfDayUtc(now);
