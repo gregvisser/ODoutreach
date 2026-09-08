@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
 import { countCalendarSendingDays, loadClientSendingWindow, scheduleClientSendingCalendar } from "./client-sending-calendar";
 import { recomputeMailboxLedgerCounterInTransaction, tryReserveSendSlotInTransaction } from "./sending-policy";
+import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
 
 const settings = { timeZone: "Europe/London", weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1020 };
 const staff = { id: "calendar-staff", role: "OPERATOR" as const };
@@ -24,6 +25,19 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
+
+it.each([false, true])("reports the same booked allowance as dispatch during calendar transition=%s", async transition => {
+  expect((await scheduleClientSendingCalendar(staff, "calendar-client", { ...settings, timeZone: "America/Los_Angeles" })).ok).toBe(true);
+  vi.setSystemTime(new Date(transition ? "2026-09-09T02:00Z" : "2026-09-10T02:00Z"));
+  const key = transition ? "2026-09-08" : "2026-09-09T07:00:00.000Z";
+  const wrongUtcKey = transition ? "2026-09-09" : "2026-09-10";
+  await prisma.mailboxSendReservation.createMany({ data: [
+    ...Array.from({ length: 29 }, (_, n) => ({ clientId: "calendar-client", mailboxIdentityId: "calendar-mailbox", idempotencyKey: `right-${n}`, windowKey: key, status: "CONSUMED" as const })),
+    ...Array.from({ length: 30 }, (_, n) => ({ clientId: "calendar-client", mailboxIdentityId: "calendar-mailbox", idempotencyKey: `other-${n}`, windowKey: wrongUtcKey, status: "CONSUMED" as const })),
+  ] });
+  const mailboxes = await prisma.clientMailboxIdentity.findMany({ where: { clientId: "calendar-client" } });
+  expect(await getMailboxSendingReadinessForClient("calendar-client", mailboxes)).toMatchObject([{ bookedInUtcDay: 29, remaining: 1, atLedgerCap: false }]);
+});
 
 it("serializes competing edits and records one authenticated client-scoped revision and audit", async () => {
   const results = await Promise.all([

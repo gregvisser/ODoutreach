@@ -1,14 +1,15 @@
 import "server-only";
 
 import { mailboxDailySendCap } from "@/lib/mailbox-identities";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
+import type { ClientSendingWindow } from "@/lib/mailboxes/sending-calendar-history";
+import { loadClientSendingWindow } from "@/server/mailbox/client-sending-calendar";
 import { mailboxIneligibleReasonFromStaticState } from "@/server/mailbox/sending-policy";
 import { prisma } from "@/lib/db";
 import type { ClientMailboxIdentity } from "@/generated/prisma/client";
 
 export type MailboxSendingReadiness = {
   mailboxId: string;
-  /** Count of RESERVED + CONSUMED in the current UTC day window. */
+  /** Compatibility field name: RESERVED + CONSUMED in the effective sending day. */
   bookedInUtcDay: number;
   cap: number;
   remaining: number;
@@ -20,18 +21,19 @@ export type MailboxSendingReadiness = {
 
 /**
  * Per-mailbox sending status for the operator UI (no outbound provider calls).
- * Daily window: UTC calendar day, aligned with the reservation ledger.
+ * Uses the same local/transition window as the reservation ledger and dispatch.
  */
 export async function getMailboxSendingReadinessForClient(
   clientId: string,
   mailboxes: ClientMailboxIdentity[],
+  context?: { at: Date; window: ClientSendingWindow },
 ): Promise<MailboxSendingReadiness[]> {
   if (mailboxes.length === 0) {
     return [];
   }
 
-  const at = new Date();
-  const windowKey = utcDateKeyForInstant(at);
+  const at = context?.at ?? new Date();
+  const windowKey = (context?.window ?? await loadClientSendingWindow(clientId, at)).key;
 
   const group = await prisma.mailboxSendReservation.groupBy({
     by: ["mailboxIdentityId"],

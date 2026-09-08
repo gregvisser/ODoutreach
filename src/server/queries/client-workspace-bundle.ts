@@ -15,7 +15,7 @@ import {
   OUTREACH_MAILBOX_DAILY_CAP,
 } from "@/lib/outreach-mailbox-model";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
+import { loadClientSendingWindow } from "@/server/mailbox/client-sending-calendar";
 import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import {
@@ -90,6 +90,16 @@ export async function loadClientWorkspaceBundle(
   const client = await getClientByIdForStaff(clientId, accessibleClientIds);
   if (!client) return { client: null as typeof client };
 
+  const sendingAt = new Date();
+  const sendingWindow = await loadClientSendingWindow(clientId, sendingAt);
+  const sendingDay = {
+    key: sendingWindow.key,
+    timeZone: sendingWindow.calendar?.timeZone ?? "UTC",
+    startsAt: sendingWindow.startsAt.toISOString(),
+    endsAt: sendingWindow.endsAt.toISOString(),
+    pausedUntil: sendingWindow.pausedUntil?.toISOString() ?? null,
+  };
+
   // `client.mailboxIdentities` is already the client's COMPLETE, unfiltered
   // mailbox set (see `getClientByIdForStaff`). Two helpers below used to re-read
   // exactly those rows — measured as 2 of the 5 ClientMailboxIdentity round-trips
@@ -110,7 +120,7 @@ export async function loadClientWorkspaceBundle(
     latestProvenSendAt,
   ] = await Promise.all([
     getRecentInboundMailboxMessagesForClient(clientId, 50, { internalDomains }),
-    getMailboxSendingReadinessForClient(clientId, client.mailboxIdentities),
+    getMailboxSendingReadinessForClient(clientId, client.mailboxIdentities, { at: sendingAt, window: sendingWindow }),
     getRecentGovernedSendsForClient(clientId, 25),
     getPilotContactSummaryForClient(clientId),
     getClientMailboxMutationAllowed(staff, client.id),
@@ -132,7 +142,6 @@ export async function loadClientWorkspaceBundle(
         : oauthMicrosoftReady
       : false;
 
-  const currentUtcWindowKey = utcDateKeyForInstant(new Date());
   const sendingReadinessByMailboxId = Object.fromEntries(
     sendingReadiness.map((s) => [s.mailboxId, s]),
   );
@@ -365,7 +374,7 @@ export async function loadClientWorkspaceBundle(
     governedMailbox,
     hasGovernedMailbox,
     oauthReadyForGovernedTest,
-    currentUtcWindowKey,
+    sendingDay,
     mailboxRows,
     connectedMailboxInbox,
     senderReport,

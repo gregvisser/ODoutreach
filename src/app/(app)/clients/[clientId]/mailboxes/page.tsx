@@ -197,6 +197,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             sendingReadinessByMailboxId={bundle.sendingReadinessByMailboxId}
             senderReport={bundle.senderReport}
             aggregateRemaining={bundle.aggregateRemaining}
+            sendingDay={bundle.sendingDay}
             showMailboxSetupTools={showMailboxSetupTools}
             workspaceDisplayName={client.name}
             publicSiteOrigin={publicSiteOrigin}

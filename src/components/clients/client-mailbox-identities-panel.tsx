@@ -1,5 +1,7 @@
 "use client";
 
+import { SendingDayDetails, type SendingDayDetailsValue } from "./sending-day-details";
+
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { format } from "date-fns";
@@ -352,6 +354,7 @@ export function ClientMailboxIdentitiesPanel({
   clientBriefFallback,
   senderReport,
   aggregateRemaining,
+  sendingDay,
   showMailboxSetupTools,
   workspaceDisplayName,
   publicSiteOrigin,
@@ -365,12 +368,13 @@ export function ClientMailboxIdentitiesPanel({
   oauthMicrosoftConfigured: boolean;
   oauthGoogleConfigured: boolean;
   mailboxOAuthBanner: { type: "ok" | "err"; text: string } | null;
-  /** When the workspace has mailbox rows, the server provides UTC-day ledger counts. */
+  /** The server provides effective sending-day ledger counts. */
   sendingReadinessByMailboxId?: Record<string, MailboxLedgerReadiness>;
   clientBriefFallback: SenderSignatureClientBriefFallback;
   senderReport: SenderReadinessReport;
-  /** Sum of remaining send slots (UTC day) across ledgers — from workspace bundle. */
+  /** Sum of remaining send slots in the effective sending day. */
   aggregateRemaining: number;
+  sendingDay: SendingDayDetailsValue;
   /** Admin/Manager: signature editor, proof send, advanced diagnostics. */
   showMailboxSetupTools: boolean;
   workspaceDisplayName: string;
@@ -584,6 +588,7 @@ export function ClientMailboxIdentitiesPanel({
         </div>
       )}
 
+      <SendingDayDetails day={sendingDay} />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-border/80 bg-muted/30 px-4 py-3">
           <p className="text-xs font-medium text-muted-foreground">Connected mailboxes</p>

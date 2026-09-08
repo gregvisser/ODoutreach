@@ -7,6 +7,7 @@ import { ClearClientRepliesButton } from "@/components/activity/clear-client-rep
 import { ResetClientOutreachPanel } from "@/components/activity/reset-client-outreach-panel";
 import { AdminQueueDrainPanel } from "@/components/ops/admin-queue-drain-panel";
 import { RecentGovernedSendsPanel } from "@/components/clients/recent-governed-sends-panel";
+import { SendingDayDetails } from "@/components/clients/sending-day-details";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -21,7 +22,6 @@ import {
   formatRate,
   formatTrackedMetric,
 } from "@/lib/reports/outreach-metrics";
-import { utcDateKeyForInstant } from "@/lib/sending-window";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientActivityTimeline } from "@/server/activity/client-activity";
 import { loadClientOutreachReplies } from "@/server/queries/client-outreach-replies";
@@ -58,7 +58,6 @@ export default async function ClientActivityPage({ params, searchParams }: Props
   // 200, and only those whose send still has a connected mailbox). The headline
   // total uses metrics.replies (uncapped) so the card and the panel agree.
   const shownReplies = replyGroups.reduce((sum, g) => sum + g.replyCount, 0);
-  const currentUtcWindowKey = utcDateKeyForInstant(new Date());
 
   const serializedGroups = replyGroups.map((g) => ({
     ...g,
@@ -86,6 +85,11 @@ export default async function ClientActivityPage({ params, searchParams }: Props
           — read only.
         </p>
       </div>
+
+      <details className="rounded-md border border-border/80 px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium">Daily allowance</summary>
+        <div className="mt-2"><SendingDayDetails day={bundle.sendingDay} /></div>
+      </details>
 
       {/*
         Top strip is driven by the same full-count metrics as the "Outreach
@@ -226,7 +230,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
               <CardContent>
                 <RecentGovernedSendsPanel
                   rows={bundle.recentGovernedSends}
-                  currentUtcWindowKey={currentUtcWindowKey}
+                  sendingDay={bundle.sendingDay}
                 />
               </CardContent>
             </Card>

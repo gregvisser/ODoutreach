@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SendingDayDetails, type SendingDayDetailsValue } from "./sending-day-details";
 import { format } from "date-fns";
 
 import { buttonVariants } from "@/components/ui/button";
@@ -39,10 +40,10 @@ function reservationLabel(status: string | null): string {
 
 export function RecentGovernedSendsPanel({
   rows,
-  currentUtcWindowKey,
+  sendingDay,
 }: {
   rows: GovernedSendLedgerRow[];
-  currentUtcWindowKey: string;
+  sendingDay: SendingDayDetailsValue;
 }) {
   return (
     <div className="space-y-4">
@@ -50,15 +51,7 @@ export function RecentGovernedSendsPanel({
         <summary className="cursor-pointer font-medium text-foreground">
           About today&rsquo;s sending totals
         </summary>
-        <p className="mt-2">
-          Each mailbox has a daily sending cap. &ldquo;Sent today&rdquo; counts
-          both finished sends and messages currently being sent — the same
-          number shown on the mailbox page. Today&rsquo;s window:{" "}
-          <span className="font-medium text-foreground">
-            {currentUtcWindowKey}
-          </span>{" "}
-          (UTC).
-        </p>
+        <div className="mt-2"><SendingDayDetails day={sendingDay} /></div>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>
             <strong>Sent</strong> — the message went out; the slot is counted.
