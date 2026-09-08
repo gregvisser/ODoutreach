@@ -98,12 +98,11 @@ export async function advanceDueSequenceFollowUps(opts?: {
     ),
   );
 
-  // System actor. An ADMIN has global client access, which satisfies the
-  // dispatcher's `requireClientAccess` for every tenant and attributes
-  // the automated send in the audit log. The sole-admin model means there
-  // is always exactly one obvious actor.
+  // The existing planner needs an active staff identity. This is operational
+  // attribution only: queued emails have explicit automation provenance and
+  // no human staffUserId, and still require the client's machine-send consent.
   const actor = await prisma.staffUser.findFirst({
-    where: { role: "ADMIN" },
+    where: { role: "ADMIN", isActive: true },
     orderBy: { createdAt: "asc" },
   });
   if (!actor) {
@@ -113,22 +112,15 @@ export async function advanceDueSequenceFollowUps(opts?: {
     return result;
   }
 
-  // While an unattended agent is running, automated follow-ups are generated
-  // ONLY for allowlisted clients.
-  //
-  // This is not belt-and-braces with the dispatch gate — it closes a hole the
-  // dispatch gate cannot see. That gate lets a row through when it carries a
-  // `staffUserId`, so staff are never blocked; but the loop below runs with a
-  // SYSTEM ACTOR (the first ADMIN, resolved above), so every row it creates
-  // carries a staffUserId and looks human at dispatch. Stopping the rows being
-  // born is the only place this can be caught without a schema change.
-  //
-  // Resolves to `{}` when no relay is running, leaving the query untouched.
+  // The coding relay allowlist is an additional operational restriction.
+  // Client consent below applies even when that relay is not running.
   const relayClientFilter = autonomousClientWhereFilter(resolveAutonomousRelayState());
 
   const clients = await prisma.client.findMany({
     where: {
       status: "ACTIVE",
+      // The staff-facing switch is consent, even when no coding relay runs.
+      autonomousSendEnabled: true,
       // F2: a soft-deleted workspace stops advancing follow-ups (read-side; no rows mutated).
       deletedAt: null,
       ...(opts?.clientId ? { id: opts.clientId } : {}),
@@ -206,6 +198,7 @@ export async function advanceDueSequenceFollowUps(opts?: {
             category,
             confirmationPhrase: getSequenceStepSendConfirmationPhrase(category),
             autoSendMaxOverdueMs,
+            initiatedByAutomation: true,
           });
           result.followUpsQueued += batch.counts.queued;
         } catch (e) {

@@ -1,4 +1,5 @@
 import "server-only";
+import { AUTOMATED_SEQUENCE_SEND_ORIGIN, AUTOMATED_SEND_HELD_MESSAGE } from "@/lib/email-sequences/send-origin";
 
 import type {
   ClientEmailSequenceStepSendStatus,
@@ -138,6 +139,7 @@ import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-u
 // ---------------------------------------------------------------------------
 
 export type SequenceStepSendFailureCode =
+  | "AUTOMATED_SEND_DISABLED"
   | "CONFIRMATION_REQUIRED"
   | "SEQUENCE_NOT_FOUND"
   | "WRONG_CLIENT"
@@ -334,8 +336,11 @@ export async function sendSequenceStepBatch(input: {
    * manual path leaves this undefined → no upper bound.
    */
   autoSendMaxOverdueMs?: number;
+  /** Server scheduler only. Never accepted from a browser action payload. */
+  initiatedByAutomation?: boolean;
 }): Promise<SequenceStepSendBatchResult> {
   const { staff, clientId, sequenceId, category } = input;
+  const automated = input.initiatedByAutomation === true || input.autoSendMaxOverdueMs !== undefined;
   await requireClientAccess(staff, clientId);
 
   // Confirmation phrase: trim defensively and match the per-category
@@ -511,10 +516,14 @@ export async function sendSequenceStepBatch(input: {
         sendBatchSize: true,
         // Drives the corporate four-at-a-time release gate.
         accountGrade: true,
+        autonomousSendEnabled: true,
         onboarding: { select: { formData: true } },
       },
     }),
   ]);
+  if (automated && client.autonomousSendEnabled !== true) {
+    throw new SequenceStepSendError("AUTOMATED_SEND_DISABLED", AUTOMATED_SEND_HELD_MESSAGE, category);
+  }
   const pool = executionEligibleMailboxes(identities);
   if (pool.length === 0) {
     throw new SequenceStepSendError(
@@ -1147,7 +1156,7 @@ export async function sendSequenceStepBatch(input: {
               data: {
                 clientId,
                 contactId: pr.candidate.contact.id,
-                staffUserId: staff.id,
+                staffUserId: automated ? null : staff.id,
                 toEmail,
                 toDomain,
                 subject,
@@ -1159,6 +1168,7 @@ export async function sendSequenceStepBatch(input: {
                 nextRetryAt: sendNotBefore,
                 metadata: {
                   kind: metadataKind,
+                  ...(automated ? { sendOrigin: AUTOMATED_SEQUENCE_SEND_ORIGIN } : {}),
                   sequenceId,
                   sequenceStepSendId: pr.stepSend.id,
                   sequenceEnrollmentId: pr.stepSend.enrollment.id,

@@ -1,7 +1,8 @@
 import "server-only";
 import type { OutboundEmail, Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { countBookedSendSlotsInUtcWindow, lockSendingMailboxInTransaction, recomputeMailboxLedgerCounterInTransaction, markReservationConsumedForOutboundInTransaction } from "@/server/mailbox/sending-policy";
+import { countBookedSendSlotsInUtcWindow, lockSendingMailboxInTransaction, recomputeMailboxLedgerCounterInTransaction, markReservationConsumedForOutboundInTransaction, markReservationReleasedForOutboundInTransaction } from "@/server/mailbox/sending-policy";
+import { AUTOMATED_SEND_HELD_MESSAGE, isAutomatedSequenceSend } from "@/lib/email-sequences/send-origin";
 
 import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 
@@ -22,6 +23,23 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
     await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${row.id} FOR UPDATE`;
     const current = await tx.outboundEmail.findFirst({ where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null, sendAttempt: row.sendAttempt, claimedAt: row.claimedAt } });
     if (!current) return false;
+    if (!reconcilingAcceptedSend && isAutomatedSequenceSend(current.metadata)) {
+      // Serialize the final permission check with changes to the client switch.
+      // A provider-confirmed historical send is reconciliation, not a new send.
+      const clients = await tx.$queryRaw<Array<{ autonomousSendEnabled: boolean | null; deletedAt: Date | null; status: string }>>`
+        SELECT "autonomousSendEnabled", "deletedAt", status FROM "Client"
+        WHERE id = ${current.clientId} FOR SHARE`;
+      const client = clients[0];
+      if (!client || client.autonomousSendEnabled !== true || client.deletedAt || client.status !== "ACTIVE") {
+        await tx.outboundEmail.update({ where: { id: current.id }, data: {
+          status: "FAILED", claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null,
+          nextRetryAt: null, lastErrorCode: "AUTOMATED_SEND_DISABLED", lastErrorMessage: AUTOMATED_SEND_HELD_MESSAGE,
+          failureReason: AUTOMATED_SEND_HELD_MESSAGE,
+        } });
+        await markReservationReleasedForOutboundInTransaction(tx, current.id);
+        return { ok: false as const, error: AUTOMATED_SEND_HELD_MESSAGE };
+      }
+    }
     let now = new Date();
     if (current.mailboxIdentityId) {
       const mailbox = await lockSendingMailboxInTransaction(tx, current.mailboxIdentityId, current.clientId);

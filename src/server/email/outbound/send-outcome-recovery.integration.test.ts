@@ -10,6 +10,7 @@ import { sendSlotsForDay } from "@/lib/mailboxes/send-pacing";
 import { countMailboxSendingDays, countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { calendarSendSlotsForDay } from "@/lib/mailboxes/calendar-send-pacing";
+import { beginOutboundDispatch } from "./send-outcome";
 
 // Real database and orchestration. Every sending transport is inert; unexpected
 // HTTP and DNS cannot reach a provider or a customer.
@@ -48,6 +49,66 @@ async function seed(provider: "GOOGLE" | "MICROSOFT" | "LEGACY") {
 async function seedCalendar(timeZone = "America/Los_Angeles") {
   await prisma.clientSendingCalendar.create({ data: { clientId: "client", timeZone, weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1080, previousDayEndsAt: new Date("2026-09-01T00:00Z"), effectiveAt: new Date(timeZone === "America/Los_Angeles" ? "2026-09-01T07:00Z" : "2026-09-01T23:00Z"), createdByStaffUserId: "synthetic-staff" } });
 }
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s automated work when permission is revoked while queued", async provider => {
+  vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "0");
+  await seed(provider);
+  await prisma.client.update({ where: { id: "client" }, data: { status: "ACTIVE", autonomousSendEnabled: true } });
+  await prisma.staffUser.create({ data: { id: "attributed-system-actor", email: "actor@example.test", entraObjectId: "synthetic-actor", role: "ADMIN" } });
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { staffUserId: "attributed-system-actor", metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
+  token.mockImplementation(async () => {
+    await prisma.client.update({ where: { id: "client" }, data: { autonomousSendEnabled: false } });
+    return "synthetic-token";
+  });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", dispatchStartedAt: null, lastErrorCode: "AUTOMATED_SEND_DISABLED" });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+});
+
+it("rolls back the automated hold if releasing its allowance fails, then recovers atomically", async () => {
+  await seed("GOOGLE");
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
+  await prisma.$executeRawUnsafe(`CREATE FUNCTION fail_outcome_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic release failure'; END $$`);
+  await prisma.$executeRawUnsafe(`CREATE TRIGGER fail_outcome_test BEFORE UPDATE ON "MailboxSendReservation" FOR EACH ROW EXECUTE FUNCTION fail_outcome_test()`);
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  await expect(beginOutboundDispatch(row)).rejects.toThrow("synthetic release failure");
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "PROCESSING", dispatchStartedAt: null });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RESERVED" });
+  await prisma.$executeRawUnsafe(`DROP TRIGGER fail_outcome_test ON "MailboxSendReservation"`);
+  expect(await beginOutboundDispatch(row)).toMatchObject({ ok: false });
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", lastErrorCode: "AUTOMATED_SEND_DISABLED" });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+  expect(send).not.toHaveBeenCalled();
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("refuses unset %s automation consent without a relay, but permits deliberate opt-in", async provider => {
+  vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "0");
+  await seed(provider);
+  await prisma.client.update({ where: { id: "client" }, data: { status: "ACTIVE" } });
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  await prisma.client.update({ where: { id: "client" }, data: { autonomousSendEnabled: true } });
+  // Explicit local recovery, not an automatic retry of a held row.
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { status: "PROCESSING" } });
+  await prisma.mailboxSendReservation.updateMany({ data: { status: "RESERVED" } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(true);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("reconciles an already accepted %s automated send after consent is removed", async provider => {
+  vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "0");
+  vi.stubEnv("SEND_PREFLIGHT_DEDUP_ENABLED", "true");
+  await seed(provider);
+  await prisma.client.update({ where: { id: "client" }, data: { status: "ACTIVE", autonomousSendEnabled: false } });
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" }, rfc822MessageId: "<accepted@example.test>", sendAttempt: 2 } });
+  lookup.mockResolvedValue({ status: "found", providerMessageId: "synthetic-existing" });
+  expect((await executeOutboundSend("outbound")).ok).toBe(true);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "SENT", providerMessageId: "synthetic-existing" });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "CONSUMED" });
+});
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("holds %s at the local daily cap across UTC midnight", async provider => {
   vi.useFakeTimers({ toFake: ["Date"] });
