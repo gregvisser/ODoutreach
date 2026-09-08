@@ -75,6 +75,11 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
       isActive: () => pathname === `${base}/outreach`,
     },
     {
+      label: "Email approvals",
+      href: `${base}/email-review`,
+      isActive: () => pathname === `${base}/email-review`,
+    },
+    {
       label: "Activity",
       href: `${base}/activity`,
       isActive: () =>

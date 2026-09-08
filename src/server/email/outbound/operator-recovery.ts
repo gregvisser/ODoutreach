@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@/generated/prisma/client";
 
 import { prisma } from "@/lib/db";
 import { GENERIC_OUTBOUND_ONLY } from "./generic-outbound-filter";
@@ -49,6 +50,16 @@ export async function releaseStaleProcessingClaimsForScope(accessibleClientIds: 
 export async function operatorRequeueFailedSend(outboundEmailId: string, clientId: string, expectedErrorCode?: "COMPANY_REVIEW"): Promise<{ count: number; error?: string }> {
   try {
     return await prisma.$transaction(async (tx) => {
+      return operatorRequeueFailedSendInTransaction(tx, outboundEmailId, clientId, expectedErrorCode);
+    });
+  } catch {
+    // A commit acknowledgement may be lost. Do not claim the retry did not happen.
+    return { count: 0, error: "Could not confirm the retry. Refresh this page before trying again." };
+  }
+}
+
+/** Caller must authorise the operation; joins reservation and audit writes atomically. */
+export async function operatorRequeueFailedSendInTransaction(tx: Prisma.TransactionClient, outboundEmailId: string, clientId: string, expectedErrorCode?: "COMPANY_REVIEW" | "AUTOMATED_SEND_DISABLED"): Promise<{ count: number; error?: string }> {
       await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${outboundEmailId} AND "clientId" = ${clientId} FOR UPDATE`;
       const where = {
         id: outboundEmailId,
@@ -99,9 +110,4 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
       } });
       if (updated.count !== 1) throw Error("Retry changed while reserving allowance");
       return updated;
-    });
-  } catch {
-    // A commit acknowledgement may be lost. Do not claim the retry did not happen.
-    return { count: 0, error: "Could not confirm the retry. Refresh this page before trying again." };
-  }
 }
