@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
 import { ClientOpenTrackingCard } from "@/components/clients/client-open-tracking-card";
 import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
+import { ClientSendingCalendarCard } from "@/components/clients/client-sending-calendar-card";
 import { RepPerformancePanel } from "@/components/clients/rep-performance-panel";
 import { InternalProofSendCard } from "@/components/clients/internal-proof-send-card";
 import {
@@ -223,8 +224,16 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
       */}
       <ClientSendPacingCard
         clientId={client.id}
+        hasCustomCalendar={!!bundle.calendarSettings.current}
         sendBatchSize={client.sendBatchSize ?? null}
         canMutate={bundle.canMutateMailboxes}
+      />
+      <ClientSendingCalendarCard
+        clientId={client.id}
+        initial={bundle.calendarSettings}
+        timeZones={Array.from(new Set(["UTC", ...Intl.supportedValuesOf("timeZone"), ...(bundle.calendarSettings.current ? [bundle.calendarSettings.current.timeZone] : [])]))}
+        canMutate={bundle.canMutateMailboxes}
+        hasMailbox={bundle.mailboxRows.some(row => !row.workspaceRemovedAt)}
       />
 
       {/*

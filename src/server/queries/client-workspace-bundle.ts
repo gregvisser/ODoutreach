@@ -15,7 +15,7 @@ import {
   OUTREACH_MAILBOX_DAILY_CAP,
 } from "@/lib/outreach-mailbox-model";
 import { describeSenderReadiness } from "@/lib/sender-readiness";
-import { loadClientSendingWindow } from "@/server/mailbox/client-sending-calendar";
+import { loadClientSendingCalendarState } from "@/server/mailbox/client-sending-calendar";
 import { getGoogleServiceAccountDisplayInfo } from "@/server/integrations/google-sheets/service-account-display";
 import { getClientMailboxMutationAllowed } from "@/server/mailbox-identities/mutator-access";
 import {
@@ -91,7 +91,7 @@ export async function loadClientWorkspaceBundle(
   if (!client) return { client: null as typeof client };
 
   const sendingAt = new Date();
-  const sendingWindow = await loadClientSendingWindow(clientId, sendingAt);
+  const { window: sendingWindow, settings: calendarSettings } = await loadClientSendingCalendarState(clientId, sendingAt);
   const sendingDay = {
     key: sendingWindow.key,
     timeZone: sendingWindow.calendar?.timeZone ?? "UTC",
@@ -375,6 +375,7 @@ export async function loadClientWorkspaceBundle(
     hasGovernedMailbox,
     oauthReadyForGovernedTest,
     sendingDay,
+    calendarSettings,
     mailboxRows,
     connectedMailboxInbox,
     senderReport,

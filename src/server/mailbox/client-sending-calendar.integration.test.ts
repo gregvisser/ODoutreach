@@ -26,6 +26,14 @@ afterEach(async () => {
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
+it("preserves the existing active-staff policy despite a legacy VIEWER role value", async () => {
+  const viewer = await prisma.staffUser.create({ data: { id: "calendar-viewer", entraObjectId: "calendar-viewer", email: "viewer@example.test", role: "VIEWER" } });
+  await prisma.clientMembership.create({ data: { clientId: "calendar-client", staffUserId: viewer.id, role: "VIEWER" } });
+  expect((await scheduleClientSendingCalendar(viewer, "calendar-client", settings)).ok).toBe(true);
+  expect(await prisma.clientSendingCalendar.count()).toBe(1);
+  expect(await prisma.auditLog.findFirstOrThrow({ where: { entityType: "ClientSendingCalendar" } })).toMatchObject({ staffUserId: viewer.id });
+});
+
 it.each([false, true])("reports the same booked allowance as dispatch during calendar transition=%s", async transition => {
   expect((await scheduleClientSendingCalendar(staff, "calendar-client", { ...settings, timeZone: "America/Los_Angeles" })).ok).toBe(true);
   vi.setSystemTime(new Date(transition ? "2026-09-09T02:00Z" : "2026-09-10T02:00Z"));

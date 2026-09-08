@@ -15,6 +15,7 @@ type Props = {
   /** `Client.sendBatchSize` — null when this workspace uses the standard pace. */
   sendBatchSize: number | null;
   canMutate: boolean;
+  hasCustomCalendar: boolean;
 };
 
 /**
@@ -30,6 +31,7 @@ export function ClientSendPacingCard({
   clientId,
   sendBatchSize,
   canMutate,
+  hasCustomCalendar,
 }: Props) {
   const [value, setValue] = useState(
     sendBatchSize === null ? "" : String(sendBatchSize),
@@ -81,12 +83,12 @@ export function ClientSendPacingCard({
             {effective} at a time
             {sendBatchSize === null ? " (the standard pace)" : ""}
           </strong>
-          , spread across 7am–6pm on working days.
+          {hasCustomCalendar ? ", spread across the sending calendar's allowed hours." : ", spread across 7am–6pm UTC on working days."}
         </p>
         <p className="text-xs text-muted-foreground leading-relaxed">
           This changes <em>when</em> the day&apos;s email goes out, never how
           much. Each mailbox&apos;s daily limit is still the ceiling, and
-          anything held back earlier in the day is released before the day ends.
+          queued emails wait for an allowed batch with available allowance.
         </p>
         {canMutate ? (
           <div className="flex flex-wrap items-end gap-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2">

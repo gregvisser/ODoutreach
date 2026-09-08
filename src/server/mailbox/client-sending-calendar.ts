@@ -4,15 +4,26 @@ import type { Prisma, StaffUser } from "@/generated/prisma/client";
 import { parseSendingCalendar, planSendingCalendarChange } from "@/lib/mailboxes/sending-calendar";
 import { resolveClientSendingWindow } from "@/lib/mailboxes/sending-calendar-history";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
+import type { CalendarSettingsSnapshot } from "@/lib/mailboxes/calendar-settings";
 
 type CalendarDb = Pick<Prisma.TransactionClient, "clientSendingCalendar">;
 
 export async function loadClientSendingWindow(clientId: string, at: Date, db: CalendarDb = prisma) {
-  const revisions = await db.clientSendingCalendar.findMany({ where: { clientId }, orderBy: { effectiveAt: "asc" } });
-  return resolveClientSendingWindow(clientId, revisions, at);
+  return (await loadClientSendingCalendarState(clientId, at, db)).window;
 }
 
-/** Internal service; the eventual server action must obtain staff from the authenticated session. */
+export async function loadClientSendingCalendarState(clientId: string, at: Date, db: CalendarDb = prisma) {
+  const revisions = await db.clientSendingCalendar.findMany({ where: { clientId }, orderBy: { effectiveAt: "asc" } });
+  const window = resolveClientSendingWindow(clientId, revisions, at);
+  const pending = revisions.find(revision => +revision.effectiveAt > +at);
+  const settings: CalendarSettingsSnapshot = {
+    current: window.calendar,
+    pending: pending ? { timeZone: pending.timeZone, weekdays: pending.weekdays, startMinute: pending.startMinute, endMinute: pending.endMinute, effectiveAt: pending.effectiveAt.toISOString(), pauseStartsAt: pending.previousDayEndsAt.toISOString() } : null,
+  };
+  return { window, settings };
+}
+
+/** Internal service; the server action obtains staff from the authenticated session. */
 export async function scheduleClientSendingCalendar(staff: Pick<StaffUser, "id" | "role">, clientId: string, value: unknown) {
   await requireClientMailboxMutator(staff, clientId);
   const parsed = parseSendingCalendar(value);
@@ -49,7 +60,7 @@ export async function scheduleClientSendingCalendar(staff: Pick<StaffUser, "id" 
       staffUserId: staff.id, clientId, action: "UPDATE", entityType: "ClientSendingCalendar", entityId: revision.id,
       metadata: { ...parsed.value, previousDayEndsAt: revision.previousDayEndsAt.toISOString(), effectiveAt: revision.effectiveAt.toISOString() },
     } });
-    return { ok: true as const, revision };
+    return { ok: true as const, revision, current: current.calendar };
   }, { timeout: 5_000 });
 }
 
