@@ -81,8 +81,9 @@ export function warmupDailyCap(steadyCap: number, sendingDays: number): number {
 /**
  * Effective per-mailbox daily cold-outreach cap.
  *
- * `sendingDays` is the number of distinct days this mailbox has actually sent
- * on — resolve it with `countMailboxSendingDays`. A mailbox that has never sent
+ * `sendingDays` is the number of completed UTC days this mailbox actually sent
+ * on — resolve it with `countMailboxSendingDays`, excluding today so the day's
+ * allowance stays fixed. A mailbox that has never sent
  * passes 0 and starts at the bottom of the ramp no matter how long ago it was
  * connected. When warm-up is disabled this uses the configured cap, capped at 30.
  */

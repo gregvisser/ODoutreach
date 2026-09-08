@@ -39,7 +39,7 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
       // test/proof exemption; ordinary contact and sequence outreach must warm up.
       const warmupApplies = !reconcilingAcceptedSend && isWarmupRampEnabled() && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend";
       const hardCap = mailboxDailySendCap(mailbox.dailySendCap);
-      const cap = warmupApplies ? effectiveDailyCap(mailbox, await countMailboxSendingDays(mailbox.id, tx)) : hardCap;
+      const cap = warmupApplies ? effectiveDailyCap(mailbox, await countMailboxSendingDays(mailbox.id, tx, now)) : hardCap;
       const limitedByWarmup = cap < hardCap;
       if (!reconcilingAcceptedSend && booked - (alreadyBookedToday ? 1 : 0) >= cap) {
         const error = limitedByWarmup
