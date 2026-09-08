@@ -50,6 +50,7 @@ type Props = {
     q: string;
     hasEmail: string;
     company: string;
+    industry: string;
     jobTitle: string;
     country: string;
     city: string;
@@ -131,6 +132,7 @@ export function UniversePageClient({
       "q",
       "hasEmail",
       "company",
+      "industry",
       "jobTitle",
       "country",
       "city",
@@ -211,6 +213,10 @@ export function UniversePageClient({
           <div className="space-y-1.5">
             <Label htmlFor="company">Employer contains</Label>
             <Input id="company" name="company" defaultValue={filters.company} disabled={pending} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="industry">Industry contains</Label>
+            <Input id="industry" name="industry" defaultValue={filters.industry} disabled={pending} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="jobTitle">Job1 Title contains</Label>
