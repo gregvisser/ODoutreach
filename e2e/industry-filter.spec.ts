@@ -28,8 +28,11 @@ test("staff filter all stored industries and preserve the filter on later pages 
   await expect(page.getByRole("table").getByRole("row")).toHaveCount(7);
   await page.reload();
   await expect(page.getByLabel("Industry contains")).toHaveValue("accounting");
-  await expect(page.getByText("E2E industry prospect 030",{exact:true})).toBeVisible();
-  await expect(page.getByText("E2E industry prospect 031",{exact:true})).toHaveCount(0);
+  // A streamed reload can retain hidden cells while the active table appears.
+  // Assert the accessible table, still rejecting duplicate visible matches.
+  await expect(page.getByRole("table").getByRole("row")).toHaveCount(7);
+  await expect(page.getByRole("cell",{name:"E2E industry prospect 030",exact:true})).toBeVisible();
+  await expect(page.getByRole("cell",{name:"E2E industry prospect 031",exact:true})).toHaveCount(0);
   await page.getByLabel("Industry contains").fill("no such industry");
   await page.getByRole("button",{name:"Apply filters"}).click();
   await expect(page.getByText(/No contacts match these filters yet/)).toBeVisible();
