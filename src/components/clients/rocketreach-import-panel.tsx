@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { ROCKETREACH_INDUSTRY_GROUPS } from "@/lib/clients/rocketreach-industries";
 
 import { runRocketReachImportAction } from "@/app/(app)/clients/rocketreach-import-actions";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ export function RocketReachImportPanel({
   const [companyName, setCompanyName] = useState("");
   const [currentTitle, setCurrentTitle] = useState("");
   const [location, setLocation] = useState("");
+  const [industry, setIndustry] = useState("");
   const [maxResults, setMaxResults] = useState(10);
   const [existingListId, setExistingListId] = useState("");
   const [newListName, setNewListName] = useState("");
@@ -231,6 +233,14 @@ export function RocketReachImportPanel({
                 />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="rr-industry">Industry (optional)</Label>
+                <select id="rr-industry" value={industry} onChange={e => setIndustry(e.target.value)} disabled={pending} className="h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm">
+                  <option value="">All industries</option>
+                  {ROCKETREACH_INDUSTRY_GROUPS.map(group => <optgroup key={group.category} label={group.category}>{group.industries.map(name => <option key={name} value={name}>{name}</option>)}</optgroup>)}
+                </select>
+                <p className="text-xs text-muted-foreground">Filters employers using RocketReach’s industry categories.</p>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="rr-max">{ROCKETREACH_SIMPLE_SEARCH_LABELS.maxResults}</Label>
                 <Input
                   id="rr-max"
@@ -257,6 +267,7 @@ export function RocketReachImportPanel({
                     companyName: companyName || undefined,
                     currentTitle: currentTitle || undefined,
                     location: location || undefined,
+                    industry: industry || undefined,
                     pageSize: maxResults,
                     existingListId: existingListId || undefined,
                     newListName: newListName || undefined,

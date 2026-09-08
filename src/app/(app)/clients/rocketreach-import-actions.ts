@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { isRocketReachIndustry } from "@/lib/clients/rocketreach-industries";
 
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -30,6 +31,7 @@ const manualSchema = listTargetSchema.extend({
   companyName: z.string().optional(),
   currentTitle: z.string().optional(),
   location: z.string().optional(),
+  industry: z.string().trim().max(200).refine(value => !value || isRocketReachIndustry(value)).optional(),
   pageSize: z.coerce.number().min(1).max(10).optional(),
   orderBy: z.enum(["relevance", "popularity", "score"]).optional(),
 });
@@ -172,12 +174,13 @@ export async function runRocketReachImportAction(
   if (co) q.company_name = [co];
   if (ti) q.current_title = [ti];
   if (loc) q.location = [loc];
+  if (parsed.data.industry) q.company_industry = [parsed.data.industry];
 
   if (Object.keys(q).length === 0) {
     return {
       ok: false,
       error:
-        "Enter at least one of keyword, company, title, or location — or use the admin advanced JSON import.",
+        "Enter at least one keyword, company, title, location, or industry.",
     };
   }
 

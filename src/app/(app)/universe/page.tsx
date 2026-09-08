@@ -30,6 +30,7 @@ export default async function UniversePage({ searchParams }: Props) {
   const q = one(sp.q) ?? "";
   const hasEmail = one(sp.hasEmail) ?? "";
   const company = one(sp.company) ?? "";
+  const industry = one(sp.industry) ?? "";
   const jobTitle = one(sp.jobTitle) ?? "";
   const country = one(sp.country) ?? "";
   const city = one(sp.city) ?? "";
@@ -46,6 +47,7 @@ export default async function UniversePage({ searchParams }: Props) {
     q,
     hasEmail: hasEmail as UniverseTableQuery["hasEmail"],
     company,
+    industry,
     jobTitle,
     country,
     city,
@@ -82,6 +84,7 @@ export default async function UniversePage({ searchParams }: Props) {
             q,
             hasEmail,
             company,
+            industry,
             jobTitle,
             country,
             city,

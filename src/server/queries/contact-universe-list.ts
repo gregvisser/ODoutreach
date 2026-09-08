@@ -8,6 +8,7 @@ export type UniverseTableQuery = {
   q?: string;
   hasEmail?: "yes" | "no" | "";
   company?: string;
+  industry?: string;
   jobTitle?: string;
   country?: string;
   city?: string;
@@ -51,6 +52,11 @@ function buildWhere(input: UniverseTableQuery): Prisma.ContactUniverseWhereInput
   const company = input.company?.trim();
   if (company) {
     where.companyName = { contains: company, mode: "insensitive" };
+  }
+
+  const industry = input.industry?.trim();
+  if (industry) {
+    where.industry = { contains: industry, mode: "insensitive" };
   }
 
   const jobTitle = input.jobTitle?.trim();
