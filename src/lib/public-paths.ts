@@ -17,6 +17,8 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/api/internal/sequences")) return true;
   // Cron-driven do-not-contact sheet re-sync (same bearer model).
   if (pathname.startsWith("/api/internal/suppression")) return true;
+  // This exact worker route authenticates PROCESS_QUEUE_SECRET itself.
+  if (pathname === "/api/internal/company-name-sheets/v1") return true;
   // Public one-click unsubscribe endpoints. The token itself is the proof.
   if (pathname.startsWith("/unsubscribe/")) return true;
   if (pathname.startsWith("/api/unsubscribe/")) return true;
