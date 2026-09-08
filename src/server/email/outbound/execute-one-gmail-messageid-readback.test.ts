@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These focused tests use a partial DB fixture. Real cadence, concurrent
+// dispatch and rollover are exercised in send-outcome-recovery.integration.test.ts.
+vi.mock("@/lib/mailboxes/send-pacing", async original => ({
+  ...await original<object>(), isSendPacingEnabled: () => false,
+}));
+
 /**
  * Row 108 — red-first tests for the Gmail post-send Message-ID read-back.
  * See docs/ops/REPLY-MATCHER-LEG1-MEASUREMENT-2026-08-30.md: Gmail rewrites

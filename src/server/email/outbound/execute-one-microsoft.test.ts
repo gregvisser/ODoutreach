@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These focused tests use a partial DB fixture. Real cadence, concurrent
+// dispatch and rollover are exercised in send-outcome-recovery.integration.test.ts.
+vi.mock("@/lib/mailboxes/send-pacing", async original => ({
+  ...await original<object>(), isSendPacingEnabled: () => false,
+}));
+
 /**
  * The dispatcher verifies the recipient's domain can receive mail before
  * sending (see execute-one-address-verification.test.ts, which is where that
