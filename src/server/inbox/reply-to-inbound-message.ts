@@ -25,6 +25,7 @@ import { requireClientAccess } from "@/server/tenant/access";
 import type { Prisma, StaffUser } from "@/generated/prisma/client";
 import { isReplyRequestId } from "@/lib/inbox/reply-attempt";
 import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
+import { beginOutboundDispatch } from "@/server/email/outbound/send-outcome";
 
 export { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 export const INBOUND_REPLY_SUBJECT_MAX = 300;
@@ -323,6 +324,8 @@ export async function replyToInboundMailboxMessage(
       const accessToken = await getMicrosoftGraphAccessTokenForMailbox(
         mailbox.id,
       );
+      const held = await beginReplyDispatch(outboundEmailId);
+      if (held) return held;
       dispatchStarted = true;
       const result = await sendMicrosoftGraphReply({
         accessToken,
@@ -380,6 +383,8 @@ export async function replyToInboundMailboxMessage(
         bodyText: body,
         inReplyToMessageId: internetMessageId,
       });
+      const held = await beginReplyDispatch(outboundEmailId);
+      if (held) return held;
       dispatchStarted = true;
       const result = await sendGmailReply({
         accessToken,
@@ -446,6 +451,19 @@ export async function replyToInboundMailboxMessage(
   }
 }
 
+/** Recheck allowance after token retrieval, immediately before provider dispatch. */
+async function beginReplyDispatch(outboundEmailId: string): Promise<ReplyToInboundMessageResult | null> {
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: outboundEmailId } });
+  const started = await beginOutboundDispatch(row);
+  if (started === true) return null;
+  if (started === false) return unconfirmedReply();
+  // Replies must never fall into the generic background queue. This gate
+  // proved no provider attempt began, so release the old booking atomically.
+  const error = "This reply was not sent because the mailbox has no daily allowance left. Try again after its daily allowance resets.";
+  const saved = await markOutboundFailedAndReleaseReservation(outboundEmailId, error, "MAILBOX_DAILY_CAP", "QUEUED");
+  return saved ? { ok: false, errorCode: "MAILBOX_DAILY_CAP", error, safeToStartNewAttempt: true } : unconfirmedReply();
+}
+
 function clipSubject(subject: string): string {
   return subject.length > INBOUND_REPLY_SUBJECT_MAX
     ? subject.slice(0, INBOUND_REPLY_SUBJECT_MAX)
@@ -469,18 +487,23 @@ async function markOutboundFailedAndReleaseReservation(
   outboundEmailId: string,
   error: string,
   code: string | undefined,
-): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+  expectedStatus: "PROCESSING" | "QUEUED" = "PROCESSING",
+): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
     const failed = await tx.outboundEmail.updateMany({
-      where: { id: outboundEmailId, providerMessageId: null, status: "PROCESSING" },
+      where: { id: outboundEmailId, providerMessageId: null, status: expectedStatus,
+        ...(expectedStatus === "QUEUED" ? { dispatchStartedAt: null, lastErrorCode: "MAILBOX_DAILY_CAP" } : {}) },
       data: {
         status: "FAILED",
         failureReason: error.slice(0, 2000),
         lastErrorCode: (code ?? "PROVIDER_FAILED").slice(0, 120),
         lastErrorMessage: error.slice(0, 2000),
+        dispatchStartedAt: null,
+        nextRetryAt: null,
       },
     });
     if (failed.count) await markReservationReleasedForOutboundInTransaction(tx, outboundEmailId);
+    return failed.count === 1;
   });
 }
 
