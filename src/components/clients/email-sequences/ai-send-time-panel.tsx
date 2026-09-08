@@ -24,18 +24,19 @@ import type { StoredSendTimeAdvice } from "@/server/ai/advise-send-times";
  * hoped away.
  *
  * 1. AN OPERATOR BELIEVING SOMETHING WAS RESCHEDULED.
- *    Nothing in this application decides when mail leaves — a GitHub Actions
- *    cron does. So a screen that showed "Best time: Monday 09:00" with no
+ *    Advice does not change the server-enforced sending calendar. A screen
+ *    that showed "Best time: Monday 09:00" with no
  *    further comment would read as a setting that had been applied. It says, in
  *    the description and again under the windows, that nothing has changed and a
  *    person has to act on it.
  *
  * 2. A RECOMMENDATION THE SENDER CANNOT REACH.
- *    The cron fires on UTC hours while the advice is in UK local time, so the
+ *    The legacy calendar uses UTC hours while advice is in UK local time, so the
  *    reachable band shifts by an hour when the clocks change. A recommended
  *    07:00 is fine in winter and impossible in summer, and a recommended
- *    Saturday is never reachable at all. Every window is labelled with which,
- *    computed rather than assumed — see `windowReachability`.
+ *    Saturday is never reachable under that legacy calendar. Legacy windows
+ *    use `windowReachability`; custom-calendar applicability stays explicitly
+ *    unverified rather than inheriting those legacy labels.
  */
 
 const REACHABILITY_NOTE: Record<WindowReachability, string | null> = {
@@ -62,7 +63,7 @@ function senderHoursSentence(): string {
   return `The automatic sender runs Monday to Friday, ${hourLabel(first + 1)}–${hourLabel(last + 1)} UK while the clocks are forward and ${hourLabel(first)}–${hourLabel(last)} UK while they are back.`;
 }
 
-function AdviceBody({ advice }: { advice: StoredSendTimeAdvice }) {
+function AdviceBody({ advice, customCalendar }: { advice: StoredSendTimeAdvice; customCalendar: boolean }) {
   const oldPrompt = advice.promptVersion !== SEND_TIME_ADVICE_PROMPT_VERSION;
 
   return (
@@ -93,7 +94,7 @@ function AdviceBody({ advice }: { advice: StoredSendTimeAdvice }) {
               window.startHour,
               window.endHour,
             );
-            const note = REACHABILITY_NOTE[reach];
+            const note = customCalendar ? null : REACHABILITY_NOTE[reach];
             return (
               <li
                 key={`${String(window.weekday)}-${String(window.startHour)}-${String(index)}`}
@@ -169,7 +170,7 @@ function AdviceBody({ advice }: { advice: StoredSendTimeAdvice }) {
 
       <p className="text-xs text-muted-foreground">
         Nothing has been rescheduled. This is advice for a person to act on.{" "}
-        {senderHoursSentence()}
+        {customCalendar ? "This analysis uses UK time. Its fit with the current or pending custom calendar is unverified; check Sending calendar on Mailboxes before acting on it." : senderHoursSentence()}
       </p>
     </div>
   );
@@ -182,6 +183,7 @@ export function AiSendTimePanel({
   aiConfigured,
   advice,
   flash,
+  customCalendar = false,
 }: {
   clientId: string;
   canMutate: boolean;
@@ -189,6 +191,7 @@ export function AiSendTimePanel({
   aiConfigured: boolean;
   advice: StoredSendTimeAdvice | null;
   flash: { ok: string | null; error: string | null };
+  customCalendar?: boolean;
 }) {
   return (
     <Card id="ai-send-times" className="border-border/80 shadow-sm">
@@ -238,7 +241,7 @@ export function AiSendTimePanel({
           </form>
         )}
 
-        {advice ? <AdviceBody advice={advice} /> : null}
+        {advice ? <AdviceBody advice={advice} customCalendar={customCalendar} /> : null}
       </CardContent>
     </Card>
   );

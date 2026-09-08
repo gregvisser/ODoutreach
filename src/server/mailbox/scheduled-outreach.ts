@@ -3,11 +3,10 @@ import { prisma } from "@/lib/db";
 import { resolveClientSendingWindow } from "@/lib/mailboxes/sending-calendar-history";
 import { resolveSendingCalendarDay } from "@/lib/mailboxes/sending-calendar";
 import { listReplySyncMailboxIds } from "./mailbox-inbox-sync";
+import { isLegacyScheduledWindow } from "@/lib/mailboxes/scheduled-outreach-policy";
 
 /** Match the existing weekday 07:00–18:59 UTC workflow for unset clients. */
-export function isLegacyScheduledWindow(at: Date): boolean {
-  return at.getUTCDay() >= 1 && at.getUTCDay() <= 5 && at.getUTCHours() >= 7 && at.getUTCHours() < 19;
-}
+export { isLegacyScheduledWindow } from "@/lib/mailboxes/scheduled-outreach-policy";
 
 /** Recomputed for every batch, so a snapshot cannot authorize a later closed day. */
 export async function loadScheduledOutreachPlan(at = new Date()) {

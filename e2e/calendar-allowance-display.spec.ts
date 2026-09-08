@@ -15,6 +15,7 @@ test.beforeAll(async () => {
   await pool.query(`INSERT INTO "ClientSendingCalendar" (id,"clientId","timeZone",weekdays,"startMinute","endMinute","previousDayEndsAt","effectiveAt","createdByStaffUserId") SELECT $1,$1,'Asia/Kathmandu',ARRAY[1,2,3,4,5],540,1020,'2020-01-01T00:00Z','2020-01-01T18:15Z',id FROM "StaffUser" WHERE "entraObjectId"=$2`, [clientId, E2E_MEMBER_A.entraObjectId]);
   const day = await pool.query(`SELECT date_trunc('day',now() AT TIME ZONE 'Asia/Kathmandu') AT TIME ZONE 'Asia/Kathmandu' AS start`);
   const key = new Date(day.rows[0].start).toISOString();
+  await pool.query(`INSERT INTO "AiSendTimeAdvice" (id,"clientId",summary,windows,cautions,evidence,"totalSent","totalReplied","lookbackDays",model,"promptVersion") VALUES ($1,$1,'Synthetic calendar advice',$2::jsonb,'[]','[]',100,10,90,'synthetic-no-model-call','synthetic')`, [clientId, JSON.stringify([{ weekday: 6, startHour: 9, endHour: 10, reason: "Synthetic historical pattern." }])]);
   for (let n = 0; n < 29; n++) await pool.query(`INSERT INTO "MailboxSendReservation" (id,"clientId","mailboxIdentityId","idempotencyKey","windowKey",status,"updatedAt") VALUES ($1,$2,$2,$1,$3,'CONSUMED',NOW())`, [`${clientId}-${n}`, clientId, key]);
 });
 test.afterAll(async () => {
@@ -34,4 +35,10 @@ test("ordinary staff see the local allowance and reset consistently across mailb
   await page.getByText("Daily allowance", { exact: true }).click();
   await expect(page.getByRole("main").getByText(/Daily allowance timezone: Asia\/Kath?mandu/)).toBeVisible();
   expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
+  await page.locator(`a[href="/clients/${clientId}/outreach"]`).first().click();
+  const advice = page.locator("#ai-send-times");
+  await expect(advice.getByText("Synthetic calendar advice", { exact: true })).toBeVisible();
+  await expect(advice.getByText(/fit with the current or pending custom calendar is unverified/)).toBeVisible();
+  await expect(advice.getByText(/automatic sender never runs at this time/)).toHaveCount(0);
+  await expect(advice.getByText(/automatic sender runs Monday to Friday/)).toHaveCount(0);
 });

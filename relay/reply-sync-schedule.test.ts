@@ -16,12 +16,11 @@
 // fires at 3am Saturday; this test proves the schedule actually covers those
 // clock instants using a real (if minimal) cron field matcher.
 //
-// It also locks down what this row must NOT touch: `process-outbound-queue.yml`
-// keeps its exact business-hours-only cron. A future edit that "fixes" it
-// alongside the reply sync would violate Greg's explicit decision and this test
-// catches that too.
+// Custom calendars now require round-the-clock polling. The server preserves
+// business hours for clients without a calendar; receiving stays unrestricted.
 
 import { readFileSync } from "node:fs";
+import { isLegacyScheduledWindow } from "../src/lib/mailboxes/scheduled-outreach-policy";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -111,15 +110,17 @@ describe("reply sync must run at any time (row 125)", () => {
     expect(cronFiresAt(oldCron, WEEKDAY_BUSINESS_HOURS)).toBe(true);
   });
 
-  it("does NOT touch process-outbound-queue.yml — sending stays business-hours-only", () => {
-    // Greg's explicit decision, and this row does not revisit it: sending and
-    // replying stay inside business hours. Only receiving changes.
+  it("polls for custom calendars while the server keeps legacy outreach inside business hours", () => {
     const sendCron = readWorkflowCron("process-outbound-queue.yml");
-    expect(sendCron).toBe("*/5 7-18 * * 1-5");
+    expect(sendCron).toBe("*/5 * * * *");
 
-    expect(cronFiresAt(sendCron, SUNDAY_NIGHT)).toBe(false);
-    expect(cronFiresAt(sendCron, SATURDAY_EVENING)).toBe(false);
-    expect(cronFiresAt(sendCron, WEEKDAY_NIGHT)).toBe(false);
+    expect(cronFiresAt(sendCron, SUNDAY_NIGHT)).toBe(true);
+    expect(cronFiresAt(sendCron, SATURDAY_EVENING)).toBe(true);
+    expect(cronFiresAt(sendCron, WEEKDAY_NIGHT)).toBe(true);
     expect(cronFiresAt(sendCron, WEEKDAY_BUSINESS_HOURS)).toBe(true);
+    expect(isLegacyScheduledWindow(SUNDAY_NIGHT)).toBe(false);
+    expect(isLegacyScheduledWindow(SATURDAY_EVENING)).toBe(false);
+    expect(isLegacyScheduledWindow(WEEKDAY_NIGHT)).toBe(false);
+    expect(isLegacyScheduledWindow(WEEKDAY_BUSINESS_HOURS)).toBe(true);
   });
 });
