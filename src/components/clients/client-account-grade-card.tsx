@@ -62,7 +62,7 @@ export function ClientAccountGradeCard({
   return (
     <Card className="border-border/80 shadow-sm">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Account grade</CardTitle>
+        <CardTitle className="text-base">Manual batch protection</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground leading-relaxed">
