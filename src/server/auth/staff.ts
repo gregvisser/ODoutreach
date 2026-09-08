@@ -1,4 +1,5 @@
 import "server-only";
+import { isStaffEmailAllowed } from "@/lib/staff-email-policy";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
@@ -129,22 +130,7 @@ export async function gateStaffAccess(): Promise<StaffGateResult> {
  * `@opensdoors.co.uk`). When set, only matching staff emails may use the app UI.
  * Empty = no domain filter (convenient for quick local UI work; set real domains for Entra tests).
  */
-export function isStaffEmailAllowed(staff: Pick<StaffUser, "email">): boolean {
-  const raw = process.env.STAFF_EMAIL_DOMAINS?.trim();
-  if (!raw) return true;
-
-  const domains = raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const email = staff.email.toLowerCase();
-
-  return domains.some((d) => {
-    if (d.startsWith("@")) return email.endsWith(d);
-    if (d.includes("@")) return email === d;
-    return email.endsWith(`@${d}`);
-  });
-}
+export { isStaffEmailAllowed } from "@/lib/staff-email-policy";
 
 /**
  * Staff row must exist (or link by pre-provisioned email) and be active.

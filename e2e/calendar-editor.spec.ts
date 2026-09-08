@@ -5,7 +5,7 @@ import { E2E_MEMBER_A, E2E_STORAGE_STATE } from "./fixtures";
 import { assertSafeTestDatabase } from "./safe-database";
 
 test.describe.configure({ mode: "serial", retries: 0 });
-test.use({ storageState: E2E_STORAGE_STATE.memberA, viewport: { width: 390, height: 844 } });
+test.use({ storageState: E2E_STORAGE_STATE.memberA, viewport: { width: 390, height: 844 }, trace: "retain-on-failure" });
 const clientId = "e2e-calendar-editor-only";
 const url = `/clients/${clientId}/mailboxes`;
 let pool: Pool;
@@ -46,6 +46,10 @@ test("ordinary staff validate, schedule and reload a calendar without enabling s
   expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
 });
 
+test.describe("controlled lost acknowledgement", () => {
+  // Playwright request routing cannot reliably intercept service-worker requests.
+  // Only the injected-failure scenario disables it; ordinary journeys keep it.
+  test.use({ serviceWorkers: "block" });
 test("a lost save response blocks a blind repeat and refresh recovers the one saved change", async ({ page }) => {
   await page.goto(url);
   const panel = page.getByRole("region", { name: "Sending calendar", exact: true });
@@ -61,12 +65,15 @@ test("a lost save response blocks a blind repeat and refresh recovers the one sa
     } else await route.continue();
   });
   await panel.getByRole("button", { name: "Schedule calendar change" }).click();
+  await expect.poll(() => dropped, { message: "The fault injection must intercept the save POST" }).toBe(true);
   await expect(panel.getByRole("status")).toContainText("We could not confirm the calendar change.");
   await expect(panel.getByRole("button", { name: "Schedule calendar change" })).toBeDisabled();
   expect(dropped).toBe(true);
   await panel.getByRole("link", { name: "Refresh calendar status" }).click();
   await expect(panel.getByText(/Takes effect:/)).toBeVisible();
   expect((await pool.query('SELECT id FROM "ClientSendingCalendar" WHERE "clientId"=$1', [clientId])).rowCount).toBe(1);
+});
+
 });
 
 test.describe("signed-out visitor", () => {
