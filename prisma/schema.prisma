@@ -563,6 +563,7 @@ model Client {
   aiSendTimeAdvice                AiSendTimeAdvice[]
   aiRepPerformanceReviews         AiRepPerformanceReview[]
   aiTitleMessageReviews           AiTitleMessageReview[]
+  sendingCalendars               ClientSendingCalendar[]
 
   @@index([deletedAt])
   @@index([status])
@@ -570,6 +571,25 @@ model Client {
   @@index([briefAssignedAccountManagerId])
   @@index([accountGradeSetByStaffUserId])
   @@index([autonomousSendSetByStaffUserId])
+}
+
+/// Immutable calendar revisions. A timezone transition extends the old quota
+/// day until effectiveAt; outreach pauses at previousDayEndsAt in that gap.
+model ClientSendingCalendar {
+  id                   String   @id @default(cuid())
+  clientId             String
+  timeZone             String
+  weekdays             Int[]
+  startMinute          Int
+  endMinute            Int
+  previousDayEndsAt    DateTime
+  effectiveAt          DateTime
+  createdByStaffUserId String
+  createdAt            DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, effectiveAt])
 }
 
 /// Reusable brief vocabulary: service areas, ICP industries, company sizes, target titles
