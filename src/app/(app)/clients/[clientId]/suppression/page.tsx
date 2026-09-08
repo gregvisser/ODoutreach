@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
 import { CompanyDncPanel } from "@/components/suppression/company-dnc-panel";
+import { CompanySheetCard } from "@/components/suppression/company-sheet-card";
+import { loadCompanySheetSource } from "@/server/suppression/company-name-sheet-source";
+import { companySheetStatus } from "@/lib/suppression/company-sheet-status";
 import { loadCompanyDncPage } from "@/server/suppression/company-names";
 
 import { ClientSuppressionInlineCard } from "@/components/clients/client-suppression-inline-card";
@@ -35,6 +38,7 @@ export default async function ClientSuppressionPage({ params, searchParams }: Pr
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+  const companySheet = companySheetStatus(await loadCompanySheetSource(client.id));
   const query = await searchParams;
   const requestedPage = Number(query.companyPage ?? 0);
   const requestedHeldPage = Number(query.heldCompanyPage ?? 0);
@@ -100,6 +104,7 @@ export default async function ClientSuppressionPage({ params, searchParams }: Pr
         </p>
       </div>
 
+      <CompanySheetCard clientId={client.id} source={companySheet} />
       <CompanyDncPanel clientId={client.id} data={companyDnc} />
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">

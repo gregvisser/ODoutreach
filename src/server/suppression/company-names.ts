@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { canonicalCompanyName, COMPANY_NAME_MATCH_VERSION, matchCompanyName, MAX_COMPANY_NAME_LENGTH, type CompanyNameDecision } from "@/lib/suppression/company-name";
-import { previewCompanyNameImport } from "@/lib/suppression/company-name-import";
+import { previewCompanyNameImport, type CompanyImportPreview } from "@/lib/suppression/company-name-import";
 
 type CompanyDb = Pick<Prisma.TransactionClient, "companyDncEntry" | "companyDncDecision">;
 
@@ -62,7 +62,13 @@ export async function loadCompanyDncPage(clientId: string, page: number, heldPag
 export async function addCompanyNames(input: { clientId: string; staffUserId: string; text: string; format: "text" | "csv" }) {
   const preview = previewCompanyNameImport(input.text, input.format);
   if (preview.errors.length) return { ok: false as const, errors: preview.errors };
-  return prisma.$transaction(async tx => {
+  return prisma.$transaction(tx => addCompanyNamesInTransaction(tx, { clientId: input.clientId, staffUserId: input.staffUserId, preview }));
+}
+
+/** Share the transaction with a sheet checkpoint so retries cannot skip added-name effects. */
+export async function addCompanyNamesInTransaction(tx: Prisma.TransactionClient, input: { clientId: string; staffUserId: string | null; preview: CompanyImportPreview }) {
+    const { preview } = input;
+    if (preview.errors.length) throw Error("Invalid company-name import");
     const inserted = await tx.companyDncEntry.createMany({
       data: preview.entries.map(entry => ({ ...entry, clientId: input.clientId })), skipDuplicates: true,
     });
@@ -71,7 +77,6 @@ export async function addCompanyNames(input: { clientId: string; staffUserId: st
       metadata: { kind: "company_name_dnc_import", added: inserted.count, duplicates: preview.duplicates + preview.entries.length - inserted.count, entries: preview.entries },
     } });
     return { ok: true as const, added: inserted.count, duplicates: preview.duplicates + preview.entries.length - inserted.count };
-  });
 }
 
 /** A decision cannot be reused for another client, list entry or employer. */
