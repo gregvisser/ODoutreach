@@ -28,10 +28,12 @@ test("ordinary staff preview, save, review and reload a company-name list", asyn
   expect((await pool.query('SELECT id FROM "CompanyDncEntry" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
   await panel.getByRole("button", { name: "Add company names", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Added 2 company names");
+  await expect(panel.getByRole("button", { name: "Add company names", exact: true })).toBeEnabled();
   await expect(panel.getByText("Needs review", { exact: true })).toBeVisible();
   expect((await pool.query('SELECT "isSuppressed" FROM "Contact" WHERE id=$1',[clientId])).rows[0].isSuppressed).toBe(true);
   await panel.getByRole("button", { name: "Different company — allow this match" }).click();
   await expect(panel.getByRole("status")).toContainText("Review saved");
+  await expect(panel.getByText("No company-name holds on this page.")).toBeVisible();
   await page.reload();
   await expect(panel.getByText("No company-name holds on this page.")).toBeVisible();
   expect((await pool.query('SELECT "isSuppressed" FROM "Contact" WHERE id=$1',[clientId])).rows[0].isSuppressed).toBe(false);

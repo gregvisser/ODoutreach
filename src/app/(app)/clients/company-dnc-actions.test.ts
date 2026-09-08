@@ -1,10 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ staff: vi.fn(), access: vi.fn(), mutate: vi.fn(), add: vi.fn(), decide: vi.fn(), refresh: vi.fn(), evaluate: vi.fn(), retry: vi.fn(), contact: vi.fn(), outbound: vi.fn() }));
+const m = vi.hoisted(() => ({ staff: vi.fn(), access: vi.fn(), mutate: vi.fn(), load: vi.fn(), add: vi.fn(), decide: vi.fn(), refresh: vi.fn(), evaluate: vi.fn(), retry: vi.fn(), contact: vi.fn(), outbound: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/server/auth/staff", () => ({ requireOpensDoorsStaff: m.staff }));
 vi.mock("@/server/tenant/access", () => ({ requireClientAccess: m.access }));
 vi.mock("@/server/email-sequences/mutator-access", () => ({ getClientEmailSequenceMutationAllowed: m.mutate }));
-vi.mock("@/server/suppression/company-names", () => ({ addCompanyNames: m.add, decideCompanyName: m.decide }));
+vi.mock("@/server/suppression/company-names", () => ({ loadCompanyDncPage: m.load, addCompanyNames: m.add, decideCompanyName: m.decide }));
 vi.mock("@/server/outreach/suppression-guard", () => ({ evaluateSuppression: m.evaluate, refreshContactSuppressionFlagsForClient: m.refresh }));
 vi.mock("@/server/email/outbound/operator-recovery", () => ({ operatorRequeueFailedSend: m.retry }));
 vi.mock("@/lib/db", () => ({ prisma: { contact: { findFirst: m.contact }, outboundEmail: { findFirst: m.outbound } } }));
@@ -12,7 +12,7 @@ import { importCompanyDncAction, reviewCompanyDncAction, retryCompanyDncHoldActi
 const importInput = { clientId: "client", text: "Acme", format: "text" as const };
 const reviewInput = { clientId: "client", contactId: "contact", company: "Acme Group", entryId: "entry", outcome: "ALLOW" as const };
 beforeEach(() => {
-  vi.resetAllMocks(); m.staff.mockResolvedValue({ id: "staff", isSuperAdmin: false }); m.access.mockResolvedValue(undefined); m.mutate.mockResolvedValue(true);
+  vi.resetAllMocks(); m.load.mockResolvedValue({ entryTotal: 2 }); m.staff.mockResolvedValue({ id: "staff", isSuperAdmin: false }); m.access.mockResolvedValue(undefined); m.mutate.mockResolvedValue(true);
   m.add.mockResolvedValue({ ok: true, added: 1, duplicates: 0 }); m.decide.mockResolvedValue({ ok: true }); m.contact.mockResolvedValue({ id: "contact" });
   m.outbound.mockResolvedValue({ toEmail: "recipient@example.test" }); m.evaluate.mockResolvedValue({ suppressed: false }); m.retry.mockResolvedValue({ count: 1 });
 });
@@ -22,6 +22,11 @@ it.each(["access", "mutate"] as const)("rejects unauthorised %s before any mutat
   expect(await reviewCompanyDncAction(reviewInput)).toMatchObject({ ok: false });
   expect(await retryCompanyDncHoldAction({ clientId: "client", outboundEmailId: "outbound" })).toMatchObject({ ok: false });
   expect(m.add).not.toHaveBeenCalled(); expect(m.decide).not.toHaveBeenCalled(); expect(m.retry).not.toHaveBeenCalled();
+  expect(m.load).not.toHaveBeenCalled();
+});
+it("returns the authenticated client's current review page after saving", async () => {
+  expect(await importCompanyDncAction({ ...importInput, page: 2, heldPage: 1 })).toMatchObject({ ok: true, data: { entryTotal: 2 } });
+  expect(m.load).toHaveBeenCalledWith("client", 2, 1);
 });
 it("permits an authorised ordinary staff import", async () => {
   expect(await importCompanyDncAction(importInput)).toMatchObject({ ok: true });
