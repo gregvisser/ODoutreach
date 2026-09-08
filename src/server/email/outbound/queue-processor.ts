@@ -19,7 +19,10 @@ export type ProcessQueueResult = {
  */
 export async function processOutboundSendQueue(opts: {
   limit: number;
+  /** Omitted preserves manual dispatch; an empty scheduled scope claims nothing. */
+  clientIds?: string[];
 }): Promise<ProcessQueueResult> {
+  if (opts.clientIds?.length === 0) return { claimed: 0, completed: 0, errors: [] };
   const limit = Math.min(Math.max(opts.limit, 1), 50);
   const now = new Date();
   const claimExpires = new Date(now.getTime() + CLAIM_MS);
@@ -56,6 +59,7 @@ export async function processOutboundSendQueue(opts: {
           SELECT 1 FROM "Client" c
           WHERE c."id" = "OutboundEmail"."clientId"
             AND c."deletedAt" IS NULL
+            AND (${opts.clientIds !== undefined} = false OR c."id" = ANY(${opts.clientIds ?? []}::text[]))
             AND c."status" NOT IN (
               'PAUSED'::"ClientLifecycleStatus",
               'ARCHIVED'::"ClientLifecycleStatus"
