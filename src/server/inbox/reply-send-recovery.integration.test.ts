@@ -7,6 +7,7 @@ import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mai
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import { releaseStaleProcessingClaimsForScope } from "@/server/email/outbound/operator-recovery";
 import { randomUUID } from "node:crypto";
+import { scheduleClientSendingCalendar } from "@/server/mailbox/client-sending-calendar";
 
 vi.mock("@/server/mailbox/google-mailbox-access", () => ({ getGoogleGmailAccessTokenForMailbox: vi.fn(async () => "synthetic-token") }));
 vi.mock("@/server/mailbox/microsoft-mailbox-access", () => ({ getMicrosoftGraphAccessTokenForMailbox: vi.fn(async () => "synthetic-token") }));
@@ -49,6 +50,54 @@ async function failSave(table: "OutboundEmail" | "InboundMailboxMessage") {
   const when = table === "OutboundEmail" ? ` WHEN (NEW.status = 'SENT')` : "";
   await prisma.$executeRawUnsafe(`CREATE TRIGGER fail_reply_test BEFORE UPDATE ON "${table}" FOR EACH ROW${when} EXECUTE FUNCTION fail_reply_test()`);
 }
+
+async function configureLocalCalendar() {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-06T12:00Z"));
+  const staff = await prisma.staffUser.findUniqueOrThrow({ where: { id: "staff" } });
+  expect((await scheduleClientSendingCalendar(staff, "client", { timeZone: "America/Los_Angeles", weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1020 })).ok).toBe(true);
+}
+
+it.each((["GOOGLE", "MICROSOFT"] as const).flatMap(provider => [false, true].map(full => ({ provider, full }))))("rechecks $provider reply at local midnight with next day full=$full", async ({ provider, full }) => {
+  await configureLocalCalendar();
+  vi.setSystemTime(new Date("2026-09-08T06:59:50Z"));
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider } });
+  const token = provider === "GOOGLE" ? getGoogleGmailAccessTokenForMailbox : getMicrosoftGraphAccessTokenForMailbox;
+  vi.mocked(token).mockImplementationOnce(async () => {
+    vi.setSystemTime(new Date("2026-09-08T07:00:10Z"));
+    if (full) await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 30 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: `local-used-${n}`, windowKey: "2026-09-08T07:00:00.000Z", status: "CONSUMED" as const })) });
+    return "synthetic-token";
+  });
+  if (provider === "MICROSOFT") transport.mockImplementation(async () => new Response(null, { status: 202 }));
+  const result = await send();
+  const booking = await prisma.mailboxSendReservation.findFirstOrThrow({ where: { outboundEmailId: { not: null } } });
+  if (full) {
+    expect(result).toMatchObject({ ok: false, errorCode: "MAILBOX_DAILY_CAP", safeToStartNewAttempt: true });
+    expect(transport).not.toHaveBeenCalled();
+    expect(booking).toMatchObject({ status: "RELEASED", windowKey: "2026-09-07T07:00:00.000Z" });
+  } else {
+    expect(result.ok).toBe(true);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(booking).toMatchObject({ status: "CONSUMED", windowKey: "2026-09-08T07:00:00.000Z" });
+    expect(await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "mailbox" } })).toMatchObject({ emailsSentToday: 1, dailyWindowResetAt: new Date("2026-09-09T07:00Z") });
+  }
+});
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("allows human %s replies outside calendar hours within the shared local cap", async provider => {
+  await configureLocalCalendar();
+  vi.setSystemTime(new Date("2026-09-09T02:00Z")); // Previous local day, after outreach closes.
+  vi.stubEnv("MAILBOX_WARMUP_RAMP", "on");
+  vi.stubEnv("MAILBOX_SEND_PACING", "true");
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider } });
+  await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 29 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", idempotencyKey: `local-used-${n}`, windowKey: "2026-09-08T07:00:00.000Z", status: "CONSUMED" as const })) });
+  if (provider === "MICROSOFT") transport.mockImplementation(async () => new Response(null, { status: 202 }));
+  expect((await send()).ok).toBe(true);
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(await prisma.mailboxSendReservation.count({ where: { status: "CONSUMED", windowKey: "2026-09-08T07:00:00.000Z" } })).toBe(30);
+  await prisma.inboundMailboxMessage.create({ data: { id: "second-message", clientId: "client", mailboxIdentityId: "mailbox", providerMessageId: "second-original-id", fromEmail: "second@example.test", subject: "Another question", receivedAt: new Date() } });
+  expect(await send("second-message")).toMatchObject({ ok: false, errorCode: "MAILBOX_DAILY_CAP" });
+  expect(transport).toHaveBeenCalledTimes(1);
+});
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("rechecks %s reply allowance after token retrieval crosses midnight", async provider => {
   vi.useFakeTimers({ toFake: ["Date"] });

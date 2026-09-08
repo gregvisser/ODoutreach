@@ -1262,7 +1262,9 @@ export async function sendSequenceStepBatch(input: {
               ? `Held back by the ${String(MANUAL_SEND_GROUP_SIZE)}-at-a-time release for corporate accounts — ` +
                 `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent.`
               : heldByPacing
-                ? "Waiting for the next allowed batch in this client's sending calendar."
+                ? sendingWindow.calendar || sendingWindow.pausedUntil
+                  ? "Waiting for the next allowed batch in this client's sending calendar."
+                  : "Held back by send pacing — waiting for the next allowed batch."
                 : "No mailbox capacity remaining in this sending day.";
             blocked.push({
               stepSendId: pr.stepSend.id,
