@@ -20,6 +20,7 @@ const { prismaMock } = vi.hoisted(() => {
     clientEmailSequence: { findUnique: vi.fn() },
     clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },
+    clientSendingCalendar: { findMany: async () => [] },
     // Warm-up now anchors on days actually sent on, resolved via a raw query
     // (countSendingDaysForPool). Default to "never sent" so these fixtures keep
     // exercising the bottom of the ramp rather than silently skipping it.

@@ -5,6 +5,7 @@ import type { StaffUser } from "@/generated/prisma/client";
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     clientMailboxIdentity: { findMany: vi.fn() },
+    clientSendingCalendar: { findMany: async () => [] },
     // The pilot path reads the workspace's send batch size for pacing. Null =
     // this client has not set one, so the house default applies.
     client: { findUnique: vi.fn(async () => ({ sendBatchSize: null })) },

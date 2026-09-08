@@ -62,9 +62,18 @@ export async function countCalendarSendingDays(mailboxIdentityId: string, at: Da
   "clientMailboxIdentity" | "clientSendingCalendar" | "$queryRaw"> = prisma): Promise<number> {
   const mailbox = await db.clientMailboxIdentity.findUnique({ where: { id: mailboxIdentityId }, select: { clientId: true } });
   if (!mailbox) return 0;
-  const window = await loadClientSendingWindow(mailbox.clientId, at, db);
-  const rows = await db.$queryRaw<{ days: bigint }[]>`
-    SELECT COUNT(DISTINCT (COALESCE(active.id, 'legacy'), DATE(
+  const context = await loadClientCalendarPlanningContext(mailbox.clientId, [mailboxIdentityId], at, db);
+  return context.sendingDays.get(mailboxIdentityId) ?? 0;
+}
+
+/** One calendar lookup and one grouped history query for the whole client pool. */
+export async function loadClientCalendarPlanningContext(clientId: string, mailboxIds: readonly string[], at: Date,
+  db: Pick<Prisma.TransactionClient, "clientSendingCalendar" | "$queryRaw"> = prisma) {
+  const window = await loadClientSendingWindow(clientId, at, db);
+  const sendingDays = new Map<string, number>(mailboxIds.map(id => [id, 0]));
+  if (!mailboxIds.length) return { window, sendingDays };
+  const rows = await db.$queryRaw<{ mailboxIdentityId: string; days: bigint }[]>`
+    SELECT sent."mailboxIdentityId", COUNT(DISTINCT (COALESCE(active.id, 'legacy'), DATE(
       (CASE WHEN upcoming."previousDayEndsAt" <= sent."sentAt"
         THEN upcoming."previousDayEndsAt" - INTERVAL '1 millisecond'
         ELSE sent."sentAt" END AT TIME ZONE 'UTC')
@@ -81,9 +90,11 @@ export async function countCalendarSendingDays(mailboxIdentityId: string, at: Da
       WHERE "clientId" = sent."clientId" AND "effectiveAt" > sent."sentAt"
       ORDER BY "effectiveAt" ASC LIMIT 1
     ) upcoming ON TRUE
-    WHERE sent."clientId" = ${mailbox.clientId}
-      AND sent."mailboxIdentityId" = ${mailboxIdentityId}
+    WHERE sent."clientId" = ${clientId}
+      AND sent."mailboxIdentityId" = ANY(${[...mailboxIds]}::text[])
       AND sent."sentAt" < ${window.startsAt}
+    GROUP BY sent."mailboxIdentityId"
   `;
-  return Number(rows[0]?.days ?? 0);
+  for (const row of rows) sendingDays.set(row.mailboxIdentityId, Number(row.days));
+  return { window, sendingDays };
 }

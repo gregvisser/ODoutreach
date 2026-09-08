@@ -41,10 +41,9 @@ import {
 import { prisma } from "@/lib/db";
 import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
-import { countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
-import { pacedAllowanceForMailbox } from "@/lib/mailboxes/send-pacing";
+import { loadClientCalendarPlanningContext } from "@/server/mailbox/client-sending-calendar";
+import { pacedAllowanceForSendingWindow } from "@/lib/mailboxes/calendar-send-pacing";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
-import { startOfUtcDay, utcDateKeyForInstant } from "@/lib/sending-window";
 import {
   MANUAL_SEND_COOLDOWN_MINUTES,
   MANUAL_SEND_GROUP_SIZE,
@@ -897,7 +896,6 @@ export async function sendSequenceStepBatch(input: {
   //    transaction per mailbox pick, mirroring the controlled-pilot
   //    shape so we get the same daily-cap guarantees.
   const at = new Date();
-  const windowKey = utcDateKeyForInstant(at);
   const reservationPrefix = getSequenceStepSendReservationPrefix(category);
   const metadataKind = getSequenceStepSendMetadataKind(category);
 
@@ -912,7 +910,8 @@ export async function sendSequenceStepBatch(input: {
   // Warm-up anchors on days this mailbox has actually SENT on, not on how long
   // ago it was connected. Resolved once here, BEFORE the transaction opens, so
   // no extra query runs while the reservation lock is held.
-  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id), at);
+  const { window: sendingWindow, sendingDays } = await loadClientCalendarPlanningContext(clientId, pool.map((m) => m.id), at);
+  const windowKey = sendingWindow.key;
 
   // Corporate four-at-a-time release. Resolved here, outside the transaction,
   // for the same reason as `sendingDays`: no extra query while the reservation
@@ -923,10 +922,8 @@ export async function sendSequenceStepBatch(input: {
     grade: client.accountGrade,
     mailboxIds: pool.map((m) => m.id),
     now: at,
-    // The group arithmetic is scoped to the current UTC day, matching the
-    // window the daily cap and the reservation ledger already use. A group
-    // part-finished at 23:58 does not hold the mailbox over midnight.
-    windowStart: startOfUtcDay(at),
+    // Corporate release groups use the same accounting day as the mailbox cap.
+    windowStart: sendingWindow.startsAt,
   });
 
   try {
@@ -950,10 +947,9 @@ export async function sendSequenceStepBatch(input: {
           // Pacing: release the day's allowance in batches of the client's
           // configured size with a gap between them, instead of emptying it
           // into the first cron run. It never RAISES the cap - it only
-          // withholds part of it until later in the day, and yields the full
-          // cap once the window has closed, so nothing is ever stranded by
-          // pacing alone.
-          const allowedNow = pacedAllowanceForMailbox({
+          // withholds part of it until a permitted batch. Configured calendars
+          // remain closed outside their hours even if allowance is unused.
+          const allowedNow = pacedAllowanceForSendingWindow(sendingWindow, {
             mailboxId: m.id,
             dailyCap: cap,
             batchSize: client.sendBatchSize,
@@ -1022,7 +1018,7 @@ export async function sendSequenceStepBatch(input: {
               mailbox: m,
               idempotencyKey,
               at,
-              allowanceCeiling: pacedAllowanceForMailbox({
+              allowanceCeiling: pacedAllowanceForSendingWindow(sendingWindow, {
                 mailboxId: m.id,
                 dailyCap: effectiveDailyCap(m, sendingDays.get(m.id) ?? 0),
                 batchSize: client.sendBatchSize,
@@ -1266,8 +1262,8 @@ export async function sendSequenceStepBatch(input: {
               ? `Held back by the ${String(MANUAL_SEND_GROUP_SIZE)}-at-a-time release for corporate accounts — ` +
                 `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent.`
               : heldByPacing
-                ? "Held back by send pacing — the next batch for this workspace goes out later today."
-                : "No mailbox capacity remaining in this UTC day.";
+                ? "Waiting for the next allowed batch in this client's sending calendar."
+                : "No mailbox capacity remaining in this sending day.";
             blocked.push({
               stepSendId: pr.stepSend.id,
               contactEmail: toEmail,

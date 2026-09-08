@@ -1,6 +1,7 @@
 import { MAX_MAILBOX_DAILY_SEND_CAP } from "@/lib/mailbox-identities";
-import { PACING_WINDOW_END_MINUTE, PACING_WINDOW_START_MINUTE, sendSlotsForDay } from "./send-pacing";
+import { isSendPacingEnabled, pacedAllowanceForMailbox, PACING_WINDOW_END_MINUTE, PACING_WINDOW_START_MINUTE, sendSlotsForDay } from "./send-pacing";
 import { resolveSendingCalendarDay } from "./sending-calendar";
+import type { ClientSendingWindow } from "./sending-calendar-history";
 
 type Input = { mailboxId: string; at: Date; dailyCap: number; batchSize?: number | null };
 type Result = { ok: true; slots: Date[] } | { ok: false; error: string };
@@ -53,4 +54,14 @@ export function calendarSendsPermittedByNow(calendar: unknown, input: Input):
   const schedule = calendarSendSlotsForDay(calendar, input);
   if (!schedule.ok) return schedule;
   return { ok: true, permitted: schedule.slots.filter(slot => +slot <= +input.at).length, isOpen: true };
+}
+
+/** Planner allowance agrees with dispatch hours even when pacing is disabled. */
+export function pacedAllowanceForSendingWindow(window: ClientSendingWindow, input: Input): number {
+  if (window.pausedUntil) return 0;
+  if (!window.calendar) return pacedAllowanceForMailbox({ ...input, batchSize: input.batchSize });
+  const result = calendarSendsPermittedByNow(window.calendar, input);
+  if (!result.ok) throw Error(result.error);
+  if (!result.isOpen) return 0;
+  return isSendPacingEnabled() ? Math.min(input.dailyCap, result.permitted) : Math.min(MAX_MAILBOX_DAILY_SEND_CAP, input.dailyCap);
 }
