@@ -1,4 +1,5 @@
 import "server-only";
+import { isAutomatedSequenceSend } from "@/lib/email-sequences/send-origin";
 
 import type { OutboundEmail } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -226,14 +227,15 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   // this system for ONE client only. Enforced HERE, at the point of dispatch,
   // rather than upstream, because upstream is where an agent writes code.
   //
-  // A row carrying a `staffUserId` was launched by a signed-in person and is
-  // never touched — the business keeps working while an agent works beside it.
+  // An explicit automation origin overrides historical staff attribution.
+  // Ordinary staff launches remain separate from the coding relay's envelope.
   // A row with no staff behind it is treated as ours, and must be allowlisted
   // AND carry a client whose Autonomous sending switch a named member of staff
   // has deliberately turned on (re-scoped 2026-08-28; see the guard's header).
   //
   // The whole block is skipped when the relay is not running, so it costs
-  // nothing (not even the extra read) in ordinary operation.
+  // nothing here in ordinary operation. Automated sequence consent is always
+  // rechecked by beginOutboundDispatch immediately before a new provider send.
   if (autonomousRelayIsActive()) {
     const client = await prisma.client.findUnique({
       where: { id: row.clientId },
@@ -241,7 +243,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
     });
     const guard = evaluateAutonomousActorGuard({
       action: "SEND",
-      actor: row.staffUserId ? "HUMAN_STAFF" : "MACHINE",
+      actor: row.staffUserId && !isAutomatedSequenceSend(row.metadata) ? "HUMAN_STAFF" : "MACHINE",
       clientSlug: client?.slug ?? null,
       // `?? null` on purpose: a client row that could not be read at all and a
       // client nobody has decided about are the same answer here — refuse.

@@ -86,6 +86,7 @@ vi.mock("@/server/mailbox/gmail-sendmail", () => ({
   sendGmailUsersMessagesSend: (...a: unknown[]) =>
     (sendGmail as (...args: unknown[]) => unknown)(...a),
   generateRfc822MessageId: () => "<id@workspace.test>",
+  fetchDeliveredGmailMessageId: vi.fn(async () => null),
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: (...a: unknown[]) => evalSupp(...a),
@@ -110,6 +111,7 @@ const ROW = {
   providerIdempotencyKey: null,
   /** No staff behind it — this is a machine-initiated send. */
   staffUserId: null as string | null,
+  metadata: null as Record<string, unknown> | null,
 };
 
 function mailbox() {
@@ -208,6 +210,14 @@ describe("while the autonomous relay is running", () => {
     expect(sendGmail).not.toHaveBeenCalled();
     expect(getGoogleToken).not.toHaveBeenCalled();
     expect(result.error).toMatch(/train-hugger/);
+  });
+
+  it("does not mistake an attributed automated row for a human launch", async () => {
+    clientIs("outside-allowlist");
+    setRow({ staffUserId: "system-actor", metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } });
+    expect((await executeOutboundSend("out1")).ok).toBe(false);
+    expect(sendGmail).not.toHaveBeenCalled();
+    expect(getGoogleToken).not.toHaveBeenCalled();
   });
 
   it("ALLOWS a send for Bidlow", async () => {

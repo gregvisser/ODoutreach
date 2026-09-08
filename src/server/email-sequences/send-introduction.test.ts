@@ -199,6 +199,14 @@ describe("sendSequenceStepBatch — governance gate", () => {
 
   afterEachRestoreEnv();
 
+  it.each([false, null])("refuses automatic preparation without explicit machine consent (%s)", async consent => {
+    mountSequence(); mountMailboxPool(); mountClient({ status: "ACTIVE" }); mountReadyRow("prospect@example.com");
+    const client = await prismaMock.client.findUniqueOrThrow();
+    prismaMock.client.findUniqueOrThrow.mockResolvedValue({ ...client, autonomousSendEnabled: consent });
+    await expect(sendSequenceStepBatch({ staff, clientId: "c1", sequenceId: "seq-1", category: "INTRODUCTION", confirmationPhrase: "SEND INTRODUCTION", initiatedByAutomation: true })).rejects.toMatchObject({ code: "AUTOMATED_SEND_DISABLED" });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it("blocks a non-allowlisted recipient on an ONBOARDING client", async () => {
     mountSequence();
     mountMailboxPool();

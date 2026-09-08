@@ -338,8 +338,9 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
-  it.each(["legacy", "local-calendar"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {
+  it.each(["legacy", "local-calendar", "automated"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {
     const staff = await loadStaff();
+    if (mode === "automated") await prisma.client.update({ where: { id: CLIENT_ID }, data: { autonomousSendEnabled: true } });
     if (mode === "local-calendar") {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-09-09T00:10Z"));
@@ -374,6 +375,7 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
       sequenceId: SEQUENCE_ID,
       category: "INTRODUCTION",
       confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
+      initiatedByAutomation: mode === "automated",
     });
     expect(batch.blocked).toEqual([]);
     expect(batch.counts.queued).toBe(1);
@@ -387,6 +389,10 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
       where: { id: outboundId },
     });
     expect(queuedRow.status).toBe("QUEUED");
+    if (mode === "automated") {
+      expect(queuedRow.staffUserId).toBeNull();
+      expect(queuedRow.metadata).toMatchObject({ sendOrigin: "AUTOMATED_SEQUENCE" });
+    }
     expect(queuedRow.toEmail).toBe(PROSPECT_EMAIL);
     // The row must be bound to a real mailbox: a prospect row without one is
     // refused by the transport guard rather than falling back to the mock.
