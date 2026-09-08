@@ -7,6 +7,8 @@ import { processOutboundSendQueue } from "./queue-processor";
 import { getOutboundOperationsSnapshot } from "@/server/queries/outbound-operations";
 import { decideCompanyName } from "@/server/suppression/company-names";
 import { sendSlotsForDay } from "@/lib/mailboxes/send-pacing";
+import { countMailboxSendingDays, countSendingDaysForPool } from "@/server/mailbox/mailbox-sending-history";
+import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 
 // Real database and orchestration. Every sending transport is inert; unexpected
 // HTTP and DNS cannot reach a provider or a customer.
@@ -41,6 +43,33 @@ async function seed(provider: "GOOGLE" | "MICROSOFT" | "LEGACY") {
   await prisma.outboundEmail.create({ data: { id: "outbound", clientId: "client", mailboxIdentityId: provider === "LEGACY" ? null : "mailbox", status: "PROCESSING", subject: "Synthetic recovery", bodySnapshot: "Test only", toEmail: "recipient@example.test", fromAddress: "sender@example.test", claimedAt: new Date(), claimExpiresAt: new Date(Date.now() + 600_000), sendAttempt: 1 } });
   if (provider !== "LEGACY") await prisma.mailboxSendReservation.create({ data: { clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: "outbound", idempotencyKey: "synthetic", windowKey: new Date().toISOString().slice(0, 10), status: "RESERVED" } });
 }
+
+it.each(["GOOGLE", "MICROSOFT"] as const)("keeps the fifth %s warm-up day's allowance fixed until midnight", async provider => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-08T23:59:00Z"));
+  vi.stubEnv("MAILBOX_WARMUP_RAMP", "on");
+  vi.stubEnv("MAILBOX_SEND_PACING", "false");
+  await seed(provider);
+  // Four completed sending days, then five accepted sends today. Today's
+  // first acceptance must not promote the remainder of today to the next step.
+  await prisma.outboundEmail.createMany({ data: [
+    ...Array.from({ length: 4 }, (_, n) => ({ id: `past-${n}`, clientId: "client", mailboxIdentityId: "mailbox", toEmail: "past@example.test", status: "SENT" as const, sentAt: new Date(`2026-09-0${n + 4}T12:00:00Z`) })),
+    ...Array.from({ length: 5 }, (_, n) => ({ id: `today-${n}`, clientId: "client", mailboxIdentityId: "mailbox", toEmail: "today@example.test", status: "SENT" as const, sentAt: new Date("2026-09-08T12:00:00Z") })),
+  ] });
+  await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 5 }, (_, n) => ({ clientId: "client", mailboxIdentityId: "mailbox", outboundEmailId: `today-${n}`, idempotencyKey: `today-${n}`, windowKey: "2026-09-08", status: "CONSUMED" as const })) });
+  await prisma.mailboxSendReservation.updateMany({ where: { outboundEmailId: "outbound" }, data: { windowKey: "2026-09-07" } });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "QUEUED", lastErrorCode: "MAILBOX_WARMUP_CAP", nextRetryAt: new Date("2026-09-09T00:00:00Z"), dispatchStartedAt: null, retryCount: 0 });
+  expect(await countMailboxSendingDays("mailbox")).toBe(4);
+  expect((await countSendingDaysForPool(["mailbox"])).get("mailbox")).toBe(4);
+  vi.setSystemTime(new Date("2026-09-09T00:00:00Z"));
+  expect(await countMailboxSendingDays("mailbox")).toBe(5);
+  expect((await countSendingDaysForPool(["mailbox"])).get("mailbox")).toBe(5);
+  expect(effectiveDailyCap(await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "mailbox" } }), 5)).toBe(10);
+  await processOutboundSendQueue({ limit: 1 });
+  expect(send).toHaveBeenCalledTimes(1);
+});
 
 it.each(["GOOGLE", "MICROSOFT"] as const)("holds older %s queue entries until today's paced window opens", async provider => {
   vi.useFakeTimers({ toFake: ["Date"] });

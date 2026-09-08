@@ -221,7 +221,7 @@ export async function queueControlledPilotBatch(input: {
 
   // Warm-up anchors on days actually SENT on, not on connection age. Resolved
   // before the transaction so no extra query runs under the reservation lock.
-  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id));
+  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id), at);
 
   try {
     const txResult = await prisma.$transaction(

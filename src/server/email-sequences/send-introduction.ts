@@ -912,7 +912,7 @@ export async function sendSequenceStepBatch(input: {
   // Warm-up anchors on days this mailbox has actually SENT on, not on how long
   // ago it was connected. Resolved once here, BEFORE the transaction opens, so
   // no extra query runs while the reservation lock is held.
-  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id));
+  const sendingDays = await countSendingDaysForPool(pool.map((m) => m.id), at);
 
   // Corporate four-at-a-time release. Resolved here, outside the transaction,
   // for the same reason as `sendingDays`: no extra query while the reservation
