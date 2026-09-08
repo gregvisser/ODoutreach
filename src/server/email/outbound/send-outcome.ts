@@ -8,6 +8,7 @@ import { mailboxDailySendCap, startOfNextUtcDay } from "@/lib/mailbox-identities
 import { effectiveDailyCap, isWarmupRampEnabled } from "@/lib/mailboxes/mailbox-warmup";
 import { countMailboxSendingDays } from "@/server/mailbox/mailbox-sending-history";
 import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
+import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 import { isSendPacingEnabled, minuteOfDayUtc, sendSlotsForDay, sendsPermittedByNow } from "@/lib/mailboxes/send-pacing";
 
 export const UNCONFIRMED_SEND_MESSAGE = "Sending is unconfirmed. Do not resend this email; ask an administrator to check the sending mailbox and provider evidence.";
@@ -19,10 +20,11 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
     await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${row.id} FOR UPDATE`;
     const current = await tx.outboundEmail.findFirst({ where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null, sendAttempt: row.sendAttempt, claimedAt: row.claimedAt } });
     if (!current) return false;
-    const now = new Date();
+    let now = new Date();
     if (current.mailboxIdentityId) {
       const mailbox = await lockSendingMailboxInTransaction(tx, current.mailboxIdentityId, current.clientId);
       if (!mailbox) return false;
+      now = new Date(); // Recheck the day after waiting for the mailbox lock.
       const reservation = await tx.mailboxSendReservation.findUnique({ where: { outboundEmailId: current.id } });
       if (!reservation || reservation.clientId !== current.clientId || reservation.mailboxIdentityId !== mailbox.id || reservation.status !== "RESERVED") {
         // An inconsistent or consumed allowance is not permission to send again.
@@ -35,9 +37,10 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
       // request new allowance or move that send into a different day.
       const kind = current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
         ? current.metadata.kind : undefined;
-      // Inline replies have their own send path. Preserve the existing internal
-      // test/proof exemption; ordinary contact and sequence outreach must warm up.
-      const warmupApplies = !reconcilingAcceptedSend && isWarmupRampEnabled() && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend";
+      // Human replies and internal tests share the hard daily cap, while
+      // ordinary contact/sequence outreach also observes warm-up and pacing.
+      const outreachExempt = kind === INBOUND_REPLY_METADATA_KIND || kind === INTERNAL_PROOF_METADATA_KIND || kind === "governedTestSend";
+      const warmupApplies = !reconcilingAcceptedSend && isWarmupRampEnabled() && !outreachExempt;
       const hardCap = mailboxDailySendCap(mailbox.dailySendCap);
       const cap = warmupApplies ? effectiveDailyCap(mailbox, await countMailboxSendingDays(mailbox.id, tx, now)) : hardCap;
       const limitedByWarmup = cap < hardCap;
@@ -48,7 +51,7 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
         await tx.outboundEmail.update({ where: { id: current.id }, data: { status: "QUEUED", nextRetryAt: startOfNextUtcDay(now), claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null, lastErrorCode: limitedByWarmup ? "MAILBOX_WARMUP_CAP" : "MAILBOX_DAILY_CAP", lastErrorMessage: error } });
         return { ok: false as const, error };
       }
-      if (!reconcilingAcceptedSend && kind !== INTERNAL_PROOF_METADATA_KIND && kind !== "governedTestSend" && isSendPacingEnabled()) {
+      if (!reconcilingAcceptedSend && !outreachExempt && isSendPacingEnabled()) {
         const client = await tx.client.findUniqueOrThrow({ where: { id: current.clientId }, select: { sendBatchSize: true } });
         const pacing = { mailboxId: mailbox.id, dateKey: windowKey, dailyCap: cap, batchSize: client.sendBatchSize };
         const minute = minuteOfDayUtc(now);
