@@ -28,11 +28,15 @@ afterEach(async () => {
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
 describe("OpenDoors staff boundary against PostgreSQL", () => {
-  it.each(["OPERATOR", "ADMIN"] as const)("refuses workspace creation for a non-owner %s", async (role) => {
+  it.each(["OPERATOR", "ADMIN", "MANAGER", "VIEWER"] as const)("lets non-owner %s staff create an audited onboarding client", async (role) => {
     await prisma.staffUser.update({ where: { id: "actor" }, data: { role } });
-    expect(await createClientFromOnboarding(request)).toMatchObject({ ok: false, reason: "OWNER_ONLY" });
-    expect(await prisma.client.count()).toBe(0);
-    expect(await prisma.clientMembership.count()).toBe(0);
+    const result = await createClientFromOnboarding(request);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw Error("Client creation failed");
+    expect(await prisma.client.findUnique({ where: { id: result.clientId } })).toMatchObject({ status: "ONBOARDING" });
+    expect(await prisma.clientMembership.findFirst({ where: { clientId: result.clientId } })).toMatchObject({ staffUserId: "actor" });
+    expect(await prisma.auditLog.findFirst({ where: { clientId: result.clientId, entityType: "Client" } })).toMatchObject({ staffUserId: "actor", action: "CREATE" });
+    expect(await prisma.outboundEmail.count()).toBe(0);
   });
   it("lets the owner create the client, membership and audit together", async () => {
     await prisma.staffUser.update({ where: { id: "actor" }, data: { isSuperAdmin: true } });
@@ -42,11 +46,18 @@ describe("OpenDoors staff boundary against PostgreSQL", () => {
     expect(await prisma.clientMembership.count()).toBe(1);
     expect(await prisma.auditLog.count({ where: { entityType: "Client" } })).toBe(1);
   });
-  it("rolls back incomplete owner creation when the audit write fails", async () => {
-    await prisma.staffUser.update({ where: { id: "actor" }, data: { isSuperAdmin: true } });
+  it("rolls back incomplete staff creation when the audit write fails", async () => {
     await prisma.$executeRawUnsafe(`CREATE FUNCTION owner_creation_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'creation audit failure'; END $$`);
     await prisma.$executeRawUnsafe(`CREATE TRIGGER owner_creation_fault BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION owner_creation_fault()`);
     await expect(createClientFromOnboarding(request)).rejects.toThrow("creation audit failure");
+    expect(await prisma.client.count()).toBe(0);
+    expect(await prisma.clientMembership.count()).toBe(0);
+  });
+  it.each(["signed-out", "inactive", "unknown"])("refuses client creation for %s identities", async (identity) => {
+    if (identity === "signed-out") authMock.mockResolvedValue(null);
+    if (identity === "inactive") await prisma.staffUser.update({ where: { id: "actor" }, data: { isActive: false } });
+    if (identity === "unknown") authMock.mockResolvedValue({ user: { id: "unknown", email: "unknown@opendoors.test" } });
+    await expect(createClientFromOnboarding(request)).rejects.toThrow();
     expect(await prisma.client.count()).toBe(0);
     expect(await prisma.clientMembership.count()).toBe(0);
   });
