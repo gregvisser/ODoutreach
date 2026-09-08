@@ -22,7 +22,9 @@ test.beforeEach(async () => {
 });
 test.afterAll(async () => { await pool?.query('DELETE FROM "Client" WHERE id=$1', [clientId]); await pool?.end(); });
 test("ordinary staff review a saved email on mobile and queue it once without enabling automation", async ({ page }, testInfo) => {
-  await page.goto(url);
+  await page.goto(`/clients/${clientId}/mailboxes`);
+  await page.getByRole("link", { name: "Email approvals", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`${url}$`));
   const panel = page.getByRole("article", { name: "Review email to recipient@example.test" });
   await expect(panel.getByText("Saved message for human review", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Approve and queue this email" })).toBeDisabled();
