@@ -1,0 +1,23 @@
+name: Sync company-name sheets
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+permissions:
+  contents: read
+concurrency:
+  group: odoutreach-company-name-sheets
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Sync the finite company-sheet plan
+        env:
+          COMPANY_SHEETS_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/company-name-sheets/v1
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: node scripts/run-company-name-sheets.mjs

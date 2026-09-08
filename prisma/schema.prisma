@@ -526,6 +526,7 @@ model Client {
   suppressedEmails                SuppressedEmail[]
   suppressedDomains               SuppressedDomain[]
   companyDncEntries               CompanyDncEntry[]
+  companyDncSheetSource           CompanyDncSheetSource?
   companyDncDecisions             CompanyDncDecision[]
   suppressedDomainFamilies        SuppressedDomainFamily[]
   suppressedDomainFamilyProposals SuppressedDomainFamilyProposal[]
@@ -1855,6 +1856,25 @@ model GlobalBrandSetting {
 }
 
 // ——— Audit ———
+
+/// Staff-managed sheet connection. Revision guards reject stale reads;
+/// knownNames retains prior source names so removals remain visible and blocked.
+model CompanyDncSheetSource {
+  id            String   @id @default(cuid())
+  clientId      String   @unique
+  spreadsheetId String
+  tabName       String
+  revision      Int      @default(0)
+  knownNames    String[] @default([])
+  currentNames  String[] @default([])
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  retainedCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
 
 /// Immutable names, added per client. Removal/replacement needs a separate
 /// explicit workflow; importing another list never deletes existing blocks.
