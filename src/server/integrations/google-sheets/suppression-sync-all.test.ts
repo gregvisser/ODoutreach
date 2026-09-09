@@ -27,6 +27,7 @@ const dryRunWorkflow = readFileSync(
   join(root, ".github/workflows/dnc-sheet-dry-run.yml"),
   "utf8",
 );
+const dncRunner = readFileSync(join(root, "scripts/run-suppression-sheets.mjs"), "utf8");
 
 describe("suppression sync-all wiring", () => {
   it("reuses the single-source sync (atomic + bulk-timeout path), no hand-rolled writes", () => {
@@ -92,8 +93,9 @@ describe("a failing do-not-contact sheet reaches Greg", () => {
     const step = repliesWorkflow.slice(
       repliesWorkflow.indexOf("Sync do-not-contact sheets"),
     );
-    expect(step).toContain(".ok");
-    expect(step).toMatch(/failedCount/);
+    expect(step).toContain("node scripts/run-suppression-sheets.mjs");
+    expect(dncRunner).toContain("result.ok !== outcome.ok");
+    expect(dncRunner).toContain("result.failed !==");
   });
 
   it("records the failure where the PARTIAL alert reads it", () => {
@@ -103,15 +105,18 @@ describe("a failing do-not-contact sheet reaches Greg", () => {
     );
     // /tmp/run-problems.txt is what the final step turns into `::error
     // title=PARTIAL::` annotations, which is what the alert emails.
-    expect(step).toContain("/tmp/run-problems.txt");
+    expect(step).toContain("node scripts/run-suppression-sheets.mjs");
+    expect(dncRunner).toContain("/tmp/run-problems.txt");
   });
 
-  it("carries the per-sheet reasons, not just a count", () => {
+  it("reports shrink refusals separately without publishing private sheet errors", () => {
     const step = repliesWorkflow.slice(
       repliesWorkflow.indexOf("Sync do-not-contact sheets"),
       repliesWorkflow.indexOf("Fail run — PARTIAL"),
     );
-    expect(step).toContain(".errors");
+    expect(step).toContain("node scripts/run-suppression-sheets.mjs");
+    expect(dncRunner).toContain("outcome.refusedShrink === true");
+    expect(dncRunner).toContain("onBatch({ batch:");
   });
 
   it("the dry-run workflow cannot write, by construction", () => {
