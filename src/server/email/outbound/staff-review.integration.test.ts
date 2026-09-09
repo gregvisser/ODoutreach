@@ -5,9 +5,12 @@ import { approveHeldEmail, heldEmailReviewToken, loadHeldEmailsForStaff, STAFF_R
 import { executeOutboundSend } from "./execute-one";
 import { CROSS_CLIENT_REVIEW, hasCurrentCrossClientApproval, loadCrossClientContacts } from "./cross-client-review";
 import { evaluateOutboundDispatchRecheck } from "./dispatch-recheck";
+import { triggerOutboundQueueDrain } from "./trigger-queue";
+vi.mock("./trigger-queue", () => ({ triggerOutboundQueueDrain: vi.fn(async () => {}) }));
 vi.mock("node:dns", () => ({ promises: { resolveMx: async () => { throw Error("DNS BLOCKED"); }, resolve4: async () => [], resolve6: async () => [] } }));
 
 beforeEach(async () => {
+  vi.mocked(triggerOutboundQueueDrain).mockReset();
   vi.stubGlobal("fetch", vi.fn(() => { throw Error("NETWORK BLOCKED"); }));
   vi.stubEnv("STAFF_EMAIL_DOMAINS", "example.test");
   vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "false");
@@ -86,6 +89,18 @@ it("queues once under concurrent approvals", async () => {
   expect(results.filter(result => result.ok)).toHaveLength(1);
   expect(await prisma.auditLog.count({ where: { entityId: "held" } })).toBe(1);
   expect(await prisma.mailboxSendReservation.count({ where: { outboundEmailId: "held" } })).toBe(1);
+});
+
+it("wakes only the approved email after its database commit", async () => {
+  vi.mocked(triggerOutboundQueueDrain).mockImplementation(async scope => {
+    expect(scope).toEqual({ clientId: "client", outboundEmailIds: ["held"] });
+    expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })).status).toBe("QUEUED");
+    expect(await prisma.auditLog.count({ where: { entityId: "held" } })).toBe(1);
+  });
+  expect(await approveHeldEmail(await input())).toMatchObject({ ok: true });
+  expect(triggerOutboundQueueDrain).toHaveBeenCalledTimes(1);
+  expect(await approveHeldEmail({ ...(await input()), reviewToken: "stale" })).toMatchObject({ ok: false });
+  expect(triggerOutboundQueueDrain).toHaveBeenCalledTimes(1);
 });
 it("paginates held emails without exposing another client's rows", async () => {
   await prisma.client.create({ data: { id: "other", name: "Other fixture", slug: "other-review-fixture", status: "ACTIVE" } });

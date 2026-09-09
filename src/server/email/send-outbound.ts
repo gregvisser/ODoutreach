@@ -232,7 +232,7 @@ export async function sendEmailToContact(
       }
       return created;
     });
-    await triggerOutboundQueueDrain();
+    await triggerOutboundQueueDrain({ clientId, outboundEmailIds: [row.id] });
     return {
       ok: true,
       outcome: "queued",
@@ -354,7 +354,7 @@ export async function sendEmailToContact(
     return { ok: false, outcome: "failed", error: txResult.error };
   }
 
-  await triggerOutboundQueueDrain();
+  await triggerOutboundQueueDrain({ clientId, outboundEmailIds: [txResult.id] });
 
   return {
     ok: true,

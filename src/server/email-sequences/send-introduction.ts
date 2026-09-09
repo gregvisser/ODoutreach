@@ -1312,7 +1312,7 @@ export async function sendSequenceStepBatch(input: {
   // 9. Kick the worker. The queue processor owns the actual Graph /
   //    Gmail send and reservation CONSUME / RELEASE.
   if (queued.length > 0) {
-    await triggerOutboundQueueDrain();
+    await triggerOutboundQueueDrain({ clientId, outboundEmailIds: queued.map(row => row.outboundEmailId) });
   }
 
   // 10. Recompute aggregate remaining capacity for the UI summary.

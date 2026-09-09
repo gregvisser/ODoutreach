@@ -378,7 +378,7 @@ export async function queueControlledPilotBatch(input: {
     };
   }
 
-  await triggerOutboundQueueDrain();
+  await triggerOutboundQueueDrain({ clientId, outboundEmailIds: outboundIds });
 
   const usedMap = new Map<string, { email: string; count: number }>();
   const outboundRows = await prisma.outboundEmail.findMany({

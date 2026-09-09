@@ -7,6 +7,7 @@ import { isStaffEmailAllowed } from "@/lib/staff-email-policy";
 import { GENERIC_OUTBOUND_ONLY } from "./generic-outbound-filter";
 import { operatorRequeueFailedSendInTransaction } from "./operator-recovery";
 import { CROSS_CLIENT_REVIEW, contactHistoryToken, crossClientPayloadToken, loadCrossClientContacts } from "./cross-client-review";
+import { triggerOutboundQueueDrain } from "./trigger-queue";
 
 export const STAFF_REVIEWED_SEND_ORIGIN = "STAFF_REVIEWED_SINGLE_EMAIL";
 const heldWhere = {
@@ -46,7 +47,7 @@ export async function loadHeldEmailsForStaff(clientId: string, page: number) {
 /** The staff identity comes from the authenticated server action, never form input. */
 export async function approveHeldEmail(input: { clientId: string; outboundEmailId: string; reviewToken: string; staffUserId: string }) {
   try {
-    return await prisma.$transaction(async tx => {
+    const approval = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "StaffUser" WHERE id = ${input.staffUserId} FOR SHARE`;
       const staff = await tx.staffUser.findUnique({ where: { id: input.staffUserId } });
       if (!staff?.isActive || !isStaffEmailAllowed(staff)) return { ok: false as const, error: "Your staff access has changed. Sign in again." };
@@ -73,6 +74,9 @@ export async function approveHeldEmail(input: { clientId: string; outboundEmailI
       } });
       return { ok: true as const, message: "This email is queued with your approval. Current sending limits and do-not-contact checks still apply. Automatic sending stays unchanged." };
     });
+    // Wake only this approved email, after the approval transaction commits.
+    if (approval.ok) await triggerOutboundQueueDrain({ clientId: input.clientId, outboundEmailIds: [input.outboundEmailId] });
+    return approval;
   } catch {
     return { ok: false as const, uncertain: true as const, error: "We could not confirm the result. Refresh this page before doing anything else." };
   }

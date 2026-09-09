@@ -43,3 +43,13 @@ it("will not sync a mailbox outside the freshly selected client scope", async ()
   expect((await syncActiveClientMailboxInboxes({ clientIds: ["local"], mailboxId: "legacy", syncOne })).processed).toBe(0);
   expect(syncOne).not.toHaveBeenCalled();
 });
+
+it("requires both the exact email ID and client, leaving other queued emails untouched", async () => {
+  for (const [id, clientId] of [["selected", "legacy"], ["same-client-other", "legacy"], ["other-client", "local"]]) {
+    await prisma.outboundEmail.create({ data: { id, clientId, toEmail: "recipient@example.test", subject: "Synthetic", bodySnapshot: "No transport", status: "QUEUED" } });
+  }
+  const result = await processOutboundSendQueue({ limit: 25, dispatchScope: { clientId: "legacy", outboundEmailIds: ["selected", "other-client"] } });
+  expect(result.claimed).toBe(1);
+  expect(executeOutboundSend).toHaveBeenCalledExactlyOnceWith("selected");
+  for (const id of ["same-client-other", "other-client"]) expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id } })).status).toBe("QUEUED");
+});
