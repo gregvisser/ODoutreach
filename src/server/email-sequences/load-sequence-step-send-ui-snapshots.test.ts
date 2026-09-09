@@ -153,6 +153,34 @@ describe("loadSequenceStepSendUiSnapshots", () => {
     expect(intro!.disabledReason).toMatch(/missing an email address/i);
   });
 
+
+  it("keeps an hours-only follow-up waiting until the full delay elapses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-09T17:00:00Z"));
+    try {
+      prismaMock.clientEmailSequence.findMany.mockResolvedValue([{
+        id: "seq-1", name: "Hours", status: "APPROVED", _count: { enrollments: 1 },
+        steps: [
+          { id: "intro", category: "INTRODUCTION", position: 1, delayDays: 0, delayHours: 0, template: { status: "APPROVED" } },
+          { id: "follow", category: "FOLLOW_UP_1", position: 2, delayDays: 0, delayHours: 2, template: { status: "APPROVED" } },
+        ],
+      }]);
+      prismaMock.clientEmailSequenceStepSend.findMany.mockResolvedValue([
+        { sequenceId: "seq-1", stepId: "intro", enrollmentId: "enr-1", status: "SENT", updatedAt: new Date("2026-09-09T16:00:00Z"), contact: { email: "lead@company.example" } },
+        { sequenceId: "seq-1", stepId: "follow", enrollmentId: "enr-1", status: "READY", updatedAt: new Date("2026-09-09T16:01:00Z"), contact: { email: "lead@company.example" } },
+      ]);
+      const waiting = (await loadSequenceStepSendUiSnapshots("client-1")).snapshots[1];
+      expect(waiting.delayHours).toBe(2);
+      expect(waiting.delayPendingCount).toBe(1);
+      expect(waiting.eligibleInLaunchBatchNowCount).toBe(0);
+      expect(waiting.earliestEligibleAtIso).toBe("2026-09-09T18:00:00.000Z");
+      vi.setSystemTime(new Date("2026-09-09T18:00:00Z"));
+      const due = (await loadSequenceStepSendUiSnapshots("client-1")).snapshots[1];
+      expect(due.delayPendingCount).toBe(0);
+      expect(due.eligibleInLaunchBatchNowCount).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+
   describe("stale 'client not active' block after the client goes live", () => {
     const clientInactiveBlockedRows = [
       {

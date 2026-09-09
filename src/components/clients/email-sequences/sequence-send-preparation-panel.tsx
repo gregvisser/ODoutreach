@@ -543,8 +543,7 @@ function FollowUpDispatchBlocks({
   if (!introHasSent) {
     return (
       <p className="rounded-md border border-border/60 bg-muted/15 px-3 py-2 text-[11px] text-muted-foreground">
-        Follow-up steps send automatically once the introduction has gone to at
-        least one recipient — they&apos;ll appear here then.
+        Follow-up readiness appears after an introduction has been sent. Automatic sending also requires Machine sending on the client Overview.
       </p>
     );
   }
@@ -596,12 +595,15 @@ function StepSendDispatchBlock({
   const infraReasons = infraLaunchBlockerReasons(launchReadiness);
   const canSend = canMutate && stepSnapshot.sendable && infraReasons.length === 0;
 
-  const delayDescription =
-    stepSnapshot.delayDays > 0
-      ? `${String(stepSnapshot.delayDays)} day(s) after the previous step was sent`
-      : "once the previous step has sent";
+  const delayParts = [
+    stepSnapshot.delayDays > 0 ? `${stepSnapshot.delayDays} day(s)` : null,
+    stepSnapshot.delayHours > 0 ? `${stepSnapshot.delayHours} hour(s)` : null,
+  ].filter(Boolean);
+  const delayDescription = delayParts.length > 0
+    ? `${delayParts.join(" and ")} after the previous step was sent`
+    : "once the previous step has sent";
 
-  const followModalBody = `This sends ${label} now to up to ${String(stepSnapshot.eligibleInLaunchBatchNowCount)} contacts who are already due. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} Follow-ups also send automatically — this button is only to push the due batch immediately.`;
+  const followModalBody = `This sends ${label} now to up to ${String(stepSnapshot.eligibleInLaunchBatchNowCount)} contacts who are already due. ${sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)} All sending checks still apply.`;
 
   // With automatic follow-ups, "no eligible recipients right now" is not
   // an error — it just means nobody is due yet. Only a real permission
@@ -612,15 +614,15 @@ function StepSendDispatchBlock({
     <div className="rounded-md border border-border/80 bg-muted/15 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-medium capitalize text-foreground">
-          {label} — sends automatically
+          {label} — timing and readiness
         </div>
       </div>
       <p className="mt-1 text-muted-foreground">{LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP}</p>
 
       <div className="mt-2 rounded border border-emerald-400/40 bg-emerald-50/40 px-2 py-1.5 text-[11px] text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-100">
-        This follow-up sends automatically — each contact is emailed{" "}
-        {delayDescription}. The system checks for due follow-ups every few
-        minutes; you don&apos;t need to launch it by hand.
+        This follow-up becomes due {delayDescription}. Automatic follow-ups require
+        Machine sending on the client Overview and an active scheduler. Replies,
+        opt-outs, sending limits and other safety checks can prevent or delay a send.
       </div>
 
       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
@@ -632,8 +634,10 @@ function StepSendDispatchBlock({
         <p>{sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)}</p>
         <p className="text-muted-foreground/90">
           Waiting on previous step: {String(stepSnapshot.previousStepMissingCount)} · Waiting for delay:{" "}
-          {String(stepSnapshot.delayPendingCount)} · Next sends:{" "}
-          {formatRelative(stepSnapshot.earliestEligibleAtIso)}
+          {String(stepSnapshot.delayPendingCount)} · Earliest prepared send:{" "}
+          {stepSnapshot.earliestEligibleAtIso
+            ? formatRelative(stepSnapshot.earliestEligibleAtIso)
+            : "Not calculated — no future time is available for prepared recipients"}
         </p>
       </div>
 
@@ -653,6 +657,17 @@ function StepSendDispatchBlock({
         </div>
       ) : null}
 
+      <form action={prepareClientEmailSequenceStepSendsAction} className="mt-3 space-y-1">
+        <input type="hidden" name="clientId" value={clientId} />
+        <input type="hidden" name="sequenceId" value={sequenceId} />
+        <input type="hidden" name="stepId" value={stepSnapshot.stepId ?? ""} />
+        <FormSubmitButton disabled={!canMutate} variant="secondary" size="sm">
+          Review {label} recipients
+        </FormSubmitButton>
+        <p className="text-[11px] text-muted-foreground">
+          Refreshes this follow-up&apos;s readiness without sending email. Delays and sending checks still apply.
+        </p>
+      </form>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <SequencePhraseConfirmLaunch
           formAction={sendClientEmailSequenceStepAction}
@@ -668,8 +683,7 @@ function StepSendDispatchBlock({
           <input type="hidden" name="category" value={category} />
         </SequencePhraseConfirmLaunch>
         <span className="text-[11px] text-muted-foreground">
-          Optional — due follow-ups send on their own. Use this only to push the
-          ready batch immediately.
+          Send only prepared recipients who are already due. Automatic sending depends on the client setting and scheduler.
         </span>
       </div>
     </div>
