@@ -16,7 +16,15 @@ export async function loadCrossClientContacts(clientId: string, email: string, n
   return rows.map(row => ({ id: row.id, clientId: row.clientId, clientName: row.client.name, sentAt: row.sentAt!.toISOString() }));
 }
 
-function hash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
+function hash(value: unknown) {
+  // PostgreSQL JSONB normalises object key order. The approval must survive
+  // saving/reloading the same payload while still detecting changed values.
+  const canonical = JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]]))
+      : item);
+  return createHash("sha256").update(canonical).digest("hex");
+}
 export function contactHistoryToken(contacts: RecentClientContact[]): string {
   return hash(contacts.map(contact => [contact.id, contact.clientId, contact.sentAt]));
 }
