@@ -85,6 +85,12 @@ export function stripReplyPrefixes(subject: string | null | undefined): string {
   return s.replace(REPLY_FORWARD_PREFIX, "").trim();
 }
 
+/** Outlook can replace spaced en/em dashes when replying. Keep words and ID hyphens exact. */
+export function replySubjectVariants(subject: string): string[] {
+  return [...new Set([subject, ...["-", "–", "—"].map(dash =>
+    subject.replace(/ [-–—] /g, ` ${dash} `))])];
+}
+
 export async function processSyncedMessageForReply(input: {
   clientId: string;
   mailboxIdentityId: string;
@@ -222,21 +228,28 @@ export async function processSyncedMessageForReply(input: {
       if (!outbound && looksLikeReplyBySubject) {
         const baseSubject = stripReplyPrefixes(subject);
         if (baseSubject.length > 0) {
+          const subjectVariants = replySubjectVariants(baseSubject);
           const candidates = await prisma.outboundEmail.findMany({
             where: {
               clientId: input.clientId,
               mailboxIdentityId: input.mailboxIdentityId,
               sentAt: { not: null, lte: input.receivedAt },
               status: { in: ["SENT", "DELIVERED", "REPLIED"] },
-              subject: { equals: baseSubject, mode: "insensitive" },
+              subject: subjectVariants.length === 1
+                ? { equals: baseSubject, mode: "insensitive" }
+                : { in: subjectVariants, mode: "insensitive" },
             },
             orderBy: { sentAt: "desc" },
-            select: { id: true, contactId: true, status: true, toEmail: true },
+            select: { id: true, contactId: true, status: true, toEmail: true, subject: true },
           });
-          outbound =
-            candidates.find(
-              (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
-            ) ?? null;
+          const senderCandidates = candidates.filter(
+            (c) => canonicalizeEmailForMatching(c.toEmail) === canonicalizeEmailForMatching(from),
+          );
+          // Preserve exact-match priority. Do not guess between different original
+          // subjects that become indistinguishable after punctuation conversion.
+          const exact = senderCandidates.find(c => c.subject?.toLowerCase() === baseSubject.toLowerCase());
+          const distinctSubjects = new Set(senderCandidates.map(c => c.subject?.toLowerCase()));
+          outbound = exact ?? (distinctSubjects.size <= 1 ? senderCandidates[0] ?? null : null);
           matchMethod = "BY_CONTACT_EMAIL";
         }
       }

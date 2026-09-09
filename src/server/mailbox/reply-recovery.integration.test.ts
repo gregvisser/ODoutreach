@@ -125,6 +125,35 @@ afterAll(async () => {
   await closeIntegrationPool();
 });
 
+describe("reply subject separator conversion", () => {
+  const originalSubject = "Delivery check — Example — TEST-09-02";
+  const replySubject = "RE: Delivery check - Example - TEST-09-02";
+  it("links an Outlook-converted subject and applies the real protective effects", async () => {
+    await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { subject: originalSubject } });
+    const result = await processSyncedMessageForReply({ ...input, subject: replySubject, inReplyToHeader: "<provider-rewritten@example.test>" });
+    expect(result.created).toBe(true);
+    await assertRecovered();
+    expect((await prisma.inboundReply.findFirstOrThrow()).matchMethod).toBe("BY_CONTACT_EMAIL");
+  });
+  it("does not link a different sender or a changed reference", async () => {
+    await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { subject: originalSubject } });
+    expect((await processSyncedMessageForReply({ ...input, fromEmail: "different@example.test", subject: replySubject, inReplyToHeader: null, bodyText: "Thanks" })).created).toBe(false);
+    expect((await processSyncedMessageForReply({ ...input, subject: replySubject.replace("TEST-09-02", "TEST-09-03"), inReplyToHeader: null, bodyText: "Thanks" })).created).toBe(false);
+    expect(await prisma.inboundReply.count()).toBe(0);
+  });
+  it("refuses ambiguous punctuation-only matches but preserves an exact subject match", async () => {
+    await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { subject: originalSubject } });
+    await prisma.outboundEmail.create({ data: {
+      id: "other-punctuation", clientId: input.clientId, contactId: "reply-contact", mailboxIdentityId: input.mailboxIdentityId,
+      toEmail: input.fromEmail, subject: originalSubject.replaceAll("—", "–"), status: "SENT", sentAt: new Date("2026-09-05T13:00:00Z"),
+    } });
+    expect((await processSyncedMessageForReply({ ...input, subject: replySubject, inReplyToHeader: null, bodyText: "Thanks" })).created).toBe(false);
+    expect(await prisma.inboundReply.count()).toBe(0);
+    expect((await processSyncedMessageForReply({ ...input, subject: `RE: ${originalSubject}`, inReplyToHeader: null, bodyText: "Thanks" })).created).toBe(true);
+    expect((await prisma.inboundReply.findFirstOrThrow()).linkedOutboundEmailId).toBe("reply-outbound");
+  });
+});
+
 describe("reply recovery against real PostgreSQL", () => {
   it.each([false, true])("does not attach an unrelated legacy conversation; opt-out=%s", async (optOut) => {
     await prisma.outboundEmail.update({ where: { id: "reply-outbound" }, data: { rfc822MessageId: null } });
