@@ -131,12 +131,12 @@ export async function queueSelectedMailboxInternalProofSend(input: {
   // Dispatch still rechecks independently, including sends that race this check.
   if (isDispatchRecheckEnabled()) {
     const now = new Date();
-    const recentSend = await loadDispatchRecentSend({ toEmail: to, now });
+    const recentSend = await loadDispatchRecentSend({ clientId, toEmail: to, now });
     const recheck = decideDispatchRecheck({ now, recentSend });
     if (recheck.block) {
       return {
         ok: false,
-        error: `Verification email not queued. ${recheck.reason} This protection applies across all OpenDoors clients.`,
+        error: `Verification email not queued. ${recheck.reason} The waiting period applies to this client's previous sends; bounce protection applies across clients.`,
       };
     }
   }

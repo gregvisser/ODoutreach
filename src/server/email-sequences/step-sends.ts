@@ -23,6 +23,7 @@ import {
 } from "@/lib/opensdoors-brief";
 import { prisma } from "@/lib/db";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
+import { isDispatchRecheckEnabled } from "@/server/email/outbound/dispatch-recheck";
 
 /**
  * Operator-triggered sequence step-send PLANNER (PR D4e.1 — records only).
@@ -384,6 +385,7 @@ export async function planSequenceStepSends(params: {
       },
       select: {
         toEmail: true,
+        clientId: true,
         sentAt: true,
         status: true,
         sequenceStepSends: { select: { sequenceId: true } },
@@ -402,6 +404,9 @@ export async function planSequenceStepSends(params: {
       // first-write wins). Normalise to lowercase for lookup.
       const key = row.toEmail.trim().toLowerCase();
       const isBounce = row.status === "BOUNCED";
+      // With final review enforcement enabled, another client's contact is
+      // staged for staff review at dispatch, rather than skipped for ten days.
+      if (isDispatchRecheckEnabled() && row.clientId !== params.clientId && !isBounce) continue;
       const existing = recentSendsByEmail.get(key);
       if (!existing) {
         recentSendsByEmail.set(key, {

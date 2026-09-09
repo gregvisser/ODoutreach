@@ -59,7 +59,7 @@ export async function operatorRequeueFailedSend(outboundEmailId: string, clientI
 }
 
 /** Caller must authorise the operation; joins reservation and audit writes atomically. */
-export async function operatorRequeueFailedSendInTransaction(tx: Prisma.TransactionClient, outboundEmailId: string, clientId: string, expectedErrorCode?: "COMPANY_REVIEW" | "AUTOMATED_SEND_DISABLED"): Promise<{ count: number; error?: string }> {
+export async function operatorRequeueFailedSendInTransaction(tx: Prisma.TransactionClient, outboundEmailId: string, clientId: string, expectedErrorCode?: "COMPANY_REVIEW" | "AUTOMATED_SEND_DISABLED" | "CROSS_CLIENT_REVIEW"): Promise<{ count: number; error?: string }> {
       await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${outboundEmailId} AND "clientId" = ${clientId} FOR UPDATE`;
       const where = {
         id: outboundEmailId,

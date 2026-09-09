@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
 import { approveHeldEmail, heldEmailReviewToken, loadHeldEmailsForStaff, STAFF_REVIEWED_SEND_ORIGIN } from "./staff-review";
 import { executeOutboundSend } from "./execute-one";
+import { CROSS_CLIENT_REVIEW, hasCurrentCrossClientApproval, loadCrossClientContacts } from "./cross-client-review";
+import { evaluateOutboundDispatchRecheck } from "./dispatch-recheck";
 vi.mock("node:dns", () => ({ promises: { resolveMx: async () => { throw Error("DNS BLOCKED"); }, resolve4: async () => [], resolve6: async () => [] } }));
 
 beforeEach(async () => {
@@ -21,6 +23,51 @@ afterEach(async () => {
   expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
+async function crossContact(id = "recent", clientId = "other") {
+  await prisma.client.upsert({ where: { id: clientId }, create: { id: clientId, name: "Other reviewed client", slug: clientId }, update: {} });
+  await prisma.outboundEmail.create({ data: { id, clientId, toEmail: "recipient@example.test", subject: "Earlier contact", bodySnapshot: "Synthetic", status: "SENT", sentAt: new Date() } });
+}
+it("shows other-client contact and binds staff approval to the email and that history", async () => {
+  vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
+  await crossContact();
+  await prisma.outboundEmail.update({ where: { id: "held" }, data: { lastErrorCode: CROSS_CLIENT_REVIEW } });
+  const page = await loadHeldEmailsForStaff("client", 0);
+  expect(page.emails[0].recentContacts[0].clientName).toBe("Other reviewed client");
+  expect(await approveHeldEmail({ ...(await input()), reviewToken: page.emails[0].reviewToken })).toMatchObject({ ok: true });
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } });
+  const history = await loadCrossClientContacts("client", row.toEmail, new Date());
+  expect(hasCurrentCrossClientApproval(row, history)).toBe(true);
+  expect(hasCurrentCrossClientApproval({ ...row, subject: "Changed" }, history)).toBe(false);
+  await crossContact("newer");
+  expect(hasCurrentCrossClientApproval(row, await loadCrossClientContacts("client", row.toEmail, new Date()))).toBe(false);
+});
+it("refuses stale recent-contact history before reserving or queueing", async () => {
+  vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
+  await crossContact();
+  const page = await loadHeldEmailsForStaff("client", 0);
+  await crossContact("newer");
+  expect(await approveHeldEmail({ ...(await input()), reviewToken: page.emails[0].reviewToken })).toMatchObject({ ok: false });
+  expect(await prisma.mailboxSendReservation.count()).toBe(0);
+});
+it("keeps same-client waiting and cross-client bounce blocks while releasing the cross-client timer", async () => {
+  await crossContact();
+  const check = () => evaluateOutboundDispatchRecheck({ outboundEmailId: "held", clientId: "client", toEmail: "recipient@example.test", now: new Date() });
+  expect(await check()).toEqual({ block: false });
+  await prisma.outboundEmail.update({ where: { id: "recent" }, data: { status: "BOUNCED" } });
+  expect(await check()).toMatchObject({ block: true, kind: "recent_bounce" });
+  await prisma.outboundEmail.update({ where: { id: "recent" }, data: { status: "SENT", clientId: "client" } });
+  expect(await check()).toMatchObject({ block: true, kind: "cooldown" });
+});
+it("holds a newly contacted recipient at real dispatch after an earlier staff approval", async () => {
+  vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
+  expect(await approveHeldEmail(await input())).toMatchObject({ ok: true });
+  await crossContact();
+  await prisma.outboundEmail.update({ where: { id: "held" }, data: { status: "PROCESSING", claimedAt: new Date(), claimExpiresAt: new Date(Date.now() + 60000), sendAttempt: 2 } });
+  await executeOutboundSend("held");
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } });
+  expect(row).toMatchObject({ status: "FAILED", lastErrorCode: CROSS_CLIENT_REVIEW, providerMessageId: null, dispatchStartedAt: null });
+  expect((await prisma.mailboxSendReservation.findUniqueOrThrow({ where: { outboundEmailId: "held" } })).status).toBe("RELEASED");
+});
 async function input() {
   return { clientId: "client", outboundEmailId: "held", staffUserId: "staff", reviewToken: heldEmailReviewToken(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })) };
 }
