@@ -1378,6 +1378,7 @@ export type SequenceStepSendUiSnapshot = {
   stepId: string | null;
   stepPosition: number | null;
   delayDays: number;
+  delayHours: number;
   templateApproved: boolean;
   enrollmentCount: number;
   readyCount: number;
@@ -1485,6 +1486,7 @@ export async function loadSequenceStepSendUiSnapshots(
           category: true,
           position: true,
           delayDays: true,
+          delayHours: true,
           templateId: true,
           template: { select: { status: true } },
         },
@@ -1596,7 +1598,8 @@ export async function loadSequenceStepSendUiSnapshots(
                 previousStepMissingCount += 1;
               } else {
                 const eligibleAtMs =
-                  Date.parse(prevSentAtIso) + step.delayDays * DAY_MS;
+                  Date.parse(prevSentAtIso) + Math.max(0, step.delayDays) * DAY_MS +
+                  Math.max(0, step.delayHours ?? 0) * 60 * 60 * 1000;
                 if (nowMs < eligibleAtMs) {
                   delayPendingCount += 1;
                   if (
@@ -1662,7 +1665,7 @@ export async function loadSequenceStepSendUiSnapshots(
         } else if (previousStepMissingCount > 0 && prevCategory !== null) {
           disabledReason = `The previous email step has not finished for eligible recipients yet.`;
         } else if (delayPendingCount > 0) {
-          disabledReason = `The wait between steps (${String(step.delayDays)} days) has not finished yet for eligible recipients.`;
+          disabledReason = `The configured wait between steps has not finished yet for eligible recipients.`;
         } else if (readyCount > 0 && readyWithEmailCount === 0) {
           disabledReason =
             "No eligible recipients — some prepared rows are missing an email address.";
@@ -1701,6 +1704,7 @@ export async function loadSequenceStepSendUiSnapshots(
         stepId: step.id,
         stepPosition: step.position,
         delayDays: step.delayDays,
+        delayHours: step.delayHours ?? 0,
         templateApproved,
         enrollmentCount: s._count.enrollments,
         readyCount,
