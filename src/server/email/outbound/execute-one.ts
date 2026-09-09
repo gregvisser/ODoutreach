@@ -1,4 +1,5 @@
 import "server-only";
+import { CROSS_CLIENT_REVIEW, hasCurrentCrossClientApproval, loadCrossClientContacts } from "./cross-client-review";
 import { isAutomatedSequenceSend } from "@/lib/email-sequences/send-origin";
 
 import type { OutboundEmail } from "@/generated/prisma/client";
@@ -304,6 +305,7 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   if (isDispatchRecheckEnabled()) {
     const recheck = await evaluateOutboundDispatchRecheck({
       outboundEmailId: row.id,
+      clientId: row.clientId,
       toEmail: to,
       now: new Date(),
     });
@@ -324,6 +326,17 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
       if (blocked.count > 0 && row.mailboxIdentityId) {
         await markReservationReleasedForOutbound(row.id);
       }
+      return { ok: true };
+    }
+    const contacts = await loadCrossClientContacts(row.clientId, to, new Date());
+    if (!hasCurrentCrossClientApproval(row, contacts)) {
+      const held = await prisma.outboundEmail.updateMany({
+        where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null },
+        data: { status: "FAILED", claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null,
+          lastErrorCode: CROSS_CLIENT_REVIEW, lastProviderEventType: "cross_client_review_required",
+          lastErrorMessage: "Another OpenDoors client contacted this recipient recently. Review the contact history and this email on Email approvals before sending." },
+      });
+      if (held.count && row.mailboxIdentityId) await markReservationReleasedForOutbound(row.id);
       return { ok: true };
     }
   }

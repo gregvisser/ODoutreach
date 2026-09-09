@@ -163,13 +163,13 @@ describe("queueSelectedMailboxInternalProofSend", () => {
     setupHappyPath();
     vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
     prismaMock.outboundEmail.findMany.mockResolvedValue([
-      { sentAt: new Date(), status, sequenceStepSends: [] },
+      { clientId: "client-1", sentAt: new Date(), status, sequenceStepSends: [] },
     ]);
 
     const result = await queueSelectedMailboxInternalProofSend(validInput());
 
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not queued") });
-    expect(result).toMatchObject({ error: expect.stringContaining("across all OpenDoors clients") });
+    expect(result).toMatchObject({ error: expect.stringContaining("bounce protection applies across clients") });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.mailboxSendReservation.create).not.toHaveBeenCalled();
     expect(triggerOutboundQueueDrain).not.toHaveBeenCalled();

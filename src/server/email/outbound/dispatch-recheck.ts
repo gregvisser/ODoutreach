@@ -96,6 +96,7 @@ export function decideDispatchRecheck(input: {
 export async function loadDispatchRecentSend(input: {
   // Omitted for a pre-queue check: there is no outbound or own sequence yet.
   outboundEmailId?: string;
+  clientId?: string;
   toEmail: string;
   now: Date;
 }): Promise<DispatchRecheckRecentSend | null> {
@@ -127,6 +128,7 @@ export async function loadDispatchRecentSend(input: {
       ...(input.outboundEmailId ? { id: { not: input.outboundEmailId } } : {}),
     },
     select: {
+      clientId: true,
       sentAt: true,
       status: true,
       sequenceStepSends: { select: { sequenceId: true } },
@@ -142,6 +144,8 @@ export async function loadDispatchRecentSend(input: {
       row.sequenceStepSends.some((s) => ownSequenceIds.has(s.sequenceId));
     if (belongsToOwnSequence) continue;
     const isBounce = row.status === "BOUNCED";
+    // Cross-client contact is reviewed separately; bounces still block globally.
+    if (input.clientId && row.clientId !== input.clientId && !isBounce) continue;
     if (!recent) {
       // Rows are ordered newest-first, so the first qualifying row is the most
       // recent send; later rows only matter to surface a bounce.
@@ -161,6 +165,7 @@ export async function loadDispatchRecentSend(input: {
 /** Convenience used by the dispatcher: load recent send + decide in one call. */
 export async function evaluateOutboundDispatchRecheck(input: {
   outboundEmailId: string;
+  clientId?: string;
   toEmail: string;
   now: Date;
 }): Promise<DispatchRecheckDecision> {

@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prisma } from "@/lib/db";
 import {
@@ -362,6 +362,22 @@ describe("planSequenceStepSends — idempotency", () => {
 });
 
 describe("planSequenceStepSends — outreach cooldown", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it.each(["other-client", "same-client", "other-client-bounce", "guard-off"])("preserves safe preparation for %s", async mode => {
+    vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", mode === "guard-off" ? "false" : "true");
+    await enrollContact("review", { email: "review@example.test" });
+    await recordPastSend("recent-review", "review@example.test", 1);
+    await prisma.outboundEmail.update({ where: { id: "recent-review" }, data: {
+      clientId: mode === "same-client" ? CLIENT_ID : OTHER_CLIENT_ID,
+      status: mode === "other-client-bounce" ? "BOUNCED" : "SENT",
+    } });
+    await plan();
+    const row = await prisma.clientEmailSequenceStepSend.findFirstOrThrow({ where: { sequenceId: SEQUENCE_ID } });
+    if (mode === "other-client") expect(row.status).toBe("READY");
+    else expect(row.status).not.toBe("READY");
+    expect(await prisma.outboundEmail.count()).toBe(1);
+    expect(await prisma.mailboxSendReservation.count()).toBe(0);
+  });
   it("does not mark a recently contacted address as READY", async () => {
     await enrollContact("a", { email: "recent@example.test" });
     await recordPastSend("ob-recent", "recent@example.test", 1);
