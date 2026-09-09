@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client";
 
@@ -7,7 +7,7 @@ const { prismaMock } = vi.hoisted(() => {
     client: { findFirst: vi.fn() },
     clientMailboxIdentity: { findFirst: vi.fn(), findFirstOrThrow: vi.fn() },
     clientSendingCalendar: { findMany: vi.fn() },
-    outboundEmail: { create: vi.fn(), findFirstOrThrow: vi.fn() },
+    outboundEmail: { create: vi.fn(), findFirstOrThrow: vi.fn(), findMany: vi.fn() },
     mailboxSendReservation: {
       count: vi.fn(),
       findFirst: vi.fn(),
@@ -28,6 +28,10 @@ vi.mock("@/server/tenant/access", () => ({
 
 vi.mock("@/server/outreach/suppression-guard", () => ({
   evaluateSuppression: vi.fn(),
+}));
+
+vi.mock("@/server/internal-seed/seed-allowlist", () => ({
+  isInternalSeedAddress: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("@/server/email/outbound/trigger-queue", () => ({
@@ -124,7 +128,9 @@ function setupHappyPath(mailbox = baseMailbox) {
 }
 
 describe("queueSelectedMailboxInternalProofSend", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
+    vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "false");
     for (const group of Object.values(prismaMock)) {
       if (typeof group === "function") {
         group.mockReset();
@@ -151,6 +157,35 @@ describe("queueSelectedMailboxInternalProofSend", () => {
     expect(result.ok).toBe(false);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(triggerOutboundQueueDrain).not.toHaveBeenCalled();
+  });
+
+  it.each(["SENT", "BOUNCED"])("rejects a recent %s before queueing or reserving a slot", async (status) => {
+    setupHappyPath();
+    vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
+    prismaMock.outboundEmail.findMany.mockResolvedValue([
+      { sentAt: new Date(), status, sequenceStepSends: [] },
+    ]);
+
+    const result = await queueSelectedMailboxInternalProofSend(validInput());
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not queued") });
+    expect(result).toMatchObject({ error: expect.stringContaining("across all OpenDoors clients") });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.mailboxSendReservation.create).not.toHaveBeenCalled();
+    expect(triggerOutboundQueueDrain).not.toHaveBeenCalled();
+    const query = prismaMock.outboundEmail.findMany.mock.calls[0][0];
+    expect(query.where.toEmail).toEqual({ equals: "greg@bidlow.co.uk", mode: "insensitive" });
+    expect(query.where).not.toHaveProperty("clientId");
+    expect(query.where).not.toHaveProperty("id");
+  });
+
+  it("queues when the enabled preflight finds no recent send", async () => {
+    setupHappyPath();
+    vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
+    prismaMock.outboundEmail.findMany.mockResolvedValue([]);
+    const result = await queueSelectedMailboxInternalProofSend(validInput());
+    expect(result.ok).toBe(true);
+    expect(prismaMock.outboundEmail.create).toHaveBeenCalledTimes(1);
   });
 
   it("blocks non-allowlisted recipients before any send is queued", async () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 
 import {
@@ -84,6 +85,7 @@ export function InternalProofSendCard({
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [outboundEmailId, setOutboundEmailId] = useState<string | null>(null);
 
   const selected = eligibleRows.find((row) => row.id === mailboxId) ?? null;
   const canSubmit =
@@ -98,6 +100,7 @@ export function InternalProofSendCard({
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    setOutboundEmailId(null);
     if (!canSubmit) {
       setMessage({
         type: "err",
@@ -115,6 +118,7 @@ export function InternalProofSendCard({
       });
       setMessage({ type: result.ok ? "ok" : "err", text: resultText(result) });
       if (result.ok) {
+        setOutboundEmailId(result.outboundEmailId);
         setConfirmation("");
         router.refresh();
       }
@@ -235,6 +239,14 @@ export function InternalProofSendCard({
             >
               {message.text}
             </p>
+          ) : null}
+          {outboundEmailId ? (
+            <div className="text-sm lg:col-span-2">
+              <p>Queued does not mean sent or delivered to the inbox. Check the email status before sending another test.</p>
+              <Link className="underline" href={`/activity/outbound/${outboundEmailId}`}>
+                View verification email status
+              </Link>
+            </div>
           ) : null}
         </form>
       )}
