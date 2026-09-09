@@ -178,6 +178,7 @@ export function InternalProofSendCard({
               onChange={(e) => setRecipient(e.target.value)}
               className="h-8 w-full max-w-xl rounded-lg border border-input bg-background px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
+              <option value="" disabled>Choose a recipient</option>
               {APPROVED_INTERNAL_PROOF_RECIPIENTS.map((email) => (
                 <option key={email} value={email}>
                   {email}
