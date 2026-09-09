@@ -1,13 +1,17 @@
 import { pathToFileURL } from 'node:url';
 
 /** Finite, versioned run. Never fall back to an older unscoped send endpoint. */
-export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, fetchImpl = fetch, onBatch = () => {} }) {
+export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, budgetMs = 20 * 60_000, now = Date.now, fetchImpl = fetch, onBatch = () => {} }) {
   if (!url || !secret) throw Error('Scheduled outreach URL or secret is not configured');
+  if (!Number.isSafeInteger(budgetMs) || budgetMs <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw Error('Invalid scheduled outreach time budget');
+  const deadline = now() + budgetMs;
   const target = new URL(url);
   if (!['http:', 'https:'].includes(target.protocol) || target.pathname !== '/api/internal/scheduled-outreach/v1') throw Error('Use the versioned scheduled outreach endpoint');
   const request = async body => {
+    const remainingMs = deadline - now();
+    if (remainingMs <= 0) throw Error('Scheduled outreach time budget exhausted');
     const response = await fetchImpl(url, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(Math.min(timeoutMs, remainingMs)),
       headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
       body: JSON.stringify({ schedulerProtocol: 1, ...body }),
     });
@@ -21,6 +25,12 @@ export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, f
   if (!plan.ok || !validIds(plan.clientIds) || !validIds(plan.mailboxIds)) throw Error('Invalid scheduled outreach plan');
   const summary = { plannedClients: plan.clientIds.length, plannedMailboxes: plan.mailboxIds.length, attempted: 0, failed: 0, unverified: 0, skipped: 0 };
   const batch = async body => {
+    if (now() >= deadline) {
+      // No HTTP request was made. Never report an unattempted phase as success.
+      summary.unverified++;
+      onBatch({ phase: body.phase, unverified: true, unattempted: true });
+      return;
+    }
     summary.attempted++;
     try {
       const result = await request(body);
