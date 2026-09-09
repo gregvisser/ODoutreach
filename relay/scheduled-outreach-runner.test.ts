@@ -48,3 +48,17 @@ it("does not retry an unconfirmed queue request", async () => {
   expect(await runScheduledOutreach({ url, secret: "synthetic", timeoutMs: 100 })).toMatchObject({ ok: false, unverified: 1, attempted: 2 });
   expect(requests.filter(body => body.phase === "queue")).toHaveLength(1);
 });
+it("stops starting work when the whole-run budget expires and marks remaining phases unverified", async () => {
+  let clock = 0;
+  const url = await endpoint(body => {
+    if (body.phase === "sync") clock = 100;
+    return { body: body.phase === "plan" ? plan : { schedulerProtocol: 1, ok: true } };
+  });
+  expect(await runScheduledOutreach({ url, secret: "synthetic", budgetMs: 100, now: () => clock })).toMatchObject({ ok: false, attempted: 1, unverified: 3 });
+  expect(requests.map(body => body.phase)).toEqual(["plan", "sync"]);
+});
+it("rejects an invalid budget before making any request", async () => {
+  const url = await endpoint(() => ({ body: plan }));
+  await expect(runScheduledOutreach({ url, secret: "synthetic", budgetMs: 0 })).rejects.toThrow(/time budget/);
+  expect(requests).toHaveLength(0);
+});
