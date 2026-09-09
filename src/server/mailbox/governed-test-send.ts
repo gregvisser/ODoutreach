@@ -211,7 +211,7 @@ export async function queueMicrosoftGovernedTestSend(input: {
     return { ok: false, outcome: "failed", error: txResult.error };
   }
 
-  await triggerOutboundQueueDrain();
+  await triggerOutboundQueueDrain({ clientId, outboundEmailIds: [txResult.id] });
 
   return {
     ok: true,

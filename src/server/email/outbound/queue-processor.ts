@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
+import { isOutboundDispatchScope, type OutboundDispatchScope } from "@/lib/outbound-dispatch-scope";
 
 import { executeOutboundSend } from "./execute-one";
 
@@ -21,7 +22,10 @@ export async function processOutboundSendQueue(opts: {
   limit: number;
   /** Omitted preserves manual dispatch; an empty scheduled scope claims nothing. */
   clientIds?: string[];
+  /** Exact rows created by one staff action; never widens to the shared queue. */
+  dispatchScope?: OutboundDispatchScope;
 }): Promise<ProcessQueueResult> {
+  if (opts.dispatchScope !== undefined && !isOutboundDispatchScope(opts.dispatchScope)) throw new Error("Invalid outbound dispatch scope");
   if (opts.clientIds?.length === 0) return { claimed: 0, completed: 0, errors: [] };
   const limit = Math.min(Math.max(opts.limit, 1), 50);
   const now = new Date();
@@ -36,6 +40,10 @@ export async function processOutboundSendQueue(opts: {
       SELECT "OutboundEmail"."id"
       FROM "OutboundEmail"
       WHERE "OutboundEmail"."status" = 'QUEUED'::"OutboundEmailStatus"
+        AND (${opts.dispatchScope !== undefined} = false OR (
+          "OutboundEmail"."clientId" = ${opts.dispatchScope?.clientId ?? ""}
+          AND "OutboundEmail"."id" = ANY(${opts.dispatchScope?.outboundEmailIds ?? []}::text[])
+        ))
         AND "OutboundEmail"."dispatchStartedAt" IS NULL
         -- Historical/manual queue entries must not dispatch threaded replies
         -- through the ordinary send path or overwrite their recovery metadata.

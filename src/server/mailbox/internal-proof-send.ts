@@ -262,7 +262,7 @@ export async function queueSelectedMailboxInternalProofSend(input: {
     return { ok: false, error: txResult.error };
   }
 
-  await triggerOutboundQueueDrain();
+  await triggerOutboundQueueDrain({ clientId, outboundEmailIds: [txResult.id] });
   const windowKey = (await loadClientSendingWindow(clientId, new Date())).key;
   const bookedAfter = await prisma.mailboxSendReservation.count({
     where: {
