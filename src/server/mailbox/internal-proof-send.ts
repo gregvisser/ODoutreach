@@ -30,6 +30,11 @@ import {
 } from "@/server/mailbox/sending-policy";
 import { appendMailboxSignature } from "@/server/mailbox/mailbox-send-composition";
 import { triggerOutboundQueueDrain } from "@/server/email/outbound/trigger-queue";
+import {
+  decideDispatchRecheck,
+  isDispatchRecheckEnabled,
+  loadDispatchRecentSend,
+} from "@/server/email/outbound/dispatch-recheck";
 
 export type InternalProofSendResult =
   | {
@@ -120,6 +125,20 @@ export async function queueSelectedMailboxInternalProofSend(input: {
       ok: false,
       error: "This approved proof recipient is currently suppressed for this workspace.",
     };
+  }
+
+  // Explain known dispatch blocks before reserving capacity or creating a row.
+  // Dispatch still rechecks independently, including sends that race this check.
+  if (isDispatchRecheckEnabled()) {
+    const now = new Date();
+    const recentSend = await loadDispatchRecentSend({ toEmail: to, now });
+    const recheck = decideDispatchRecheck({ now, recentSend });
+    if (recheck.block) {
+      return {
+        ok: false,
+        error: `Verification email not queued. ${recheck.reason} This protection applies across all OpenDoors clients.`,
+      };
+    }
   }
 
   const compliance = prepareContactSendCompliance({

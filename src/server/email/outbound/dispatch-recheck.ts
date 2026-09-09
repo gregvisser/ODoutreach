@@ -94,7 +94,8 @@ export function decideDispatchRecheck(input: {
  * low (per-mailbox daily caps), so the per-send cost is negligible.
  */
 export async function loadDispatchRecentSend(input: {
-  outboundEmailId: string;
+  // Omitted for a pre-queue check: there is no outbound or own sequence yet.
+  outboundEmailId?: string;
   toEmail: string;
   now: Date;
 }): Promise<DispatchRecheckRecentSend | null> {
@@ -111,10 +112,10 @@ export async function loadDispatchRecentSend(input: {
 
   // This row's own sequence(s) — excluded so step-2 isn't blocked by step-1.
   // PK lookup on OutboundEmail, then its step-send FK; cheap.
-  const self = await prisma.outboundEmail.findUnique({
+  const self = input.outboundEmailId ? await prisma.outboundEmail.findUnique({
     where: { id: input.outboundEmailId },
     select: { sequenceStepSends: { select: { sequenceId: true } } },
-  });
+  }) : null;
   const ownSequenceIds = new Set(
     (self?.sequenceStepSends ?? []).map((s) => s.sequenceId),
   );
@@ -123,7 +124,7 @@ export async function loadDispatchRecentSend(input: {
     where: {
       toEmail: { equals: normalized, mode: "insensitive" },
       sentAt: { gte: cooldownStart, not: null },
-      id: { not: input.outboundEmailId },
+      ...(input.outboundEmailId ? { id: { not: input.outboundEmailId } } : {}),
     },
     select: {
       sentAt: true,
