@@ -33,11 +33,13 @@ test("staff see another client's recent contact and approve only the reviewed em
   await seedRecentContact(`${clientId}-recent`);
   await page.goto(`/clients/${clientId}/mailboxes`);
   await page.getByRole("link", { name: "Email approvals", exact: true }).click();
-  await expect(page.getByText("Recent contact from another client", { exact: true })).toBeVisible();
-  await expect(page.getByRole("listitem").filter({ hasText: "Other client review fixture" })).toBeVisible();
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Approve and queue this email" }).click();
-  await expect(page.getByRole("status")).toContainText("queued with your approval");
+  const panel = page.getByRole("article", { name: "Review email to cross-review@example.test", exact: true });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText("Recent contact from another client", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("listitem").filter({ hasText: "Other client review fixture" })).toBeVisible();
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: "Approve and queue this email" }).click();
+  await expect(panel.getByRole("status")).toContainText("queued with your approval");
   const saved = (await pool.query('SELECT status,metadata FROM "OutboundEmail" WHERE id=$1', [clientId])).rows[0];
   expect(saved.status).toBe("QUEUED");
   expect(saved.metadata.crossClientApproval.historyToken).toMatch(/^[a-f0-9]{64}$/);
@@ -46,11 +48,13 @@ test("staff see another client's recent contact and approve only the reviewed em
 test("a contact arriving after the review page opened requires fresh review", async ({ page }) => {
   await seedRecentContact(`${clientId}-recent`);
   await page.goto(url);
-  await expect(page.getByText("Recent contact from another client", { exact: true })).toBeVisible();
+  const panel = page.getByRole("article", { name: "Review email to cross-review@example.test", exact: true });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText("Recent contact from another client", { exact: true })).toBeVisible();
   await seedRecentContact(`${clientId}-newer`);
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Approve and queue this email" }).click();
-  await expect(page.getByRole("status")).toContainText("recent contact history changed");
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: "Approve and queue this email" }).click();
+  await expect(panel.getByRole("status")).toContainText("recent contact history changed");
   expect((await pool.query('SELECT status FROM "OutboundEmail" WHERE id=$1', [clientId])).rows[0].status).toBe("FAILED");
   expect((await pool.query('SELECT id FROM "MailboxSendReservation" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
 });
