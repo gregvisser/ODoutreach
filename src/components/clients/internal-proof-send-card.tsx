@@ -243,7 +243,7 @@ export function InternalProofSendCard({
           {outboundEmailId ? (
             <div className="text-sm lg:col-span-2">
               <p>Queued does not mean sent or delivered to the inbox. Check the email status before sending another test.</p>
-              <Link className="underline" href={`/activity/outbound/${outboundEmailId}`}>
+              <Link prefetch={false} className="underline" href={`/activity/outbound/${outboundEmailId}`}>
                 View verification email status
               </Link>
             </div>
