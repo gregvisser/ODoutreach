@@ -1,4 +1,5 @@
 import "server-only";
+import { validateFollowUpScope } from "@/lib/email-sequences/followup-scope";
 
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
@@ -75,7 +76,10 @@ function autoSendPaused(): boolean {
 export async function advanceDueSequenceFollowUps(opts?: {
   /** Restrict to one client (e.g. for a targeted re-run / test). */
   clientId?: string;
+  /** Optional finite campaign selection; requires an explicit client. */
+  sequenceIds?: string[];
 }): Promise<AdvanceFollowUpsResult> {
+  validateFollowUpScope(opts);
   const result: AdvanceFollowUpsResult = {
     clientsProcessed: 0,
     sequencesProcessed: 0,
@@ -133,7 +137,7 @@ export async function advanceDueSequenceFollowUps(opts?: {
     result.clientsProcessed += 1;
 
     const sequences = await prisma.clientEmailSequence.findMany({
-      where: { clientId: client.id, status: "APPROVED" },
+      where: { clientId: client.id, status: "APPROVED", ...(opts?.sequenceIds ? { id: { in: opts.sequenceIds } } : {}) },
       select: {
         id: true,
         steps: {

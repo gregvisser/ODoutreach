@@ -47,3 +47,32 @@ it("does not use an inactive administrator as its system actor", async () => {
   expect(plan).not.toHaveBeenCalled();
   expect(dispatch).not.toHaveBeenCalled();
 });
+
+it("limits advancement to the selected campaign within the selected client", async () => {
+  await client("selected", true);
+  await client("other-client", true);
+  const first = await prisma.clientEmailSequence.findFirstOrThrow({ where: { clientId: "selected" }, include: { steps: true } });
+  const second = await prisma.clientEmailSequence.create({ data: {
+    clientId: "selected", contactListId: first.contactListId, name: "Unselected campaign", status: "APPROVED",
+    steps: { create: { templateId: first.steps[0].templateId, category: "FOLLOW_UP_1", position: 1 } },
+  } });
+  const result = await advanceDueSequenceFollowUps({ clientId: "selected", sequenceIds: [first.id] });
+  expect(result).toMatchObject({ sequencesProcessed: 1, followUpsQueued: 1, errors: [] });
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ clientId: "selected", sequenceId: first.id }));
+  expect(plan).not.toHaveBeenCalledWith(expect.objectContaining({ sequenceId: second.id }));
+  dispatch.mockClear(); plan.mockClear();
+  const wrongClient = await advanceDueSequenceFollowUps({ clientId: "other-client", sequenceIds: [first.id] });
+  expect(wrongClient.sequencesProcessed).toBe(0);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(plan).not.toHaveBeenCalled();
+});
+
+it("does not let a campaign selection override human sending consent", async () => {
+  await client("human", false);
+  const sequence = await prisma.clientEmailSequence.findFirstOrThrow({ where: { clientId: "human" } });
+  const result = await advanceDueSequenceFollowUps({ clientId: "human", sequenceIds: [sequence.id] });
+  expect(result.clientsProcessed).toBe(0);
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(plan).not.toHaveBeenCalled();
+});
