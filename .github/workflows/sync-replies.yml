@@ -34,6 +34,8 @@ jobs:
         with:
           node-version: '20'
       - name: Call reply sync endpoint
+        # Azure can own receiving without disabling the protected DNC refresh.
+        if: ${{ vars.REPLY_SYNC_RUNNER != 'azure' }}
         env:
           REPLY_SYNC_URL: https://opensdoors.bidlow.co.uk/api/internal/replies/sync
           PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}

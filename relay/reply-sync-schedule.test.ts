@@ -27,6 +27,15 @@ import { describe, expect, it } from "vitest";
 
 const WORKFLOWS_DIR = path.resolve(__dirname, "..", ".github", "workflows");
 
+it("allows an explicit Azure receive cutover while retaining DNC refresh", () => {
+  const workflow = readFileSync(path.join(WORKFLOWS_DIR, "sync-replies.yml"), "utf8");
+  const receive = workflow.split("- name: Call reply sync endpoint")[1].split("- name: Sync do-not-contact sheets")[0];
+  expect(receive).toContain("if: ${{ vars.REPLY_SYNC_RUNNER != 'azure' }}");
+  const dnc = workflow.split("- name: Sync do-not-contact sheets")[1].split("- name: Fail run")[0];
+  expect(dnc).toContain("if: always()");
+  expect(dnc).not.toContain("REPLY_SYNC_RUNNER");
+});
+
 function readWorkflowCron(fileName: string): string {
   const contents = readFileSync(path.join(WORKFLOWS_DIR, fileName), "utf8");
   const match = contents.match(/- cron:\s*"([^"]+)"/);
