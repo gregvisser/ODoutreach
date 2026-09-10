@@ -7,7 +7,7 @@ import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator
 import { syncMailboxInboxForMailbox } from "@/server/mailbox/mailbox-inbox-sync";
 
 export type InboxSyncActionResult =
-  | { ok: true; ingested: number; totalSeen: number }
+  | { ok: true; ingested: number; totalSeen: number; backlogPending: boolean }
   | { ok: false; error: string };
 
 /**
@@ -36,5 +36,5 @@ export async function syncMailboxInboxForMailboxAction(
   if (!r.ok) {
     return { ok: false, error: r.error };
   }
-  return { ok: true, ingested: r.ingested, totalSeen: r.totalSeen };
+  return { ok: true, ingested: r.ingested, totalSeen: r.totalSeen, backlogPending: r.backlogPending === true };
 }

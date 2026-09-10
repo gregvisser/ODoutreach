@@ -55,6 +55,10 @@ test.describe("Mailboxes shows the mailboxes first", () => {
     // it, every assertion below would pass just as happily on an empty page.
     const firstMailbox = content.getByText(E2E_MAILBOXES[0]!.email).first();
     await expect(firstMailbox).toBeVisible();
+    await expect(content.getByText("Check for replies", { exact: true }).first()).toBeVisible();
+    await expect(content.getByRole("button", { name: /^Check replies —/ })).toHaveCount(E2E_CONNECTED_MAILBOX_COUNT);
+    await expect(content.getByRole("link", { name: "View replies in Activity" })).toBeVisible();
+    await expect(content.getByText("No replies received yet.", { exact: false })).toHaveCount(0);
 
     const tableBox = await firstMailbox.boundingBox();
     expect(tableBox, "the mailbox table has no position on the page").not.toBeNull();

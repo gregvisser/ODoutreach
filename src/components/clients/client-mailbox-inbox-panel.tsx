@@ -41,6 +41,7 @@ type Mbox = {
 };
 
 type Props = {
+  controlsOnly?: boolean;
   clientId: string;
   messages: Row[];
   connectedMailboxes: Mbox[];
@@ -50,6 +51,7 @@ type Props = {
 };
 
 export function ClientMailboxInboxPanel({
+  controlsOnly = false,
   clientId,
   messages,
   connectedMailboxes,
@@ -76,7 +78,7 @@ export function ClientMailboxInboxPanel({
       if (r.ok) {
         setMessage({
           type: "ok",
-          text: `Checked replies and stored ${r.ingested} of ${r.totalSeen} recent message(s).`,
+          text: `Checked replies and stored ${r.ingested} of ${r.totalSeen} recent message(s).${r.backlogPending ? " More messages remain to check. Check this mailbox again to continue." : ""}`,
         });
         router.refresh();
       } else {
@@ -153,7 +155,11 @@ export function ClientMailboxInboxPanel({
         </p>
       )}
 
-      {messages.length === 0 ? (
+      {controlsOnly ? (
+        <Link prefetch={false} href={`/clients/${clientId}/activity`} className="text-sm underline">
+          View replies in Activity
+        </Link>
+      ) : messages.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No replies received yet. Click Check for replies to sync connected mailboxes.
         </p>

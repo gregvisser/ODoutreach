@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClientMailboxIdentitiesPanel } from "@/components/clients/client-mailbox-identities-panel";
+import { ClientMailboxInboxPanel } from "@/components/clients/client-mailbox-inbox-panel";
 import { ClientOpenTrackingCard } from "@/components/clients/client-open-tracking-card";
 import { ClientSendPacingCard } from "@/components/clients/client-send-pacing-card";
 import { ClientSendingCalendarCard } from "@/components/clients/client-sending-calendar-card";
@@ -222,6 +223,27 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         How fast this workspace's mail leaves. Sits directly under the mailboxes
         because it is a property of how they send, not of the sequences.
       */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Check for replies</CardTitle>
+          <CardDescription>Check a connected mailbox now. This receives messages and does not send outreach.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClientMailboxInboxPanel
+            controlsOnly
+            clientId={client.id}
+            messages={[]}
+            connectedMailboxes={bundle.connectedMailboxInbox.map((mailbox) => ({
+              ...mailbox,
+              provider: mailbox.provider === "GOOGLE" ? "GOOGLE" : "MICROSOFT",
+            }))}
+            canSync={bundle.canMutateMailboxes}
+            oauthMicrosoftReady={bundle.oauthMicrosoftReady}
+            oauthGoogleReady={bundle.oauthGoogleReady}
+          />
+        </CardContent>
+      </Card>
+
       <ClientSendPacingCard
         clientId={client.id}
         hasCustomCalendar={!!bundle.calendarSettings.current}
