@@ -78,6 +78,8 @@ export async function advanceDueSequenceFollowUps(opts?: {
   clientId?: string;
   /** Optional finite campaign selection; requires an explicit client. */
   sequenceIds?: string[];
+  /** Internal callback receives only IDs newly queued by this batch. */
+  onQueued?: (clientId: string, outboundEmailIds: string[]) => Promise<void>;
 }): Promise<AdvanceFollowUpsResult> {
   validateFollowUpScope(opts);
   const result: AdvanceFollowUpsResult = {
@@ -205,6 +207,9 @@ export async function advanceDueSequenceFollowUps(opts?: {
             initiatedByAutomation: true,
           });
           result.followUpsQueued += batch.counts.queued;
+          if (opts?.onQueued && batch.queued.length > 0) {
+            await opts.onQueued(client.id, batch.queued.map(row => row.outboundEmailId));
+          }
         } catch (e) {
           result.errors.push(
             `${client.id}/${seq.id}/${category}: ${

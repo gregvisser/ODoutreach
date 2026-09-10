@@ -1,0 +1,31 @@
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
+import { prisma } from "@/lib/db";
+import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
+const mocks = vi.hoisted(() => ({ plan: vi.fn(), mailboxes: vi.fn(), sync: vi.fn(), advance: vi.fn() }));
+vi.mock("@/server/mailbox/scheduled-outreach", () => ({ loadScheduledOutreachPlan: mocks.plan }));
+vi.mock("@/server/mailbox/mailbox-inbox-sync", () => ({ listReplySyncMailboxIds: mocks.mailboxes, syncMailboxInboxForMailbox: mocks.sync }));
+vi.mock("./advance-due-followups", () => ({ advanceDueSequenceFollowUps: mocks.advance }));
+import { runSelectedCampaignFollowUps } from "./selected-campaign-scheduler";
+beforeEach(async () => {
+  await resetIntegrationDatabase(); vi.resetAllMocks();
+  mocks.plan.mockResolvedValue({ clientIds: ["selected"] });
+  mocks.mailboxes.mockResolvedValue(["mailbox"]);
+  mocks.sync.mockResolvedValue({ ok: true, backlogPending: false });
+  mocks.advance.mockResolvedValue({ errors: [] });
+});
+afterEach(() => vi.restoreAllMocks());
+afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
+it("requires live consent before any provider access", async () => {
+  await prisma.client.create({ data: { id: "selected", name: "Synthetic", slug: "synthetic", status: "ACTIVE", autonomousSendEnabled: false } });
+  const scope = JSON.stringify({ clientId: "selected", sequenceIds: ["campaign"] });
+  expect(await runSelectedCampaignFollowUps(scope)).toMatchObject({ skipped: true, reason: "client-consent-unavailable" });
+  expect(mocks.sync).not.toHaveBeenCalled();
+  await prisma.client.update({ where: { id: "selected" }, data: { autonomousSendEnabled: true } });
+  expect(await runSelectedCampaignFollowUps(scope)).toMatchObject({ ok: true });
+  expect(mocks.advance).toHaveBeenCalledWith(expect.objectContaining({ clientId: "selected", sequenceIds: ["campaign"] }));
+  mocks.sync.mockClear(); mocks.advance.mockClear();
+  await prisma.client.update({ where: { id: "selected" }, data: { deletedAt: new Date() } });
+  expect(await runSelectedCampaignFollowUps(scope)).toMatchObject({ skipped: true });
+  expect(mocks.sync).not.toHaveBeenCalled();
+  expect(mocks.advance).not.toHaveBeenCalled();
+});
