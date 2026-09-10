@@ -258,6 +258,7 @@ describe("send pacing fires inside the real dispatcher", () => {
     const result = await dispatch();
 
     expect(result.counts.queued).toBe(0);
+    expect(result.counts.blockedPlanClassifier).toBe(1);
     expect(result.blocked).toHaveLength(1);
     expect(result.blocked[0].reason).toMatch(/held back by send pacing/i);
     expect(result.blocked[0].contactEmail).toBe(RECIPIENT);

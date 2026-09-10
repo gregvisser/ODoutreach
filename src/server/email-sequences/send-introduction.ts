@@ -1263,6 +1263,9 @@ export async function sendSequenceStepBatch(input: {
           }
 
           if (!placed) {
+            // The staff launch result uses this count to show the recorded
+            // reason. A plan-ready row can still be held by dispatch pacing.
+            counts.blockedPlanClassifier += 1;
             // Order matters: the corporate gate is the most specific and the
             // most temporary of the three, so it is named first. Telling an
             // operator "no capacity remaining" when a mailbox is 40 minutes
