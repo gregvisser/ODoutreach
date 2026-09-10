@@ -156,7 +156,7 @@ export function ClientMailboxInboxPanel({
       )}
 
       {controlsOnly ? (
-        <Link href={`/clients/${clientId}/activity`} className="text-sm underline">
+        <Link prefetch={false} href={`/clients/${clientId}/activity`} className="text-sm underline">
           View replies in Activity
         </Link>
       ) : messages.length === 0 ? (
