@@ -3,6 +3,7 @@ import type { OutboundEmail, Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { countBookedSendSlotsInUtcWindow, lockSendingMailboxInTransaction, recomputeMailboxLedgerCounterInTransaction, markReservationConsumedForOutboundInTransaction, markReservationReleasedForOutboundInTransaction } from "@/server/mailbox/sending-policy";
 import { AUTOMATED_SEND_HELD_MESSAGE, isAutomatedSequenceSend } from "@/lib/email-sequences/send-origin";
+import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-scheduler-selection";
 
 import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 
@@ -38,6 +39,24 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
         } });
         await markReservationReleasedForOutboundInTransaction(tx, current.id);
         return { ok: false as const, error: AUTOMATED_SEND_HELD_MESSAGE };
+      }
+      const selection = parseCampaignSchedulerSelection(process.env.CAMPAIGN_SCHEDULER_SELECTION);
+      if (selection) {
+        const selected = current.clientId === selection.clientId && await tx.clientEmailSequenceStepSend.findFirst({
+          where: { outboundEmailId: current.id, clientId: selection.clientId, sequenceId: { in: selection.sequenceIds },
+            sequence: { clientId: selection.clientId, status: "APPROVED" },
+            enrollment: { clientId: selection.clientId, status: "PENDING" } },
+          select: { id: true },
+        });
+        if (!selected) {
+          const message = "This automatic email is outside the active campaign selection or its enrollment has stopped. Review it before sending.";
+          await tx.outboundEmail.update({ where: { id: current.id }, data: {
+            status: "FAILED", claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null,
+            nextRetryAt: null, lastErrorCode: "CAMPAIGN_SELECTION_HELD", lastErrorMessage: message, failureReason: message,
+          } });
+          await markReservationReleasedForOutboundInTransaction(tx, current.id);
+          return { ok: false as const, error: message };
+        }
       }
     }
     let now = new Date();
