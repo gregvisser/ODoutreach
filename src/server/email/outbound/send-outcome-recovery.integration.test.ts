@@ -28,6 +28,7 @@ beforeEach(async () => {
   token.mockReset().mockResolvedValue("synthetic-token");
   vi.stubGlobal("fetch", vi.fn(() => { throw Error("NETWORK BLOCKED"); }));
   vi.stubEnv("SEND_PREFLIGHT_DEDUP_ENABLED", "false");
+  vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", "");
   await resetIntegrationDatabase();
   await prisma.client.create({ data: { id: "client", name: "Outcome test", slug: "outcome-test", defaultSenderEmail: "sender@example.test", senderIdentityStatus: "VERIFIED_READY" } });
 });
@@ -561,4 +562,66 @@ it.each(["GOOGLE", "MICROSOFT"] as const)("records an already accepted %s send w
   expect(send).not.toHaveBeenCalled();
   expect(await prisma.outboundEmail.findUniqueOrThrow({where:{id:"outbound"}})).toMatchObject({status:"SENT",providerMessageId:"synthetic-existing"});
   expect(await prisma.mailboxSendReservation.findUniqueOrThrow({where:{outboundEmailId:"outbound"}})).toMatchObject({status:"CONSUMED",windowKey:"2020-01-01"});
+});
+
+async function linkSelectedCampaign() {
+  await prisma.client.update({ where: { id: "client" }, data: { status: "ACTIVE", autonomousSendEnabled: true } });
+  await prisma.contactList.create({ data: { id: "selection-list", clientId: "client", name: "Synthetic" } });
+  await prisma.contact.create({ data: { id: "selection-contact", clientId: "client", email: "recipient@example.test" } });
+  await prisma.clientEmailTemplate.create({ data: { id: "selection-template", clientId: "client", name: "Synthetic", category: "FOLLOW_UP_1", subject: "Synthetic", content: "Synthetic", status: "APPROVED" } });
+  await prisma.clientEmailSequence.create({ data: { id: "selection-sequence", clientId: "client", contactListId: "selection-list", name: "Synthetic", status: "APPROVED" } });
+  await prisma.clientEmailSequenceStep.create({ data: { id: "selection-step", sequenceId: "selection-sequence", templateId: "selection-template", position: 2, category: "FOLLOW_UP_1" } });
+  await prisma.clientEmailSequenceEnrollment.create({ data: { id: "selection-enrollment", clientId: "client", sequenceId: "selection-sequence", contactListId: "selection-list", contactId: "selection-contact", status: "PENDING" } });
+  await prisma.clientEmailSequenceStepSend.create({ data: { clientId: "client", sequenceId: "selection-sequence", enrollmentId: "selection-enrollment", stepId: "selection-step", templateId: "selection-template", contactListId: "selection-list", contactId: "selection-contact", idempotencyKey: "selection-test", status: "SENT", outboundEmailId: "outbound" } });
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
+  vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", JSON.stringify({ clientId: "client", sequenceIds: ["selection-sequence"] }));
+}
+it.each(["GOOGLE", "MICROSOFT"] as const)("rechecks the campaign selection after %s authentication", async provider => {
+  vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "0");
+  await seed(provider);
+  await linkSelectedCampaign();
+  token.mockImplementation(async () => {
+    vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", JSON.stringify({ clientId: "client", sequenceIds: ["different"] }));
+    return "synthetic-token";
+  });
+  expect((await executeOutboundSend("outbound")).ok).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", dispatchStartedAt: null, lastErrorCode: "CAMPAIGN_SELECTION_HELD" });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+});
+it("permits the linked selected automatic campaign at the durable boundary", async () => {
+  await seed("LEGACY");
+  await linkSelectedCampaign();
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  expect(await beginOutboundDispatch(row)).toBeTruthy();
+  expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).dispatchStartedAt).not.toBeNull();
+});
+it("refuses a stopped selected enrollment and preserves the hold atomically", async () => {
+  await seed("GOOGLE");
+  await linkSelectedCampaign();
+  await prisma.clientEmailSequenceEnrollment.update({ where: { id: "selection-enrollment" }, data: { status: "COMPLETED" } });
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  await prisma.$executeRawUnsafe(`CREATE FUNCTION fail_outcome_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic release failure'; END $$`);
+  await prisma.$executeRawUnsafe(`CREATE TRIGGER fail_outcome_test BEFORE UPDATE ON "MailboxSendReservation" FOR EACH ROW EXECUTE FUNCTION fail_outcome_test()`);
+  await expect(beginOutboundDispatch(row)).rejects.toThrow("synthetic release failure");
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "PROCESSING", dispatchStartedAt: null });
+  await prisma.$executeRawUnsafe(`DROP TRIGGER fail_outcome_test ON "MailboxSendReservation"`);
+  expect(await beginOutboundDispatch(row)).toMatchObject({ ok: false });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+});
+it("malformed selection blocks automatic dispatch without mutating the claim", async () => {
+  await seed("LEGACY");
+  await linkSelectedCampaign();
+  vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", "{bad");
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  await expect(beginOutboundDispatch(row)).rejects.toThrow();
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "PROCESSING", dispatchStartedAt: null });
+});
+it("leaves manual dispatch and provider-confirmed reconciliation outside campaign selection", async () => {
+  await seed("LEGACY");
+  vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", "{bad");
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  expect(await beginOutboundDispatch(row)).toBeTruthy();
+  await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { dispatchStartedAt: null, metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
+  expect(await beginOutboundDispatch(row, undefined, true)).toBeTruthy();
 });
