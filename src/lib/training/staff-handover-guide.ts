@@ -26,8 +26,8 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Build one introduction email; add follow-ups only if needed.",
       "Choose Auto-pick or a specific connected mailbox.",
       "Preview and review before sending or scheduling.",
-      "Open Activity and click Check replies for the connected mailboxes.",
-      "Open the reply detail and click Stop follow-ups so the sequence ends for anyone who has replied.",
+      "Use Check replies on Mailboxes if you need a fresh check, then open Activity to read the replies. If more messages remain, check again.",
+      "Matched replies stop their sequence follow-ups automatically. Open the reply detail to confirm it says Stopped; use Stop follow-ups if it has not stopped.",
     ],
   },
   {
@@ -54,7 +54,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     bullets: [
       "Do-not-contact lists contain email addresses and domains that must never receive outreach.",
       "Keep the Google Sheets current and check last sync before sending.",
-      "If someone replies asking to be removed, add them to the do-not-contact source.",
+      "Clear removal requests are blocked automatically when the reply is processed. Check the reply detail or Blocked contacts to confirm the block. If no block is recorded, use the immediate Do-not-contact action; do not wait for a sheet sync.",
     ],
   },
   {
@@ -63,12 +63,14 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Start with one introduction email. Follow-ups are optional.",
       "Choose a contact list and a sending mailbox. Broken mailboxes are disabled with a reason.",
       "Nothing should be sent until you have reviewed the list, mailbox, message, and do-not-contact status.",
+      "Each mailbox has a ceiling of 30 total emails per day, including staff replies and reserved sends. Warm-up can allow fewer outreach emails; the displayed pool capacity is not a promise that all 30 can go out immediately.",
+      "Automatic follow-ups require Machine sending and an active scheduler. In Human sending, review due recipients and use the follow-up send control. Do not change sending mode just to clear a hold.",
     ],
   },
   {
     title: "Replies and Activity",
     bullets: [
-      "Replies are checked manually using Check replies unless automatic sync has been enabled.",
+      "The live system checks connected mailboxes automatically. Use Check replies on Mailboxes for a fresh check and review Activity daily; a disconnected mailbox cannot be checked until it is reconnected.",
       "Activity shows sent messages, inbound replies, errors, unsubscribes, and sequence progress.",
       "If a mailbox says reconnect required, Microsoft or Google needs the mailbox owner/admin to sign in again.",
     ],
@@ -109,7 +111,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Sequence: an introduction email plus optional follow-ups.",
       "Do-not-contact: emails and domains blocked from outreach (titled \"People blocked from outreach\" at the cross-client view).",
       "Activity: timeline of sends, replies, errors, and mailbox inbox messages.",
-      "Reports: live operational dashboard — Sent, Delivered, Replies, Bounces, Opt-outs.",
+      "Reports: recorded sends, replies, bounces and opt-outs. A confirmed send means the mailbox accepted the message; it does not prove inbox delivery.",
     ],
   },
   {
@@ -120,7 +122,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Show Sources import choices, Universe, and explain RocketReach credits and the confirmation phrase requirement.",
       "Show Do-not-contact (titled \"People blocked from outreach\" at the cross-client view) and explain why it is a hard safety check.",
       "Show Outreach: choose list, mailbox, introduction, optional follow-up, preview, send/schedule.",
-      "Show Activity: click Check replies and read inbound messages. Show Stop follow-ups on a replied contact.",
+      "On Mailboxes, use Check replies, then open Activity and read a reply. Show its stopped sequence and, for an opt-out, its recorded contact block.",
       "Explain that Admin operations is support-only and not in the sidebar.",
     ],
   },
