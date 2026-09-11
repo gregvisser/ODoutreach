@@ -245,10 +245,10 @@ describe("executeOutboundSend — suppression at dispatch time", () => {
   it("blocks a send to an address suppressed after the row was queued", async () => {
     // The rule that matters most in this module: suppression is re-checked at
     // dispatch, not just when the row was staged.
-    await suppress("blocked@example.test");
     const id = await makeOutbound("ob-suppressed", {
       toEmail: "blocked@example.test",
     });
+    await suppress("blocked@example.test");
 
     expect(await executeOutboundSend(id)).toEqual({ ok: true });
 
