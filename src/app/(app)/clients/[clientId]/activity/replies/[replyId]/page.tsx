@@ -69,6 +69,8 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
     snippet: detail.reply.snippet,
     bodyPreview: detail.reply.bodyPreview,
   });
+  const contactAlreadyBlocked = linkedDetail?.contact.isSuppressed === true &&
+    linkedDetail.contact.email?.trim().toLowerCase() === detail.reply.fromEmail.trim().toLowerCase();
 
   return (
     <div className="space-y-6">
@@ -90,21 +92,23 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
       {removalIntent.detected ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-4">
           <p className="text-sm font-semibold text-destructive">
-            This reply asks to be removed from outreach.
+            {contactAlreadyBlocked
+              ? "This contact is already blocked from outreach."
+              : "This reply asks to be removed from outreach."}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Their message reads as an unsubscribe / removal request. If that&apos;s
-            correct, add them to Do-not-contact now — treat this as a compliance
-            action, not optional.
+            {contactAlreadyBlocked
+              ? "Their removal request is protected by the existing contact block. No additional block is needed."
+              : "Their message reads as an unsubscribe / removal request. If that is correct, add them to Do-not-contact now."}
           </p>
-          <div className="mt-3">
+          {!contactAlreadyBlocked ? <div className="mt-3">
             <AddToDoNotContactButtons
               clientId={clientId}
               email={detail.reply.fromEmail}
               replyClaimSubjectType={claimSubject.subjectType}
               replyClaimSubjectId={claimSubject.subjectId}
             />
-          </div>
+          </div> : null}
         </div>
       ) : null}
       {linkedDetail ? <ClientLinkedReplyDetail
