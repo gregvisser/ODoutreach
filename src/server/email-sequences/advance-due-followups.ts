@@ -1,5 +1,6 @@
 import "server-only";
 import { validateFollowUpScope } from "@/lib/email-sequences/followup-scope";
+import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-scheduler-selection";
 
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
@@ -89,6 +90,18 @@ export async function advanceDueSequenceFollowUps(opts?: {
     followUpsQueued: 0,
     errors: [],
   };
+
+  // The older scheduled endpoints also call this function. A server selection
+  // is a ceiling for all automatic advancement, not just the new timer.
+  const selected = parseCampaignSchedulerSelection(process.env.CAMPAIGN_SCHEDULER_SELECTION);
+  if (selected) {
+    if (opts?.clientId && opts.clientId !== selected.clientId) return result;
+    const sequenceIds = opts?.sequenceIds
+      ? opts.sequenceIds.filter(id => selected.sequenceIds.includes(id))
+      : selected.sequenceIds;
+    if (sequenceIds.length === 0) return result;
+    opts = { ...opts, clientId: selected.clientId, sequenceIds };
+  }
 
   if (autoSendPaused()) {
     return { ...result, paused: true };
