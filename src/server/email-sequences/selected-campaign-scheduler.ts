@@ -5,6 +5,7 @@ import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-
 import { loadScheduledOutreachPlan } from "@/server/mailbox/scheduled-outreach";
 import { listReplySyncMailboxIds, syncMailboxInboxForMailbox } from "@/server/mailbox/mailbox-inbox-sync";
 import { advanceDueSequenceFollowUps } from "@/server/email-sequences/advance-due-followups";
+import { loadSelectedCampaignPendingIds } from "./selected-campaign-pending";
 
 /** Disabled unless a finite server-side selection exists. Never drains the shared queue. */
 export async function runSelectedCampaignFollowUps(rawSelection: string | undefined) {
@@ -26,6 +27,15 @@ export async function runSelectedCampaignFollowUps(rawSelection: string | undefi
   if (Date.now() >= deadline) return { ok: false, reason: "receiving-budget-exhausted" };
   const current = await loadScheduledOutreachPlan();
   if (!current.clientIds.includes(selection.clientId)) return { ok: true, skipped: true, reason: "sending-window-closed" };
+  // A previous run can stop after saving the queue rows but before waking the
+  // worker. Resume a bounded selection only after receiving has caught up.
+  const pendingIds = await loadSelectedCampaignPendingIds(selection);
+  if (pendingIds.length > 0) {
+    const window = await loadScheduledOutreachPlan();
+    if (!window.clientIds.includes(selection.clientId)) return { ok: true, skipped: true, reason: "sending-window-closed" };
+    const recovered = await processOutboundSendQueue({ limit: 25, dispatchScope: { clientId: selection.clientId, outboundEmailIds: pendingIds } });
+    if (recovered.errors.length) return { ok: false, reason: "selected-queue-incomplete" };
+  }
   // Existing dispatcher preserves consent, delay, suppression and atomic bookings.
   // It wakes only its newly created outbound IDs; no broad queue call is made here.
   const result = await advanceDueSequenceFollowUps({ ...selection, onQueued: async (clientId, ids) => {

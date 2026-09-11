@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ queue: vi.fn(), client: vi.fn(), plan: vi.fn(), mailboxes: vi.fn(), sync: vi.fn(), advance: vi.fn() }));
+const mocks = vi.hoisted(() => ({ pending: vi.fn(), queue: vi.fn(), client: vi.fn(), plan: vi.fn(), mailboxes: vi.fn(), sync: vi.fn(), advance: vi.fn() }));
+vi.mock("./selected-campaign-pending", () => ({ loadSelectedCampaignPendingIds: mocks.pending }));
 vi.mock("@/server/email/outbound/queue-processor", () => ({ processOutboundSendQueue: mocks.queue }));
 vi.mock("@/lib/db", () => ({ prisma: { client: { findFirst: mocks.client } } }));
 vi.mock("@/server/mailbox/scheduled-outreach", () => ({ loadScheduledOutreachPlan: mocks.plan }));
@@ -9,6 +10,7 @@ import { runSelectedCampaignFollowUps } from "./selected-campaign-scheduler";
 const selected = JSON.stringify({ clientId: "client-a", sequenceIds: ["campaign-a"] });
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.pending.mockResolvedValue([]);
   mocks.queue.mockResolvedValue({ errors: [] });
   mocks.client.mockResolvedValue({ id: "client-a" });
   mocks.plan.mockResolvedValue({ clientIds: ["client-a"] });
@@ -20,6 +22,7 @@ it("does nothing when not configured", async () => {
   expect(await runSelectedCampaignFollowUps(undefined)).toMatchObject({ skipped: true });
   expect(mocks.plan).not.toHaveBeenCalled();
   expect(mocks.advance).not.toHaveBeenCalled();
+  expect(mocks.pending).not.toHaveBeenCalled();
 });
 it.each([{ ok: false }, { ok: true, backlogPending: true }])("does not advance after incomplete reply sync %j", async result => {
   mocks.sync.mockResolvedValue(result);
@@ -71,4 +74,18 @@ it("drains only newly queued IDs for the selected client", async () => {
   });
   await runSelectedCampaignFollowUps(selected);
   expect(mocks.queue).toHaveBeenCalledExactlyOnceWith({ limit: 25, dispatchScope: { clientId: "client-a", outboundEmailIds: ["new-a", "new-b"] } });
+});
+
+it("resumes only saved selected IDs after reply sync and before new planning", async () => {
+  mocks.pending.mockResolvedValue(["saved-a"]);
+  await runSelectedCampaignFollowUps(selected);
+  expect(mocks.queue).toHaveBeenCalledExactlyOnceWith({ limit: 25, dispatchScope: { clientId: "client-a", outboundEmailIds: ["saved-a"] } });
+  expect(mocks.sync.mock.invocationCallOrder[0]).toBeLessThan(mocks.pending.mock.invocationCallOrder[0]);
+  expect(mocks.queue.mock.invocationCallOrder[0]).toBeLessThan(mocks.advance.mock.invocationCallOrder[0]);
+});
+it("does not plan more mail after an incomplete recovery", async () => {
+  mocks.pending.mockResolvedValue(["saved-a"]);
+  mocks.queue.mockResolvedValue({ errors: ["failed"] });
+  expect(await runSelectedCampaignFollowUps(selected)).toMatchObject({ ok: false, reason: "selected-queue-incomplete" });
+  expect(mocks.advance).not.toHaveBeenCalled();
 });
