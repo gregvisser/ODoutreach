@@ -44,6 +44,8 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+import { effectiveDailyCap, isWarmupRampEnabled } from "@/lib/mailboxes/mailbox-warmup";
+import { loadClientCalendarPlanningContext } from "@/server/mailbox/client-sending-calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +71,11 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+  const warmupEnabled = isWarmupRampEnabled();
+  const warmupMailboxes = client.mailboxIdentities.filter((mailbox) => mailbox.isActive && !mailbox.workspaceRemovedAt);
+  const warmupContext = warmupEnabled && warmupMailboxes.length
+    ? await loadClientCalendarPlanningContext(client.id, warmupMailboxes.map((mailbox) => mailbox.id), new Date())
+    : null;
   const showMailboxSetupTools = canAccessMailboxSetupTools(staff);
   const publicSiteOrigin = resolvePublicBaseUrl();
 
@@ -216,6 +223,24 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
             }}
             mailboxOAuthBanner={mailboxOAuthResultBanner}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily outreach ceiling</CardTitle>
+          <CardDescription>
+            Warm-up can reduce the overall mailbox limit. These are daily ceilings, not remaining slots or permission to send now. Used and reserved allowance, connection status, the sending calendar and recipient checks still apply.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">{warmupEnabled ? "Warm-up is on. It advances with completed sending days, not mailbox age." : "Warm-up is off; the configured mailbox limit applies, up to 30 per day."}</p>
+          <ul className="space-y-2 text-sm">
+            {warmupMailboxes.map((mailbox) => <li key={mailbox.id}>
+              <span className="font-medium">{mailbox.email}</span>: {effectiveDailyCap(mailbox, warmupContext?.sendingDays.get(mailbox.id) ?? 0)} outreach emails per day
+            </li>)}
+          </ul>
+          {!warmupMailboxes.length ? <p className="text-sm">No active mailboxes.</p> : null}
         </CardContent>
       </Card>
 
