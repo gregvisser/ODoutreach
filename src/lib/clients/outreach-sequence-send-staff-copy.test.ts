@@ -66,7 +66,7 @@ describe("sequenceIntroductionBatchLimitCopy", () => {
   it("describes batch size in plain language without allowlist wording", () => {
     const s = sequenceIntroductionBatchLimitCopy(30);
     expect(s).toMatch(/30/);
-    expect(s.toLowerCase()).toMatch(/this launch sends up to/);
+    expect(s.toLowerCase()).toMatch(/this launch queues up to/);
     expect(s.toLowerCase()).not.toMatch(/allowlist/);
   });
 
@@ -173,13 +173,13 @@ describe("describeSequenceDispatchOutcome", () => {
     expect(msg).toBe("3 introductions sent");
   });
 
-  it("says 'queued — sending shortly' only for rows genuinely not dispatched yet", () => {
+  it("says 'queued — waiting for an allowed sending time and available allowance' only for rows genuinely not dispatched yet", () => {
     const msg = describeSequenceDispatchOutcome("introduction", {
       sentImmediately: 0,
       failedImmediately: 0,
       stillPending: 1,
     });
-    expect(msg).toBe("1 introduction queued — sending shortly");
+    expect(msg).toBe("1 introduction queued — waiting for an allowed sending time and available allowance");
   });
 
   it("reports a mixed outcome as separate, honest counts", () => {
@@ -189,7 +189,7 @@ describe("describeSequenceDispatchOutcome", () => {
       stillPending: 1,
     });
     expect(msg).toBe(
-      "2 introductions sent · 1 introduction queued — sending shortly · 1 introduction failed to send (see timeline for the reason)",
+      "2 introductions sent · 1 introduction queued — waiting for an allowed sending time and available allowance · 1 introduction failed to send (see timeline for the reason)",
     );
   });
 
