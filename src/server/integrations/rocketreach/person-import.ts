@@ -151,6 +151,13 @@ export async function importRocketReachPeopleForClient(
   }
 
   const { clientId, searchBody, contactListId, targetListName, addedByStaffUserId } = input;
+  // Bound the request and subsequent paid lookups at the transport boundary,
+  // including callers using raw search JSON. Never expand a smaller batch.
+  const requestedSize = searchBody.page_size ?? MAX_IMPORT;
+  if (typeof requestedSize !== "number" || !Number.isSafeInteger(requestedSize) || requestedSize < 1) {
+    return { ok: false, error: "Search batch size must be a positive whole number." };
+  }
+  const lookupLimit = Math.min(requestedSize, MAX_IMPORT);
   const headers = {
     "Content-Type": "application/json",
     "Api-Key": apiKey,
@@ -161,7 +168,7 @@ export async function importRocketReachPeopleForClient(
     searchRes = await fetch(ROCKETREACH_API_V2_SEARCH, {
       method: "POST",
       headers,
-      body: JSON.stringify(searchBody),
+      body: JSON.stringify({ ...searchBody, page_size: lookupLimit }),
     });
   } catch (e) {
     return {
@@ -189,10 +196,10 @@ export async function importRocketReachPeopleForClient(
   }
 
   const profiles: SearchProfile[] = extractSearchProfiles(searchJson);
-  const ids = profiles
-    .map((p) => p.id)
-    .filter((id): id is number => typeof id === "number" && id > 0)
-    .slice(0, MAX_IMPORT);
+  const ids = [...new Set(profiles
+    .map((p) => p?.id)
+    .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0))]
+    .slice(0, lookupLimit);
 
   if (ids.length === 0) {
     return {
