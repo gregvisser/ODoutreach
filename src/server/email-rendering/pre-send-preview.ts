@@ -12,7 +12,7 @@ import {
   renderOutreachEmail,
   type RenderedOutreachEmail,
 } from "@/lib/email-rendering/render-outreach-email";
-import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
+import { resolveClientLinkBaseUrl } from "@/lib/clients/client-link-domain";
 import { buildSenderRow } from "@/server/email-sequences/send-introduction";
 import { eligibleWorkspaceMailboxPool } from "@/server/mailbox/sending-policy";
 import { requireClientAccess } from "@/server/tenant/access";
@@ -80,6 +80,7 @@ export async function loadOutreachEmailPreview(input: {
     select: {
       id: true,
       name: true,
+      launchPreferredMailboxId: true,
       steps: {
         where: { category: input.category },
         select: {
@@ -106,6 +107,8 @@ export async function loadOutreachEmailPreview(input: {
         id: true,
         name: true,
         defaultSenderEmail: true,
+        outreachLinkDomain: true,
+        outreachLinkDomainVerifiedAt: true,
         onboarding: { select: { formData: true } },
       },
     }),
@@ -120,8 +123,10 @@ export async function loadOutreachEmailPreview(input: {
         "No connected sending mailbox in this workspace — connect a mailbox to preview the real signature.",
     };
   }
-  const mailbox =
-    pool.find((m) => isEffectivePrimaryMailbox(m)) ?? pool[0];
+  const mailbox = sequence.launchPreferredMailboxId
+    ? pool.find((m) => m.id === sequence.launchPreferredMailboxId)
+    : pool.find((m) => isEffectivePrimaryMailbox(m)) ?? pool[0];
+  if (!mailbox) return { ok: false, error: "The sequence's chosen mailbox is unavailable. Reconnect it or select another mailbox before previewing." };
 
   // Optional real contact (tenant-scoped); else a labelled sample.
   let contact: SequenceCompositionContact = SAMPLE_CONTACT;
@@ -158,12 +163,11 @@ export async function loadOutreachEmailPreview(input: {
     }
   }
 
-  // Same unsubscribe URL shape the send path uses: hosted token URL when a
-  // public base URL is configured, else the mailto placeholder. A sample token
-  // is fine — this is a preview, not a live send.
-  const publicBaseUrl = resolvePublicBaseUrl();
-  const hostedUnsubscribeUrl = publicBaseUrl
-    ? `${publicBaseUrl}/unsubscribe/PREVIEW-SAMPLE-TOKEN`
+  // Match live sends: only the client's verified link domain may host the
+  // sample unsubscribe URL. The shared application host is not a fallback.
+  const alignedBaseUrl = resolveClientLinkBaseUrl(client);
+  const hostedUnsubscribeUrl = alignedBaseUrl
+    ? `${alignedBaseUrl}/unsubscribe/PREVIEW-SAMPLE-TOKEN`
     : null;
   const unsubscribeUrl =
     hostedUnsubscribeUrl ??
