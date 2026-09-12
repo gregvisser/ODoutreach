@@ -109,3 +109,19 @@ export async function loadClientCalendarPlanningContext(clientId: string, mailbo
   for (const row of rows) sendingDays.set(row.mailboxIdentityId, Number(row.days));
   return { window, sendingDays };
 }
+
+/** Cancel only the exact pending revision, before its accounting transition starts. */
+export async function cancelPendingSendingCalendar(staff: Pick<StaffUser, "id" | "role">, clientId: string, effectiveAt: string) {
+  await requireClientMailboxMutator(staff, clientId);
+  return prisma.$transaction(async tx => {
+    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Client" WHERE id = ${clientId} AND "deletedAt" IS NULL FOR NO KEY UPDATE`;
+    if (!locked.length || !await tx.staffUser.findFirst({ where: { id: staff.id, isActive: true }, select: { id: true } })) return { ok: false as const, error: "This staff account or client is no longer available." };
+    await tx.$queryRaw`SELECT id FROM "ClientMailboxIdentity" WHERE "clientId" = ${clientId} ORDER BY id FOR UPDATE`;
+    const at = new Date();
+    const revision = await tx.clientSendingCalendar.findFirst({ where: { clientId, effectiveAt: { gt: at } }, orderBy: { effectiveAt: "asc" } });
+    if (!revision || revision.effectiveAt.toISOString() !== effectiveAt || +revision.previousDayEndsAt <= +at + 60_000) return { ok: false as const, error: "This change is no longer safe to cancel. Refresh the calendar to check its current status." };
+    await tx.auditLog.create({ data: { staffUserId: staff.id, clientId, action: "UPDATE", entityType: "ClientSendingCalendar", entityId: revision.id, metadata: { cancelled: true, timeZone: revision.timeZone, weekdays: revision.weekdays, startMinute: revision.startMinute, endMinute: revision.endMinute, effectiveAt: revision.effectiveAt.toISOString(), previousDayEndsAt: revision.previousDayEndsAt.toISOString() } } });
+    await tx.clientSendingCalendar.delete({ where: { id: revision.id } });
+    return { ok: true as const, settings: (await loadClientSendingCalendarState(clientId, at, tx)).settings };
+  }, { timeout: 5_000 });
+}

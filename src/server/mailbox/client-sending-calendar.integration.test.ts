@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
-import { countCalendarSendingDays, loadClientSendingWindow, scheduleClientSendingCalendar } from "./client-sending-calendar";
+import { cancelPendingSendingCalendar, countCalendarSendingDays, loadClientSendingWindow, scheduleClientSendingCalendar } from "./client-sending-calendar";
 import { recomputeMailboxLedgerCounterInTransaction, tryReserveSendSlotInTransaction } from "./sending-policy";
 import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-sending-readiness";
 
@@ -183,4 +183,38 @@ it("fails closed on corrupted calendar history rather than returning a fresh def
   await scheduleClientSendingCalendar(staff, "calendar-client", settings);
   await prisma.clientSendingCalendar.updateMany({ data: { timeZone: "Invalid/Timezone" } });
   await expect(loadClientSendingWindow("calendar-client", new Date())).rejects.toThrow();
+});
+
+it("cancels an exact future change without changing mailbox allowance", async () => {
+  const scheduled = await scheduleClientSendingCalendar(staff, "calendar-client", settings);
+  if (!scheduled.ok) throw Error("fixture failed");
+  const before = await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "calendar-mailbox" } });
+  expect(await cancelPendingSendingCalendar(staff, "calendar-client", scheduled.revision.effectiveAt.toISOString())).toMatchObject({ ok: true, settings: { current: null, pending: null } });
+  expect(await prisma.clientSendingCalendar.count()).toBe(0);
+  expect(await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: before.id } })).toEqual(before);
+  expect(await prisma.auditLog.count({ where: { entityId: scheduled.revision.id } })).toBe(2);
+});
+it("refuses stale cancellation and cancellation after the transition starts", async () => {
+  const scheduled = await scheduleClientSendingCalendar(staff, "calendar-client", settings);
+  if (!scheduled.ok) throw Error("fixture failed");
+  expect(await cancelPendingSendingCalendar(staff, "calendar-client", "wrong-revision")).toMatchObject({ ok: false });
+  vi.setSystemTime(scheduled.revision.previousDayEndsAt);
+  expect(await cancelPendingSendingCalendar(staff, "calendar-client", scheduled.revision.effectiveAt.toISOString())).toMatchObject({ ok: false });
+  expect(await prisma.clientSendingCalendar.count()).toBe(1);
+});
+
+it("serializes duplicate cancellation into one audit and one removal", async () => {
+  const scheduled = await scheduleClientSendingCalendar(staff, "calendar-client", settings);
+  if (!scheduled.ok) throw Error("fixture failed");
+  const results = await Promise.all([1, 2].map(() => cancelPendingSendingCalendar(staff, "calendar-client", scheduled.revision.effectiveAt.toISOString())));
+  expect(results.filter(result => result.ok)).toHaveLength(1);
+  expect(await prisma.auditLog.count({ where: { entityId: scheduled.revision.id } })).toBe(2);
+});
+it("keeps the pending calendar if its cancellation audit cannot be saved", async () => {
+  const scheduled = await scheduleClientSendingCalendar(staff, "calendar-client", settings);
+  if (!scheduled.ok) throw Error("fixture failed");
+  await prisma.$executeRawUnsafe("CREATE FUNCTION calendar_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$");
+  await prisma.$executeRawUnsafe('CREATE TRIGGER calendar_audit_failure BEFORE INSERT ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION calendar_audit_failure()');
+  await expect(cancelPendingSendingCalendar(staff, "calendar-client", scheduled.revision.effectiveAt.toISOString())).rejects.toThrow();
+  expect(await prisma.clientSendingCalendar.count()).toBe(1);
 });

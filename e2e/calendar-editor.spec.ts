@@ -43,6 +43,12 @@ test("ordinary staff validate, schedule and reload a calendar without enabling s
   await panel.getByRole("link", { name: "Refresh calendar status" }).click();
   await expect(panel.getByText(/Scheduled calendar:.*Monday.*09:30–16:30/)).toBeVisible();
   await panel.screenshot({ path: testInfo.outputPath("calendar-saved-mobile.png") });
+  await panel.getByRole("button", { name: "Cancel pending calendar change", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Pending change cancelled.");
+  await page.reload();
+  await expect(panel.getByText(/Standard weekday schedule/)).toBeVisible();
+  expect((await pool.query('SELECT id FROM "ClientSendingCalendar" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
+  expect((await pool.query(`SELECT id FROM "AuditLog" WHERE "clientId"=$1 AND metadata->>'cancelled'='true'`, [clientId])).rowCount).toBe(1);
   expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
 });
 
