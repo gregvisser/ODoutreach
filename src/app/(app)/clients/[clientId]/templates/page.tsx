@@ -82,8 +82,11 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         </div>
       </div>
 
-      <SequenceTemplateStructurePanel structures={sequenceStructures} />
+      <SequenceTemplateStructurePanel structures={sequenceStructures} templates={templatesOverview.templates} clientId={client.id} canMutate={canMutateTemplates} />
 
+      <details open={Boolean(templatesFlash.focusTemplateId || templatesFlash.ok || templatesFlash.error) || templatesOverview.templates.length === 0} className="rounded-lg border p-4">
+        <summary className="cursor-pointer font-semibold">Create or edit individual emails</summary>
+        <div className="mt-4">
       <ClientEmailTemplatesPanel
         clientId={client.id}
         clientName={client.name}
@@ -93,6 +96,12 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         showArchived={showArchivedTemplates}
       />
 
+        </div>
+      </details>
+
+      <details className="rounded-lg border p-4">
+        <summary className="cursor-pointer font-semibold">Draft emails with AI</summary>
+        <div className="mt-4">
       <AiSequenceDraftPanel
         clientId={client.id}
         clientName={client.name}
@@ -100,6 +109,9 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         aiEnabled={areAiFeaturesEnabled()}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
       />
+
+        </div>
+      </details>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
