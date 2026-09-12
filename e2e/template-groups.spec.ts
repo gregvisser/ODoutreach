@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { E2E_LAUNCH_CLIENT, E2E_STORAGE_STATE } from "./fixtures";
 
+test.describe.configure({ retries: 0 });
 test.use({ storageState: E2E_STORAGE_STATE.superAdmin, viewport: { width: 390, height: 844 } });
 test("template groups expand and open the correct email editor on mobile", async ({ page }) => {
   await page.goto(`/clients/${E2E_LAUNCH_CLIENT.id}/outreach`);
@@ -17,5 +18,5 @@ test("template groups expand and open the correct email editor on mobile", async
   await editor.click();
   await expect(page).toHaveURL(new RegExp(`templateId=${templateId}`));
   await expect(page.getByRole("heading", { name: "Edit template", exact: true })).toBeVisible();
-  await expect(page.locator('input[name="templateId"]', { has: undefined }).first()).toHaveValue(templateId!);
+  await expect(page.locator('input[name="templateId"]').first()).toHaveValue(templateId!);
 });

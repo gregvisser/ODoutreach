@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { TemplateSummary } from "@/server/email-templates/queries";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -60,7 +59,7 @@ export function SequenceTemplateStructurePanel({
                       <p className="break-words text-sm font-medium">{step.templateName}</p>
                       <p className="mt-2 break-words text-sm"><strong>Subject:</strong> {byId.get(step.templateId)?.subject ?? "Archived email — open the editor to view"}</p>
                       <p className="mt-2 whitespace-pre-wrap break-words text-sm">{byId.get(step.templateId)?.content}</p>
-                      {canMutate && <Link prefetch={false} href={`/clients/${clientId}/templates?templateId=${encodeURIComponent(step.templateId)}${step.templateStatus === "ARCHIVED" ? "&showArchived=1" : ""}#client-email-templates`} className="mt-3 inline-block text-sm font-medium text-primary underline underline-offset-2">Open email editor</Link>}
+                      {canMutate && <a href={`/clients/${clientId}/templates?templateId=${encodeURIComponent(step.templateId)}${step.templateStatus === "ARCHIVED" ? "&showArchived=1" : ""}#client-email-templates`} className="mt-3 inline-block text-sm font-medium text-primary underline underline-offset-2">Open email editor</a>}
                     </div>
                   </li>
                 ))}
