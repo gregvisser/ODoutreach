@@ -12,7 +12,7 @@ export function ResearchPlanPanel({ clientId, plans }: { clientId: string; plans
   const [pending, startTransition] = useTransition();
   return <section aria-label="Prospect research plans" className="space-y-4 rounded-xl border p-5">
     <h2 className="text-xl font-semibold">Prospect research plans</h2>
-    <Link href={`/clients/${clientId}/research-review`} className="underline">Review research candidates</Link>
+    <Link href={`/clients/${clientId}/research-review`} prefetch={false} className="underline">Review research candidates</Link>
     <p>Save who to look for and a proposed lookup limit. These are drafts: saving does not search, spend credits, import contacts or send emails. Approval and automatic research are not yet available.</p>
     <form className="space-y-3" onSubmit={event => {
       event.preventDefault();
