@@ -254,7 +254,7 @@ const onboardingModule: TrainingModule = {
       label: "Connect outreach mailboxes",
       moduleId: "mailboxes",
       description:
-        "Up to five sending mailboxes; OpensDoors uses all five (30/day each = 150/day pool).",
+        "The worked example uses five mailboxes. Each has a maximum of 30 app-controlled emails per day; warm-up and other holds can reduce availability. Check the live Mailboxes page.",
     },
   ],
   portalLink: {
@@ -365,7 +365,7 @@ const briefModule: TrainingModule = {
     {
       label: "Connect outreach mailboxes",
       moduleId: "mailboxes",
-      description: "Five mailboxes × 30/day = 150 governed sends per UTC day.",
+      description: "Check each mailbox’s live capacity. Warm-up can keep it below the 30-per-day ceiling; sends outside ODoutreach also affect reputation.",
     },
     {
       label: "Configure Do-not-contact",
@@ -448,7 +448,7 @@ const mailboxesModule: TrainingModule = {
     {
       title: "Check the daily capacity line",
       detail:
-        "The table header summarises the workspace pool: active count, per-mailbox day cap, and sent today. With five connected mailboxes the theoretical ceiling is 150/day; with three it is 90.",
+        "The table header summarises the workspace pool: active count, per-mailbox day cap, and sent today. The theoretical pool ceiling is not available sending capacity: warm-up, reserved sends and holds can reduce it. Mail Merge and Outlook sends outside ODoutreach are not covered by the app counter.",
     },
     {
       title: "Send yourself a verification email before a real launch",
@@ -465,12 +465,12 @@ const mailboxesModule: TrainingModule = {
     "All five OpensDoors mailboxes (adam@, elys@, danielle@, joe@, greg@) show Connected with a green pill.",
     "One mailbox is marked Primary — used as a tie-break for the planner, not an exclusive lock.",
     "Every mailbox has a non-empty signature, either synced from Gmail or pasted manually.",
-    'Header reads "Active mailboxes: 5/5" and capacity is "150/day" for a fully staffed OpensDoors workspace.',
+    'Check the live connected count and each mailbox’s remaining warm-up capacity; the example count is not a live status check.',
     "Sender readiness shows a live email provider (not a non-delivery transport) when the client is approved for real outreach delivery.",
     "When you send a verification email, it lands in the inbox you chose and matches what preview showed on Outreach.",
   ],
   commonMistakes: [
-    "Launching with three connected mailboxes and assuming 150/day — check the header; the capacity is 3 × 30 = 90.",
+    "Treating mailbox count multiplied by 30 as permission to send that many immediately — check remaining capacity, warm-up and sending outside ODoutreach.",
     "Forgetting that Microsoft 365 signatures don't sync — every Microsoft mailbox needs a signature set in OpensDoors (Set signature, or the one-click Set branded signatures for every mailbox at once), or the send goes out with no sign-off and launch stays blocked.",
     "Reconnecting a mailbox mid-campaign to 'fix' a non-issue — this interrupts sending and invalidates cached tokens.",
     "Treating connection error as cosmetic — a stale mailbox silently consumes zero capacity until it reconnects.",
@@ -1167,13 +1167,13 @@ export const TRAINING_FINAL_OUTCOMES: readonly string[] = [
 export const DAILY_OUTREACH_WORKFLOW: readonly string[] = [
   "Check Mailboxes: every sending inbox should be Connected, have a signature, and show daily capacity. Reconnect any mailbox flagged for a fresh Microsoft or Google sign-in.",
   "Import contacts: use RocketReach or CSV (Sources). Every import is added to Universe and your chosen client list — confirm rows in Lists or review globally in Universe.",
-  "Check Do-not-contact: make sure blocked emails and domains are active before outreach.",
+  "Check Do-not-contact: review email, domain and company blocks and sheet sync status. A removed sheet row does not automatically clear a protected block.",
   "Build a simple Outreach sequence: one Introduction email is enough; add follow-ups only if needed.",
   "Choose the sending mailbox: use auto-pick for the ready pool, or select a specific connected mailbox.",
   "Preview and review: check the subject, body, sender signature, and recipient list before sending.",
-  "Send or schedule from Outreach only when the list, mailbox, and message are ready.",
-  "Check Activity: use Check replies to pull the latest replies from connected mailboxes.",
-  "Stop follow-ups after a reply: open the reply, click Stop follow-ups so the sequence ends for that contact.",
+  "In Human sending, review the list, mailbox and message before sending. Review due follow-ups and send them manually; do not enable Machine sending to clear a hold.",
+  "Check replies on Mailboxes for a fresh check, then open Activity to read replies. Connected mailboxes are also checked automatically.",
+  "Matched replies stop their sequence follow-ups automatically. Open the reply to confirm it says Stopped; use Stop follow-ups if needed.",
 ];
 
 /**
@@ -1233,7 +1233,7 @@ export const STAFF_HANDOVER_CHECKLIST: readonly StaffHandoverChecklistItem[] = [
   {
     step: "Stop follow-ups after replies",
     detail:
-      "On the reply-detail page, click Stop follow-ups to end the sequence for that contact. Already-queued steps for that recipient are cancelled.",
+      "Matched replies automatically stop follow-ups and cancel queued steps for that sequence. Confirm the reply detail says Stopped; use Stop follow-ups if it has not stopped.",
   },
   {
     step: "Check Do-not-contact",

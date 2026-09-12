@@ -87,8 +87,8 @@ export default async function TrainingIndexPage() {
               "Choose auto-pick or a specific ready mailbox.",
               "Preview the message and any follow-ups.",
               "Send or schedule only when the list, mailbox, and copy are ready.",
-              "Open Activity, click Check replies to pull the latest replies into the client.",
-              "Stop follow-ups for anyone who has replied — done from the reply detail page.",
+              "Use Check replies on Mailboxes for a fresh check, then open Activity to read replies.",
+              "Matched replies stop follow-ups automatically. Confirm Stopped on the reply detail; use Stop follow-ups if needed.",
             ].map((step, i) => (
               <li key={step} className="rounded-md border border-border/70 bg-background/80 px-3 py-2">
                 <span className="mr-2 font-semibold text-foreground">
