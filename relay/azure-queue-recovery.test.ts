@@ -3,7 +3,7 @@ import { runQueueRecovery } from "../App_Data/jobs/triggered/odoutreach-queue-re
 afterEach(() => vi.unstubAllGlobals());
 it("makes no request until explicitly enabled", async () => {
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
-  expect(await runQueueRecovery({ secret: "test" })).toEqual({ ok: true, skipped: true });
+  expect(await runQueueRecovery({ enabled: undefined, secret: "test" })).toEqual({ ok: true, skipped: true });
   expect(fetch).not.toHaveBeenCalled();
 });
 it("requests only recovery, without advancing campaigns or leaking response details", async () => {
