@@ -258,8 +258,8 @@ export default async function SuppressionPage({ searchParams }: Props) {
           <CardHeader>
             <CardTitle>{suppressionKindLabel("EMAIL")}</CardTitle>
             <CardDescription>
-              Individual addresses blocked from outreach. The latest sync
-              replaces the rows for that sheet.
+              Individual addresses blocked from outreach. Removing an address
+              from a sheet does not automatically clear its existing block.
             </CardDescription>
           </CardHeader>
           <CardContent>

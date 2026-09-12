@@ -7,15 +7,10 @@ const onboardingFormPath = join(
   "src/app/(app)/clients/new/onboarding-form.tsx",
 );
 
-// Row 153 (raised by row 135/cycle195 finding 4): the "After create" box
-// promised Brief -> Mailboxes -> Sources -> Suppression -> Contacts ->
-// Templates -> Sequences -> Activity, which contradicts the real 8-step
-// checklist the client actually sees immediately after creation
-// (src/lib/clients/getting-started-view-model.ts) — Brief, Mailboxes,
-// Suppression, Contacts, Templates, Sequences, Enrollments, Launch, with no
-// Sources step and no Activity step at all.
+// Setup guidance must name the visible staff menus. Sequence and recipient
+// review happen inside Outreach rather than separate sidebar destinations.
 describe("New-client onboarding form copy (row 153)", () => {
-  it("states the real 8-step getting-started order, not the old contradicted one", () => {
+  it("uses current staff menu names and requires review before launch", () => {
     const src = readFileSync(onboardingFormPath, "utf8");
     const normalized = src.replace(/\s+/g, " ");
 
@@ -24,7 +19,8 @@ describe("New-client onboarding form copy (row 153)", () => {
     );
 
     expect(normalized).toContain(
-      "Brief → Mailboxes → Suppression → Contacts → Templates → Sequences → Enrollments → Launch",
+      "Brief → Mailboxes → Do-not-contact → Lists → Templates → Outreach",
     );
+    expect(normalized).toContain("review your sequence and recipients before choosing to launch");
   });
 });
