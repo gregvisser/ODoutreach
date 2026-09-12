@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
-import { saveSendingCalendarAction } from "@/app/(app)/clients/sending-calendar-actions";
+import { cancelSendingCalendarAction, saveSendingCalendarAction } from "@/app/(app)/clients/sending-calendar-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CalendarSettingsSnapshot } from "@/lib/mailboxes/calendar-settings";
@@ -34,11 +34,14 @@ export function ClientSendingCalendarCard({ clientId, initial, timeZones, canMut
     event.preventDefault();
     if (inFlight.current || pending || uncertain) return;
     if (!weekdays.length) { setNotice("Choose at least one sending day."); return; }
+    const submitted = new FormData(event.currentTarget);
+    const submittedStart = String(submitted.get("startTime") ?? "");
+    const submittedEnd = String(submitted.get("endTime") ?? "");
     inFlight.current = true;
     setBusy(true);
     setNotice("");
     try {
-      const result = await saveSendingCalendarAction(clientId, { timeZone, weekdays, startMinute: minutes(start), endMinute: minutes(end) === 0 ? 1440 : minutes(end) });
+      const result = await saveSendingCalendarAction(clientId, { timeZone, weekdays, startMinute: minutes(submittedStart), endMinute: minutes(submittedEnd) === 0 ? 1440 : minutes(submittedEnd) });
       if (result.ok) {
         setSaved({ base: initial, value: result.settings });
         setNotice("Calendar change scheduled. The activation time is shown below.");
@@ -52,6 +55,17 @@ export function ClientSendingCalendarCard({ clientId, initial, timeZones, canMut
     } finally { inFlight.current = false; setBusy(false); }
   }
 
+  async function cancelPending() {
+    if (!pending || inFlight.current || uncertain) return;
+    inFlight.current = true; setBusy(true); setNotice("");
+    try {
+      const result = await cancelSendingCalendarAction(clientId, pending.effectiveAt);
+      if (result.ok) { setSaved({ base: initial, value: result.settings }); setNotice("Pending change cancelled. The current schedule is unchanged."); }
+      else { setNotice(result.error); if ("uncertain" in result && result.uncertain) setUncertain(true); }
+    } catch { setUncertain(true); setNotice("We could not confirm cancellation. Refresh the calendar before trying again."); }
+    finally { inFlight.current = false; setBusy(false); }
+  }
+
   return <Card className="border-border/80 shadow-sm" role="region" aria-label="Sending calendar">
     <CardHeader><CardTitle className="text-base">Sending calendar</CardTitle></CardHeader>
     <CardContent className="space-y-4 text-sm">
@@ -62,7 +76,8 @@ export function ClientSendingCalendarCard({ clientId, initial, timeZones, canMut
         <p><strong>Scheduled calendar:</strong> {description(pending)}</p>
         <p><strong>Takes effect:</strong> {format(pending.effectiveAt, pending.timeZone)}</p>
         {pending.pauseStartsAt !== pending.effectiveAt ? <p>Outreach pauses from {format(pending.pauseStartsAt, pending.timeZone)} until activation. Replies share the old day&apos;s remaining allowance during this gap.</p> : null}
-        <p>The current allowance is preserved. Another calendar change can be made after this one takes effect.</p>
+        <p>The current allowance is preserved. You can cancel this change before its transition starts.</p>
+        {canMutate && <Button type="button" variant="outline" disabled={busy || uncertain} onClick={cancelPending}>{busy ? "Cancelling…" : "Cancel pending calendar change"}</Button>}
       </div> : null}
       {pending || uncertain ? <a className="underline" href={`/clients/${clientId}/mailboxes`}>Refresh calendar status</a> : null}
       {!canMutate ? <p>You cannot change this client&apos;s calendar.</p> : !hasMailbox ? <p>Add a sending mailbox before setting its calendar.</p> : !pending ? <form onSubmit={save} className="space-y-3">
@@ -78,8 +93,8 @@ export function ClientSendingCalendarCard({ clientId, initial, timeZones, canMut
             {[1, 2, 3, 4, 5, 6, 0].map(day => <label key={day} className="flex min-h-11 items-center gap-2"><input type="checkbox" className="size-6" checked={weekdays.includes(day)} onChange={event => setWeekdays(days => event.target.checked ? [...days, day].sort() : days.filter(value => value !== day))} />{DAYS[day]}</label>)}
           </div></fieldset>
           <div className="flex flex-wrap gap-4">
-            <label>Start time<input type="time" required value={start} onChange={event => setStart(event.target.value)} className="ml-2 rounded-md border bg-background p-2" /></label>
-            <label>End time<input type="time" required value={end} onChange={event => setEnd(event.target.value)} className="ml-2 rounded-md border bg-background p-2" /></label>
+            <label>Start time<input name="startTime" type="time" required value={start} onChange={event => setStart(event.target.value)} className="ml-2 rounded-md border bg-background p-2" /></label>
+            <label>End time<input name="endTime" type="time" required value={end} onChange={event => setEnd(event.target.value)} className="ml-2 rounded-md border bg-background p-2" /></label>
           </div>
           <p className="text-muted-foreground">Use one time range within a day. An end time of 00:00 means the end of that day. Changes start on a full day in the new timezone, which can briefly pause outreach and cannot create extra allowance.</p>
           <Button type="submit">{busy ? "Saving calendar…" : "Schedule calendar change"}</Button>

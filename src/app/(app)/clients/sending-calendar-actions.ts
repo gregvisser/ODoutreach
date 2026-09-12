@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
-import { scheduleClientSendingCalendar } from "@/server/mailbox/client-sending-calendar";
+import { cancelPendingSendingCalendar, scheduleClientSendingCalendar } from "@/server/mailbox/client-sending-calendar";
 import type { CalendarSettingsSnapshot } from "@/lib/mailboxes/calendar-settings";
 
 export async function saveSendingCalendarAction(clientId: string, value: unknown) {
@@ -25,4 +25,14 @@ export async function saveSendingCalendarAction(clientId: string, value: unknown
   } catch {
     return { ok: false as const, uncertain: true as const, error: "We could not confirm the calendar change. Refresh this page to check the saved calendar before trying again." };
   }
+}
+
+export async function cancelSendingCalendarAction(clientId: string, effectiveAt: string) {
+  if (typeof clientId !== "string" || !clientId.trim() || clientId.length > 200 || typeof effectiveAt !== "string" || effectiveAt.length > 40) return { ok: false as const, error: "That calendar is not valid." };
+  try {
+    const staff = await requireOpensDoorsStaff();
+    const result = await cancelPendingSendingCalendar(staff, clientId, effectiveAt);
+    if (result.ok) { try { revalidatePath(`/clients/${clientId}/mailboxes`); } catch { /* Committed result is authoritative. */ } }
+    return result;
+  } catch { return { ok: false as const, error: "We could not confirm cancellation. Refresh the calendar before trying again.", uncertain: true as const }; }
 }
