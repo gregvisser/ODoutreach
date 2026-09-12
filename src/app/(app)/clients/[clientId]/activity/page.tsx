@@ -105,7 +105,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
           tone={metrics.bounces > 0 ? "warning" : undefined}
         />
         <SummaryCard
-          label="Unsubscribes"
+          label="Link unsubscribes"
           value={metrics.unsubscribes}
           tone={metrics.unsubscribes > 0 ? "warning" : undefined}
         />
@@ -137,7 +137,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             <MetricRow label="Sent, not confirmed" value={metrics.sendProofMissing.toLocaleString()} tone={metrics.sendProofMissing > 0 ? "warning" : undefined} />
             <MetricRow label="Opens" value={formatTrackedMetric(metrics.opens, metrics.opensTracked)} sub={metrics.opensTracked ? `Rate: ${formatRate(metrics.openRate)}` : undefined} />
             <MetricRow label="Reply rate" value={formatRate(metrics.replyRate)} />
-            <MetricRow label="Unsubscribe rate" value={formatRate(metrics.unsubscribeRate)} />
+            <MetricRow label="Link unsubscribe rate" value={formatRate(metrics.unsubscribeRate)} />
             <MetricRow
               label="Bounce rate"
               value={formatBounceRate(metrics.bounceRate, metrics.sent)}
@@ -145,6 +145,11 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             <MetricRow label="Not reached" value={metrics.notReached.toLocaleString()} />
             <MetricRow label="Suppressed / skipped" value={metrics.suppressedOrSkipped.toLocaleString()} />
           </div>
+          <p className="mt-3 text-xs text-muted-foreground/80">
+            Link unsubscribes count completed unsubscribe-link requests. Removal
+            requests received by reply and manually added blocks are separate;
+            check Do-not-contact for the current blocked contacts.
+          </p>
           <p className="mt-3 text-xs text-muted-foreground/80">
             &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
             connected mailbox/provider. It does not guarantee inbox placement.
