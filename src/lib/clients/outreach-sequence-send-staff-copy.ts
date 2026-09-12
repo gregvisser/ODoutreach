@@ -71,7 +71,7 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
 
 export function sequenceIntroductionBatchLimitCopy(hardCap: number): string {
   const cap = hardCap > 0 ? hardCap : SEQUENCE_INTRODUCTION_BATCH_CAP;
-  return `This launch sends up to ${String(cap)} emails now. Remaining eligible recipients stay queued for later batches within daily mailbox limits.`;
+  return `This launch queues up to ${String(cap)} eligible emails. Sending follows the calendar, warm-up and remaining mailbox allowance; queueing does not mean immediate delivery.`;
 }
 
 /**
@@ -157,8 +157,8 @@ export function describeSequenceDispatchOutcome(
   if (outcome.stillPending > 0) {
     parts.push(
       outcome.stillPending === 1
-        ? `1 ${categoryLabel} queued — sending shortly`
-        : `${String(outcome.stillPending)} ${categoryLabel}s queued — sending shortly`,
+        ? `1 ${categoryLabel} queued — waiting for an allowed sending time and available allowance`
+        : `${String(outcome.stillPending)} ${categoryLabel}s queued — waiting for an allowed sending time and available allowance`,
     );
   }
   if (outcome.failedImmediately > 0) {

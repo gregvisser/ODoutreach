@@ -838,7 +838,7 @@ function LaunchReadinessBlock({
             {String(mailboxSnapshot.connectedSendingCount)} mailbox
             {mailboxSnapshot.connectedSendingCount === 1 ? "" : "es"} connected ·{" "}
             {String(mailboxSnapshot.aggregateRemainingToday)} send
-            {mailboxSnapshot.aggregateRemainingToday === 1 ? "" : "s"} available today.
+            {mailboxSnapshot.aggregateRemainingToday === 1 ? "" : "s"} remaining in the overall mailbox allowance. Warm-up may allow fewer outreach emails, and queued mail waits for an allowed sending time.
           </p>
           {readiness.totalWarnings > 0 ? (
             <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-200">
