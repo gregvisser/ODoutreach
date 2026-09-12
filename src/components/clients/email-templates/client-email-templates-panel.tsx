@@ -407,7 +407,7 @@ function TemplateRow({
       )}
       {canMutate && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Link prefetch={false} href={`/clients/${clientId}/templates?templateId=${encodeURIComponent(template.id)}${template.status === "ARCHIVED" ? "&showArchived=1" : ""}#client-email-templates`} className="text-sm font-medium text-primary underline underline-offset-2">Open email editor</Link>
+          <a href={`/clients/${clientId}/templates?templateId=${encodeURIComponent(template.id)}${template.status === "ARCHIVED" ? "&showArchived=1" : ""}#client-email-templates`} className="text-sm font-medium text-primary underline underline-offset-2">Open email editor</a>
           {template.status === "ARCHIVED" && (
             <form action={returnClientEmailTemplateToDraftAction}>
               <input type="hidden" name="clientId" value={clientId} />
