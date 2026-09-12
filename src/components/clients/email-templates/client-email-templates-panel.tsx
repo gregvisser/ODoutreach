@@ -268,7 +268,8 @@ export function ClientEmailTemplatesPanel(props: Props) {
         </div>
 
         <div className="space-y-4">
-          <h3 className="text-sm font-semibold">Templates by category</h3>
+          <h3 className="text-sm font-semibold">Individual email library</h3>
+          <p className="text-sm text-muted-foreground">Includes emails not yet added to a sequence. Use the named groups above to see which emails send together.</p>
           <div className="grid gap-3 md:grid-cols-2">
             {TEMPLATE_CATEGORY_ORDER.map((cat) => {
               const rows = grouped.get(cat) ?? [];
@@ -405,6 +406,7 @@ function TemplateRow({
       )}
       {canMutate && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Link prefetch={false} href={`/clients/${clientId}/templates?templateId=${encodeURIComponent(template.id)}${template.status === "ARCHIVED" ? "&showArchived=1" : ""}#client-email-templates`} className="text-sm font-medium text-primary underline underline-offset-2">Open email editor</Link>
           {template.status === "ARCHIVED" && (
             <form action={returnClientEmailTemplateToDraftAction}>
               <input type="hidden" name="clientId" value={clientId} />
