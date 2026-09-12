@@ -1,0 +1,30 @@
+import { test, expect } from "@playwright/test";
+import { Pool } from "pg";
+import { E2E_DATABASE_URL } from "./env";
+import { E2E_STORAGE_STATE } from "./fixtures";
+import { assertSafeTestDatabase } from "./safe-database";
+test.use({ storageState: E2E_STORAGE_STATE.memberA, viewport: { width: 390, height: 844 } });
+const clientId = "e2e-research-plan-only";
+let pool: Pool;
+test.beforeAll(async () => {
+  pool = new Pool({ connectionString: assertSafeTestDatabase(E2E_DATABASE_URL).toString() });
+  await pool.query('INSERT INTO "Client" (id,name,slug,"inboundIngestToken",status,"updatedAt") VALUES ($1,$2,$1,$1,\'ACTIVE\',NOW())', [clientId, "Synthetic research plan"]);
+});
+test.afterAll(async () => { await pool?.query('DELETE FROM "Client" WHERE id=$1', [clientId]); await pool?.end(); });
+test("staff save and reload a research draft without importing or sending", async ({ page }) => {
+  await page.goto(`/clients/${clientId}/sources`);
+  const panel = page.getByRole("region", { name: "Prospect research plans", exact: true });
+  await panel.getByLabel("Plan name", { exact: true }).fill("Synthetic manufacturing directors");
+  await panel.getByLabel("Job titles", { exact: true }).fill("IT director");
+  await panel.getByLabel("Industries", { exact: true }).fill("Manufacturing");
+  await panel.getByLabel("Seniority levels", { exact: true }).fill("Director");
+  await panel.getByLabel("Regions", { exact: true }).fill("United Kingdom\nUK");
+  await panel.getByLabel("Proposed total lookups", { exact: true }).fill("5");
+  await panel.getByRole("button", { name: "Save research draft", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText("Research draft saved. No credits spent and no contacts imported.");
+  await page.reload();
+  await expect(panel.getByText("Synthetic manufacturing directors · Draft", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Regions: United Kingdom; UK", { exact: true })).toBeVisible();
+  expect((await pool.query('SELECT * FROM "ProspectResearchPlan" WHERE "clientId"=$1', [clientId])).rows).toHaveLength(1);
+  for (const table of ["Contact", "OutboundEmail"]) expect((await pool.query(`SELECT id FROM "${table}" WHERE "clientId"=$1`, [clientId])).rowCount).toBe(0);
+});

@@ -414,6 +414,7 @@ model SupportTicketComment {
 // ——— Tenant / workspace ———
 
 model Client {
+  prospectResearchPlans ProspectResearchPlan[]
   id                               String                    @id @default(cuid())
   name                             String
   slug                             String                    @unique
@@ -2306,4 +2307,18 @@ model TrainingAssistantUnansweredQuestion {
 
   @@index([createdAt])
   @@index([raisedSupportTicketId])
+}
+
+/// Immutable saved targeting proposal. Saving never authorises provider spending.
+model ProspectResearchPlan {
+  id               String   @id @default(cuid())
+  clientId         String
+  name             String
+  criteria         Json
+  maxLookups       Int
+  createdByStaffId String
+  createdAt        DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  @@index([clientId, createdAt])
 }

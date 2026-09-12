@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { ResearchPlanPanel } from "@/components/clients/research-plan-panel";
+import { listResearchPlans } from "@/server/prospect-research/plans";
+import { researchCriteriaSchema } from "@/lib/prospect-research/qualification";
 
 import { CsvImportForm, type ClientListOption } from "@/app/(app)/contacts/csv-import-form";
 import { ContactImportResultBanner } from "@/components/contacts/contact-import-result-banner";
@@ -52,6 +55,8 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
+  const researchPlans = await listResearchPlans(staff, client.id);
+  const planViews = researchPlans.map(plan => ({ ...plan, criteria: researchCriteriaSchema.parse(plan.criteria), createdAt: DATE_FORMATTER.format(plan.createdAt) }));
 
   const lists = await listContactListsForClient(client.id);
   const listOptions: ClientListOption[] = lists.map((l) => ({
@@ -77,6 +82,7 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
       </div>
 
       <ContactImportResultBanner params={sp} />
+      <ResearchPlanPanel clientId={client.id} plans={planViews} />
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
