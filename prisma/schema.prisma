@@ -2311,6 +2311,7 @@ model TrainingAssistantUnansweredQuestion {
 
 /// Immutable saved targeting proposal. Saving never authorises provider spending.
 model ProspectResearchPlan {
+  run ProspectResearchRun?
   id               String   @id @default(cuid())
   clientId         String
   name             String
@@ -2321,4 +2322,33 @@ model ProspectResearchPlan {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   @@index([clientId, createdAt])
+}
+
+enum ResearchRequestKind {
+  SEARCH
+  LOOKUP
+}
+
+/// A finite approval for one immutable plan. No renewal or automatic top-up.
+model ProspectResearchRun {
+  id String @id @default(cuid())
+  planId String @unique
+  approvedByStaffId String
+  approvedAt DateTime @default(now())
+  maxLookups Int
+  pausedAt DateTime?
+  plan ProspectResearchPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  requests ProspectResearchRequest[]
+}
+
+/// Reserving consumes allowance even if transport outcome is unknown.
+model ProspectResearchRequest {
+  id String @id @default(cuid())
+  runId String
+  requestKey String
+  kind ResearchRequestKind
+  reservedAt DateTime @default(now())
+  run ProspectResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@unique([runId, requestKey])
+  @@index([runId, kind])
 }
