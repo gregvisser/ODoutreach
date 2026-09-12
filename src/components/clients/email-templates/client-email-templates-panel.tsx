@@ -239,6 +239,7 @@ export function ClientEmailTemplatesPanel(props: Props) {
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
           <ClientEmailTemplateForm
+            key={flash.focusTemplateId ?? "new-template"}
             clientId={clientId}
             clientName={clientName}
             canMutate={canMutate}
