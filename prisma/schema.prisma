@@ -2343,6 +2343,7 @@ model ProspectResearchRun {
 
 /// Reserving consumes allowance even if transport outcome is unknown.
 model ProspectResearchRequest {
+  candidate ProspectResearchCandidate?
   id String @id @default(cuid())
   runId String
   requestKey String
@@ -2351,4 +2352,17 @@ model ProspectResearchRequest {
   run ProspectResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   @@unique([runId, requestKey])
   @@index([runId, kind])
+}
+
+/// Provider evidence stays outside contact lists until separately accepted.
+model ProspectResearchCandidate {
+  id String @id @default(cuid())
+  requestId String @unique
+  providerProfileId String
+  email String?
+  company String?
+  evidence Json
+  decision Json
+  evaluatedAt DateTime @default(now())
+  request ProspectResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 }
