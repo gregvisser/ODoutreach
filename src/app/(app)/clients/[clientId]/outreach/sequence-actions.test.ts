@@ -212,7 +212,7 @@ describe("sendClientEmailSequenceIntroductionAction — a failed access/mutator 
     const url = decodeURIComponent(
       (redirectMock.mock.calls[0]?.[0] as string).replace(/\+/g, " "),
     );
-    expect(url).toContain("sequence=1 introduction queued — sending shortly");
+    expect(url).toContain("sequence=1 introduction queued — waiting for an allowed sending time and available allowance");
   });
 
   /**
