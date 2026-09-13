@@ -5,6 +5,7 @@ import { useActionState, useId, useMemo, useState } from "react";
 import {
   createClientEmailSequenceAction,
   updateClientEmailSequenceAction,
+  type SequenceSaveOutcome,
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -171,14 +172,18 @@ export function ClientEmailSequenceForm({
       ? updateClientEmailSequenceAction
       : createClientEmailSequenceAction;
 
-  const [, submitAction, isPending] = useActionState(
-    async (_state: null, formData: FormData) => {
-      await action(formData);
-      return null;
+  const [saveOutcome, submitAction, isPending] = useActionState(
+    async (previous: SequenceSaveOutcome | null, formData: FormData): Promise<SequenceSaveOutcome> => {
+      if (previous) return previous;
+      try {
+        return await action(formData);
+      } catch {
+        return { ok: false, message: "We could not confirm the save result. Refresh the sequence list before trying again; your changes may already have been saved." };
+      }
     },
     null,
   );
-  const disabled = !canMutate || isPending;
+  const disabled = !canMutate || isPending || saveOutcome !== null;
 
   const selectedList =
     contactLists.find((l) => l.id === fields.contactListId) ?? null;
@@ -589,6 +594,14 @@ export function ClientEmailSequenceForm({
           })}
         </div>
 
+        {saveOutcome && (
+          <div role="status" className="rounded-md border p-3 text-sm">
+            <p>{saveOutcome.message}</p>
+            <a className="underline" href={`/clients/${clientId}/outreach${saveOutcome.ok && saveOutcome.sequenceId ? `?sequenceId=${encodeURIComponent(saveOutcome.sequenceId)}` : ""}`}>
+              {saveOutcome.ok ? "Open saved sequence" : "Refresh sequence list"}
+            </a>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={disabled}>
             {isPending ? "Saving…" : mode.kind === "edit" ? "Save changes" : "Save sequence"}
