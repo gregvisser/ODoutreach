@@ -258,7 +258,16 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   }
 
   const to = normalizeEmail(row.toEmail);
-  const decision = await evaluateSuppression(row.clientId, to);
+  const listedDecision = await evaluateSuppression(row.clientId, to);
+  // A contact can be blocked after staff approval. The contact-level flag must
+  // remain effective even when there is no separate email-list entry.
+  const blockedContact = row.contactId ? await prisma.contact.findFirst({
+    where: { id: row.contactId, clientId: row.clientId, isSuppressed: true },
+    select: { id: true },
+  }) : null;
+  const decision = blockedContact
+    ? { ...listedDecision, suppressed: true, reason: "email_list" as const, matchedEmail: to, internalSeedExempt: false }
+    : listedDecision;
   if (decision.reason === "company_review") {
     await prisma.$transaction(async tx => {
       const held = await tx.outboundEmail.updateMany({
