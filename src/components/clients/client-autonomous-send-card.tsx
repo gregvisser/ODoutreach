@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AUTONOMOUS_SEND_SETTINGS,
+  MACHINE_ACTIVATION_AVAILABLE,
+  MACHINE_ACTIVATION_UNAVAILABLE_REASON,
   autonomousSendDescription,
   autonomousSendLabel,
   autonomousSendSetting,
@@ -102,7 +104,7 @@ export function ClientAutonomousSendCard({
                   size="sm"
                   variant={isCurrent ? "default" : "secondary"}
                   className="text-xs"
-                  disabled={pending || isCurrent}
+                  disabled={pending || isCurrent || (option === "MACHINE" && !MACHINE_ACTIVATION_AVAILABLE)}
                   aria-pressed={isCurrent}
                   onClick={() => {
                     choose(option);
@@ -114,6 +116,10 @@ export function ClientAutonomousSendCard({
             })}
           </div>
         ) : null}
+
+        {!MACHINE_ACTIVATION_AVAILABLE && (
+          <p className="text-xs text-muted-foreground">{MACHINE_ACTIVATION_UNAVAILABLE_REASON}</p>
+        )}
 
         {notice ? (
           <p

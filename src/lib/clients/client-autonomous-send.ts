@@ -27,6 +27,11 @@ export type AutonomousSendSetting = "MACHINE" | "HUMAN";
 
 export const AUTONOMOUS_SEND_SETTINGS = ["MACHINE", "HUMAN"] as const;
 
+/** Machine activation is outside the current Human-only handover scope. */
+export const MACHINE_ACTIVATION_AVAILABLE = false;
+export const MACHINE_ACTIVATION_UNAVAILABLE_REASON =
+  "Machine sending is not available in this Human sending release. It requires separate activation after agreement and verification. Staff can still prepare, approve and schedule their own emails.";
+
 const SETTING_LABELS: Record<AutonomousSendSetting, string> = {
   MACHINE: "Machine sending",
   HUMAN: "Human sending",
