@@ -78,11 +78,11 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
     expect(refreshFlags).not.toHaveBeenCalled();
   });
 
-  it("retains the existing small-edit allowance", async () => {
+  it("retains a single missing block while importing a new addition", async () => {
     await seed();
-    valuesGet.mockResolvedValue({ data: { values: originals.slice(2).map((entry) => [entry]) } });
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: true, rowsWritten: 8 });
-    expect(await stored()).toEqual(originals.slice(2).sort());
+    valuesGet.mockResolvedValue({ data: { values: [...originals.slice(1), value("added")].map((entry) => [entry]) } });
+    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false, blockedShrink: { removed: 1 }, addedWithoutRemoving: 1 });
+    expect(await stored()).toEqual([...originals, value("added")].sort());
   });
 
   it("honours an explicitly confirmed replacement", async () => {
@@ -92,10 +92,9 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
     expect(await stored()).toEqual([value("replacement")]);
   });
 
-  it("does not commit two conflicting destructive replacements based on the same old list", async () => {
+  it("preserves original blocks during concurrent replacement attempts", async () => {
     await seed();
-    // Each removes five original entries (allowed). After either commits, the
-    // other would remove all ten entries and must refuse those removals.
+    // Neither routine sync may remove any original, regardless of ordering.
     const first = [...originals.slice(0, 5), ...Array.from({ length: 5 }, (_, i) => value(`first-${i}`))];
     const second = [...originals.slice(5), ...Array.from({ length: 5 }, (_, i) => value(`second-${i}`))];
     valuesGet.mockResolvedValueOnce({ data: { values: first.map((entry) => [entry]) } });
@@ -104,16 +103,14 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
       syncSuppressionSourceFromGoogle({ sourceId: "source" }),
       syncSuppressionSourceFromGoogle({ sourceId: "source" }),
     ]);
-    expect(results.filter((result) => result.ok)).toHaveLength(1);
-    const refused = results.find((result) => !result.ok)!;
-    if (refused.addedWithoutRemoving === 10) {
-      expect(await stored()).toEqual([...first, ...second].sort());
-    } else {
-      // A serialization conflict rolls the second transaction back entirely.
-      // DB reads can reorder which invocation reaches the synthetic sheet first.
-      expect(refused.addedWithoutRemoving).toBeUndefined();
-      expect([first.sort(), second.sort()]).toContainEqual(await stored());
-    }
+    expect(results.every((result) => !result.ok)).toBe(true);
+    const retained = await stored();
+    expect(originals.every((entry) => retained.includes(entry))).toBe(true);
+    // One transaction may roll back on a serialization conflict. A retry
+    // must converge without losing any original or either set of additions.
+    valuesGet.mockResolvedValue({ data: { values: [...first, ...second].map((entry) => [entry]) } });
+    await syncSuppressionSourceFromGoogle({ sourceId: "source" });
+    expect(await stored()).toEqual([...new Set([...originals, ...first, ...second])].sort());
   });
 
   it("retries flag refresh after an additive commit without losing new or old blocks", async () => {

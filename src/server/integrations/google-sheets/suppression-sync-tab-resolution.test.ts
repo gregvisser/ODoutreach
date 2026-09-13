@@ -210,7 +210,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
     expect(r.rowsWritten).toBe(1);
   });
 
-  it("allows an ordinary edit that removes a couple of rows", async () => {
+  it("retains even a couple of missing rows until an operator confirms", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
     domainFindMany.mockResolvedValue(["a", "b", "c", "d", "e", "f"].map((s) => ({ domain: `${s}.example` })));
     valuesGet.mockResolvedValue({
@@ -219,8 +219,8 @@ describe("suppression sync — the replace refuses rather than warns", () => {
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
 
-    expect(r.ok).toBe(true);
-    expect(domainDeleteMany).toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: false, blockedShrink: { removed: 2 } });
+    expect(domainDeleteMany).not.toHaveBeenCalled();
   });
 
   it("lets an operator who confirms the shrink through", async () => {

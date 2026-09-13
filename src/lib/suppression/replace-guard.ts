@@ -19,16 +19,6 @@ import type { SuppressionListKind } from "@/generated/prisma/enums";
  * Callers read the previous entries inside the replacement transaction.
  */
 
-/**
- * Below this, a list is small enough that ordinary editing looks like a large
- * proportional shrink — 6 rows down to 4 is somebody tidying up, not an
- * outage. Absolute floor so small lists stay usable.
- */
-const ALWAYS_ALLOWED_REMOVALS = 5;
-
-/** Above the floor, the share of a list an ordinary edit may remove. */
-const MAX_REMOVAL_FRACTION = 0.1;
-
 export type SuppressionReplaceRefusal = {
   previousCount: number;
   wouldWrite: number;
@@ -39,14 +29,6 @@ export type SuppressionReplaceRefusal = {
 export type SuppressionReplaceDecision =
   | { allowed: true }
   | { allowed: false; refusal: SuppressionReplaceRefusal };
-
-/** How many rows this list may lose in one sync before the replace refuses. */
-export function allowedRemovals(previousCount: number): number {
-  return Math.max(
-    ALWAYS_ALLOWED_REMOVALS,
-    Math.floor(previousCount * MAX_REMOVAL_FRACTION),
-  );
-}
 
 export function decideSuppressionReplace(
   kind: SuppressionListKind,
@@ -63,7 +45,6 @@ export function decideSuppressionReplace(
   if (removed <= 0) return { allowed: true };
 
   const noun = kind === "EMAIL" ? "addresses" : "domains";
-  const limit = allowedRemovals(previousCount);
 
   // Zero is refused on its own terms rather than by the percentage, because it
   // is the signature of a read that went wrong — an empty tab, a cleared
@@ -84,20 +65,18 @@ export function decideSuppressionReplace(
     };
   }
 
-  if (removed > limit) {
-    return {
-      allowed: false,
-      refusal: {
-        previousCount,
-        wouldWrite,
-        removed,
-        reason:
-          `Sync refused: this would remove ${String(removed)} of ${String(previousCount)} existing blocked ${noun}. The replacement list would contain ${String(wouldWrite)} ${noun}. ` +
-          `Nothing was deleted — the ${String(previousCount)} are still blocked. ` +
-          `If rows were removed from the sheet by mistake, put them back and sync again. If the removal is deliberate, use "Remove them anyway" to confirm it.`,
-      },
-    };
-  }
-
-  return { allowed: true };
+  // Even one missing row may be an opt-out. Only the caller's explicit
+  // confirmShrink path may remove it; routine sync still adds new blocks.
+  return {
+    allowed: false,
+    refusal: {
+      previousCount,
+      wouldWrite,
+      removed,
+      reason:
+        `Sync refused: this would remove ${String(removed)} of ${String(previousCount)} existing blocked ${noun}. The replacement list would contain ${String(wouldWrite)} ${noun}. ` +
+        `Nothing was deleted — the ${String(previousCount)} are still blocked. ` +
+        `If rows were removed from the sheet by mistake, put them back and sync again. If the removal is deliberate, use "Remove them anyway" to confirm it.`,
+    },
+  };
 }
