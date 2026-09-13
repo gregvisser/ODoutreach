@@ -27,6 +27,8 @@
 import { prisma } from "@/lib/db";
 import {
   autonomousSendSettingToColumn,
+  MACHINE_ACTIVATION_AVAILABLE,
+  MACHINE_ACTIVATION_UNAVAILABLE_REASON,
   type AutonomousSendSetting,
 } from "@/lib/clients/client-autonomous-send";
 
@@ -55,6 +57,9 @@ export async function setClientAutonomousSend(input: {
   staffUserId: string;
   now?: Date;
 }): Promise<SetAutonomousSendResult> {
+  if (input.setting === "MACHINE" && !MACHINE_ACTIVATION_AVAILABLE) {
+    return { ok: false, error: MACHINE_ACTIVATION_UNAVAILABLE_REASON };
+  }
   const now = input.now ?? new Date();
 
   const client = await prisma.client.findFirst({
