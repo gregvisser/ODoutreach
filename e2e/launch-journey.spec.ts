@@ -88,8 +88,10 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
       dialog.getByText("Launch introduction sends?"),
     ).toBeVisible();
     await expect(
-      dialog.getByText(/This queues real introduction emails/),
+      dialog.getByText(/This requests introduction emails/),
     ).toBeVisible();
+    await expect(dialog).toContainText("Final calendar, pacing and safety checks may hold some or all of them.");
+    await expect(dialog).toContainText("Check the launch result and Activity to confirm what was queued.");
 
     const confirm = dialog.getByRole("button", { name: "Launch sequence" });
     // The action returns a small outcome; the form must display it without
