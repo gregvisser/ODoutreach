@@ -424,7 +424,7 @@ function IntroSendDispatchBlock({
   const waiting = Math.max(0, readyNow - sendNow);
   const blocked = introSend.blockedCount + introSend.suppressedCount;
 
-  const introModalBody = `This queues real introduction emails for up to ${String(sendNow)} contacts now. ${waiting > 0 ? `${String(waiting)} remaining recipients stay queued for later batches. ` : ""}Follow-ups are launched separately.`;
+  const introModalBody = `This requests introduction emails for up to ${String(sendNow)} contacts. Final calendar, pacing and safety checks may hold some or all of them. ${waiting > 0 ? `${String(waiting)} remaining recipients stay pending for a later staff launch; they are not automatically queued. ` : ""}Check the launch result and Activity to confirm what was queued. Follow-ups are launched separately.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
@@ -502,6 +502,12 @@ function IntroSendDispatchBlock({
           You will confirm in a dialog before anything is queued.
         </span>
       </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Ready recipients still need the final sending checks. A waiting or held recipient is not a
+        scheduled email. If nothing was queued, check the reason and your mailbox sending calendar,
+        then review recipients again when the hold has cleared. If the result is uncertain, check
+        Activity before trying again to avoid a duplicate send.
+      </p>
     </div>
   );
 }
