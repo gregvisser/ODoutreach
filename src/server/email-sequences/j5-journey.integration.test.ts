@@ -12,6 +12,7 @@ import {
 
 import { enrollSequenceContacts } from "./enrollments";
 import { sendSequenceStepBatch } from "./send-introduction";
+import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
 import { planSequenceStepSends } from "./step-sends";
 
 /**
@@ -338,7 +339,7 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
-  it("queues a staff-approved delayed introduction before the sending window opens", async () => {
+  it.each([2, 26])("queues a staff-approved introduction delayed %s hours before the sending window opens", async delayHours => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-09T06:00Z"));
     await prisma.clientSendingCalendar.create({ data: {
@@ -347,7 +348,7 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
       previousDayEndsAt: new Date("2026-09-01T00:00Z"),
       effectiveAt: new Date("2026-09-01T00:00Z"), createdByStaffUserId: STAFF_ID,
     } });
-    await prisma.clientEmailSequenceStep.update({ where: { id: STEP_ID }, data: { delayHours: 2 } });
+    await prisma.clientEmailSequenceStep.update({ where: { id: STEP_ID }, data: { delayDays: Math.floor(delayHours / 24), delayHours: delayHours % 24 } });
     await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
     const plan = await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID });
     expect(plan.counts.ready).toBe(1);
@@ -358,9 +359,16 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
     expect(batch.blocked).toEqual([]);
     expect(batch.counts.queued).toBe(1);
     const queued = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: batch.queued[0].outboundEmailId } });
-    expect(queued.nextRetryAt).toEqual(new Date("2026-09-09T08:00Z"));
+    const due = new Date(new Date("2026-09-09T06:00Z").getTime() + delayHours * 3_600_000);
+    expect(queued.nextRetryAt).toEqual(due);
     expect(queued.staffUserId).toBe(STAFF_ID);
     expect(sentMessages).toHaveLength(0);
+    expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ windowKey: delayHours === 2 ? "2026-09-09T00:00:00.000Z" : "2026-09-10T00:00:00.000Z" });
+    expect((await processOutboundSendQueue({ limit: 1 })).claimed).toBe(0);
+    vi.setSystemTime(due);
+    expect((await processOutboundSendQueue({ limit: 1 })).completed).toBe(1);
+    expect(sentMessages).toHaveLength(1);
+    expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: queued.id } })).status).toBe("SENT");
   });
 
   it.each(["legacy", "local-calendar", "automated"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {

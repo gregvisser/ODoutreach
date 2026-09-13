@@ -919,7 +919,12 @@ export async function sendSequenceStepBatch(input: {
   // Warm-up anchors on days this mailbox has actually SENT on, not on how long
   // ago it was connected. Resolved once here, BEFORE the transaction opens, so
   // no extra query runs while the reservation lock is held.
-  const { window: sendingWindow, sendingDays } = await loadClientCalendarPlanningContext(clientId, pool.map((m) => m.id), at);
+  // Explicit introduction delays reserve the intended sending day, not the
+  // operator's current (possibly closed) day. Dispatch rechecks all safeguards.
+  const introScheduleDelayMs = category === "INTRODUCTION"
+    ? stepDelayDays * 86_400_000 + stepDelayHours * 3_600_000 : 0;
+  const planningAt = introScheduleDelayMs > 0 ? new Date(at.getTime() + introScheduleDelayMs) : at;
+  const { window: sendingWindow, sendingDays } = await loadClientCalendarPlanningContext(clientId, pool.map((m) => m.id), planningAt);
   const windowKey = sendingWindow.key;
 
   // Corporate four-at-a-time release. Resolved here, outside the transaction,
@@ -930,7 +935,7 @@ export async function sendSequenceStepBatch(input: {
     clientId,
     grade: client.accountGrade,
     mailboxIds: pool.map((m) => m.id),
-    now: at,
+    now: planningAt,
     // Corporate release groups use the same accounting day as the mailbox cap.
     windowStart: sendingWindow.startsAt,
   });
@@ -962,7 +967,7 @@ export async function sendSequenceStepBatch(input: {
             mailboxId: m.id,
             dailyCap: cap,
             batchSize: client.sendBatchSize,
-            at,
+            at: planningAt,
           });
           if (allowedNow < cap) heldByPacing = true;
           const booked = await countBookedSendSlotsInUtcWindow(
@@ -1026,12 +1031,12 @@ export async function sendSequenceStepBatch(input: {
               clientId,
               mailbox: m,
               idempotencyKey,
-              at,
+              at: planningAt,
               allowanceCeiling: pacedAllowanceForSendingWindow(sendingWindow, {
                 mailboxId: m.id,
                 dailyCap: effectiveDailyCap(m, sendingDays.get(m.id) ?? 0),
                 batchSize: client.sendBatchSize,
-                at,
+                at: planningAt,
               }),
             });
 
@@ -1142,14 +1147,9 @@ export async function sendSequenceStepBatch(input: {
             const bodyText = truncate(bodyWithFooter, BODY_DB_MAX);
             const toDomain = extractDomainFromEmail(toEmail) || null;
 
-            const introScheduleDelayMs =
-              category === "INTRODUCTION"
-                ? stepDelayDays * 24 * 60 * 60 * 1000 +
-                  stepDelayHours * 60 * 60 * 1000
-                : 0;
             const sendNotBefore =
               introScheduleDelayMs > 0
-                ? new Date(at.getTime() + introScheduleDelayMs)
+                ? planningAt
                 : null;
 
             const created = await tx.outboundEmail.create({
