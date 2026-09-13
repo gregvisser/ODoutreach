@@ -338,6 +338,31 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
+  it("queues a staff-approved delayed introduction before the sending window opens", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-09T06:00Z"));
+    await prisma.clientSendingCalendar.create({ data: {
+      clientId: CLIENT_ID, timeZone: "UTC", weekdays: [1, 2, 3, 4, 5],
+      startMinute: 420, endMinute: 1140,
+      previousDayEndsAt: new Date("2026-09-01T00:00Z"),
+      effectiveAt: new Date("2026-09-01T00:00Z"), createdByStaffUserId: STAFF_ID,
+    } });
+    await prisma.clientEmailSequenceStep.update({ where: { id: STEP_ID }, data: { delayHours: 2 } });
+    await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
+    const plan = await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID });
+    expect(plan.counts.ready).toBe(1);
+    const batch = await sendSequenceStepBatch({
+      staff: await loadStaff(), clientId: CLIENT_ID, sequenceId: SEQUENCE_ID,
+      category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
+    });
+    expect(batch.blocked).toEqual([]);
+    expect(batch.counts.queued).toBe(1);
+    const queued = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: batch.queued[0].outboundEmailId } });
+    expect(queued.nextRetryAt).toEqual(new Date("2026-09-09T08:00Z"));
+    expect(queued.staffUserId).toBe(STAFF_ID);
+    expect(sentMessages).toHaveLength(0);
+  });
+
   it.each(["legacy", "local-calendar", "automated"])("carries one prospect through every stage under %s, then honours opt-out", async mode => {
     const staff = await loadStaff();
     if (mode === "automated") await prisma.client.update({ where: { id: CLIENT_ID }, data: { autonomousSendEnabled: true } });
