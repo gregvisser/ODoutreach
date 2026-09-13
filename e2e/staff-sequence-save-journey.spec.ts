@@ -4,7 +4,7 @@ import { E2E_DATABASE_URL } from "./env";
 import { E2E_MEMBER_A, E2E_STORAGE_STATE } from "./fixtures";
 import { assertSafeTestDatabase } from "./safe-database";
 
-test.use({ storageState: E2E_STORAGE_STATE.memberA });
+test.use({ storageState: E2E_STORAGE_STATE.memberA, trace: "on" });
 const clientId = "e2e-staff-sequence-save";
 let pool: Pool;
 test.beforeAll(async () => {
@@ -29,6 +29,7 @@ test("ordinary staff save and edit a delayed introduction without queueing email
   await page.locator('select[name="template_INTRODUCTION"]').selectOption(clientId + "-intro");
   await page.locator('input[name="delayHours_INTRODUCTION"]').fill("2");
   await page.getByRole("button", { name: "Save sequence", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.has("sequenceId") && (url.searchParams.get("sequence") ?? "").startsWith("Saved"));
   await expect(page.getByRole("row").filter({ hasText: "Synthetic sequence version one" })).toBeVisible();
   const saved = await pool.query('SELECT id,status FROM "ClientEmailSequence" WHERE "clientId"=$1', [clientId]);
   expect(saved.rows).toHaveLength(1);
@@ -37,10 +38,13 @@ test("ordinary staff save and edit a delayed introduction without queueing email
   expect((await pool.query('SELECT "delayHours" FROM "ClientEmailSequenceStep" WHERE "sequenceId"=$1', [sequenceId])).rows).toEqual([{ delayHours: 2 }]);
   await page.reload();
   await page.getByRole("row").filter({ hasText: "Synthetic sequence version one" }).getByRole("link", { name: "Edit", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.get("sequenceId") === sequenceId && url.searchParams.get("edit") === "1");
+  await expect(page.locator("details").filter({ has: page.locator("summary", { hasText: /^Edit sequence$/ }) })).toHaveAttribute("open", "");
   await expect(page.getByRole("textbox", { name: "Sequence name", exact: true })).toHaveValue("Synthetic sequence version one");
   await page.getByRole("textbox", { name: "Sequence name", exact: true }).fill("Synthetic sequence version two");
   await page.locator('input[name="delayHours_INTRODUCTION"]:visible').fill("3");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.get("sequenceId") === sequenceId && (url.searchParams.get("sequence") ?? "").startsWith("Updated"));
   await expect(page.getByRole("row").filter({ hasText: "Synthetic sequence version two" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("row").filter({ hasText: "Synthetic sequence version two" })).toBeVisible();
