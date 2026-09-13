@@ -349,7 +349,10 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
     const intro = await sendSequenceStepBatch({ staff: await loadStaff(), clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE });
     expect(intro.counts.queued).toBe(1);
     vi.setSystemTime(new Date("2026-09-09T10:00Z"));
-    if (sent) await executeOutboundSend(intro.queued[0].outboundEmailId);
+    if (sent) {
+      expect((await processOutboundSendQueue({ limit: 1 })).completed).toBe(1);
+      expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: intro.queued[0].outboundEmailId } })).toMatchObject({ status: "SENT", sentAt: new Date("2026-09-09T10:00Z") });
+    }
     await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: "j5-follow-step", staffUserId: STAFF_ID });
     vi.setSystemTime(new Date("2026-09-09T11:00Z"));
     const readiness = (await loadSequenceStepSendUiSnapshots(CLIENT_ID)).snapshots.find(row => row.category === "FOLLOW_UP_1")!;
