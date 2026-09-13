@@ -166,7 +166,7 @@ describe("loadSequenceStepSendUiSnapshots", () => {
         ],
       }]);
       prismaMock.clientEmailSequenceStepSend.findMany.mockResolvedValue([
-        { sequenceId: "seq-1", stepId: "intro", enrollmentId: "enr-1", status: "SENT", updatedAt: new Date("2026-09-09T16:00:00Z"), contact: { email: "lead@company.example" } },
+        { sequenceId: "seq-1", stepId: "intro", enrollmentId: "enr-1", status: "SENT", updatedAt: new Date("2026-09-09T12:00:00Z"), outboundEmail: { status: "SENT", sentAt: new Date("2026-09-09T16:00:00Z") }, contact: { email: "lead@company.example" } },
         { sequenceId: "seq-1", stepId: "follow", enrollmentId: "enr-1", status: "READY", updatedAt: new Date("2026-09-09T16:01:00Z"), contact: { email: "lead@company.example" } },
       ]);
       const waiting = (await loadSequenceStepSendUiSnapshots("client-1")).snapshots[1];

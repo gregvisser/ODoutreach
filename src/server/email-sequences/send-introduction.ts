@@ -65,8 +65,7 @@ import {
 } from "@/lib/email-sequences/sequence-email-composition";
 import { isFollowUpTooStaleForAutoSend } from "@/lib/email-sequences/auto-followup-window";
 import {
-  isFollowupRequiresSentIntroEnabled,
-  isIntroOutboundActuallySent,
+  confirmedPreviousSendTime,
 } from "@/lib/email-sequences/followup-sent-intro-policy";
 import {
   chooseSignatureForSend,
@@ -605,10 +604,7 @@ export async function sendSequenceStepBatch(input: {
   //    enforce the delay guard at dispatch time.
   const prevCategory = previousCategoryFor(category);
   const previousSentByEnrollmentId = new Map<string, { sentAtIso: string }>();
-  // H5 — when enabled, require the previous step's linked OutboundEmail to have
-  // actually sent (not just the stepSend flag, which is set at dispatch BEFORE
-  // the provider send). Flag OFF (default) = unchanged behaviour.
-  const requireSentIntro = isFollowupRequiresSentIntroEnabled();
+  // The full delay starts at confirmed dispatch, never at queue creation.
   if (prevCategory !== null) {
     const enrollmentIds = stepSendRows.map((r) => r.enrollmentId);
     const prevRows = await prisma.clientEmailSequenceStepSend.findMany({
@@ -624,19 +620,17 @@ export async function sendSequenceStepBatch(input: {
         updatedAt: true,
         // H5 — the linked outbound's terminal status is the real "did it send"
         // signal. Selected unconditionally (harmless when the flag is off).
-        outboundEmail: { select: { status: true } },
+        outboundEmail: { select: { status: true, sentAt: true } },
       },
     });
     for (const p of prevRows) {
       // H5 — a stepSend marked SENT whose OutboundEmail never actually sent
       // (FAILED / still queued) must NOT satisfy the follow-up prerequisite.
-      if (requireSentIntro && !isIntroOutboundActuallySent(p.outboundEmail?.status)) {
-        continue;
-      }
+      const sentAtIso = confirmedPreviousSendTime(p.outboundEmail);
+      if (sentAtIso === null) continue;
       // If multiple rows exist (shouldn't happen — unique per
       // enrollment+step), keep the latest.
       const existing = previousSentByEnrollmentId.get(p.enrollmentId);
-      const sentAtIso = p.updatedAt.toISOString();
       if (!existing || sentAtIso > existing.sentAtIso) {
         previousSentByEnrollmentId.set(p.enrollmentId, { sentAtIso });
       }
@@ -1518,6 +1512,7 @@ export async function loadSequenceStepSendUiSnapshots(
       blockedReason: true,
       updatedAt: true,
       contact: { select: { email: true } },
+      outboundEmail: { select: { status: true, sentAt: true } },
     },
   });
 
@@ -1532,7 +1527,8 @@ export async function loadSequenceStepSendUiSnapshots(
     const key = `${r.sequenceId}:${r.stepId}`;
     const inner =
       sentByStepByEnrollment.get(key) ?? new Map<string, string>();
-    const sentIso = r.updatedAt.toISOString();
+    const sentIso = confirmedPreviousSendTime(r.outboundEmail);
+    if (sentIso === null) continue;
     const existing = inner.get(r.enrollmentId);
     if (!existing || sentIso > existing) {
       inner.set(r.enrollmentId, sentIso);
