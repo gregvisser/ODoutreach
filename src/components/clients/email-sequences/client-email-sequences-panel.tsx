@@ -341,12 +341,15 @@ export function ClientEmailSequencesPanel(props: Props) {
                             </Link>
                             {(seq.status === "DRAFT" || seq.status === "READY_FOR_REVIEW") &&
                             canMutate ? (
-                              <Link prefetch={false}
+                              // Load a fresh document when entering the editor. A client-side
+                              // transition immediately after save/reload can be aborted while
+                              // leaving the saved-view URL and form unchanged.
+                              <a
                                 href={outreachSequenceHref(clientId, seq.id, { edit: true })}
                                 className={buttonVariants({ size: "sm", variant: "outline" })}
                               >
                                 Edit
-                              </Link>
+                              </a>
                             ) : null}
                             <Link prefetch={false}
                               href={outreachSequenceHref(clientId, seq.id)}
