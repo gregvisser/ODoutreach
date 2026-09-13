@@ -235,6 +235,32 @@ describe("executeOutboundSend — rows it must refuse to send", () => {
 });
 
 describe("executeOutboundSend — suppression at dispatch time", () => {
+  it.each([
+    ["apex", "person@blocked.test", false],
+    ["subdomain", "person@mail.blocked.test", false],
+    ["related domain", "person@related.test", true],
+    ["related subdomain", "person@mail.related.test", true],
+  ] as const)("rechecks a newly blocked %s before transport", async (_label, toEmail, related) => {
+    const id = await makeOutbound("ob-domain-late-block", { toEmail });
+    // The queued payload predates the new block and confirmed family membership.
+    await prisma.suppressedDomain.create({ data: { clientId: CLIENT_ID, domain: "blocked.test" } });
+    if (related) {
+      await prisma.suppressedDomainFamily.createMany({ data: [
+        { clientId: CLIENT_ID, label: "Synthetic company", domain: "blocked.test" },
+        { clientId: CLIENT_ID, label: "Synthetic company", domain: "related.test" },
+      ] });
+    }
+    expect(await executeOutboundSend(id)).toEqual({ ok: true });
+    const row = await rowById(id);
+    expect(row.status).toBe("BLOCKED_SUPPRESSION");
+    expect(row.providerMessageId).toBeNull();
+    expect(row.claimedAt).toBeNull();
+    expect(row.claimExpiresAt).toBeNull();
+    expect(row.suppressionSnapshot).toMatchObject({ reason: related ? "domain_family" : "domain_list" });
+    expectNothingSent();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   /** Suppresses an address for the workspace. Lookup is by normalized email. */
   async function suppress(email: string, clientId = CLIENT_ID): Promise<void> {
     await prisma.suppressedEmail.create({
