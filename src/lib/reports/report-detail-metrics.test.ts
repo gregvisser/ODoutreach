@@ -45,7 +45,7 @@ describe("isReportDetailMetric / label", () => {
   it("guards and labels known keys", () => {
     expect(isReportDetailMetric("opens")).toBe(true);
     expect(isReportDetailMetric("nope")).toBe(false);
-    expect(reportDetailMetricLabel("unsubscribes")).toBe("Opt-outs");
+    expect(reportDetailMetricLabel("unsubscribes")).toBe("Link unsubscribes");
   });
 
   it("falls back to the raw value for unknown keys", () => {

@@ -152,10 +152,13 @@ export default async function ReportingPage({ searchParams }: Props) {
           <CardDescription>
             Every count below is a live database read. Sends are only counted
             when the provider returned a message id or recorded a send time.
+            {" "}Link unsubscribes count completed unsubscribe-link requests.
+            Removal requests received by reply and manual blocks are shown in
+            Do-not-contact separately.
             {range ? (
               <>
                 {" "}
-                Sent, replies, opt-outs, opens, bounces and failures are
+                Sent, replies, link unsubscribes, opens, bounces and failures are
                 filtered to the selected dates. Queued, Suppressed / skipped
                 and Contacts are live right-now values — they have no
                 history, so the date range doesn&apos;t change them.
@@ -227,7 +230,7 @@ export default async function ReportingPage({ searchParams }: Props) {
               href={detailHref("bounces")}
             />
             <MetricItem
-              label="Opt-outs"
+              label="Link unsubscribes"
               value={m.unsubscribes.toLocaleString()}
               sub={`Rate: ${formatRate(m.unsubscribeRate)}`}
               href={detailHref("unsubscribes")}
@@ -285,7 +288,7 @@ export default async function ReportingPage({ searchParams }: Props) {
                   <th className="px-3 py-2 text-right">Queued</th>
                   <th className="px-3 py-2 text-right">Replies</th>
                   <th className="px-3 py-2 text-right">Reply rate</th>
-                  <th className="px-3 py-2 text-right">Opt-outs</th>
+                  <th className="px-3 py-2 text-right">Link unsubscribes</th>
                   <th className="px-3 py-2 text-right">Bounces</th>
                   <th className="px-3 py-2 text-right">Failed</th>
                   <th className="px-3 py-2 text-right">Not reached</th>

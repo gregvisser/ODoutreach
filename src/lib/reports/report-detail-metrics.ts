@@ -74,7 +74,7 @@ export const REPORT_DETAIL_METRICS: Record<
   },
   unsubscribes: {
     key: "unsubscribes",
-    label: "Opt-outs",
+    label: "Link unsubscribes",
     windowed: true,
     rowsDescription: "Recipients who used a one-click unsubscribe link.",
   },
