@@ -339,7 +339,12 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
-  it.each([2, 26])("queues a staff-approved introduction delayed %s hours before the sending window opens", async delayHours => {
+  it.each([
+    { delayHours: 2, full: false, blockedLater: false },
+    { delayHours: 26, full: false, blockedLater: false },
+    { delayHours: 26, full: true, blockedLater: false },
+    { delayHours: 26, full: false, blockedLater: true },
+  ])("respects delayed Human scheduling and safeguards: %j", async ({ delayHours, full, blockedLater }) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-09T06:00Z"));
     await prisma.clientSendingCalendar.create({ data: {
@@ -352,10 +357,23 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
     await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
     const plan = await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID });
     expect(plan.counts.ready).toBe(1);
+    if (full) {
+      await prisma.mailboxSendReservation.createMany({ data: Array.from({ length: 30 }, (_, n) => ({
+        clientId: CLIENT_ID, mailboxIdentityId: MAILBOX_ID, idempotencyKey: `future-booking-${n}`,
+        windowKey: "2026-09-10T00:00:00.000Z", status: "RESERVED" as const,
+      })) });
+    }
     const batch = await sendSequenceStepBatch({
       staff: await loadStaff(), clientId: CLIENT_ID, sequenceId: SEQUENCE_ID,
       category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE,
     });
+    if (full) {
+      expect(batch.counts.queued).toBe(0);
+      expect(batch.blocked).toHaveLength(1);
+      expect(await prisma.outboundEmail.count()).toBe(0);
+      expect(sentMessages).toHaveLength(0);
+      return;
+    }
     expect(batch.blocked).toEqual([]);
     expect(batch.counts.queued).toBe(1);
     const queued = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: batch.queued[0].outboundEmailId } });
@@ -365,8 +383,14 @@ describe("J5 — enrol, launch, send, reply, opt-out", () => {
     expect(sentMessages).toHaveLength(0);
     expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ windowKey: delayHours === 2 ? "2026-09-09T00:00:00.000Z" : "2026-09-10T00:00:00.000Z" });
     expect((await processOutboundSendQueue({ limit: 1 })).claimed).toBe(0);
+    if (blockedLater) await prisma.contact.update({ where: { id: CONTACT_ID }, data: { isSuppressed: true } });
     vi.setSystemTime(due);
     expect((await processOutboundSendQueue({ limit: 1 })).completed).toBe(1);
+    if (blockedLater) {
+      expect(sentMessages).toHaveLength(0);
+      expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: queued.id } })).status).not.toBe("SENT");
+      return;
+    }
     expect(sentMessages).toHaveLength(1);
     expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: queued.id } })).status).toBe("SENT");
   });
