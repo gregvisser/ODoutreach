@@ -35,7 +35,7 @@ test.afterAll(async () => {
 
 test("staff upload, preview, confirm and re-import without duplicate contacts or lost DNC", async ({ page }) => {
   await page.goto(`/clients/${clientId}`);
-  await page.getByRole("link", { name: "Sources", exact: true }).click();
+  await page.getByRole("navigation", { name: "Client workspace", exact: true }).getByRole("link", { name: "Sources", exact: true }).click();
   const preview = page.getByRole("button", { name: "Preview", exact: true });
   const confirm = page.getByRole("button", { name: "Confirm import", exact: true });
   await expect(confirm).toBeDisabled();
@@ -66,7 +66,7 @@ test("staff upload, preview, confirm and re-import without duplicate contacts or
   await expect(page.getByText(clearEmail, { exact: true })).toBeVisible();
   await expect(page.getByText(blockedEmail, { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Sources", exact: true }).click();
+  await page.getByRole("navigation", { name: "Client workspace", exact: true }).getByRole("link", { name: "Sources", exact: true }).click();
   await page.getByRole("combobox", { name: "Use existing list (optional)", exact: true }).selectOption(list.rows[0].id);
   await page.getByLabel("CSV file", { exact: true }).setInputFiles(upload);
   await preview.click();
