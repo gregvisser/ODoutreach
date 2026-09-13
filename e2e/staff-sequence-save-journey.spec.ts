@@ -23,7 +23,7 @@ test.afterAll(async () => {
 
 test("ordinary staff save and edit a delayed introduction without queueing email", async ({ page }) => {
   await page.goto(`/clients/${clientId}/outreach`);
-  await page.locator("summary").filter({ hasText: "New sequence" }).click();
+  await page.getByRole("main").locator("summary:visible").filter({ hasText: "New sequence" }).click();
   await page.getByRole("textbox", { name: "Sequence name", exact: true }).fill("Synthetic sequence version one");
   await page.getByRole("combobox", { name: "Target email list", exact: true }).selectOption(clientId);
   await page.locator('select[name="template_INTRODUCTION"]').selectOption(clientId + "-intro");

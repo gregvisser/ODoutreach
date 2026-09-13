@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, useTransition } from "react";
+import { useActionState, useId, useMemo, useState } from "react";
 
 import {
   createClientEmailSequenceAction,
@@ -165,13 +165,19 @@ export function ClientEmailSequenceForm({
     return 0;
   });
 
-  const [isPending, startTransition] = useTransition();
 
   const action =
     mode.kind === "edit"
       ? updateClientEmailSequenceAction
       : createClientEmailSequenceAction;
 
+  const [, submitAction, isPending] = useActionState(
+    async (_state: null, formData: FormData) => {
+      await action(formData);
+      return null;
+    },
+    null,
+  );
   const disabled = !canMutate || isPending;
 
   const selectedList =
@@ -307,7 +313,7 @@ export function ClientEmailSequenceForm({
       )}
 
       <form
-        action={(formData) => startTransition(() => action(formData))}
+        action={submitAction}
         className="space-y-4"
       >
         <input type="hidden" name="clientId" value={clientId} />
@@ -585,7 +591,7 @@ export function ClientEmailSequenceForm({
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={disabled}>
-            {mode.kind === "edit" ? "Save changes" : "Save sequence"}
+            {isPending ? "Saving…" : mode.kind === "edit" ? "Save changes" : "Save sequence"}
           </Button>
           {mode.kind === "edit" && (
             <Button
