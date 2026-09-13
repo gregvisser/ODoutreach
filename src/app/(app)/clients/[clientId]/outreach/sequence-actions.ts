@@ -182,9 +182,11 @@ function parseSteps(formData: FormData): Array<{
   return steps;
 }
 
+export type SequenceSaveOutcome = { ok: boolean; message: string; sequenceId?: string };
+
 export async function createClientEmailSequenceAction(
   formData: FormData,
-): Promise<void> {
+): Promise<SequenceSaveOutcome> {
   const staff = await requireOpensDoorsStaff();
   const clientId = getClientIdFromForm(formData);
   await requireClientAccess(staff, clientId);
@@ -227,20 +229,16 @@ export async function createClientEmailSequenceAction(
     }
 
     revalidatePath(`/clients/${clientId}/outreach`);
-    redirectBack(
-      clientId,
-      { kind: "ok", message: `Saved — ${created.name}${autoNote}` },
-      created.id,
-    );
+    return { ok: true, message: `Saved — ${created.name}${autoNote}`, sequenceId: created.id };
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
-    redirectBack(clientId, { kind: "error", message: flashForError(e) });
+    return { ok: false, message: "The save could not be completed. Refresh the sequence list to check for a partial save before trying again." };
   }
 }
 
 export async function updateClientEmailSequenceAction(
   formData: FormData,
-): Promise<void> {
+): Promise<SequenceSaveOutcome> {
   const staff = await requireOpensDoorsStaff();
   const clientId = getClientIdFromForm(formData);
   const sequenceId = String(formData.get("sequenceId") ?? "").trim();
@@ -285,18 +283,10 @@ export async function updateClientEmailSequenceAction(
     }
 
     revalidatePath(`/clients/${clientId}/outreach`);
-    redirectBack(
-      clientId,
-      { kind: "ok", message: `Updated — ${updated.name}${autoNote}` },
-      updated.id,
-    );
+    return { ok: true, message: `Updated — ${updated.name}${autoNote}`, sequenceId: updated.id };
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
-    redirectBack(
-      clientId,
-      { kind: "error", message: flashForError(e) },
-      sequenceId,
-    );
+    return { ok: false, message: "The save could not be completed. Refresh the sequence list to check for a partial save before trying again.", sequenceId };
   }
 }
 
