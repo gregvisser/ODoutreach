@@ -49,3 +49,12 @@ export function isFollowupRequiresSentIntroEnabled(): boolean {
     "true"
   );
 }
+
+/** Queue time and step edits are not evidence of when the previous email sent. */
+export function confirmedPreviousSendTime(
+  outbound: { status: string; sentAt: Date | null } | null | undefined,
+): string | null {
+  if (!outbound || !isIntroOutboundActuallySent(outbound.status)) return null;
+  const at = outbound.sentAt;
+  return at instanceof Date && Number.isFinite(at.getTime()) ? at.toISOString() : null;
+}

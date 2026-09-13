@@ -11,7 +11,7 @@ import {
 } from "@/test/integration/database";
 
 import { enrollSequenceContacts } from "./enrollments";
-import { sendSequenceStepBatch } from "./send-introduction";
+import { loadSequenceStepSendUiSnapshots, sendSequenceStepBatch } from "./send-introduction";
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
 import { planSequenceStepSends } from "./step-sends";
 
@@ -339,6 +339,30 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
+  it.each([true, false])("starts follow-up delay at confirmed send, with proof=%s", async sent => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-09T08:00Z"));
+    await prisma.clientEmailTemplate.create({ data: { id: "j5-follow-template", clientId: CLIENT_ID, name: "Follow", category: "FOLLOW_UP_1", subject: "Following up", content: "A follow-up.", status: "APPROVED" } });
+    await prisma.clientEmailSequenceStep.create({ data: { id: "j5-follow-step", sequenceId: SEQUENCE_ID, templateId: "j5-follow-template", category: "FOLLOW_UP_1", position: 2, delayDays: 0, delayHours: 2 } });
+    await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
+    await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID });
+    const intro = await sendSequenceStepBatch({ staff: await loadStaff(), clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE });
+    expect(intro.counts.queued).toBe(1);
+    vi.setSystemTime(new Date("2026-09-09T10:00Z"));
+    if (sent) await executeOutboundSend(intro.queued[0].outboundEmailId);
+    await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: "j5-follow-step", staffUserId: STAFF_ID });
+    vi.setSystemTime(new Date("2026-09-09T11:00Z"));
+    const readiness = (await loadSequenceStepSendUiSnapshots(CLIENT_ID)).snapshots.find(row => row.category === "FOLLOW_UP_1")!;
+    expect(readiness.eligibleInLaunchBatchNowCount).toBe(0);
+    if (sent) expect(readiness.earliestEligibleAtIso).toBe("2026-09-09T12:00:00.000Z");
+    const staff = await loadStaff();
+    const sendFollow = () => sendSequenceStepBatch({ staff, clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, category: "FOLLOW_UP_1", confirmationPhrase: "SEND FOLLOW UP 1" });
+    expect((await sendFollow()).counts.queued).toBe(0);
+    expect(await prisma.outboundEmail.count()).toBe(1);
+    vi.setSystemTime(new Date("2026-09-09T12:00Z"));
+    expect((await sendFollow()).counts.queued).toBe(sent ? 1 : 0);
+    expect(sentMessages).toHaveLength(sent ? 1 : 0);
+  });
   it.each([
     { delayHours: 2, full: false, blockedLater: false },
     { delayHours: 26, full: false, blockedLater: false },

@@ -1,9 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  confirmedPreviousSendTime,
   isFollowupRequiresSentIntroEnabled,
   isIntroOutboundActuallySent,
 } from "./followup-sent-intro-policy";
+
+describe("confirmed previous send time", () => {
+  it("requires an actual timestamp and confirmed sending state", () => {
+    const sentAt = new Date("2026-09-13T14:22:00Z");
+    expect(confirmedPreviousSendTime({ status: "SENT", sentAt })).toBe(sentAt.toISOString());
+    expect(confirmedPreviousSendTime({ status: "SENT", sentAt: null })).toBeNull();
+    expect(confirmedPreviousSendTime({ status: "SENT", sentAt: new Date(NaN) })).toBeNull();
+    expect(confirmedPreviousSendTime({ status: "QUEUED", sentAt })).toBeNull();
+    expect(confirmedPreviousSendTime({ status: "FAILED", sentAt })).toBeNull();
+    expect(confirmedPreviousSendTime(null)).toBeNull();
+  });
+});
 
 describe("isIntroOutboundActuallySent (H5)", () => {
   it("treats sent-with-proof statuses as actually sent", () => {
