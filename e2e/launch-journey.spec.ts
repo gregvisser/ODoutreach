@@ -42,16 +42,22 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
   test.use({ storageState: E2E_STORAGE_STATE.superAdmin });
 
   test("a lost action response gives an uncertain result and blocks another launch", async ({ page }) => {
-    await page.goto(`/clients/${E2E_LAUNCH_CLIENT.id}/outreach?sequenceId=${E2E_LAUNCH_SEQUENCE.id}`);
-    await page.route("**/outreach?sequenceId=*", async (route) => {
-      if (route.request().method() === "POST") await route.abort("failed");
-      else await route.continue();
+    let blockedPosts = 0;
+    // Server actions may post to the route without the current query string.
+    // Match this fixture's pathname and prove the simulated loss actually occurred.
+    await page.route((url) => url.pathname === `/clients/${E2E_LAUNCH_CLIENT.id}/outreach`, async (route) => {
+      if (route.request().method() === "POST") {
+        blockedPosts += 1;
+        await route.abort("failed");
+      } else await route.continue();
     });
+    await page.goto(`/clients/${E2E_LAUNCH_CLIENT.id}/outreach?sequenceId=${E2E_LAUNCH_SEQUENCE.id}`);
     const selected = page.getByRole("main").locator("#outreach-selected-sequence");
     const trigger = selected.getByRole("button", { name: "Launch sequence" });
     await trigger.click();
     await page.getByRole("dialog").getByRole("button", { name: "Launch sequence" }).click();
     await expect(selected.getByRole("status")).toContainText("We could not confirm the launch result.");
+    expect(blockedPosts).toBe(1);
     await expect(trigger).toBeDisabled();
     await expect(selected.getByRole("link", { name: "Refresh sequence status" })).toBeVisible();
   });
