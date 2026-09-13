@@ -39,7 +39,11 @@ test("ordinary staff save and edit a delayed introduction without queueing email
   await page.reload();
   await page.getByRole("row").filter({ hasText: "Synthetic sequence version one" }).getByRole("link", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL((url) => url.searchParams.get("sequenceId") === sequenceId && url.searchParams.get("edit") === "1");
-  await expect(page.locator("details").filter({ has: page.locator("summary", { hasText: /^Edit sequence$/ }) })).toHaveAttribute("open", "");
+  // Streaming can retain a hidden S:1 copy outside main. Assert the actual
+  // visible editor, retaining strict uniqueness instead of choosing the first copy.
+  const editor = page.getByRole("main").locator("details:visible").filter({ has: page.locator("summary", { hasText: /^Edit sequence$/ }) });
+  await expect(editor).toHaveCount(1);
+  await expect(editor).toHaveAttribute("open", "");
   await expect(page.getByRole("textbox", { name: "Sequence name", exact: true })).toHaveValue("Synthetic sequence version one");
   await page.getByRole("textbox", { name: "Sequence name", exact: true }).fill("Synthetic sequence version two");
   await page.locator('input[name="delayHours_INTRODUCTION"]:visible').fill("3");
