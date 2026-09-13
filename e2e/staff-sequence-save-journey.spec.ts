@@ -39,7 +39,7 @@ test("ordinary staff save and edit a delayed introduction without queueing email
   await page.getByRole("row").filter({ hasText: "Synthetic sequence version one" }).getByRole("link", { name: "Edit", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Sequence name", exact: true })).toHaveValue("Synthetic sequence version one");
   await page.getByRole("textbox", { name: "Sequence name", exact: true }).fill("Synthetic sequence version two");
-  await page.locator('input[name="delayHours_INTRODUCTION"]').fill("3");
+  await page.locator('input[name="delayHours_INTRODUCTION"]:visible').fill("3");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("row").filter({ hasText: "Synthetic sequence version two" })).toBeVisible();
   await page.reload();

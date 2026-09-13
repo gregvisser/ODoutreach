@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 
 import {
   createClientEmailSequenceAction,
@@ -130,6 +130,7 @@ export function ClientEmailSequenceForm({
   launchMailboxOptions,
   hideSequencePicker = false,
 }: Props) {
+  const formId = useId();
   const editableSequences = useMemo(
     () =>
       sequences.filter(
@@ -316,9 +317,9 @@ export function ClientEmailSequenceForm({
 
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="sequence-name">Sequence name</Label>
+            <Label htmlFor={`${formId}-name`}>Sequence name</Label>
             <Input
-              id="sequence-name"
+              id={`${formId}-name`}
               name="name"
               value={fields.name}
               onChange={(e) =>
@@ -331,9 +332,9 @@ export function ClientEmailSequenceForm({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="sequence-contact-list">Target email list</Label>
+            <Label htmlFor={`${formId}-contact-list`}>Target email list</Label>
             <select
-              id="sequence-contact-list"
+              id={`${formId}-contact-list`}
               name="contactListId"
               value={fields.contactListId}
               onChange={(e) =>
@@ -367,9 +368,9 @@ export function ClientEmailSequenceForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="launch-mailbox">Sending mailbox</Label>
+          <Label htmlFor={`${formId}-mailbox`}>Sending mailbox</Label>
           <select
-            id="launch-mailbox"
+            id={`${formId}-mailbox`}
             name="launchPreferredMailboxId"
             value={fields.launchPreferredMailboxId}
             onChange={(e) =>
@@ -399,9 +400,9 @@ export function ClientEmailSequenceForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="sequence-description">Description (optional)</Label>
+          <Label htmlFor={`${formId}-description`}>Description (optional)</Label>
           <Textarea
-            id="sequence-description"
+            id={`${formId}-description`}
             name="description"
             value={fields.description}
             onChange={(e) =>
