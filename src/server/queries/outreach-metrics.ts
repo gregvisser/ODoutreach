@@ -4,7 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { createLimiter, type TaskGate } from "@/lib/concurrency";
 import { prisma } from "@/lib/db";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
-import { buildProvenSentWhere } from "@/server/queries/proven-send";
+import { buildProvenSentWhere, PROVEN_SEND_STATUSES } from "@/server/queries/proven-send";
 import {
   deriveOutreachMetrics,
   type ClientMetricsRow,
@@ -281,7 +281,9 @@ async function gatherRawCountsByClient(
           },
           { outboundEmail: { is: {
             ...seedExclusion,
-            status: { notIn: ["REQUESTED", "PREPARING", "QUEUED", "PROCESSING"] },
+            // A known block/failure is not an unconfirmed claimed send.
+            // Waiting rows likewise belong only to the current queue count.
+            status: { in: [...PROVEN_SEND_STATUSES] },
             NOT: buildProvenSentWhere({ clientId: clientScope, seedEmails: [] }),
           } } },
         ],

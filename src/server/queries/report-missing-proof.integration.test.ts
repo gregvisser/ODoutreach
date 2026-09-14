@@ -110,4 +110,23 @@ describe("Reports count each sequence send's own confirmation", () => {
       else process.env.INTERNAL_SEED_ALLOWLIST_ENABLED = previousFlag;
     }
   });
+
+  it("does not call known blocked or failed outbounds unconfirmed sends", async () => {
+    const f = await fixture();
+    for (const status of ["BLOCKED_SUPPRESSION", "FAILED"] as const) {
+      const outbound = await prisma.outboundEmail.create({ data: {
+        clientId: f.client.id, toEmail: `${status}@example.test`, status,
+        createdAt: TODAY, failureReason: "Isolated known non-send outcome",
+      } });
+      // The step was handed to the queue before its linked outbound was
+      // blocked or failed. A SENT step alone is not a provider receipt.
+      await f.planned(outbound.id);
+    }
+    for (const window of [undefined, WINDOW]) {
+      const metrics = await loadClientOutreachMetrics(f.client.id, [f.client.id], window);
+      expect(metrics.sent).toBe(0);
+      expect(metrics.failed).toBe(1);
+      expect(metrics.sendProofMissing).toBe(0);
+    }
+  });
 });
