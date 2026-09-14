@@ -22,6 +22,7 @@ export function SupportTicketForm() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
+  const [uncertain, setUncertain] = useState(false);
   const [banner, setBanner] = useState<
     { type: "ok" | "err"; text: string } | null
   >(null);
@@ -32,16 +33,22 @@ export function SupportTicketForm() {
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (pending || uncertain) return;
         const fd = new FormData(e.currentTarget);
         startTransition(async () => {
           setBanner(null);
-          const r = await createSupportTicket(fd);
-          if (r.ok) {
-            setBanner({ type: "ok", text: "Ticket logged. Thanks — we'll review it." });
-            formRef.current?.reset();
-            router.refresh();
-          } else {
-            setBanner({ type: "err", text: r.error });
+          try {
+            const r = await createSupportTicket(fd);
+            if (r.ok) {
+              setBanner({ type: "ok", text: "Ticket logged. Thanks — we'll review it." });
+              formRef.current?.reset();
+              router.refresh();
+            } else {
+              setBanner({ type: "err", text: r.error });
+            }
+          } catch {
+            setUncertain(true);
+            setBanner({ type: "err", text: "We could not confirm whether your ticket was logged. Refresh the ticket list and check for it before trying again." });
           }
         });
       }}
@@ -57,6 +64,12 @@ export function SupportTicketForm() {
           )}
         >
           {banner.text}
+          {uncertain && (
+            // Recovery must reload the document to clear uncertain form state
+            // and fetch the persisted ticket list, even on the same URL.
+            // eslint-disable-next-line @next/next/no-html-link-for-pages
+            <a className="ml-2 underline" href="/support">Refresh ticket list</a>
+          )}
         </div>
       )}
 
@@ -117,7 +130,7 @@ export function SupportTicketForm() {
         </p>
       </div>
 
-      <Button type="submit" disabled={pending} size="sm">
+      <Button type="submit" disabled={pending || uncertain} size="sm">
         {pending ? "Logging…" : "Log ticket"}
       </Button>
     </form>
