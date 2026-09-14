@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import type { ContactDeliveryRow } from "@/server/queries/client-contact-list-detail";
 
@@ -128,6 +129,7 @@ function matchesSearch(row: ContactDeliveryRow, q: string): boolean {
 }
 
 function matchesStatus(row: ContactDeliveryRow, filter: StatusFilterLabel): boolean {
+  if (filter === "Queued" && row.queuedMessages?.length) return true;
   if (filter === "All") return true;
   // "Not sent" collapses every "not delivered yet" state into one bucket
   // so staff can find recipients who haven't been touched yet.
@@ -317,6 +319,14 @@ export function ListDetailContactTable({ contacts }: Props) {
                   <td className="px-3 py-2 text-muted-foreground">{c.jobTitle ?? "—"}</td>
                   <td className="px-3 py-2">
                     {statusBadge(c.sendStatus)}
+                    {c.queuedMessages?.map(message => (
+                      <Link key={message.id} prefetch={false}
+                        href={`/activity/outbound/${message.id}`}
+                        onClick={event => event.stopPropagation()}
+                        className="mt-1 block text-xs text-primary underline">
+                        Queued email: {message.sequenceName}
+                      </Link>
+                    ))}
                     {c.skipReason ? (
                       <div className="mt-1 max-w-[220px] text-[11px] leading-tight text-muted-foreground">
                         {c.skipReason}

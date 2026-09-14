@@ -60,6 +60,12 @@ function row(partial: Partial<ContactDeliveryRow>): ContactDeliveryRow {
 }
 
 describe("list-detail search/filter/sort helpers (PR #140)", () => {
+  it("finds a previously sent contact with a new queued email under both relevant filters", () => {
+    const r = row({ sendStatus: "Sent from mailbox", queuedMessages: [{ id: "queued-1", sequenceName: "Later campaign" }] });
+    expect(matchesStatus(r, "Queued")).toBe(true);
+    expect(matchesStatus(r, "Sent from mailbox")).toBe(true);
+    expect(matchesStatus(r, "Failed")).toBe(false);
+  });
   describe("matchesSearch", () => {
     it("returns every row when query is empty", () => {
       const r = row({ name: "Alex Example" });
