@@ -339,15 +339,14 @@ describe("operatorSignatureTableLabel", () => {
 });
 
 /**
- * The screen is where the eight dead mailboxes actually did their damage: all
- * eight read "Connected", so nobody looked further. Two of them could never be
- * repaired at all, and the screen offered a repair instruction anyway.
+ * A saved deleted-account error must remain visible, while directing staff to
+ * confirm the current account rather than assume it can never be connected.
  */
-describe("a mailbox that cannot be reconnected says so", () => {
+describe("a saved deleted-account error requires a current account check", () => {
   const deletedAccountError =
     "This mailbox cannot be reconnected — the account no longer exists. Microsoft token refresh failed: invalid_grant - AADSTS500341: The user account has been deleted from the directory.";
 
-  it("labels a deleted account 'Cannot be reconnected', not 'Connection failed'", () => {
+  it("labels the account as needing a check", () => {
     const row = {
       ...base(),
       connectionStatus: "DISCONNECTED" as const,
@@ -355,7 +354,7 @@ describe("a mailbox that cannot be reconnected says so", () => {
     };
     const status = mailboxRowOperatorStatus(row, NOW);
     expect(status.kind).toBe("account_deleted");
-    expect(status.label).toBe("Cannot be reconnected");
+    expect(status.label).toBe("Account needs checking");
     expect(status.sublabel).toBe(MAILBOX_ACCOUNT_DELETED_SUBLABEL);
   });
 
@@ -372,11 +371,11 @@ describe("a mailbox that cannot be reconnected says so", () => {
         connectionStatus,
         lastError: deletedAccountError,
       }, NOW);
-      expect(status.label).toBe("Cannot be reconnected");
+      expect(status.label).toBe("Account needs checking");
     }
   });
 
-  it("never tells a deleted account to reconnect or complete MFA", () => {
+  it("requires an account check instead of treating the failure as ordinary expired MFA", () => {
     // The exact wrong instruction the product gave for weeks: AADSTS500341
     // arrives wrapped in invalid_grant, and the invalid_grant branch answered
     // first. This asserts the ordering, not just the wording.

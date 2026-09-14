@@ -67,13 +67,13 @@ export const MICROSOFT_CONNECTION_ERROR_SUBLABEL_GENERIC =
   "Connection did not complete. Reconnect and approve access in Microsoft 365." as const;
 
 /**
- * The one status in this product that must not offer a next step, because
- * there isn't one on our side.
+ * A saved provider error describes the last check, not the directory's current
+ * state. Have the client confirm the account before attempting a fresh sign-in.
  */
 export const MAILBOX_ACCOUNT_DELETED_SUBLABEL =
-  "This account no longer exists in the client's Microsoft directory, so it cannot be reconnected. Someone at the client has to recreate the mailbox, or it should be removed from this workspace." as const;
+  "The last Microsoft check reported that the account used for this connection had been deleted. Ask the client's Microsoft 365 administrator to confirm that this email address has an active account in the correct directory. Once confirmed, use Connect with that account. Do not recreate or remove a mailbox based only on this saved error." as const;
 
-/** True when `lastError` says the underlying account has been deleted. */
+/** True when the saved provider error reports a deleted underlying account. */
 export function isMailboxAccountDeletedError(
   lastError: string | null | undefined,
 ): boolean {
@@ -244,13 +244,12 @@ export function mailboxRowOperatorStatus(
   if (!row.isActive) {
     return { kind: "inactive", label: "Inactive" };
   }
-  // Checked ahead of the status branches: a deleted account is the same answer
-  // whichever status it currently carries, and it is the only one where the
-  // honest label is "cannot be reconnected" rather than "reconnect".
+  // Keep the saved failure visible even if another write left a CONNECTED
+  // status, without presenting it as a fresh directory check.
   if (isMailboxAccountDeletedError(row.lastError)) {
     return {
       kind: "account_deleted",
-      label: "Cannot be reconnected",
+      label: "Account needs checking",
       sublabel: MAILBOX_ACCOUNT_DELETED_SUBLABEL,
     };
   }
