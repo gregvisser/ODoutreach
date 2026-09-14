@@ -19,12 +19,15 @@ async function seed(id: string, clientId: string) {
 
 test("staff can read and handle a historical reply without an outbound link", async ({ page }, testInfo) => {
   const id = "e2e-orphan-handle";
-  const requests: Array<{ kind: string; method?: string; status?: number; error?: string }> = [];
+  const requests: Array<{ kind: string; at: number; method?: string; status?: number; error?: string }> = [];
   page.on("response", response => {
-    if (response.request().method() === "POST") requests.push({ kind: "response", method: "POST", status: response.status() });
+    if (response.request().method() === "POST") requests.push({ kind: "response", at: Date.now(), method: "POST", status: response.status() });
   });
-  page.on("requestfailed", request => requests.push({ kind: "requestfailed", method: request.method(), error: request.failure()?.errorText }));
-  page.on("pageerror", error => requests.push({ kind: "pageerror", error: error.message }));
+  page.on("requestfinished", request => {
+    if (request.method() === "POST") requests.push({ kind: "requestfinished", at: Date.now(), method: "POST" });
+  });
+  page.on("requestfailed", request => requests.push({ kind: "requestfailed", at: Date.now(), method: request.method(), error: request.failure()?.errorText }));
+  page.on("pageerror", error => requests.push({ kind: "pageerror", at: Date.now(), error: error.message }));
   await seed(id, E2E_CLIENT.id);
   try {
     await page.goto(`/clients/${E2E_CLIENT.id}/activity/replies/${id}`);
@@ -46,11 +49,21 @@ test("staff can read and handle a historical reply without an outbound link", as
     expect(result.rows[0].handledAt).toBeTruthy();
     expect(result.rows[0].entraObjectId).toBe(E2E_MEMBER_A.entraObjectId);
   } finally {
-    if (testInfo.status !== testInfo.expectedStatus) {
+    // Playwright finalises testInfo.status after this test body unwinds. Reading
+    // it here discarded the very failure evidence this attachment must retain.
+    // Always capture the durable outcome before deleting this isolated fixture.
+    try {
       const saved = await pool.query('SELECT "handledAt", "handledByStaffUserId" FROM "InboundReply" WHERE id=$1', [id]);
-      await testInfo.attach("handled-save-outcome", { body: JSON.stringify({ requests, saved: saved.rows }), contentType: "application/json" });
+      const buttons = await page.getByTestId("reply-ownership-card").getByRole("button").evaluateAll(elements =>
+        elements.map(element => ({ text: element.textContent, disabled: element.hasAttribute("disabled") })),
+      );
+      await testInfo.attach("handled-save-outcome", {
+        body: JSON.stringify({ capturedAt: Date.now(), requests, saved: saved.rows, buttons }),
+        contentType: "application/json",
+      });
+    } finally {
+      await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]);
     }
-    await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]);
   }
 });
 
