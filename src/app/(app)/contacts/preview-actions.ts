@@ -103,7 +103,7 @@ export async function previewContactsCsvAction(
 
   const existing = await prisma.contact.findMany({
     where: { clientId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, company: true },
   });
 
   // Collect distinct normalized+valid emails using the SAME column mapping the
@@ -114,18 +114,25 @@ export async function previewContactsCsvAction(
   // suppression key — and buildCsvImportPreview then showed that row as
   // sendable when it was actually suppressed. Mapping here the same way keeps
   // the suppression keys aligned with the per-row email lookups.
-  const distinctEmails = new Set<string>();
+  const existingCompanies = new Map(
+    existing.map(contact => [normalizeEmail(contact.email ?? ""), contact.company]),
+  );
+  // New contacts keep the first valid row; attach-only imports retain the
+  // saved employer. Check the same company that the writer will persist.
+  const distinctEmails = new Map<string, string | null>();
   for (const row of rawRows) {
     const mapped = mapContactRow(row);
     const candidate = normalizeEmail(mapped.email ?? "");
-    if (candidate && isValidEmailFormat(candidate)) {
-      distinctEmails.add(candidate);
+    if (candidate && isValidEmailFormat(candidate) && !distinctEmails.has(candidate)) {
+      distinctEmails.set(candidate, existingCompanies.has(candidate)
+        ? existingCompanies.get(candidate) ?? null
+        : mapped.company?.trim() || null);
     }
   }
 
   const suppression: SuppressionLookup = new Map();
-  for (const email of distinctEmails) {
-    const decision = await evaluateSuppression(clientId, email);
+  for (const [email, company] of distinctEmails) {
+    const decision = await evaluateSuppression(clientId, email, company);
     if (decision.suppressed) {
       suppression.set(email, {
         suppressed: true,
