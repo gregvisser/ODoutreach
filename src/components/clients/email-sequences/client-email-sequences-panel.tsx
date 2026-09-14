@@ -116,6 +116,7 @@ function badgeVariantForDashboardStatus(
   label: string,
 ): "default" | "secondary" | "outline" | "destructive" {
   if (label === "Blocked") return "destructive";
+  if (label === "Needs attention" || label === "Check delivery") return "destructive";
   if (label === "Sending") return "default";
   if (label === "Sent") return "secondary";
   if (label === "Completed") return "secondary";
@@ -185,6 +186,7 @@ export function ClientEmailSequencesPanel(props: Props) {
         launchReadiness: launchReadinessBySequenceId[selected.id] ?? null,
         prepCounts: prepCountsForStatus(selectedPrep),
         enrollmentPending: selected.enrollment.counts.PENDING,
+        delivery: stepSendSnapshots.find((s) => s.sequenceId === selected.id && s.category === "INTRODUCTION")?.delivery,
       })
     : "";
 
@@ -197,6 +199,7 @@ export function ClientEmailSequencesPanel(props: Props) {
         <CardTitle>Sequences</CardTitle>
         <CardDescription>
           Pick a sequence to review recipients and launch. Saving edits does not send email.
+          {" "}Queued means waiting in ODoutreach. Sent confirms dispatch, not inbox placement.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -288,6 +291,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                       launchReadiness: lr,
                       prepCounts: prepCountsForStatus(prepSnap),
                       enrollmentPending: seq.enrollment.counts.PENDING,
+                      delivery: stepSendSnapshots.find((s) => s.sequenceId === seq.id && s.category === "INTRODUCTION")?.delivery,
                     });
                     return (
                       <tr
@@ -546,7 +550,7 @@ export function ClientEmailSequencesPanel(props: Props) {
 
             {selected.status === "APPROVED" && selected.approvedBy && (
               <p className="text-[11px] text-muted-foreground">
-                Went live with{" "}
+                Saved for launch by{" "}
                 <span className="font-medium">
                   {selected.approvedBy.name ?? selected.approvedBy.email}
                 </span>{" "}
@@ -814,14 +818,14 @@ function LaunchReadinessBlock({
   const sent = prepCounts?.sent ?? 0;
   const ready = prepCounts?.ready ?? 0;
   const blocked = prepCounts?.blocked ?? 0;
-  const isFullySent = sent > 0 && ready === 0 && blocked === 0;
+  const isFullyHandedToQueue = sent > 0 && ready === 0 && blocked === 0;
 
-  if (isFullySent) {
+  if (isFullyHandedToQueue) {
     return (
-      <div className="rounded-md border border-emerald-400/40 bg-emerald-50/60 p-3 dark:bg-emerald-500/10">
-        <p className="text-sm font-semibold text-foreground">Introductions sent</p>
+      <div className="rounded-md border border-border bg-muted/20 p-3">
+        <p className="text-sm font-semibold text-foreground">Introductions handed to queue</p>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {String(sent)} introduction{sent === 1 ? "" : "s"} sent. No remaining recipients for this step.
+          {String(sent)} introduction{sent === 1 ? "" : "s"} handed to the sending queue. Check Activity for each email’s current outcome; queued or held emails have not been sent.
         </p>
       </div>
     );

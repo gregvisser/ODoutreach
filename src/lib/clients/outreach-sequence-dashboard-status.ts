@@ -1,4 +1,5 @@
 import type { ClientEmailSequenceStatus } from "@/generated/prisma/enums";
+import type { SequenceDeliverySummary } from "./sequence-delivery-summary";
 import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readiness";
 
 /**
@@ -20,6 +21,8 @@ export function deriveOutreachDashboardStatusLabel(args: {
   prepCounts: PrepCountsSlice | null;
   /** Sum of PENDING enrollments on the sequence (from enrollment summary). */
   enrollmentPending: number;
+  /** Current linked outbound outcomes, never inferred from planner SENT. */
+  delivery?: SequenceDeliverySummary;
 }): string {
   const { status, launchReadiness, prepCounts } = args;
 
@@ -28,12 +31,16 @@ export function deriveOutreachDashboardStatusLabel(args: {
   if (status === "READY_FOR_REVIEW") return "Ready";
 
   if (status === "APPROVED") {
-    const sent = prepCounts?.sent ?? 0;
+    const sent = args.delivery?.sent ?? 0;
     const ready = prepCounts?.ready ?? 0;
     const blocked = prepCounts?.blocked ?? 0;
 
-    if (sent > 0 && ready === 0 && blocked === 0) return "Sent";
-    if (sent > 0 && ready > 0) return "Sending";
+    if ((args.delivery?.attention ?? 0) > 0) return "Needs attention";
+    if (!args.delivery && (prepCounts?.sent ?? 0) > 0) return "Check delivery";
+    if ((args.delivery?.queued ?? 0) > 0) return "Queued";
+    if ((prepCounts?.failed ?? 0) > 0 || blocked > 0) return "Blocked";
+    if (sent > 0 && ready === 0) return "Sent";
+    if (sent > 0 && ready > 0) return "Partly sent";
 
     if (launchReadiness && !launchReadiness.canLaunch) {
       // Distinguish a genuine configuration problem (no mailbox, missing

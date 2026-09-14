@@ -424,21 +424,19 @@ export async function loadClientActivityTimeline(
       "contact without email";
     const sequenceName = row.sequence?.name ?? "sequence";
     const statusLower = row.status.toLowerCase();
-    // "records only" is only true before D4e.2 dispatch. Once a row flips
-    // to SENT it represents a real queued/sent OutboundEmail, so we drop
-    // that qualifier to avoid misleading operators.
+    // Planner SENT records queue handoff, not a successful provider send.
     const dispatched = row.status === "SENT";
     const description =
       row.blockedReason && row.blockedReason.length > 0
         ? `${sequenceName}: ${statusLower} — ${row.blockedReason}`
         : dispatched
-          ? `${sequenceName}: ${statusLower} (queued to outbound)`
+          ? `${sequenceName}: handed to sending queue — check the email event for its current outcome`
           : `${sequenceName}: ${statusLower} (records only)`;
     events.push({
       id: `step-send:${row.id}`,
       occurredAt: row.updatedAt,
       type: "step_send",
-      severity: classifyStepSendStatus(row.status),
+      severity: dispatched ? "info" : classifyStepSendStatus(row.status),
       title: `Sequence step send — ${contactLabel}`,
       description,
       sourceModel: "ClientEmailSequenceStepSend",
