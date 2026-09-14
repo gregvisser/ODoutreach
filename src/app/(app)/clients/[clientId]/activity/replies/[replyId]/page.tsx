@@ -75,6 +75,7 @@ export default async function ClientLinkedReplyDetailPage({ params }: Props) {
   return (
     <div className="space-y-6">
       <ReplyOwnershipCard
+        key={`${clientId}:${replyId}`}
         clientId={clientId}
         replyId={replyId}
         subjectType={claimSubject.subjectType}

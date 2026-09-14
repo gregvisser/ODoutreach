@@ -39,6 +39,8 @@ test("staff can read and handle a historical reply without an outbound link", as
     await expect(main.getByRole("button", { name: /Send reply|Stop follow-ups|Pause follow-ups/i })).toHaveCount(0);
     expect((await pool.query('SELECT id FROM "ReplyClaim" WHERE "subjectId"=$1', [id])).rows).toHaveLength(0);
     await main.getByRole("button", { name: "Mark handled", exact: true }).click();
+    await expect(main.getByTestId("reply-ownership-card").getByRole("status")).toHaveText("Reply marked handled.");
+    await expect(main.getByTestId("reply-ownership-card")).toContainText("Handled by you");
     await expect(main.getByRole("button", { name: "Mark handled", exact: true })).toHaveCount(0);
     await page.reload();
     await expect(main.getByRole("heading", { name: "Historical conversation", exact: true })).toBeVisible();
@@ -65,6 +67,51 @@ test("staff can read and handle a historical reply without an outbound link", as
       await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]);
     }
   }
+});
+
+test("a lost handled acknowledgement keeps repeats locked and the saved status can be reopened", async ({ page }) => {
+  const id = "e2e-orphan-handled-lost-response";
+  await seed(id, E2E_CLIENT.id);
+  let posts = 0;
+  const routePath = `/api/clients/${E2E_CLIENT.id}/replies/${id}/handled`;
+  await page.route(url => url.pathname === routePath, async route => {
+    posts += 1;
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    expect(await response.json()).toMatchObject({ ok: true });
+    await response.dispose();
+    await route.abort("failed");
+  });
+  try {
+    await page.goto(`/clients/${E2E_CLIENT.id}/activity/replies/${id}`);
+    const card = page.getByTestId("reply-ownership-card");
+    await card.getByRole("button", { name: "Mark handled", exact: true }).click();
+    await expect(card.getByRole("alert")).toContainText("We could not confirm the update");
+    await expect(card.getByRole("button", { name: "Mark handled", exact: true })).toBeDisabled();
+    await expect(card.getByRole("button", { name: "Claim this reply", exact: true })).toBeDisabled();
+    const saved = await pool.query('SELECT "handledAt", "handledByStaffUserId" FROM "InboundReply" WHERE id=$1', [id]);
+    expect(saved.rows[0].handledAt).toBeTruthy();
+    await card.getByRole("link", { name: "Check saved status", exact: true }).click();
+    await expect(card).toContainText("Handled by you");
+    await expect(card.getByRole("button", { name: "Mark handled", exact: true })).toHaveCount(0);
+    expect(posts).toBe(1);
+    const reopened = await pool.query('SELECT "handledAt", "handledByStaffUserId" FROM "InboundReply" WHERE id=$1', [id]);
+    expect(reopened.rows).toEqual(saved.rows);
+  } finally { await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]); }
+});
+
+test("the handled endpoint refuses other origins and a reply under the wrong workspace", async ({ page }) => {
+  const id = "e2e-orphan-handled-scope";
+  await seed(id, E2E_CLIENT_B.id);
+  try {
+    await page.goto(`/clients/${E2E_CLIENT.id}/activity`);
+    const origin = new URL(page.url()).origin;
+    const crossOrigin = await page.request.post(`/api/clients/${E2E_CLIENT_B.id}/replies/${id}/handled`, { headers: { origin: "https://foreign.example.test" } });
+    expect(crossOrigin.status()).toBe(403);
+    const wrongClient = await page.request.post(`/api/clients/${E2E_CLIENT.id}/replies/${id}/handled`, { headers: { origin } });
+    expect(wrongClient.status()).toBe(404);
+    expect((await pool.query('SELECT "handledAt" FROM "InboundReply" WHERE id=$1', [id])).rows[0].handledAt).toBeNull();
+  } finally { await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]); }
 });
 
 test("an invalid surviving campaign link does not qualify for the historical fallback", async ({ page }) => {
