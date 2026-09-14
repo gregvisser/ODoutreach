@@ -1,11 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 
 import {
   deleteComplianceAttachmentAction,
-  saveClientBriefAction,
   uploadCompliancePdfAction,
 } from "@/app/(app)/clients/client-brief-actions";
 import { BriefAddressBlock } from "@/components/clients/brief-address-block";
@@ -101,6 +100,8 @@ export function OpensDoorsBriefGuidedForm({
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const [filePending, setFilePending] = useState(false);
+  const saveBusy = useRef(false);
+  const [saveLocked, setSaveLocked] = useState(false);
 
   const mainContact = useMemo(
     () =>
@@ -125,10 +126,14 @@ export function OpensDoorsBriefGuidedForm({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saveBusy.current || saveLocked) return;
+    saveBusy.current = true;
     setMessage(null);
     startTransition(async () => {
       try {
-        const r = await saveClientBriefAction({
+        const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/brief`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
           clientId,
           website,
           industry,
@@ -153,12 +158,15 @@ export function OpensDoorsBriefGuidedForm({
             proofNotes: form.proofNotes,
           },
           taxonomy,
+          }),
         });
+        const r = await response.json();
         if (r.ok) {
           setMessage({ type: "ok", text: "Brief saved." });
-          router.refresh();
+          setSaveLocked(true);
         } else {
-          setMessage({ type: "err", text: r.error });
+          setMessage({ type: "err", text: r.uncertain ? "We could not confirm the save. Your entries are still on this page. Open the saved brief to check before trying again." : r.error });
+          if (r.uncertain) setSaveLocked(true);
         }
       } catch {
         // A server action call can reject for reasons outside its own
@@ -168,9 +176,10 @@ export function OpensDoorsBriefGuidedForm({
         // boundary, unmounting the form and losing everything typed here.
         setMessage({
           type: "err",
-          text: "Couldn't save the brief. Please try again — if this keeps happening, refresh the page and sign in again.",
+          text: "We could not confirm the save. Your entries are still on this page. Open the saved brief to check before trying again.",
         });
-      }
+        setSaveLocked(true);
+      } finally { saveBusy.current = false; }
     });
   }
 
@@ -204,7 +213,7 @@ export function OpensDoorsBriefGuidedForm({
   return (
     <form onSubmit={onSubmit} aria-busy={!ready}>
       {!ready && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading form…</p>}
-      <fieldset disabled={!ready} className="min-w-0 space-y-10">
+      <fieldset disabled={!ready || pending || saveLocked} className="min-w-0 space-y-10">
       <section className="space-y-4">
         <h2 className="text-lg font-semibold tracking-tight">A. Company identity</h2>
         <p className="text-sm text-muted-foreground">
@@ -474,11 +483,12 @@ export function OpensDoorsBriefGuidedForm({
       </p>
 
       <div className="flex flex-wrap items-center gap-3 pt-2">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || saveLocked}>
           {pending ? "Saving…" : "Save brief"}
         </Button>
         {message ? (
           <p
+            role="status"
             className={cn(
               "text-sm",
               message.type === "ok" ? "text-foreground" : "text-destructive",
@@ -487,6 +497,7 @@ export function OpensDoorsBriefGuidedForm({
             {message.text}
           </p>
         ) : null}
+        {saveLocked && <a href={`/clients/${clientId}/brief`} target={message?.type === "err" ? "_blank" : undefined} rel="noopener noreferrer" className="text-sm underline">Open saved brief</a>}
       </div>
       </fieldset>
     </form>
