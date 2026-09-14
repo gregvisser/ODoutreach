@@ -93,6 +93,24 @@ export default async function OutboundDetailPage({ params }: Props) {
         <CardHeader>
           <CardTitle>Timeline</CardTitle>
         </CardHeader>
+        {row.status === "QUEUED" && row.nextRetryAt ? (
+          <CardContent className="space-y-2 text-sm">
+            <p className="font-medium">Earliest next sending attempt</p>
+            <p>
+              {new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Europe/London", dateStyle: "medium", timeStyle: "medium",
+              }).format(row.nextRetryAt)} (UK time — Europe/London)
+            </p>
+            <p className="text-muted-foreground">
+              {row.nextRetryAt.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")}
+            </p>
+            <p className="text-muted-foreground">
+              The email has not been sent. The worker can try from this time;
+              the sending calendar, available allowance and safety checks may
+              hold it longer. This time can change after a retry or hold.
+            </p>
+          </CardContent>
+        ) : null}
         <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
           {(
             [
