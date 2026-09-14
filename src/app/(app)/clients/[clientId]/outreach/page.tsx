@@ -247,7 +247,16 @@ export default async function ClientOutreachPage({
       />
 
       {preSendPreviewEnabled ? (
-        <EmailPreviewPanel clientId={client.id} />
+        <EmailPreviewPanel
+          key={`${client.id}:${selectedSequenceId ?? "none"}`}
+          clientId={client.id}
+          initialSequenceId={selectedSequenceId}
+          sequences={sequencesOverview.sequences.filter((sequence) => sequence.status !== "ARCHIVED").map((sequence) => ({
+            id: sequence.id,
+            name: sequence.name,
+            categories: sequence.steps.map((step) => step.category),
+          }))}
+        />
       ) : null}
 
       {/*
