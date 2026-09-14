@@ -347,7 +347,7 @@ const briefModule: TrainingModule = {
     {
       title: "Click Save brief",
       detail:
-        "Saving does not send email. Mailboxes, signatures, and sequences are configured in their own pages.",
+        "Wait for Brief saved, then choose Open saved brief to check the saved entries. If the result cannot be confirmed, keep the original page open and use Open saved brief to check in a separate tab before trying again. Saving does not send email. Mailboxes, signatures, and sequences are configured in their own pages.",
     },
   ],
   whatGoodLooksLike: [
