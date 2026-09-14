@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  listPreviewableSequencesAction,
   previewOutreachEmailAction,
   type PreviewableSequence,
 } from "@/app/(app)/clients/[clientId]/outreach/preview-actions";
@@ -32,66 +31,65 @@ type PreviewState = {
  * pipeline as the live send) for a chosen sequence/step in a sandboxed iframe.
  * Mounted only when PRE_SEND_PREVIEW_ENABLED is on.
  */
-export function EmailPreviewPanel({ clientId }: { clientId: string }) {
-  const [sequences, setSequences] = useState<PreviewableSequence[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [sequenceId, setSequenceId] = useState<string>("");
-  const [category, setCategory] = useState<string>("");
+export function EmailPreviewPanel({ clientId, initialSequenceId, sequences }: {
+  clientId: string;
+  initialSequenceId: string | null;
+  sequences: PreviewableSequence[];
+}) {
+  const initial = initialSequenceId
+    ? sequences.find((sequence) => sequence.id === initialSequenceId)
+    : sequences.find((sequence) => sequence.categories.length > 0);
+  const [sequenceId, setSequenceId] = useState(initial?.id ?? "");
+  const [category, setCategory] = useState<string>(initial?.categories[0] ?? "");
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    let active = true;
-    listPreviewableSequencesAction(clientId).then((res) => {
-      if (!active) return;
-      if (res.ok) {
-        setSequences(res.sequences);
-        const first = res.sequences.find((s) => s.categories.length > 0);
-        if (first) {
-          setSequenceId(first.id);
-          setCategory(first.categories[0]);
-        }
-      } else {
-        setLoadError(res.error);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-
+  const requestVersion = useRef(0);
   const selected = sequences.find((s) => s.id === sequenceId) ?? null;
   const categories = selected?.categories ?? [];
 
+  function clearPreview() {
+    requestVersion.current += 1;
+    setPreview(null);
+    setError(null);
+  }
+
   function generate() {
     if (!sequenceId || !category) return;
-    setError(null);
+    clearPreview();
+    const version = requestVersion.current;
     startTransition(async () => {
-      const res = await previewOutreachEmailAction({
-        clientId,
-        sequenceId,
-        category: category as ClientEmailTemplateCategory,
-      });
-      if (res.ok) {
-        setPreview({
-          subject: res.preview.subject,
-          html: res.preview.html,
-          bodyText: res.preview.bodyText,
-          sequenceName: res.preview.sequenceName,
-          category: res.preview.category,
-          contactLabel: res.preview.contactLabel,
-          mailboxLabel: res.preview.mailboxLabel,
+      try {
+        const res = await previewOutreachEmailAction({
+          clientId,
+          sequenceId,
+          category: category as ClientEmailTemplateCategory,
         });
-      } else {
-        setPreview(null);
-        setError(res.error);
+        if (version !== requestVersion.current) return;
+        if (res.ok) {
+          setPreview({
+            subject: res.preview.subject,
+            html: res.preview.html,
+            bodyText: res.preview.bodyText,
+            sequenceName: res.preview.sequenceName,
+            category: res.preview.category,
+            contactLabel: res.preview.contactLabel,
+            mailboxLabel: res.preview.mailboxLabel,
+          });
+        } else {
+          setPreview(null);
+          setError(res.error);
+        }
+      } catch {
+        if (version === requestVersion.current) {
+          setError("We could not render this preview. Try again; no email has been sent.");
+        }
       }
     });
   }
 
   return (
-    <Card className="border-border/80 shadow-sm">
+    <Card role="region" aria-label="Pre-send preview" className="border-border/80 shadow-sm">
       <CardHeader>
         <CardTitle className="text-lg">Pre-send preview</CardTitle>
         <CardDescription>
@@ -101,16 +99,15 @@ export function EmailPreviewPanel({ clientId }: { clientId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {loadError ? (
-          <p className="text-sm text-destructive">{loadError}</p>
-        ) : null}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1 text-sm">
             <span className="mb-1 block font-medium">Sequence</span>
             <select
+              aria-label="Preview sequence"
               value={sequenceId}
               onChange={(e) => {
+                clearPreview();
                 const id = e.target.value;
                 setSequenceId(id);
                 const seq = sequences.find((s) => s.id === id);
@@ -132,8 +129,9 @@ export function EmailPreviewPanel({ clientId }: { clientId: string }) {
           <label className="flex-1 text-sm">
             <span className="mb-1 block font-medium">Step</span>
             <select
+              aria-label="Preview step"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => { clearPreview(); setCategory(e.target.value); }}
               className="w-full rounded-md border px-3 py-2"
             >
               {categories.length === 0 ? (
@@ -161,6 +159,7 @@ export function EmailPreviewPanel({ clientId }: { clientId: string }) {
 
         {preview ? (
           <div className="space-y-3">
+            <p className="text-sm font-medium">Preview: {preview.sequenceName} · {preview.category}</p>
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
               <div>
                 <span className="text-muted-foreground">Subject:</span>{" "}
