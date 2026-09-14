@@ -8,6 +8,7 @@ import {
   isEmailInCooldown,
 } from "@/lib/email-sequences/recent-send-cooldown";
 import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
+import { hasCurrentCooldownReengagement } from "@/lib/email-sequences/cooldown-reengagement";
 
 /**
  * M2/M3 — dispatch-time re-check kill-switch.
@@ -33,6 +34,7 @@ export function isDispatchRecheckEnabled(): boolean {
 }
 
 export type DispatchRecheckRecentSend = {
+  lastSentId?: string;
   lastSentAt: Date;
   eligibleAt: Date;
   bounced: boolean;
@@ -54,13 +56,13 @@ export type DispatchRecheckDecision =
  *     checked FIRST so it wins even past the cooldown timer;
  *   - otherwise an in-window recent send blocks until the window clears.
  *
- * No `bypassCooldown` here: the re-engage override is a plan-time operator
- * decision; a row that reaches dispatch has already passed it, and we never
- * want the dispatch backstop to wave a stale row through.
+ * The caller may waive only the timer after verifying saved staff consent
+ * against this exact recipient, step and current history. Bounces always win.
  */
 export function decideDispatchRecheck(input: {
   now: Date;
   recentSend: DispatchRecheckRecentSend | null;
+  hasCurrentReengagement?: boolean;
 }): DispatchRecheckDecision {
   const r = input.recentSend;
   if (!r) return { block: false };
@@ -72,7 +74,7 @@ export function decideDispatchRecheck(input: {
       eligibleAt: r.eligibleAt,
     };
   }
-  if (isEmailInCooldown(r.lastSentAt, input.now)) {
+  if (!input.hasCurrentReengagement && isEmailInCooldown(r.lastSentAt, input.now)) {
     return {
       block: true,
       kind: "cooldown",
@@ -129,6 +131,7 @@ export async function loadDispatchRecentSend(input: {
     },
     select: {
       clientId: true,
+      id: true,
       sentAt: true,
       status: true,
       sequenceStepSends: { select: { sequenceId: true } },
@@ -150,6 +153,7 @@ export async function loadDispatchRecentSend(input: {
       // Rows are ordered newest-first, so the first qualifying row is the most
       // recent send; later rows only matter to surface a bounce.
       recent = {
+        lastSentId: row.id,
         lastSentAt: row.sentAt,
         eligibleAt: dateWhenEmailEligibleAgain(row.sentAt),
         bounced: isBounce,
@@ -168,7 +172,20 @@ export async function evaluateOutboundDispatchRecheck(input: {
   clientId?: string;
   toEmail: string;
   now: Date;
+  reengagement?: {
+    approval: unknown;
+    sequenceId: unknown;
+    stepId: unknown;
+    contactId: string | null;
+  };
 }): Promise<DispatchRecheckDecision> {
   const recentSend = await loadDispatchRecentSend(input);
-  return decideDispatchRecheck({ now: input.now, recentSend });
+  const hasCurrentReengagement = input.clientId && input.reengagement && recentSend
+    ? hasCurrentCooldownReengagement({
+        ...input.reengagement, clientId: input.clientId, email: input.toEmail,
+        recentOutboundId: recentSend.lastSentId, recentSentAt: recentSend.lastSentAt,
+        now: input.now,
+      })
+    : false;
+  return decideDispatchRecheck({ now: input.now, recentSend, hasCurrentReengagement });
 }

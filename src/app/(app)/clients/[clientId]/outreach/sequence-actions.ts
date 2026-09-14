@@ -538,7 +538,7 @@ export async function prepareClientEmailSequenceStepSendsAction(
     }
     if (bypassCooldown) {
       parts.push(
-        "re-engage ON — cooldown bypassed (suppression & bounces still enforced)",
+        "re-engage ON — eligible repeat contacts approved against current history (new contact history, suppression and bounces still checked before sending)",
       );
     }
     redirectBack(
