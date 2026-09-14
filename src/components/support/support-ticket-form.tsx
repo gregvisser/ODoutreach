@@ -65,6 +65,9 @@ export function SupportTicketForm() {
         >
           {banner.text}
           {uncertain && (
+            // Recovery must reload the document to clear uncertain form state
+            // and fetch the persisted ticket list, even on the same URL.
+            // eslint-disable-next-line @next/next/no-html-link-for-pages
             <a className="ml-2 underline" href="/support">Refresh ticket list</a>
           )}
         </div>
