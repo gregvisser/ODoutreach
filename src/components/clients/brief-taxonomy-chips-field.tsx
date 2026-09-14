@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 
-import { searchBriefTaxonomyAction } from "@/app/(app)/clients/client-brief-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +30,7 @@ export function BriefTaxonomyChipsField({
   const [q, setQ] = useState("");
   const [suggestions, setSuggestions] = useState<{ id: string; displayValue: string }[]>([]);
   const [open, setOpen] = useState(false);
+  const [searchUnavailable, setSearchUnavailable] = useState(false);
 
   const doSearch = useCallback(
     async (query: string) => {
@@ -39,10 +39,13 @@ export function BriefTaxonomyChipsField({
         setSuggestions([]);
         return;
       }
-      const r = await searchBriefTaxonomyAction({ kind, q: t });
-      if (r.ok) {
-        setSuggestions(r.terms.filter((x) => !value.includes(x.displayValue)));
-      }
+      try {
+        const response = await fetch(`/api/brief/taxonomy?${new URLSearchParams({ kind, q: t })}`, { cache: "no-store" });
+        const r = await response.json();
+        if (!response.ok || !r.ok || !Array.isArray(r.terms)) throw new Error("Suggestions unavailable");
+        setSuggestions(r.terms.filter((x: { id: string; displayValue: string }) => !value.includes(x.displayValue)));
+        setSearchUnavailable(false);
+      } catch { setSuggestions([]); setSearchUnavailable(true); }
     },
     [kind, value],
   );
@@ -113,6 +116,7 @@ export function BriefTaxonomyChipsField({
           </ul>
         ) : null}
       </div>
+      {searchUnavailable && <p className="text-xs text-muted-foreground">Suggestions are unavailable. You can still type an entry and choose Add.</p>}
       {value.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {value.map((tag, i) => (

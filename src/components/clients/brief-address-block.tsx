@@ -87,14 +87,15 @@ export function BriefAddressBlock({ value, legacyText, onChange }: Props) {
     qRef.current = query;
     start(async () => {
       const my = ++runSeq.current;
-      const r = await searchAddressesAction(t);
+      const r = await searchAddressesAction(t).catch(() => null);
       if (my !== runSeq.current) {
         return;
       }
       if (qRef.current.trim() !== t) {
         return;
       }
-      applySearchResult(r);
+      if (r) applySearchResult(r);
+      else { setSuggestions([]); setLookupMessage("Address search is unavailable. Please use the address fields below; your other entries are unchanged."); setShowManual(true); }
     });
   }
 
@@ -106,14 +107,15 @@ export function BriefAddressBlock({ value, legacyText, onChange }: Props) {
     const id = window.setTimeout(() => {
       start(async () => {
         const my = ++runSeq.current;
-        const r = await searchAddressesAction(t);
+        const r = await searchAddressesAction(t).catch(() => null);
         if (my !== runSeq.current) {
           return;
         }
         if (qRef.current.trim() !== t) {
           return;
         }
-        applySearchResult(r);
+        if (r) applySearchResult(r);
+        else { setSuggestions([]); setLookupMessage("Address search is unavailable. Please use the address fields below; your other entries are unchanged."); setShowManual(true); }
       });
     }, LOOKUP_DEBOUNCE_MS);
     return () => {
