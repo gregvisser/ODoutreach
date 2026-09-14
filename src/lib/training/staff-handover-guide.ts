@@ -35,8 +35,11 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "Client setup",
     bullets: [
-      "Create a client from Clients -> New client.",
+      "Open Clients and choose Add client, or use New client in the sidebar. Normal OpenDoors staff can create their own client workspaces.",
       "Complete the Brief with business profile, target audience, offer, exclusions, and compliance notes.",
+      "Choose Save brief, wait for Brief saved, then choose Open saved brief and check that your entries remain. Saving a brief does not send email.",
+      "If a brief save cannot be confirmed, keep the original page open. Open saved brief opens a separate tab so you can check the saved version without losing the original entries. Do not repeat the save blindly.",
+      "If address or audience suggestions are unavailable, enter the address manually or type an audience entry and choose Add. Start a new editing session from a freshly opened page; preserve any unsaved text before refreshing an older page.",
       "Any staff member can connect mailboxes, set branded signatures/disclaimers, and send an internal verification email from Mailboxes — connection status and capacity are visible to everyone on the workspace.",
     ],
   },
@@ -54,8 +57,9 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "Do-not-contact",
     bullets: [
-      "Do-not-contact lists contain email addresses and domains that must never receive outreach.",
+      "Do-not-contact lists can block email addresses, domains and company names. Exact company names block outreach; similar names and missing employer details may require review.",
       "Keep the Google Sheets current and check last sync before sending.",
+      "Removing a company name from its sheet does not remove the existing block. A refused sheet removal needs review; do not delete a block just to make a sync or send succeed.",
       "Clear removal requests are blocked automatically when the reply is processed. Check the reply detail or Blocked contacts to confirm the block. If no block is recorded, use the immediate Do-not-contact action; do not wait for a sheet sync.",
     ],
   },
@@ -65,6 +69,10 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Start with one introduction email. Follow-ups are optional.",
       "Choose a contact list and a sending mailbox. Broken mailboxes are disabled with a reason.",
       "Nothing should be sent until you have reviewed the list, mailbox, message, and do-not-contact status.",
+      "Human sending includes scheduled emails that staff have reviewed and approved. It does not require Machine sending.",
+      "If an email is held for review, open Email approvals and read the recipient, sender, message and any recent contact from another client. Approve only when another email is appropriate.",
+      "In Email approvals, choose Next allowed sending time or Choose a later sending time. A later time is entered in UK time (Europe/London); check the displayed UTC equivalent. Changing the time requires a fresh review tick.",
+      "After approval, check the saved earliest attempt in Activity. The worker may send later because of sending hours, warm-up, allowance or safety holds. Queued is not Sent, and Sent does not prove Inbox placement. An uncertain approval needs a status check before any further action.",
       "Each mailbox has a ceiling of 30 total emails per day, including staff replies and reserved sends. Warm-up can allow fewer outreach emails; the displayed pool capacity is not a promise that all 30 can go out immediately.",
       "Automatic follow-ups require Machine sending and an active scheduler. In Human sending, review due recipients and use the follow-up send control. Do not change sending mode just to clear a hold.",
     ],
@@ -88,7 +96,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "Admin operations (off the sidebar by design)",
     bullets: [
-      "Normal staff use Overview, Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Activity, and Training.",
+      "Normal staff use Overview, Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Email approvals, Activity, and Training.",
       "Admin Operations is for support troubleshooting of queues, failures, and delivery infrastructure. It is intentionally not in the sidebar and is reached from internal links and from action-redirect targets in the outbound flow.",
       "Do not requeue or change technical state unless you understand the failed record.",
     ],
@@ -111,7 +119,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Contact: a person record in a client list (often linked from Universe).",
       "Sending inbox/mailbox: a connected Microsoft or Google mailbox used for outreach.",
       "Sequence: an introduction email plus optional follow-ups.",
-      "Do-not-contact: emails and domains blocked from outreach (titled \"People blocked from outreach\" at the cross-client view).",
+      "Do-not-contact: email addresses, domains and company names blocked from outreach. Use Blocked contacts for the email/domain directory and the client's Do-not-contact page for company names.",
       "Activity: timeline of sends, replies, errors, and mailbox inbox messages.",
       "Reports: recorded sends, replies, bounces and opt-outs. A confirmed send means the mailbox accepted the message; it does not prove inbox delivery.",
     ],
@@ -124,6 +132,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Show Sources import choices, Universe, and explain RocketReach credits and the confirmation phrase requirement.",
       "Show Do-not-contact (titled \"People blocked from outreach\" at the cross-client view) and explain why it is a hard safety check.",
       "Show Outreach: choose list, mailbox, introduction, optional follow-up, preview, send/schedule.",
+      "Show how a held email is reviewed in Email approvals and how its earliest sending time appears in Activity. During training, do not approve a real email unless that particular send is intended and authorised.",
       "On Mailboxes, use Check replies, then open Activity and read a reply. Show its stopped sequence and, for an opt-out, its recorded contact block.",
       "Explain that Admin operations is support-only and not in the sidebar.",
     ],
