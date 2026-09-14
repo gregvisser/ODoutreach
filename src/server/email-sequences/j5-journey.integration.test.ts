@@ -339,6 +339,43 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
+  it.each(["unchanged", "new-contact", "hard-bounce", "do-not-contact"])(
+    "carries explicit re-engagement through delayed Human dispatch while enforcing %s history", async change => {
+      vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-09T06:00Z"));
+      await prisma.clientSendingCalendar.create({ data: {
+        clientId: CLIENT_ID, timeZone: "UTC", weekdays: [1, 2, 3, 4, 5], startMinute: 420, endMinute: 1140,
+        previousDayEndsAt: new Date("2026-09-01T00:00Z"), effectiveAt: new Date("2026-09-01T00:00Z"), createdByStaffUserId: STAFF_ID,
+      } });
+      await prisma.clientEmailSequenceStep.update({ where: { id: STEP_ID }, data: { delayDays: 0, delayHours: 2 } });
+      await prisma.outboundEmail.create({ data: {
+        id: "previous-consented-send", clientId: CLIENT_ID, toEmail: PROSPECT_EMAIL,
+        status: "SENT", sentAt: new Date("2026-09-08T08:00Z"),
+      } });
+      await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
+      expect((await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID })).counts.ready).toBe(0);
+      expect((await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID, bypassCooldown: true })).counts.ready).toBe(1);
+      const batch = await sendSequenceStepBatch({ staff: await loadStaff(), clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE });
+      expect(batch.counts.queued).toBe(1);
+      const queued = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: batch.queued[0].outboundEmailId } });
+      expect(queued.metadata).toMatchObject({ cooldownReengagement: { recentOutboundId: "previous-consented-send", approvedByStaffUserId: STAFF_ID } });
+      expect(queued.nextRetryAt).toEqual(new Date("2026-09-09T08:00Z"));
+      expect((await processOutboundSendQueue({ limit: 1 })).claimed).toBe(0);
+      expect(sentMessages).toHaveLength(0);
+      if (change === "new-contact") await prisma.outboundEmail.create({ data: { id: "changed-history", clientId: CLIENT_ID, toEmail: PROSPECT_EMAIL, status: "SENT", sentAt: new Date("2026-09-09T07:00Z") } });
+      if (change === "hard-bounce") await prisma.outboundEmail.update({ where: { id: "previous-consented-send" }, data: { status: "BOUNCED" } });
+      if (change === "do-not-contact") await prisma.suppressedEmail.create({ data: { clientId: CLIENT_ID, email: PROSPECT_EMAIL } });
+      vi.setSystemTime(new Date("2026-09-09T08:00Z"));
+      expect((await processOutboundSendQueue({ limit: 1 })).claimed).toBe(1);
+      expect(sentMessages).toHaveLength(change === "unchanged" ? 1 : 0);
+      const outcome = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: queued.id } });
+      if (change === "unchanged") expect(outcome.status).toBe("SENT");
+      else expect(outcome).toMatchObject({ status: "BLOCKED_SUPPRESSION", providerMessageId: null, dispatchStartedAt: null });
+      if (change === "new-contact") expect(outcome.lastErrorCode).toBe("OUTREACH_COOLDOWN");
+      if (change === "hard-bounce") expect(outcome.lastErrorCode).toBe("RECENT_BOUNCE");
+    },
+  );
   it.each([true, false])("starts follow-up delay at confirmed send, with proof=%s", async sent => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-09T08:00Z"));

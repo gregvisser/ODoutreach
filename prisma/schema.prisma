@@ -1585,6 +1585,9 @@ model ClientEmailSequenceStepSend {
   bodyPreview          String?                           @db.Text
   /// Populated when status ∈ (BLOCKED, SUPPRESSED, SKIPPED).
   blockedReason        String?
+  /// Staff re-engagement consent bound to recipient, step and exact recent send.
+  /// Copied to the outbound snapshot; absent values never waive a cooldown.
+  cooldownReengagement Json?
   /// Populated only when the D4e.2 dispatcher fails — never written
   /// by D4e.1 code.
   failureReason        String?

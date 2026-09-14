@@ -312,11 +312,19 @@ export async function executeOutboundSend(outboundEmailId: string): Promise<{
   // BLOCKED_SUPPRESSION terminal (no schema change) but tag a distinct error
   // code so the activity detail shows exactly why it didn't send.
   if (isDispatchRecheckEnabled()) {
+    const sendMetadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? row.metadata : {};
     const recheck = await evaluateOutboundDispatchRecheck({
       outboundEmailId: row.id,
       clientId: row.clientId,
       toEmail: to,
       now: new Date(),
+      reengagement: !isAutomatedSequenceSend(row.metadata) ? {
+        approval: sendMetadata.cooldownReengagement,
+        sequenceId: sendMetadata.sequenceId,
+        stepId: sendMetadata.sequenceStepId,
+        contactId: row.contactId,
+      } : undefined,
     });
     if (recheck.block) {
       const blocked = await prisma.outboundEmail.updateMany({

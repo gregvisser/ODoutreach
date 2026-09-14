@@ -298,7 +298,7 @@ export function SequenceSendPreparationPanel({
                   {canReengage ? (
                     <label
                       className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                      title={`Re-use an older list: bypasses the ${OUTREACH_COOLDOWN_DAYS}-day outreach cooldown for this preparation only. Unsubscribe / DNC and hard bounces are still enforced.`}
+                      title={`Approve repeat contact for this step against the current sending history, waiving only the ${OUTREACH_COOLDOWN_DAYS}-day cooldown. New contact history, unsubscribe / DNC or hard bounces can still block sending.`}
                     >
                       <input
                         type="checkbox"
@@ -312,6 +312,7 @@ export function SequenceSendPreparationPanel({
               </form>
               <span className="text-xs text-muted-foreground">
                 Refreshes who can receive the next live send. No email is sent by this step.
+                {canReengage ? " Re-engage approves repeat contact for this step using the current history. New contact history or a do-not-contact/bounce block can still prevent delivery." : ""}
               </span>
             </div>
 
