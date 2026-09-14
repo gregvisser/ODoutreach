@@ -134,9 +134,13 @@ export default async function TrainingIndexPage() {
             <span className="font-medium text-foreground">Mailboxes: </span>
             <span className="text-muted-foreground">
               {String(ex.mailboxes.length)} of {String(ex.capacity.maxMailboxes)}{" "}
-              connected · {String(ex.capacity.perMailboxDailyCap)}/day each (
-              {String(ex.capacity.dailyTheoreticalMax)}/day pool)
+              in this example · up to {String(ex.capacity.perMailboxDailyCap)}/day each
             </span>
+            <p className="mt-1 text-muted-foreground">
+              This is an example, not live connection status or available capacity.
+              Check Mailboxes: warm-up, reserved sends and holds can lower the
+              allowance. Sending outside ODoutreach is not included in its counter.
+            </p>
           </div>
         </CardContent>
       </Card>

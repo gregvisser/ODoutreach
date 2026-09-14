@@ -24,6 +24,8 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Import contacts from CSV or RocketReach in Sources only when you are ready to save them to a list; each import is also deduplicated into the global Universe.",
       "Check Do-not-contact before any outreach.",
       "Build one introduction email; add follow-ups only if needed.",
+      "After saving a sequence, wait for Saved or Updated, then choose Open saved sequence. Saving a draft does not send emails.",
+      "If the save result is uncertain, use Refresh sequence list and check whether your changes were saved before trying again. Do not create another copy blindly.",
       "Choose Auto-pick or a specific connected mailbox.",
       "Preview and review before sending or scheduling.",
       "Use Check replies on Mailboxes if you need a fresh check, then open Activity to read the replies. If more messages remain, check again.",
