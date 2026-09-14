@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prisma } from "@/lib/db";
+import { evaluateOutboundDispatchRecheck } from "@/server/email/outbound/dispatch-recheck";
 import {
   closeIntegrationPool,
   resetIntegrationDatabase,
@@ -425,6 +426,20 @@ describe("planSequenceStepSends — outreach cooldown", () => {
       where: { sequenceId: SEQUENCE_ID },
     });
     expect(row.status).toBe("READY");
+    expect(row.cooldownReengagement).toMatchObject({
+      version: 1, clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID,
+      contactId: row.contactId, email: "recent@example.test", recentOutboundId: "ob-recent",
+      approvedByStaffUserId: STAFF_ID,
+    });
+    const dispatch = () => evaluateOutboundDispatchRecheck({
+      outboundEmailId: "not-queued-yet", clientId: CLIENT_ID, toEmail: "recent@example.test", now: new Date(),
+      reengagement: { approval: row.cooldownReengagement, sequenceId: SEQUENCE_ID, stepId: STEP_ID, contactId: row.contactId },
+    });
+    expect(await dispatch()).toEqual({ block: false });
+    await recordPastSend("ob-newer", "recent@example.test", 0);
+    expect(await dispatch()).toMatchObject({ block: true, kind: "cooldown" });
+    await plan();
+    expect((await prisma.clientEmailSequenceStepSend.findUniqueOrThrow({ where: { id: row.id } })).cooldownReengagement).toBeNull();
   });
 
   it("still suppresses a suppressed contact even when the cooldown is bypassed", async () => {
@@ -437,6 +452,7 @@ describe("planSequenceStepSends — outreach cooldown", () => {
       where: { sequenceId: SEQUENCE_ID },
     });
     expect(row.status).toBe("SUPPRESSED");
+    expect(row.cooldownReengagement).toBeNull();
   });
 
   it("ignores a send belonging to this same sequence", async () => {

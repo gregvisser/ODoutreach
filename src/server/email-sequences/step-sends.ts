@@ -1,4 +1,6 @@
 import "server-only";
+import { Prisma } from "@/generated/prisma/client";
+import type { CooldownReengagement } from "@/lib/email-sequences/cooldown-reengagement";
 
 import type {
   ClientEmailSequenceStepSendStatus,
@@ -375,7 +377,7 @@ export async function planSequenceStepSends(params: {
   );
   const recentSendsByEmail = new Map<
     string,
-    { lastSentAt: Date; eligibleAt: Date; bounced: boolean }
+    { lastSentAt: Date; eligibleAt: Date; bounced: boolean; lastSentId: string }
   >();
   if (candidateEmails.length > 0) {
     const recentSendRows = await prisma.outboundEmail.findMany({
@@ -385,6 +387,7 @@ export async function planSequenceStepSends(params: {
       },
       select: {
         toEmail: true,
+        id: true,
         clientId: true,
         sentAt: true,
         status: true,
@@ -410,6 +413,7 @@ export async function planSequenceStepSends(params: {
       const existing = recentSendsByEmail.get(key);
       if (!existing) {
         recentSendsByEmail.set(key, {
+          lastSentId: row.id,
           lastSentAt: row.sentAt,
           eligibleAt: dateWhenEmailEligibleAgain(row.sentAt),
           bounced: isBounce,
@@ -506,6 +510,18 @@ export async function planSequenceStepSends(params: {
         ? "BLOCKED"
         : decision.status;
 
+    const recent = recentSendsByEmail.get(enrollment.contact.email?.trim().toLowerCase() ?? "");
+    const cooldownReengagement: CooldownReengagement | null =
+      params.bypassCooldown && persistedStatus === "READY" && recent?.lastSentId && !recent.bounced
+        ? {
+            version: 1, clientId: params.clientId, sequenceId: sequence.id,
+            stepId: step.id, contactId: enrollment.contactId,
+            email: enrollment.contact.email!.trim().toLowerCase(),
+            recentOutboundId: recent.lastSentId, recentSentAt: recent.lastSentAt.toISOString(),
+            approvedByStaffUserId: params.staffUserId, approvedAt: nowIso,
+          }
+        : null;
+
     // We use a short transaction to:
     //   1. Look up an existing plan row for this idempotency key.
     //   2. Refuse to overwrite a terminal D4e.2+ row.
@@ -533,6 +549,7 @@ export async function planSequenceStepSends(params: {
             contactId: enrollment.contactId,
             contactListId: sequence.contactListId,
             createdByStaffUserId: params.staffUserId,
+            cooldownReengagement: cooldownReengagement ?? Prisma.DbNull,
           },
         });
       } else {
@@ -551,6 +568,7 @@ export async function planSequenceStepSends(params: {
             bodyPreview,
             blockedReason: decision.reasonDetail,
             createdByStaffUserId: params.staffUserId,
+            cooldownReengagement: cooldownReengagement ?? Prisma.DbNull,
           },
         });
       }

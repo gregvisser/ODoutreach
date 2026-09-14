@@ -453,6 +453,7 @@ export async function sendSequenceStepBatch(input: {
       status: true,
       idempotencyKey: true,
       outboundEmailId: true,
+      cooldownReengagement: true,
       enrollmentId: true,
       contactId: true,
       enrollment: {
@@ -1167,6 +1168,9 @@ export async function sendSequenceStepBatch(input: {
                   sequenceStepSendId: pr.stepSend.id,
                   sequenceEnrollmentId: pr.stepSend.enrollment.id,
                   sequenceStepId: stepId,
+                  ...(!automated && pr.stepSend.cooldownReengagement
+                    ? { cooldownReengagement: pr.stepSend.cooldownReengagement }
+                    : {}),
                   contactListId: sequence.contactListId,
                   templateId: template.id,
                   idempotencyKey: pr.stepSend.idempotencyKey,

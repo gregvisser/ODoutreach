@@ -31,6 +31,11 @@ import {
 const NOW = new Date("2026-06-21T12:00:00.000Z");
 
 describe("decideDispatchRecheck (pure)", () => {
+  it("waives only the timer for verified consent, never a hard bounce", () => {
+    const recentSend = { lastSentAt: new Date("2026-06-20T00:00:00Z"), eligibleAt: new Date("2026-06-30T00:00:00Z"), bounced: false };
+    expect(decideDispatchRecheck({ now: NOW, recentSend, hasCurrentReengagement: true })).toEqual({ block: false });
+    expect(decideDispatchRecheck({ now: NOW, recentSend: { ...recentSend, bounced: true }, hasCurrentReengagement: true })).toMatchObject({ block: true, kind: "recent_bounce" });
+  });
   it("does not block when there is no recent send", () => {
     expect(decideDispatchRecheck({ now: NOW, recentSend: null })).toEqual({
       block: false,
