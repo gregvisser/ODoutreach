@@ -32,7 +32,7 @@ type Props = {
 
 function formatWhen(iso: string | null): string {
   if (!iso) return "—";
-  return iso.slice(0, 16).replace("T", " ");
+  return `${iso.slice(0, 16).replace("T", " ")} UTC`;
 }
 
 export default async function ReportDetailPage({ searchParams }: Props) {

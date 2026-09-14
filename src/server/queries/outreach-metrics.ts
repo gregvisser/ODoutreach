@@ -35,7 +35,7 @@ import { assertClientInAccessibleList } from "@/server/tenant/access";
  * sentAt, replies by receivedAt, opt-outs by usedAt, opens by openedAt,
  * bounces by bouncedAt (falling back to the send time when the webhook
  * didn't stamp one), failures by createdAt. STATE metrics — queued now,
- * suppressed/skipped, contact counts — have no historical form and stay
+ * missing sequence-send proof, suppressed/skipped, contact counts — have no historical form and stay
  * live values regardless of the window; the Reports page labels them.
  */
 export type MetricsWindow = { gte: Date; lt: Date };
@@ -243,7 +243,7 @@ async function gatherRawCountsByClient(
     buildProvenSentWhere({ clientId: clientScope, seedEmails, window });
   const [
     sentWithProofBy,
-    allStepSendsSentBy,
+    missingStepProofBy,
     queuedOrProcessingBy,
     deliveredBy,
     bouncesBy,
@@ -265,12 +265,26 @@ async function gatherRawCountsByClient(
     run(() => prisma.clientEmailSequenceStepSend.groupBy({
       by: ["clientId"],
       _count: { _all: true },
-      // Step-send rows flip to SENT at dispatch, so updatedAt is the send
-      // moment for windowing purposes.
+      // A sequence step can be marked SENT when handed to the queue.
+      // Inspect THIS step's linked outbound, never subtract unrelated sends
+      // or queued rows from a total. Proof is a current state: updatedAt can
+      // change after sending, and a date window must not erase older proof.
       where: {
         clientId: clientScope,
         status: "SENT",
-        ...(w ? { updatedAt: w } : {}),
+        OR: [
+          {
+            outboundEmail: { is: null },
+            ...(seedEmails.length ? { contact: { OR: [
+              { email: null }, { email: { notIn: seedEmails } },
+            ] } } : {}),
+          },
+          { outboundEmail: { is: {
+            ...seedExclusion,
+            status: { notIn: ["REQUESTED", "PREPARING", "QUEUED", "PROCESSING"] },
+            NOT: buildProvenSentWhere({ clientId: clientScope, seedEmails: [] }),
+          } } },
+        ],
       },
     })),
     run(() => prisma.outboundEmail.groupBy({
@@ -411,10 +425,7 @@ async function gatherRawCountsByClient(
     const sentWithProof = countFor(sentWithProofBy, clientId);
     const queuedOrProcessing = countFor(queuedOrProcessingBy, clientId);
     const delivered = countFor(deliveredBy, clientId);
-    const sentProofMissing = Math.max(
-      0,
-      countFor(allStepSendsSentBy, clientId) - sentWithProof - queuedOrProcessing,
-    );
+    const sentProofMissing = countFor(missingStepProofBy, clientId);
 
     out.set(clientId, {
       sentWithProof,

@@ -159,8 +159,8 @@ export default async function ReportingPage({ searchParams }: Props) {
               <>
                 {" "}
                 Sent, replies, link unsubscribes, opens, bounces and failures are
-                filtered to the selected dates. Queued, Suppressed / skipped
-                and Contacts are live right-now values — they have no
+                filtered to the selected dates. Queued, Sent not confirmed,
+                Suppressed / skipped and Contacts are live right-now values — they have no
                 history, so the date range doesn&apos;t change them.
               </>
             ) : null}
@@ -215,7 +215,7 @@ export default async function ReportingPage({ searchParams }: Props) {
               // actually know is that we cannot tell either way.
               label="Sent, not confirmed"
               value={m.sendProofMissing.toLocaleString()}
-              sub="The mailbox never sent back a receipt"
+              sub="Sequence records without linked send confirmation. Current status; check Activity before retrying."
               tone={m.sendProofMissing > 0 ? "warning" : undefined}
             />
             <MetricItem

@@ -252,20 +252,20 @@ describe("what the Reports landing page costs in database round-trips", () => {
       openedAt: sentAt,
     });
     const sent2 = await outbound(client.id, "s2", { status: "SENT", sentAt });
-    await outbound(client.id, "s3", {
+    const sent3 = await outbound(client.id, "s3", {
       status: "DELIVERED",
       sentAt,
       deliveredAt: sentAt,
     });
-    await outbound(client.id, "s4", {
+    const sent4 = await outbound(client.id, "s4", {
       status: "BOUNCED",
       sentAt,
       bouncedAt: sentAt,
     });
     // Not sent: 1 failed, 2 still waiting on the sender.
     await outbound(client.id, "f1", { status: "FAILED" });
-    await outbound(client.id, "q1", { status: "QUEUED" });
-    await outbound(client.id, "q2", { status: "PROCESSING" });
+    const queued1 = await outbound(client.id, "q1", { status: "QUEUED" });
+    const queued2 = await outbound(client.id, "q2", { status: "PROCESSING" });
 
     await prisma.outboundProviderEvent.create({
       data: {
@@ -346,6 +346,7 @@ describe("what the Reports landing page costs in database round-trips", () => {
         blockedReason: "Outreach cooldown — contacted 3 days ago",
       },
     ];
+    const linkedOutbounds = [sent1, sent2, sent3, sent4, queued1, queued2];
     for (const [i, s] of stepStatuses.entries()) {
       const enrollment = await prisma.clientEmailSequenceEnrollment.create({
         data: {
@@ -368,6 +369,7 @@ describe("what the Reports landing page costs in database round-trips", () => {
           status: s.status,
           blockedReason: s.blockedReason ?? null,
           idempotencyKey: `metrics-perf-step-${String(i)}`,
+          outboundEmailId: linkedOutbounds[i]?.id,
         },
       });
     }
@@ -428,8 +430,8 @@ describe("what the Reports landing page costs in database round-trips", () => {
     expect(m.replies).toBe(2);
     expect(m.unsubscribes).toBe(1);
     expect(m.suppressedOrSkipped).toBe(2);
-    // 8 step-sends say SENT; only 4 have provider proof and 2 are still
-    // queued, so 2 sends cannot be accounted for.
+    // The first 4 step rows link to confirmed sends, the next 2 to their
+    // queued outbounds; the last 2 have no linked confirmation.
     expect(m.sendProofMissing).toBe(2);
     // failed 1 + bounces 1 + suppressed 2 + proof missing 2
     expect(m.notReached).toBe(6);

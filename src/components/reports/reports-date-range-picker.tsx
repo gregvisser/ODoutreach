@@ -98,7 +98,7 @@ export function ReportsDateRangePicker({
         </Button>
       ) : null}
       <p className="text-[11px] text-muted-foreground">
-        Both dates are included in the report.
+        Both dates are included. Report dates and times use UTC.
       </p>
     </div>
   );
