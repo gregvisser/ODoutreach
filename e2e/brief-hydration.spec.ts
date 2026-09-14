@@ -23,11 +23,11 @@ test("brief cannot accept edits or save until its handlers are ready", async ({ 
   await expect(save).toBeEnabled();
   const marker = "https://brief-ready.example";
   await website.fill(marker);
-  await page.route(`**/clients/${E2E_CLIENT.id}/brief`, async (route) => {
+  await page.route(`**/api/clients/${E2E_CLIENT.id}/brief`, async (route) => {
     if (route.request().method() === "POST") await route.abort("failed");
     else await route.continue();
   });
   await save.click();
-  await expect(page.getByText(/couldn.t save/i)).toBeVisible();
+  await expect(page.getByText(/could not confirm the save/i)).toBeVisible();
   await expect(website).toHaveValue(marker);
 });
