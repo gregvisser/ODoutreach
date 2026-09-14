@@ -228,7 +228,8 @@ export async function createClientEmailSequenceAction(
       }
     }
 
-    revalidatePath(`/clients/${clientId}/outreach`);
+    // Return the acknowledgement independently of a streamed page refresh.
+    // Open saved sequence performs a full navigation to the force-dynamic page.
     return { ok: true, message: `Saved — ${created.name}${autoNote}`, sequenceId: created.id };
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;
@@ -282,7 +283,7 @@ export async function updateClientEmailSequenceAction(
       }
     }
 
-    revalidatePath(`/clients/${clientId}/outreach`);
+    // The explicit Open saved sequence link loads fresh data after acknowledgement.
     return { ok: true, message: `Updated — ${updated.name}${autoNote}`, sequenceId: updated.id };
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("NEXT_")) throw e;

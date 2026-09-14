@@ -6,5 +6,7 @@ test("staff see machine activation unavailable with a Human sending explanation"
   await page.goto(`/clients/${E2E_CLIENT.id}`);
   await expect(page.getByRole("button", { name: "Machine sending", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Human sending", exact: true })).toBeVisible();
-  await expect(page.getByText(/Machine sending is not available in this Human sending release/)).toBeVisible();
+  const explanation = page.getByRole("main").getByText(/Machine sending is not available in this Human sending release/);
+  await expect(explanation).toHaveCount(1);
+  await expect(explanation).toBeVisible();
 });
