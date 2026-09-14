@@ -4,9 +4,10 @@ import { E2E_STAFF, E2E_STORAGE_STATE } from "./fixtures";
 import { E2E_DATABASE_URL } from "./env";
 import { assertSafeTestDatabase } from "./safe-database";
 
+test.use({ trace: "retain-on-failure" });
+
 test.describe("ordinary OpenDoors staff", () => {
   test.describe.configure({ retries: 0 });
-  test.use({ trace: "retain-on-failure" });
   test.use({ storageState: E2E_STORAGE_STATE.staff });
   test("can create an audited client from the client list without owner access", async ({ page }) => {
     const pool = new Pool({ connectionString: assertSafeTestDatabase(E2E_DATABASE_URL).toString() });
