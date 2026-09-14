@@ -36,13 +36,15 @@ test.afterAll(async () => {
 test("staff preview follows the opened campaign and discards stale selections and responses", async ({ page }) => {
   await page.goto(`/clients/${clientId}/outreach`);
   const main = page.getByRole("main");
-  const openCampaign = (name: string) => main.getByRole("row").filter({ hasText: name }).getByRole("link", { name: "Open", exact: true }).click();
+  const openCampaign = (name: string, action = "Open") => main.getByRole("row").filter({ hasText: name }).getByRole("link", { name: action, exact: true }).click();
   const panel = main.getByRole("region", { name: "Pre-send preview", exact: true });
   const sequence = panel.getByRole("combobox", { name: "Preview sequence", exact: true });
   const step = panel.getByRole("combobox", { name: "Preview step", exact: true });
   const generate = panel.getByRole("button", { name: "Generate preview", exact: true });
   const frame = panel.locator('iframe[title="Email preview"]');
   await openCampaign("Alpha preview campaign");
+  await expect(page).toHaveURL(new RegExp(`sequenceId=${alpha}(?:&|$)`));
+  await expect(main.getByRole("heading", { name: "Alpha preview campaign", exact: true })).toBeVisible();
   await expect(sequence).toHaveValue(alpha);
   await generate.click();
   await expect(panel).toContainText("Alpha preview campaign intro");
@@ -51,7 +53,9 @@ test("staff preview follows the opened campaign and discards stale selections an
   await expect(frame).toHaveCount(0);
   await generate.click();
   await expect(panel).toContainText("Alpha preview campaign follow-up");
-  await openCampaign("Beta preview campaign");
+  await openCampaign("Beta preview campaign", "Review and launch");
+  await expect(page).toHaveURL(new RegExp(`sequenceId=${beta}(?:&|$)`));
+  await expect(main.getByRole("heading", { name: "Beta preview campaign", exact: true })).toBeVisible();
   await expect(sequence).toHaveValue(beta);
   await expect(frame).toHaveCount(0);
   await sequence.selectOption(alpha);
