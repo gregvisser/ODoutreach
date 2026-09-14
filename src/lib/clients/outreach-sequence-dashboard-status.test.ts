@@ -43,15 +43,16 @@ describe("deriveOutreachDashboardStatusLabel", () => {
     ).toBe("Ready");
   });
 
-  it("labels APPROVED + sending activity as Sending", () => {
+  it("labels APPROVED + sending activity as Partly sent", () => {
     expect(
       deriveOutreachDashboardStatusLabel({
         status: "APPROVED",
         launchReadiness: lr(true),
         prepCounts: { ready: 2, blocked: 0, suppressed: 0, sent: 5, failed: 0 },
         enrollmentPending: 1,
+        delivery: {sent: 5, queued: 0, attention: 0},
       }),
-    ).toBe("Sending");
+    ).toBe("Partly sent");
   });
 
   it("labels blocked launch readiness as Blocked when ready > 0", () => {
@@ -71,20 +72,22 @@ describe("deriveOutreachDashboardStatusLabel", () => {
         status: "APPROVED",
         launchReadiness: lr(false),
         prepCounts: { ready: 0, blocked: 0, suppressed: 0, sent: 18, failed: 0 },
+        delivery: {sent: 18, queued: 0, attention: 0},
         enrollmentPending: 0,
       }),
     ).toBe("Sent");
   });
 
-  it("labels Sending when sent > 0 but ready > 0 remain", () => {
+  it("labels Partly sent when sent > 0 but ready > 0 remain", () => {
     expect(
       deriveOutreachDashboardStatusLabel({
         status: "APPROVED",
         launchReadiness: lr(false),
         prepCounts: { ready: 5, blocked: 0, suppressed: 0, sent: 13, failed: 0 },
+        delivery: {sent: 13, queued: 0, attention: 0},
         enrollmentPending: 0,
       }),
-    ).toBe("Sending");
+    ).toBe("Partly sent");
   });
 
   it("labels Blocked when blocked > 0 and canLaunch false, even if sent > 0", () => {
@@ -93,6 +96,7 @@ describe("deriveOutreachDashboardStatusLabel", () => {
         status: "APPROVED",
         launchReadiness: lr(false),
         prepCounts: { ready: 0, blocked: 3, suppressed: 0, sent: 15, failed: 0 },
+        delivery: {sent: 15, queued: 0, attention: 0},
         enrollmentPending: 0,
       }),
     ).toBe("Blocked");

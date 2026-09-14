@@ -28,6 +28,9 @@
  * spec — it runs entirely against the dedicated `E2E_LAUNCH_CLIENT` workspace.
  */
 import { expect, test } from "@playwright/test";
+import { Pool } from "pg";
+import { E2E_DATABASE_URL } from "./env";
+import { assertSafeTestDatabase } from "./safe-database";
 
 import {
   E2E_LAUNCH_CLIENT,
@@ -136,5 +139,34 @@ test.describe("Launch journey — sequence introduction dispatch", () => {
     // a regression test that accepts any message at all proves nothing.
     await expect(outcomeBanner).toContainText(/^[1-9]\d* introductions? (queued|sent)/i);
     await expect(trigger).toBeDisabled();
+    // The launch acknowledgement above must work before any refresh. Now
+    // verify that a normal reload shows the persisted delivery outcome,
+    // even though the planner has already recorded its SENT queue handoff.
+    await page.reload();
+    const sequenceRow = content.getByRole("row").filter({ hasText: E2E_LAUNCH_SEQUENCE.name });
+    await expect(sequenceRow.getByText("Queued", { exact: true })).toBeVisible();
+    await expect(selected.getByText("Introductions sent", { exact: true })).toHaveCount(0);
+
+    const pool = new Pool({ connectionString: assertSafeTestDatabase(E2E_DATABASE_URL).toString() });
+    try {
+      const queued = await pool.query(`SELECT o.id FROM "OutboundEmail" o
+        JOIN "ClientEmailSequenceStepSend" s ON s."outboundEmailId"=o.id
+        WHERE o."clientId"=$1 AND s."sequenceId"=$2 AND o.status='QUEUED'`,
+        [E2E_LAUNCH_CLIENT.id, E2E_LAUNCH_SEQUENCE.id]);
+      expect(queued.rowCount).toBeGreaterThan(0);
+      const ids = queued.rows.map((row: {id: string}) => row.id);
+      // Synthetic worker outcomes in the isolated DB only; no provider call.
+      try {
+        await pool.query(`UPDATE "OutboundEmail" SET status='BLOCKED_SUPPRESSION' WHERE id=ANY($1) AND "clientId"=$2`, [ids, E2E_LAUNCH_CLIENT.id]);
+        await page.reload();
+        await expect(sequenceRow.getByText("Needs attention", { exact: true })).toBeVisible();
+        await expect(sequenceRow.getByText("Sent", { exact: true })).toHaveCount(0);
+        await pool.query(`UPDATE "OutboundEmail" SET status='SENT', "sentAt"=NOW() WHERE id=ANY($1) AND "clientId"=$2`, [ids, E2E_LAUNCH_CLIENT.id]);
+        await page.reload();
+        await expect(sequenceRow.getByText("Sent", { exact: true })).toBeVisible();
+      } finally {
+        await pool.query(`UPDATE "OutboundEmail" SET status='QUEUED', "sentAt"=NULL WHERE id=ANY($1) AND "clientId"=$2`, [ids, E2E_LAUNCH_CLIENT.id]);
+      }
+    } finally { await pool.end(); }
   });
 });

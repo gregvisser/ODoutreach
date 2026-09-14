@@ -116,6 +116,7 @@ function badgeVariantForDashboardStatus(
   label: string,
 ): "default" | "secondary" | "outline" | "destructive" {
   if (label === "Blocked") return "destructive";
+  if (label === "Needs attention" || label === "Check delivery") return "destructive";
   if (label === "Sending") return "default";
   if (label === "Sent") return "secondary";
   if (label === "Completed") return "secondary";
@@ -185,6 +186,7 @@ export function ClientEmailSequencesPanel(props: Props) {
         launchReadiness: launchReadinessBySequenceId[selected.id] ?? null,
         prepCounts: prepCountsForStatus(selectedPrep),
         enrollmentPending: selected.enrollment.counts.PENDING,
+        delivery: stepSendSnapshots.find((s) => s.sequenceId === selected.id && s.category === "INTRODUCTION")?.delivery,
       })
     : "";
 
@@ -197,6 +199,7 @@ export function ClientEmailSequencesPanel(props: Props) {
         <CardTitle>Sequences</CardTitle>
         <CardDescription>
           Pick a sequence to review recipients and launch. Saving edits does not send email.
+          {" "}Queued means waiting in ODoutreach. Sent confirms dispatch, not inbox placement.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -288,6 +291,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                       launchReadiness: lr,
                       prepCounts: prepCountsForStatus(prepSnap),
                       enrollmentPending: seq.enrollment.counts.PENDING,
+                      delivery: stepSendSnapshots.find((s) => s.sequenceId === seq.id && s.category === "INTRODUCTION")?.delivery,
                     });
                     return (
                       <tr
@@ -546,7 +550,7 @@ export function ClientEmailSequencesPanel(props: Props) {
 
             {selected.status === "APPROVED" && selected.approvedBy && (
               <p className="text-[11px] text-muted-foreground">
-                Went live with{" "}
+                Saved for launch by{" "}
                 <span className="font-medium">
                   {selected.approvedBy.name ?? selected.approvedBy.email}
                 </span>{" "}

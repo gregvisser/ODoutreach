@@ -1,4 +1,5 @@
 import "server-only";
+import { summarizeSequenceDelivery, type SequenceDeliverySummary } from "@/lib/clients/sequence-delivery-summary";
 import { AUTOMATED_SEQUENCE_SEND_ORIGIN, AUTOMATED_SEND_HELD_MESSAGE } from "@/lib/email-sequences/send-origin";
 
 import type {
@@ -1372,6 +1373,8 @@ export async function sendSequenceIntroductionBatch(input: {
 // ---------------------------------------------------------------------------
 
 export type SequenceStepSendUiSnapshot = {
+  /** Actual delivery outcomes; planner sentCount is queue handoff history. */
+  delivery?: SequenceDeliverySummary;
   sequenceId: string;
   sequenceName: string;
   sequenceStatus: string;
@@ -1700,6 +1703,7 @@ export async function loadSequenceStepSendUiSnapshots(
         .sort((a, b) => b.count - a.count);
 
       snapshots.push({
+        delivery: summarizeSequenceDelivery(rows),
         sequenceId: s.id,
         sequenceName: s.name,
         sequenceStatus: s.status,

@@ -244,7 +244,7 @@ export function SequenceSendPreparationPanel({
                 {String(s.counts.blocked + s.counts.suppressed)}
               </span>
               <span>
-                <span className="font-medium text-foreground">Sent</span>:{" "}
+                <span className="font-medium text-foreground">Handed to queue</span>:{" "}
                 {String(s.counts.sent)}
               </span>
               {!embedded && (
@@ -444,8 +444,13 @@ function IntroSendDispatchBlock({
             <span><span className="font-medium text-foreground">Blocked</span>: {String(blocked)}</span>
           )}
           {introSend.sentCount > 0 && (
-            <span><span className="font-medium text-foreground">Sent</span>: {String(introSend.sentCount)}</span>
+            <span><span className="font-medium text-foreground">Handed to queue</span>: {String(introSend.sentCount)}</span>
           )}
+          {introSend.delivery && <>
+            <span>Sent: {String(introSend.delivery.sent)}</span>
+            <span>Queued: {String(introSend.delivery.queued)}</span>
+            <span>Needs attention: {String(introSend.delivery.attention)}</span>
+          </>}
         </div>
         {sendNow > 0 && (
           <p>{sequenceIntroductionBatchLimitCopy(cap)}</p>
@@ -467,10 +472,10 @@ function IntroSendDispatchBlock({
       </div>
 
       {introSend.sentCount > 0 && readyNow === 0 && blocked === 0 && disabledReasons.length === 0 ? (
-        <div className="mt-2 rounded border border-green-400/50 bg-green-50/50 px-2 py-2 text-[11px] dark:bg-green-950/30">
-          <p className="font-medium text-foreground">Introductions sent</p>
+        <div className="mt-2 rounded border border-border bg-muted/20 px-2 py-2 text-[11px]">
+          <p className="font-medium text-foreground">Introductions handed to queue</p>
           <p className="mt-0.5 text-muted-foreground">
-            {String(introSend.sentCount)} introduction{introSend.sentCount === 1 ? "" : "s"} sent. No remaining recipients for this step.
+            {String(introSend.sentCount)} introduction{introSend.sentCount === 1 ? "" : "s"} handed to the sending queue. Check Activity for each email’s current outcome; a queued or held email has not been sent.
           </p>
         </div>
       ) : disabledReasons.length > 0 ? (
@@ -636,7 +641,7 @@ function StepSendDispatchBlock({
         <p>
           <span className="font-medium text-foreground">Due now</span>:{" "}
           {String(stepSnapshot.eligibleInLaunchBatchNowCount)} ·{" "}
-          <span className="font-medium text-foreground">Sent</span>: {String(stepSnapshot.sentCount)}
+          <span className="font-medium text-foreground">Handed to queue</span>: {String(stepSnapshot.sentCount)}
         </p>
         <p>{sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)}</p>
         <p className="text-muted-foreground/90">
