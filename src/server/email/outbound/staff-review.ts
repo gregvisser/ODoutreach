@@ -8,6 +8,7 @@ import { GENERIC_OUTBOUND_ONLY } from "./generic-outbound-filter";
 import { operatorRequeueFailedSendInTransaction } from "./operator-recovery";
 import { CROSS_CLIENT_REVIEW, contactHistoryToken, crossClientPayloadToken, loadCrossClientContacts } from "./cross-client-review";
 import { triggerOutboundQueueDrain } from "./trigger-queue";
+import { isValidStaffScheduledTime } from "@/lib/email-sequences/staff-scheduled-time";
 
 export const STAFF_REVIEWED_SEND_ORIGIN = "STAFF_REVIEWED_SINGLE_EMAIL";
 const heldWhere = {
@@ -45,7 +46,10 @@ export async function loadHeldEmailsForStaff(clientId: string, page: number) {
 }
 
 /** The staff identity comes from the authenticated server action, never form input. */
-export async function approveHeldEmail(input: { clientId: string; outboundEmailId: string; reviewToken: string; staffUserId: string }) {
+export async function approveHeldEmail(input: { clientId: string; outboundEmailId: string; reviewToken: string; staffUserId: string; notBeforeIso?: string }) {
+  if (input.notBeforeIso !== undefined && !isValidStaffScheduledTime(input.notBeforeIso)) {
+    return { ok: false as const, error: "Choose a future sending time within the next 30 days. The email remains held." };
+  }
   try {
     const approval = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "StaffUser" WHERE id = ${input.staffUserId} FOR SHARE`;
@@ -58,24 +62,31 @@ export async function approveHeldEmail(input: { clientId: string; outboundEmailI
       if (!clients[0] || clients[0].deletedAt || clients[0].status !== "ACTIVE") return { ok: false as const, error: "This client is not active. The email remains held." };
       const contacts = await loadCrossClientContacts(input.clientId, row.toEmail, new Date(), tx);
       if (!row.subject?.trim() || !row.bodySnapshot?.trim() || heldEmailReviewToken(row, contacts.length ? contactHistoryToken(contacts) : undefined) !== input.reviewToken) return { ok: false as const, error: "The saved email or recent contact history changed, or the email is incomplete. Refresh and review it again." };
+      // Approval must never move an existing future schedule earlier.
+      const nextAttempt = new Date(Math.max(Date.now(), row.nextRetryAt?.getTime() ?? 0, input.notBeforeIso ? Date.parse(input.notBeforeIso) : 0));
       const result = await operatorRequeueFailedSendInTransaction(tx, row.id, input.clientId, row.lastErrorCode === CROSS_CLIENT_REVIEW ? CROSS_CLIENT_REVIEW : "AUTOMATED_SEND_DISABLED");
       if (result.count !== 1) return { ok: false as const, error: result.error ?? "The email changed. Refresh before reviewing again." };
       const metadata: Prisma.JsonObject = { ...(row.metadata as Prisma.JsonObject), sendOrigin: STAFF_REVIEWED_SEND_ORIGIN, reviewedAt: new Date().toISOString(), reviewedByStaffUserId: staff.id };
+      if (input.notBeforeIso) metadata.staffRequestedNotBefore = input.notBeforeIso;
       if (contacts.length) metadata.crossClientApproval = {
         staffUserId: staff.id, historyToken: contactHistoryToken(contacts),
         payloadToken: crossClientPayloadToken({ ...row, metadata }),
       };
       await tx.outboundEmail.update({ where: { id: row.id }, data: {
         staffUserId: staff.id,
+        nextRetryAt: nextAttempt,
         metadata,
       } });
       await tx.auditLog.create({ data: { staffUserId: staff.id, clientId: input.clientId, action: "UPDATE", entityType: "OutboundEmail", entityId: row.id,
-        metadata: { kind: "held_email_staff_approval", reviewedContentHash: input.reviewToken, recentContactIds: contacts.map(contact => contact.id) },
+        metadata: { kind: "held_email_staff_approval", reviewedContentHash: input.reviewToken, recentContactIds: contacts.map(contact => contact.id), earliestAttemptAt: nextAttempt.toISOString() },
       } });
-      return { ok: true as const, message: "This email is queued with your approval. Current sending limits and do-not-contact checks still apply. Automatic sending stays unchanged." };
+      const scheduled = Boolean(input.notBeforeIso) || +nextAttempt > Date.now();
+      return { ok: true as const, scheduled, message: scheduled
+        ? `This email is queued with your approval. Earliest attempt: ${nextAttempt.toLocaleString("en-GB", { timeZone: "Europe/London" })} UK (Europe/London); ${nextAttempt.toISOString()} UTC. Sending hours, limits and safety checks may hold it longer. Automatic sending stays unchanged.`
+        : "This email is queued with your approval. Current sending limits and do-not-contact checks still apply. Automatic sending stays unchanged." };
     });
     // Wake only this approved email, after the approval transaction commits.
-    if (approval.ok) await triggerOutboundQueueDrain({ clientId: input.clientId, outboundEmailIds: [input.outboundEmailId] });
+    if (approval.ok && !approval.scheduled) await triggerOutboundQueueDrain({ clientId: input.clientId, outboundEmailIds: [input.outboundEmailId] });
     return approval;
   } catch {
     return { ok: false as const, uncertain: true as const, error: "We could not confirm the result. Refresh this page before doing anything else." };

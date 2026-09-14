@@ -100,6 +100,38 @@ test("a lost approval response prevents a blind repeat and refresh shows the sav
 });
 });
 
+test.describe("scheduled staff approval", () => {
+  test.use({ timezoneId: "America/New_York" });
+  test("staff choose UK time, approve once, and preserve a future queue without dispatch", async ({ page }) => {
+    await page.goto(url);
+    const panel = page.getByRole("article", { name: "Review email to recipient@example.test" });
+    const button = panel.getByRole("button", { name: "Approve and queue this email" });
+    await panel.getByRole("checkbox").check();
+    await panel.getByLabel("Sending time", { exact: true }).selectOption("later");
+    await expect(panel.getByRole("checkbox")).not.toBeChecked();
+    await expect(button).toBeDisabled();
+    const target = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    target.setUTCSeconds(0, 0);
+    const ukWall = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(target).replace(" ", "T");
+    await panel.getByLabel("Earliest sending time — UK (Europe/London)").fill(ukWall);
+    await expect(panel).toContainText(target.toISOString());
+    await expect(button).toBeDisabled();
+    await panel.getByRole("checkbox").check();
+    await button.click();
+    await expect(panel.getByRole("status")).toContainText(target.toISOString());
+    await expect(panel.getByRole("button")).toBeDisabled();
+    const saved = (await pool.query('SELECT status,"nextRetryAt","dispatchStartedAt","providerMessageId",metadata FROM "OutboundEmail" WHERE id=$1', [clientId])).rows[0];
+    expect(saved.status).toBe("QUEUED");
+    expect(saved.nextRetryAt.toISOString()).toBe(target.toISOString());
+    expect(saved.dispatchStartedAt).toBeNull();
+    expect(saved.providerMessageId).toBeNull();
+    expect(saved.metadata.staffRequestedNotBefore).toBe(target.toISOString());
+    expect((await pool.query('SELECT "autonomousSendEnabled" FROM "Client" WHERE id=$1', [clientId])).rows[0].autonomousSendEnabled).toBe(false);
+    await page.getByRole("link", { name: "Refresh review status" }).click();
+    await expect(page.getByRole("main").getByText("No emails waiting on this page.", { exact: true })).toBeVisible();
+  });
+});
+
 test.describe("signed-out visitor", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test("cannot open held emails", async ({ page }) => {
