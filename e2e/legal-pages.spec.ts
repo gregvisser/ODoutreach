@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 
+test.use({ trace: "retain-on-failure" });
+test.describe.configure({ retries: 0 });
+
 /**
  * The legal pages must be reachable by someone who has no account and never will.
  *
