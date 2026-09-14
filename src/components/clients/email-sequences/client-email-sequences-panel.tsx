@@ -334,7 +334,9 @@ export function ClientEmailSequencesPanel(props: Props) {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
-                            <Link prefetch={false}
+                            {/* A fresh document keeps the chosen campaign and preview
+                                together even when a client-side transition stalls. */}
+                            <a
                               href={outreachSequenceHref(clientId, seq.id)}
                               className={buttonVariants({
                                 size: "sm",
@@ -342,7 +344,7 @@ export function ClientEmailSequencesPanel(props: Props) {
                               })}
                             >
                               Open
-                            </Link>
+                            </a>
                             {(seq.status === "DRAFT" || seq.status === "READY_FOR_REVIEW") &&
                             canMutate ? (
                               // Load a fresh document when entering the editor. A client-side
@@ -355,12 +357,12 @@ export function ClientEmailSequencesPanel(props: Props) {
                                 Edit
                               </a>
                             ) : null}
-                            <Link prefetch={false}
+                            <a
                               href={outreachSequenceHref(clientId, seq.id)}
                               className={buttonVariants({ size: "sm", variant: "ghost" })}
                             >
                               Review and launch
-                            </Link>
+                            </a>
                           </div>
                         </td>
                       </tr>
