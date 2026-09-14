@@ -1,11 +1,12 @@
 "use client";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { approveHeldEmailAction } from "@/app/(app)/clients/held-email-actions";
 import { isValidStaffScheduledTime, ukScheduledTimeToIso } from "@/lib/email-sequences/staff-scheduled-time";
 
 type Email = { id: string; toEmail: string; fromAddress: string | null; subject: string | null; body: string | null; reviewToken: string; recentContacts?: { id: string; clientName: string; sentAt: string }[] };
 export function HeldEmailReview({ clientId, email }: { clientId: string; email: Email }) {
+  const scheduleId = useId();
   const busy = useRef(false);
   const [reviewed, setReviewed] = useState(false);
   const [pending, setPending] = useState(false);
@@ -36,7 +37,7 @@ export function HeldEmailReview({ clientId, email }: { clientId: string; email: 
     </div>}
     <pre className="whitespace-pre-wrap break-words font-sans text-sm">{email.body ?? "Missing email body"}</pre>
     <p className="text-sm text-muted-foreground">The standard sender signature and unsubscribe details are added when sent.</p>
-    <label className="block text-sm">Sending time<select className="block rounded border p-2" value={schedule ? "later" : "next"} disabled={pending || finished} onChange={event => { setSchedule(event.target.value === "later"); setReviewed(false); }}><option value="next">Next allowed sending time</option><option value="later">Choose a later sending time</option></select></label>
+    <div className="text-sm"><label htmlFor={scheduleId}>Sending time</label><select id={scheduleId} className="block rounded border p-2" value={schedule ? "later" : "next"} disabled={pending || finished} onChange={event => { setSchedule(event.target.value === "later"); setReviewed(false); }}><option value="next">Next allowed sending time</option><option value="later">Choose a later sending time</option></select></div>
     {schedule && <div className="space-y-2 text-sm">
       <label className="block">Earliest sending time — UK (Europe/London)<input type="datetime-local" className="block rounded border p-2" value={wallTime} disabled={pending || finished} onChange={event => { setWallTime(event.target.value); setReviewed(false); }} /></label>
       {invalidSchedule ? <p>Choose a valid future UK time within the next 30 days.</p> : <p>Earliest attempt: {wallTime.replace("T", " ")} UK (Europe/London), {scheduledIso} UTC.</p>}
