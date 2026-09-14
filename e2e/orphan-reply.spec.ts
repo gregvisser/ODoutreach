@@ -4,7 +4,8 @@ import { E2E_DATABASE_URL } from "./env";
 import { E2E_CLIENT, E2E_CLIENT_B, E2E_MEMBER_A, E2E_REPLY_RECOVERY, E2E_STORAGE_STATE } from "./fixtures";
 import { assertSafeTestDatabase } from "./safe-database";
 
-test.use({ storageState: E2E_STORAGE_STATE.memberA, viewport: { width: 390, height: 844 } });
+test.use({ storageState: E2E_STORAGE_STATE.memberA, viewport: { width: 390, height: 844 }, trace: "retain-on-failure" });
+test.describe.configure({ retries: 0 });
 let pool: Pool;
 test.beforeAll(() => { pool = new Pool({ connectionString: assertSafeTestDatabase(E2E_DATABASE_URL).toString() }); });
 test.afterAll(async () => { await pool?.end(); });
@@ -16,8 +17,14 @@ async function seed(id: string, clientId: string) {
     ON CONFLICT (id) DO UPDATE SET "handledAt"=NULL, "handledByStaffUserId"=NULL`, [id, clientId]);
 }
 
-test("staff can read and handle a historical reply without an outbound link", async ({ page }) => {
+test("staff can read and handle a historical reply without an outbound link", async ({ page }, testInfo) => {
   const id = "e2e-orphan-handle";
+  const requests: Array<{ kind: string; method?: string; status?: number; error?: string }> = [];
+  page.on("response", response => {
+    if (response.request().method() === "POST") requests.push({ kind: "response", method: "POST", status: response.status() });
+  });
+  page.on("requestfailed", request => requests.push({ kind: "requestfailed", method: request.method(), error: request.failure()?.errorText }));
+  page.on("pageerror", error => requests.push({ kind: "pageerror", error: error.message }));
   await seed(id, E2E_CLIENT.id);
   try {
     await page.goto(`/clients/${E2E_CLIENT.id}/activity/replies/${id}`);
@@ -38,7 +45,13 @@ test("staff can read and handle a historical reply without an outbound link", as
     expect(result.rows[0].linkedOutboundEmailId).toBeNull();
     expect(result.rows[0].handledAt).toBeTruthy();
     expect(result.rows[0].entraObjectId).toBe(E2E_MEMBER_A.entraObjectId);
-  } finally { await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]); }
+  } finally {
+    if (testInfo.status !== testInfo.expectedStatus) {
+      const saved = await pool.query('SELECT "handledAt", "handledByStaffUserId" FROM "InboundReply" WHERE id=$1', [id]);
+      await testInfo.attach("handled-save-outcome", { body: JSON.stringify({ requests, saved: saved.rows }), contentType: "application/json" });
+    }
+    await pool.query('DELETE FROM "InboundReply" WHERE id=$1', [id]);
+  }
 });
 
 test("an invalid surviving campaign link does not qualify for the historical fallback", async ({ page }) => {

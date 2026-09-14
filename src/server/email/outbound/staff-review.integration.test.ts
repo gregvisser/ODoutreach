@@ -74,6 +74,29 @@ it("holds a newly contacted recipient at real dispatch after an earlier staff ap
 async function input() {
   return { clientId: "client", outboundEmailId: "held", staffUserId: "staff", reviewToken: heldEmailReviewToken(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })) };
 }
+it("schedules the same held email atomically and never wakes immediate dispatch", async () => {
+  const notBeforeIso = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  await prisma.outboundEmail.update({ where: { id: "held" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE", cooldownReengagement: { version: 1, evidence: "retained" } } } });
+  expect(await approveHeldEmail({ ...(await input()), notBeforeIso })).toMatchObject({ ok: true, scheduled: true });
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } });
+  expect(row).toMatchObject({ status: "QUEUED", nextRetryAt: new Date(notBeforeIso), providerMessageId: null, dispatchStartedAt: null, metadata: { staffRequestedNotBefore: notBeforeIso, cooldownReengagement: { version: 1, evidence: "retained" } } });
+  expect(triggerOutboundQueueDrain).not.toHaveBeenCalled();
+  expect(await prisma.mailboxSendReservation.count({ where: { outboundEmailId: "held", status: "RESERVED" } })).toBe(1);
+  expect(await prisma.auditLog.count({ where: { entityId: "held" } })).toBe(1);
+});
+it("approval preserves a later existing earliest attempt", async () => {
+  const later = new Date(Date.now() + 4 * 60 * 60 * 1000);
+  await prisma.outboundEmail.update({ where: { id: "held" }, data: { nextRetryAt: later } });
+  expect(await approveHeldEmail({ ...(await input()), notBeforeIso: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() })).toMatchObject({ ok: true, scheduled: true });
+  expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })).nextRetryAt).toEqual(later);
+  expect(triggerOutboundQueueDrain).not.toHaveBeenCalled();
+});
+it.each(["invalid", "2000-01-01T00:00:00Z", "2100-01-01T00:00:00Z"])("rejects bad scheduling input before queue or allowance changes: %s", async notBeforeIso => {
+  expect(await approveHeldEmail({ ...(await input()), notBeforeIso })).toMatchObject({ ok: false });
+  expect((await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "held" } })).status).toBe("FAILED");
+  expect(await prisma.mailboxSendReservation.count()).toBe(0);
+  expect(triggerOutboundQueueDrain).not.toHaveBeenCalled();
+});
 it("lets ordinary staff approve exactly one saved email and keeps automatic sending off", async () => {
   const data = await loadHeldEmailsForStaff("client", 0);
   expect(data.emails[0]).toMatchObject({ subject: "Please review", body: "Synthetic saved email" });

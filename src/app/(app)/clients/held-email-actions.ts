@@ -4,7 +4,7 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientAccess } from "@/server/tenant/access";
 import { approveHeldEmail } from "@/server/email/outbound/staff-review";
 
-const schema = z.object({ clientId: z.string().min(1).max(100), outboundEmailId: z.string().min(1).max(100), reviewToken: z.string().regex(/^[a-f0-9]{64}$/) });
+const schema = z.object({ clientId: z.string().min(1).max(100), outboundEmailId: z.string().min(1).max(100), reviewToken: z.string().regex(/^[a-f0-9]{64}$/), notBeforeIso: z.string().datetime().optional() });
 export async function approveHeldEmailAction(input: z.infer<typeof schema>) {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: "This review is incomplete. Refresh the page." };

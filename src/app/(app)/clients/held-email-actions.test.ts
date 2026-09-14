@@ -25,3 +25,12 @@ it("rejects an absent content review token", async () => {
   expect(await approveHeldEmailAction({ ...input, reviewToken: "" })).toMatchObject({ ok: false });
   expect(m.approve).not.toHaveBeenCalled();
 });
+it("passes the selected timestamp with the authenticated staff identity", async () => {
+  const scheduled = { ...input, notBeforeIso: "2026-09-14T13:30:00.000Z" };
+  expect(await approveHeldEmailAction(scheduled)).toMatchObject({ ok: true });
+  expect(m.approve).toHaveBeenCalledWith({ ...scheduled, staffUserId: "authenticated-staff" });
+});
+it("rejects an unqualified local timestamp before any approval", async () => {
+  expect(await approveHeldEmailAction({ ...input, notBeforeIso: "2026-09-14T13:30" })).toMatchObject({ ok: false });
+  expect(m.approve).not.toHaveBeenCalled();
+});
