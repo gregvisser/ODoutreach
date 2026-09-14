@@ -13,7 +13,7 @@ let pool: Pool;
 const csvText = [
   "Name,Employer,Industry,First Name,Last Name,City,Country,Linkedin,Job1 Title,A Emails,Mobile Number,Office Number",
   `CSV Clear,Synthetic Company,Testing,CSV,Clear,Test City,United Kingdom,,Director,${clearEmail},,`,
-  `CSV Duplicate,Synthetic Company,Testing,CSV,Duplicate,Test City,United Kingdom,,Director,${clearEmail.toUpperCase()},,`,
+  `CSV Duplicate,Forbidden Employer,Testing,CSV,Duplicate,Test City,United Kingdom,,Director,${clearEmail.toUpperCase()},,`,
   `CSV Blocked,Synthetic Company,Testing,CSV,Blocked,Test City,United Kingdom,,Director,${blockedEmail},,`,
   "CSV Invalid,Synthetic Company,Testing,CSV,Invalid,Test City,United Kingdom,,Director,not-an-email,,",
 ].join("\n");
@@ -24,6 +24,7 @@ test.beforeAll(async () => {
   await pool.query('INSERT INTO "Client" (id,name,slug,"inboundIngestToken",status,"updatedAt") VALUES ($1,$2,$1,$1,\'ACTIVE\',NOW())', [clientId, "Synthetic CSV workspace"]);
   await pool.query(`INSERT INTO "ClientMembership" (id,"clientId","staffUserId",role) SELECT $1,$1,id,'CONTRIBUTOR' FROM "StaffUser" WHERE "entraObjectId"=$2`, [clientId, E2E_MEMBER_A.entraObjectId]);
   await pool.query('INSERT INTO "SuppressedEmail" (id,"clientId",email) VALUES ($1,$1,$2)', [clientId, blockedEmail]);
+  await pool.query('INSERT INTO "CompanyDncEntry" (id,"clientId","originalName","canonicalName") VALUES ($1,$1,$2,$3)', [clientId, "Forbidden Employer", "forbidden employer"]);
 });
 
 test.afterAll(async () => {
@@ -43,6 +44,10 @@ test("staff upload, preview, confirm and re-import without duplicate contacts or
   await page.getByLabel("CSV file", { exact: true }).setInputFiles(upload);
   await preview.click();
   await expect(confirm).toBeEnabled();
+  // The first row's supplied employer must be checked before it exists in DB;
+  // the duplicate employer must not replace it or create a false review hold.
+  await expect(page.getByRole("row").filter({ hasText: "CSV Clear" })).toContainText("Email-sendable");
+  await expect(page.getByRole("row").filter({ hasText: "CSV Blocked" })).toContainText("Suppressed");
   expect((await pool.query('SELECT id FROM "Contact" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
   expect((await pool.query('SELECT id FROM "ContactList" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
 
@@ -71,9 +76,11 @@ test("staff upload, preview, confirm and re-import without duplicate contacts or
 
   await page.getByRole("navigation", { name: "Client workspace", exact: true }).getByRole("link", { name: "Sources", exact: true }).click();
   await page.getByRole("combobox", { name: "Use existing list (optional)", exact: true }).selectOption(list.rows[0].id);
-  await page.getByLabel("CSV file", { exact: true }).setInputFiles(upload);
+  // Re-import does not overwrite an existing employer with the uploaded one.
+  await page.getByLabel("CSV file", { exact: true }).setInputFiles({ ...upload, buffer: Buffer.from(csvText.replace("CSV Clear,Synthetic Company", "CSV Clear,Forbidden Employer")) });
   await preview.click();
   await expect(confirm).toBeEnabled();
+  await expect(page.getByRole("row").filter({ hasText: "CSV Clear" })).toContainText("Email-sendable");
   await confirm.click();
   await expect(page.getByRole("status").filter({ hasText: "Import saved" })).toBeVisible();
   await expect(confirm).toBeDisabled();
