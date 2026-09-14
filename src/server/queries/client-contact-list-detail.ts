@@ -42,6 +42,7 @@ export type ContactDeliveryRow = {
   repliedAt: Date | null;
   unsubscribedAt: Date | null;
   latestEventLabel: string | null;
+  queuedMessages?: { id: string; sequenceName: string }[];
   opensLabel: string;
   hasOutboundEmail: boolean;
   hasProviderProof: boolean;
@@ -203,7 +204,13 @@ export async function loadClientContactListDetail(
   ]);
 
   const stepSendsByContact = new Map<string, (typeof stepSends)[number]>();
+  const queuedByContact = new Map<string, Map<string, string>>();
   for (const ss of stepSends) {
+    if (ss.outboundEmail?.status === "QUEUED") {
+      const queued = queuedByContact.get(ss.contactId) ?? new Map<string, string>();
+      queued.set(ss.outboundEmail.id, ss.sequence.name);
+      queuedByContact.set(ss.contactId, queued);
+    }
     const existing = stepSendsByContact.get(ss.contactId);
     if (!existing || sendPriority(ss.status) > sendPriority(existing.status)) {
       stepSendsByContact.set(ss.contactId, ss);
@@ -303,6 +310,7 @@ export async function loadClientContactListDetail(
       repliedAt: replyDate,
       unsubscribedAt: unsubDate,
       latestEventLabel: outbound?.lastProviderEventType ?? null,
+      queuedMessages: Array.from(queuedByContact.get(c.id) ?? [], ([id, sequenceName]) => ({ id, sequenceName })),
       opensLabel: deriveOpensLabel(outbound?.openedAt ?? null),
       hasOutboundEmail: outbound !== null,
       hasProviderProof:
@@ -327,7 +335,11 @@ export async function loadClientContactListDetail(
     isArchived: list.archivedAt !== null,
     totalContacts: members.length,
     contacts,
-    summary: summarizeDelivery(statuses, emailSendableCount),
+    summary: {
+      ...summarizeDelivery(statuses, emailSendableCount),
+      // A previous delivery and a new queued email can belong to the same contact.
+      queued: contacts.filter((contact) => contact.sendStatus === "Queued" || contact.queuedMessages?.length).length,
+    },
   };
 }
 

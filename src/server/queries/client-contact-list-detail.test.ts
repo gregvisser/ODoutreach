@@ -97,6 +97,24 @@ beforeEach(() => {
 });
 
 describe("loadClientContactListDetail", () => {
+  it("retains sent history while exposing a different queued email exactly once", async () => {
+    contactListFindFirst.mockResolvedValueOnce(makeList());
+    contactListMemberFindMany.mockResolvedValueOnce([makeMember("c1")]);
+    const sent = makeStepSend("c1");
+    const queued = makeStepSend("c1", {
+      status: "READY", sequence: { name: "Later campaign" },
+      outboundEmailId: "queued-c1",
+      outboundEmail: { ...sent.outboundEmail, id: "queued-c1", status: "QUEUED", sentAt: null, providerMessageId: null, lastProviderEventType: null },
+    });
+    stepSendFindMany.mockResolvedValueOnce([sent, queued, queued]);
+    inboundReplyFindMany.mockResolvedValueOnce([]);
+    unsubscribeTokenFindMany.mockResolvedValueOnce([]);
+    const result = await loadClientContactListDetail(CLIENT, LIST);
+    expect(result!.contacts[0].sendStatus).toBe("Sent from mailbox");
+    expect(result!.contacts[0].queuedMessages).toEqual([{ id: "queued-c1", sequenceName: "Later campaign" }]);
+    expect(result!.summary.queued).toBe(1);
+    expect(result!.summary.sent).toBe(1);
+  });
   it("returns null for empty clientId", async () => {
     const result = await loadClientContactListDetail("", LIST);
     expect(result).toBeNull();

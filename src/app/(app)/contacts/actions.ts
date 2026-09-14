@@ -1,8 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   resolveImportListForClient,
@@ -11,7 +8,11 @@ import {
 import { runContactCsvImport } from "@/server/contacts/import-csv";
 import { requireClientAccess } from "@/server/tenant/access";
 
-export async function importContactsCsvAction(formData: FormData): Promise<void> {
+export type CsvImportOutcome =
+  | { kind: "saved"; message: string; href: string }
+  | { kind: "invalid" | "uncertain"; message: string };
+
+export async function importContactsCsvAction(formData: FormData): Promise<CsvImportOutcome> {
   const staff = await requireOpensDoorsStaff();
   const clientId = String(formData.get("clientId") ?? "").trim();
   const file = formData.get("file");
@@ -36,19 +37,11 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
       : "/contacts";
 
   if (!clientId || !(file instanceof File) || file.size === 0) {
-    redirect(
-      `${dest}?import=error&message=` +
-        encodeURIComponent("Choose a client and CSV file."),
-    );
+    return { kind: "invalid", message: "Choose a client and CSV file." };
   }
 
   if (!confirmed) {
-    redirect(
-      `${dest}?import=error&message=` +
-        encodeURIComponent(
-          "Preview the import first, then press Confirm import to write contacts.",
-        ),
-    );
+    return { kind: "invalid", message: "Preview the import first, then press Confirm import to write contacts." };
   }
 
   await requireClientAccess(staff, clientId);
@@ -57,9 +50,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
   // picks an existing list for this client or types a new list name.
   const target = resolveImportListTarget({ existingListId, newListName });
   if ("error" in target) {
-    redirect(
-      `${dest}?import=error&message=` + encodeURIComponent(target.error),
-    );
+    return { kind: "invalid", message: target.error };
   }
 
   let resolvedList: { id: string; name: string; clientId: string | null };
@@ -81,9 +72,7 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
             : code === "CONTACT_LIST_NAME_TOO_LONG"
               ? "List name must be 120 characters or fewer."
               : "Could not resolve the target list.";
-    redirect(
-      `${dest}?import=error&message=` + encodeURIComponent(message),
-    );
+    return { kind: code.startsWith("CONTACT_LIST_") ? "invalid" : "uncertain", message };
   }
 
   const text = await file.text();
@@ -98,23 +87,15 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
       targetListName: resolvedList.name,
       addedByStaffUserId: staff.id,
     });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Import failed";
-    redirect(
-      `${dest}?import=error&message=` + encodeURIComponent(message),
-    );
+  } catch {
+    return { kind: "uncertain", message: "The import did not finish normally. Some records may already have been saved." };
   }
   if (!result) {
-    redirect(
-      `${dest}?import=error&message=` + encodeURIComponent("Import failed"),
-    );
+    return { kind: "uncertain", message: "The import result could not be confirmed." };
   }
 
-  revalidatePath("/contacts");
-  revalidatePath("/universe");
-  revalidatePath("/reporting");
-  revalidatePath(`/clients/${clientId}`);
-  revalidatePath(`/clients/${clientId}/sources`);
+  // Return the save acknowledgement independently of rendering Sources again.
+  // The explicit result link performs a fresh document load after confirmation.
 
   const q = new URLSearchParams({
     import: "ok",
@@ -128,5 +109,9 @@ export async function importContactsCsvAction(formData: FormData): Promise<void>
     uNew: String(result.summary.universeCreated),
     uMatch: String(result.summary.universeMatched),
   });
-  redirect(`${dest}?${q.toString()}`);
+  return {
+    kind: "saved",
+    message: `Import saved — created ${result.summary.imported}, attached ${result.summary.attachedExisting} existing contacts, skipped ${result.summary.skippedInvalid + result.summary.skippedDuplicate} into ${resolvedList.name}.`,
+    href: `${dest}?${q.toString()}`,
+  };
 }

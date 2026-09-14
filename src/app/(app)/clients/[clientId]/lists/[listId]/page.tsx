@@ -176,9 +176,14 @@ export default async function ListDetailPage({ params }: Props) {
           <p className="mt-1 text-xs text-muted-foreground/80">
             &ldquo;Awaiting send&rdquo; means the contact is eligible and will be
             emailed on the next launch or send run — nothing has been handed to a
-            mailbox yet. &ldquo;Queued&rdquo; means the email has already been handed
-            to the sender and is waiting to go out. &ldquo;Suppressed / skipped&rdquo;
+            mailbox yet. &ldquo;Queued&rdquo; means ODoutreach is holding an email
+            for sending, subject to its schedule and safety checks. &ldquo;Suppressed / skipped&rdquo;
             contacts will not be emailed — each row shows the reason.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground/80">
+            A contact can have a previous send and a new queued email, so the Sent
+            and Queued counts can overlap. Open a queued email link to see its
+            sequence and earliest sending attempt.
           </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">
