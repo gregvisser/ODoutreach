@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 
-import { importContactsCsvAction } from "@/app/(app)/contacts/actions";
+import { importContactsCsvAction, type CsvImportOutcome } from "@/app/(app)/contacts/actions";
 import { previewContactsCsvAction } from "@/app/(app)/contacts/preview-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,7 +94,10 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ kind: "idle" });
   const [pending, startTransition] = useTransition();
-  const formRef = useRef<HTMLFormElement | null>(null);
+  const [importPending, setImportPending] = useState(false);
+  const [importOutcome, setImportOutcome] = useState<CsvImportOutcome | null>(null);
+  const importInFlight = useRef(false);
+  const importLocked = importPending || importOutcome?.kind === "saved" || importOutcome?.kind === "uncertain";
 
   const lists = useMemo(
     () => listsByClientId[selectedClientId] ?? [],
@@ -104,7 +107,7 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
   const hasListTarget =
     existingListId.trim().length > 0 || newListName.trim().length > 0;
   const canPreview =
-    Boolean(selectedClientId) && hasListTarget && file !== null && !pending;
+    Boolean(selectedClientId) && hasListTarget && file !== null && !pending && !importLocked;
   const confirmEnabled =
     preview.kind === "ready" &&
     preview.result.summary.totalRows > 0 &&
@@ -114,26 +117,49 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
     setPreview({ kind: "idle" });
   }
 
+  async function confirmImport(formData: FormData) {
+    if (importInFlight.current || importLocked || !confirmEnabled || pending) return;
+    importInFlight.current = true;
+    setImportPending(true);
+    try {
+      const outcome = await importContactsCsvAction(formData);
+      setImportOutcome(outcome);
+      if (outcome.kind === "invalid") {
+        importInFlight.current = false;
+        setFile(null);
+        resetPreview();
+      }
+    } catch {
+      setImportOutcome({ kind: "uncertain", message: "The connection ended before the import result was confirmed. Records may already have been saved." });
+    } finally {
+      setImportPending(false);
+    }
+  }
+
   async function runPreview() {
-    if (!file) return;
-    const text = await file.text();
+    if (!file || !canPreview) return;
     startTransition(async () => {
-      const result = await previewContactsCsvAction({
-        clientId: selectedClientId,
-        existingListId: existingListId || null,
-        newListName: newListName || null,
-        fileName: file.name,
-        csvText: text,
-      });
-      if (result.ok) {
-        setPreview({
-          kind: "ready",
-          result: result.preview,
-          resolvedListLabel: result.resolvedListLabel,
-          fileName: result.fileName,
+      try {
+        const text = await file.text();
+        const result = await previewContactsCsvAction({
+          clientId: selectedClientId,
+          existingListId: existingListId || null,
+          newListName: newListName || null,
+          fileName: file.name,
+          csvText: text,
         });
-      } else {
-        setPreview({ kind: "error", message: result.error });
+        if (result.ok) {
+          setPreview({
+            kind: "ready",
+            result: result.preview,
+            resolvedListLabel: result.resolvedListLabel,
+            fileName: result.fileName,
+          });
+        } else {
+          setPreview({ kind: "error", message: result.error });
+        }
+      } catch {
+        setPreview({ kind: "error", message: "Could not load the preview. Check the connection and try Preview again; no contacts were imported." });
       }
     });
   }
@@ -160,10 +186,10 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
       <CardContent className="space-y-4">
         <StaffImportHeadingChips />
         <form
-          ref={formRef}
-          action={importContactsCsvAction}
+          action={confirmImport}
           className="space-y-4"
         >
+          <fieldset disabled={pending || importLocked} className="space-y-4">
           {/*
             When the form is rendered on a client's Sources tab the workspace
             is locked, so send the operator back there (with the result banner)
@@ -279,9 +305,9 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
               type="submit"
               name="confirm"
               value="yes"
-              disabled={!confirmEnabled || pending}
+              disabled={!confirmEnabled || pending || importLocked}
             >
-              Confirm import
+              {importPending ? "Importing…" : "Confirm import"}
             </Button>
             {clients.length === 0 ? (
               <p className="text-sm text-muted-foreground">
@@ -313,6 +339,22 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
               listLabel={preview.resolvedListLabel}
               fileName={preview.fileName}
             />
+          ) : null}
+          </fieldset>
+          {importOutcome ? (
+            <div role={importOutcome.kind === "saved" ? "status" : "alert"} className="rounded-md border px-3 py-3 text-sm">
+              <p>{importOutcome.message}</p>
+              {importOutcome.kind === "saved" ? (
+                // A new document avoids replaying this form and reloads the saved list/result.
+                <a href={importOutcome.href} className="mt-2 inline-block text-primary underline">Open import result</a>
+              ) : importOutcome.kind === "uncertain" ? (
+                <>
+                  <p className="mt-1">Do not import again yet. Refresh the list page and check what was saved first.</p>
+                  {/* Clear uncertain form state only through a fresh document load. */}
+                  <a href={lockedClientId ? `/clients/${lockedClientId}/sources` : "/contacts"} className="mt-2 inline-block text-primary underline">Refresh import lists</a>
+                </>
+              ) : null}
+            </div>
           ) : null}
         </form>
       </CardContent>

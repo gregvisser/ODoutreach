@@ -52,6 +52,9 @@ test("staff upload, preview, confirm and re-import without duplicate contacts or
   await preview.click();
   await expect(confirm).toBeEnabled();
   await confirm.click();
+  await expect(page.getByRole("status").filter({ hasText: "Import saved" })).toBeVisible();
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("link", { name: "Open import result", exact: true }).click();
   await expect(page).toHaveURL(/\/sources\?import=ok&/);
 
   const contacts = await pool.query('SELECT email,"isSuppressed" FROM "Contact" WHERE "clientId"=$1 ORDER BY email', [clientId]);
@@ -72,8 +75,34 @@ test("staff upload, preview, confirm and re-import without duplicate contacts or
   await preview.click();
   await expect(confirm).toBeEnabled();
   await confirm.click();
+  await expect(page.getByRole("status").filter({ hasText: "Import saved" })).toBeVisible();
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("link", { name: "Open import result", exact: true }).click();
   await expect(page).toHaveURL(/\/sources\?import=ok&/);
   expect((await pool.query('SELECT id FROM "Contact" WHERE "clientId"=$1', [clientId])).rowCount).toBe(2);
+  expect((await pool.query('SELECT id FROM "ContactListMember" WHERE "contactListId"=$1', [list.rows[0].id])).rowCount).toBe(2);
+  expect((await pool.query('SELECT "isSuppressed" FROM "Contact" WHERE "clientId"=$1 AND email=$2', [clientId, blockedEmail])).rows).toEqual([{ isSuppressed: true }]);
+  expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
+
+  // A saved import whose acknowledgement is lost must not invite another submission.
+  await page.getByRole("combobox", { name: "Use existing list (optional)", exact: true }).selectOption(list.rows[0].id);
+  await page.getByLabel("CSV file", { exact: true }).setInputFiles(upload);
+  await preview.click();
+  await expect(confirm).toBeEnabled();
+  let intercepted = false;
+  await page.route(`**/clients/${clientId}/sources*`, async route => {
+    if (route.request().method() !== "POST" || intercepted) return route.continue();
+    intercepted = true;
+    await route.fetch(); // Let the server persist the import before losing only its response.
+    await route.abort("failed");
+  });
+  await confirm.click();
+  await expect(page.getByRole("alert").filter({ hasText: "Records may already have been saved" })).toBeVisible();
+  expect(intercepted).toBe(true);
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("link", { name: "Refresh import lists", exact: true }).click();
+  await page.getByRole("link", { name: listName, exact: true }).click();
+  await expect(page.getByText(blockedEmail, { exact: true })).toBeVisible();
   expect((await pool.query('SELECT id FROM "ContactListMember" WHERE "contactListId"=$1', [list.rows[0].id])).rowCount).toBe(2);
   expect((await pool.query('SELECT "isSuppressed" FROM "Contact" WHERE "clientId"=$1 AND email=$2', [clientId, blockedEmail])).rows).toEqual([{ isSuppressed: true }]);
   expect((await pool.query('SELECT id FROM "OutboundEmail" WHERE "clientId"=$1', [clientId])).rowCount).toBe(0);
