@@ -1,3 +1,4 @@
+import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { draftClientSequenceWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-sequence-actions";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import {
@@ -54,9 +55,7 @@ export function AiSequenceDraftPanel({
       </CardHeader>
       <CardContent className="space-y-3">
         {!aiEnabled ? (
-          <p className="text-sm text-muted-foreground">
-            AI features are currently switched off, so nothing can be drafted.
-          </p>
+          <OptionalAiUnavailable label="Write a sequence with AI" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
             The AI is not configured on this environment yet, so nothing can be

@@ -1,3 +1,4 @@
+import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { adviseClientSendTimesWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-send-time-actions";
 import {
   Card,
@@ -217,9 +218,7 @@ export function AiSendTimePanel({
         ) : null}
 
         {!aiEnabled ? (
-          <p className="text-sm text-muted-foreground">
-            AI features are currently switched off, so nothing can be analysed.
-          </p>
+          <OptionalAiUnavailable label="Work out our best send times" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
             The AI is not configured on this environment yet, so nothing can be

@@ -203,7 +203,7 @@ export default async function ClientOutreachPage({
       <AiCampaignReviewPanel
         clientId={client.id}
         canMutate={canMutateSequences}
-        aiEnabled={areAiFeaturesEnabled()}
+        aiEnabled={areAiFeaturesEnabled("CAMPAIGN_REVIEW")}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
         // Archived campaigns are excluded: reviewing one spends the client's
         // money on copy nobody is going to send.
@@ -225,7 +225,7 @@ export default async function ClientOutreachPage({
         clientId={client.id}
         customCalendar={!!(bundle.calendarSettings.current || bundle.calendarSettings.pending)}
         canMutate={canMutateSequences}
-        aiEnabled={areAiFeaturesEnabled()}
+        aiEnabled={areAiFeaturesEnabled("SEND_TIME_ADVICE")}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
         advice={sendTimeAdvice}
         flash={{
@@ -237,7 +237,7 @@ export default async function ClientOutreachPage({
       <TitleMessagePanel
         clientId={client.id}
         canMutate={canMutateSequences}
-        aiEnabled={areAiFeaturesEnabled()}
+        aiEnabled={areAiFeaturesEnabled("TITLE_MESSAGE_FIT")}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
         review={titleMessageReview}
         flash={{

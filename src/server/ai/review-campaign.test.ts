@@ -92,6 +92,8 @@ function run() {
 }
 
 beforeEach(() => {
+  // Exercise optional behaviour after deliberate activation.
+  process.env.AI_OUTREACH_FEATURES = "on";
   prismaMock.clientEmailSequence.findFirst.mockReset().mockResolvedValue(SEQUENCE);
   prismaMock.clientEmailSequence.update.mockReset();
   prismaMock.clientEmailTemplate.create.mockReset();

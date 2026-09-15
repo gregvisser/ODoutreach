@@ -133,6 +133,8 @@ function anthropicReturns(input: unknown): void {
 }
 
 beforeEach(() => {
+  // Exercise optional behaviour after deliberate activation.
+  process.env.AI_OUTREACH_FEATURES = "on";
   vi.clearAllMocks();
   prismaMock.client.findFirst.mockResolvedValue(CLIENT);
   prismaMock.outboundEmail.findMany.mockResolvedValue(historyWithARealGap());

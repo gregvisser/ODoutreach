@@ -33,6 +33,7 @@ export const E2E_APP_ENV: Record<string, string> = {
   AUTH_SECRET: E2E_AUTH_SECRET,
   AUTH_URL: E2E_BASE_URL,
   NODE_ENV: "production",
+  AI_OUTREACH_FEATURES: "off",
 
   // Compile/runtime placeholders — e2e never performs a real Entra sign-in.
   AUTH_MICROSOFT_ENTRA_ID_ID: "11111111-1111-1111-1111-111111111111",

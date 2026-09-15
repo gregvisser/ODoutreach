@@ -106,7 +106,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         clientId={client.id}
         clientName={client.name}
         canMutate={canMutateTemplates}
-        aiEnabled={areAiFeaturesEnabled()}
+        aiEnabled={areAiFeaturesEnabled("SEQUENCE_DRAFTING")}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
       />
 

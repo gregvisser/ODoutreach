@@ -1,3 +1,4 @@
+import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { explainClientRepPerformanceWithAiAction } from "@/app/(app)/clients/[clientId]/mailboxes/ai-rep-performance-actions";
 import {
   Card,
@@ -243,9 +244,7 @@ export function RepPerformancePanel({
         ) : null}
 
         {!aiEnabled ? (
-          <p className="text-sm text-muted-foreground">
-            AI features are currently switched off, so nothing can be analysed.
-          </p>
+          <OptionalAiUnavailable label="Compare our senders" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
             The AI is not configured on this environment yet, so nothing can be

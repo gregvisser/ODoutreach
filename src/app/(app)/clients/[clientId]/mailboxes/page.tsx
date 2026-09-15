@@ -295,7 +295,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
       <RepPerformancePanel
         clientId={client.id}
         canMutate={canMutateSequences}
-        aiEnabled={areAiFeaturesEnabled()}
+        aiEnabled={areAiFeaturesEnabled("REP_PERFORMANCE")}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
         review={repPerformanceReview}
         flash={{

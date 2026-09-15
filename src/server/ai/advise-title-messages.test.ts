@@ -153,6 +153,8 @@ const GOOD_ANSWER = {
 };
 
 beforeEach(() => {
+  // Exercise optional behaviour after deliberate activation.
+  process.env.AI_OUTREACH_FEATURES = "on";
   vi.clearAllMocks();
   process.env.ANTHROPIC_API_KEY = "sk-test-key";
   prismaMock.client.findFirst.mockResolvedValue(CLIENT);

@@ -25,8 +25,8 @@ const CLIENT = { id: "client-1", slug: "train-hugger" };
 // map to the same priced model), so the cost math is unaffected.
 const baseArgs = {
   client: CLIENT,
-  feature: "SEQUENCE_DRAFTING" as const,
-  model: AI_MODELS.SEQUENCE_DRAFTING,
+  feature: "TRAINING_ASSISTANT" as const,
+  model: AI_MODELS.TRAINING_ASSISTANT,
   apiKey: "sk-ant-test",
   subject: { type: "InboundReply", id: "reply-1" },
 };
@@ -42,6 +42,7 @@ beforeEach(() => {
   prismaMock.aiUsageEvent.create.mockResolvedValue({ id: "usage-1" });
   reportErrorMock.mockReset();
   delete process.env.AI_FEATURES;
+  delete process.env.AI_OUTREACH_FEATURES;
 });
 
 describe("a successful call", () => {
@@ -69,14 +70,14 @@ describe("a successful call", () => {
     });
 
     const row = writtenRow();
-    expect(row.model).toBe(AI_MODELS.SEQUENCE_DRAFTING);
+    expect(row.model).toBe(AI_MODELS.TRAINING_ASSISTANT);
     expect(row.inputTokens).toBe(700);
     expect(row.outputTokens).toBe(40);
     expect(row.clientId).toBe("client-1");
     // 700 in at $1/MTok + 40 out at $5/MTok = 900 micro-USD.
     expect(row.costMicroUsd).toBe(900);
     expect(row.status).toBe("OK");
-    expect(row.feature).toBe("SEQUENCE_DRAFTING");
+    expect(row.feature).toBe("TRAINING_ASSISTANT");
   });
 
   it("stores the rates and rate version, so a corrected price list can recompute", async () => {
@@ -225,11 +226,25 @@ describe("the personal-data processor gate (CR-10)", () => {
       usage: { inputTokens: 10, outputTokens: 5 },
     });
 
-    // baseArgs.feature is SEQUENCE_DRAFTING, declared clean by the CR-10 policy.
+    // baseArgs.feature is TRAINING_ASSISTANT, declared clean by the CR-10 policy.
     const out = await runMeteredAiCall({ ...baseArgs, invoke });
 
     expect(out.ok).toBe(true);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(writtenRow().status).toBe("OK");
+  });
+});
+
+// Greyed-out tools must also refuse direct server calls without invoking a provider.
+describe("optional outreach AI is disabled for Human sending", () => {
+  it.each([
+    "SEQUENCE_DRAFTING", "CAMPAIGN_REVIEW", "SEND_TIME_ADVICE",
+    "REP_PERFORMANCE", "TITLE_MESSAGE_FIT",
+  ] as const)("refuses %s with zero spend", async (feature) => {
+    const invoke = vi.fn();
+    const out = await runMeteredAiCall({ ...baseArgs, feature, model: AI_MODELS[feature], invoke });
+    expect(out).toEqual({ ok: false, reason: "ai_features_switched_off" });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(writtenRow()).toMatchObject({ status: "REFUSED", costMicroUsd: 0, feature });
   });
 });
