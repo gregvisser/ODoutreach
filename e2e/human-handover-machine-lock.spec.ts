@@ -10,6 +10,7 @@ test("staff see machine activation unavailable with a Human sending explanation"
   await expect(explanation).toHaveCount(1);
   await expect(explanation).toBeVisible();
   await page.getByRole("link", { name: "Templates", exact: true }).click();
+  await page.getByText("Draft emails with AI", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Write a sequence with AI", exact: true })).toBeDisabled();
   await expect(page.getByText(/You can still write, review and schedule emails yourself using Human sending/)).toBeVisible();
   await page.getByRole("link", { name: "Outreach", exact: true }).click();
