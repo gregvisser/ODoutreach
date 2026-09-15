@@ -143,7 +143,7 @@ export async function runMeteredAiCall<T>(
 
   // Order matters only in that each check must happen before any money is
   // spent. All four fail closed: nothing is called, nothing is charged.
-  if (!areAiFeaturesEnabled()) return refuse("ai_features_switched_off");
+  if (!areAiFeaturesEnabled(feature)) return refuse("ai_features_switched_off");
   if (!apiKey) return refuse("no_api_key");
   if (!rate) return refuse("no_rate_for_model");
   // CR-10: a feature declared to carry a prospect's own personal data may not

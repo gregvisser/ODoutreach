@@ -66,6 +66,8 @@ function createdRows(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
+  // Exercise optional behaviour after deliberate activation.
+  process.env.AI_OUTREACH_FEATURES = "on";
   prismaMock.client.findFirst.mockReset().mockResolvedValue(CLIENT);
   // Stands in for the real transaction: each `create` call returns a row, and
   // `$transaction` resolves the array it is handed.

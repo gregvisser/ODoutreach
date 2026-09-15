@@ -1,3 +1,4 @@
+import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { reviewClientCampaignWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-campaign-review-actions";
 import {
   Card,
@@ -198,9 +199,7 @@ export function AiCampaignReviewPanel({
         ) : null}
 
         {!aiEnabled ? (
-          <p className="text-sm text-muted-foreground">
-            AI features are currently switched off, so nothing can be reviewed.
-          </p>
+          <OptionalAiUnavailable label="Review with AI" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
             The AI is not configured on this environment yet, so nothing can be

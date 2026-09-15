@@ -1,3 +1,4 @@
+import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { adviseClientTitleMessagesWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-title-message-actions";
 import {
   Card,
@@ -273,9 +274,7 @@ export function TitleMessagePanel({
         ) : null}
 
         {!aiEnabled ? (
-          <p className="text-sm text-muted-foreground">
-            AI features are currently switched off, so nothing can be analysed.
-          </p>
+          <OptionalAiUnavailable label="Compare campaigns by job title" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
             The AI is not configured on this environment yet, so nothing can be

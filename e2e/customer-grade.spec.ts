@@ -22,6 +22,7 @@ test("ordinary staff reach the grade on mobile and persist all three agreed choi
   await page.goto(`${url}/mailboxes`);
   await page.getByRole("link", { name: "Overview", exact: true }).click();
   const panel = page.getByRole("region", { name: "Customer grade", exact: true });
+  await expect(page.getByText("Existing manual batch protection", { exact: true })).toHaveCount(0);
   for (const [value, label] of [["MAINTENANCE", "Maintenance"], ["GROWTH", "Growth"], ["STRATEGIC", "Strategic"]]) {
     await panel.getByLabel("Choose customer grade", { exact: true }).selectOption(value);
     await panel.getByRole("button", { name: "Save customer grade" }).click();
