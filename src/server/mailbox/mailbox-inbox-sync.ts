@@ -1,9 +1,10 @@
 import "server-only";
-import { InboxCursorExpiredError } from "./inbox-pagination";
+import { InboxCursorExpiredError, readReplyFolders } from "./inbox-pagination";
 
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { persistSyncedInboundMessage } from "@/server/inbox/persist-inbound-message";
+import { graphMessageIdentity } from "./graph-message-identity";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import { fetchGmailInboxMessagesForSync } from "@/server/mailbox/gmail-inbox";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
@@ -181,16 +182,10 @@ export async function syncMicrosoftInboxForMailbox(input: {
   let nextCursor: string | null = null;
   let items: Awaited<ReturnType<typeof listMicrosoftGraphInboxMessages>>;
   try {
-    items = await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, {
-      top, maxPages: 1, onContinuation: (cursor) => { nextCursor = cursor; },
-    });
-    const backlogCursor = mailbox.inboxSyncCursor || nextCursor;
-    if (backlogCursor) {
-      items.push(...await listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, {
-        top, cursor: backlogCursor, maxPages: 3,
-        onContinuation: (cursor) => { nextCursor = cursor; },
-      }));
-    }
+    const result = await readReplyFolders(mailbox.inboxSyncCursor, options =>
+      listMicrosoftGraphInboxMessages(access, mailbox.emailNormalized, { top, ...options }), row => row.id);
+    items = result.rows;
+    nextCursor = result.cursor;
   } catch (e) {
     if (e instanceof InboxCursorExpiredError) {
       await prisma.clientMailboxIdentity.updateMany({ where: { id: mailbox.id, inboxSyncCursor: mailbox.inboxSyncCursor ?? null }, data: { inboxSyncCursor: null } });
@@ -267,9 +262,14 @@ export async function syncMicrosoftInboxForMailbox(input: {
       skippedInternal += 1;
       continue;
     }
-    const meta: Record<string, string | null | boolean> = row.metadata;
+    const graphIdentity = graphMessageIdentity({ clientId, mailboxIdentityId,
+      internetMessageId: raw.internetMessageId, fromEmail: row.fromEmail, receivedDateTime: raw.receivedDateTime });
+    const meta: Record<string, string | null | boolean> = { ...row.metadata,
+      internetMessageId: raw.internetMessageId?.trim() || null, graphMessageId: row.providerMessageId };
+    if (!meta.internetMessageId) delete meta.internetMessageId;
+    let providerMessageId = row.providerMessageId;
     if (rawStore.allowed) {
-      await persistSyncedInboundMessage({
+      const persisted = await persistSyncedInboundMessage({
         where: {
           mailboxIdentityId_providerMessageId: {
             mailboxIdentityId,
@@ -303,7 +303,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
           toEmail: row.toEmail,
           subject: row.subject,
           bodyPreview: row.bodyPreview,
-          receivedAt: row.receivedAt,
+          receivedAt: raw.receivedDateTime && Number.isFinite(new Date(raw.receivedDateTime).getTime()) ? row.receivedAt : undefined,
           conversationId: row.conversationId,
           metadata: meta,
           ...(row.fullBody
@@ -316,14 +316,16 @@ export async function syncMicrosoftInboxForMailbox(input: {
               }
             : {}),
         },
-      }, meta);
+      }, meta, graphIdentity);
+      providerMessageId = persisted.providerMessageId;
     } else {
       rawCopiesWithheld += 1;
     }
     const replyResult = await processSyncedMessageForReply({
       clientId,
       mailboxIdentityId,
-      providerMessageId: row.providerMessageId,
+      providerMessageId,
+      graphIdentity,
       fromEmail: row.fromEmail,
       toEmail: row.toEmail,
       subject: row.subject,
@@ -338,6 +340,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
       inReplyToHeader: row.inReplyToHeader,
       internalDomains,
       requireThreadRefSenderMatch: replySenderGuard,
+      allowUnlinkedOptOut: rawStore.allowed,
     });
     if (replyResult.created) repliesLinked += 1;
     n += 1;
@@ -419,16 +422,10 @@ export async function syncGoogleInboxForMailbox(input: {
   let nextCursor: string | null = null;
   let rows: Awaited<ReturnType<typeof fetchGmailInboxMessagesForSync>>;
   try {
-    rows = await fetchGmailInboxMessagesForSync(access, {
-      maxResults: top, maxPages: 1, onContinuation: (cursor) => { nextCursor = cursor; },
-    });
-    const backlogCursor = mailbox.inboxSyncCursor || nextCursor;
-    if (backlogCursor) {
-      rows.push(...await fetchGmailInboxMessagesForSync(access, {
-        maxResults: top, cursor: backlogCursor, maxPages: 3,
-        onContinuation: (cursor) => { nextCursor = cursor; },
-      }));
-    }
+    const result = await readReplyFolders(mailbox.inboxSyncCursor, options =>
+      fetchGmailInboxMessagesForSync(access, { maxResults: top, ...options }), row => row.providerMessageId);
+    rows = result.rows;
+    nextCursor = result.cursor;
   } catch (e) {
     if (e instanceof InboxCursorExpiredError) {
       await prisma.clientMailboxIdentity.updateMany({ where: { id: mailbox.id, inboxSyncCursor: mailbox.inboxSyncCursor ?? null }, data: { inboxSyncCursor: null } });
@@ -570,6 +567,7 @@ export async function syncGoogleInboxForMailbox(input: {
       inReplyToHeader: row.inReplyToHeader,
       internalDomains,
       requireThreadRefSenderMatch: replySenderGuard,
+      allowUnlinkedOptOut: rawStore.allowed,
     });
     if (replyResult.created) repliesLinked += 1;
     n += 1;

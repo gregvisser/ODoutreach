@@ -172,6 +172,26 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
     );
   });
 
+  it("resolves a moved Microsoft message before fetching and caches against the original application row", async () => {
+    const receivedAt = new Date("2026-09-16T09:00Z");
+    inboundFindFirst.mockResolvedValue({ id: "m1", mailboxIdentityId: "mb1", providerMessageId: "old-id",
+      fromEmail: "prospect@example.test", receivedAt, metadata: { internetMessageId: "<inbound@example.test>", graphMessageId: "stale-id" } });
+    mailboxFindFirst.mockResolvedValue({ id: "mb1", provider: "MICROSOFT", connectionStatus: "CONNECTED",
+      email: "ops@acme.test", emailNormalized: "ops@acme.test" });
+    fetchMs.mockResolvedValue({ ok: true, providerMessageId: "moved-id",
+      normalized: { text: "Full message", contentType: "text", size: 12 }, rawContentType: "text" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ value: [{
+      id: "moved-id", internetMessageId: "<inbound@example.test>",
+      from: { emailAddress: { address: "prospect@example.test" } }, receivedDateTime: receivedAt.toISOString(),
+    }] }), { status: 200 })));
+    try {
+      expect((await fetchInboundMessageFullBody({ staff: STAFF, clientId: "client-a", inboundMessageId: "m1" })).ok).toBe(true);
+      expect(fetchMs).toHaveBeenCalledWith(expect.objectContaining({ providerMessageId: "moved-id" }));
+      expect(inboundUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "m1" } }));
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("routes GOOGLE provider through Gmail fetch helper", async () => {
     inboundFindFirst.mockResolvedValue({
       id: "m2",

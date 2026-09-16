@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { lockGraphMessageIdentity, type GraphMessageIdentity } from "@/server/mailbox/graph-message-identity";
 import { canApplyReplyMilestone } from "@/server/email/outbound/lifecycle";
 import { stopFollowUpsForLinkedReply } from "@/server/email-sequences/stop-follow-ups-on-reply";
 import { suppressReplyOptOut } from "@/server/mailbox/opt-out-detection";
@@ -16,8 +17,10 @@ export async function withReplyIdentityTransaction<T>(
   clientId: string,
   providerMessageId: string | null,
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  graphIdentity?: GraphMessageIdentity,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
+    if (graphIdentity) await lockGraphMessageIdentity(tx, graphIdentity);
     if (providerMessageId) {
       const identity = JSON.stringify([clientId, providerMessageId]);
       // Select an integer, not PostgreSQL's void lock result, for Prisma.

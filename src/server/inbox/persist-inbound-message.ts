@@ -1,19 +1,37 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
+import { lockGraphMessageIdentity, type GraphMessageIdentity } from "@/server/mailbox/graph-message-identity";
 import { appendReplyOutboundId, mergeHandlingIntoMetadata, readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
 
 /** Refresh provider fields without replacing operator-owned handling history. */
 export async function persistSyncedInboundMessage(
   args: Pick<Prisma.InboundMailboxMessageUpsertArgs, "where" | "create" | "update">,
   providerMetadata: Record<string, string | null | boolean>,
-): Promise<void> {
+  graphIdentity?: GraphMessageIdentity,
+): Promise<{ providerMessageId: string }> {
   // Providers never own this key, including if a future mapper adds it.
   const metadata = { ...providerMetadata };
   delete metadata.handling;
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
+    let canonicalArgs = args;
+    if (graphIdentity) {
+      await lockGraphMessageIdentity(tx, graphIdentity);
+      const matches = await tx.inboundMailboxMessage.findMany({ where: {
+        clientId: graphIdentity.clientId, mailboxIdentityId: graphIdentity.mailboxIdentityId,
+        ingestionSource: "MICROSOFT_GRAPH", fromEmail: graphIdentity.fromEmail,
+        receivedAt: new Date(graphIdentity.receivedAt),
+        metadata: { path: ["internetMessageId"], equals: graphIdentity.internetMessageId },
+      }, select: { id: true, providerMessageId: true }, take: 2 });
+      if (matches.length > 1) throw new Error("Microsoft message identity is ambiguous; administrator review required.");
+      if (matches[0]) {
+        const exact = await tx.inboundMailboxMessage.findUnique({ where: args.where, select: { id: true } });
+        if (exact && exact.id !== matches[0].id) throw new Error("Microsoft message identity conflicts with an existing message.");
+        canonicalArgs = { ...args, where: { id: matches[0].id } };
+      }
+    }
     const row = await tx.inboundMailboxMessage.upsert({
-      ...args, create: { ...args.create, metadata }, update: { ...args.update, metadata: undefined }, select: { id: true },
+      ...canonicalArgs, create: { ...args.create, metadata }, update: { ...args.update, metadata: undefined }, select: { id: true, providerMessageId: true },
     });
     // The upsert and patch hold the same row lock until commit. Merge against
     // the database value, not a snapshot read before an operator acted.
@@ -21,7 +39,8 @@ export async function persistSyncedInboundMessage(
       SET metadata = (CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata ELSE '{}'::jsonb END)
         || ${JSON.stringify(metadata)}::jsonb
       WHERE id = ${row.id}`;
-  });
+    return { providerMessageId: row.providerMessageId };
+  }, { isolationLevel: "ReadCommitted" });
 }
 
 /** Serialize manual handling and sent-reply bookkeeping on the stored message. */

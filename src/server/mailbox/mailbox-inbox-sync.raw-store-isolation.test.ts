@@ -116,9 +116,10 @@ function arrange(liveRowsForAddress: Array<typeof OWNER>, syncing: typeof OWNER)
   prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(mailboxRow(syncing));
   prismaMock.clientMailboxIdentity.findMany.mockResolvedValue(liveRowsForAddress);
   prismaMock.clientMailboxIdentity.update.mockResolvedValue({});
-  prismaMock.inboundMailboxMessage.upsert.mockResolvedValue({ id: "stored-message" });
+  prismaMock.inboundMailboxMessage.upsert.mockResolvedValue({ id: "stored-message", providerMessageId: "graph-msg-1" });
   prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock));
-  listGraphMock.mockResolvedValue([graphMessage()]);
+  listGraphMock.mockImplementation(async (_access, _address, options) =>
+    options.folder === "junk" ? [] : [graphMessage()]);
   getMicrosoftTokenMock.mockResolvedValue("access-token");
   bounceMock.mockResolvedValue({ suppressed: false, statusStamped: false });
   replyMock.mockResolvedValue({ created: true });
