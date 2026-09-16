@@ -58,6 +58,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare trusted Codex configuration
+        run: |
+          mkdir -p "$RUNNER_TEMP/odoutreach-codex"
+          cat > "$RUNNER_TEMP/odoutreach-codex/config.toml" <<'TOML'
+          [sandbox_workspace_write]
+          network_access = true
+          TOML
       - name: Run support agent with Codex
         uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1
         env:
@@ -79,5 +86,5 @@ jobs:
           effort: medium
           sandbox: workspace-write
           # The support scripts need network access for the production DB and gh.
-          codex-args: '["--config", "sandbox_workspace_write.network_access=true"]'
+          codex-home: ${{ runner.temp }}/odoutreach-codex
           safety-strategy: drop-sudo
