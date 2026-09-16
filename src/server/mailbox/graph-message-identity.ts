@@ -8,6 +8,11 @@ export type GraphMessageIdentity = {
   fromEmail: string; receivedAt: string;
 };
 
+/** A known historical conflict may hold one item without aborting other mail. */
+export class GraphMessageIdentityConflictError extends Error {
+  readonly code = "GRAPH_MESSAGE_IDENTITY_CONFLICT";
+}
+
 /** Only provider-supplied received time may participate in a move identity. */
 export function graphMessageIdentity(input: {
   clientId: string; mailboxIdentityId: string; internetMessageId?: string | null;
@@ -52,14 +57,14 @@ export async function canonicalGraphReplyId(tx: Prisma.TransactionClient, input:
     ] }, select: { id: true, providerMessageId: true, fromEmail: true, receivedAt: true, metadata: true,
       linkedOutbound: { select: { mailboxIdentityId: true } } }, take: 2,
   });
-  if (matches.length > 1) throw new Error("Microsoft reply identity is ambiguous; administrator review required.");
+  if (matches.length > 1) throw new GraphMessageIdentityConflictError("Microsoft reply identity is ambiguous; administrator review required.");
   const existing = matches[0];
   if (existing) {
     const savedMailbox = existing.linkedOutbound?.mailboxIdentityId ?? stringMetadata(existing.metadata, "mailboxIdentityId");
     if (normalizeEmail(existing.fromEmail) !== identity.fromEmail ||
         existing.receivedAt.toISOString() !== identity.receivedAt ||
         (savedMailbox && savedMailbox !== identity.mailboxIdentityId)) {
-      throw new Error("Microsoft reply identity conflicts with an existing reply.");
+      throw new GraphMessageIdentityConflictError("Microsoft reply identity conflicts with an existing reply.");
     }
     await tx.$executeRaw`UPDATE "InboundReply"
       SET metadata = (CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata ELSE '{}'::jsonb END)
@@ -76,7 +81,7 @@ export async function canonicalGraphReplyId(tx: Prisma.TransactionClient, input:
       linkedOutbound: { mailboxIdentityId: identity.mailboxIdentityId },
     }, select: { metadata: true } });
     if (legacy.some(row => !stringMetadata(row.metadata, "graphIdentity"))) {
-      throw new Error("Historical Microsoft reply identity needs verification before this mailbox can finish syncing.");
+      throw new GraphMessageIdentityConflictError("Historical Microsoft reply identity needs verification before this mailbox can finish syncing.");
     }
   }
   return input.providerMessageId;

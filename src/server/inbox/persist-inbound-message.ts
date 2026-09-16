@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
-import { lockGraphMessageIdentity, type GraphMessageIdentity } from "@/server/mailbox/graph-message-identity";
+import { GraphMessageIdentityConflictError, lockGraphMessageIdentity, type GraphMessageIdentity } from "@/server/mailbox/graph-message-identity";
 import { appendReplyOutboundId, mergeHandlingIntoMetadata, readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
 
 /** Refresh provider fields without replacing operator-owned handling history. */
@@ -23,10 +23,10 @@ export async function persistSyncedInboundMessage(
         receivedAt: new Date(graphIdentity.receivedAt),
         metadata: { path: ["internetMessageId"], equals: graphIdentity.internetMessageId },
       }, select: { id: true, providerMessageId: true }, take: 2 });
-      if (matches.length > 1) throw new Error("Microsoft message identity is ambiguous; administrator review required.");
+      if (matches.length > 1) throw new GraphMessageIdentityConflictError("Microsoft message identity is ambiguous; administrator review required.");
       if (matches[0]) {
         const exact = await tx.inboundMailboxMessage.findUnique({ where: args.where, select: { id: true } });
-        if (exact && exact.id !== matches[0].id) throw new Error("Microsoft message identity conflicts with an existing message.");
+        if (exact && exact.id !== matches[0].id) throw new GraphMessageIdentityConflictError("Microsoft message identity conflicts with an existing message.");
         canonicalArgs = { ...args, where: { id: matches[0].id } };
       }
     }
