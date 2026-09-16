@@ -58,11 +58,13 @@ test.describe("ordinary OpenDoors staff", () => {
     await expect(page.getByRole("status")).toHaveText("Brief saved.");
     await expect(page.getByRole("button", { name: "Save brief", exact: true })).toBeDisabled();
     await page.getByRole("link", { name: "Open saved brief", exact: true }).click();
-    await expect(page.getByLabel("Website", { exact: true })).toHaveValue("https://staff-onboarding.example.test");
-    await expect(page.getByLabel("Address line 1", { exact: true })).toHaveValue("1 Synthetic Road");
-    await expect(page.getByLabel("Work email", { exact: true })).toHaveValue("contact@example.test");
-    await expect(page.getByRole("button", { name: "Remove Synthetic region" })).toBeVisible();
-    await expect(page.getByLabel("Value proposition", { exact: true })).toHaveValue("Onboarding survives an unavailable suggestion service.");
+    // Ignore React's hidden streaming buffer outside the active main content.
+    const savedBrief = page.getByRole("main");
+    await expect(savedBrief.getByLabel("Website", { exact: true })).toHaveValue("https://staff-onboarding.example.test");
+    await expect(savedBrief.getByLabel("Address line 1", { exact: true })).toHaveValue("1 Synthetic Road");
+    await expect(savedBrief.getByLabel("Work email", { exact: true })).toHaveValue("contact@example.test");
+    await expect(savedBrief.getByRole("button", { name: "Remove Synthetic region" })).toBeVisible();
+    await expect(savedBrief.getByLabel("Value proposition", { exact: true })).toHaveValue("Onboarding survives an unavailable suggestion service.");
     expect((await pool.query('SELECT id FROM "ClientOnboarding" WHERE "clientId"=$1', [id])).rowCount).toBe(1);
     const denied = await page.request.post(`/api/clients/${id}/brief`, { headers: { Origin: "https://unrelated.example" }, data: { website: "https://must-not-save.example" } });
     expect(denied.status()).toBe(403);

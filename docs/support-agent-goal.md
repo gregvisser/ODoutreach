@@ -8,7 +8,9 @@ ODoutreach is effectively single-tenant for OpenDoors. Preserve staff access, on
 
 ## Runner and authentication
 
-The authoritative configuration is [.github/workflows/support-agent.yml](../.github/workflows/support-agent.yml). It runs on main only, hourly 08:00–18:00 UTC on weekdays, with manual dispatch, a 45-minute timeout and one-run concurrency.
+The authoritative configuration is [.github/workflows/support-agent.yml](../.github/workflows/support-agent.yml). It runs on main only, hourly 08:00–18:00 UTC on weekdays, with manual dispatch, a 45-minute timeout and one-run concurrency. Scheduled runs process tickets. Manual runs default to an `authentication-check`; select `process-tickets` deliberately when a ticket run is wanted.
+
+The workflow checks out the official Codex action at its pinned commit into a private ignored workspace directory, verifies that checkout, then applies `scripts/support-agent/adapt-codex-action.mjs` before invoking it locally. The adapter preserves the upstream setup, proxy, privilege and sandbox steps, while suppressing the final Codex command's stdout/stderr and setting `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` to `/dev/null` for that invocation. Public run history therefore contains only setup and exit diagnostics; detailed private agent output is intentionally unavailable there.
 
 Required repository secrets:
 - OPENAI_API_KEY: OpenAI API authentication for the official Codex action. This is separate from ChatGPT subscription access; never copy desktop session credentials into GitHub.
