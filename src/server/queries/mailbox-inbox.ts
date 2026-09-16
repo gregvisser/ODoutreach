@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { isInternalMail } from "@/lib/inbox/internal-mail";
 import { resolveInternalDomainsForClient } from "@/server/inbox/internal-domains";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 
 /**
  * Recent inbox messages for a client. F4 — internal staff mail (both ends on
@@ -27,7 +28,7 @@ export async function getRecentInboundMailboxMessagesForClient(
   const internalDomains =
     options.internalDomains ?? (await resolveInternalDomainsForClient(clientId));
   const rows = await prisma.inboundMailboxMessage.findMany({
-    where: { clientId },
+    where: { clientId, ...(displayCutoffDateFilter() ? { receivedAt: displayCutoffDateFilter() } : {}) },
     orderBy: { receivedAt: "desc" },
     // Over-fetch when filtering so a burst of internal noise doesn't starve
     // the list of genuine recent messages.

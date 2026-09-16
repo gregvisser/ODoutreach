@@ -9,6 +9,7 @@ import {
 import type { ReplyOwnershipState } from "@/lib/inbox/reply-ownership";
 import { resolveReplyOwnershipState } from "@/lib/inbox/reply-ownership";
 import { loadDisplayClaimsForSubjects } from "@/server/inbox/reply-claim";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 
 import type { ReplyClassification } from "@/generated/prisma/enums";
 
@@ -57,6 +58,7 @@ export async function loadClientOutreachReplies(
       clientId,
       matchMethod: { not: "UNLINKED" },
       linkedOutboundEmailId: { not: null },
+      ...(displayCutoffDateFilter() ? { receivedAt: displayCutoffDateFilter() } : {}),
     },
     orderBy: { receivedAt: "desc" },
     take: 200,

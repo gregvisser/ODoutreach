@@ -12,6 +12,7 @@ import {
   type RawMetricsCounts,
 } from "@/lib/reports/outreach-metrics";
 import { assertClientInAccessibleList } from "@/server/tenant/access";
+import { intersectDisplayWindow } from "@/lib/display-cutoff";
 
 /**
  * PR #132 / PR #136 — Per-client outreach metrics.
@@ -63,7 +64,7 @@ export async function loadClientOutreachMetrics(
   assertClientInAccessibleList(clientId, accessibleClientIds);
 
   const run = createLimiter(REPORT_QUERY_CONCURRENCY);
-  const byClient = await gatherRawCountsByClient([clientId], run, window);
+  const byClient = await gatherRawCountsByClient([clientId], run, intersectDisplayWindow(window));
   return deriveOutreachMetrics(byClient.get(clientId) ?? emptyRawCounts());
 }
 
@@ -100,7 +101,7 @@ export async function loadGlobalOutreachMetrics(
   const rawByClient = await gatherRawCountsByClient(
     clients.map((c) => c.id),
     run,
-    window,
+    intersectDisplayWindow(window),
   );
 
   const perClient: ClientMetricsRow[] = [];

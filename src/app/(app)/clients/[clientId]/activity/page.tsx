@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { displayHistoryLabel } from "@/lib/display-cutoff";
 
 import { ClientActivityTimelinePanel } from "@/components/activity/client-activity-timeline-panel";
 import { ClientOutreachRepliesPanel } from "@/components/activity/client-outreach-replies-panel";
@@ -121,7 +122,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
           <CardTitle className="text-base">Rates and delivery detail</CardTitle>
           <CardDescription>
             The rest of the picture behind the figures above — rates, and the
-            states that are not a completed send. All-time, based on verified
+            states that are not a completed send. {displayHistoryLabel()}, based on verified
             send proof only.
           </CardDescription>
         </CardHeader>

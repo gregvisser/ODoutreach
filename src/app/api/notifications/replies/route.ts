@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 import { tryGetOpensDoorsStaff } from "@/server/auth/staff";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 
@@ -34,6 +35,7 @@ export async function GET() {
       clientId: { in: accessible },
       matchMethod: { not: "UNLINKED" },
       linkedOutboundEmailId: { not: null },
+      receivedAt: displayCutoffDateFilter(),
     },
     orderBy: { receivedAt: "desc" },
     select: {

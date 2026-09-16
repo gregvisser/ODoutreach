@@ -183,6 +183,7 @@ export async function loadClientContactListDetail(
     prisma.inboundReply.findMany({
       where: {
         clientId,
+        receivedAt: displayCutoffDateFilter(),
         contactId: { in: contactIds },
         matchMethod: { not: "UNLINKED" },
         linkedOutboundEmailId: { not: null },
@@ -426,3 +427,4 @@ function humanizeStepSendBlockedReason(raw: string): string {
   }
   return raw;
 }
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";

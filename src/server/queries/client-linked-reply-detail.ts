@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 import { readHandlingStateFromMetadata } from "@/lib/inbox/inbound-message-handling";
 
 /**
@@ -87,7 +88,7 @@ export async function loadClientOrphanReplyDetail(args: {
 }): Promise<Pick<LinkedReplyDetail, "reply" | "handledAt" | "handledByName" | "handledByStaffUserId" | "inboundMailboxMessageId"> | null> {
   if (!args.clientId || !args.replyId) return null;
   const row = await prisma.inboundReply.findFirst({
-    where: { id: args.replyId, clientId: args.clientId, linkedOutboundEmailId: null },
+    where: { id: args.replyId, clientId: args.clientId, linkedOutboundEmailId: null, receivedAt: displayCutoffDateFilter() },
     select: {
       id: true, fromEmail: true, toEmail: true, subject: true, snippet: true,
       bodyPreview: true, receivedAt: true, matchMethod: true, ingestionSource: true,
@@ -122,6 +123,7 @@ export async function loadClientLinkedReplyDetail(args: {
       clientId,
       matchMethod: { not: "UNLINKED" },
       linkedOutboundEmailId: { not: null },
+      receivedAt: displayCutoffDateFilter(),
     },
     select: {
       id: true,

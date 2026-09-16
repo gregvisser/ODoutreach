@@ -19,6 +19,7 @@ import {
 } from "@/lib/email-sequences/sequence-send-execution-constants";
 import { maskEmailForDisplay } from "@/lib/unsubscribe/unsubscribe-token";
 import { INTERNAL_PROOF_METADATA_KIND } from "@/lib/mailboxes/internal-proof-send";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 
 /**
  * PR H — unified activity timeline loader.
@@ -63,6 +64,7 @@ export async function loadClientActivityTimeline(
   // F4 — the workspace's own domains, used to drop internal staff mail from
   // the activity feed (read-side only; historical rows are never deleted).
   const internalDomains = await resolveInternalDomainsForClient(clientId);
+  const cutoff = displayCutoffDateFilter();
 
   const [
     outbound,
@@ -77,7 +79,9 @@ export async function loadClientActivityTimeline(
     audits,
   ] = await Promise.all([
     prisma.outboundEmail.findMany({
-      where: { clientId },
+      where: cutoff
+        ? { clientId, OR: [{ sentAt: cutoff }, { sentAt: null, bouncedAt: cutoff }, { sentAt: null, bouncedAt: null, queuedAt: cutoff }, { sentAt: null, bouncedAt: null, queuedAt: null, createdAt: cutoff }] }
+        : { clientId },
       orderBy: { createdAt: "desc" },
       take: PER_SOURCE_LIMIT,
       select: {
@@ -96,7 +100,7 @@ export async function loadClientActivityTimeline(
       },
     }),
     prisma.inboundReply.findMany({
-      where: { clientId },
+      where: { clientId, ...(cutoff ? { receivedAt: cutoff } : {}) },
       orderBy: { receivedAt: "desc" },
       take: PER_SOURCE_LIMIT,
       select: {
@@ -109,7 +113,7 @@ export async function loadClientActivityTimeline(
       },
     }),
     prisma.inboundMailboxMessage.findMany({
-      where: { clientId },
+      where: { clientId, ...(cutoff ? { receivedAt: cutoff } : {}) },
       orderBy: { receivedAt: "desc" },
       take: PER_SOURCE_LIMIT,
       select: {
@@ -510,7 +514,8 @@ export async function loadClientActivityTimeline(
       ? events
       : events.filter((event) => isOutreachTimelineEvent(event.type));
 
-  return buildClientTimeline(visibleEvents, limit);
+  return buildClientTimeline(visibleEvents.filter(event =>
+    !cutoff || !isOutreachTimelineEvent(event.type) || event.occurredAt >= cutoff.gte), limit);
 }
 
 function severityToOutboundTitle(status: string, toEmail: string): string {

@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { assertClientInAccessibleList, whereInAccessibleClients } from "@/server/tenant/access";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 
 export async function listOutboundForStaff(
   accessibleClientIds: string[],
@@ -14,12 +15,15 @@ export async function listOutboundForStaff(
     assertClientInAccessibleList(filterClientId, accessibleClientIds);
   }
 
-  const where = filterClientId
+  const scope = filterClientId
     ? { clientId: filterClientId }
     : whereInAccessibleClients(accessibleClientIds);
+  const cutoff = displayCutoffDateFilter();
 
   return prisma.outboundEmail.findMany({
-    where,
+    where: cutoff
+      ? { ...scope, OR: [{ sentAt: cutoff }, { sentAt: null, createdAt: cutoff }] }
+      : scope,
     orderBy: [{ sentAt: "desc" }, { createdAt: "desc" }],
     take: 150,
     include: {
@@ -41,12 +45,12 @@ export async function listInboundForStaff(
     assertClientInAccessibleList(filterClientId, accessibleClientIds);
   }
 
-  const where = filterClientId
+  const scope = filterClientId
     ? { clientId: filterClientId }
     : whereInAccessibleClients(accessibleClientIds);
 
   return prisma.inboundReply.findMany({
-    where,
+    where: { ...scope, receivedAt: displayCutoffDateFilter() ?? undefined },
     orderBy: { receivedAt: "desc" },
     take: 150,
     include: {
