@@ -5,6 +5,9 @@ import { canonicalizeEmailForMatching, normalizeEmail } from "@/lib/normalize";
 import { classifyInboundReplyQuietly } from "@/server/ai/classify-inbound-reply";
 import { applyLinkedReplyEffects, withReplyIdentityTransaction } from "@/server/email/inbound/reply-processing";
 import { suppressReplyOptOut } from "./opt-out-detection";
+import { recordStandaloneOptOut } from "./standalone-opt-out";
+import { isStandaloneOptOut } from "@/lib/inbox/opt-out-detection";
+import { canonicalGraphReplyId, graphIdentityKey, type GraphMessageIdentity } from "./graph-message-identity";
 
 /**
  * After mailbox inbox sync upserts an InboundMailboxMessage, this function
@@ -129,6 +132,9 @@ export async function processSyncedMessageForReply(input: {
    * behaviour (thread-ref trusts In-Reply-To regardless of sender).
    */
   requireThreadRefSenderMatch?: boolean;
+  /** Only the owning workspace may retain unlinked removal requests. */
+  allowUnlinkedOptOut?: boolean;
+  graphIdentity?: GraphMessageIdentity;
 }): Promise<{ created: boolean; replyId?: string }> {
   const inReplyTo = input.inReplyToHeader?.trim() || null;
   const hasInReplyTo = inReplyTo !== null && inReplyTo.length > 0;
@@ -143,6 +149,13 @@ export async function processSyncedMessageForReply(input: {
   const looksLikeReplyBySubject = REPLY_FORWARD_PREFIX.test(subject);
 
   if (!hasInReplyTo && !looksLikeReplyBySubject) {
+    if (input.allowUnlinkedOptOut &&
+        !isInternalMail({ fromEmail: input.fromEmail, toEmail: input.toEmail, internalDomains: input.internalDomains ?? [] }) &&
+        isStandaloneOptOut(input.subject, input.bodyText ?? input.bodyPreview ?? input.snippet)) {
+      return withReplyIdentityTransaction(input.clientId, input.providerMessageId,
+        async tx => recordStandaloneOptOut(tx, { ...input,
+          providerMessageId: await canonicalGraphReplyId(tx, input) }), input.graphIdentity);
+    }
     // No In-Reply-To header AND subject doesn't look like a reply/forward —
     // this is fresh inbox mail, never an outreach reply.
     return { created: false };
@@ -169,10 +182,11 @@ export async function processSyncedMessageForReply(input: {
 
   const result = await withReplyIdentityTransaction<{ created: boolean; replyId?: string }>(
     input.clientId, input.providerMessageId, async (prisma) => {
+      const providerMessageId = await canonicalGraphReplyId(prisma, input);
       const existing = await prisma.inboundReply.findFirst({
         where: {
           clientId: input.clientId,
-          providerMessageId: input.providerMessageId,
+          providerMessageId,
         },
         select: { id: true, linkedOutboundEmailId: true, contactId: true, fromEmail: true,
           subject: true, bodyPreview: true, snippet: true, receivedAt: true },
@@ -258,6 +272,9 @@ export async function processSyncedMessageForReply(input: {
       // legacy contacted-address check only for opt-out protection. This runs
       // in the same transaction on retries, without fabricating a reply link.
       if (!outbound) {
+        if (input.allowUnlinkedOptOut && isStandaloneOptOut(input.subject, input.bodyText ?? input.bodyPreview ?? input.snippet)) {
+          return recordStandaloneOptOut(prisma, input);
+        }
         const candidates = await prisma.outboundEmail.findMany({
           where: {
             clientId: input.clientId,
@@ -293,7 +310,7 @@ export async function processSyncedMessageForReply(input: {
           clientId: input.clientId,
           contactId: outbound.contactId,
           linkedOutboundEmailId: outbound.id,
-          providerMessageId: input.providerMessageId,
+          providerMessageId,
           inReplyToProviderId: inReplyTo,
           fromEmail: from,
           toEmail: input.toEmail ? normalizeEmail(input.toEmail) : null,
@@ -303,6 +320,7 @@ export async function processSyncedMessageForReply(input: {
           receivedAt: input.receivedAt,
           ingestionSource: "mailbox_sync",
           matchMethod,
+          ...(input.graphIdentity ? { metadata: { graphIdentity: graphIdentityKey(input.graphIdentity) } } : {}),
         },
       });
 
@@ -318,7 +336,7 @@ export async function processSyncedMessageForReply(input: {
       });
 
       return { created: true, replyId: reply.id };
-    },
+    }, input.graphIdentity,
   );
   // Advisory classification is outside the transaction and never re-charged
   // when an existing reply is replayed to repair its protective effects.

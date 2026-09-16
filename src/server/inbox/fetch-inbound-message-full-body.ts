@@ -11,6 +11,7 @@ import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mai
 import { fetchMicrosoftInboundMessageFullBody } from "@/server/mailbox/microsoft-graph-message-body";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import { requireClientAccess } from "@/server/tenant/access";
+import { resolveGraphMessageId } from "@/server/mailbox/resolve-graph-message-id";
 
 export type FetchInboundFullBodyResult =
   | {
@@ -60,6 +61,9 @@ export async function fetchInboundMessageFullBody(input: {
       id: true,
       mailboxIdentityId: true,
       providerMessageId: true,
+      metadata: true,
+      fromEmail: true,
+      receivedAt: true,
     },
   });
   if (!message) {
@@ -113,6 +117,7 @@ export async function fetchInboundMessageFullBody(input: {
 
   if (mailbox.provider === "MICROSOFT") {
     let accessToken: string;
+    let providerMessageId: string;
     try {
       accessToken = await getMicrosoftGraphAccessTokenForMailbox(mailbox.id);
     } catch (e) {
@@ -122,10 +127,18 @@ export async function fetchInboundMessageFullBody(input: {
         error: e instanceof Error ? e.message : "Microsoft token error",
       };
     }
+    try {
+      providerMessageId = await resolveGraphMessageId({
+        accessToken, mailboxUserPrincipalName: mailbox.emailNormalized, message,
+      });
+    } catch (e) {
+      return { ok: false, errorCode: "MS_MESSAGE_IDENTITY_ERROR",
+        error: e instanceof Error ? e.message : "Microsoft could not identify this message." };
+    }
     const res = await fetchMicrosoftInboundMessageFullBody({
       accessToken,
       mailboxUserPrincipalName: mailbox.emailNormalized,
-      providerMessageId: message.providerMessageId,
+      providerMessageId,
     });
     if (!res.ok) {
       return classifyAndReturn({

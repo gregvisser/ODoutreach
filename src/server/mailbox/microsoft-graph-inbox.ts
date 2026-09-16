@@ -6,14 +6,15 @@ import { normalizeEmail } from "@/lib/normalize";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
-function isDeclaredInboxPath(pathname: string, mailbox: string): boolean {
+function isDeclaredInboxPath(pathname: string, mailbox: string, folder: string): boolean {
   let decoded: string;
   try { decoded = decodeURIComponent(pathname); } catch { return false; }
   // Graph may canonicalize slash keys to OData quoted keys, or return an
   // unescaped @. Compare the resource identity, not its URL spelling.
-  const match = decoded.match(/^\/v1\.0\/users(?:\/([^/]+)|\('((?:[^']|'')+)'\))\/mailFolders(?:\/inbox|\('inbox'\))\/messages\/?$/i);
+  const match = decoded.match(/^\/v1\.0\/users(?:\/([^/]+)|\('((?:[^']|'')+)'\))\/mailFolders(?:\/(inbox|junkemail)|\('(inbox|junkemail)'\))\/messages\/?$/i);
   const user = match?.[1] ?? match?.[2]?.replace(/''/g, "'");
-  return user !== undefined && normalizeEmail(user) === normalizeEmail(mailbox);
+  return user !== undefined && normalizeEmail(user) === normalizeEmail(mailbox) &&
+    (match?.[3] ?? match?.[4])?.toLowerCase() === folder;
 }
 
 export type MicrosoftGraphInboxListResponse = {
@@ -47,7 +48,8 @@ export async function listMicrosoftGraphInboxMessages(
 ): Promise<MicrosoftGraphMessage[]> {
   const top = Math.min(Math.max(options.top ?? 25, 1), 50);
   const userSeg = encodeURIComponent(mailboxUserPrincipalName.trim());
-  const url = new URL(`${GRAPH}/users/${userSeg}/mailFolders/inbox/messages`);
+  const folder = options.folder === "junk" ? "junkemail" : "inbox";
+  const url = new URL(`${GRAPH}/users/${userSeg}/mailFolders/${folder}/messages`);
   url.searchParams.set("$top", String(top));
   url.searchParams.set("$orderby", "receivedDateTime desc");
   url.searchParams.set(
@@ -73,7 +75,7 @@ export async function listMicrosoftGraphInboxMessages(
   while (next) {
     const pageUrl = new URL(next);
     // Never forward a mailbox token to a different host, user, or resource.
-    if (pageUrl.origin !== url.origin || !isDeclaredInboxPath(pageUrl.pathname, mailboxUserPrincipalName) ||
+    if (pageUrl.origin !== url.origin || !isDeclaredInboxPath(pageUrl.pathname, mailboxUserPrincipalName, folder) ||
         pageUrl.username || pageUrl.password || pageUrl.hash) {
       throw new Error("Graph inbox returned an unsafe continuation URL");
     }

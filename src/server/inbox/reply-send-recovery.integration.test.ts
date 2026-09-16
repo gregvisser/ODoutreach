@@ -58,6 +58,44 @@ async function configureLocalCalendar() {
   expect((await scheduleClientSendingCalendar(staff, "client", { timeZone: "America/Los_Angeles", weekdays: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1020 })).ok).toBe(true);
 }
 
+it.each([202, 502])("resolves a moved Microsoft message and makes exactly one reply POST (status %s)", async status => {
+  const receivedAt = new Date("2026-09-16T09:00Z");
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider: "MICROSOFT" } });
+  await prisma.inboundMailboxMessage.update({ where: { id: "message" }, data: {
+    receivedAt, metadata: { internetMessageId: "<incoming@example.test>", graphMessageId: "stale-folder-id" },
+  } });
+  transport.mockImplementationOnce(async () => new Response(JSON.stringify({ value: [{
+    id: "moved-folder-id", internetMessageId: "<incoming@example.test>",
+    from: { emailAddress: { address: "prospect@example.test" } }, receivedDateTime: receivedAt.toISOString(),
+  }] }), { status: 200 }));
+  transport.mockImplementationOnce(async () => new Response(null, { status }));
+  const result = await send();
+  expect(result).toMatchObject(status === 202 ? { ok: true } : { ok: false, errorCode: "REPLY_OUTCOME_UNCONFIRMED" });
+  const calls = vi.mocked(fetch).mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[0][1]?.method).toBeUndefined();
+  expect(calls[1][0]).toContain("/messages/moved-folder-id/reply");
+  expect(calls[1][1]?.method).toBe("POST");
+  expect((await prisma.inboundMailboxMessage.findUniqueOrThrow({ where: { id: "message" } })).providerMessageId).toBe("original-id");
+  if (status === 502) {
+    expect(await send()).toMatchObject({ ok: false, errorCode: "REPLY_OUTCOME_UNCONFIRMED" });
+    expect(transport).toHaveBeenCalledTimes(2);
+  }
+});
+
+it("does not dispatch a reply when moved-message identity is ambiguous", async () => {
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { provider: "MICROSOFT" } });
+  await prisma.inboundMailboxMessage.update({ where: { id: "message" }, data: {
+    metadata: { internetMessageId: "<incoming@example.test>", graphMessageId: "stale-folder-id" },
+  } });
+  transport.mockImplementationOnce(async () => new Response(JSON.stringify({ value: [] }), { status: 200 }));
+  expect(await send()).toMatchObject({ ok: false, safeToStartNewAttempt: true });
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(fetch).mock.calls[0][1]?.method).toBeUndefined();
+  expect(await prisma.outboundEmail.findFirstOrThrow()).toMatchObject({ status: "FAILED", dispatchStartedAt: null });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+});
+
 it.each((["GOOGLE", "MICROSOFT"] as const).flatMap(provider => [false, true].map(full => ({ provider, full }))))("rechecks $provider reply at local midnight with next day full=$full", async ({ provider, full }) => {
   await configureLocalCalendar();
   vi.setSystemTime(new Date("2026-09-08T06:59:50Z"));

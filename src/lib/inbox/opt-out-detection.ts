@@ -23,6 +23,13 @@ const QUOTE_MARKERS: RegExp[] = [
   /^sent\s+from\s+my\s+\w+/im, // mobile signature often precedes quote
 ];
 
+/** A newsletter's unsubscribe footer is not a removal request addressed to us. */
+export function isStandaloneOptOut(subject: string | null, body: string | null): boolean {
+  const heading = (subject ?? "").replace(/^(?:(?:re|fw|fwd)\s*:\s*)+/i, "").trim();
+  return /^(?:unsubscribe(?: me)?|stop|remove me)[.!\s]*$/i.test(heading) ||
+    /\bplease\s+(?:remove\s+(?:me|(?:my\s+)?email\s+address)\s+from|stop\s+(?:emailing|contacting)\s+me)\b/i.test(stripQuotedReply(body));
+}
+
 /** Keep only the new reply text (everything before the first quote marker). */
 export function stripQuotedReply(body: string | null | undefined): string {
   const text = typeof body === "string" ? body : "";

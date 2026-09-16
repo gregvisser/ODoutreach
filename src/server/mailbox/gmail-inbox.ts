@@ -214,7 +214,8 @@ export async function listGmailInboxMessageRefs(
   const max = Math.min(Math.max(options.maxResults ?? 25, 1), 50);
   const url = new URL(`${GMAIL}/users/me/messages`);
   url.searchParams.set("maxResults", String(max));
-  url.searchParams.set("labelIds", "INBOX");
+  url.searchParams.set("labelIds", options.folder === "junk" ? "SPAM" : "INBOX");
+  if (options.folder === "junk") url.searchParams.set("includeSpamTrash", "true");
   const refs: GmailApiMessageRef[] = [];
   const seenPages = new Set<string>();
   const seenMessages = new Set<string>();

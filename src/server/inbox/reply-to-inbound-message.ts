@@ -13,6 +13,7 @@ import {
 } from "@/server/mailbox/gmail-reply";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
 import { sendMicrosoftGraphReply } from "@/server/mailbox/microsoft-graph-reply";
+import { resolveGraphMessageId } from "@/server/mailbox/resolve-graph-message-id";
 import {
   humanizeGovernanceRejection,
   linkReservationToOutboundInTransaction,
@@ -324,13 +325,16 @@ export async function replyToInboundMailboxMessage(
       const accessToken = await getMicrosoftGraphAccessTokenForMailbox(
         mailbox.id,
       );
+      const providerMessageId = await resolveGraphMessageId({
+        accessToken, mailboxUserPrincipalName: mailbox.emailNormalized, message,
+      });
       const held = await beginReplyDispatch(outboundEmailId);
       if (held) return held;
       dispatchStarted = true;
       const result = await sendMicrosoftGraphReply({
         accessToken,
         mailboxUserPrincipalName: mailbox.emailNormalized,
-        providerMessageId: message.providerMessageId,
+        providerMessageId,
         bodyText: body,
         correlationId,
       });

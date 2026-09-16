@@ -7,6 +7,17 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 afterEach(() => vi.unstubAllGlobals());
 
 describe("inbox continuation", () => {
+  it("reads Graph Junk continuations without allowing a folder switch", async () => {
+    const next = "https://graph.microsoft.com/v1.0/users('sender@example.test')/mailFolders('junkemail')/messages?$skip=25";
+    const fetcher = vi.fn().mockResolvedValueOnce(response({ value: [], "@odata.nextLink": next }))
+      .mockResolvedValueOnce(response({ value: [{ id: "junk-reply" }] }));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await listMicrosoftGraphInboxMessages("token", "sender@example.test", { folder: "junk" })).toEqual([{ id: "junk-reply" }]);
+    expect(new URL(fetcher.mock.calls[0][0]).pathname).toContain("/mailFolders/junkemail/messages");
+    fetcher.mockClear().mockResolvedValue(response({ value: [], "@odata.nextLink": graphPage }));
+    await expect(listMicrosoftGraphInboxMessages("token", "sender@example.test", { folder: "junk" })).rejects.toThrow("unsafe");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it.each([
     "https://graph.microsoft.com/v1.0/users/sender@example.test/mailFolders/inbox/messages?$skip=25",
     "https://graph.microsoft.com/v1.0/users('sender@example.test')/mailFolders('inbox')/messages?$skip=25",
