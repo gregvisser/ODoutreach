@@ -4,7 +4,7 @@ import { InboxCursorExpiredError, readReplyFolders } from "./inbox-pagination";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { persistSyncedInboundMessage } from "@/server/inbox/persist-inbound-message";
-import { graphMessageIdentity } from "./graph-message-identity";
+import { GraphMessageIdentityConflictError, graphMessageIdentity } from "./graph-message-identity";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import { fetchGmailInboxMessagesForSync } from "@/server/mailbox/gmail-inbox";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
@@ -233,6 +233,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
   // Proves the NDR path did not just suppress but also stamped the row the
   // reported bounce rate counts — the half that was silently missing.
   let bouncesStamped = 0;
+  let identityConflicts = 0;
   for (const raw of items) {
     const row = mapGraphInboxMessageToRow(raw);
     if (!row) continue;
@@ -262,88 +263,107 @@ export async function syncMicrosoftInboxForMailbox(input: {
       skippedInternal += 1;
       continue;
     }
-    const graphIdentity = graphMessageIdentity({ clientId, mailboxIdentityId,
-      internetMessageId: raw.internetMessageId, fromEmail: row.fromEmail, receivedDateTime: raw.receivedDateTime });
-    const meta: Record<string, string | null | boolean> = { ...row.metadata,
-      internetMessageId: raw.internetMessageId?.trim() || null, graphMessageId: row.providerMessageId };
-    if (!meta.internetMessageId) delete meta.internetMessageId;
-    let providerMessageId = row.providerMessageId;
-    if (rawStore.allowed) {
-      const persisted = await persistSyncedInboundMessage({
-        where: {
-          mailboxIdentityId_providerMessageId: {
+    try {
+      const graphIdentity = graphMessageIdentity({ clientId, mailboxIdentityId,
+        internetMessageId: raw.internetMessageId, fromEmail: row.fromEmail, receivedDateTime: raw.receivedDateTime });
+      const meta: Record<string, string | null | boolean> = { ...row.metadata,
+        internetMessageId: raw.internetMessageId?.trim() || null, graphMessageId: row.providerMessageId };
+      if (!meta.internetMessageId) delete meta.internetMessageId;
+      let providerMessageId = row.providerMessageId;
+      if (rawStore.allowed) {
+        const persisted = await persistSyncedInboundMessage({
+          where: {
+            mailboxIdentityId_providerMessageId: {
+              mailboxIdentityId,
+              providerMessageId: row.providerMessageId,
+            },
+          },
+          create: {
+            clientId,
             mailboxIdentityId,
             providerMessageId: row.providerMessageId,
+            fromEmail: row.fromEmail,
+            toEmail: row.toEmail,
+            subject: row.subject,
+            snippet: row.snippet,
+            bodyPreview: row.bodyPreview,
+            receivedAt: row.receivedAt,
+            conversationId: row.conversationId,
+            metadata: meta,
+            ingestionSource: "MICROSOFT_GRAPH",
+            ...(row.fullBody
+              ? {
+                  bodyText: row.fullBody.bodyText,
+                  bodyContentType: row.fullBody.bodyContentType,
+                  fullBodySize: row.fullBody.fullBodySize,
+                  fullBodySource: row.fullBody.fullBodySource,
+                  fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+                }
+              : {}),
           },
-        },
-        create: {
-          clientId,
-          mailboxIdentityId,
-          providerMessageId: row.providerMessageId,
-          fromEmail: row.fromEmail,
-          toEmail: row.toEmail,
-          subject: row.subject,
-          snippet: row.snippet,
-          bodyPreview: row.bodyPreview,
-          receivedAt: row.receivedAt,
-          conversationId: row.conversationId,
-          metadata: meta,
-          ingestionSource: "MICROSOFT_GRAPH",
-          ...(row.fullBody
-            ? {
-                bodyText: row.fullBody.bodyText,
-                bodyContentType: row.fullBody.bodyContentType,
-                fullBodySize: row.fullBody.fullBodySize,
-                fullBodySource: row.fullBody.fullBodySource,
-                fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
-              }
-            : {}),
-        },
-        update: {
-          toEmail: row.toEmail,
-          subject: row.subject,
-          bodyPreview: row.bodyPreview,
-          receivedAt: raw.receivedDateTime && Number.isFinite(new Date(raw.receivedDateTime).getTime()) ? row.receivedAt : undefined,
-          conversationId: row.conversationId,
-          metadata: meta,
-          ...(row.fullBody
-            ? {
-                bodyText: row.fullBody.bodyText,
-                bodyContentType: row.fullBody.bodyContentType,
-                fullBodySize: row.fullBody.fullBodySize,
-                fullBodySource: row.fullBody.fullBodySource,
-                fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
-              }
-            : {}),
-        },
-      }, meta, graphIdentity);
-      providerMessageId = persisted.providerMessageId;
-    } else {
-      rawCopiesWithheld += 1;
+          update: {
+            toEmail: row.toEmail,
+            subject: row.subject,
+            bodyPreview: row.bodyPreview,
+            receivedAt: raw.receivedDateTime && Number.isFinite(new Date(raw.receivedDateTime).getTime()) ? row.receivedAt : undefined,
+            conversationId: row.conversationId,
+            metadata: meta,
+            ...(row.fullBody
+              ? {
+                  bodyText: row.fullBody.bodyText,
+                  bodyContentType: row.fullBody.bodyContentType,
+                  fullBodySize: row.fullBody.fullBodySize,
+                  fullBodySource: row.fullBody.fullBodySource,
+                  fullBodyFetchedAt: row.fullBody.fullBodyFetchedAt,
+                }
+              : {}),
+          },
+        }, meta, graphIdentity);
+        providerMessageId = persisted.providerMessageId;
+      } else {
+        rawCopiesWithheld += 1;
+      }
+      const replyResult = await processSyncedMessageForReply({
+        clientId,
+        mailboxIdentityId,
+        providerMessageId,
+        graphIdentity,
+        fromEmail: row.fromEmail,
+        toEmail: row.toEmail,
+        subject: row.subject,
+        snippet: row.snippet,
+        bodyPreview: row.bodyPreview,
+        // The full body, same source the bounce classifier above already uses.
+        // Without this, opt-out detection reads a ~240 character preview of an
+        // email that averages ~4,000 characters in production.
+        bodyText: row.fullBody?.bodyText ?? null,
+        receivedAt: row.receivedAt,
+        conversationId: row.conversationId,
+        inReplyToHeader: row.inReplyToHeader,
+        internalDomains,
+        requireThreadRefSenderMatch: replySenderGuard,
+        allowUnlinkedOptOut: rawStore.allowed,
+      });
+      if (replyResult.created) repliesLinked += 1;
+      n += 1;
+    } catch (error) {
+      if (!(error instanceof GraphMessageIdentityConflictError)) throw error;
+      // The failed transaction rolled back. Keep checking later Inbox/Junk
+      // items, but do not advance beyond any unresolved safety-relevant mail.
+      identityConflicts += 1;
     }
-    const replyResult = await processSyncedMessageForReply({
-      clientId,
-      mailboxIdentityId,
-      providerMessageId,
-      graphIdentity,
-      fromEmail: row.fromEmail,
-      toEmail: row.toEmail,
-      subject: row.subject,
-      snippet: row.snippet,
-      bodyPreview: row.bodyPreview,
-      // The full body, same source the bounce classifier above already uses.
-      // Without this, opt-out detection reads a ~240 character preview of an
-      // email that averages ~4,000 characters in production.
-      bodyText: row.fullBody?.bodyText ?? null,
-      receivedAt: row.receivedAt,
-      conversationId: row.conversationId,
-      inReplyToHeader: row.inReplyToHeader,
-      internalDomains,
-      requireThreadRefSenderMatch: replySenderGuard,
-      allowUnlinkedOptOut: rawStore.allowed,
+  }
+
+  if (identityConflicts) {
+    const error = `Checked ${n} of ${items.length} messages. ${identityConflicts} message(s) need an administrator to review duplicate or conflicting history. Other recovered replies were saved; older-message checking is paused at these records.`;
+    await prisma.clientMailboxIdentity.update({
+      where: { id: mailbox.id }, data: { lastSyncAt: new Date(), lastError: error },
     });
-    if (replyResult.created) repliesLinked += 1;
-    n += 1;
+    await auditMailboxConnectionChange({ staffUserId, clientId, mailboxId: mailbox.id,
+      metadata: { kind: "mailbox_inbox_sync", provider: "MICROSOFT", outcome: "partial",
+        errorCode: "GRAPH_MESSAGE_IDENTITY_CONFLICT", identityConflicts,
+        ingested: n, totalSeen: items.length, repliesLinked, backlogPending: true } });
+    return { ok: false, error };
   }
 
   // Compare-and-set prevents overlapping syncs from moving a newer cursor backwards.

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 import { syncMailboxInboxForMailbox } from "@/server/mailbox/mailbox-inbox-sync";
+import { reportError } from "@/lib/logger";
 
 export type InboxSyncActionResult =
   | { ok: true; ingested: number; totalSeen: number; backlogPending: boolean }
@@ -25,14 +26,21 @@ export async function syncMailboxInboxForMailboxAction(
     return { ok: false, error: e instanceof Error ? e.message : "Forbidden" };
   }
 
-  const r = await syncMailboxInboxForMailbox({
-    clientId,
-    mailboxIdentityId: mailboxId,
-    staffUserId: staff.id,
-  });
+  let r: Awaited<ReturnType<typeof syncMailboxInboxForMailbox>>;
+  try {
+    r = await syncMailboxInboxForMailbox({
+      clientId,
+      mailboxIdentityId: mailboxId,
+      staffUserId: staff.id,
+    });
+  } catch (error) {
+    reportError(error, { operation: "manual_mailbox_reply_sync", clientId, mailboxId });
+    r = { ok: false, error: "Reply checking could not finish. Replies already recovered are saved. Please try again; if this continues, ask an administrator to check this mailbox." };
+  }
   revalidatePath(`/clients/${clientId}`);
   revalidatePath(`/clients/${clientId}/activity`);
   revalidatePath(`/clients/${clientId}/mailboxes`);
+  revalidatePath("/replies");
   if (!r.ok) {
     return { ok: false, error: r.error };
   }

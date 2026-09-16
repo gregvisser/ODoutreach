@@ -201,3 +201,51 @@ it("does not construct a stable identity from missing or invalid provider time",
     expect(graphMessageIdentity({ ...identity, receivedDateTime })).toBeUndefined();
   }
 });
+
+it("holds duplicate historical raw messages but recovers later Junk mail and keeps the old cursor on replay", async () => {
+  vi.stubEnv("MAILBOX_COMPLAINT_DETECTION_ENABLED", "true");
+  const oldCursor = "https://graph.microsoft.com/v1.0/users/mailbox%40sender.test/mailFolders/inbox/messages?$skiptoken=history";
+  const nextCursor = oldCursor.replace("history", "later");
+  await prisma.clientMailboxIdentity.update({ where: { id: "mailbox" }, data: { inboxSyncCursor: oldCursor } });
+  await prisma.inboundMailboxMessage.createMany({ data: ["historical-one", "historical-two"].map(id => ({
+    id, clientId: "client", mailboxIdentityId: "mailbox", providerMessageId: id,
+    fromEmail: identity.fromEmail, receivedAt, ingestionSource: "MICROSOFT_GRAPH",
+    metadata: { internetMessageId: identity.internetMessageId, handling: { handledAt: "2026-09-15T09:00:00Z" } },
+  })) });
+  const historicalBefore = await prisma.inboundMailboxMessage.findMany({ orderBy: { id: "asc" } });
+  vi.mocked(fetch).mockImplementation(async url => {
+    const parsed = new URL(String(url));
+    if (parsed.pathname.includes("junkemail")) return new Response(JSON.stringify({ value: [{
+      id: "new-junk-id", internetMessageId: "<new-junk@example.test>",
+      from: { emailAddress: { address: identity.fromEmail } }, receivedDateTime: identity.receivedAt,
+      toRecipients: [{ emailAddress: { address: reply.toEmail } }], subject: "Unsubscribe",
+      bodyPreview: "Please remove me",
+    }] }), { status: 200 });
+    if (parsed.searchParams.get("$skiptoken") === "history") return new Response(JSON.stringify({
+      value: [{ id: "moved-historical-id", internetMessageId: identity.internetMessageId,
+        from: { emailAddress: { address: identity.fromEmail } }, receivedDateTime: identity.receivedAt,
+        toRecipients: [{ emailAddress: { address: reply.toEmail } }], subject: reply.subject, bodyPreview: "Thanks" }],
+      "@odata.nextLink": nextCursor,
+    }), { status: 200 });
+    return new Response(JSON.stringify({ value: [] }), { status: 200 });
+  });
+  let recoveredReplyId: string | undefined;
+  for (let run = 0; run < 2; run += 1) {
+    const result = await syncMicrosoftInboxForMailbox({ clientId: "client", mailboxIdentityId: "mailbox", staffUserId: null });
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("Checked 1 of 2 messages") });
+    const mailbox = await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "mailbox" } });
+    expect(mailbox).toMatchObject({ inboxSyncCursor: oldCursor, connectionStatus: "CONNECTED",
+      lastError: expect.stringContaining("duplicate or conflicting history") });
+    expect(mailbox.lastSyncAt).not.toBeNull();
+    expect(await prisma.inboundMailboxMessage.count()).toBe(3);
+    expect(await prisma.inboundMailboxMessage.findMany({ where: { id: { in: ["historical-one", "historical-two"] } }, orderBy: { id: "asc" } })).toEqual(historicalBefore);
+    expect(await prisma.inboundReply.count()).toBe(1);
+    const recovered = await prisma.inboundReply.findFirstOrThrow();
+    if (recoveredReplyId) expect(recovered.id).toBe(recoveredReplyId);
+    recoveredReplyId = recovered.id;
+    expect(recovered).toMatchObject({ providerMessageId: "new-junk-id", matchMethod: "UNLINKED" });
+  }
+  expect(await prisma.auditLog.count({ where: { entityType: "ClientMailboxIdentity",
+    metadata: { path: ["errorCode"], equals: "GRAPH_MESSAGE_IDENTITY_CONFLICT" } } })).toBe(2);
+  expect(await prisma.suppressedEmail.count({ where: { clientId: "client", email: identity.fromEmail } })).toBe(1);
+});
