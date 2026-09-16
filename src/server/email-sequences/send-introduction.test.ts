@@ -474,39 +474,27 @@ describe("sendSequenceStepBatch — governance gate", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("names the missing unsubscribe rail instead of the generic re-plan message when composition loses send-readiness at dispatch (row 106)", async () => {
-    // Row 99/cycle-107 root cause reproduced: a null Client.defaultSenderEmail
-    // means the composed BODY {{unsubscribe_link}} is empty at dispatch time,
-    // even though the plan-time classifier's placeholder fallback ("[unsubscribe
-    // link — provided at dispatch]") let the row through as READY. The mailbox
-    // pool's address is a working mailto rail, so the earlier, coarser
-    // governance gate is satisfied and this recipient reaches the real
-    // dispatch-time composeSequenceEmail check.
+  it.each([null, "legacy@other.example"])("queues an unsubscribe for the selected mailbox when client default is %s", async (defaultSenderEmail) => {
     mountSequence();
-    mountMailboxPool();
+    mountMailboxPool("selected@bidlow.co.uk");
     prismaMock.client.findUniqueOrThrow.mockResolvedValue({
       id: "c1",
       name: "Acme Corp",
       status: "ONBOARDING",
-      defaultSenderEmail: null,
+      defaultSenderEmail,
       launchApprovedAt: null,
       launchApprovalMode: null,
       onboarding: {
         formData: { senderCompanyName: "Acme", emailSignature: "Regards,\nAcme" },
       },
     } as never);
-    // Allowlisted recipient — governance for this row is not the thing under
-    // test; the point is that it clears governance and still gets blocked at
-    // composition time.
-    mountReadyRow("ada@bidlow.co.uk", "ss-lost-readiness");
-    // Pacing is a separate, unrelated gate that also runs inside the real
-    // transaction body this test exercises — switch it off so it can't hold
-    // the row back before composition is even reached.
+    mountReadyRow("ada@bidlow.co.uk", "ss-null-sender-dispatch");
     const origPacing = process.env.MAILBOX_SEND_PACING;
     process.env.MAILBOX_SEND_PACING = "false";
 
     try {
       const stepSendUpdate = vi.fn().mockResolvedValue({});
+      const outboundCreate = vi.fn().mockResolvedValue({ id: "outbound-1" });
       prismaMock.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) =>
           fn({
@@ -519,7 +507,9 @@ describe("sendSequenceStepBatch — governance gate", () => {
               create: vi.fn().mockResolvedValue({ id: "resv-1" }),
               update: vi.fn().mockResolvedValue({}),
             },
+            outboundEmail: { create: outboundCreate },
             clientEmailSequenceStepSend: { update: stepSendUpdate },
+            clientEmailSequenceEnrollment: { update: vi.fn().mockResolvedValue({}) },
           }),
       );
 
@@ -531,32 +521,92 @@ describe("sendSequenceStepBatch — governance gate", () => {
         confirmationPhrase: "SEND INTRODUCTION",
       });
 
-      expect(result.counts.queued).toBe(0);
-      expect(result.blocked).toHaveLength(1);
-
-      const reason = result.blocked[0].reason;
-      // The defect this row exists to fix: the generic message named no cause.
-      expect(reason).not.toBe(
-        "Composition lost send-readiness between planning and dispatch; re-plan.",
-      );
-      expect(reason.toLowerCase()).toContain("unsubscribe");
-      // Row 99 put the fix exactly here — the message must say so.
-      expect(reason).toContain("Mailboxes tab");
-      // Operator-facing: never the raw placeholder key.
-      expect(reason).not.toContain("{{");
-
-      // The guard itself must still refuse — this row changes the message,
-      // never whether the send is allowed.
-      expect(stepSendUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: "ss-lost-readiness" },
-          data: expect.objectContaining({ status: "BLOCKED", blockedReason: reason }),
-        }),
-      );
+      expect(result.counts.queued).toBe(1);
+      expect(result.blocked).toHaveLength(0);
+      expect(outboundCreate).toHaveBeenCalledTimes(1);
+      expect(outboundCreate.mock.calls[0][0].data).toMatchObject({
+        fromAddress: "selected@bidlow.co.uk",
+        bodySnapshot: expect.stringContaining(
+          "mailto:selected@bidlow.co.uk?subject=unsubscribe",
+        ),
+      });
     } finally {
       if (origPacing === undefined) delete process.env.MAILBOX_SEND_PACING;
       else process.env.MAILBOX_SEND_PACING = origPacing;
     }
+  });
+
+  it("keeps the aligned hosted unsubscribe path when the client default sender is null", async () => {
+    mountSequence();
+    mountMailboxPool("selected@bidlow.co.uk");
+    prismaMock.client.findUniqueOrThrow.mockResolvedValue({
+      id: "c1",
+      name: "Acme Corp",
+      status: "ACTIVE",
+      defaultSenderEmail: null,
+      launchApprovedAt: null,
+      launchApprovalMode: null,
+      outreachLinkDomain: "go.bidlow.co.uk",
+      outreachLinkDomainVerifiedAt: new Date("2026-01-01T00:00:00Z"),
+      onboarding: { formData: { senderCompanyName: "Acme", emailSignature: "Regards" } },
+    } as never);
+    mountReadyRow("ada@bidlow.co.uk", "ss-hosted-unsubscribe");
+    const outboundCreate = vi.fn().mockResolvedValue({ id: "outbound-hosted" });
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "m1" }]),
+      clientMailboxIdentity: { findFirst: vi.fn(async () => (await prismaMock.clientMailboxIdentity.findMany())[0]) },
+      clientSendingCalendar: { findMany: async () => [] },
+      mailboxSendReservation: {
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "resv-hosted" }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      outboundEmail: { create: outboundCreate },
+      unsubscribeToken: { create: vi.fn().mockResolvedValue({}) },
+      clientEmailSequenceStepSend: { update: vi.fn().mockResolvedValue({}) },
+      clientEmailSequenceEnrollment: { update: vi.fn().mockResolvedValue({}) },
+    };
+    prismaMock.$transaction.mockImplementation(async (fn: (value: unknown) => Promise<unknown>) => fn(tx));
+    const result = await sendSequenceStepBatch({
+      staff, clientId: "c1", sequenceId: "seq-1", category: "INTRODUCTION",
+      confirmationPhrase: "SEND INTRODUCTION",
+    });
+    expect(result.counts.queued).toBe(1);
+    expect(outboundCreate.mock.calls[0][0].data.bodySnapshot).toMatch(
+      /https:\/\/go\.bidlow\.co\.uk\/unsubscribe\//,
+    );
+  });
+
+  it("blocks when the selected mailbox disappears before dispatch", async () => {
+    mountSequence();
+    mountMailboxPool("selected@bidlow.co.uk");
+    mountClient({ status: "ACTIVE" });
+    mountReadyRow("ada@bidlow.co.uk", "ss-mailbox-missing");
+    const outboundCreate = vi.fn();
+    prismaMock.$transaction.mockImplementation(async (fn: (value: unknown) => Promise<unknown>) =>
+      fn({
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        clientMailboxIdentity: { findFirst: vi.fn().mockResolvedValue(null) },
+        clientSendingCalendar: { findMany: async () => [] },
+        mailboxSendReservation: {
+          count: vi.fn().mockResolvedValue(0),
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+        outboundEmail: { create: outboundCreate },
+        clientEmailSequenceStepSend: { update: vi.fn().mockResolvedValue({}) },
+        clientEmailSequenceEnrollment: { update: vi.fn().mockResolvedValue({}) },
+      }),
+    );
+    const result = await sendSequenceStepBatch({
+      staff, clientId: "c1", sequenceId: "seq-1", category: "INTRODUCTION",
+      confirmationPhrase: "SEND INTRODUCTION",
+    });
+    expect(result.counts.queued).toBe(0);
+    expect(result.blocked[0].reason).toContain("No mailbox capacity");
+    expect(outboundCreate).not.toHaveBeenCalled();
   });
 });
 

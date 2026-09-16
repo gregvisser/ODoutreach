@@ -1040,7 +1040,15 @@ export async function sendSequenceStepBatch(input: {
             // branch only ever affects allowlisted / governed-test
             // sends.
             let rawUnsubscribeToken: string | null = null;
-            let unsubscribeUrlForSend = fallbackUnsubscribeLink;
+            // The selected mailbox is the authoritative sender identity at
+            // dispatch time. When no aligned hosted domain is available, the
+            // mailto rail must target that same mailbox rather than the
+            // client's legacy default sender (which may be null or differ
+            // from the mailbox selected by the pool picker).
+            let unsubscribeUrlForSend =
+              alignedLinkBaseUrl === null
+                ? buildUnsubscribePlaceholder(m.email)
+                : fallbackUnsubscribeLink;
             let hostedUnsubscribeUrl: string | null = null;
             // H1 — the in-body link points at the confirmation PAGE
             // (`/unsubscribe/<token>`); the List-Unsubscribe HEADER points at
