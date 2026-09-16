@@ -149,8 +149,7 @@ export type SequenceStepSendFailureCode =
   | "TEMPLATE_NOT_APPROVED"
   | "NO_READY_ROWS"
   | "NO_MAILBOX_POOL"
-  | "NO_MAILBOX_CAPACITY"
-  | "HARD_CAP_EXCEEDED";
+  | "NO_MAILBOX_CAPACITY";
 
 /** Legacy alias — retained for D4e.2 typed-failure code unions. */
 export type SequenceIntroSendFailure = SequenceStepSendFailureCode;
@@ -445,10 +444,10 @@ export async function sendSequenceStepBatch(input: {
       status: "READY",
       outboundEmailId: null,
     },
-    // Limit to the hard cap + 1 so the caller sees that we rejected
-    // overflow rather than silently truncating.
-    take: SEQUENCE_INTRODUCTION_BATCH_CAP + 1,
-    orderBy: [{ createdAt: "asc" }],
+    // Staff launch one bounded batch; overflow stays READY for a later launch.
+    // Bulk preparation can give rows identical timestamps, so break ties by id.
+    take: SEQUENCE_INTRODUCTION_BATCH_CAP,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
       status: true,
@@ -488,13 +487,6 @@ export async function sendSequenceStepBatch(input: {
     throw new SequenceStepSendError(
       "NO_READY_ROWS",
       `No READY ${category} step-send records for this sequence. Re-run 'Prepare send records' for this step first.`,
-      category,
-    );
-  }
-  if (stepSendRows.length > SEQUENCE_INTRODUCTION_BATCH_CAP) {
-    throw new SequenceStepSendError(
-      "HARD_CAP_EXCEEDED",
-      `More than ${String(SEQUENCE_INTRODUCTION_BATCH_CAP)} READY records exist — re-plan a smaller batch or raise the cap deliberately.`,
       category,
     );
   }

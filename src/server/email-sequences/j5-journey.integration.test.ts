@@ -339,6 +339,61 @@ afterAll(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("J5 — enrol, launch, send, reply, opt-out", () => {
+  it("launches a bounded batch from 50 ready contacts and preserves the daily limit on repeat launches", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-09T12:00Z"));
+    const contacts = Array.from({ length: 49 }, (_, n) => ({
+      id: `j5-batch-contact-${String(n).padStart(2, "0")}`,
+      clientId: CLIENT_ID,
+      email: `batch${n}@prospect.example.test`,
+      emailDomain: "prospect.example.test",
+      firstName: "Batch",
+      lastName: `Contact ${n}`,
+      company: `Example company ${n}`,
+    }));
+    await prisma.contact.createMany({ data: contacts });
+    await prisma.contactListMember.createMany({ data: contacts.map(contact => ({
+      clientId: CLIENT_ID, contactListId: LIST_ID, contactId: contact.id,
+    })) });
+    await enrollSequenceContacts({ sequenceId: SEQUENCE_ID, clientId: CLIENT_ID, staffUserId: STAFF_ID });
+    const plan = await planSequenceStepSends({ clientId: CLIENT_ID, sequenceId: SEQUENCE_ID, stepId: STEP_ID, staffUserId: STAFF_ID });
+    expect(plan.counts.ready).toBe(50);
+    // Equal preparation timestamps exercise the stable id tie-break.
+    await prisma.clientEmailSequenceStepSend.updateMany({ data: { createdAt: new Date("2026-09-09T11:00Z") } });
+    const planned = await prisma.clientEmailSequenceStepSend.findMany({
+      where: { stepId: STEP_ID }, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    const staff = await loadStaff();
+    const launch = () => sendSequenceStepBatch({ staff, clientId: CLIENT_ID, sequenceId: SEQUENCE_ID,
+      category: "INTRODUCTION", confirmationPhrase: SEQUENCE_INTRO_SEND_CONFIRMATION_PHRASE });
+    const first = await launch();
+    expect(first.counts.queued).toBe(30);
+    expect(first.queued.map(row => row.stepSendId)).toEqual(planned.slice(0, 30).map(row => row.id));
+    const remaining = () => prisma.clientEmailSequenceStepSend.count({ where: { stepId: STEP_ID, status: "READY", outboundEmailId: null } });
+    expect(await remaining()).toBe(20);
+    expect(await prisma.outboundEmail.count()).toBe(30);
+    expect(await prisma.mailboxSendReservation.count()).toBe(30);
+
+    // Clicking again cannot exceed the sender's 30-per-day limit.
+    expect((await launch()).counts.queued).toBe(0);
+    expect(await remaining()).toBe(20);
+    expect(await prisma.outboundEmail.count()).toBe(30);
+    expect(await prisma.mailboxSendReservation.count()).toBe(30);
+
+    vi.setSystemTime(new Date("2026-09-10T12:00Z"));
+    const next = await launch();
+    expect(next.counts.queued).toBe(20);
+    expect(next.queued.map(row => row.stepSendId)).toEqual(planned.slice(30).map(row => row.id));
+    expect(await remaining()).toBe(0);
+    const outbounds = await prisma.outboundEmail.findMany();
+    expect(outbounds).toHaveLength(50);
+    expect(new Set(outbounds.map(row => row.toEmail)).size).toBe(50);
+    expect(await prisma.mailboxSendReservation.count()).toBe(50);
+    await expect(launch()).rejects.toMatchObject({ code: "NO_READY_ROWS" });
+    expect(await prisma.outboundEmail.count()).toBe(50);
+    expect(sentMessages).toHaveLength(0);
+  });
+
   it.each(["unchanged", "new-contact", "hard-bounce", "do-not-contact"])(
     "carries explicit re-engagement through delayed Human dispatch while enforcing %s history", async change => {
       vi.stubEnv("SEND_DISPATCH_RECHECK_ENABLED", "true");
