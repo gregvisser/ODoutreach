@@ -6,6 +6,7 @@ import {
   type ReportDetailMetricKey,
 } from "@/lib/reports/report-detail-metrics";
 import { assertClientInAccessibleList } from "@/server/tenant/access";
+import { intersectDisplayWindow } from "@/lib/display-cutoff";
 
 import type { MetricsWindow } from "./outreach-metrics";
 
@@ -66,7 +67,9 @@ export async function loadReportDetail(input: {
   }
 
   // Only apply the date window to metrics that are windowed in the counts.
-  const w = REPORT_DETAIL_METRICS[metric].windowed ? input.window : undefined;
+  const w = REPORT_DETAIL_METRICS[metric].windowed
+    ? intersectDisplayWindow(input.window)
+    : undefined;
   const scope: Scope = clientId
     ? { clientId }
     : { clientId: { in: accessibleClientIds } };

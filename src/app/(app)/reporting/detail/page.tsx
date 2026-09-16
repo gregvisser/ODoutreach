@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { displayHistoryLabel } from "@/lib/display-cutoff";
 
 import {
   Card,
@@ -96,7 +97,8 @@ export default async function ReportDetailPage({ searchParams }: Props) {
   const scopeLabel = clientFilter
     ? (clientRow?.name ?? "Selected client")
     : "All accessible clients";
-  const timeLabel = def.windowed ? (range ? range.label : "All-time") : "Live now";
+  const historyLabel = displayHistoryLabel();
+  const timeLabel = def.windowed ? (range ? `${range.label}${historyLabel === "All-time" ? "" : ` · ${historyLabel}`}` : historyLabel) : "Live now";
   const showClientColumn = !clientFilter;
 
   return (

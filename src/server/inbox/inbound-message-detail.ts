@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 import {
   readHandlingStateFromMetadata,
   type HandlingState,
@@ -63,7 +64,7 @@ export async function loadInboundMessageDetailForClient(
   if (!clientId || !messageId) return null;
 
   const message = await prisma.inboundMailboxMessage.findFirst({
-    where: { id: messageId, clientId },
+    where: { id: messageId, clientId, receivedAt: displayCutoffDateFilter() },
   });
   if (!message) return null;
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { displayHistoryLabel } from "@/lib/display-cutoff";
 
 import { ReportsDateRangePicker } from "@/components/reports/reports-date-range-picker";
 import {
@@ -78,7 +79,8 @@ export default async function ReportingPage({ searchParams }: Props) {
   const scopeLabel = clientFilter
     ? clients.find((c) => c.id === clientFilter)?.name ?? "Selected client"
     : "All accessible clients";
-  const timeLabel = range ? range.label : "All-time";
+  const historyLabel = displayHistoryLabel();
+  const timeLabel = range ? `${range.label}${historyLabel === "All-time" ? "" : ` · ${historyLabel}`}` : historyLabel;
   // Keep the active range on client-chip and table links so switching
   // client doesn't silently reset the dates.
   const rangeQuery = range ? `&from=${range.fromIso}&to=${range.toIso}` : "";

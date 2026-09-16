@@ -14,6 +14,7 @@ import {
   type TriagedReply,
 } from "@/lib/inbox/needs-a-person";
 import { loadDisplayClaimsForSubjects } from "@/server/inbox/reply-claim";
+import { displayCutoffDateFilter } from "@/lib/display-cutoff";
 
 /**
  * Load every reply across every accessible workspace that may still be owed a
@@ -77,6 +78,7 @@ export async function getRepliesNeedingAPerson(
     where: {
       clientId: { in: accessibleClientIds },
       handledAt: null,
+      ...(displayCutoffDateFilter() ? { receivedAt: displayCutoffDateFilter() } : {}),
       ...(before
         ? {
             OR: [
