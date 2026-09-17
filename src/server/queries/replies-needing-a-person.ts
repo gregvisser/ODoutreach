@@ -140,6 +140,7 @@ export async function getRepliesNeedingAPerson(
   if (providerMessageIds.length > 0) {
     const messages = await prisma.inboundMailboxMessage.findMany({
       where: {
+        supersededByMessageId: null,
         clientId: { in: accessibleClientIds },
         providerMessageId: { in: providerMessageIds },
       },

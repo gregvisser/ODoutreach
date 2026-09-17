@@ -792,6 +792,8 @@ model MailboxIdentitySecret {
 /// Inbox rows ingested from Microsoft Graph (delegated Mail.Read) — not ESP webhooks.
 model InboundMailboxMessage {
   id                     String    @id @default(cuid())
+  /// Reviewed pristine duplicate: retain this original, use only its canonical row.
+  supersededByMessageId  String?
   clientId               String
   mailboxIdentityId      String
   /// Microsoft Graph message id (id property)
@@ -833,8 +835,11 @@ model InboundMailboxMessage {
 
   client  Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   mailbox ClientMailboxIdentity @relation(fields: [mailboxIdentityId], references: [id], onDelete: Cascade)
+  supersededBy InboundMailboxMessage? @relation("InboundSupersession", fields: [supersededByMessageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  supersededMessages InboundMailboxMessage[] @relation("InboundSupersession")
 
   @@unique([mailboxIdentityId, providerMessageId])
+  @@index([supersededByMessageId])
   @@index([clientId, receivedAt])
   @@index([mailboxIdentityId, receivedAt])
 }

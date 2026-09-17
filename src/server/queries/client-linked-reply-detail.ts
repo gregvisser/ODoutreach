@@ -206,6 +206,7 @@ export async function loadClientLinkedReplyDetail(args: {
   if (reply.providerMessageId && reply.linkedOutbound.mailboxIdentityId) {
     const ibm = await prisma.inboundMailboxMessage.findFirst({
       where: {
+        supersededByMessageId: null,
         clientId,
         mailboxIdentityId: reply.linkedOutbound.mailboxIdentityId,
         providerMessageId: reply.providerMessageId,

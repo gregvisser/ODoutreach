@@ -195,6 +195,7 @@ export default async function ClientOutreachPage({
           connectedSendingCount: bundle.connectedSendingCount,
           aggregateRemainingToday: bundle.aggregateRemaining,
         }}
+        replyHealth={bundle.replyHealth}
         launchMailboxOptions={launchMailboxOptions}
         sequencePrepSnapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}

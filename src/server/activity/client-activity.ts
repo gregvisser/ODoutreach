@@ -113,7 +113,7 @@ export async function loadClientActivityTimeline(
       },
     }),
     prisma.inboundMailboxMessage.findMany({
-      where: { clientId, ...(cutoff ? { receivedAt: cutoff } : {}) },
+      where: { clientId, supersededByMessageId: null, ...(cutoff ? { receivedAt: cutoff } : {}) },
       orderBy: { receivedAt: "desc" },
       take: PER_SOURCE_LIMIT,
       select: {

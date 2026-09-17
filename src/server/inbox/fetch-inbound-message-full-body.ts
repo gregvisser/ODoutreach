@@ -56,7 +56,7 @@ export async function fetchInboundMessageFullBody(input: {
   await requireClientAccess(staff, clientId);
 
   const message = await prisma.inboundMailboxMessage.findFirst({
-    where: { id: inboundMessageId, clientId },
+    where: { id: inboundMessageId, clientId, supersededByMessageId: null },
     select: {
       id: true,
       mailboxIdentityId: true,
@@ -148,6 +148,7 @@ export async function fetchInboundMessageFullBody(input: {
       });
     }
     return persistFullBody({
+      clientId,
       messageId: message.id,
       bodyText: res.normalized.text,
       bodyContentType: res.normalized.contentType,
@@ -179,6 +180,7 @@ export async function fetchInboundMessageFullBody(input: {
       });
     }
     return persistFullBody({
+      clientId,
       messageId: message.id,
       bodyText: res.normalized.text,
       bodyContentType: res.normalized.contentType,
@@ -221,6 +223,7 @@ function classifyAndReturn(input: {
 }
 
 async function persistFullBody(input: {
+  clientId: string;
   messageId: string;
   bodyText: string;
   bodyContentType: string;
@@ -235,8 +238,8 @@ async function persistFullBody(input: {
     };
   }
   const fetchedAt = new Date();
-  await prisma.inboundMailboxMessage.update({
-    where: { id: input.messageId },
+  const saved = await prisma.inboundMailboxMessage.updateMany({
+    where: { id: input.messageId, clientId: input.clientId, supersededByMessageId: null },
     data: {
       bodyText: input.bodyText,
       bodyContentType: input.bodyContentType,
@@ -245,6 +248,10 @@ async function persistFullBody(input: {
       fullBodyFetchedAt: fetchedAt,
     },
   });
+  // The provider request runs outside a transaction. A reviewed mapping may
+  // have been installed meanwhile; never overwrite its retained original.
+  if (saved.count !== 1) return { ok: false, errorCode: "INBOUND_NOT_FOUND",
+    error: "This message is no longer available. Refresh the inbox before continuing." };
   return {
     ok: true,
     messageId: input.messageId,

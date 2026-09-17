@@ -25,7 +25,7 @@ const { prismaMock, getMicrosoftTokenMock, listGraphMock, auditMock, replyMock, 
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       inboundMailboxMessage: {
-        upsert: vi.fn(),
+        upsert: vi.fn(), findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null),
       },
     },
     getMicrosoftTokenMock: vi.fn(),

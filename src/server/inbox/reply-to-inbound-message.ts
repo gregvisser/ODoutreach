@@ -141,7 +141,7 @@ export async function replyToInboundMailboxMessage(
   }
 
   const message = await prisma.inboundMailboxMessage.findFirst({
-    where: { id: inboundMessageId, clientId },
+    where: { id: inboundMessageId, clientId, supersededByMessageId: null },
   });
   if (!message) {
     return {
@@ -226,7 +226,8 @@ export async function replyToInboundMailboxMessage(
       // separate from the advisory staff claim and held only while reserving.
       const locked = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM "InboundMailboxMessage"
-        WHERE id = ${inboundMessageId} AND "clientId" = ${clientId} FOR UPDATE`;
+        WHERE id = ${inboundMessageId} AND "clientId" = ${clientId}
+          AND "supersededByMessageId" IS NULL FOR UPDATE`;
       if (!locked.length) return { kind: "reserve_fail", errorCode: "INBOUND_NOT_FOUND", error: "That message is no longer available." };
       // Recheck after acquiring the lock: another request may have committed
       // while this one waited. This deduplication spans UTC ledger windows.
@@ -522,8 +523,10 @@ async function finaliseReplySent(input: {
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     // Match reservation's lock order: message, outbound record, mailbox ledger.
-    await tx.$queryRaw`SELECT id FROM "InboundMailboxMessage"
-      WHERE id = ${input.inboundMessageId} AND "clientId" = ${input.clientId} FOR UPDATE`;
+    const active = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "InboundMailboxMessage"
+      WHERE id = ${input.inboundMessageId} AND "clientId" = ${input.clientId}
+        AND "supersededByMessageId" IS NULL FOR UPDATE`;
+    if (!active.length) throw new Error("Inbound message is no longer active");
     const sent = await tx.outboundEmail.updateMany({
       where: {
         id: input.outboundEmailId,

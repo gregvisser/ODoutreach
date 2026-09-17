@@ -7,10 +7,8 @@ import { format } from "date-fns";
 
 import { syncMailboxInboxForMailboxAction } from "@/app/(app)/clients/mailbox-inbox-actions";
 import { Button } from "@/components/ui/button";
-import {
-  formatMailboxLastChecked,
-  replySyncButtonLabel,
-} from "@/lib/inbox/reply-sync-copy";
+import { replySyncButtonLabel } from "@/lib/inbox/reply-sync-copy";
+import { formatReplyCheckAttempt } from "@/lib/inbox/reply-health";
 import {
   Table,
   TableBody,
@@ -38,6 +36,7 @@ type Mbox = {
   label: string;
   provider: "MICROSOFT" | "GOOGLE";
   lastSyncAt: string | null;
+  replySyncNeedsAttention: boolean;
 };
 
 type Props = {
@@ -135,8 +134,13 @@ export function ClientMailboxInboxPanel({
                   {replySyncButtonLabel(m)}
                 </Button>
                 <span className="text-xs text-muted-foreground">
-                  Last checked: {formatMailboxLastChecked(m.lastSyncAt)}
+                  {formatReplyCheckAttempt(m.lastSyncAt)}
                 </span>
+                {m.replySyncNeedsAttention ? (
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    Reply check needs attention
+                  </span>
+                ) : null}
               </div>
             );
           })}

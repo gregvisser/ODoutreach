@@ -31,7 +31,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     inboundMailboxMessage: {
       findFirst: inboundFindFirst,
-      update: inboundUpdate,
+      updateMany: inboundUpdate,
     },
     clientMailboxIdentity: { findFirst: mailboxFindFirst },
   },
@@ -62,7 +62,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
   beforeEach(() => {
     inboundFindFirst.mockReset();
     mailboxFindFirst.mockReset();
-    inboundUpdate.mockReset();
+    inboundUpdate.mockReset().mockResolvedValue({ count: 1 });
     requireAccess.mockClear();
     getMsToken.mockClear();
     getGoogleToken.mockClear();
@@ -82,7 +82,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
     expect(requireAccess).toHaveBeenCalledWith(STAFF, "client-a");
     expect(inboundFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "msg-x", clientId: "client-a" },
+        where: { id: "msg-x", clientId: "client-a", supersededByMessageId: null },
       }),
     );
     expect(inboundUpdate).not.toHaveBeenCalled();
@@ -160,7 +160,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
     );
     expect(inboundUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "m1" },
+        where: { id: "m1", clientId: "client-a", supersededByMessageId: null },
         data: expect.objectContaining({
           bodyText: "Hello Greg",
           bodyContentType: "text",
@@ -187,7 +187,7 @@ describe("fetchInboundMessageFullBody (PR P)", () => {
     try {
       expect((await fetchInboundMessageFullBody({ staff: STAFF, clientId: "client-a", inboundMessageId: "m1" })).ok).toBe(true);
       expect(fetchMs).toHaveBeenCalledWith(expect.objectContaining({ providerMessageId: "moved-id" }));
-      expect(inboundUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "m1" } }));
+      expect(inboundUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "m1", clientId: "client-a", supersededByMessageId: null } }));
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { vi.unstubAllGlobals(); }
   });

@@ -64,7 +64,7 @@ export async function loadInboundMessageDetailForClient(
   if (!clientId || !messageId) return null;
 
   const message = await prisma.inboundMailboxMessage.findFirst({
-    where: { id: messageId, clientId, receivedAt: displayCutoffDateFilter() },
+    where: { id: messageId, clientId, supersededByMessageId: null, receivedAt: displayCutoffDateFilter() },
   });
   if (!message) return null;
 
