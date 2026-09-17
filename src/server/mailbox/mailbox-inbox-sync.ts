@@ -4,7 +4,7 @@ import { InboxCursorExpiredError, readReplyFolders } from "./inbox-pagination";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { persistSyncedInboundMessage } from "@/server/inbox/persist-inbound-message";
-import { GraphMessageIdentityConflictError, graphMessageIdentity } from "./graph-message-identity";
+import { GraphMessageIdentityConflictError, graphMessageIdentity, sanitizeGraphIdentityConflictReason, type GraphMessageIdentityConflictReason } from "./graph-message-identity";
 import { getGoogleGmailAccessTokenForMailbox } from "@/server/mailbox/google-mailbox-access";
 import { fetchGmailInboxMessagesForSync } from "@/server/mailbox/gmail-inbox";
 import { getMicrosoftGraphAccessTokenForMailbox } from "@/server/mailbox/microsoft-mailbox-access";
@@ -234,6 +234,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
   // reported bounce rate counts — the half that was silently missing.
   let bouncesStamped = 0;
   let identityConflicts = 0;
+  const identityConflictReasons: Partial<Record<GraphMessageIdentityConflictReason, number>> = {};
   for (const raw of items) {
     const row = mapGraphInboxMessageToRow(raw);
     if (!row) continue;
@@ -351,6 +352,8 @@ export async function syncMicrosoftInboxForMailbox(input: {
       // The failed transaction rolled back. Keep checking later Inbox/Junk
       // items, but do not advance beyond any unresolved safety-relevant mail.
       identityConflicts += 1;
+      const reason = sanitizeGraphIdentityConflictReason(error.reason);
+      identityConflictReasons[reason] = (identityConflictReasons[reason] ?? 0) + 1;
     }
   }
 
@@ -361,7 +364,7 @@ export async function syncMicrosoftInboxForMailbox(input: {
     });
     await auditMailboxConnectionChange({ staffUserId, clientId, mailboxId: mailbox.id,
       metadata: { kind: "mailbox_inbox_sync", provider: "MICROSOFT", outcome: "partial",
-        errorCode: "GRAPH_MESSAGE_IDENTITY_CONFLICT", identityConflicts,
+        errorCode: "GRAPH_MESSAGE_IDENTITY_CONFLICT", identityConflicts, identityConflictReasons,
         ingested: n, totalSeen: items.length, repliesLinked, backlogPending: true } });
     return { ok: false, error };
   }

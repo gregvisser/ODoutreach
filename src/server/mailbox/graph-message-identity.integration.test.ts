@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
 import { persistSyncedInboundMessage, recordInboundMessageHandling } from "@/server/inbox/persist-inbound-message";
-import { graphMessageIdentity, type GraphMessageIdentity } from "./graph-message-identity";
+import { graphIdentityKey, graphMessageIdentity, type GraphMessageIdentity } from "./graph-message-identity";
 import { processSyncedMessageForReply } from "./process-synced-replies";
 import { syncMicrosoftInboxForMailbox } from "./mailbox-inbox-sync";
 
@@ -120,8 +120,37 @@ it("rejects ambiguous historical identity without mutating either row", async ()
   await prisma.inboundMailboxMessage.create({ data: { clientId: "client", mailboxIdentityId: "mailbox",
     providerMessageId: "duplicate", fromEmail: identity.fromEmail, receivedAt, ingestionSource: "MICROSOFT_GRAPH",
     metadata: { internetMessageId: identity.internetMessageId } } });
-  await expect(persist("moved")).rejects.toThrow("ambiguous");
+  await expect(persist("moved")).rejects.toMatchObject({ code: "GRAPH_MESSAGE_IDENTITY_CONFLICT", reason: "RAW_AMBIGUITY", message: expect.stringContaining("ambiguous") });
   expect(await prisma.inboundMailboxMessage.count()).toBe(2);
+});
+
+it("distinguishes an exact provider collision from raw ambiguity without changing either row", async () => {
+  await persist("canonical");
+  await prisma.inboundMailboxMessage.create({ data: { clientId: "client", mailboxIdentityId: "mailbox",
+    providerMessageId: "incoming", fromEmail: "different@example.test", receivedAt,
+    metadata: { internetMessageId: "<different@example.test>" } } });
+  const before = await prisma.inboundMailboxMessage.findMany({ orderBy: { id: "asc" } });
+  await expect(persist("incoming")).rejects.toMatchObject({ code: "GRAPH_MESSAGE_IDENTITY_CONFLICT", reason: "RAW_PROVIDER_CONFLICT" });
+  expect(await prisma.inboundMailboxMessage.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+});
+
+it("identifies ambiguous replies without mutating their saved history", async () => {
+  await prisma.inboundReply.createMany({ data: ["reply-one", "reply-two"].map(providerMessageId => ({
+    clientId: "client", fromEmail: identity.fromEmail, receivedAt, providerMessageId,
+    metadata: { graphIdentity: graphIdentityKey(identity) },
+  })) });
+  const before = await prisma.inboundReply.findMany({ orderBy: { id: "asc" } });
+  await expect(processSyncedMessageForReply({ ...reply, providerMessageId: "incoming", graphIdentity: identity }))
+    .rejects.toMatchObject({ code: "GRAPH_MESSAGE_IDENTITY_CONFLICT", reason: "REPLY_AMBIGUITY" });
+  expect(await prisma.inboundReply.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+});
+
+it("identifies a conflicting reply identity without reassociating it", async () => {
+  const saved = await prisma.inboundReply.create({ data: { clientId: "client", fromEmail: "different@example.test",
+    receivedAt, providerMessageId: "incoming", linkedOutboundEmailId: "outbound" } });
+  await expect(processSyncedMessageForReply({ ...reply, providerMessageId: "incoming", graphIdentity: identity }))
+    .rejects.toMatchObject({ code: "GRAPH_MESSAGE_IDENTITY_CONFLICT", reason: "REPLY_IDENTITY_CONFLICT" });
+  expect(await prisma.inboundReply.findUniqueOrThrow({ where: { id: saved.id } })).toEqual(saved);
 });
 
 it("reuses the same standalone removal review item after a folder move", async () => {
@@ -163,7 +192,9 @@ it("deduplicates non-owner linked replies under concurrency without retaining ra
 it("holds an ambiguous historical non-owner reply rather than guessing or duplicating it", async () => {
   await processSyncedMessageForReply({ ...reply, providerMessageId: "old-id", allowUnlinkedOptOut: false });
   await expect(processSyncedMessageForReply({ ...reply, providerMessageId: "moved-id",
-    graphIdentity: identity, allowUnlinkedOptOut: false })).rejects.toThrow("needs verification");
+    graphIdentity: identity, allowUnlinkedOptOut: false })).rejects.toMatchObject({
+      code: "GRAPH_MESSAGE_IDENTITY_CONFLICT", reason: "LEGACY_REPLY_UNVERIFIED", message: expect.stringContaining("needs verification"),
+    });
   expect(await prisma.inboundReply.count()).toBe(1);
   expect(await prisma.inboundMailboxMessage.count()).toBe(0);
   // A provider-backed exact-ID replay safely enriches the historical row.
@@ -247,5 +278,45 @@ it("holds duplicate historical raw messages but recovers later Junk mail and kee
   }
   expect(await prisma.auditLog.count({ where: { entityType: "ClientMailboxIdentity",
     metadata: { path: ["errorCode"], equals: "GRAPH_MESSAGE_IDENTITY_CONFLICT" } } })).toBe(2);
+  const audits = await prisma.auditLog.findMany({ where: { entityType: "ClientMailboxIdentity",
+    metadata: { path: ["errorCode"], equals: "GRAPH_MESSAGE_IDENTITY_CONFLICT" } }, select: { metadata: true } });
+  for (const audit of audits) {
+    expect(audit.metadata).toMatchObject({ identityConflicts: 1, identityConflictReasons: { RAW_AMBIGUITY: 1 } });
+    const serialized = JSON.stringify(audit.metadata);
+    for (const privateValue of ["historical-one", "historical-two", "moved-historical-id", identity.internetMessageId, identity.fromEmail, "Thanks"]) {
+      expect(serialized).not.toContain(privateValue);
+    }
+  }
   expect(await prisma.suppressedEmail.count({ where: { clientId: "client", email: identity.fromEmail } })).toBe(1);
+});
+
+it("aggregates multiple raw and reply conflict reasons while holding the cursor", async () => {
+  vi.stubEnv("MAILBOX_COMPLAINT_DETECTION_ENABLED", "false");
+  await prisma.inboundMailboxMessage.createMany({ data: ["raw-one", "raw-two"].map(id => ({
+    id, clientId: "client", mailboxIdentityId: "mailbox", providerMessageId: id,
+    fromEmail: identity.fromEmail, receivedAt, metadata: { internetMessageId: identity.internetMessageId },
+  })) });
+  await prisma.inboundReply.create({ data: { clientId: "client", providerMessageId: "conflicting-reply",
+    fromEmail: "different@example.test", receivedAt, linkedOutboundEmailId: "outbound" } });
+  vi.mocked(fetch).mockImplementation(async url => new Response(JSON.stringify({ value: String(url).includes("junkemail") ? [] : [
+    { id: "raw-one", internetMessageId: identity.internetMessageId },
+    { id: "raw-two", internetMessageId: identity.internetMessageId },
+    { id: "conflicting-reply", internetMessageId: "<second@example.test>" },
+  ].map(message => ({ ...message, from: { emailAddress: { address: identity.fromEmail } },
+    receivedDateTime: identity.receivedAt, subject: reply.subject, bodyPreview: "PRIVATE BODY",
+    toRecipients: [{ emailAddress: { address: reply.toEmail } }],
+    internetMessageHeaders: [{ name: "In-Reply-To", value: reply.inReplyToHeader }],
+  })) }), { status: 200 }));
+  expect((await syncMicrosoftInboxForMailbox({ clientId: "client", mailboxIdentityId: "mailbox", staffUserId: null })).ok).toBe(false);
+  const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: "ClientMailboxIdentity",
+    metadata: { path: ["errorCode"], equals: "GRAPH_MESSAGE_IDENTITY_CONFLICT" } } });
+  expect(audit.metadata).toMatchObject({ identityConflicts: 3,
+    identityConflictReasons: { RAW_AMBIGUITY: 2, REPLY_IDENTITY_CONFLICT: 1 } });
+  const metadata = audit.metadata as { identityConflicts: number; identityConflictReasons: Record<string, number> };
+  expect(Object.values(metadata.identityConflictReasons).reduce((sum, count) => sum + count, 0)).toBe(metadata.identityConflicts);
+  for (const privateValue of ["raw-one", "raw-two", "conflicting-reply", "PRIVATE BODY", identity.fromEmail, identity.internetMessageId]) {
+    expect(JSON.stringify(audit.metadata)).not.toContain(privateValue);
+  }
+  expect(await prisma.clientMailboxIdentity.findUniqueOrThrow({ where: { id: "mailbox" } })).toMatchObject({ inboxSyncCursor: null, connectionStatus: "CONNECTED" });
+  expect(await prisma.inboundReply.count()).toBe(1);
 });
