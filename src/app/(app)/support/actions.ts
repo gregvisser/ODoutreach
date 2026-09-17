@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import type { SupportTicketPriority } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { isResolutionNoteReady, MIN_RESOLUTION_NOTE_LENGTH } from "@/lib/support/support-labels";
+import { resolveSupportTicketWithNotification } from "@/server/support/resolve-support-ticket";
+import { retryFailedSupportTicketNotification } from "@/server/support/support-ticket-notifications";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 export type SupportActionResult =
@@ -114,10 +116,7 @@ export async function resolveSupportTicket(input: {
     select: { id: true, status: true },
   });
   if (!existing) return { ok: false, error: "Ticket not found." };
-  if (existing.status === "RESOLVED") {
-    return { ok: false, error: "This ticket is already resolved." };
-  }
-
+  if (existing.status === "RESOLVED") return { ok: false, error: "This ticket is already resolved." };
   const resolutionNote = input.resolutionNote.trim();
   if (!isResolutionNoteReady(resolutionNote)) {
     return {
@@ -126,16 +125,36 @@ export async function resolveSupportTicket(input: {
     };
   }
 
-  await prisma.supportTicket.update({
-    where: { id: existing.id },
-    data: {
-      status: "RESOLVED",
-      resolvedAt: new Date(),
-      resolutionNote,
-    },
-  });
+  try {
+    await resolveSupportTicketWithNotification({ ticketId: input.ticketId, resolutionNote });
+  } catch (error) {
+    if (error instanceof Error && error.message === "ticket-not-found") return { ok: false, error: "Ticket not found." };
+    if (error instanceof Error && error.message === "already-resolved") return { ok: false, error: "This ticket is already resolved." };
+    if (error instanceof Error && error.message === "ticket-changed-before-resolution") return { ok: false, error: "The ticket changed before it could be resolved. Refresh and try again." };
+    throw error;
+  }
   revalidatePath("/support");
-  revalidatePath(`/support/${existing.id}`);
+  revalidatePath(`/support/${input.ticketId}`);
+  return { ok: true };
+}
+
+/** Retry a definite provider failure for the current resolution cycle. */
+export async function retrySupportTicketNotification(input: {
+  ticketId: string;
+}): Promise<SupportActionResult> {
+  const staff = await requireOpensDoorsStaff();
+  if (!staff.isSuperAdmin) return { ok: false, error: "Only the owner account can retry reporter notifications." };
+  const ticket = await prisma.supportTicket.findUnique({
+    where: { id: input.ticketId },
+    select: { id: true, status: true, notifications: { orderBy: { resolutionVersion: "desc" }, take: 1, select: { id: true, status: true } } },
+  });
+  if (!ticket) return { ok: false, error: "Ticket not found." };
+  if (ticket.status !== "RESOLVED" || ticket.notifications[0]?.status !== "FAILED") {
+    return { ok: false, error: "Only a definite failed reporter notification can be retried. Unknown provider outcomes require inspection first." };
+  }
+  const retried = await retryFailedSupportTicketNotification(ticket.notifications[0].id);
+  if (!retried) return { ok: false, error: "The notification changed before it could be retried. Refresh and inspect its current state." };
+  revalidatePath(`/support/${ticket.id}`);
   return { ok: true };
 }
 
@@ -190,17 +209,18 @@ export async function reopenSupportTicket(input: {
   }
   const existing = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, resolutionVersion: true },
   });
   if (!existing) return { ok: false, error: "Ticket not found." };
   if (existing.status !== "RESOLVED") {
     return { ok: false, error: "Only a resolved ticket can be reopened." };
   }
 
-  await prisma.supportTicket.update({
-    where: { id: existing.id },
-    data: { status: "OPEN", resolvedAt: null, resolutionNote: null },
+  const reopened = await prisma.supportTicket.updateMany({
+    where: { id: existing.id, status: "RESOLVED", resolutionVersion: existing.resolutionVersion },
+    data: { status: "OPEN", resolvedAt: null, resolutionNote: null, resolutionVersion: { increment: 1 } },
   });
+  if (reopened.count !== 1) return { ok: false, error: "The ticket changed before it could be reopened. Refresh and try again." };
   revalidatePath("/support");
   revalidatePath(`/support/${existing.id}`);
   return { ok: true };

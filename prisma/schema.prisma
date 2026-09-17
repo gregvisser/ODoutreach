@@ -344,6 +344,14 @@ enum SupportTicketPriority {
   CRITICAL
 }
 
+enum SupportTicketNotificationStatus {
+  PENDING
+  IN_FLIGHT
+  ACCEPTED
+  FAILED
+  UNKNOWN
+}
+
 model SupportTicket {
   id                    String                @id @default(cuid())
   /// Short one-line summary.
@@ -364,6 +372,9 @@ model SupportTicket {
   approvedAt            DateTime?
   rejectedAt            DateTime?
   resolvedAt            DateTime?
+  /// Increments when a resolved ticket is reopened, so each close cycle has
+  /// its own durable reporter notification.
+  resolutionVersion     Int                   @default(1)
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
@@ -371,9 +382,34 @@ model SupportTicket {
   approvedBy  StaffUser?                @relation("SupportTicketApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
   attachments SupportTicketAttachment[]
   comments    SupportTicketComment[]
+  notifications SupportTicketNotification[]
 
   @@index([status, createdAt])
   @@index([createdByStaffUserId])
+}
+
+model SupportTicketNotification {
+  id                String                         @id @default(cuid())
+  ticketId          String
+  resolutionVersion Int
+  recipientEmail    String
+  subject           String
+  body              String                         @db.Text
+  status            SupportTicketNotificationStatus @default(PENDING)
+  attemptCount      Int                            @default(0)
+  nextAttemptAt     DateTime?
+  leaseUntil        DateTime?
+  providerAcceptedAt DateTime?
+  sentAt            DateTime?
+  lastError         String?                        @db.Text
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, resolutionVersion])
+  @@index([status, nextAttemptAt])
+  @@index([ticketId])
 }
 
 model SupportTicketAttachment {

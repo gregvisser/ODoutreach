@@ -19,6 +19,7 @@ import {
 } from "@/lib/support/support-labels";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { formatSupportResolutionDate } from "@/server/support/support-ticket-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,11 @@ export default async function SupportTicketDetailPage({ params }: Props) {
       comments: {
         orderBy: { createdAt: "asc" },
         include: { author: { select: { displayName: true, email: true } } },
+      },
+      notifications: {
+        orderBy: { resolutionVersion: "desc" },
+        take: 1,
+        select: { status: true, providerAcceptedAt: true, lastError: true },
       },
     },
   });
@@ -140,6 +146,28 @@ export default async function SupportTicketDetailPage({ params }: Props) {
         </Card>
       ) : null}
 
+      {ticket.notifications[0] ? (
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Reporter notification</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>
+              {ticket.notifications[0].status === "ACCEPTED"
+                ? `Accepted by Microsoft${ticket.notifications[0].providerAcceptedAt ? ` at ${formatSupportResolutionDate(ticket.notifications[0].providerAcceptedAt)}` : ""}. Inbox delivery is not confirmed.`
+                : ticket.notifications[0].status === "UNKNOWN"
+                  ? "Provider outcome is unknown. Automatic retry is disabled; inspect the provider before retrying."
+                  : ticket.notifications[0].status === "FAILED"
+                    ? "The reporter notification failed and can be retried by the owner."
+                    : "The reporter notification is queued for delivery."}
+            </p>
+            {ticket.notifications[0].lastError ? (
+              <p className="text-xs text-destructive">{ticket.notifications[0].lastError}</p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Replies</CardTitle>
@@ -167,6 +195,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
         status={ticket.status}
         isOwner={isOwner}
         developerSummary={developerSummary}
+        notificationStatus={ticket.notifications[0]?.status ?? null}
       />
     </div>
   );

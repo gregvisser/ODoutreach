@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import {
   reopenSupportTicket,
   resolveSupportTicket,
+  retrySupportTicketNotification,
   type SupportActionResult,
 } from "@/app/(app)/support/actions";
 
@@ -27,11 +28,13 @@ export function SupportTicketDetailActions({
   status,
   isOwner,
   developerSummary,
+  notificationStatus,
 }: {
   ticketId: string;
   status: string;
   isOwner: boolean;
   developerSummary: string;
+  notificationStatus: "PENDING" | "IN_FLIGHT" | "ACCEPTED" | "FAILED" | "UNKNOWN" | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -139,17 +142,32 @@ export function SupportTicketDetailActions({
 
         {/* Reopen (owner only, once resolved) */}
         {isOwner && isResolved ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={() =>
-              run(reopenSupportTicket({ ticketId }), "Ticket reopened.")
-            }
-          >
-            {pending ? "Reopening…" : "Reopen ticket"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                run(reopenSupportTicket({ ticketId }), "Ticket reopened.")
+              }
+            >
+              {pending ? "Reopening…" : "Reopen ticket"}
+            </Button>
+            {notificationStatus === "FAILED" ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  run(retrySupportTicketNotification({ ticketId }), "Reporter notification queued for retry.")
+                }
+              >
+                Retry reporter notification
+              </Button>
+            ) : null}
+          </div>
         ) : null}
 
         {!isOwner ? (
