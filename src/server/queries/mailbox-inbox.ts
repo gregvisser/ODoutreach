@@ -28,7 +28,7 @@ export async function getRecentInboundMailboxMessagesForClient(
   const internalDomains =
     options.internalDomains ?? (await resolveInternalDomainsForClient(clientId));
   const rows = await prisma.inboundMailboxMessage.findMany({
-    where: { clientId, ...(displayCutoffDateFilter() ? { receivedAt: displayCutoffDateFilter() } : {}) },
+    where: { clientId, supersededByMessageId: null, ...(displayCutoffDateFilter() ? { receivedAt: displayCutoffDateFilter() } : {}) },
     orderBy: { receivedAt: "desc" },
     // Over-fetch when filtering so a burst of internal noise doesn't starve
     // the list of genuine recent messages.

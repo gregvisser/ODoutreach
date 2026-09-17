@@ -116,7 +116,7 @@ export async function loadClientOutreachReplies(
   >();
   if (providerMessageIds.length > 0) {
     const messages = await prisma.inboundMailboxMessage.findMany({
-      where: { clientId, providerMessageId: { in: providerMessageIds } },
+      where: { clientId, supersededByMessageId: null, providerMessageId: { in: providerMessageIds } },
       select: {
         id: true,
         mailboxIdentityId: true,

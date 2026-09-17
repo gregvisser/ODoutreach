@@ -54,13 +54,15 @@ export async function claimReplyForStaff(args: {
     };
     if (args.subject.subjectType === "INBOUND_MESSAGE") {
       await prisma.$transaction(async (tx) => {
-        // A stale page must not recreate a claim after its message was removed.
-        // Hold the existence lock through the write so a concurrent cleanup
+        // A stale page must not recreate a claim after removal/supersession.
+        // SHARE also blocks non-key mapping updates; KEY SHARE does not.
+        // Hold the active-row lock through the write so a concurrent installer
         // must wait, then recheck its own eligibility against the saved claim.
         const rows = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM "InboundMailboxMessage"
           WHERE id = ${args.subject.subjectId} AND "clientId" = ${args.clientId}
-          FOR KEY SHARE`;
+            AND "supersededByMessageId" IS NULL
+          FOR SHARE`;
         if (rows.length === 0) return;
         await tx.replyClaim.upsert(upsert);
       }, { isolationLevel: "ReadCommitted" });
