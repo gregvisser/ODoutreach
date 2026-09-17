@@ -82,7 +82,12 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         </div>
       </div>
 
-      <SequenceTemplateStructurePanel structures={sequenceStructures} templates={templatesOverview.templates} clientId={client.id} canMutate={canMutateTemplates} />
+      <SequenceTemplateStructurePanel
+        structures={showArchivedTemplates ? sequenceStructures : sequenceStructures.filter((sequence) => sequence.sequenceStatus !== "ARCHIVED")}
+        templates={templatesOverview.templates}
+        clientId={client.id}
+        canMutate={canMutateTemplates}
+      />
 
       <details open={Boolean(templatesFlash.focusTemplateId || templatesFlash.ok || templatesFlash.error) || templatesOverview.templates.length === 0} className="rounded-lg border p-4">
         <summary className="cursor-pointer font-semibold">Create or edit individual emails</summary>
