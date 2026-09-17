@@ -34,6 +34,7 @@ import { getMailboxSendingReadinessForClient } from "@/server/queries/mailbox-se
 import { getRecentGovernedSendsForClient } from "@/server/queries/governed-send-ledger";
 import { getLatestProvenSendAt } from "@/server/queries/proven-send";
 import { getPilotContactSummaryForClient } from "@/server/queries/pilot-contact-summary";
+import { summarizeReplyHealth } from "@/lib/inbox/reply-health";
 import type { StaffUser } from "@/generated/prisma/client";
 import type { MailboxAuthFailureSignal } from "@/lib/mailboxes/mailbox-auth-failure-overlay";
 import {
@@ -237,7 +238,10 @@ export async function loadClientWorkspaceBundle(
       label: m.displayName?.trim() ? m.displayName : m.email,
       provider: m.provider,
       lastSyncAt: m.lastSyncAt?.toISOString() ?? null,
+      replySyncNeedsAttention: Boolean(m.lastError?.trim()),
     }));
+
+  const replyHealth = summarizeReplyHealth(mailboxRows);
 
   const senderReport = describeSenderReadiness({
     defaultSenderEmail: client.defaultSenderEmail,
@@ -378,6 +382,7 @@ export async function loadClientWorkspaceBundle(
     calendarSettings,
     mailboxRows,
     connectedMailboxInbox,
+    replyHealth,
     senderReport,
     brief,
     onboardingCompletion,

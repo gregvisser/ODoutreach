@@ -31,6 +31,7 @@ import type {
 
 import type { SequenceStepSendUiSnapshot } from "@/server/email-sequences/send-introduction";
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
+import { formatReplyCheckAttempt } from "@/lib/inbox/reply-health";
 
 import { ClientEmailSequenceForm } from "./client-email-sequence-form";
 import { ArchiveSequenceConfirmForm } from "./sequence-archive-confirm-form";
@@ -61,6 +62,11 @@ type Props = {
   mailboxSnapshot: {
     connectedSendingCount: number;
     aggregateRemainingToday: number;
+  };
+  replyHealth: {
+    connectedMailboxCount: number;
+    mailboxesNeedingAttention: number;
+    lastAttemptAt: string | null;
   };
   launchMailboxOptions: Array<{
     id: string;
@@ -154,6 +160,7 @@ export function ClientEmailSequencesPanel(props: Props) {
     showSequenceEditForm,
     launchReadinessBySequenceId,
     mailboxSnapshot,
+    replyHealth,
     launchMailboxOptions,
     sequencePrepSnapshots,
     stepSendSnapshots,
@@ -203,6 +210,29 @@ export function ClientEmailSequencesPanel(props: Props) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {replyHealth.mailboxesNeedingAttention > 0 ? (
+          <div className="rounded-md border border-amber-300/70 bg-amber-50 px-3 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+            <p className="font-semibold">Reply collection needs attention</p>
+            <p className="mt-1">
+              Replies may be missing for {replyHealth.mailboxesNeedingAttention} connected
+              mailbox{replyHealth.mailboxesNeedingAttention === 1 ? "" : "es"}. Sending can
+              still be available. Open Mailboxes to check the affected mailbox; if the warning
+              remains, log a support ticket.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Link
+                prefetch={false}
+                href={`/clients/${clientId}/mailboxes#check-replies`}
+                className="font-medium underline underline-offset-4"
+              >
+                Check replies
+              </Link>
+              <span className="text-xs opacity-80">
+                {formatReplyCheckAttempt(replyHealth.lastAttemptAt)}
+              </span>
+            </div>
+          </div>
+        ) : null}
         {(flash.ok || flash.error) && (
           <div
             className={

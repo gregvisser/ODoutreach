@@ -248,7 +248,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         How fast this workspace's mail leaves. Sits directly under the mailboxes
         because it is a property of how they send, not of the sequences.
       */}
-      <Card>
+      <Card id="check-replies">
         <CardHeader>
           <CardTitle>Check for replies</CardTitle>
           <CardDescription>Check a connected mailbox now. This receives messages and does not send outreach.</CardDescription>
