@@ -300,6 +300,18 @@ describe("deriveDeliveryStatus", () => {
       }),
     ).toBe("Sent from mailbox");
   });
+
+  it("keeps historical delivery status when the contact is currently suppressed", () => {
+    expect(
+      deriveDeliveryStatus({
+        ...base(),
+        outboundStatus: "SENT",
+        hasOutboundEmail: true,
+        sentAt: new Date("2026-09-10T09:00:00Z"),
+        isSuppressed: true,
+      }),
+    ).toBe("Sent from mailbox");
+  });
 });
 
 describe("deriveOpensLabel", () => {

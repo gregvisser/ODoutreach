@@ -17,7 +17,7 @@ import type { ContactDeliveryRow } from "@/server/queries/client-contact-list-de
  * never leaks real contacts.
  */
 
-const { matchesSearch, matchesStatus, sortRows, STATUS_FILTER_LABELS, SORT_COLUMN_LABELS } =
+const { matchesSearch, matchesStatus, sortRows, currentSuppressionBadge, STATUS_FILTER_LABELS, SORT_COLUMN_LABELS } =
   __test__;
 
 function row(partial: Partial<ContactDeliveryRow>): ContactDeliveryRow {
@@ -60,6 +60,13 @@ function row(partial: Partial<ContactDeliveryRow>): ContactDeliveryRow {
 }
 
 describe("list-detail search/filter/sort helpers (PR #140)", () => {
+  it("shows a separate current DNC indicator without changing historical send status", () => {
+    expect(currentSuppressionBadge(true)).not.toBeNull();
+    expect(currentSuppressionBadge(false)).toBeNull();
+    expect(row({ isSuppressed: true, sendStatus: "Sent from mailbox" }).sendStatus).toBe(
+      "Sent from mailbox",
+    );
+  });
   it("finds a previously sent contact with a new queued email under both relevant filters", () => {
     const r = row({ sendStatus: "Sent from mailbox", queuedMessages: [{ id: "queued-1", sequenceName: "Later campaign" }] });
     expect(matchesStatus(r, "Queued")).toBe(true);

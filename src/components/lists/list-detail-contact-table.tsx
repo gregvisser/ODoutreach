@@ -51,6 +51,16 @@ function statusBadge(status: string) {
   }
 }
 
+function currentSuppressionBadge(isSuppressed: boolean) {
+  if (!isSuppressed) return null;
+  const base = "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium";
+  return (
+    <span className={`${base} bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300`}>
+      Currently DNC
+    </span>
+  );
+}
+
 function proofIndicator(present: boolean) {
   return present
     ? <span className="text-emerald-600 dark:text-emerald-400">Present</span>
@@ -319,6 +329,7 @@ export function ListDetailContactTable({ contacts }: Props) {
                   <td className="px-3 py-2 text-muted-foreground">{c.jobTitle ?? "—"}</td>
                   <td className="px-3 py-2">
                     {statusBadge(c.sendStatus)}
+                    {currentSuppressionBadge(c.isSuppressed)}
                     {c.queuedMessages?.map(message => (
                       <Link key={message.id} prefetch={false}
                         href={`/activity/outbound/${message.id}`}
@@ -450,6 +461,7 @@ export const __test__ = {
   matchesSearch,
   matchesStatus,
   sortRows,
+  currentSuppressionBadge,
   STATUS_FILTER_LABELS,
   SORT_COLUMN_LABELS,
 };
