@@ -34,7 +34,7 @@ export async function claimReplyForStaff(args: {
 }): Promise<void> {
   const claimedAt = args.now ?? new Date();
   try {
-    await prisma.replyClaim.upsert({
+    const upsert = {
       where: {
         clientId_subjectType_subjectId_staffUserId: {
           clientId: args.clientId,
@@ -51,7 +51,22 @@ export async function claimReplyForStaff(args: {
         claimedAt,
       },
       update: { claimedAt },
-    });
+    };
+    if (args.subject.subjectType === "INBOUND_MESSAGE") {
+      await prisma.$transaction(async (tx) => {
+        // A stale page must not recreate a claim after its message was removed.
+        // Hold the existence lock through the write so a concurrent cleanup
+        // must wait, then recheck its own eligibility against the saved claim.
+        const rows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "InboundMailboxMessage"
+          WHERE id = ${args.subject.subjectId} AND "clientId" = ${args.clientId}
+          FOR KEY SHARE`;
+        if (rows.length === 0) return;
+        await tx.replyClaim.upsert(upsert);
+      }, { isolationLevel: "ReadCommitted" });
+    } else {
+      await prisma.replyClaim.upsert(upsert);
+    }
   } catch {
     // Advisory only — see the module comment.
   }
