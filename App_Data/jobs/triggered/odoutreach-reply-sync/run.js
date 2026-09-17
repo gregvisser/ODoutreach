@@ -4,11 +4,34 @@ async function runReplyTimer({ enabled, secret, runner }) {
   const { pathToFileURL } = await import('node:url');
   const { resolve } = await import('node:path');
   const sync = runner || (await import(pathToFileURL(resolve(__dirname, '../../../../scripts/run-reply-sync.mjs')).href)).runReplySync;
-  const result = await sync({
+  const options = {
     url: 'https://opensdoors.bidlow.co.uk/api/internal/replies/sync',
     secret: secret.trim(),
-  });
-  if (!result.ok) throw new Error('Reply timer did not complete every mailbox');
+  };
+  if (!runner) {
+    options.onBatch = (batch) => console.log(JSON.stringify({
+      event: 'reply-timer-batch',
+      batch: Number.isSafeInteger(batch?.batch) ? batch.batch : 0,
+      elapsedMs: Number.isSafeInteger(batch?.elapsedMs) ? batch.elapsedMs : 0,
+      processed: Number.isSafeInteger(batch?.processed) ? batch.processed : 0,
+      succeeded: Number.isSafeInteger(batch?.succeeded) ? batch.succeeded : 0,
+      failed: Number.isSafeInteger(batch?.failed) ? batch.failed : 0,
+      unverified: batch?.unverified === true ? 1 : 0,
+    }));
+  }
+  const result = await sync(options);
+  if (!result.ok) {
+    console.error(JSON.stringify({
+      event: 'reply-timer-partial',
+      planned: Number.isSafeInteger(result?.planned) ? result.planned : 0,
+      attempted: Number.isSafeInteger(result?.attempted) ? result.attempted : 0,
+      processed: Number.isSafeInteger(result?.processed) ? result.processed : 0,
+      succeeded: Number.isSafeInteger(result?.succeeded) ? result.succeeded : 0,
+      failed: Number.isSafeInteger(result?.failed) ? result.failed : 0,
+      unverified: Number.isSafeInteger(result?.unverified) ? result.unverified : 0,
+    }));
+    throw new Error('Reply timer did not complete every mailbox');
+  }
   return { ok: true, processed: result.processed, ingested: result.ingested, repliesLinked: result.repliesLinked };
 }
 module.exports = { runReplyTimer };
