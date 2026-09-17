@@ -57,6 +57,7 @@ const ORIG_ALLOWLIST_ENV = process.env.GOVERNED_TEST_EMAIL_DOMAINS;
 const ORIG_AUTH_URL = process.env.AUTH_URL;
 const ORIG_INTERNAL_APP_URL = process.env.INTERNAL_APP_URL;
 const ORIG_NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL;
+const ORIG_MAILBOX_SEND_PACING = process.env.MAILBOX_SEND_PACING;
 
 function mountSequence(overrides?: Record<string, unknown>) {
   prismaMock.clientEmailSequence.findUnique.mockResolvedValue({
@@ -177,6 +178,10 @@ function mountReadyRow(contactEmail: string, id = "ss-1") {
 describe("sendSequenceStepBatch — governance gate", () => {
   beforeEach(() => {
     process.env.GOVERNED_TEST_EMAIL_DOMAINS = "bidlow.co.uk";
+    // Governance tests assert recipient and mailbox safety decisions. Pin the
+    // unrelated wall-clock pacing gate off so the same fixture is deterministic
+    // before, during, and after the configured sending window.
+    process.env.MAILBOX_SEND_PACING = "false";
     delete process.env.AUTH_URL;
     delete process.env.INTERNAL_APP_URL;
     delete process.env.NEXT_PUBLIC_APP_URL;
@@ -623,6 +628,7 @@ function afterEachRestoreEnv(): void {
       ["AUTH_URL", ORIG_AUTH_URL],
       ["INTERNAL_APP_URL", ORIG_INTERNAL_APP_URL],
       ["NEXT_PUBLIC_APP_URL", ORIG_NEXT_PUBLIC_APP_URL],
+      ["MAILBOX_SEND_PACING", ORIG_MAILBOX_SEND_PACING],
     ] as const) {
       if (v === undefined) {
         delete process.env[k];

@@ -79,6 +79,7 @@ export default async function ListDetailPage({ params }: Props) {
   if (!detail) notFound();
 
   const { summary } = detail;
+  const currentlyDncCount = detail.contacts.filter((contact) => contact.isSuppressed).length;
 
   return (
     <div className="space-y-8">
@@ -155,7 +156,12 @@ export default async function ListDetailPage({ params }: Props) {
           tone={summary.unsubscribed > 0 ? "warning" : undefined}
         />
         <SummaryCard label="Suppressed" value={summary.suppressed} />
+        <SummaryCard label="Currently DNC" value={currentlyDncCount} />
       </div>
+      <p className="text-sm text-muted-foreground">
+        Currently DNC counts contacts already marked as blocked. Past sends remain
+        visible. Other email and domain blocks are checked again before sending.
+      </p>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
