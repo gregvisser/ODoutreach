@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { Pool } from "pg";
 
 import { prisma } from "@/lib/db";
+import { integrationDatabaseUrl } from "@/test/integration/database";
 import {
   claimReplyForStaff,
   loadVisibleReplyClaim,
@@ -31,6 +34,33 @@ let clientId = "";
 let otherClientId = "";
 let sarahId = "";
 let bobId = "";
+const pool = new Pool({ connectionString: integrationDatabaseUrl(), max: 4 });
+
+async function createMessage(ownerClientId: string) {
+  const key = randomUUID();
+  const mailbox = await prisma.clientMailboxIdentity.create({ data: {
+    clientId: ownerClientId, provider: "MICROSOFT", email: `${key}@example.test`, emailNormalized: `${key}@example.test`,
+  } });
+  return prisma.inboundMailboxMessage.create({ data: {
+    clientId: ownerClientId, mailboxIdentityId: mailbox.id, providerMessageId: key,
+    fromEmail: "prospect@example.test", receivedAt: new Date(),
+  } });
+}
+
+// Observe an actual PostgreSQL lock wait, rather than assuming a delay means
+// that a competing request has reached the statement under test.
+async function waitForBlockedQuery(table: string, blockerPid: number): Promise<number> {
+  const deadline = Date.now() + 4_000;
+  while (Date.now() < deadline) {
+    const result = await pool.query<{ pid: number }>(`
+      SELECT pid FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND query LIKE $1 AND $2 = ANY(pg_blocking_pids(pid))`, [`%${table}%`, blockerPid]);
+    if (result.rows[0]) return result.rows[0].pid;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`No blocked ${table} query observed`);
+}
 
 beforeAll(async () => {
   const stamp = Date.now();
@@ -63,7 +93,7 @@ beforeAll(async () => {
   });
   otherClientId = other.id;
 
-  SUBJECT.subjectId = `msg-${stamp}`;
+  SUBJECT.subjectId = (await createMessage(clientId)).id;
 });
 
 afterAll(async () => {
@@ -75,6 +105,7 @@ afterAll(async () => {
   });
   await prisma.staffUser.deleteMany({ where: { id: { in: [sarahId, bobId] } } });
   await prisma.$disconnect();
+  await pool.end();
 });
 
 describe("reply claiming, end to end", () => {
@@ -189,6 +220,9 @@ describe("reply claiming, end to end", () => {
     });
     expect(leaked).toBeNull();
 
+    await claimReplyForStaff({ clientId: otherClientId, subject: SUBJECT, staffUserId: bobId });
+    expect(await prisma.replyClaim.count({ where: { clientId: otherClientId, subjectId: SUBJECT.subjectId } })).toBe(0);
+
     // And a release in the other workspace must not clear ours.
     await releaseReplyClaims({ clientId: otherClientId, subject: SUBJECT });
     expect(
@@ -205,7 +239,7 @@ describe("reply claiming, end to end", () => {
     });
     await claimReplyForStaff({
       clientId: doomed.id,
-      subject: SUBJECT,
+      subject: { subjectType: "INBOUND_MESSAGE", subjectId: (await createMessage(doomed.id)).id },
       staffUserId: sarahId,
     });
     expect(
@@ -217,5 +251,74 @@ describe("reply claiming, end to end", () => {
     expect(
       await prisma.replyClaim.count({ where: { clientId: doomed.id } }),
     ).toBe(0);
+  });
+
+  it("does not create a claim for a missing raw message", async () => {
+    const subject = { subjectType: "INBOUND_MESSAGE" as const, subjectId: randomUUID() };
+    await claimReplyForStaff({ clientId, subject, staffUserId: sarahId });
+    expect(await prisma.replyClaim.count({ where: { clientId, subjectId: subject.subjectId } })).toBe(0);
+  });
+
+  it("makes cleanup wait for an earlier claim and observe it before deciding eligibility", async () => {
+    const message = await createMessage(clientId);
+    const subject = { subjectType: "INBOUND_MESSAGE" as const, subjectId: message.id };
+    const tableBlocker = await pool.connect();
+    const cleanup = await pool.connect();
+    let pendingClaim: Promise<void> | undefined;
+    let pendingCleanup: Promise<number> | undefined;
+    try {
+      await tableBlocker.query("BEGIN");
+      const { rows: [{ pid }] } = await tableBlocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await tableBlocker.query('LOCK TABLE "ReplyClaim" IN SHARE MODE');
+      pendingClaim = claimReplyForStaff({ clientId, subject, staffUserId: sarahId });
+      const claimPid = await waitForBlockedQuery("ReplyClaim", pid);
+
+      await cleanup.query("BEGIN");
+      pendingCleanup = (async () => {
+        await cleanup.query('SELECT id FROM "InboundMailboxMessage" WHERE id=$1 AND "clientId"=$2 FOR UPDATE', [message.id, clientId]);
+        const result = await cleanup.query<{ count: number }>(
+          'SELECT COUNT(*)::int AS count FROM "ReplyClaim" WHERE "clientId"=$1 AND "subjectType"=\'INBOUND_MESSAGE\' AND "subjectId"=$2', [clientId, message.id]);
+        // A cleanup must recheck after locking and retain any row with staff state.
+        if (result.rows[0].count === 0) await cleanup.query('DELETE FROM "InboundMailboxMessage" WHERE id=$1 AND "clientId"=$2', [message.id, clientId]);
+        return result.rows[0].count;
+      })();
+      await waitForBlockedQuery("InboundMailboxMessage", claimPid);
+      await tableBlocker.query("COMMIT");
+      await pendingClaim;
+      expect(await pendingCleanup).toBe(1);
+      await cleanup.query("COMMIT");
+      expect(await prisma.inboundMailboxMessage.findUnique({ where: { id: message.id } })).not.toBeNull();
+      expect(await prisma.replyClaim.count({ where: { clientId, subjectId: message.id } })).toBe(1);
+    } finally {
+      await tableBlocker.query("ROLLBACK");
+      await Promise.allSettled([pendingClaim, pendingCleanup]);
+      await cleanup.query("ROLLBACK");
+      tableBlocker.release();
+      cleanup.release();
+    }
+  });
+
+  it("rejects a waiting claim and later stale-page claims when cleanup deletes first", async () => {
+    const message = await createMessage(clientId);
+    const subject = { subjectType: "INBOUND_MESSAGE" as const, subjectId: message.id };
+    const cleanup = await pool.connect();
+    let pendingClaim: Promise<void> | undefined;
+    try {
+      await cleanup.query("BEGIN");
+      const { rows: [{ pid }] } = await cleanup.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await cleanup.query('SELECT id FROM "InboundMailboxMessage" WHERE id=$1 AND "clientId"=$2 FOR UPDATE', [message.id, clientId]);
+      await cleanup.query('DELETE FROM "InboundMailboxMessage" WHERE id=$1 AND "clientId"=$2', [message.id, clientId]);
+      pendingClaim = claimReplyForStaff({ clientId, subject, staffUserId: sarahId });
+      await waitForBlockedQuery("InboundMailboxMessage", pid);
+      await cleanup.query("COMMIT");
+      await pendingClaim;
+      await claimReplyForStaff({ clientId, subject, staffUserId: bobId });
+      expect(await prisma.replyClaim.count({ where: { clientId, subjectId: message.id } })).toBe(0);
+      expect(await prisma.inboundMailboxMessage.findUnique({ where: { id: message.id } })).toBeNull();
+    } finally {
+      await cleanup.query("ROLLBACK");
+      await pendingClaim;
+      cleanup.release();
+    }
   });
 });

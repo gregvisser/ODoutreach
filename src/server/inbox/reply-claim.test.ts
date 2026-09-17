@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { claimUpsert, claimFindMany, claimDeleteMany } = vi.hoisted(() => ({
+const { claimUpsert, claimFindMany, claimDeleteMany, lockMessage, transaction } = vi.hoisted(() => ({
   claimUpsert: vi.fn(),
   claimFindMany: vi.fn(),
   claimDeleteMany: vi.fn(),
+  lockMessage: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    $transaction: transaction,
     replyClaim: {
       upsert: claimUpsert,
       findMany: claimFindMany,
@@ -38,9 +41,36 @@ beforeEach(() => {
   claimUpsert.mockResolvedValue({});
   claimFindMany.mockResolvedValue([]);
   claimDeleteMany.mockResolvedValue({ count: 0 });
+  lockMessage.mockResolvedValue([{ id: SUBJECT.subjectId }]);
+  transaction.mockImplementation(async (callback) => callback({
+    $queryRaw: lockMessage,
+    replyClaim: { upsert: claimUpsert },
+  }));
 });
 
 describe("claimReplyForStaff", () => {
+  it("does not write a claim for a missing or differently owned raw message", async () => {
+    lockMessage.mockResolvedValue([]);
+    await claimReplyForStaff({ clientId: "client-a", subject: SUBJECT, staffUserId: "staff-sarah" });
+    expect(claimUpsert).not.toHaveBeenCalled();
+    const [sql, subjectId, clientId] = lockMessage.mock.calls[0];
+    expect(sql.join("?")).toContain('WHERE id = ? AND "clientId" = ?');
+    expect(sql.join("?")).toContain("FOR KEY SHARE");
+    expect([subjectId, clientId]).toEqual([SUBJECT.subjectId, "client-a"]);
+  });
+
+  it("preserves the existing webhook reply claim path", async () => {
+    await claimReplyForStaff({ clientId: "client-a", subject: { subjectType: "INBOUND_REPLY", subjectId: "reply-1" }, staffUserId: "staff-sarah" });
+    expect(transaction).not.toHaveBeenCalled();
+    expect(claimUpsert).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an existence-lock failure advisory", async () => {
+    lockMessage.mockRejectedValue(new Error("lock timeout"));
+    await expect(claimReplyForStaff({ clientId: "client-a", subject: SUBJECT, staffUserId: "staff-sarah" })).resolves.toBeUndefined();
+    expect(claimUpsert).not.toHaveBeenCalled();
+  });
+
   it("writes a claim scoped by clientId, not by subject id alone", async () => {
     await claimReplyForStaff({
       clientId: "client-a",
