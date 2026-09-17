@@ -55,7 +55,8 @@ describe("claimReplyForStaff", () => {
     expect(claimUpsert).not.toHaveBeenCalled();
     const [sql, subjectId, clientId] = lockMessage.mock.calls[0];
     expect(sql.join("?")).toContain('WHERE id = ? AND "clientId" = ?');
-    expect(sql.join("?")).toContain("FOR KEY SHARE");
+    expect(sql.join("?")).toContain('"supersededByMessageId" IS NULL');
+    expect(sql.join("?")).toContain("FOR SHARE");
     expect([subjectId, clientId]).toEqual([SUBJECT.subjectId, "client-a"]);
   });
 
