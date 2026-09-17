@@ -3,7 +3,7 @@
 import { SendingDayDetails, type SendingDayDetailsValue } from "./sending-day-details";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { format } from "date-fns";
 
 import {
@@ -43,6 +43,7 @@ import {
   describeSignatureGuidanceScope,
   planSignatureRowGuidance,
 } from "@/lib/mailboxes/signature-row-guidance";
+import { assessSignatureImage } from "@/lib/mailboxes/signature-image-assessment";
 import {
   computePoolDailyMax,
   countConnectedMailboxes,
@@ -139,6 +140,69 @@ function SignatureLinkStatusNote({
         </ul>
       ) : null}
     </div>
+  );
+}
+
+function SignaturePreviewHtml({ html }: { html: string }) {
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    const node = previewRef.current;
+    if (!node) return;
+
+    const images = Array.from(node.querySelectorAll("img")) as HTMLImageElement[];
+    const inspectImages = () => {
+      const nextWarnings = (Array.from(node.querySelectorAll("img")) as HTMLImageElement[]).flatMap(
+        (image, index) => {
+          if (!image.complete) return [];
+          if (image.naturalWidth === 0 || image.naturalHeight === 0) {
+            return [`Logo image ${index + 1} could not be loaded, so its size could not be checked.`];
+          }
+          const assessment = assessSignatureImage({
+            intrinsicWidth: image.naturalWidth,
+            intrinsicHeight: image.naturalHeight,
+            renderedWidth: image.getBoundingClientRect().width,
+            renderedHeight: image.getBoundingClientRect().height,
+          });
+          return assessment?.message ? [assessment.message] : [];
+        },
+      );
+      setWarnings(nextWarnings);
+    };
+
+    images.forEach((image) => image.addEventListener("load", inspectImages));
+    images.forEach((image) => image.addEventListener("error", inspectImages));
+    inspectImages();
+    window.addEventListener("resize", inspectImages);
+
+    return () => {
+      images.forEach((image) => image.removeEventListener("load", inspectImages));
+      images.forEach((image) => image.removeEventListener("error", inspectImages));
+      window.removeEventListener("resize", inspectImages);
+    };
+  }, [html]);
+
+  return (
+    <>
+      <div
+        ref={previewRef}
+        className="rounded-md border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline [&_img]:h-auto [&_img]:max-w-full"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {warnings.length > 0 ? (
+        <div className="space-y-1 rounded-md border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
+          <p className="font-medium">Check the logo sizing before sending</p>
+          {warnings.map((warning, index) => (
+            <p key={`${index}-${warning}`}>{warning}</p>
+          ))}
+          <p>
+            This is a visual sizing check only. It does not change the saved signature or verify
+            that the image is the correct brand asset.
+          </p>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1283,12 +1347,7 @@ export function ClientMailboxIdentitiesPanel({
                               one-click unsubscribe line — the exact order the
                               recipient sees.
                             </p>
-                            <div
-                              className="rounded-md border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline [&_img]:h-auto [&_img]:max-w-full"
-                              dangerouslySetInnerHTML={{
-                                __html: preview.bodyHtml,
-                              }}
-                            />
+                            <SignaturePreviewHtml html={preview.bodyHtml} />
                             <SignatureLinkStatusNote
                               status={previewRow.signatureLinkStatus}
                             />

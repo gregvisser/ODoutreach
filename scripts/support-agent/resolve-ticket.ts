@@ -1,14 +1,15 @@
 /**
  * Close a support ticket with a reporter-facing reply.
  *
- * Sets status=RESOLVED, resolvedAt=now, resolutionNote=<your reply>. Guards
- * against re-resolving an already-RESOLVED ticket. After the DB update it emails
- * the reporter best-effort (never blocks the close — see notify-reporter.ts).
+ * Atomically records the resolution and a durable reporter notification, then
+ * attempts provider dispatch. Provider acceptance is reported separately from
+ * inbox delivery; unknown provider outcomes are retained for inspection.
  *
  *   npm run support:resolve -- <ticketId> --note "reply the reporter reads"
  */
-import { getPrisma } from "./_db";
-import { notifyReporter } from "./notify-reporter";
+import { resolveSupportTicketWithNotification } from "../../src/server/support/resolve-support-ticket";
+import { dispatchSupportTicketNotification } from "../../src/server/support/support-ticket-notifications";
+import { prisma } from "../../src/lib/db";
 
 function flag(name: string): string {
   const i = process.argv.indexOf(name);
@@ -23,33 +24,15 @@ async function main() {
       `usage: resolve-ticket <ticketId> --note "reply to reporter"`,
     );
   }
-  const prisma = await getPrisma();
-  const existing = await prisma.supportTicket.findUnique({
-    where: { id },
-    select: { status: true, reporterEmail: true, title: true },
-  });
-  if (!existing) throw new Error(`ticket ${id} not found`);
-  if (existing.status === "RESOLVED") throw new Error("already resolved");
-
-  await prisma.supportTicket.update({
-    where: { id },
-    data: { status: "RESOLVED", resolvedAt: new Date(), resolutionNote: note },
-  });
-  console.log(`resolved ${id}`);
-
-  try {
-    await notifyReporter(
-      existing.reporterEmail,
-      `Your ODoutreach ticket: ${existing.title}`,
-      note,
-    );
-  } catch {
-    // best-effort — email must never block the close
-  }
-  await prisma.$disconnect();
+  const result = await resolveSupportTicketWithNotification({ ticketId: id, resolutionNote: note });
+  const delivery = await dispatchSupportTicketNotification(result.notificationId);
+  console.log(JSON.stringify({ resolved: id, notification: delivery.kind }));
+  if (delivery.kind === "failed" || delivery.kind === "unknown") process.exitCode = 1;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());
