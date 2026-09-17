@@ -8,9 +8,27 @@ export type GraphMessageIdentity = {
   fromEmail: string; receivedAt: string;
 };
 
+/** Fixed categories distinguish the existing checks without logging identities. */
+export const GRAPH_MESSAGE_IDENTITY_CONFLICT_REASONS = [
+  "RAW_AMBIGUITY", "RAW_PROVIDER_CONFLICT", "REPLY_AMBIGUITY",
+  "REPLY_IDENTITY_CONFLICT", "LEGACY_REPLY_UNVERIFIED", "UNKNOWN",
+] as const;
+export type GraphMessageIdentityConflictReason = typeof GRAPH_MESSAGE_IDENTITY_CONFLICT_REASONS[number];
+
+/** Audit keys must remain bounded even if an unexpected caller supplies data. */
+export function sanitizeGraphIdentityConflictReason(reason: unknown): GraphMessageIdentityConflictReason {
+  return GRAPH_MESSAGE_IDENTITY_CONFLICT_REASONS.find(known => known === reason) ?? "UNKNOWN";
+}
+
 /** A known historical conflict may hold one item without aborting other mail. */
 export class GraphMessageIdentityConflictError extends Error {
   readonly code = "GRAPH_MESSAGE_IDENTITY_CONFLICT";
+  readonly reason: GraphMessageIdentityConflictReason;
+
+  constructor(message: string, reason: GraphMessageIdentityConflictReason = "UNKNOWN") {
+    super(message);
+    this.reason = sanitizeGraphIdentityConflictReason(reason);
+  }
 }
 
 /** Only provider-supplied received time may participate in a move identity. */
@@ -57,14 +75,14 @@ export async function canonicalGraphReplyId(tx: Prisma.TransactionClient, input:
     ] }, select: { id: true, providerMessageId: true, fromEmail: true, receivedAt: true, metadata: true,
       linkedOutbound: { select: { mailboxIdentityId: true } } }, take: 2,
   });
-  if (matches.length > 1) throw new GraphMessageIdentityConflictError("Microsoft reply identity is ambiguous; administrator review required.");
+  if (matches.length > 1) throw new GraphMessageIdentityConflictError("Microsoft reply identity is ambiguous; administrator review required.", "REPLY_AMBIGUITY");
   const existing = matches[0];
   if (existing) {
     const savedMailbox = existing.linkedOutbound?.mailboxIdentityId ?? stringMetadata(existing.metadata, "mailboxIdentityId");
     if (normalizeEmail(existing.fromEmail) !== identity.fromEmail ||
         existing.receivedAt.toISOString() !== identity.receivedAt ||
         (savedMailbox && savedMailbox !== identity.mailboxIdentityId)) {
-      throw new GraphMessageIdentityConflictError("Microsoft reply identity conflicts with an existing reply.");
+      throw new GraphMessageIdentityConflictError("Microsoft reply identity conflicts with an existing reply.", "REPLY_IDENTITY_CONFLICT");
     }
     await tx.$executeRaw`UPDATE "InboundReply"
       SET metadata = (CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata ELSE '{}'::jsonb END)
@@ -81,7 +99,7 @@ export async function canonicalGraphReplyId(tx: Prisma.TransactionClient, input:
       linkedOutbound: { mailboxIdentityId: identity.mailboxIdentityId },
     }, select: { metadata: true } });
     if (legacy.some(row => !stringMetadata(row.metadata, "graphIdentity"))) {
-      throw new GraphMessageIdentityConflictError("Historical Microsoft reply identity needs verification before this mailbox can finish syncing.");
+      throw new GraphMessageIdentityConflictError("Historical Microsoft reply identity needs verification before this mailbox can finish syncing.", "LEGACY_REPLY_UNVERIFIED");
     }
   }
   return input.providerMessageId;

@@ -23,10 +23,10 @@ export async function persistSyncedInboundMessage(
         receivedAt: new Date(graphIdentity.receivedAt),
         metadata: { path: ["internetMessageId"], equals: graphIdentity.internetMessageId },
       }, select: { id: true, providerMessageId: true }, take: 2 });
-      if (matches.length > 1) throw new GraphMessageIdentityConflictError("Microsoft message identity is ambiguous; administrator review required.");
+      if (matches.length > 1) throw new GraphMessageIdentityConflictError("Microsoft message identity is ambiguous; administrator review required.", "RAW_AMBIGUITY");
       if (matches[0]) {
         const exact = await tx.inboundMailboxMessage.findUnique({ where: args.where, select: { id: true } });
-        if (exact && exact.id !== matches[0].id) throw new GraphMessageIdentityConflictError("Microsoft message identity conflicts with an existing message.");
+        if (exact && exact.id !== matches[0].id) throw new GraphMessageIdentityConflictError("Microsoft message identity conflicts with an existing message.", "RAW_PROVIDER_CONFLICT");
         canonicalArgs = { ...args, where: { id: matches[0].id } };
       }
     }
