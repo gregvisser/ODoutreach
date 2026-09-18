@@ -83,15 +83,30 @@ async function markFailed(notificationId: string, error: string, attemptCount: n
   });
 }
 
-export async function dispatchSupportTicketNotification(notificationId: string): Promise<NotificationDispatchResult> {
-  const notification = await claimNotification(notificationId);
-  if (!notification) return { kind: "skipped" };
-
+export function readSupportNotificationProviderConfig(): {
+  tenant: string;
+  clientId: string;
+  secret: string;
+  sender: string;
+} | null {
   const tenant = process.env.MS_GRAPH_TENANT_ID ?? process.env.AZURE_TENANT_ID;
   const clientId = process.env.MS_GRAPH_CLIENT_ID ?? process.env.AZURE_CLIENT_ID;
   const secret = process.env.MS_GRAPH_CLIENT_SECRET ?? process.env.AZURE_CLIENT_SECRET;
   const sender = process.env.SUPPORT_AGENT_NOTIFY_SENDER?.trim();
-  if (!tenant || !clientId || !secret || !sender || !notification.recipientEmail) {
+  if (!tenant || !clientId || !secret || !sender) return null;
+  return { tenant, clientId, secret, sender };
+}
+
+export function isSupportNotificationProviderConfigured(): boolean {
+  return readSupportNotificationProviderConfig() !== null;
+}
+
+export async function dispatchSupportTicketNotification(notificationId: string): Promise<NotificationDispatchResult> {
+  const notification = await claimNotification(notificationId);
+  if (!notification) return { kind: "skipped" };
+
+  const provider = readSupportNotificationProviderConfig();
+  if (!provider || !notification.recipientEmail) {
     const error = "Support notification provider is not configured.";
     await markFailed(notification.id, error, notification.attemptCount);
     return { kind: "failed", notificationId: notification.id, error };
@@ -99,11 +114,11 @@ export async function dispatchSupportTicketNotification(notificationId: string):
 
   let sendAttempted = false;
   try {
-    const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+    const tokenResponse = await fetch(`https://login.microsoftonline.com/${provider.tenant}/oauth2/v2.0/token`, {
       method: "POST",
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: clientId, client_secret: secret, scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials" }),
+      body: new URLSearchParams({ client_id: provider.clientId, client_secret: provider.secret, scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials" }),
     });
     if (!tokenResponse.ok) {
       const error = `Microsoft token request failed (${tokenResponse.status}).`;
@@ -118,7 +133,7 @@ export async function dispatchSupportTicketNotification(notificationId: string):
     }
 
     sendAttempted = true;
-    const response = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`, {
+    const response = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(provider.sender)}/sendMail`, {
       method: "POST",
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${payload.access_token}`, "Content-Type": "application/json" },

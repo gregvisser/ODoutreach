@@ -2,6 +2,13 @@
 # Runs the official OpenAI Codex GitHub Action to execute docs/support-agent-goal.md.
 # Required secrets: OPENAI_API_KEY, SUPPORT_AGENT_DATABASE_URL, SUPPORT_AGENT_GH_TOKEN.
 # The guard fails clearly when required credentials are not configured.
+#
+# Activation is two explicit gates, both default-off:
+# 1. GitHub Actions workflow enablement (this file can be disabled_manually in the UI).
+# 2. Repository variable SUPPORT_AGENT_SCHEDULE_ENABLED == 'true' before weekday
+#    cron processes tickets. Manual authentication-check / process-tickets dispatch
+#    does not require that variable, so go-live validation can run first.
+# Merging this workflow does not enable either gate and does not process live tickets.
 name: Support agent
 
 on:
@@ -28,8 +35,22 @@ permissions:
   pull-requests: write
 
 jobs:
+  scheduled-hold:
+    if: github.event_name == 'schedule' && vars.SUPPORT_AGENT_SCHEDULE_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Scheduled ticket processing is gated off
+        run: |
+          set -euo pipefail
+          echo "Scheduled support-agent ticket processing is held (default-safe)."
+          echo "Manual authentication-check and process-tickets dispatch remain available once this workflow is enabled in the Actions UI."
+          echo "To allow weekday cron to process OPEN tickets, set repository variable SUPPORT_AGENT_SCHEDULE_ENABLED=true after docs/ops/SUPPORT-AGENT-GO-LIVE.md."
+
   resolve-tickets:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || vars.SUPPORT_AGENT_SCHEDULE_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

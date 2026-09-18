@@ -18,7 +18,10 @@ export default defineConfig({
     // file from its fixed path on disk. That tree sits outside every project's
     // git repo, so on CI (ubuntu-latest, no C:\ drive) these tests skip
     // visibly rather than pass silently — see the file itself for why.
-    include: ["src/**/*.test.ts", "e2e/**/*.test.ts", "relay/**/*.test.ts", "standards/**/*.test.ts"],
+    // `scripts/support-agent/**/*.test.ts` covers the Codex runner workflow
+    // contract and production-DB URL guard. Adapter privacy tests stay on
+    // `node --test` in ci.yml so they do not depend on vitest.
+    include: ["src/**/*.test.ts", "e2e/**/*.test.ts", "relay/**/*.test.ts", "standards/**/*.test.ts", "scripts/support-agent/**/*.test.ts"],
     // `*.integration.test.ts` needs a real database and runs via
     // `vitest.integration.config.ts` / `npm run test:integration`. This suite
     // must stay DB-free and fast (AGENTS.md), so it never claims them.

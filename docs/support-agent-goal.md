@@ -8,7 +8,12 @@ ODoutreach is effectively single-tenant for OpenDoors. Preserve staff access, on
 
 ## Runner and authentication
 
-The authoritative configuration is [.github/workflows/support-agent.yml](../.github/workflows/support-agent.yml). It runs on main only, hourly 08:00–18:00 UTC on weekdays, with manual dispatch, a 45-minute timeout and one-run concurrency. Scheduled runs process tickets. Manual runs default to an `authentication-check`; select `process-tickets` deliberately when a ticket run is wanted.
+The authoritative configuration is [.github/workflows/support-agent.yml](../.github/workflows/support-agent.yml). It is written to run on main only, hourly 08:00–18:00 UTC on weekdays, with manual dispatch, a 45-minute timeout and one-run concurrency. Two default-off gates sit in front of that:
+
+1. The GitHub Actions workflow itself may be disabled in the UI (`disabled_manually`). Enable it only by following [docs/ops/SUPPORT-AGENT-GO-LIVE.md](ops/SUPPORT-AGENT-GO-LIVE.md).
+2. Scheduled ticket processing additionally requires repository variable `SUPPORT_AGENT_SCHEDULE_ENABLED` to be exactly `true`. Unset/false scheduled runs complete the `scheduled-hold` job and do not invoke Codex or read tickets.
+
+Manual runs default to an `authentication-check`; select `process-tickets` deliberately when a ticket run is wanted. Manual dispatch does not require `SUPPORT_AGENT_SCHEDULE_ENABLED`. Merging workflow changes does not enable either gate.
 
 The workflow checks out the official Codex action at its pinned commit into a private ignored workspace directory, verifies that checkout, then applies `scripts/support-agent/adapt-codex-action.mjs` before invoking it locally. The adapter preserves the upstream setup, proxy, privilege and sandbox steps, while suppressing the final Codex command's stdout/stderr and setting `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` to `/dev/null` for that invocation. Public run history therefore contains only setup and exit diagnostics; detailed private agent output is intentionally unavailable there.
 
@@ -17,7 +22,7 @@ Required repository secrets:
 - SUPPORT_AGENT_DATABASE_URL: the production database containing SupportTicket records.
 - SUPPORT_AGENT_GH_TOKEN: the existing repository token for branches, pull requests and release checks.
 
-The guard fails explicitly when any required secret is missing. Model selection is configurable through SUPPORT_AGENT_MODEL, defaulting to gpt-5.6-sol at medium effort. Authentication and model access must be verified in an actual run before declaring the agent operational.
+The guard fails explicitly when any required secret is missing. Model selection is configurable through SUPPORT_AGENT_MODEL, defaulting to gpt-5.6-sol at medium effort. Authentication and model access must be verified in an actual run before declaring the agent operational. Claude Code / Anthropic subscription tokens are not used.
 
 The action is commit-pinned, drops sudo and uses a workspace-write sandbox with network access for the ticket database and GitHub. No Graph notification credentials are passed. Ticket notes are the reporter-facing channel for this runner; do not enable email notifications.
 

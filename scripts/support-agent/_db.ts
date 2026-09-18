@@ -1,5 +1,7 @@
 import "dotenv/config";
 
+import { resolveSupportAgentDatabaseUrl } from "./resolve-database-url";
+
 /**
  * Shared connection guard for the autonomous support-agent scripts.
  *
@@ -12,15 +14,7 @@ import "dotenv/config";
  * production Postgres URL. If neither is set, we refuse to run rather than fall
  * back to a plain DATABASE_URL that might point at dev.
  */
-const url =
-  process.env.SUPPORT_AGENT_DATABASE_URL ?? process.env.PRODUCTION_DATABASE_URL;
-
-if (!url) {
-  throw new Error(
-    "Refusing to run: set SUPPORT_AGENT_DATABASE_URL (or PRODUCTION_DATABASE_URL) to the production database URL.",
-  );
-}
-process.env.DATABASE_URL = url;
+process.env.DATABASE_URL = resolveSupportAgentDatabaseUrl();
 
 /**
  * Import the app's own Prisma client AFTER DATABASE_URL is set, so it connects

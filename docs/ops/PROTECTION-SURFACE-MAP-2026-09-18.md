@@ -405,7 +405,8 @@ Isolation is **data-plane (clientId)**, not “staff A cannot see client B”. A
 Authoritative: `docs/support-agent-goal.md` + `.github/workflows/support-agent.yml`.
 
 - `main` only; weekdays 08:00–18:00 UTC; 45-minute timeout; concurrency `support-agent`.
-- Scheduled = process tickets. Manual default = `authentication-check`.
+- **Activation (measured 2026-09-18): GitHub workflow state `disabled_manually` plus repository variable `SUPPORT_AGENT_SCHEDULE_ENABLED` (must be exactly `true` for cron).** Enabling the Actions UI workflow is required before any dispatch; cron still no-ops until the variable is set. See `docs/ops/SUPPORT-AGENT-GO-LIVE.md`.
+- Scheduled = process tickets **only after both gates**. Manual default = `authentication-check`.
 - **Forbidden:** trigger outreach, campaign launch, queue processing, mailbox sends, reporter emails; weaken auth, tenant isolation, unsubscribe/DNC, mailbox limits, tracking, approval gates; production migrations, DNS, credential rotation, bulk deletes; print ticket PII in public logs.
 - **Allowed:** small reversible code fixes, tests, PR, live journey verify, then `support:resolve` note. Escalate rather than apply live product-data corrections.
 
