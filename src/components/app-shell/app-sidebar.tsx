@@ -33,7 +33,7 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        "flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         className,
       )}
     >
@@ -41,7 +41,7 @@ export function AppSidebar({
         href="/reporting"
         onNavigate={onNavigate}
         prefetch={false}
-        className="flex h-20 items-center gap-3 border-b border-sidebar-border px-6 transition-opacity hover:opacity-90"
+        className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5 transition-opacity hover:opacity-90"
         aria-label={`${brand.brandName} ${brand.productName} home`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- URL can be external (admin-supplied) or local SVG; optimizer is unnecessary. */}
@@ -55,10 +55,10 @@ export function AppSidebar({
           decoding="async"
         />
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">
+          <p className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">
             {brand.brandName}
           </p>
-          <p className="text-xs text-muted-foreground">{brand.productName}</p>
+          <p className="text-xs text-sidebar-foreground/65">{brand.productName}</p>
         </div>
       </Link>
       {/*
@@ -90,14 +90,19 @@ export function AppSidebar({
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                  : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
               )}
             >
-              <Icon className="h-4 w-4 shrink-0 opacity-80" />
+              <Icon
+                className={cn(
+                  "h-4 w-4 shrink-0",
+                  active ? "opacity-100" : "opacity-70",
+                )}
+              />
               {item.title}
               {item.badge !== undefined && (
                 <span
-                  className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-destructive-foreground"
+                  className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-primary-foreground"
                   aria-label={`${item.badge} need attention`}
                 >
                   {item.badge}
@@ -107,7 +112,7 @@ export function AppSidebar({
           );
         })}
       </nav>
-      <div className="border-t border-sidebar-border p-4 text-xs text-muted-foreground">
+      <div className="border-t border-sidebar-border p-4 text-xs text-sidebar-foreground/55">
         Internal workspace — staff access only
       </div>
     </aside>

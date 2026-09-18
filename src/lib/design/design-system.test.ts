@@ -213,6 +213,35 @@ describe("the machine-checkable anti-goals hold", () => {
   });
 });
 
+describe("Electric Teal direction invariants", () => {
+  it("keeps a dark charcoal sidebar against a light canvas in light mode", () => {
+    const shipped = colourTokensOnly(readTokenBlock(":root"));
+    const sidebar = parseOklch(shipped["--sidebar"]);
+    const background = parseOklch(shipped["--background"]);
+    expect(sidebar, "--sidebar").not.toBeNull();
+    expect(background, "--background").not.toBeNull();
+    expect(sidebar!.l).toBeLessThan(0.3);
+    expect(background!.l).toBeGreaterThan(0.9);
+  });
+
+  it("keeps primary chromatic and in the teal/cyan band", () => {
+    const shipped = colourTokensOnly(readTokenBlock(":root"));
+    const primary = parseOklch(shipped["--primary"]);
+    expect(primary, "--primary").not.toBeNull();
+    expect(primary!.c).toBeGreaterThanOrEqual(0.1);
+    expect(primary!.h).toBeGreaterThanOrEqual(170);
+    expect(primary!.h).toBeLessThan(210);
+  });
+
+  it("does not put in-flow drop shadows on the card primitive", () => {
+    const cardSource = readFileSync(
+      path.join(REPO_ROOT, "src", "components", "ui", "card.tsx"),
+      "utf8",
+    );
+    expect(cardSource).not.toMatch(/\bshadow-(?:xs|sm|md|lg)\b/);
+  });
+});
+
 describe("WCAG 2.2 SC 2.5.8 Target Size (Minimum)", () => {
   /**
    * Tailwind sizes are quarter-rem steps, so `h-6` is 24px — exactly the 2.5.8

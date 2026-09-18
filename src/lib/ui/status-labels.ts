@@ -41,11 +41,11 @@ export function clientStatusBadgeClassName(
 ): string {
   switch (status) {
     case "ACTIVE":
-      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200";
+      return "border-emerald-600/50 bg-emerald-500/15 text-emerald-900 dark:text-emerald-200";
     case "ONBOARDING":
-      return "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200";
+      return "border-amber-500/50 bg-amber-500/15 text-amber-950 dark:text-amber-200";
     case "PAUSED":
-      return "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-200";
+      return "border-sky-500/50 bg-sky-500/15 text-sky-950 dark:text-sky-200";
     default:
       return "border-border bg-muted text-muted-foreground";
   }
