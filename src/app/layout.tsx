@@ -26,9 +26,9 @@ const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
 });
 
-// Static theme colour for the browser UI / mobile status bar (OpensDoors green).
+// Static theme colour for the browser UI / mobile status bar (Electric Teal).
 export const viewport: Viewport = {
-  themeColor: "#6aa086",
+  themeColor: "#007b6e",
 };
 
 /**

@@ -40,7 +40,7 @@ export function AppHeader({
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 grid h-20 grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md md:px-8">
+    <header className="sticky top-0 z-40 grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-border bg-background px-4 md:px-8">
       <div className="flex items-center gap-3">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger
@@ -52,7 +52,7 @@ export function AppHeader({
           >
             <Menu className="h-5 w-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="w-72 overflow-y-auto p-0">
+          <SheetContent side="left" className="w-72 overflow-y-auto bg-sidebar p-0 text-sidebar-foreground">
             <SheetHeader className="sr-only">
               <SheetTitle>Navigation</SheetTitle>
             </SheetHeader>
@@ -64,7 +64,7 @@ export function AppHeader({
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
             />
             <div className="px-3 pb-4">
-              <p className="mb-2 truncate text-xs text-muted-foreground">
+              <p className="mb-2 truncate text-xs text-sidebar-foreground/65">
                 {session?.user?.email}
               </p>
               <SwitchAccountButton />
@@ -78,7 +78,7 @@ export function AppHeader({
           alt={brand.logoAltText}
           brandName={brand.brandName}
           productName={brand.productName}
-          heightClassName="h-9 md:h-12"
+          heightClassName="h-8 md:h-9"
         />
       </div>
       <div className="flex items-center gap-3">
