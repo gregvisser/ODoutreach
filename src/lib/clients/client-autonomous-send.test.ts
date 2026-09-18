@@ -6,8 +6,22 @@ import {
   autonomousSendSetting,
   autonomousSendSettingToColumn,
   formatAutonomousSendAttribution,
+  MACHINE_ACTIVATION_AVAILABLE,
+  MACHINE_ACTIVATION_UNAVAILABLE_REASON,
   parseAutonomousSendSetting,
 } from "./client-autonomous-send";
+
+describe("Machine sending availability", () => {
+  it("is unlocked so staff can choose MACHINE per client", () => {
+    expect(MACHINE_ACTIVATION_AVAILABLE).toBe(true);
+  });
+
+  it("keeps the lock-reason string for when the flag is flipped back to false", () => {
+    expect(MACHINE_ACTIVATION_UNAVAILABLE_REASON).toBe(
+      "Machine sending is not available in this Human sending release. It requires separate activation after agreement and verification. Staff can still prepare, approve and schedule their own emails.",
+    );
+  });
+});
 
 describe("the three states are genuinely three", () => {
   it("tells 'nobody decided' apart from 'someone decided no'", () => {
