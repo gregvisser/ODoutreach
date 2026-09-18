@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { adaptActionText, FINAL_COMMAND } from "./adapt-codex-action.mjs";
+import { adaptActionText, FINAL_COMMAND, verifyPinnedCheckout } from "./adapt-codex-action.mjs";
 
 const fixture = (command = FINAL_COMMAND) => `runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: |\n        printf 'setup\\n'\n        ${command} \\\n            --prompt "${"${CODEX_PROMPT}"}" \\\n            --codex-user "${"${CODEX_USER}"}"\n`;
 
@@ -50,4 +50,21 @@ test("synthetic stdout, stderr, and GitHub output canaries cannot escape", (t) =
     assert.equal(existsSync(join(root, "output")), false);
     assert.equal(existsSync(join(root, "summary")), false);
   }
+});
+
+test("verifyPinnedCheckout accepts the matching pristine SHA and rejects drift", () => {
+  const root = mkdtempSync(join(tmpdir(), "support-pin-"));
+  const git = (args, extra = {}) => execFileSync("git", ["-c", "commit.gpgsign=false", ...args], { cwd: root, encoding: "utf8", ...extra });
+  git(["init", "-b", "main"]);
+  git(["-c", "user.name=test", "-c", "user.email=test@example.test", "commit", "--allow-empty", "-m", "init"]);
+  writeFileSync(join(root, "action.yml"), "name: fixture\n");
+  git(["add", "action.yml"]);
+  git(["-c", "user.name=test", "-c", "user.email=test@example.test", "commit", "-m", "action"]);
+  const sha = git(["rev-parse", "HEAD"]).trim();
+  verifyPinnedCheckout(root, sha);
+  writeFileSync(join(root, "action.yml"), "name: drifted\n");
+  assert.throws(() => verifyPinnedCheckout(root, sha), /not pristine/);
+  assert.throws(() => verifyPinnedCheckout(root, "0".repeat(40)), /SHA mismatch/);
+  assert.throws(() => verifyPinnedCheckout(root, "abc"), /40-character/);
+  rmSync(root, { recursive: true, force: true });
 });

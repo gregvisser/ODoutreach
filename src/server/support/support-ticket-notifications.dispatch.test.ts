@@ -7,7 +7,7 @@ const { updateMany, findUnique, findMany } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ prisma: { supportTicketNotification: { updateMany, findUnique, findMany } } }));
 
-import { dispatchSupportTicketNotification, processSupportTicketNotificationQueue } from "./support-ticket-notifications";
+import { dispatchSupportTicketNotification, isSupportNotificationProviderConfigured, processSupportTicketNotificationQueue } from "./support-ticket-notifications";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -79,5 +79,26 @@ describe("support notification delivery boundaries", () => {
     await expect(dispatchSupportTicketNotification("n1")).resolves.toMatchObject({ kind: "failed", notificationId: "n1" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "FAILED" }) }));
+  });
+});
+
+describe("isSupportNotificationProviderConfigured", () => {
+  it("is false until Graph and sender values are all present", () => {
+    vi.stubEnv("MS_GRAPH_TENANT_ID", "");
+    vi.stubEnv("MS_GRAPH_CLIENT_ID", "");
+    vi.stubEnv("MS_GRAPH_CLIENT_SECRET", "");
+    vi.stubEnv("AZURE_TENANT_ID", "");
+    vi.stubEnv("AZURE_CLIENT_ID", "");
+    vi.stubEnv("AZURE_CLIENT_SECRET", "");
+    vi.stubEnv("SUPPORT_AGENT_NOTIFY_SENDER", "");
+    expect(isSupportNotificationProviderConfigured()).toBe(false);
+    vi.stubEnv("MS_GRAPH_TENANT_ID", "tenant");
+    vi.stubEnv("MS_GRAPH_CLIENT_ID", "client");
+    vi.stubEnv("MS_GRAPH_CLIENT_SECRET", "secret");
+    expect(isSupportNotificationProviderConfigured()).toBe(false);
+    vi.stubEnv("SUPPORT_AGENT_NOTIFY_SENDER", "  ");
+    expect(isSupportNotificationProviderConfigured()).toBe(false);
+    vi.stubEnv("SUPPORT_AGENT_NOTIFY_SENDER", "support@example.test");
+    expect(isSupportNotificationProviderConfigured()).toBe(true);
   });
 });

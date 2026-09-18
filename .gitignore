@@ -56,6 +56,11 @@ Thumbs.db
 # support-agent: dumped ticket screenshots may contain user data — never commit
 .tmp/
 
+# Ephemeral pinned Codex action checkout used only on the support-agent runner.
+# The workflow also appends this to .git/info/exclude; keep it gitignored so a
+# local reproduction cannot be committed.
+.support-runner/
+
 # Sentry Config File
 .env.sentry-build-plugin
 

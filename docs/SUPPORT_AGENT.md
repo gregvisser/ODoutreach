@@ -2,11 +2,14 @@
 
 The support agent takes every **OPEN** `SupportTicket` and drives it to done:
 investigate → fix safely → verify → ship → close with a reporter reply. It runs
-either from a schedule (`.github/workflows/support-agent.yml`) or by hand via the
-`/goal` prompt in `docs/support-agent-goal.md`.
-
-This file documents the tooling and the rails. The full mission prompt lives in
+from `.github/workflows/support-agent.yml` (OpenAI Codex, commit-pinned) once
+that workflow is enabled in the Actions UI. The mission prompt is
 [`support-agent-goal.md`](./support-agent-goal.md).
+
+**Go-live is gated and default-off.** Merging code does not process tickets.
+Follow [`docs/ops/SUPPORT-AGENT-GO-LIVE.md`](./ops/SUPPORT-AGENT-GO-LIVE.md)
+before enabling the workflow or weekday cron. This file documents the tooling
+and the rails.
 
 ## Where tickets live
 
@@ -21,7 +24,7 @@ therefore talks to prod, never local dev — see the connection guard below.
 | `_db.ts` | — | Connection guard. Forces `DATABASE_URL` to the prod URL **before** the Prisma client initialises, then dynamically imports the app's `src/lib/db` client. Refuses to run unless a prod URL is set. |
 | `list-open-tickets.ts` | `support:list` | Prints all OPEN tickets as JSON, highest-priority-first (CRITICAL → LOW), oldest-first within a priority. This is the work queue. |
 | `get-ticket.ts` | `support:get` | Loads one ticket in full and dumps its screenshot attachments to `.tmp/support-agent/` (gitignored). |
-| `resolve-ticket.ts` | `support:resolve` | Sets `RESOLVED` + `resolvedAt` + `resolutionNote`, then emails the reporter best-effort. Guards against re-resolving. |
+| `resolve-ticket.ts` | `support:resolve` | Sets `RESOLVED` + `resolvedAt` + `resolutionNote` and writes a durable notification row. Dispatches immediately only when Graph/sender creds are present; otherwise leaves the row PENDING for `process-support-ticket-notifications.yml`. Guards against re-resolving. The scheduled Codex runner does not receive Graph creds. |
 | `escalate-ticket.ts` | `support:escalate` | Sets `AWAITING_APPROVAL` + `proposedFix` (analysis for Greg), optional `resolutionNote`, then emails best-effort. Removes the ticket from the OPEN queue. |
 | `notify-reporter.ts` | — | Transactional "your ticket was actioned" email via Microsoft Graph app-only `sendMail`. Best-effort — **never throws**, so email can't block a close. Completely separate from the outreach pipeline. |
 
@@ -48,7 +51,7 @@ npm run support:escalate -- <ticketId> --reason "Root cause + proposed fix, for 
 4. Classify: `code-bug` · `how-to/question` · `data-fix` · `config/infra/migration` · `unsafe/ambiguous`.
 5. Investigate to root cause (reproduce; read the module and its tests).
 6. Make the **minimum** reversible change; add a test that fails before / passes after.
-7. **Verify gate (mandatory, all four):** `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
+7. **Verify gate (mandatory, all four):** `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
 8. Ship: commit `support(<id>): …`, push, open a PR, merge once CI is green (this deploys), watch the deploy. If the deploy is unhealthy, `git revert` and escalate.
 9. Close: `support:resolve` with a reporter reply — or `support:escalate` if it can't be fixed safely.
 
@@ -77,14 +80,18 @@ prod schema must change, ship what's safe and escalate the migration step.
 
 ## Configuration
 
-Set as GitHub repo secrets (for the scheduled runner) and/or in the local shell
-that runs `/goal`:
+Set as GitHub repo secrets/variables (for the scheduled runner) and/or in the
+local shell. Claude Code credentials (`ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_OAUTH_TOKEN`) are **dead for this runner** — the workflow no
+longer reads them.
 
 | Name | Purpose | Required for |
 |---|---|---|
-| `SUPPORT_AGENT_DATABASE_URL` | Production DB URL (same value as `PRODUCTION_DATABASE_URL`). Tickets live here. | Everything |
-| `ANTHROPIC_API_KEY` | Claude Code auth in CI (pay-as-you-go API key). **Or** set `CLAUDE_CODE_OAUTH_TOKEN` instead (subscription token from `claude setup-token`) — the runner accepts either. | Scheduled runner |
-| `SUPPORT_AGENT_GH_TOKEN` | Fine-grained PAT (`contents: write` + `pull-requests: write`) so pushes to `main` trigger the deploy workflow (the built-in `GITHUB_TOKEN` does not). | Scheduled runner |
-| `SUPPORT_AGENT_NOTIFY_SENDER` | System mailbox the reporter email is sent from (e.g. `support@bidlow.co.uk`). | Reporter email |
+| `OPENAI_API_KEY` | OpenAI API key for the official Codex action. Not a ChatGPT subscription token. | Codex runner (auth-check and ticket runs) |
+| `SUPPORT_AGENT_DATABASE_URL` | Production DB URL (same value as `PRODUCTION_DATABASE_URL`). Tickets live here. | `support:*` CLIs and ticket-processing runs |
+| `SUPPORT_AGENT_GH_TOKEN` | Fine-grained PAT (`contents: write` + `pull-requests: write`) so pushes to `main` trigger the deploy workflow (the built-in `GITHUB_TOKEN` does not). | Ticket-processing runs |
+| `SUPPORT_AGENT_MODEL` | Optional repository variable. Codex model id. | Defaults to `gpt-5.6-sol` |
+| `SUPPORT_AGENT_SCHEDULE_ENABLED` | Optional repository variable. Weekday cron processes tickets only when this is exactly `true`. | Scheduled ticket processing (default off) |
+| `SUPPORT_AGENT_NOTIFY_SENDER` | System mailbox the reporter email is sent from (e.g. `support@bidlow.co.uk`). Used by the **notifications** workflow, not by `support-agent.yml`. | Reporter email |
 | `SUPPORT_AGENT_NOTIFY_BCC` | Optional. Comma-separated internal address(es) BCC'd on every ticket-close notice (e.g. `greg@bidlow.co.uk`) so staff keep a copy. Recipient-only — unaffected by the sender's Application Access Policy. | Reporter email (optional) |
-| `MS_GRAPH_TENANT_ID` / `MS_GRAPH_CLIENT_ID` / `MS_GRAPH_CLIENT_SECRET` | Azure AD app creds for Graph. The app also needs application permission `Mail.Send` (admin-consented) — it currently has only delegated `Mail.Read`, so this likely needs granting. Until then, tickets still close and the email no-ops. | Reporter email |
+| `MS_GRAPH_TENANT_ID` / `MS_GRAPH_CLIENT_ID` / `MS_GRAPH_CLIENT_SECRET` | Azure AD app creds for Graph. The app also needs application permission `Mail.Send` (admin-consented). Until then, tickets still close and the notifications worker records a failed attempt. | Reporter email (`process-support-ticket-notifications.yml`) |
