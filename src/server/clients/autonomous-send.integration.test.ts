@@ -10,10 +10,16 @@ beforeEach(async () => {
 });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
-it("refuses machine activation without changing consent or writing an audit", async () => {
-  expect(await setClientAutonomousSend({ clientId: "client", staffUserId: "staff", setting: "MACHINE" })).toMatchObject({ ok: false });
-  expect((await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).autonomousSendEnabled).toBe(false);
-  expect(await prisma.auditLog.count()).toBe(0);
+it("records machine activation with attribution and does not queue mail", async () => {
+  expect(await setClientAutonomousSend({ clientId: "client", staffUserId: "staff", setting: "MACHINE" })).toMatchObject({
+    ok: true,
+    attribution: { enabled: true, setByName: "staff@example.test" },
+  });
+  expect((await prisma.client.findUniqueOrThrow({ where: { id: "client" } })).autonomousSendEnabled).toBe(true);
+  expect(await prisma.auditLog.findFirst({ where: { clientId: "client" } })).toMatchObject({
+    staffUserId: "staff",
+    metadata: { kind: "autonomous_send_set", previousEnabled: false, enabled: true, setting: "MACHINE" },
+  });
   expect(await prisma.outboundEmail.count()).toBe(0);
 });
 
