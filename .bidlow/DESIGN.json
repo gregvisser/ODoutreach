@@ -4,7 +4,8 @@
   "tier": "P",
   "authored": "2026-08-26",
   "authored_by": "relay cycle 9",
-  "status": "direction proposed and adopted; colour + accessibility half enforced by a build gate (now including chart-series contrast and colour-blind distinguishability, closed 2026-08-30), signature elements specified but mostly NOT yet built (see implementation status on each)",
+  "updated": "2026-09-18",
+  "status": "visual direction updated to Electric Teal (E2) 2026-09-18; colour + accessibility half enforced by a build gate (including chart-series contrast and colour-blind distinguishability, closed 2026-08-30); signature elements (send rail, live/dry banding) specified but mostly NOT yet built (see implementation status on each)",
   "supersedes": null,
 
   "why_this_file_exists": [
@@ -14,8 +15,8 @@
   ],
 
   "direction": {
-    "name": "Ledger & Rail",
-    "thesis": "An outreach console is a ledger of things that have left the building and cannot be recalled. It should read like a well-kept record, and everything capable of leaving the building should be visibly marked as such.",
+    "name": "Electric Teal",
+    "thesis": "An outreach console is a ledger of things that have left the building and cannot be recalled. It should read as a sharp operations tool: dark charcoal chrome, a bright teal primary for action and focus, and a cool off-white canvas where the record lives.",
     "principles": [
       {
         "id": "consequence-is-drawn",
@@ -31,12 +32,12 @@
       },
       {
         "id": "calm-chrome-loud-state",
-        "statement": "Calm chrome, loud state.",
-        "detail": "The chrome is a low-chroma neutral carrying a faint green hue — chosen, not pure grey — so that the few genuinely coloured pixels on screen are always state: a bounce, a dead mailbox, a suppression, a claim. Colour is a scarce resource spent only on things that changed or need a decision.",
-        "why_here": "The generic admin template spends colour on decoration and then has nothing left to say when something is actually wrong."
+        "statement": "Charcoal chrome, electric action, loud state.",
+        "detail": "The sidebar is dark charcoal in both themes so the working canvas can stay cool and light. Bright teal is spent on primary actions, active navigation, links and focus — not on decoration. Status colour remains scarce: a bounce, a dead mailbox, a suppression, a claim. Energetic, not neon; professional B2B ops, not a marketing landing page.",
+        "why_here": "A light-on-light admin template with a muted sage swap reads as unfinished. The split (dark rail / light ledger) plus a chromatic teal primary is the cheapest thing that makes the console look chosen."
       }
     ],
-    "what_makes_it_not_generic": "The default outcome — and what the app is closest to today — is shadcn's neutral palette with a brand hue swapped in. That is recognisably a template. The escape is not more decoration; it is one idiom the domain earns and no template ships: a reserved marker for irreversibility, applied with discipline and never anywhere else."
+    "what_makes_it_not_generic": "The default outcome is shadcn's neutral palette with a brand hue swapped in. That is recognisably a template. Electric Teal escapes it with a dark charcoal sidebar in light mode and a high-chroma teal primary. The domain still earns a second, reserved idiom no template ships: a marker for irreversibility (the send rail), applied with discipline and never anywhere else."
   },
 
   "audience_and_conditions": {
@@ -53,73 +54,73 @@
     "format": "oklch(L C H), L in 0..1",
     "colour": {
       "light": {
-        "--background": "oklch(0.975 0.004 165)",
-        "--foreground": "oklch(0.24 0.014 165)",
-        "--card": "oklch(1 0 0)",
-        "--card-foreground": "oklch(0.24 0.014 165)",
-        "--popover": "oklch(1 0 0)",
-        "--popover-foreground": "oklch(0.24 0.014 165)",
-        "--primary": "oklch(0.52 0.084 162)",
+        "--background": "oklch(0.972 0.006 188)",
+        "--foreground": "oklch(0.22 0.016 188)",
+        "--card": "oklch(0.995 0.002 188)",
+        "--card-foreground": "oklch(0.22 0.016 188)",
+        "--popover": "oklch(0.995 0.002 188)",
+        "--popover-foreground": "oklch(0.22 0.016 188)",
+        "--primary": "oklch(0.5 0.14 185)",
         "--primary-foreground": "oklch(0.99 0 0)",
-        "--secondary": "oklch(0.955 0.005 165)",
-        "--secondary-foreground": "oklch(0.3 0.014 165)",
-        "--muted": "oklch(0.955 0.005 165)",
-        "--muted-foreground": "oklch(0.5 0.013 165)",
-        "--accent": "oklch(0.94 0.022 162)",
-        "--accent-foreground": "oklch(0.4 0.066 162)",
+        "--secondary": "oklch(0.95 0.008 188)",
+        "--secondary-foreground": "oklch(0.28 0.016 188)",
+        "--muted": "oklch(0.95 0.008 188)",
+        "--muted-foreground": "oklch(0.46 0.02 188)",
+        "--accent": "oklch(0.93 0.035 185)",
+        "--accent-foreground": "oklch(0.32 0.08 185)",
         "--destructive": "oklch(0.55 0.245 27.325)",
-        "--border": "oklch(0.912 0.006 165)",
-        "--input": "oklch(0.62 0.013 165)",
-        "--ring": "oklch(0.55 0.082 162)",
+        "--border": "oklch(0.9 0.01 188)",
+        "--input": "oklch(0.58 0.02 188)",
+        "--ring": "oklch(0.5 0.12 185)",
         "--chart-1": "oklch(0.594 0.13 162)",
         "--chart-2": "oklch(0.62 0.216 58)",
         "--chart-3": "oklch(0.432 0.22 253.3)",
         "--chart-4": "oklch(0.447 0.164 326.4)",
-        "--sidebar": "oklch(0.99 0.003 165)",
-        "--sidebar-foreground": "oklch(0.24 0.014 165)",
-        "--sidebar-primary": "oklch(0.52 0.084 162)",
-        "--sidebar-primary-foreground": "oklch(0.99 0 0)",
-        "--sidebar-accent": "oklch(0.94 0.022 162)",
-        "--sidebar-accent-foreground": "oklch(0.4 0.066 162)",
-        "--sidebar-border": "oklch(0.912 0.006 165)",
-        "--sidebar-ring": "oklch(0.55 0.082 162)"
+        "--sidebar": "oklch(0.2 0.014 188)",
+        "--sidebar-foreground": "oklch(0.94 0.01 188)",
+        "--sidebar-primary": "oklch(0.72 0.13 185)",
+        "--sidebar-primary-foreground": "oklch(0.18 0.02 188)",
+        "--sidebar-accent": "oklch(0.27 0.04 185)",
+        "--sidebar-accent-foreground": "oklch(0.86 0.1 185)",
+        "--sidebar-border": "oklch(0.28 0.016 188)",
+        "--sidebar-ring": "oklch(0.72 0.12 185)"
       },
       "dark": {
-        "--background": "oklch(0.17 0.012 165)",
-        "--foreground": "oklch(0.93 0.006 165)",
-        "--card": "oklch(0.215 0.014 165)",
-        "--card-foreground": "oklch(0.93 0.006 165)",
-        "--popover": "oklch(0.215 0.014 165)",
-        "--popover-foreground": "oklch(0.93 0.006 165)",
-        "--primary": "oklch(0.68 0.09 162)",
-        "--primary-foreground": "oklch(0.18 0.02 165)",
-        "--secondary": "oklch(0.27 0.012 165)",
-        "--secondary-foreground": "oklch(0.93 0.006 165)",
-        "--muted": "oklch(0.27 0.012 165)",
-        "--muted-foreground": "oklch(0.72 0.012 165)",
-        "--accent": "oklch(0.29 0.036 162)",
-        "--accent-foreground": "oklch(0.85 0.06 162)",
+        "--background": "oklch(0.17 0.014 188)",
+        "--foreground": "oklch(0.94 0.008 188)",
+        "--card": "oklch(0.215 0.016 188)",
+        "--card-foreground": "oklch(0.94 0.008 188)",
+        "--popover": "oklch(0.215 0.016 188)",
+        "--popover-foreground": "oklch(0.94 0.008 188)",
+        "--primary": "oklch(0.76 0.13 185)",
+        "--primary-foreground": "oklch(0.18 0.02 188)",
+        "--secondary": "oklch(0.27 0.014 188)",
+        "--secondary-foreground": "oklch(0.94 0.008 188)",
+        "--muted": "oklch(0.27 0.014 188)",
+        "--muted-foreground": "oklch(0.74 0.018 188)",
+        "--accent": "oklch(0.3 0.045 185)",
+        "--accent-foreground": "oklch(0.88 0.08 185)",
         "--destructive": "oklch(0.704 0.191 22.216)",
-        "--border": "oklch(0.3 0.012 165)",
-        "--input": "oklch(0.53 0.013 165)",
-        "--ring": "oklch(0.6 0.08 162)",
+        "--border": "oklch(0.32 0.014 188)",
+        "--input": "oklch(0.55 0.018 188)",
+        "--ring": "oklch(0.72 0.12 185)",
         "--chart-1": "oklch(0.555 0.115 162)",
         "--chart-2": "oklch(0.582 0.22 58)",
         "--chart-3": "oklch(0.67 0.179 253.3)",
         "--chart-4": "oklch(0.593 0.166 326.4)",
-        "--sidebar": "oklch(0.185 0.012 165)",
-        "--sidebar-foreground": "oklch(0.93 0.006 165)",
-        "--sidebar-primary": "oklch(0.68 0.09 162)",
-        "--sidebar-primary-foreground": "oklch(0.18 0.02 165)",
-        "--sidebar-accent": "oklch(0.29 0.036 162)",
-        "--sidebar-accent-foreground": "oklch(0.85 0.06 162)",
-        "--sidebar-border": "oklch(0.3 0.012 165)",
-        "--sidebar-ring": "oklch(0.6 0.08 162)"
+        "--sidebar": "oklch(0.16 0.014 188)",
+        "--sidebar-foreground": "oklch(0.94 0.008 188)",
+        "--sidebar-primary": "oklch(0.76 0.13 185)",
+        "--sidebar-primary-foreground": "oklch(0.18 0.02 188)",
+        "--sidebar-accent": "oklch(0.28 0.04 185)",
+        "--sidebar-accent-foreground": "oklch(0.88 0.1 185)",
+        "--sidebar-border": "oklch(0.28 0.016 188)",
+        "--sidebar-ring": "oklch(0.72 0.12 185)"
       },
       "hue_policy": {
-        "brand": 162,
-        "neutral": 165,
-        "rule": "Neutrals sit two degrees off the brand hue at very low chroma (0.004–0.014). They are a chosen near-grey, not #888. This is the cheapest single thing that stops a palette reading as a template, and it is why --background is 0.004 chroma rather than 0.",
+        "brand": 185,
+        "neutral": 188,
+        "rule": "Neutrals sit three degrees off the brand hue at very low chroma (0.002–0.020). They are a chosen cool near-grey, not #888. This is the cheapest single thing that stops a palette reading as a template, and it is why --background is 0.006 chroma rather than 0. Brand hue 185 is electric teal/cyan; it is darker on the canvas (so --primary still meets 4.5:1 as link text) and brighter on the dark sidebar (--sidebar-primary / --sidebar-accent-foreground) where the energetic accent can afford to glow.",
         "forbidden_hues": "No hue in the 260–320 band (the violet/indigo of the default framework theme). See anti-goals."
       }
     },
@@ -154,7 +155,7 @@
     "elevation": {
       "rule": "Shadow means 'this floats above the page', and is permitted ONLY on genuinely floating layers: popover, dropdown, select menu, sheet, tooltip, dialog.",
       "banned": "Shadow as a hierarchy device on in-flow surfaces. Cards separate from the canvas by a hairline plus a ground-tone shift (--card is lighter than --background), never by a shadow.",
-      "known_exception": "src/components/ui/card.tsx currently carries shadow-xs and tabs.tsx carries shadow-sm. Both are inherited from the shadcn defaults, both are in-flow, and both are therefore out of line with this rule. Left in place this cycle — removing them is a visual change across every screen and belongs with the UI consolidation (queue item 7), not with the artefact that names the rule."
+      "known_exception": "A few screens still pass shadow-sm on Card via className. The card primitive itself uses a hairline, not a drop shadow. Do not put shadow-xs/sm back on card.tsx or on the in-flow tabs trigger."
     },
     "motion": {
       "rule": "Motion confirms a state change and nothing else. No entrance animation on page content, no parallax, no attention-seeking loops.",
@@ -207,7 +208,7 @@
       "id": "hairline-and-ground",
       "name": "Hairline and ground",
       "what": "Surfaces separate by a 1px hairline plus a shift in ground tone, not by a shadow.",
-      "implementation_status": "MOSTLY BUILT — --card is deliberately lighter than --background in light mode and lighter again in dark. Undermined by the inherited shadow-xs on cards; see tokens.elevation.known_exception."
+      "implementation_status": "BUILT — --card is deliberately lighter than --background in light mode (and lighter again in dark). Cards use a hairline border, not an in-flow drop shadow."
     }
   ],
 
@@ -254,7 +255,7 @@
     },
     {
       "id": "no-pure-black-on-pure-white",
-      "rule": "Foreground is never pure black and the canvas is never pure white. --foreground is 0.24 lightness and --background is 0.975 with a trace of hue. Maximum contrast is not maximum readability, and pure #000 on #fff is the visual signature of nobody having chosen anything.",
+      "rule": "Foreground is never pure black and the canvas is never pure white. --foreground is 0.22 lightness and --background is 0.972 with a trace of hue. Maximum contrast is not maximum readability, and pure #000 on #fff is the visual signature of nobody having chosen anything.",
       "machine_checked": true
     },
     {
@@ -318,6 +319,11 @@
   ],
 
   "decisions_taken_this_cycle": [
+    {
+      "decision": "(2026-09-18) Adopt Electric Teal (E2) as the visual direction: dark charcoal sidebar in light mode, high-chroma teal primary (hue 185), cool off-white canvas. Preserve the send-rail / live-vs-dry signature elements and the WCAG 2.2 AA contrast gate.",
+      "why": "Greg selected E2 from a staff-UI polish pass. The previous muted sage (hue 162, chroma 0.084) with a near-white sidebar read as a template with the brand swapped in. A split rail (dark chrome / light ledger) plus a chromatic teal primary is a token-only change that still clears every contrast_pair. --primary stays dark enough (L=0.5) to be 4.5:1 link text on the canvas; the brighter electric accent lives on --sidebar-primary / --sidebar-accent-foreground against the charcoal rail, where it can glow without failing as body text. Chart tokens are unchanged — they were proven distinguishable on 2026-08-30 and still clear 3:1 against the slightly cooler card.",
+      "reversible": "Yes — token values in globals.css and DESIGN.json, plus chrome class tweaks on the app shell and ui primitives. No schema, API, or send-path change."
+    },
     {
       "decision": "Adopt 'Ledger & Rail' as the direction without asking Greg first.",
       "why": "The queue item says to propose a direction and not wait to be told one. The direction is derived from what the product does rather than from taste, so it is arguable on evidence rather than on preference.",
@@ -384,9 +390,9 @@
     {
       "id": "in-flow-shadows",
       "found": "2026-08-26",
-      "what": "card.tsx carries shadow-xs and tabs.tsx carries shadow-sm — both in-flow, both against the elevation rule this file sets.",
-      "why_not_fixed_here": "Visual change on every screen; belongs with the consolidation.",
-      "owed_to": "queue item 7"
+      "what": "Some screens still pass shadow-sm on Card via className. The card primitive itself no longer ships an in-flow shadow (Electric Teal, 2026-09-18). Remaining page-level shadows are visual debt, not a token defect.",
+      "why_not_fixed_here": "Sweeping every page className is out of scope for a token-first polish; the primitive is the source of truth going forward.",
+      "owed_to": "opportunistic; do not reintroduce shadow-xs on card.tsx"
     }
   ],
 

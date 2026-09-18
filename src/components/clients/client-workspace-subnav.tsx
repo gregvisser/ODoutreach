@@ -107,7 +107,7 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
             className={cn(
               "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
               active
-                ? "bg-muted text-foreground"
+                ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >

@@ -58,7 +58,7 @@ export default async function ClientsPage() {
         </Link>
       </div>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border">
         <CardHeader>
           <CardTitle>All clients</CardTitle>
           <CardDescription>Current status and live totals.</CardDescription>
@@ -112,7 +112,7 @@ export default async function ClientsPage() {
             </TableBody>
           </Table>
           {clients.length === 0 ? (
-            <div className="space-y-2 py-10 text-center text-sm text-muted-foreground">
+            <div className="space-y-2 rounded-lg border border-dashed border-border bg-muted/30 py-12 text-center text-sm text-muted-foreground">
               {emptyCopy?.variant === "no_clients_in_system" ? (
                 <>
                   <p className="font-medium text-foreground">No clients yet</p>

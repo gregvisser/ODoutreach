@@ -86,8 +86,8 @@ const CONTRAST_MIN = 3.0;
 /**
  * The number of simultaneously-distinguishable chart series this palette is
  * proven to support (`docs/ops/CHART-SERIES-CONTRAST-2026-08-30.md`). An
- * exhaustive search could not find a 5th hue, anchored on the brand green
- * (`--chart-1` at hue 162, matching `--primary`), that clears the all-pairs
+ * exhaustive search could not find a 5th hue, anchored on brand-adjacent
+ * green-teal (`--chart-1` at hue 162), that clears the all-pairs
  * normal-vision floor — best found was 14.2Δ against a required 15. If this
  * assertion ever fails because a token was added or removed, that is the
  * signal to re-run the search in the artefact above and update both this

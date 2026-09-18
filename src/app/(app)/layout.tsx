@@ -50,7 +50,7 @@ export default async function AppLayout({
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader brand={brand} isSuperAdmin={gate.staff.isSuperAdmin} googleReconnectsAttentionCount={googleReconnectsAttentionCount} />
-        <main className="flex-1 bg-gradient-to-b from-muted/30 to-background px-4 py-8 md:px-8">
+        <main className="flex-1 bg-background px-4 py-8 md:px-8">
           {children}
         </main>
         <footer className="border-t border-border bg-background px-4 py-6 md:px-8">
