@@ -24,17 +24,46 @@
 
 /**
  * xAI Grok model ids that may appear in `XAI_MODEL` (or the built-in default).
- * Each must have a row in `RATES` below — an unpriced model is refused.
+ * Ids must match https://api.x.ai (see docs.x.ai/models). Each canonical id
+ * must have a row in `XAI_RATES` — an unpriced model is refused.
  */
 export const XAI_CHAT_MODELS = {
   /** Default when `XAI_MODEL` is unset and provider is xAI. */
-  DEFAULT: "grok-4-fast-non-reasoning",
+  DEFAULT: "grok-4.6",
+  GROK_4_6: "grok-4.6",
+  GROK_4_7: "grok-4.7",
   GROK_4_FAST: "grok-4-fast-non-reasoning",
-  GROK_4: "grok-4-0709",
-  GROK_4_6: "grok-4-6",
+  GROK_4_20_NON_REASONING: "grok-4.20-0309-non-reasoning",
 } as const;
 
 export type XaiChatModelId = (typeof XAI_CHAT_MODELS)[keyof typeof XAI_CHAT_MODELS];
+
+const XAI_CANONICAL_MODEL_IDS: ReadonlySet<string> = new Set(Object.values(XAI_CHAT_MODELS));
+
+/**
+ * Legacy / typo ids from early Azure config or the pre-2026-09 catalog. Mapped to
+ * a priced canonical id before metering and before the chat/completions request.
+ */
+const XAI_MODEL_ID_ALIASES: Readonly<Record<string, XaiChatModelId>> = {
+  "grok-4-6": "grok-4.6",
+  "grok-4-0709": "grok-4.6",
+};
+
+/**
+ * Resolve `XAI_MODEL` (or any xAI id string) to the canonical api.x.ai model id.
+ * Returns null when the string is not a known canonical id or alias.
+ */
+export function resolveXaiChatModelId(model: string): XaiChatModelId | null {
+  const trimmed = model.trim();
+  const aliased = XAI_MODEL_ID_ALIASES[trimmed];
+  if (aliased) {
+    return aliased;
+  }
+  if (XAI_CANONICAL_MODEL_IDS.has(trimmed)) {
+    return trimmed as XaiChatModelId;
+  }
+  return null;
+}
 
 /** Models this application is allowed to call. */
 export const AI_MODELS = {
@@ -127,7 +156,7 @@ export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
  * if they differ, add a NEW version entry, set `RATES_VERIFIED` true, and
  * recompute `costMicroUsd` for rows carrying the old version.
  */
-export const RATE_VERSION = "2026-08-29-unverified" as const;
+export const RATE_VERSION = "2026-09-21-unverified" as const;
 
 /**
  * False until a human has checked the numbers above against the published price
@@ -183,21 +212,26 @@ const ANTHROPIC_RATES: Readonly<Record<AiModelId, ModelRate>> = {
 };
 
 /**
- * xAI rates — UNVERIFIED placeholders until checked against x.ai pricing.
- * Same micro-USD shape as Anthropic; ledger stores tokens + rates for recompute.
+ * xAI rates — micro-USD per MTok. grok-4.6 / grok-4.7 / grok-4.20-* figures from
+ * docs.x.ai/models (standard under-200k prompt tier, 2026-09-21). grok-4-fast-non-reasoning
+ * still uses the prior placeholder row (not on that table); ledger stores tokens for recompute.
  */
 const XAI_RATES: Readonly<Record<XaiChatModelId, ModelRate>> = {
+  "grok-4.6": {
+    inputPerMTokMicroUsd: 2_000_000,
+    outputPerMTokMicroUsd: 6_000_000,
+  },
+  "grok-4.7": {
+    inputPerMTokMicroUsd: 2_000_000,
+    outputPerMTokMicroUsd: 6_000_000,
+  },
   "grok-4-fast-non-reasoning": {
     inputPerMTokMicroUsd: 500_000,
     outputPerMTokMicroUsd: 1_500_000,
   },
-  "grok-4-0709": {
-    inputPerMTokMicroUsd: 3_000_000,
-    outputPerMTokMicroUsd: 15_000_000,
-  },
-  "grok-4-6": {
-    inputPerMTokMicroUsd: 3_000_000,
-    outputPerMTokMicroUsd: 15_000_000,
+  "grok-4.20-0309-non-reasoning": {
+    inputPerMTokMicroUsd: 1_250_000,
+    outputPerMTokMicroUsd: 2_500_000,
   },
 };
 
@@ -215,6 +249,10 @@ const RATES: Readonly<Record<string, ModelRate>> = {
  * failure this whole file exists to prevent. `meterAiCall` enforces that.
  */
 export function getModelRate(model: string): ModelRate | null {
+  const xaiCanonical = resolveXaiChatModelId(model);
+  if (xaiCanonical) {
+    return RATES[xaiCanonical] ?? null;
+  }
   return RATES[model] ?? null;
 }
 

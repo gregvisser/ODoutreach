@@ -33,7 +33,7 @@ not drafting AI. Do not treat this enablement as Machine send activation.
 | `AI_OUTREACH_FEATURES` | Azure App Setting | `on` / `true` / `1` / `yes` / `enabled` (trimmed, case-insensitive) | Unset, empty, `"off"`, typos (`typo` is **off**) | `.env.example` `"off"` → five outreach features **off** |
 | `AI_MODEL_PROVIDER` | Azure App Setting | `xai` (production default) | `anthropic` → rollback path only | Unset → xAI when `XAI_API_KEY` set, else anthropic |
 | `XAI_API_KEY` | Azure App Setting **secret** | Non-empty xAI key | Unset/empty (with provider xai) → `no_api_key` | Empty in example |
-| `XAI_MODEL` | Azure App Setting | Model id with a rate in `model-catalog.ts` (e.g. value already set in prod) | Unset → `grok-4-fast-non-reasoning` | Empty in example |
+| `XAI_MODEL` | Azure App Setting | **Live** api.x.ai chat model id that has a rate in `model-catalog.ts` (e.g. `grok-4.6`, `grok-4.7`, `grok-4-fast-non-reasoning`) | Wrong/unknown id → `no_rate_for_model` or API 404 | Unset → `grok-4.6` |
 | `ANTHROPIC_API_KEY` | Azure App Setting **secret** | Only when `AI_MODEL_PROVIDER=anthropic` | Not required for xAI outreach | May remain in prod but unused when provider=xai |
 | `ANTHROPIC_WORKSPACE_ID` | Azure App Setting (not a secret) | Anthropic rollback only — identity-linked key header | Unset → header omitted for workspace-scoped keys | Empty in example |
 
@@ -127,7 +127,7 @@ App: `app-opensdoors-outreach-prod`, RG `rg-opensdoors-outreach-prod`.
 
 **Do (names only; never paste key material into tickets/PRs):**
 
-1. Confirm `AI_MODEL_PROVIDER` = `xai`, `XAI_API_KEY` is present (name check only), and `XAI_MODEL` matches a priced id in `src/lib/ai/model-catalog.ts`.
+1. Confirm `AI_MODEL_PROVIDER` = `xai`, `XAI_API_KEY` is present (name check only), and `XAI_MODEL` is a **live** xAI model id listed in `XAI_CHAT_MODELS` / `src/lib/ai/model-catalog.ts` (recommended: `grok-4.6`). Typos like `grok-4-6` are remapped in code, but Azure should use the dotted id from [docs.x.ai/models](https://docs.x.ai/docs/models).
 2. Confirm `AI_FEATURES` is **not** an off-value (prefer **omit** the setting, or leave blank).
 3. Set `AI_OUTREACH_FEATURES` = `on` (or `true` / `1` / `yes` / `enabled`).
 4. Saving App Settings restarts the app. Wait for healthy `GET /api/health`.
