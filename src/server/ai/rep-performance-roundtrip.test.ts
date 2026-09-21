@@ -12,7 +12,7 @@ import {
   type RepSendOutcome,
 } from "@/lib/ai/rep-performance-evidence";
 
-import { callAiToolMessages } from "./ai-tool-messages";
+import { callAiToolMessages } from "./anthropic-messages";
 
 /**
  * Round-trip: the REAL evidence builder, the REAL significance test, the REAL

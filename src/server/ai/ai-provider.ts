@@ -1,10 +1,14 @@
 import "server-only";
 
+import { XAI_CHAT_MODELS } from "@/lib/ai/model-catalog";
+
 /**
  * Which vendor backs product AI, and which credentials/models to use.
  *
  * Greg policy: production runs xAI (Grok) only. Anthropic remains behind an
  * explicit `AI_MODEL_PROVIDER=anthropic` rollback path for local/dev.
+ *
+ * Credential name for xAI: `XAI_API_KEY` only (no alternate env aliases).
  */
 
 export type ProductAiProvider = "xai" | "anthropic";
@@ -13,8 +17,6 @@ const PROVIDER_ALIASES: Readonly<Record<string, ProductAiProvider>> = {
   xai: "xai",
   anthropic: "anthropic",
 };
-
-import { XAI_CHAT_MODELS } from "@/lib/ai/model-catalog";
 
 /** Default xAI chat model when `XAI_MODEL` is unset. */
 export const DEFAULT_XAI_MODEL = XAI_CHAT_MODELS.DEFAULT;
@@ -60,4 +62,9 @@ export function resolveProductAiModel(catalogModelId: string): string {
     return fromEnv || DEFAULT_XAI_MODEL;
   }
   return catalogModelId;
+}
+
+/** Whether the active provider has a non-empty API key (UI + refusal parity). */
+export function isProductAiConfigured(): boolean {
+  return resolveProductAiApiKey() !== undefined;
 }

@@ -20,7 +20,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./ai-tool-messages";
+import { callAiToolMessages } from "./anthropic-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**

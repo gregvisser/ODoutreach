@@ -15,7 +15,7 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./ai-tool-messages", () => ({
+vi.mock("./anthropic-messages", () => ({
   callAiToolMessages: callAnthropicMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));

@@ -8,7 +8,7 @@ import {
   type CampaignReviewInput,
 } from "@/lib/ai/campaign-review";
 
-import { callAiToolMessages } from "./ai-tool-messages";
+import { callAiToolMessages } from "./anthropic-messages";
 
 /**
  * Round-trip: the REAL request builder, through the REAL HTTP layer, into the

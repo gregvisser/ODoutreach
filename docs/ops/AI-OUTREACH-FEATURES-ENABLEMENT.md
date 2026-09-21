@@ -8,9 +8,13 @@ AI assistance must not itself send mail (already true in code).
 
 Authoritative switch: `src/lib/ai/ai-switch.ts` (`areAiFeaturesEnabled`).
 Every model call goes through `src/server/ai/metered-call.ts` (ledger + refusals).
-Product AI HTTP: `src/server/ai/ai-tool-messages.ts` → xAI (`src/server/ai/xai-chat-completions.ts`)
-when `AI_MODEL_PROVIDER=xai` or `XAI_API_KEY` is set; Anthropic rollback via
-`src/server/ai/anthropic-messages.ts` when `AI_MODEL_PROVIDER=anthropic`.
+Product AI HTTP choke point: `src/server/ai/anthropic-messages.ts` (`callAiToolMessages`)
+→ xAI (`src/server/ai/xai-chat-completions.ts`) when `AI_MODEL_PROVIDER=xai` or
+`XAI_API_KEY` is set; Anthropic (`postAnthropicMessages`) when
+`AI_MODEL_PROVIDER=anthropic`. UI `aiConfigured` uses `isProductAiConfigured()` in
+`src/server/ai/ai-provider.ts` (not `ANTHROPIC_API_KEY` alone).
+
+**xAI credential env name:** `XAI_API_KEY` only (no alternate aliases in code).
 
 **Support agent** (`.github/workflows/support-agent.yml`) still uses OpenAI Codex — out of
 scope for product AI; do not enable `SUPPORT_AGENT_SCHEDULE_ENABLED` for this work.

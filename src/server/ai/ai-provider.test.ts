@@ -4,6 +4,7 @@ import { XAI_CHAT_MODELS } from "@/lib/ai/model-catalog";
 
 import {
   DEFAULT_XAI_MODEL,
+  isProductAiConfigured,
   resolveProductAiApiKey,
   resolveProductAiModel,
   resolveProductAiProvider,
@@ -54,6 +55,19 @@ describe("resolveProductAiApiKey", () => {
     process.env.AI_MODEL_PROVIDER = "anthropic";
     process.env.ANTHROPIC_API_KEY = "ant-key";
     expect(resolveProductAiApiKey()).toBe("ant-key");
+  });
+});
+
+describe("isProductAiConfigured", () => {
+  it("is true when the active provider has a key", () => {
+    process.env.AI_MODEL_PROVIDER = "xai";
+    process.env.XAI_API_KEY = "xai-key";
+    expect(isProductAiConfigured()).toBe(true);
+  });
+
+  it("is false when the active provider has no key", () => {
+    process.env.AI_MODEL_PROVIDER = "xai";
+    expect(isProductAiConfigured()).toBe(false);
   });
 });
 

@@ -15,7 +15,7 @@ import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy"
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./ai-tool-messages";
+import { callAiToolMessages } from "./anthropic-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
