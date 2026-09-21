@@ -10,7 +10,8 @@ import {
 import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -63,7 +64,8 @@ export async function classifyInboundReply(args: {
   // same reply, which is the cheapest possible way to inflate a client's bill.
   if (reply.classification) return { classified: false, reason: "already_classified" };
 
-  const model = AI_MODELS.REPLY_CLASSIFICATION;
+  const model = resolveProductAiModel(AI_MODELS.REPLY_CLASSIFICATION);
+  const apiKey = resolveProductAiApiKey();
   const userText = buildClassificationInput({
     subject: reply.subject,
     // `bodyPreview` is the fuller text; `snippet` is the provider's short form.
@@ -74,11 +76,11 @@ export async function classifyInboundReply(args: {
     client: { id: reply.client.id, slug: reply.client.slug },
     feature: "REPLY_CLASSIFICATION",
     model,
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey,
     subject: { type: "InboundReply", id: reply.id },
     invoke: async () => {
-      const response = await callAnthropicMessages({
-        apiKey: process.env.ANTHROPIC_API_KEY as string,
+      const response = await callAiToolMessages({
+        apiKey: apiKey as string,
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: CLASSIFICATION_SYSTEM_PROMPT,

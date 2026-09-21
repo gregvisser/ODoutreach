@@ -126,7 +126,8 @@ export default async function AiSpendPage({ searchParams }: Props) {
           <strong>Nothing was charged this month.</strong> All{" "}
           {NUMBER.format(totals.totalCalls)} calls were refused or failed, so
           there is nothing to invoice. If that is not deliberate, the usual cause
-          is a missing <code>ANTHROPIC_API_KEY</code> in the Azure app settings.
+          is a missing <code>XAI_API_KEY</code> (or Anthropic key when
+          <code>AI_MODEL_PROVIDER=anthropic</code>) in the Azure app settings.
         </div>
       ) : null}
 

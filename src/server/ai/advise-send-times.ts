@@ -18,7 +18,8 @@ import {
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -111,17 +112,18 @@ export async function adviseSendTimes(args: {
     return { ok: false, reason: verdict.reason };
   }
 
-  const model = AI_MODELS.SEND_TIME_ADVICE;
+  const model = resolveProductAiModel(AI_MODELS.SEND_TIME_ADVICE);
+  const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
     client: { id: client.id, slug: client.slug },
     feature: "SEND_TIME_ADVICE",
     model,
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey,
     subject: { type: "Client", id: client.id },
     invoke: async () => {
-      const response = await callAnthropicMessages({
-        apiKey: process.env.ANTHROPIC_API_KEY as string,
+      const response = await callAiToolMessages({
+        apiKey: apiKey as string,
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEND_TIME_ADVICE_SYSTEM_PROMPT,

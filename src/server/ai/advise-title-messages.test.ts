@@ -19,8 +19,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAnthropicMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAnthropicMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -156,6 +156,8 @@ beforeEach(() => {
   // Exercise optional behaviour after deliberate activation.
   process.env.AI_OUTREACH_FEATURES = "on";
   vi.clearAllMocks();
+  process.env.AI_MODEL_PROVIDER = "anthropic";
+  delete process.env.XAI_API_KEY;
   process.env.ANTHROPIC_API_KEY = "sk-test-key";
   prismaMock.client.findFirst.mockResolvedValue(CLIENT);
   prismaMock.clientEmailSequence.findMany.mockResolvedValue(SEQUENCE_ROWS);

@@ -19,7 +19,8 @@ import {
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -163,17 +164,18 @@ export async function explainRepPerformance(args: {
     return { ok: false, reason: verdict.reason };
   }
 
-  const model = AI_MODELS.REP_PERFORMANCE;
+  const model = resolveProductAiModel(AI_MODELS.REP_PERFORMANCE);
+  const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
     client: { id: client.id, slug: client.slug },
     feature: "REP_PERFORMANCE",
     model,
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey,
     subject: { type: "Client", id: client.id },
     invoke: async () => {
-      const response = await callAnthropicMessages({
-        apiKey: process.env.ANTHROPIC_API_KEY as string,
+      const response = await callAiToolMessages({
+        apiKey: apiKey as string,
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: REP_PERFORMANCE_SYSTEM_PROMPT,

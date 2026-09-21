@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildSendTimeAdviceInput,
@@ -12,7 +12,7 @@ import {
   type SendOutcome,
 } from "@/lib/ai/send-time-evidence";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL evidence builder, the REAL request builder, the REAL
@@ -35,6 +35,11 @@ import { callAnthropicMessages } from "./anthropic-messages";
  * would be a bad test). What it can do is prove every layer we own agrees, so
  * the only untested link left is Anthropic's own.
  */
+
+beforeEach(() => {
+  process.env.AI_MODEL_PROVIDER = "anthropic";
+  delete process.env.XAI_API_KEY;
+});
 
 /** A history that passes the evidence gate, built the way production builds it. */
 function history(): SendOutcome[] {
@@ -92,7 +97,7 @@ describe("send-time advice round-trip", () => {
       }),
     );
 
-    const response = await callAnthropicMessages({
+    const response = await callAiToolMessages({
       apiKey: "sk-ant-test",
       model: "claude-haiku-4-5-20251001",
       system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
@@ -171,7 +176,7 @@ describe("send-time advice round-trip", () => {
     const verdict = assessSendTimeEvidence(history());
     if (!verdict.sufficient) throw new Error("unreachable");
 
-    const response = await callAnthropicMessages({
+    const response = await callAiToolMessages({
       apiKey: "sk-ant-test",
       model: "claude-haiku-4-5-20251001",
       system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
@@ -208,7 +213,7 @@ describe("send-time advice round-trip", () => {
       }),
     );
 
-    const response = await callAnthropicMessages({
+    const response = await callAiToolMessages({
       apiKey: "sk-ant-test",
       model: "claude-haiku-4-5-20251001",
       system: SEND_TIME_ADVICE_SYSTEM_PROMPT,

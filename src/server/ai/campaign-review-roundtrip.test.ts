@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildCampaignReviewInput,
@@ -8,7 +8,7 @@ import {
   type CampaignReviewInput,
 } from "@/lib/ai/campaign-review";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL request builder, through the REAL HTTP layer, into the
@@ -28,6 +28,11 @@ import { callAnthropicMessages } from "./anthropic-messages";
  * would be a bad test). What it can do is prove every layer we own is
  * consistent, so the only untested link left is Anthropic's own.
  */
+
+beforeEach(() => {
+  process.env.AI_MODEL_PROVIDER = "anthropic";
+  delete process.env.XAI_API_KEY;
+});
 
 const CAMPAIGN: CampaignReviewInput = {
   clientName: "Acme Safety",
@@ -87,7 +92,7 @@ describe("campaign review round-trip", () => {
       }),
     );
 
-    const response = await callAnthropicMessages({
+    const response = await callAiToolMessages({
       apiKey: "sk-ant-test",
       model: "claude-haiku-4-5-20251001",
       system: CAMPAIGN_REVIEW_SYSTEM_PROMPT,
@@ -150,7 +155,7 @@ describe("campaign review round-trip", () => {
       }),
     } as unknown as Response);
 
-    const response = await callAnthropicMessages({
+    const response = await callAiToolMessages({
       apiKey: "sk-ant-test",
       model: "claude-haiku-4-5-20251001",
       system: CAMPAIGN_REVIEW_SYSTEM_PROMPT,

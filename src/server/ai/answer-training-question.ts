@@ -13,7 +13,8 @@ import { searchTrainingContent } from "@/lib/training/assistant-search";
 import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -150,17 +151,18 @@ export async function answerTrainingQuestion(args: {
     return { ok: true, canAnswer: false, unansweredQuestionId };
   }
 
-  const model = AI_MODELS.TRAINING_ASSISTANT;
+  const model = resolveProductAiModel(AI_MODELS.TRAINING_ASSISTANT);
+  const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
     client,
     feature: "TRAINING_ASSISTANT",
     model,
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey,
     subject: { type: "StaffQuestion", id: args.askedByEmail },
     invoke: async () => {
-      const response = await callAnthropicMessages({
-        apiKey: process.env.ANTHROPIC_API_KEY as string,
+      const response = await callAiToolMessages({
+        apiKey: apiKey as string,
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: TRAINING_ASSISTANT_SYSTEM_PROMPT,

@@ -6,6 +6,7 @@ import {
   formatMicroUsd,
   getModelRate,
   RATE_VERSION,
+  XAI_CHAT_MODELS,
 } from "./model-catalog";
 
 describe("model catalog", () => {
@@ -14,6 +15,9 @@ describe("model catalog", () => {
     // apart. This is the check that fails when someone adds a model and
     // forgets the price.
     for (const model of Object.values(AI_MODELS)) {
+      expect(getModelRate(model), `no rate for ${model}`).not.toBeNull();
+    }
+    for (const model of Object.values(XAI_CHAT_MODELS)) {
       expect(getModelRate(model), `no rate for ${model}`).not.toBeNull();
     }
   });

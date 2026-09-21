@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildTitleMessageInput,
@@ -14,7 +14,7 @@ import {
   type TitleMessageOutcome,
 } from "@/lib/ai/title-message-evidence";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL job-title grouping, the REAL evidence builder, the REAL
@@ -37,6 +37,11 @@ import { callAnthropicMessages } from "./anthropic-messages";
  * would be a bad test). What it can do is prove every layer we own agrees, so
  * the only untested link left is Anthropic's own.
  */
+
+beforeEach(() => {
+  process.env.AI_MODEL_PROVIDER = "anthropic";
+  delete process.env.XAI_API_KEY;
+});
 
 const MESSAGES: MessageIdentity[] = [
   { sequenceId: "seq-a", label: "Cost-saving campaign" },
@@ -80,7 +85,7 @@ function anthropicResponse(input: unknown) {
 }
 
 async function send(userText: string, fetchImpl: ReturnType<typeof vi.fn>) {
-  return callAnthropicMessages({
+  return callAiToolMessages({
     apiKey: "sk-ant-test",
     model: "claude-haiku-4-5-20251001",
     system: TITLE_MESSAGE_SYSTEM_PROMPT,
