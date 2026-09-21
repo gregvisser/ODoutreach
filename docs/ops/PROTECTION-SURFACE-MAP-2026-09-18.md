@@ -6,6 +6,8 @@
 
 **How to read this.** Code defaults are from source. Live Azure App Service values were **not** re-read in this session and are marked **UNKNOWN**. Dated ops notes that previously read Azure are labelled **DOCUMENTED-AS-OF** and must be re-confirmed before acting. Hypotheses are labelled as such.
 
+**Addendum 2026-09-21 (outreach AI):** Greg wants built-in outreach AI working. That is an Azure `AI_OUTREACH_FEATURES` opt-in plus `ANTHROPIC_API_KEY`; it does **not** send mail. Inventory and staff checklist: `docs/ops/AI-OUTREACH-FEATURES-ENABLEMENT.md`. `MACHINE_ACTIVATION_AVAILABLE` is already `true` in source (Machine sending, separate). Section 9’s “keep `AI_OUTREACH_FEATURES` off” and section 10 item 13’s `MACHINE_ACTIVATION_AVAILABLE=false` are stale relative to current `main`.
+
 **Hard rules verified in code (do not weaken):**
 
 - Open/click tracking is off by default for every client (`Client.openTrackingEnabledAt` null = off).
@@ -448,8 +450,8 @@ Operator card. Protective as-is. Changing any of these is a product-policy decis
 - `PROCESS_QUEUE_SECRET` (empty = silent send/reply/DNC stop)
 - `MAILBOX_OAUTH_SECRET` / `AUTH_SECRET` (rotation = mass mailbox outage)
 - `REPLY_SYNC_TIMER` / GitHub `REPLY_SYNC_RUNNER`
-- `AI_OUTREACH_FEATURES` (Human handover: keep off)
-- `MACHINE_ACTIVATION_AVAILABLE` in source (`false`)
+- `AI_OUTREACH_FEATURES` (defaults off in `.env.example`; commercial Azure opt-in — see `docs/ops/AI-OUTREACH-FEATURES-ENABLEMENT.md`. Does not send.)
+- `MACHINE_ACTIVATION_AVAILABLE` in source (`true` as of #689; flipping Machine **per client** is still a commercial activation, not a hotfix)
 
 ### Database columns / tables
 
@@ -511,7 +513,7 @@ Easy to break while “just testing”:
 10. **Microsoft Graph Message-ID / headers.** Many Graph replies still depend on subject+contact matching. “Fixing” the matcher without a reply-proof pass will mis-complete enrollments.
 11. **Graph identity conflicts / junk duplicates.** Recent work (#684, #686) classifies conflicts and keeps the batch running. Do not “fail the mailbox” on identity conflict while proving replies.
 12. **Corporate four-at-a-time vs pacing vs warmup.** Three different layers. Changing one to satisfy another is a recorded foot-gun (`manual-send-window.ts` comments).
-13. **Human sending release.** `MACHINE_ACTIVATION_AVAILABLE=false` and `AI_OUTREACH_FEATURES=off`. Flipping either is a commercial activation, not a hotfix.
+13. **Machine vs outreach AI.** `MACHINE_ACTIVATION_AVAILABLE` is `true` in source; turning a client to Machine sending is still a commercial activation. Outreach AI is a separate Azure `AI_OUTREACH_FEATURES=on` opt-in (does not send). Do not treat either as a hotfix for send/DNC/tracking bugs.
 14. **GitHub cron reliability.** Documented multi-hour drops (comments on `sync-one-dnc-sheet.yml`). DNC that “ran green” can still be PARTIAL — `sync-replies.yml` now fails the PARTIAL step on purpose.
 15. **Queue recovery WebJob** only drains approved queued rows. Turning it on does not replace campaign advance; turning **off** GitHub send cron **does** stop new outreach.
 16. **Dev simulate flags** if ever copied into Azure.
