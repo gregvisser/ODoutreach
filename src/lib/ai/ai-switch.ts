@@ -3,7 +3,7 @@ import type { AiFeature } from "@/generated/prisma/client";
 const OFF_VALUES = new Set(["off", "false", "0", "no", "disabled"]);
 const ON_VALUES = new Set(["on", "true", "1", "yes", "enabled"]);
 
-/** Optional outreach assistance is not part of the Human sending release. */
+/** Optional outreach assistance needs an explicit `AI_OUTREACH_FEATURES` opt-in. */
 const OUTREACH_FEATURES = new Set<AiFeature>([
   "SEQUENCE_DRAFTING", "CAMPAIGN_REVIEW", "SEND_TIME_ADVICE",
   "REP_PERFORMANCE", "TITLE_MESSAGE_FIT",

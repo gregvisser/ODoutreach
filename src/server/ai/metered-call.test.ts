@@ -236,7 +236,7 @@ describe("the personal-data processor gate (CR-10)", () => {
 });
 
 // Greyed-out tools must also refuse direct server calls without invoking a provider.
-describe("optional outreach AI is disabled for Human sending", () => {
+describe("optional outreach AI stays off until AI_OUTREACH_FEATURES opt-in", () => {
   it.each([
     "SEQUENCE_DRAFTING", "CAMPAIGN_REVIEW", "SEND_TIME_ADVICE",
     "REP_PERFORMANCE", "TITLE_MESSAGE_FIT",
@@ -246,5 +246,20 @@ describe("optional outreach AI is disabled for Human sending", () => {
     expect(out).toEqual({ ok: false, reason: "ai_features_switched_off" });
     expect(invoke).not.toHaveBeenCalled();
     expect(writtenRow()).toMatchObject({ status: "REFUSED", costMicroUsd: 0, feature });
+  });
+
+  it.each([
+    "SEQUENCE_DRAFTING", "CAMPAIGN_REVIEW", "SEND_TIME_ADVICE",
+    "REP_PERFORMANCE", "TITLE_MESSAGE_FIT",
+  ] as const)("reaches invoke for %s when opted in", async (feature) => {
+    process.env.AI_OUTREACH_FEATURES = "on";
+    const invoke = vi.fn().mockResolvedValue({
+      result: "ok",
+      usage: { inputTokens: 10, outputTokens: 5 },
+    });
+    const out = await runMeteredAiCall({ ...baseArgs, feature, model: AI_MODELS[feature], invoke });
+    expect(out.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(writtenRow()).toMatchObject({ status: "OK", feature });
   });
 });

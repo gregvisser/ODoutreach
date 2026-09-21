@@ -60,6 +60,8 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
     focusTemplateId: firstParam(sp.templateId),
   };
 
+  const sequenceDraftingEnabled = areAiFeaturesEnabled("SEQUENCE_DRAFTING");
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -104,14 +106,14 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         </div>
       </details>
 
-      <details className="rounded-lg border p-4">
+      <details open={sequenceDraftingEnabled} className="rounded-lg border p-4">
         <summary className="cursor-pointer font-semibold">Draft emails with AI</summary>
         <div className="mt-4">
       <AiSequenceDraftPanel
         clientId={client.id}
         clientName={client.name}
         canMutate={canMutateTemplates}
-        aiEnabled={areAiFeaturesEnabled("SEQUENCE_DRAFTING")}
+        aiEnabled={sequenceDraftingEnabled}
         aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
       />
 
