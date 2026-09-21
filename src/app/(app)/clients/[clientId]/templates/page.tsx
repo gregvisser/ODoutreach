@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
+import { isProductAiConfigured } from "@/server/ai/ai-provider";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientSequenceTemplateStructures } from "@/server/email-sequences/queries";
 import { loadClientEmailTemplatesOverview } from "@/server/email-templates/queries";
@@ -114,7 +115,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         clientName={client.name}
         canMutate={canMutateTemplates}
         aiEnabled={sequenceDraftingEnabled}
-        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        aiConfigured={isProductAiConfigured()}
       />
 
         </div>

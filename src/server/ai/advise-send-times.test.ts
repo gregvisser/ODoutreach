@@ -17,7 +17,7 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("./anthropic-messages", () => ({
-  callAnthropicMessages: callAnthropicMock,
+  callAiToolMessages: callAnthropicMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -80,6 +80,8 @@ beforeEach(() => {
   prismaMock.aiSendTimeAdvice.create.mockResolvedValue({ id: "advice-1" });
   prismaMock.aiUsageEvent.create.mockResolvedValue({ id: "usage-1" });
   anthropicReturns(GOOD_ADVICE);
+  process.env.AI_MODEL_PROVIDER = "anthropic";
+  delete process.env.XAI_API_KEY;
   process.env.ANTHROPIC_API_KEY = "test-key";
   process.env.AI_FEATURES_ENABLED = "true";
 });

@@ -14,7 +14,8 @@ import { prisma } from "@/lib/db";
 import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy";
 import { logger } from "@/lib/logger";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
+import { callAiToolMessages } from "./anthropic-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -119,17 +120,18 @@ export async function draftSequenceForClient(args: {
   const loaded = await loadBrief(args.clientId);
   if (!loaded) return { ok: false, reason: "client_not_found" };
 
-  const model = AI_MODELS.SEQUENCE_DRAFTING;
+  const model = resolveProductAiModel(AI_MODELS.SEQUENCE_DRAFTING);
+  const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
     client: loaded.client,
     feature: "SEQUENCE_DRAFTING",
     model,
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey,
     subject: { type: "Client", id: loaded.client.id },
     invoke: async () => {
-      const response = await callAnthropicMessages({
-        apiKey: process.env.ANTHROPIC_API_KEY as string,
+      const response = await callAiToolMessages({
+        apiKey: apiKey as string,
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEQUENCE_DRAFTING_SYSTEM_PROMPT,

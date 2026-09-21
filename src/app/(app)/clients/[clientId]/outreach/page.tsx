@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
+import { isProductAiConfigured } from "@/server/ai/ai-provider";
 import { OUTREACH_PAGE_SUBTITLE, OUTREACH_PAGE_TITLE } from "@/lib/clients/outreach-staff-copy";
 import { isOneClickUnsubscribeReady } from "@/lib/unsubscribe/one-click-readiness";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -205,7 +206,7 @@ export default async function ClientOutreachPage({
         clientId={client.id}
         canMutate={canMutateSequences}
         aiEnabled={areAiFeaturesEnabled("CAMPAIGN_REVIEW")}
-        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        aiConfigured={isProductAiConfigured()}
         // Archived campaigns are excluded: reviewing one spends the client's
         // money on copy nobody is going to send.
         sequences={sequencesOverview.sequences
@@ -227,7 +228,7 @@ export default async function ClientOutreachPage({
         customCalendar={!!(bundle.calendarSettings.current || bundle.calendarSettings.pending)}
         canMutate={canMutateSequences}
         aiEnabled={areAiFeaturesEnabled("SEND_TIME_ADVICE")}
-        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        aiConfigured={isProductAiConfigured()}
         advice={sendTimeAdvice}
         flash={{
           ok: firstParam(sp.sendTimeAdvice),
@@ -239,7 +240,7 @@ export default async function ClientOutreachPage({
         clientId={client.id}
         canMutate={canMutateSequences}
         aiEnabled={areAiFeaturesEnabled("TITLE_MESSAGE_FIT")}
-        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        aiConfigured={isProductAiConfigured()}
         review={titleMessageReview}
         flash={{
           ok: firstParam(sp.titleMessage),

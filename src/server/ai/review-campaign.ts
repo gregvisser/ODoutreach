@@ -15,7 +15,8 @@ import { prisma } from "@/lib/db";
 import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy";
 import { logger } from "@/lib/logger";
 
-import { callAnthropicMessages } from "./anthropic-messages";
+import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
+import { callAiToolMessages } from "./anthropic-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -149,17 +150,18 @@ export async function reviewCampaign(args: {
   if (loaded === null) return { ok: false, reason: "sequence_not_found" };
   if (loaded === "no_steps") return { ok: false, reason: "no_steps" };
 
-  const model = AI_MODELS.CAMPAIGN_REVIEW;
+  const model = resolveProductAiModel(AI_MODELS.CAMPAIGN_REVIEW);
+  const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
     client: loaded.client,
     feature: "CAMPAIGN_REVIEW",
     model,
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey,
     subject: { type: "ClientEmailSequence", id: args.sequenceId },
     invoke: async () => {
-      const response = await callAnthropicMessages({
-        apiKey: process.env.ANTHROPIC_API_KEY as string,
+      const response = await callAiToolMessages({
+        apiKey: apiKey as string,
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: CAMPAIGN_REVIEW_SYSTEM_PROMPT,

@@ -16,7 +16,7 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("./anthropic-messages", () => ({
-  callAnthropicMessages: callAnthropicMock,
+  callAiToolMessages: callAnthropicMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -81,6 +81,8 @@ beforeEach(() => {
     .mockImplementation(async (ops: unknown[]) => ops);
   prismaMock.aiUsageEvent.create.mockReset().mockResolvedValue({ id: "usage-1" });
   callAnthropicMock.mockReset();
+  process.env.AI_MODEL_PROVIDER = "anthropic";
+  delete process.env.XAI_API_KEY;
   process.env.ANTHROPIC_API_KEY = "sk-ant-test";
   delete process.env.AI_FEATURES;
 });
@@ -250,6 +252,23 @@ describe("when it cannot draft", () => {
     expect(result).toEqual({ ok: false, reason: "no_api_key" });
     expect(callAnthropicMock).not.toHaveBeenCalled();
     expect(prismaMock.clientEmailTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("does not require ANTHROPIC_API_KEY when provider is xai", async () => {
+    process.env.AI_MODEL_PROVIDER = "xai";
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.XAI_API_KEY = "xai-test-key";
+    process.env.AI_OUTREACH_FEATURES = "on";
+    modelAnswers(goodSteps());
+
+    const result = await draftSequenceForClient({
+      clientId: "client-1",
+      staffUserId: "staff-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(callAnthropicMock).toHaveBeenCalledTimes(1);
+    expect(callAnthropicMock.mock.calls[0][0].apiKey).toBe("xai-test-key");
   });
 
   it("writes nothing when the call itself fails", async () => {

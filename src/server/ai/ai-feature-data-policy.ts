@@ -11,10 +11,9 @@ import type { AiFeature } from "@/generated/prisma/client";
  * retrofitted privacy review with extra steps; a type error is not optional.
  *
  * CR-10 (raised cycle 122, `.bidlow/GRADES.json`): CR-05's Art.28 DPA work
- * covered Sentry, Resend and RocketReach. Anthropic was never assessed, so it
- * is absent from `COVERED_PROCESSORS` below. Whether to pursue that DPA is a
- * commercial decision that stays open — this file only declares what is true
- * today, and today that is: no allowance is recorded for Anthropic.
+ * covered Sentry, Resend and RocketReach. Product AI runs on xAI (Grok) in
+ * production; neither xAI nor Anthropic (rollback path) has a recorded processor
+ * allowance for prospect personal data in `COVERED_PROCESSORS` below.
  *
  * `carriesPersonalData: true` means the call sends a real prospect's own
  * words — their name, address, or something they personally wrote — to the
@@ -23,7 +22,7 @@ import type { AiFeature } from "@/generated/prisma/client";
  * mailbox identity are NOT a prospect's personal data and are declared false.
  */
 
-export type AiVendor = "ANTHROPIC";
+export type AiVendor = "XAI" | "ANTHROPIC";
 
 export interface AiFeatureDataPolicyEntry {
   readonly vendor: AiVendor;
@@ -34,43 +33,43 @@ export interface AiFeatureDataPolicyEntry {
 
 export const AI_FEATURE_DATA_POLICY: Readonly<Record<AiFeature, AiFeatureDataPolicyEntry>> = {
   REPLY_CLASSIFICATION: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: true,
     whatItSends:
       "The prospect's own inbound reply — its subject line and up to 2,000 characters of body text, verbatim.",
   },
   SEQUENCE_DRAFTING: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: false,
     whatItSends:
       "The client's own sequence-drafting brief (audience, offer, tone) — no prospect is named or quoted.",
   },
   CAMPAIGN_REVIEW: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: false,
     whatItSends:
       "The client's own sequence steps and template copy for one campaign — no prospect is named or quoted.",
   },
   SEND_TIME_ADVICE: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: false,
     whatItSends:
       "Aggregated send-and-reply counts by time slot for one client, computed before the model is called — no prospect is named or quoted.",
   },
   REP_PERFORMANCE: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: false,
     whatItSends:
       "Aggregated send-and-reply counts by sending mailbox for one client, computed before the model is called — no prospect is named or quoted.",
   },
   TITLE_MESSAGE_FIT: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: false,
     whatItSends:
       "Aggregated send-and-reply counts by job-title family and campaign for one client, computed before the model is called — no prospect is named or quoted.",
   },
   TRAINING_ASSISTANT: {
-    vendor: "ANTHROPIC",
+    vendor: "XAI",
     carriesPersonalData: false,
     whatItSends:
       "A staff member's typed question, plus the handful of static training-content passages a lexical search already matched — no client, prospect or reply data is ever read, let alone sent.",
@@ -79,7 +78,7 @@ export const AI_FEATURE_DATA_POLICY: Readonly<Record<AiFeature, AiFeatureDataPol
 
 /**
  * Vendors with a recorded Art.28 processor allowance covering prospect
- * personal data. Deliberately empty of `"ANTHROPIC"` — see CR-10 above.
+ * personal data. Deliberately empty — see CR-10 above.
  */
 export const COVERED_PROCESSORS: ReadonlySet<AiVendor> = new Set<AiVendor>([]);
 

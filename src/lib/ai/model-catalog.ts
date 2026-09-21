@@ -22,6 +22,20 @@
  * cost, or last month's invoice changes retrospectively.
  */
 
+/**
+ * xAI Grok model ids that may appear in `XAI_MODEL` (or the built-in default).
+ * Each must have a row in `RATES` below — an unpriced model is refused.
+ */
+export const XAI_CHAT_MODELS = {
+  /** Default when `XAI_MODEL` is unset and provider is xAI. */
+  DEFAULT: "grok-4-fast-non-reasoning",
+  GROK_4_FAST: "grok-4-fast-non-reasoning",
+  GROK_4: "grok-4-0709",
+  GROK_4_6: "grok-4-6",
+} as const;
+
+export type XaiChatModelId = (typeof XAI_CHAT_MODELS)[keyof typeof XAI_CHAT_MODELS];
+
 /** Models this application is allowed to call. */
 export const AI_MODELS = {
   /**
@@ -160,12 +174,36 @@ export interface ModelRate {
   readonly outputPerMTokMicroUsd: number;
 }
 
-const RATES: Readonly<Record<AiModelId, ModelRate>> = {
-  // $1.00 / MTok in, $5.00 / MTok out.
+const ANTHROPIC_RATES: Readonly<Record<AiModelId, ModelRate>> = {
+  // $1.00 / MTok in, $5.00 / MTok out — UNVERIFIED (see header comment).
   "claude-haiku-4-5-20251001": {
     inputPerMTokMicroUsd: 1_000_000,
     outputPerMTokMicroUsd: 5_000_000,
   },
+};
+
+/**
+ * xAI rates — UNVERIFIED placeholders until checked against x.ai pricing.
+ * Same micro-USD shape as Anthropic; ledger stores tokens + rates for recompute.
+ */
+const XAI_RATES: Readonly<Record<XaiChatModelId, ModelRate>> = {
+  "grok-4-fast-non-reasoning": {
+    inputPerMTokMicroUsd: 500_000,
+    outputPerMTokMicroUsd: 1_500_000,
+  },
+  "grok-4-0709": {
+    inputPerMTokMicroUsd: 3_000_000,
+    outputPerMTokMicroUsd: 15_000_000,
+  },
+  "grok-4-6": {
+    inputPerMTokMicroUsd: 3_000_000,
+    outputPerMTokMicroUsd: 15_000_000,
+  },
+};
+
+const RATES: Readonly<Record<string, ModelRate>> = {
+  ...ANTHROPIC_RATES,
+  ...XAI_RATES,
 };
 
 /**
@@ -177,7 +215,7 @@ const RATES: Readonly<Record<AiModelId, ModelRate>> = {
  * failure this whole file exists to prevent. `meterAiCall` enforces that.
  */
 export function getModelRate(model: string): ModelRate | null {
-  return RATES[model as AiModelId] ?? null;
+  return RATES[model] ?? null;
 }
 
 /** Token counts as reported by the API for a single call. */

@@ -43,16 +43,16 @@ describe("AI_FEATURE_DATA_POLICY", () => {
     }
   });
 
-  it("names Anthropic as the vendor for every feature — the only model provider this codebase calls", () => {
+  it("names xAI as the vendor for every feature — product AI runs on Grok in production", () => {
     for (const feature of ALL_FEATURES) {
-      expect(AI_FEATURE_DATA_POLICY[feature].vendor).toBe("ANTHROPIC");
+      expect(AI_FEATURE_DATA_POLICY[feature].vendor).toBe("XAI");
     }
   });
 });
 
 describe("COVERED_PROCESSORS (CR-10)", () => {
-  it("does not cover Anthropic — no Art.28 allowance has been recorded for it", () => {
-    expect(COVERED_PROCESSORS.has("ANTHROPIC")).toBe(false);
+  it("does not cover xAI — no Art.28 allowance has been recorded for it", () => {
+    expect(COVERED_PROCESSORS.has("XAI")).toBe(false);
   });
 });
 

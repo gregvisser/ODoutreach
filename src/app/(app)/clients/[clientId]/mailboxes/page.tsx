@@ -38,6 +38,7 @@ import { loadClientTrackingDnsState } from "@/server/clients/tracking-dns-persis
 import { isOpenTrackingPixelEnabled } from "@/lib/tracking/open-pixel";
 import { prisma } from "@/lib/db";
 import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
+import { isProductAiConfigured } from "@/server/ai/ai-provider";
 import { resolvePublicBaseUrl } from "@/lib/unsubscribe/one-click-readiness";
 import { loadLatestRepPerformanceReview } from "@/server/ai/explain-rep-performance";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -296,7 +297,7 @@ export default async function ClientMailboxesPage({ params, searchParams }: Prop
         clientId={client.id}
         canMutate={canMutateSequences}
         aiEnabled={areAiFeaturesEnabled("REP_PERFORMANCE")}
-        aiConfigured={Boolean(process.env.ANTHROPIC_API_KEY)}
+        aiConfigured={isProductAiConfigured()}
         review={repPerformanceReview}
         flash={{
           ok: firstParam(sp.repPerformance),

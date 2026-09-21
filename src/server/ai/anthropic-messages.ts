@@ -1,18 +1,20 @@
 import "server-only";
 
+import { resolveProductAiProvider } from "./ai-provider";
+import { callXaiChatCompletions } from "./xai-chat-completions";
+
 /**
- * A minimal Anthropic Messages API client, built on `fetch`.
+ * Product AI HTTP choke point.
  *
- * WHY NO SDK. The engineering standard says stdlib before a dependency, and
- * this is one HTTPS POST with a JSON body. `@anthropic-ai/sdk` would add a
- * dependency, a version to keep current and a supply-chain surface to a call
- * the platform already makes natively — the same reasoning that has this
- * codebase talking to Microsoft Graph and Gmail over plain `fetch`.
+ * `callAiToolMessages` is what every feature calls. It dispatches to xAI
+ * (`api.x.ai/v1`) or Anthropic (`api.anthropic.com`) per `ai-provider.ts`.
+ * Parsers always receive Anthropic-shaped `tool_use` content blocks.
  *
- * What this file is NOT: it is not a place to add retries, batching or
- * streaming without deciding deliberately. In particular a naive retry would
- * double-charge the client, because a call that times out may well have been
- * served and billed.
+ * `postAnthropicMessages` is the Anthropic-only POST — used by the dispatcher
+ * and by header tests; not called directly from feature code.
+ *
+ * WHY NO SDK. Stdlib `fetch` only; same reasoning as Graph/Gmail in this app.
+ * No naive retries — a timeout may already have been billed.
  */
 
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -77,7 +79,7 @@ function tokenCount(value: unknown): number {
  * `runMeteredAiCall`, which turns a throw into a recorded ERROR row — so a
  * failure here is metered, not lost.
  */
-export async function callAnthropicMessages(
+export async function postAnthropicMessages(
   req: AnthropicMessagesRequest,
 ): Promise<AnthropicMessagesResponse> {
   const doFetch = req.fetchImpl ?? fetch;
@@ -122,4 +124,22 @@ export async function callAnthropicMessages(
     inputTokens: tokenCount(usage.input_tokens),
     outputTokens: tokenCount(usage.output_tokens),
   };
+}
+
+/** Forced-tool model call — the only entry from product AI feature modules. */
+export async function callAiToolMessages(
+  req: AnthropicMessagesRequest,
+): Promise<AnthropicMessagesResponse> {
+  if (resolveProductAiProvider() === "xai") {
+    return callXaiChatCompletions({
+      apiKey: req.apiKey,
+      model: req.model,
+      system: req.system,
+      userText: req.userText,
+      maxTokens: req.maxTokens,
+      tool: req.tool,
+      fetchImpl: req.fetchImpl,
+    });
+  }
+  return postAnthropicMessages(req);
 }
