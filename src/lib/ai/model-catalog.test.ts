@@ -6,6 +6,7 @@ import {
   formatMicroUsd,
   getModelRate,
   RATE_VERSION,
+  resolveXaiChatModelId,
   XAI_CHAT_MODELS,
 } from "./model-catalog";
 
@@ -24,6 +25,16 @@ describe("model catalog", () => {
 
   it("refuses a model it holds no price for", () => {
     expect(getModelRate("claude-some-unpriced-model")).toBeNull();
+  });
+
+  it("defaults xAI catalog to grok-4.6", () => {
+    expect(XAI_CHAT_MODELS.DEFAULT).toBe("grok-4.6");
+  });
+
+  it("prices legacy Azure xAI typos via alias to a canonical id", () => {
+    expect(resolveXaiChatModelId("grok-4-6")).toBe("grok-4.6");
+    expect(getModelRate("grok-4-6")).toEqual(getModelRate("grok-4.6"));
+    expect(resolveXaiChatModelId("grok-4-0709")).toBe("grok-4.6");
   });
 
   it("names a rate version, so a price change cannot rewrite old invoices", () => {

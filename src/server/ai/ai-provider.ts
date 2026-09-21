@@ -1,6 +1,6 @@
 import "server-only";
 
-import { XAI_CHAT_MODELS } from "@/lib/ai/model-catalog";
+import { resolveXaiChatModelId, XAI_CHAT_MODELS } from "@/lib/ai/model-catalog";
 
 /**
  * Which vendor backs product AI, and which credentials/models to use.
@@ -59,7 +59,8 @@ export function resolveProductAiApiKey(): string | undefined {
 export function resolveProductAiModel(catalogModelId: string): string {
   if (resolveProductAiProvider() === "xai") {
     const fromEnv = process.env.XAI_MODEL?.trim();
-    return fromEnv || DEFAULT_XAI_MODEL;
+    const raw = fromEnv || DEFAULT_XAI_MODEL;
+    return resolveXaiChatModelId(raw) ?? raw;
   }
   return catalogModelId;
 }

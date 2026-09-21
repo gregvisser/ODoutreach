@@ -75,8 +75,10 @@ describe("resolveProductAiModel", () => {
   it("uses XAI_MODEL or default for xai", () => {
     process.env.AI_MODEL_PROVIDER = "xai";
     expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe(DEFAULT_XAI_MODEL);
-    process.env.XAI_MODEL = XAI_CHAT_MODELS.GROK_4;
-    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe(XAI_CHAT_MODELS.GROK_4);
+    process.env.XAI_MODEL = "grok-4-6";
+    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe(XAI_CHAT_MODELS.GROK_4_6);
+    process.env.XAI_MODEL = XAI_CHAT_MODELS.GROK_4_7;
+    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe("grok-4.7");
   });
 
   it("passes through catalog model id for anthropic", () => {
