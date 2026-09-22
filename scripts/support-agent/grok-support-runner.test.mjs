@@ -6,7 +6,12 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
+  AUTH_REPLY_MAX_CHARS,
+  AUTH_SYSTEM_PROMPT,
+  AUTH_TOKEN,
   AUTH_USER_PROMPT,
+  CONSECUTIVE_REFUSAL_AUTO_FINISH,
+  CONSECUTIVE_REFUSAL_REMINDER,
   DEFAULT_SUPPORT_MODEL,
   GROK_STEP_TIMEOUT_MINUTES,
   PROCESS_SYSTEM_PROMPT,
@@ -18,6 +23,9 @@ import {
   childEnv,
   classifyCommand,
   formatLog,
+  isAuthenticationOk,
+  isToolRefusalLogFields,
+  normalizeAuthReply,
   resolveSupportModel,
   runCapturedCommand,
   runSupportAgent,
@@ -209,6 +217,69 @@ test("repo path guard refuses secrets, escapes, and rail files", () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+test("auth reply accepts the bare token and common wrappers, and rejects anything else", () => {
+  const wrapped = [
+    AUTH_TOKEN,
+    `  ${AUTH_TOKEN}\n`,
+    `\uFEFF${AUTH_TOKEN}`,
+    `"${AUTH_TOKEN}"`,
+    `'${AUTH_TOKEN}'`,
+    `\`${AUTH_TOKEN}\``,
+    `\`\`\`\n${AUTH_TOKEN}\n\`\`\``,
+    `\`\`\`text\n${AUTH_TOKEN}\n\`\`\``,
+    `${AUTH_TOKEN}.`,
+    `"${AUTH_TOKEN}".`,
+    `"${AUTH_TOKEN}."`,
+    `**${AUTH_TOKEN}**`,
+    `“${AUTH_TOKEN}”`,
+    `${AUTH_TOKEN}!`,
+  ];
+  for (const reply of wrapped) {
+    assert.equal(normalizeAuthReply(reply), AUTH_TOKEN, `normalize ${JSON.stringify(reply)}`);
+    assert.equal(isAuthenticationOk(reply), true, `accept ${JSON.stringify(reply)}`);
+  }
+  const shortSentence = `The connectivity probe is ${AUTH_TOKEN}.`;
+  assert.notEqual(normalizeAuthReply(shortSentence), AUTH_TOKEN);
+  assert.equal(isAuthenticationOk(shortSentence), true);
+  assert.ok(shortSentence.length <= AUTH_REPLY_MAX_CHARS);
+
+  const mismatches = [
+    "",
+    "   ",
+    "hello",
+    "ready",
+    "Ready",
+    "ALREADY",
+    "No. I will not continue this probe.",
+    `NOT_${AUTH_TOKEN}`,
+    `${AUTH_TOKEN}X`,
+    `${AUTH_TOKEN} thanks`,
+    `${AUTH_TOKEN}\n${AUTH_TOKEN}`,
+    `${"completed ".repeat(12)}${AUTH_TOKEN}`,
+    `${AUTH_USER_PROMPT}`,
+    `${AUTH_SYSTEM_PROMPT}`,
+    `hello ${CANARY} ${REPORTER}`,
+    `see ${REPORTER} ${AUTH_TOKEN}`,
+    `token=${AUTH_TOKEN}`,
+  ];
+  for (const reply of mismatches) {
+    assert.equal(isAuthenticationOk(reply), false, `reject ${JSON.stringify(reply)}`);
+  }
+  assert.equal(AUTH_TOKEN, "READY");
+  assert.equal(AUTH_SYSTEM_PROMPT.includes(AUTH_TOKEN), true);
+  assert.equal(AUTH_USER_PROMPT.includes(AUTH_TOKEN), true);
+  assert.equal(AUTH_SYSTEM_PROMPT.includes("AUTHENTICATION_OK"), false);
+  assert.equal(AUTH_USER_PROMPT.includes("AUTHENTICATION_OK"), false);
+  assert.match(AUTH_SYSTEM_PROMPT, /CI connectivity and health probe/);
+  assert.match(AUTH_USER_PROMPT, /CI connectivity and health probe/);
+  assert.match(AUTH_SYSTEM_PROMPT, /not a password, secret, or login/);
+  assert.match(AUTH_USER_PROMPT, /not a password, secret, or login/);
+  assert.ok(AUTH_SYSTEM_PROMPT.length > AUTH_REPLY_MAX_CHARS);
+  assert.ok(AUTH_USER_PROMPT.length > AUTH_REPLY_MAX_CHARS);
+  assert.equal(normalizeAuthReply(null), "");
+  assert.equal(isAuthenticationOk(null), false);
+});
+
 test("authentication-check calls xAI once and does not run tools", async () => {
   const captured = [];
   const logs = [];
@@ -225,7 +296,7 @@ test("authentication-check calls xAI once and does not run tools", async () => {
       throw new Error("auth check must not spawn");
     },
     fetchImpl: scriptedFetch(
-      [{ json: { choices: [{ finish_reason: "stop", message: { content: "AUTHENTICATION_OK" } }], usage: { completion_tokens: 2 } } }],
+      [{ json: { choices: [{ finish_reason: "stop", message: { content: AUTH_TOKEN } }], usage: { completion_tokens: 1 } } }],
       captured,
     ),
   });
@@ -235,12 +306,43 @@ test("authentication-check calls xAI once and does not run tools", async () => {
   assert.equal(captured[0].url, XAI_CHAT_COMPLETIONS_URL);
   assert.equal(captured[0].authorization, `Bearer ${API_KEY}`);
   assert.equal(captured[0].body.model, "grok-4.7");
+  assert.equal(captured[0].body.temperature, 0);
   assert.equal(captured[0].body.tools, undefined);
   assert.equal(JSON.stringify(captured[0].body).includes(API_KEY), false);
+  assert.equal(captured[0].body.messages[0].content, AUTH_SYSTEM_PROMPT);
+  assert.equal(captured[0].body.messages[1].content, AUTH_USER_PROMPT);
   assert.match(logs.join("\n"), /event=result status=AUTHENTICATION_OK exit=0/);
+  assert.match(logs.join("\n"), new RegExp(`reply_chars=${AUTH_TOKEN.length}`));
   assert.match(logs.join("\n"), /event=xai_response http=200/);
   assert.match(logs.join("\n"), /model=grok-4\.7/);
   assertPublic(logs);
+});
+
+test("authentication-check accepts wrapped and short sentence replies without logging them", async () => {
+  const replies = [
+    `"${AUTH_TOKEN}".`,
+    `\`\`\`\n${AUTH_TOKEN}\n\`\`\``,
+    `The connectivity probe is ${AUTH_TOKEN}.`,
+  ];
+  for (const reply of replies) {
+    const logs = [];
+    const result = await runSupportAgent({
+      mode: "authentication-check",
+      apiKey: API_KEY,
+      log: (line) => logs.push(line),
+      fetchImpl: scriptedFetch(
+        [{ json: { choices: [{ finish_reason: "stop", message: { content: reply } }], usage: { completion_tokens: 15 } } }],
+        [],
+      ),
+    });
+    const text = logs.join("\n");
+    assert.equal(result.exitCode, 0, reply);
+    assert.match(text, /status=AUTHENTICATION_OK exit=0/);
+    assert.match(text, new RegExp(`reply_chars=${reply.length}`));
+    assert.equal(text.includes("The connectivity probe"), false);
+    assert.equal(text.includes(`"${AUTH_TOKEN}"`), false);
+    assertPublic(logs);
+  }
 });
 
 test("authentication mismatch and HTTP errors do not print the body or the key", async () => {
@@ -256,6 +358,24 @@ test("authentication mismatch and HTTP errors do not print the body or the key",
   });
   assert.equal(mismatch.exitCode, 1);
   assert.match(logs.join("\n"), /status=AUTH_MISMATCH/);
+  assert.match(logs.join("\n"), /reply_chars=\d+/);
+  assert.equal(logs.join("\n").includes("hello "), false);
+
+  const refusal = "No. I will not continue this probe.";
+  const refused = await runSupportAgent({
+    mode: "authentication-check",
+    apiKey: API_KEY,
+    log: (line) => logs.push(line),
+    fetchImpl: scriptedFetch(
+      [{ json: { choices: [{ finish_reason: "stop", message: { content: refusal } }], usage: { completion_tokens: 12 } } }],
+      [],
+    ),
+  });
+  assert.equal(refused.exitCode, 1);
+  assert.match(logs.join("\n"), /status=AUTH_MISMATCH/);
+  assert.match(logs.join("\n"), new RegExp(`reply_chars=${refusal.length}`));
+  assert.equal(logs.join("\n").includes("will not continue"), false);
+  assert.equal(logs.join("\n").includes(refusal), false);
 
   const denied = await runSupportAgent({
     mode: "authentication-check",
@@ -382,6 +502,7 @@ test("process-tickets lists privately, refuses send, and does not log ticket bod
   assert.equal(text.includes(CANARY), false);
   assertPublic(logs);
   assert.equal(captured[0].body.model, "grok-4.7");
+  assert.equal(captured[0].body.temperature, undefined);
   assert.deepEqual(
     captured[0].body.tools.map((tool) => tool.function.name),
     SUPPORT_TOOL_NAMES,
@@ -391,7 +512,8 @@ test("process-tickets lists privately, refuses send, and does not log ticket bod
   assert.equal(JSON.stringify(captured[0].body).includes(CANARY), false);
   assert.equal(JSON.stringify(captured[1].body).includes(CANARY), true);
   assert.match(PROCESS_SYSTEM_PROMPT, /SUPPORT_AGENT_SCHEDULE_ENABLED/);
-  assert.match(AUTH_USER_PROMPT, /AUTHENTICATION_OK/);
+  assert.match(AUTH_USER_PROMPT, /READY/);
+  assert.equal(AUTH_USER_PROMPT.includes("AUTHENTICATION_OK"), false);
 });
 
 test("PASS before list_open_tickets is refused", async () => {
@@ -483,4 +605,104 @@ test("write probe does not create .env", () => {
   writeFileSync(join(root, "keep.txt"), "ok");
   assert.equal(assertRepoPath(root, ".env", { write: true }).ok, false);
   rmSync(root, { recursive: true, force: true });
+});
+
+test("isToolRefusalLogFields treats failed tools as refusals but not finish or success", () => {
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "run_repo_command", exit: 1, reason: "denied_git" }), true);
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "read_file", exit: 1, reason: "path" }), true);
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "read_file", exit: 0 }), false);
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "finish", exit: 1, reason: "pass_before_list" }), false);
+  assert.equal(isToolRefusalLogFields({ event: "finish", status: "UNVERIFIED", exit: 0 }), false);
+});
+
+test("consecutive refused tools auto-finish UNVERIFIED before round limit", async () => {
+  const captured = [];
+  const logs = [];
+  const deniedCall = (id) => ({
+    id,
+    name: "run_repo_command",
+    args: { argv: ["git", "commit"] },
+  });
+  const responses = [];
+  for (let i = 0; i < CONSECUTIVE_REFUSAL_AUTO_FINISH; i += 1) {
+    responses.push({ json: toolMessage([deniedCall(`call_${i}`)]) });
+  }
+  const result = await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    log: (line) => logs.push(line),
+    commandRunner: () => {
+      throw new Error("denied git must not spawn");
+    },
+    fetchImpl: scriptedFetch(responses, captured),
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(captured.length, CONSECUTIVE_REFUSAL_AUTO_FINISH);
+  const text = logs.join("\n");
+  assert.match(text, /reason=consecutive_refusals/);
+  assert.match(text, /event=finish status=UNVERIFIED/);
+  assert.equal(text.includes("ROUND_LIMIT"), false);
+  assertPublic(logs);
+});
+
+test("refusal reminder is sent to the model after several consecutive refusals", async () => {
+  const captured = [];
+  const deniedCall = (id) => ({
+    id,
+    name: "run_repo_command",
+    args: { argv: ["git", "add", "-A"] },
+  });
+  const responses = [];
+  for (let i = 0; i < CONSECUTIVE_REFUSAL_REMINDER + 1; i += 1) {
+    responses.push({ json: toolMessage([deniedCall(`call_${i}`)]) });
+  }
+  await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    log: () => {},
+    commandRunner: () => {
+      throw new Error("denied git must not spawn");
+    },
+    fetchImpl: scriptedFetch(responses, captured),
+  });
+  assert.ok(captured.length >= CONSECUTIVE_REFUSAL_REMINDER + 1);
+  const lastRequest = captured[CONSECUTIVE_REFUSAL_REMINDER].body.messages;
+  const reminder = lastRequest.find((message) => message.role === "user" && message.content?.includes("finish tool"));
+  assert.ok(reminder, "expected refusal reminder user message before next model round");
+  assert.equal(JSON.stringify(captured).includes("UNVERIFIED"), true);
+});
+
+test("round limit ends with finish UNVERIFIED instead of exit-only ROUND_LIMIT", async () => {
+  const logs = [];
+  const rounds = 4;
+  const responses = [];
+  for (let i = 0; i < rounds; i += 1) {
+    responses.push({
+      json: toolMessage([
+        {
+          id: `call_list_${i}`,
+          name: "list_open_tickets",
+          args: {},
+        },
+      ]),
+    });
+  }
+  responses.push({
+    json: toolMessage([{ id: "call_stall", name: "read_file", args: { path: "does-not-exist.txt" } }]),
+  });
+  const result = await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    maxModelRounds: rounds,
+    cwd: process.cwd(),
+    log: (line) => logs.push(line),
+    commandRunner: async () => ({ exitCode: 0, stdout: "[]", stderr: "", elapsed: 2, timedOut: false }),
+    fetchImpl: scriptedFetch(responses, []),
+  });
+  assert.equal(result.exitCode, 0);
+  const text = logs.join("\n");
+  assert.match(text, /reason=round_limit/);
+  assert.match(text, /status=ROUND_LIMIT/);
+  assert.match(text, /event=finish status=UNVERIFIED/);
+  assertPublic(logs);
 });
