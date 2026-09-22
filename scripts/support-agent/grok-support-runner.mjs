@@ -687,7 +687,7 @@ function assertWithinDeadline(deadlineAt, signal) {
   }
 }
 
-async function postChat({ apiKey, model, messages, tools, fetchImpl, signal, timeoutMs }) {
+async function postChat({ apiKey, model, messages, tools, temperature, fetchImpl, signal, timeoutMs }) {
   const timer = createAbortTimer(timeoutMs, signal);
   const started = Date.now();
   try {
@@ -703,6 +703,7 @@ async function postChat({ apiKey, model, messages, tools, fetchImpl, signal, tim
           model,
           max_tokens: tools ? 4096 : 64,
           messages,
+          ...(typeof temperature === "number" ? { temperature } : {}),
           ...(tools ? { tools } : {}),
         }),
         signal: timer.signal,
@@ -963,6 +964,8 @@ export async function runSupportAgent(options) {
           { role: "system", content: AUTH_SYSTEM_PROMPT },
           { role: "user", content: AUTH_USER_PROMPT },
         ],
+        // grok-4.7 at the default temperature only sometimes returns the bare phrase.
+        temperature: 0,
         fetchImpl,
         signal: options.signal,
         timeoutMs: Math.max(1, Math.min(XAI_HTTP_TIMEOUT_MS, deadlineAt - Date.now())),

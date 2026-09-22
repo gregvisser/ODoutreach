@@ -303,6 +303,7 @@ test("authentication-check calls xAI once and does not run tools", async () => {
   assert.equal(captured[0].url, XAI_CHAT_COMPLETIONS_URL);
   assert.equal(captured[0].authorization, `Bearer ${API_KEY}`);
   assert.equal(captured[0].body.model, "grok-4.7");
+  assert.equal(captured[0].body.temperature, 0);
   assert.equal(captured[0].body.tools, undefined);
   assert.equal(JSON.stringify(captured[0].body).includes(API_KEY), false);
   assert.equal(captured[0].body.messages[0].content, AUTH_SYSTEM_PROMPT);
@@ -498,6 +499,7 @@ test("process-tickets lists privately, refuses send, and does not log ticket bod
   assert.equal(text.includes(CANARY), false);
   assertPublic(logs);
   assert.equal(captured[0].body.model, "grok-4.7");
+  assert.equal(captured[0].body.temperature, undefined);
   assert.deepEqual(
     captured[0].body.tools.map((tool) => tool.function.name),
     SUPPORT_TOOL_NAMES,
