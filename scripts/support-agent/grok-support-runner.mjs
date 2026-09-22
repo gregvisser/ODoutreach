@@ -3,7 +3,9 @@
  * ODoutreach support agent runner (xAI Grok).
  *
  * Replaces the OpenAI Codex action. Two modes, selected by SUPPORT_AGENT_MODE:
- *   authentication-check — one chat completion, no tools, no repo, no database
+ *   authentication-check — one chat completion, no tools, no repo, no database.
+ *                          CI connectivity probe; the model phrase is READY.
+ *                          A pass is logged as status=AUTHENTICATION_OK.
  *   process-tickets      — tool loop over the existing support:* scripts and a
  *                          narrow git/gh/npm allowlist
  *
@@ -166,13 +168,19 @@ const FIELD_RULES = {
   reply_chars: /^\d+$/,
 };
 
-/** Canonical authentication-check token. Prompts and the accept rule both use this. */
-export const AUTH_TOKEN = "AUTHENTICATION_OK";
+/**
+ * Model phrase for the CI connectivity probe. Prompts and the accept rule both
+ * use this. Workflow logs stay status=AUTHENTICATION_OK / AUTH_MISMATCH: those
+ * strings are outcome labels, not the phrase the model is asked to return.
+ * grok-4.7 refuses a demand for the exact phrase AUTHENTICATION_OK (it treats
+ * that as an authentication token) and returns this word for a health probe.
+ */
+export const AUTH_TOKEN = "READY";
 
 /**
- * Cap for a short reply that ends with the token. The auth prompts themselves
- * are longer than this (user 136, system 156), so echoing either prompt fails.
- * Run 35739559387 returned 15 completion tokens — a short reply, not a transcript.
+ * Cap for a short reply that ends with the probe phrase. Both prompts are
+ * longer than this, so echoing either prompt fails. A quoted or fenced READY
+ * is still accepted by the wrapper normalizer below.
  */
 export const AUTH_REPLY_MAX_CHARS = 96;
 
@@ -193,10 +201,10 @@ const AUTH_TRAILING_WRAPPER = /^[\s"'`“”‘’*_.,:;!?()[\]-]*$/;
 const AUTH_REPLY_FORBIDDEN = /[=@/\\<>]/;
 
 export const AUTH_SYSTEM_PROMPT =
-  `Authentication check only. Do not use tools. Do not ask for repository files, tickets, or databases. Reply with exactly ${AUTH_TOKEN} and no other text.`;
+  `CI connectivity and health probe for the support-agent workflow. This reply is not a password, secret, or login. Do not use tools. Do not ask for repository files, tickets, or databases. Reply with exactly ${AUTH_TOKEN} and no other text.`;
 
 export const AUTH_USER_PROMPT =
-  `Authentication check only. Do not read files, use tools, inspect the repository, or access a database. Return exactly ${AUTH_TOKEN}.`;
+  `CI connectivity and health probe only. This is not a password, secret, or login. Do not read files, use tools, inspect the repository, or access a database. Return exactly ${AUTH_TOKEN} and no other text.`;
 
 function unwrapAuthFence(text) {
   const fenced = /^```[A-Za-z0-9_-]*[ \t]*\n([\s\S]*?)\n?```$/.exec(text);
@@ -233,11 +241,12 @@ export function normalizeAuthReply(content) {
 }
 
 /**
- * True when the reply is the canonical token.
+ * True when the reply is the probe phrase AUTH_TOKEN (`READY`).
  * Wrappers (quotes, backticks, fences, emphasis, a trailing period) normalize
- * to the token. A short lead-in that ends on the token is also accepted —
- * grok-4.7 answers trivial prompts as a sentence — and a longer body, a second
- * copy, a glued identifier, or an address is still a mismatch.
+ * to that phrase. A short lead-in that ends on it is also accepted, and a
+ * longer body, a second copy, a glued identifier, an address, or a refusal
+ * that does not contain the phrase is still a mismatch. The caller logs
+ * status=AUTHENTICATION_OK only after this returns true.
  */
 export function isAuthenticationOk(content) {
   if (typeof content !== "string") return false;
@@ -678,7 +687,7 @@ function assertWithinDeadline(deadlineAt, signal) {
   }
 }
 
-async function postChat({ apiKey, model, messages, tools, fetchImpl, signal, timeoutMs }) {
+async function postChat({ apiKey, model, messages, tools, temperature, fetchImpl, signal, timeoutMs }) {
   const timer = createAbortTimer(timeoutMs, signal);
   const started = Date.now();
   try {
@@ -694,6 +703,7 @@ async function postChat({ apiKey, model, messages, tools, fetchImpl, signal, tim
           model,
           max_tokens: tools ? 4096 : 64,
           messages,
+          ...(typeof temperature === "number" ? { temperature } : {}),
           ...(tools ? { tools } : {}),
         }),
         signal: timer.signal,
@@ -954,6 +964,8 @@ export async function runSupportAgent(options) {
           { role: "system", content: AUTH_SYSTEM_PROMPT },
           { role: "user", content: AUTH_USER_PROMPT },
         ],
+        // grok-4.7 at the default temperature only sometimes returns the bare phrase.
+        temperature: 0,
         fetchImpl,
         signal: options.signal,
         timeoutMs: Math.max(1, Math.min(XAI_HTTP_TIMEOUT_MS, deadlineAt - Date.now())),
