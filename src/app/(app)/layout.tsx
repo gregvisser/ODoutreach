@@ -43,7 +43,7 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-screen">
       <AppSidebar
-        className="hidden md:flex"
+        className="hidden md:sticky md:top-0 md:flex md:h-screen md:max-h-screen md:shrink-0 md:self-start md:overflow-y-auto"
         brand={brand}
         isSuperAdmin={gate.staff.isSuperAdmin}
         googleReconnectsAttentionCount={googleReconnectsAttentionCount}
