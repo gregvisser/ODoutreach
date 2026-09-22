@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
+  AUTH_REPLY_MAX_CHARS,
+  AUTH_SYSTEM_PROMPT,
+  AUTH_TOKEN,
   AUTH_USER_PROMPT,
   DEFAULT_SUPPORT_MODEL,
   GROK_STEP_TIMEOUT_MINUTES,
@@ -18,6 +21,8 @@ import {
   childEnv,
   classifyCommand,
   formatLog,
+  isAuthenticationOk,
+  normalizeAuthReply,
   resolveSupportModel,
   runCapturedCommand,
   runSupportAgent,
@@ -209,6 +214,57 @@ test("repo path guard refuses secrets, escapes, and rail files", () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+test("auth reply accepts the bare token and common wrappers, and rejects anything else", () => {
+  const wrapped = [
+    AUTH_TOKEN,
+    `  ${AUTH_TOKEN}\n`,
+    `\uFEFF${AUTH_TOKEN}`,
+    `"${AUTH_TOKEN}"`,
+    `'${AUTH_TOKEN}'`,
+    `\`${AUTH_TOKEN}\``,
+    `\`\`\`\n${AUTH_TOKEN}\n\`\`\``,
+    `\`\`\`text\n${AUTH_TOKEN}\n\`\`\``,
+    `${AUTH_TOKEN}.`,
+    `"${AUTH_TOKEN}".`,
+    `"${AUTH_TOKEN}."`,
+    `**${AUTH_TOKEN}**`,
+    `“${AUTH_TOKEN}”`,
+    `${AUTH_TOKEN}!`,
+  ];
+  for (const reply of wrapped) {
+    assert.equal(normalizeAuthReply(reply), AUTH_TOKEN, `normalize ${JSON.stringify(reply)}`);
+    assert.equal(isAuthenticationOk(reply), true, `accept ${JSON.stringify(reply)}`);
+  }
+  const shortSentence = `The authentication result is ${AUTH_TOKEN}.`;
+  assert.notEqual(normalizeAuthReply(shortSentence), AUTH_TOKEN);
+  assert.equal(isAuthenticationOk(shortSentence), true);
+  assert.ok(shortSentence.length <= AUTH_REPLY_MAX_CHARS);
+
+  const mismatches = [
+    "",
+    "   ",
+    "hello",
+    "authentication_ok",
+    `NOT_${AUTH_TOKEN}`,
+    `${AUTH_TOKEN}X`,
+    `${AUTH_TOKEN} thanks`,
+    `${AUTH_TOKEN}\n${AUTH_TOKEN}`,
+    `${"completed ".repeat(12)}${AUTH_TOKEN}`,
+    `${AUTH_USER_PROMPT}`,
+    `${AUTH_SYSTEM_PROMPT}`,
+    `hello ${CANARY} ${REPORTER}`,
+    `see ${REPORTER} ${AUTH_TOKEN}`,
+    `token=${AUTH_TOKEN}`,
+  ];
+  for (const reply of mismatches) {
+    assert.equal(isAuthenticationOk(reply), false, `reject ${JSON.stringify(reply)}`);
+  }
+  assert.equal(AUTH_SYSTEM_PROMPT.includes(AUTH_TOKEN), true);
+  assert.equal(AUTH_USER_PROMPT.includes(AUTH_TOKEN), true);
+  assert.equal(normalizeAuthReply(null), "");
+  assert.equal(isAuthenticationOk(null), false);
+});
+
 test("authentication-check calls xAI once and does not run tools", async () => {
   const captured = [];
   const logs = [];
@@ -238,9 +294,37 @@ test("authentication-check calls xAI once and does not run tools", async () => {
   assert.equal(captured[0].body.tools, undefined);
   assert.equal(JSON.stringify(captured[0].body).includes(API_KEY), false);
   assert.match(logs.join("\n"), /event=result status=AUTHENTICATION_OK exit=0/);
+  assert.match(logs.join("\n"), /reply_chars=17/);
   assert.match(logs.join("\n"), /event=xai_response http=200/);
   assert.match(logs.join("\n"), /model=grok-4\.7/);
   assertPublic(logs);
+});
+
+test("authentication-check accepts wrapped and short sentence replies without logging them", async () => {
+  const replies = [
+    `"${AUTH_TOKEN}".`,
+    `\`\`\`\n${AUTH_TOKEN}\n\`\`\``,
+    `The authentication result is ${AUTH_TOKEN}.`,
+  ];
+  for (const reply of replies) {
+    const logs = [];
+    const result = await runSupportAgent({
+      mode: "authentication-check",
+      apiKey: API_KEY,
+      log: (line) => logs.push(line),
+      fetchImpl: scriptedFetch(
+        [{ json: { choices: [{ finish_reason: "stop", message: { content: reply } }], usage: { completion_tokens: 15 } } }],
+        [],
+      ),
+    });
+    const text = logs.join("\n");
+    assert.equal(result.exitCode, 0, reply);
+    assert.match(text, /status=AUTHENTICATION_OK exit=0/);
+    assert.match(text, new RegExp(`reply_chars=${reply.length}`));
+    assert.equal(text.includes("The authentication result"), false);
+    assert.equal(text.includes(`"${AUTH_TOKEN}"`), false);
+    assertPublic(logs);
+  }
 });
 
 test("authentication mismatch and HTTP errors do not print the body or the key", async () => {
@@ -256,6 +340,8 @@ test("authentication mismatch and HTTP errors do not print the body or the key",
   });
   assert.equal(mismatch.exitCode, 1);
   assert.match(logs.join("\n"), /status=AUTH_MISMATCH/);
+  assert.match(logs.join("\n"), /reply_chars=\d+/);
+  assert.equal(logs.join("\n").includes("hello "), false);
 
   const denied = await runSupportAgent({
     mode: "authentication-check",
