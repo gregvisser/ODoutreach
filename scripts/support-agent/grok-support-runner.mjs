@@ -41,6 +41,10 @@ export const XAI_HTTP_TIMEOUT_MS = 120_000;
 export const COMMAND_TIMEOUT_MS = 8 * 60 * 1000;
 
 export const MAX_MODEL_ROUNDS = 20;
+/** After this many consecutive refused tool calls, auto-finish UNVERIFIED. */
+export const CONSECUTIVE_REFUSAL_AUTO_FINISH = 8;
+/** Inject a finish reminder into the model context after this many consecutive refusals. */
+export const CONSECUTIVE_REFUSAL_REMINDER = 4;
 export const MODEL_OUTPUT_CAP = 12_000;
 const MAX_ARGV = 40;
 const MAX_ARG_CHARS = 4_000;
@@ -923,6 +927,55 @@ function reasonFrom(err) {
   return /^[a-z][a-z0-9_]{0,39}$/.test(code) ? code : "runner_failed";
 }
 
+const REFUSAL_REMINDER_TEXT =
+  "Several tools were refused in a row (denied git, invalid path, or similar). Do not retry the same refused operations. Call the finish tool now with status UNVERIFIED.";
+
+/** @param {Record<string, unknown>} logFields */
+export function isToolRefusalLogFields(logFields) {
+  if (logFields.event !== "tool") return false;
+  if (logFields.name === "finish") return false;
+  return logFields.exit !== 0;
+}
+
+function resetRefusalStreak(ctx) {
+  ctx.consecutiveRefusals = 0;
+  ctx.refusalReminderSent = false;
+}
+
+function logFinishUnverified(ctx, log, { errorReason, errorExit }) {
+  if (errorReason) {
+    log(formatLog({
+      event: "error",
+      reason: errorReason,
+      ...(errorExit !== undefined ? { exit: errorExit } : {}),
+      ...(ctx.round ? { round: ctx.round } : {}),
+      ...(errorReason === "round_limit" ? { status: "ROUND_LIMIT", rounds: ctx.round || MAX_MODEL_ROUNDS } : {}),
+    }));
+  }
+  log(formatLog({ event: "finish", status: "UNVERIFIED", exit: 0, rounds: ctx.round || 0 }));
+  return { exitCode: 0 };
+}
+
+/**
+ * @returns {{ exitCode: number } | null}
+ */
+function trackToolRefusalStreak(ctx, messages, log, logFields) {
+  if (logFields.name === "finish" || (logFields.event === "tool" && logFields.exit === 0)) {
+    resetRefusalStreak(ctx);
+    return null;
+  }
+  if (!isToolRefusalLogFields(logFields)) return null;
+  ctx.consecutiveRefusals = (ctx.consecutiveRefusals ?? 0) + 1;
+  if (ctx.consecutiveRefusals >= CONSECUTIVE_REFUSAL_AUTO_FINISH) {
+    return logFinishUnverified(ctx, log, { errorReason: "consecutive_refusals", errorExit: 0 });
+  }
+  if (ctx.consecutiveRefusals >= CONSECUTIVE_REFUSAL_REMINDER && !ctx.refusalReminderSent) {
+    ctx.refusalReminderSent = true;
+    messages.push({ role: "user", content: REFUSAL_REMINDER_TEXT });
+  }
+  return null;
+}
+
 export async function runSupportAgent(options) {
   const log = options.log ?? ((line) => {
     process.stdout.write(`${line}\n`);
@@ -1001,12 +1054,18 @@ export async function runSupportAgent(options) {
       deadlineAt,
       listed: false,
       round: 0,
+      consecutiveRefusals: 0,
+      refusalReminderSent: false,
     };
     const messages = [
       { role: "system", content: PROCESS_SYSTEM_PROMPT },
       { role: "user", content: PROCESS_USER_PROMPT },
     ];
-    for (let round = 1; round <= MAX_MODEL_ROUNDS; round += 1) {
+    const maxModelRounds =
+      typeof options.maxModelRounds === "number" && options.maxModelRounds >= 1
+        ? Math.min(options.maxModelRounds, MAX_MODEL_ROUNDS)
+        : MAX_MODEL_ROUNDS;
+    for (let round = 1; round <= maxModelRounds; round += 1) {
       ctx.round = round;
       assertWithinDeadline(deadlineAt, options.signal);
       log(formatLog({ event: "xai_request", round, mode }));
@@ -1056,10 +1115,12 @@ export async function runSupportAgent(options) {
           content: outcome.contentForModel,
         });
         if (outcome.stop) return { exitCode: outcome.stop.exitCode };
+        const refusalStop = trackToolRefusalStreak(ctx, messages, log, outcome.logFields);
+        if (refusalStop) return refusalStop;
       }
     }
-    log(formatLog({ event: "error", reason: "round_limit", status: "ROUND_LIMIT", exit: 1, rounds: MAX_MODEL_ROUNDS }));
-    return { exitCode: 1 };
+    ctx.round = maxModelRounds;
+    return logFinishUnverified(ctx, log, { errorReason: "round_limit", errorExit: 1 });
   } catch (err) {
     const reason = reasonFrom(err);
     if (reason === "cancelled" || options.signal?.aborted) {
