@@ -10,6 +10,8 @@ import {
   AUTH_SYSTEM_PROMPT,
   AUTH_TOKEN,
   AUTH_USER_PROMPT,
+  CONSECUTIVE_REFUSAL_AUTO_FINISH,
+  CONSECUTIVE_REFUSAL_REMINDER,
   DEFAULT_SUPPORT_MODEL,
   GROK_STEP_TIMEOUT_MINUTES,
   PROCESS_SYSTEM_PROMPT,
@@ -22,6 +24,7 @@ import {
   classifyCommand,
   formatLog,
   isAuthenticationOk,
+  isToolRefusalLogFields,
   normalizeAuthReply,
   resolveSupportModel,
   runCapturedCommand,
@@ -602,4 +605,104 @@ test("write probe does not create .env", () => {
   writeFileSync(join(root, "keep.txt"), "ok");
   assert.equal(assertRepoPath(root, ".env", { write: true }).ok, false);
   rmSync(root, { recursive: true, force: true });
+});
+
+test("isToolRefusalLogFields treats failed tools as refusals but not finish or success", () => {
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "run_repo_command", exit: 1, reason: "denied_git" }), true);
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "read_file", exit: 1, reason: "path" }), true);
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "read_file", exit: 0 }), false);
+  assert.equal(isToolRefusalLogFields({ event: "tool", name: "finish", exit: 1, reason: "pass_before_list" }), false);
+  assert.equal(isToolRefusalLogFields({ event: "finish", status: "UNVERIFIED", exit: 0 }), false);
+});
+
+test("consecutive refused tools auto-finish UNVERIFIED before round limit", async () => {
+  const captured = [];
+  const logs = [];
+  const deniedCall = (id) => ({
+    id,
+    name: "run_repo_command",
+    args: { argv: ["git", "commit"] },
+  });
+  const responses = [];
+  for (let i = 0; i < CONSECUTIVE_REFUSAL_AUTO_FINISH; i += 1) {
+    responses.push({ json: toolMessage([deniedCall(`call_${i}`)]) });
+  }
+  const result = await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    log: (line) => logs.push(line),
+    commandRunner: () => {
+      throw new Error("denied git must not spawn");
+    },
+    fetchImpl: scriptedFetch(responses, captured),
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(captured.length, CONSECUTIVE_REFUSAL_AUTO_FINISH);
+  const text = logs.join("\n");
+  assert.match(text, /reason=consecutive_refusals/);
+  assert.match(text, /event=finish status=UNVERIFIED/);
+  assert.equal(text.includes("ROUND_LIMIT"), false);
+  assertPublic(logs);
+});
+
+test("refusal reminder is sent to the model after several consecutive refusals", async () => {
+  const captured = [];
+  const deniedCall = (id) => ({
+    id,
+    name: "run_repo_command",
+    args: { argv: ["git", "add", "-A"] },
+  });
+  const responses = [];
+  for (let i = 0; i < CONSECUTIVE_REFUSAL_REMINDER + 1; i += 1) {
+    responses.push({ json: toolMessage([deniedCall(`call_${i}`)]) });
+  }
+  await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    log: () => {},
+    commandRunner: () => {
+      throw new Error("denied git must not spawn");
+    },
+    fetchImpl: scriptedFetch(responses, captured),
+  });
+  assert.ok(captured.length >= CONSECUTIVE_REFUSAL_REMINDER + 1);
+  const lastRequest = captured[CONSECUTIVE_REFUSAL_REMINDER].body.messages;
+  const reminder = lastRequest.find((message) => message.role === "user" && message.content?.includes("finish tool"));
+  assert.ok(reminder, "expected refusal reminder user message before next model round");
+  assert.equal(JSON.stringify(captured).includes("UNVERIFIED"), true);
+});
+
+test("round limit ends with finish UNVERIFIED instead of exit-only ROUND_LIMIT", async () => {
+  const logs = [];
+  const rounds = 4;
+  const responses = [];
+  for (let i = 0; i < rounds; i += 1) {
+    responses.push({
+      json: toolMessage([
+        {
+          id: `call_list_${i}`,
+          name: "list_open_tickets",
+          args: {},
+        },
+      ]),
+    });
+  }
+  responses.push({
+    json: toolMessage([{ id: "call_stall", name: "read_file", args: { path: "does-not-exist.txt" } }]),
+  });
+  const result = await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    maxModelRounds: rounds,
+    cwd: process.cwd(),
+    log: (line) => logs.push(line),
+    commandRunner: async () => ({ exitCode: 0, stdout: "[]", stderr: "", elapsed: 2, timedOut: false }),
+    fetchImpl: scriptedFetch(responses, []),
+  });
+  assert.equal(result.exitCode, 0);
+  const text = logs.join("\n");
+  assert.match(text, /reason=round_limit/);
+  assert.match(text, /status=ROUND_LIMIT/);
+  assert.match(text, /event=finish status=UNVERIFIED/);
+  assertPublic(logs);
 });
