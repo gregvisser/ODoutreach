@@ -2,8 +2,9 @@
 
 The support agent takes every **OPEN** `SupportTicket` and drives it to done:
 investigate → fix safely → verify → ship → close with a reporter reply. It runs
-from `.github/workflows/support-agent.yml` (OpenAI Codex, commit-pinned) once
-that workflow is enabled in the Actions UI. The mission prompt is
+from `.github/workflows/support-agent.yml` (xAI Grok,
+`scripts/support-agent/grok-support-runner.mjs`) once that workflow is
+enabled in the Actions UI. The mission prompt is
 [`support-agent-goal.md`](./support-agent-goal.md).
 
 **Go-live is gated and default-off.** Merging code does not process tickets.
@@ -24,7 +25,7 @@ therefore talks to prod, never local dev — see the connection guard below.
 | `_db.ts` | — | Connection guard. Forces `DATABASE_URL` to the prod URL **before** the Prisma client initialises, then dynamically imports the app's `src/lib/db` client. Refuses to run unless a prod URL is set. |
 | `list-open-tickets.ts` | `support:list` | Prints all OPEN tickets as JSON, highest-priority-first (CRITICAL → LOW), oldest-first within a priority. This is the work queue. |
 | `get-ticket.ts` | `support:get` | Loads one ticket in full and dumps its screenshot attachments to `.tmp/support-agent/` (gitignored). |
-| `resolve-ticket.ts` | `support:resolve` | Sets `RESOLVED` + `resolvedAt` + `resolutionNote` and writes a durable notification row. Dispatches immediately only when Graph/sender creds are present; otherwise leaves the row PENDING for `process-support-ticket-notifications.yml`. Guards against re-resolving. The scheduled Codex runner does not receive Graph creds. |
+| `resolve-ticket.ts` | `support:resolve` | Sets `RESOLVED` + `resolvedAt` + `resolutionNote` and writes a durable notification row. Dispatches immediately only when Graph/sender creds are present; otherwise leaves the row PENDING for `process-support-ticket-notifications.yml`. Guards against re-resolving. The Grok runner does not receive Graph creds. |
 | `escalate-ticket.ts` | `support:escalate` | Sets `AWAITING_APPROVAL` + `proposedFix` (analysis for Greg), optional `resolutionNote`, then emails best-effort. Removes the ticket from the OPEN queue. |
 | `notify-reporter.ts` | — | Transactional "your ticket was actioned" email via Microsoft Graph app-only `sendMail`. Best-effort — **never throws**, so email can't block a close. Completely separate from the outreach pipeline. |
 
@@ -81,16 +82,15 @@ prod schema must change, ship what's safe and escalate the migration step.
 ## Configuration
 
 Set as GitHub repo secrets/variables (for the scheduled runner) and/or in the
-local shell. Claude Code credentials (`ANTHROPIC_API_KEY`,
-`CLAUDE_CODE_OAUTH_TOKEN`) are **dead for this runner** — the workflow no
-longer reads them.
+local shell. OpenAI Codex and Claude Code credentials (`OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) are **not used** by this runner.
 
 | Name | Purpose | Required for |
 |---|---|---|
-| `OPENAI_API_KEY` | OpenAI API key for the official Codex action. Not a ChatGPT subscription token. | Codex runner (auth-check and ticket runs) |
+| `XAI_API_KEY` | xAI API key for `https://api.x.ai/v1/chat/completions`. GitHub Actions repository secret. Same name as the Azure App Setting used by product AI; this workflow does not read Azure. | Grok runner (auth-check and ticket runs) |
 | `SUPPORT_AGENT_DATABASE_URL` | Production DB URL (same value as `PRODUCTION_DATABASE_URL`). Tickets live here. | `support:*` CLIs and ticket-processing runs |
 | `SUPPORT_AGENT_GH_TOKEN` | Fine-grained PAT (`contents: write` + `pull-requests: write`) so pushes to `main` trigger the deploy workflow (the built-in `GITHUB_TOKEN` does not). | Ticket-processing runs |
-| `SUPPORT_AGENT_MODEL` | Optional repository variable. Codex model id. | Defaults to `gpt-5.6-sol` |
+| `SUPPORT_AGENT_MODEL` | Optional repository variable. Grok model id. Default `grok-4.7`. Alias `grok-4-7` maps to `grok-4.7`. `grok-4-6` and `grok-4-0709` map to `grok-4.6` (same aliases as the product catalog). Also allowed: `grok-4.6`, `grok-4-fast-non-reasoning`, `grok-4.20-0309-non-reasoning`. Anything else is refused before HTTP. | Defaults to `grok-4.7` |
 | `SUPPORT_AGENT_SCHEDULE_ENABLED` | Optional repository variable. Weekday cron processes tickets only when this is exactly `true`. | Scheduled ticket processing (default off) |
 | `SUPPORT_AGENT_NOTIFY_SENDER` | System mailbox the reporter email is sent from (e.g. `support@bidlow.co.uk`). Used by the **notifications** workflow, not by `support-agent.yml`. | Reporter email |
 | `SUPPORT_AGENT_NOTIFY_BCC` | Optional. Comma-separated internal address(es) BCC'd on every ticket-close notice (e.g. `greg@bidlow.co.uk`) so staff keep a copy. Recipient-only — unaffected by the sender's Application Access Policy. | Reporter email (optional) |

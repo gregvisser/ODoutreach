@@ -43,7 +43,7 @@ jobs:
         run: npm run typecheck
 
       - name: Support runner privacy checks
-        run: node --test scripts/support-agent/adapt-codex-action.test.mjs
+        run: node --test scripts/support-agent/grok-support-runner.test.mjs
 
       - name: Unit tests
         run: npm run test:coverage -- --reporter=default --reporter=json --outputFile=vitest-results.json
