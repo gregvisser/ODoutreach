@@ -116,6 +116,7 @@ UI equivalent: **Actions → Support agent → Run workflow → Use workflow fro
 - Guard missing `XAI_API_KEY`: set the GitHub repository secret of that name. Do not paste the key into the log, the PR, or Azure from this checklist.
 - `status=MODEL_REJECTED`: `SUPPORT_AGENT_MODEL` is not an allowed Grok id. Delete the variable or set it to `grok-4.7`.
 - `http=401`: the GitHub secret is present but refused by xAI. Replace the secret value. Do not point this workflow at Graph or notify credentials.
+- `status=AUTH_MISMATCH`: xAI returned HTTP 200 but the reply was not the token `AUTHENTICATION_OK` (bare, wrapped, or a short sentence ending on the token). The log includes `reply_chars` and does not print the reply. Do not add a debug print of the model text.
 - `event=timeout`: the model call did not finish inside the runner deadline. Cancel is no longer the only signal; the step also stops at 20 minutes.
 
 ## Step 3 — One controlled `process-tickets` observation
