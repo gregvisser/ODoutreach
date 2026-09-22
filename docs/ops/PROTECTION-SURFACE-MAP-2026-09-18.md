@@ -402,12 +402,15 @@ Isolation is **data-plane (clientId)**, not “staff A cannot see client B”. A
 
 ## 8. Support-agent / automation rails
 
-### Support runner (Codex on GitHub Actions)
+### Support runner (xAI Grok on GitHub Actions)
 
 Authoritative: `docs/support-agent-goal.md` + `.github/workflows/support-agent.yml`.
+As of 2026-09-22 the runner is `scripts/support-agent/grok-support-runner.mjs`
+(xAI, default `grok-4.7`) with a 20-minute model step. The 2026-09-18 activation
+note below is the schedule gate, which is unchanged.
 
-- `main` only; weekdays 08:00–18:00 UTC; 45-minute timeout; concurrency `support-agent`.
-- **Activation (measured 2026-09-18): GitHub workflow state `disabled_manually` plus repository variable `SUPPORT_AGENT_SCHEDULE_ENABLED` (must be exactly `true` for cron).** Enabling the Actions UI workflow is required before any dispatch; cron still no-ops until the variable is set. See `docs/ops/SUPPORT-AGENT-GO-LIVE.md`.
+- `main` only; weekdays 08:00–18:00 UTC; job timeout 45 minutes; model step 20 minutes; concurrency `support-agent`.
+- **Activation (measured 2026-09-18, UI re-measured 2026-09-22 as `active`): repository variable `SUPPORT_AGENT_SCHEDULE_ENABLED` must be exactly `true` for cron.** Cron still no-ops until the variable is set. See `docs/ops/SUPPORT-AGENT-GO-LIVE.md`.
 - Scheduled = process tickets **only after both gates**. Manual default = `authentication-check`.
 - **Forbidden:** trigger outreach, campaign launch, queue processing, mailbox sends, reporter emails; weaken auth, tenant isolation, unsubscribe/DNC, mailbox limits, tracking, approval gates; production migrations, DNS, credential rotation, bulk deletes; print ticket PII in public logs.
 - **Allowed:** small reversible code fixes, tests, PR, live journey verify, then `support:resolve` note. Escalate rather than apply live product-data corrections.

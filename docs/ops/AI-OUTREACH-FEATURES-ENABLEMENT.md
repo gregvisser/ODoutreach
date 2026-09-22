@@ -16,8 +16,12 @@ Product AI HTTP choke point: `src/server/ai/anthropic-messages.ts` (`callAiToolM
 
 **xAI credential env name:** `XAI_API_KEY` only (no alternate aliases in code).
 
-**Support agent** (`.github/workflows/support-agent.yml`) still uses OpenAI Codex — out of
-scope for product AI; do not enable `SUPPORT_AGENT_SCHEDULE_ENABLED` for this work.
+**Support agent** (`.github/workflows/support-agent.yml`) uses the same credential
+name as a **GitHub Actions secret**, model default `grok-4.7`, via
+`scripts/support-agent/grok-support-runner.mjs`. It does not read the Azure
+`XAI_MODEL` app setting and it does not use OpenAI. Do not enable
+`SUPPORT_AGENT_SCHEDULE_ENABLED` for product-AI work. See
+`docs/ops/SUPPORT-AGENT-GO-LIVE.md`.
 
 `MACHINE_ACTIVATION_AVAILABLE` is already `true` in source
 (`src/lib/clients/client-autonomous-send.ts`). That is **Machine sending**,
