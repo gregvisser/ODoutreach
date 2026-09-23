@@ -19,12 +19,20 @@ describe("describeUnhandledAiFailure", () => {
     expect(describeUnhandledAiFailure("anthropic_http_403: forbidden")).toContain(
       "misconfigured",
     );
+    expect(describeUnhandledAiFailure("xai_http_401: invalid api key")).toContain(
+      "misconfigured",
+    );
+    expect(describeUnhandledAiFailure("xai_http_403: forbidden")).toContain("misconfigured");
   });
 
   it("names a rate-limit failure distinctly from a misconfiguration", () => {
     const message = describeUnhandledAiFailure("anthropic_http_429: rate limited");
     expect(message).toContain("rate-limited");
     expect(message).not.toContain("misconfigured");
+
+    const xaiMessage = describeUnhandledAiFailure("xai_http_429: rate limited");
+    expect(xaiMessage).toContain("rate-limited");
+    expect(xaiMessage).not.toContain("misconfigured");
   });
 
   it("names a provider-outage failure for a 5xx, a timeout and an unreadable body", () => {
@@ -32,6 +40,12 @@ describe("describeUnhandledAiFailure", () => {
       "temporarily unavailable",
     );
     expect(describeUnhandledAiFailure("anthropic_unreadable_body")).toContain(
+      "temporarily unavailable",
+    );
+    expect(describeUnhandledAiFailure("xai_http_503: overloaded")).toContain(
+      "temporarily unavailable",
+    );
+    expect(describeUnhandledAiFailure("xai_unreadable_body")).toContain(
       "temporarily unavailable",
     );
     expect(describeUnhandledAiFailure("The operation was aborted due to timeout")).toContain(

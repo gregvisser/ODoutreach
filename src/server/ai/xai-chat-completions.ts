@@ -18,6 +18,8 @@ export interface XaiChatCompletionsRequest {
   readonly maxTokens: number;
   readonly tool: XaiToolDefinition;
   readonly fetchImpl?: typeof fetch;
+  /** Per-call override; defaults to {@link AI_CALL_TIMEOUT_MS}. */
+  readonly timeoutMs?: number;
 }
 
 export interface XaiChatCompletionsResponse {
@@ -127,7 +129,7 @@ export async function callXaiChatCompletions(
         function: { name: req.tool.name },
       },
     }),
-    signal: AbortSignal.timeout(AI_CALL_TIMEOUT_MS),
+    signal: AbortSignal.timeout(req.timeoutMs ?? AI_CALL_TIMEOUT_MS),
   });
 
   if (!response.ok) {

@@ -32,6 +32,12 @@ const ANTHROPIC_VERSION = "2023-06-01";
  */
 export const AI_CALL_TIMEOUT_MS = 20_000;
 
+/**
+ * Sequence drafting is operator-triggered, returns up to 4k tokens with a large
+ * brief, and runs Azure → api.x.ai — too slow for the inline-ingestion budget.
+ */
+export const AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS = 90_000;
+
 export interface AnthropicToolDefinition {
   readonly name: string;
   readonly description: string;
@@ -56,6 +62,8 @@ export interface AnthropicMessagesRequest {
   readonly workspaceId?: string;
   /** Injectable for tests. Defaults to the platform `fetch`. */
   readonly fetchImpl?: typeof fetch;
+  /** Per-call override; defaults to {@link AI_CALL_TIMEOUT_MS}. */
+  readonly timeoutMs?: number;
 }
 
 export interface AnthropicMessagesResponse {
@@ -102,7 +110,7 @@ export async function postAnthropicMessages(
       tools: [req.tool],
       tool_choice: { type: "tool", name: req.tool.name },
     }),
-    signal: AbortSignal.timeout(AI_CALL_TIMEOUT_MS),
+    signal: AbortSignal.timeout(req.timeoutMs ?? AI_CALL_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -139,6 +147,7 @@ export async function callAiToolMessages(
       maxTokens: req.maxTokens,
       tool: req.tool,
       fetchImpl: req.fetchImpl,
+      timeoutMs: req.timeoutMs,
     });
   }
   return postAnthropicMessages(req);
