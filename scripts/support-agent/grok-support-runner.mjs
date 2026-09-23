@@ -98,6 +98,7 @@ const NPM_SCRIPTS = new Set([
   "support:get",
   "support:resolve",
   "support:escalate",
+  "support:inspect-mailbox-signature",
   "lint",
   "typecheck",
   "test",
@@ -294,7 +295,8 @@ Hard rails — refuse rather than cross:
 
 Tools:
 - list_open_tickets and get_ticket wrap npm run support:list / support:get. Screenshot bytes are not inlined; if a screenshot is essential and the text is not enough, finish UNVERIFIED and escalate.
-- run_repo_command argv only, no shell. npm scripts: support:list, support:get, support:resolve, support:escalate, lint, typecheck, test, build. git: status, diff, log, show, checkout, switch, branch, add, commit (requires -m), push, fetch, rev-parse, stash, merge. gh: pr create/view/checks/diff/list/comment/merge/status and run view/list/watch. No --admin, no force-push, no push to main.
+- support:inspect-mailbox-signature returns stored signature HTML image URLs, mailbox Ready state, supportConclusion, and verificationLimits (Activity does not expose sent HTML). When storedSignatureHealthy is true and proposedFixes is empty, do not recommend signature edits — state recipient render is unconfirmed.
+- run_repo_command argv only, no shell. npm scripts: support:list, support:get, support:resolve, support:escalate, support:inspect-mailbox-signature (read-only mailbox/signature diagnostics — use --client-slug or --mailbox-id, never send mail), lint, typecheck, test, build. git: status, diff, log, show, checkout, switch, branch, add, commit (requires -m), push, fetch, rev-parse, stash, merge. gh: pr create/view/checks/diff/list/comment/merge/status and run view/list/watch. No --admin, no force-push, no push to main.
 - read_file / write_file stay inside the repo. Secret paths and the rail files above are refused.
 - finish with PASS, FAIL, or UNVERIFIED. PASS is refused until list_open_tickets has succeeded. The model step is capped at 20 minutes; if you cannot finish safely, call finish with UNVERIFIED.
 
@@ -332,7 +334,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "run_repo_command",
-      description: "Run one allowlisted git, gh, or npm command. argv is an array of strings. No shell. Allowed git: status, diff, log, show, checkout, switch, branch, add (named paths only — not -A/--all/.), commit (-m required, no --no-verify), push (no force, no main), fetch, rev-parse, stash, merge. Allowed gh: pr create|view|checks|diff|list|comment|merge|status; run view|list|watch. Allowed npm scripts: support:list|get|resolve|escalate, lint, typecheck, test, build. Refused commands are not executed — do not retry them.",
+      description: "Run one allowlisted git, gh, or npm command. argv is an array of strings. No shell. Allowed git: status, diff, log, show, checkout, switch, branch, add (named paths only — not -A/--all/.), commit (-m required, no --no-verify), push (no force, no main), fetch, rev-parse, stash, merge. Allowed gh: pr create|view|checks|diff|list|comment|merge|status; run view|list|watch. Allowed npm scripts: support:list|get|resolve|escalate|inspect-mailbox-signature, lint, typecheck, test, build. Refused commands are not executed — do not retry them.",
       parameters: {
         type: "object",
         properties: { argv: { type: "array", items: { type: "string" } } },
@@ -792,7 +794,7 @@ async function runCommand(argv, ctx) {
   if (!decision.ok) {
     return {
       logFields: { event: "tool", name: "run_repo_command", exit: 1, command_class: "denied", reason: decision.reason, timed_out: false },
-      contentForModel: `Command refused (${decision.reason}). Do not retry this argv. Allowed git subcommands: status,diff,log,show,checkout,switch,branch,add,commit,push,fetch,rev-parse,stash,merge. git add needs named paths (not -A/--all/.). git commit needs -m. No force-push or push to main. Allowed gh: pr create|view|checks|diff|list|comment|merge|status; run view|list|watch. Allowed npm scripts: support:list|get|resolve|escalate, lint, typecheck, test, build. If blocked, call finish with UNVERIFIED.`,
+      contentForModel: `Command refused (${decision.reason}). Do not retry this argv. Allowed git subcommands: status,diff,log,show,checkout,switch,branch,add,commit,push,fetch,rev-parse,stash,merge. git add needs named paths (not -A/--all/.). git commit needs -m. No force-push or push to main. Allowed gh: pr create|view|checks|diff|list|comment|merge|status; run view|list|watch. Allowed npm scripts: support:list|get|resolve|escalate|inspect-mailbox-signature, lint, typecheck, test, build. If blocked, call finish with UNVERIFIED.`,
     };
   }
   const remaining = ctx.deadlineAt - Date.now();

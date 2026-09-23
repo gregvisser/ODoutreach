@@ -1,5 +1,7 @@
 import type { SuppressionListKind } from "@/generated/prisma/enums";
 
+import { suppressionReplaceRefusalMessage } from "@/lib/suppression/staff-sync-copy";
+
 /**
  * Whether a do-not-contact sheet sync is allowed to replace what is stored.
  *
@@ -44,27 +46,6 @@ export function decideSuppressionReplace(
   const removed = previousEntries.filter((entry) => !nextEntries.has(entry)).length;
   if (removed <= 0) return { allowed: true };
 
-  const noun = kind === "EMAIL" ? "addresses" : "domains";
-
-  // Zero is refused on its own terms rather than by the percentage, because it
-  // is the signature of a read that went wrong — an empty tab, a cleared
-  // sheet, a range pointing at nothing — far more often than of a client
-  // deciding nobody is blocked any more.
-  if (wouldWrite === 0) {
-    return {
-      allowed: false,
-      refusal: {
-        previousCount,
-        wouldWrite,
-        removed,
-        reason:
-          `Sync refused: the sheet produced no usable ${noun}, which would have removed all ${String(previousCount)} currently-blocked ${noun}. ` +
-          `Nothing was deleted — the ${String(previousCount)} are still blocked. ` +
-          `Check the sheet still holds the list and that the tab and range are right, then sync again.`,
-      },
-    };
-  }
-
   // Even one missing row may be an opt-out. Only the caller's explicit
   // confirmShrink path may remove it; routine sync still adds new blocks.
   return {
@@ -73,10 +54,7 @@ export function decideSuppressionReplace(
       previousCount,
       wouldWrite,
       removed,
-      reason:
-        `Sync refused: this would remove ${String(removed)} of ${String(previousCount)} existing blocked ${noun}. The replacement list would contain ${String(wouldWrite)} ${noun}. ` +
-        `Nothing was deleted — the ${String(previousCount)} are still blocked. ` +
-        `If rows were removed from the sheet by mistake, put them back and sync again. If the removal is deliberate, use "Remove them anyway" to confirm it.`,
+      reason: suppressionReplaceRefusalMessage(kind, previousCount, wouldWrite, removed),
     },
   };
 }
