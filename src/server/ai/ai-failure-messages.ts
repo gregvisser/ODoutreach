@@ -15,15 +15,21 @@ import "server-only";
  * doesn't recognise, so a caller can fall back to its own message.
  */
 export function describeUnhandledAiFailure(reason: string): string | null {
-  if (/anthropic_http_40[13]\b/.test(reason) || /workspace-id/i.test(reason)) {
+  if (
+    /anthropic_http_40[13]\b/.test(reason) ||
+    /xai_http_40[13]\b/.test(reason) ||
+    /workspace-id/i.test(reason)
+  ) {
     return "The AI's credentials are misconfigured, so nothing ran and nothing was charged. Ask an administrator to check its setup.";
   }
-  if (/anthropic_http_429\b/.test(reason)) {
+  if (/anthropic_http_429\b/.test(reason) || /xai_http_429\b/.test(reason)) {
     return "The AI is temporarily rate-limited. Nothing was charged — try again shortly.";
   }
   if (
     /anthropic_http_5\d\d\b/.test(reason) ||
     /anthropic_unreadable_body/.test(reason) ||
+    /xai_http_5\d\d\b/.test(reason) ||
+    /xai_unreadable_body/.test(reason) ||
     /timeout/i.test(reason) ||
     /aborterror/i.test(reason) ||
     /fetch failed/i.test(reason)

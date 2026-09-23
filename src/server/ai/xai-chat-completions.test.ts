@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { AI_CALL_TIMEOUT_MS, AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
 import { callXaiChatCompletions } from "./xai-chat-completions";
 
 const TOOL = {
@@ -58,5 +59,54 @@ describe("callXaiChatCompletions", () => {
     expect(response.content).toEqual([
       { type: "tool_use", name: "record_answer", input: { label: "POSITIVE" } },
     ]);
+  });
+
+  it("uses the default call timeout unless overridden", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  type: "function",
+                  function: { name: "record_answer", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }),
+      text: async () => "",
+    });
+
+    await callXaiChatCompletions({
+      apiKey: "xai-test",
+      model: "grok-4-fast-non-reasoning",
+      system: "system",
+      userText: "user",
+      maxTokens: 100,
+      tool: TOOL,
+      fetchImpl,
+    });
+    expect(timeoutSpy).toHaveBeenCalledWith(AI_CALL_TIMEOUT_MS);
+
+    timeoutSpy.mockClear();
+    await callXaiChatCompletions({
+      apiKey: "xai-test",
+      model: "grok-4-fast-non-reasoning",
+      system: "system",
+      userText: "user",
+      maxTokens: 100,
+      tool: TOOL,
+      fetchImpl,
+      timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    });
+    expect(timeoutSpy).toHaveBeenCalledWith(AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS);
+
+    timeoutSpy.mockRestore();
   });
 });

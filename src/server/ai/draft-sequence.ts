@@ -15,7 +15,10 @@ import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy"
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./anthropic-messages";
+import {
+  AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+  callAiToolMessages,
+} from "./anthropic-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -138,6 +141,7 @@ export async function draftSequenceForClient(args: {
         userText: buildSequenceDraftingInput(loaded.brief),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: SEQUENCE_DRAFTING_TOOL,
+        timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
       });
       return {
         result: parseSequenceDraftToolUse(response.content),

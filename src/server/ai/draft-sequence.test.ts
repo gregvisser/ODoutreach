@@ -15,10 +15,13 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
-  AI_CALL_TIMEOUT_MS: 20_000,
-}));
+vi.mock("./anthropic-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./anthropic-messages")>();
+  return {
+    ...actual,
+    callAiToolMessages: callAnthropicMock,
+  };
+});
 
 import {
   SEQUENCE_CADENCE_DAYS,
@@ -27,6 +30,7 @@ import {
 } from "@/lib/ai/sequence-drafting";
 import { canApproveTemplate } from "@/lib/email-templates/template-policy";
 
+import { AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
 import { draftSequenceForClient } from "./draft-sequence";
 
 const CLIENT = {
@@ -252,6 +256,15 @@ describe("when it cannot draft", () => {
     expect(result).toEqual({ ok: false, reason: "no_api_key" });
     expect(callAnthropicMock).not.toHaveBeenCalled();
     expect(prismaMock.clientEmailTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("uses a longer provider timeout than inline reply classification", async () => {
+    modelAnswers(goodSteps());
+    await draftSequenceForClient({ clientId: "client-1", staffUserId: "staff-1" });
+
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+      AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    );
   });
 
   it("does not require ANTHROPIC_API_KEY when provider is xai", async () => {
