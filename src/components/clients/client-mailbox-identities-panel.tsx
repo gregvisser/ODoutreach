@@ -28,6 +28,7 @@ import {
   type MailboxSignatureActionResult,
 } from "@/app/(app)/clients/mailbox-signature-actions";
 import { SenderReadinessPanel } from "@/components/ops/sender-readiness-panel";
+import { MailboxRowConnectionActions } from "@/components/mailboxes/mailbox-row-connection-actions";
 import { resolveGoogleReconnectCountdown } from "@/lib/mailboxes/google-refresh-token-expiry";
 import { buildMailboxSignatureSendPreview } from "@/lib/mailboxes/mailbox-signature-send-preview";
 import {
@@ -52,7 +53,6 @@ import {
   MAILBOX_ACCOUNT_DELETED_SUBLABEL,
   mailboxesWhatToDoNext,
   mailboxRowOperatorStatus,
-  mailboxSignInWindowIsOpen,
   pendingConnectionStatus,
   MAX_CONNECTED_MAILBOXES,
 } from "@/lib/mailboxes/mailboxes-operator-model";
@@ -277,22 +277,6 @@ function oauthReadyForRow(
   return row.provider === "MICROSOFT"
     ? oauthMicrosoftConfigured
     : oauthGoogleConfigured;
-}
-
-function connectActionLabel(row: MailboxIdentityRow, now: Date): string {
-  if (row.connectionStatus === "CONNECTED") {
-    return "Reconnect";
-  }
-  // "Complete sign-in" promises to resume something already under way. That is
-  // true only while the OAuth state is alive; once the window has closed the
-  // button starts a brand-new sign-in, and it should say so.
-  if (
-    row.connectionStatus === "PENDING_CONNECTION" &&
-    mailboxSignInWindowIsOpen(row.oauthStateExpiresAt, now)
-  ) {
-    return "Complete sign-in";
-  }
-  return "Connect";
 }
 
 function providerConnectionHint(
@@ -885,77 +869,23 @@ export function ClientMailboxIdentitiesPanel({
                           inflates the row height, which stretches the whole
                           row and leaves a block of empty space under the
                           Mailbox/Provider columns still on screen. */}
-                      <div className="flex flex-nowrap gap-1">
-                        {canMutate ? (
-                          <>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              disabled={
-                                pending ||
-                                !row.isActive ||
-                                row.isPrimary ||
-                                row.connectionStatus !== "CONNECTED"
-                              }
-                              title={
-                                row.connectionStatus !== "CONNECTED"
-                                  ? "Connect this mailbox before setting it as primary."
-                                  : undefined
-                              }
-                              onClick={() =>
-                                run(async () => setClientMailboxPrimary(clientId, row.id))
-                              }
-                            >
-                              Set primary
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="secondary"
-                              disabled={pending || !oauthOk || !row.isActive}
-                              title={
-                                !oauthOk
-                                  ? "An administrator must finish Microsoft/Google setup for this app before mailboxes can connect."
-                                  : undefined
-                              }
-                              onClick={() => startOAuth(row.id)}
-                            >
-                              {connectActionLabel(row, now)}
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              disabled={pending || row.connectionStatus !== "CONNECTED"}
-                              onClick={() => runDisconnect(row.id)}
-                            >
-                              Disconnect
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              className="text-destructive border-destructive/60"
-                              disabled={pending}
-                              title="Stops use of this address in the pool. In-app history is kept. Use Disconnect to revoke sign-in only."
-                              onClick={() => {
-                                setRemoveTarget(row);
-                                setRemoveNote("");
-                              }}
-                            >
-                              Remove
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              className="text-muted-foreground"
-                              disabled={pending}
-                              onClick={() => setEditRow(row)}
-                            >
-                              Edit
-                            </Button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">View only</span>
-                        )}
-                      </div>
+                      <MailboxRowConnectionActions
+                        row={row}
+                        now={now}
+                        pending={pending}
+                        oauthOk={oauthOk}
+                        canMutate={canMutate}
+                        onConnect={() => startOAuth(row.id)}
+                        onDisconnect={() => runDisconnect(row.id)}
+                        onRemove={() => {
+                          setRemoveTarget(row);
+                          setRemoveNote("");
+                        }}
+                        onEdit={() => setEditRow(row)}
+                        onSetPrimary={() =>
+                          run(async () => setClientMailboxPrimary(clientId, row.id))
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 );
