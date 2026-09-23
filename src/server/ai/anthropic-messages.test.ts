@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { callAiToolMessages, postAnthropicMessages } from "./anthropic-messages";
+import {
+  AI_CALL_TIMEOUT_MS,
+  AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+  callAiToolMessages,
+  postAnthropicMessages,
+} from "./anthropic-messages";
 
 function fakeAnthropicFetch() {
   return vi.fn().mockResolvedValue({
@@ -42,6 +47,24 @@ describe("postAnthropicMessages — anthropic-workspace-id header", () => {
     expect(init.headers).toMatchObject({
       "anthropic-workspace-id": "wrkspc_01Nd6QgCKXdPbyFHV4regqTJ",
     });
+  });
+
+  it("uses the default call timeout unless overridden", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchImpl = fakeAnthropicFetch();
+
+    await postAnthropicMessages({ ...BASE_REQUEST, fetchImpl });
+    expect(timeoutSpy).toHaveBeenCalledWith(AI_CALL_TIMEOUT_MS);
+
+    timeoutSpy.mockClear();
+    await postAnthropicMessages({
+      ...BASE_REQUEST,
+      fetchImpl,
+      timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    });
+    expect(timeoutSpy).toHaveBeenCalledWith(AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS);
+
+    timeoutSpy.mockRestore();
   });
 });
 
