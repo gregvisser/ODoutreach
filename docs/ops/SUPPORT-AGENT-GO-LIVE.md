@@ -108,7 +108,7 @@ UI equivalent: **Actions → Support agent → Run workflow → Use workflow fro
 - `Guard — required secrets present` succeeds (`XAI_API_KEY` only for this mode).
 - `Run support agent with Grok` succeeds well inside 20 minutes.
 - The log contains `event=start mode=authentication-check model=grok-4.7` and `event=result status=AUTHENTICATION_OK exit=0`.
-- `status=AUTHENTICATION_OK` means the CI connectivity probe passed. The model phrase is `READY`. The result line includes `reply_chars` and does not print the reply. It is a fixed log token, not a ticket transcript.
+- `status=AUTHENTICATION_OK` means the CI connectivity / health-endpoint probe passed. The model phrase (simulated `GET /health` body) is `READY`. The result line includes `reply_chars` and does not print the reply. It is a fixed log token, not a ticket transcript.
 - Workflow conclusion `success`.
 
 **On failure**

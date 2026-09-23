@@ -4,7 +4,7 @@
  *
  * Replaces the OpenAI Codex action. Two modes, selected by SUPPORT_AGENT_MODE:
  *   authentication-check — one chat completion, no tools, no repo, no database.
- *                          CI connectivity probe; the model phrase is READY.
+ *                          CI health-endpoint probe; the model phrase is READY.
  *                          A pass is logged as status=AUTHENTICATION_OK.
  *   process-tickets      — tool loop over the existing support:* scripts and a
  *                          narrow git/gh/npm allowlist
@@ -173,18 +173,21 @@ const FIELD_RULES = {
 };
 
 /**
- * Model phrase for the CI connectivity probe. Prompts and the accept rule both
- * use this. Workflow logs stay status=AUTHENTICATION_OK / AUTH_MISMATCH: those
- * strings are outcome labels, not the phrase the model is asked to return.
- * grok-4.7 refuses a demand for the exact phrase AUTHENTICATION_OK (it treats
- * that as an authentication token) and returns this word for a health probe.
+ * Model phrase for the CI connectivity probe. The system prompt and the accept
+ * rule use this as the simulated /health response body. Workflow logs stay
+ * status=AUTHENTICATION_OK / AUTH_MISMATCH: those strings are outcome labels,
+ * not the phrase the model is asked to return.
+ * grok-4.7 refuses a demand for an exact prescribed phrase (AUTHENTICATION_OK
+ * previously; "Reply with exactly READY" later). Framing the check as a
+ * simulated GET /health endpoint that returns this body stays reliable.
  */
 export const AUTH_TOKEN = "READY";
 
 /**
- * Cap for a short reply that ends with the probe phrase. Both prompts are
- * longer than this, so echoing either prompt fails. A quoted or fenced READY
- * is still accepted by the wrapper normalizer below.
+ * Cap for a short reply that ends with the probe phrase. The system prompt is
+ * longer than this (and the user prompt does not contain the token), so echoing
+ * the prompts fails. A quoted or fenced READY is still accepted by the wrapper
+ * normalizer below.
  */
 export const AUTH_REPLY_MAX_CHARS = 96;
 
@@ -205,10 +208,10 @@ const AUTH_TRAILING_WRAPPER = /^[\s"'`“”‘’*_.,:;!?()[\]-]*$/;
 const AUTH_REPLY_FORBIDDEN = /[=@/\\<>]/;
 
 export const AUTH_SYSTEM_PROMPT =
-  `CI connectivity and health probe for the support-agent workflow. This reply is not a password, secret, or login. Do not use tools. Do not ask for repository files, tickets, or databases. Reply with exactly ${AUTH_TOKEN} and no other text.`;
+  `You simulate a CI connectivity and health probe endpoint for the support-agent workflow. Do not use tools. Do not ask for repository files, tickets, databases, passwords, or secrets. When the client requests health, respond with the plain response body ${AUTH_TOKEN} only — no JSON, no markdown, no quotes, no explanation.`;
 
 export const AUTH_USER_PROMPT =
-  `CI connectivity and health probe only. This is not a password, secret, or login. Do not read files, use tools, inspect the repository, or access a database. Return exactly ${AUTH_TOKEN} and no other text.`;
+  `CI connectivity and health probe request. This check is not a password, secret, or login. Do not read files, use tools, inspect the repository, or access a database. Method and path: GET /health`;
 
 function unwrapAuthFence(text) {
   const fenced = /^```[A-Za-z0-9_-]*[ \t]*\n([\s\S]*?)\n?```$/.exec(text);
