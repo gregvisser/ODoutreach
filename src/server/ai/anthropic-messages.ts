@@ -35,6 +35,11 @@ export const AI_CALL_TIMEOUT_MS = 20_000;
 /**
  * Sequence drafting is operator-triggered, returns up to 4k tokens with a large
  * brief, and runs Azure → api.x.ai — too slow for the inline-ingestion budget.
+ *
+ * This bounds the model call only. The staff click does not wait on it: the
+ * browser request returns as soon as a draft run is recorded, and the call
+ * finishes afterwards. See `sequence-draft-run.ts`. Reply classification keeps
+ * {@link AI_CALL_TIMEOUT_MS}.
  */
 export const AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS = 90_000;
 
