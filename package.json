@@ -33,6 +33,7 @@
     "support:process-notifications": "node --conditions=react-server --import=tsx scripts/support-agent/process-ticket-notifications.ts",
     "support:resolve": "node --conditions=react-server --import=tsx scripts/support-agent/resolve-ticket.ts",
     "support:escalate": "tsx scripts/support-agent/escalate-ticket.ts",
+    "support:inspect-mailbox-signature": "tsx scripts/support-agent/inspect-mailbox-signature.ts",
     "postinstall": "prisma generate",
     "prepare": "node scripts/relay/install-git-hooks.mjs",
     "typecheck": "tsc --noEmit",

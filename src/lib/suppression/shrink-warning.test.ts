@@ -13,7 +13,7 @@ describe("suppressionShrinkWarning", () => {
     const w = suppressionShrinkWarning("EMAIL", 50, 1000);
     expect(w).toContain("950");
     expect(w).toContain("addresses");
-    expect(w).toContain("were removed");
+    expect(w).toContain("no longer on the list");
   });
 
   it("warns when the sheet was emptied entirely (every block removed)", () => {
@@ -24,7 +24,7 @@ describe("suppressionShrinkWarning", () => {
 
   it("uses singular wording for a single removed entry", () => {
     const w = suppressionShrinkWarning("EMAIL", 4, 5);
-    expect(w).toContain("1 previously-blocked address ");
-    expect(w).toContain("was removed");
+    expect(w).toContain("1 previously blocked address");
+    expect(w).toContain("is no longer");
   });
 });

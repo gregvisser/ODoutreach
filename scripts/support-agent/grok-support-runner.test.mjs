@@ -181,6 +181,17 @@ test("command allowlist keeps repair commands and refuses send, migrate, and sec
   assert.equal(classifyCommand(["npm", "run", "support:list"]).ok, true);
   assert.equal(classifyCommand(["npm", "run", "support:get", "--", "ticket_1"]).ok, true);
   assert.equal(classifyCommand(["npm", "run", "support:resolve", "--", "ticket_1", "--note", "Fixed the label."]).ok, true);
+  assert.equal(
+    classifyCommand([
+      "npm",
+      "run",
+      "support:inspect-mailbox-signature",
+      "--",
+      "--client-slug",
+      "morson-fm",
+    ]).ok,
+    true,
+  );
   assert.equal(classifyCommand(["npm", "run", "lint"]).ok, true);
   assert.equal(classifyCommand(["npm", "test"]).ok, true);
   assert.equal(classifyCommand(["npm", "run", "build"]).ok, true);
