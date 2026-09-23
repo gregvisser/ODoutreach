@@ -251,6 +251,8 @@ test("auth reply accepts the bare token and common wrappers, and rejects anythin
     "Ready",
     "ALREADY",
     "No. I will not continue this probe.",
+    "I can't comply with a request to return an exact prescribed phrase.",
+    "I can't act as a health-probe endpoint or return only a fixed token.",
     `NOT_${AUTH_TOKEN}`,
     `${AUTH_TOKEN}X`,
     `${AUTH_TOKEN} thanks`,
@@ -267,15 +269,21 @@ test("auth reply accepts the bare token and common wrappers, and rejects anythin
   }
   assert.equal(AUTH_TOKEN, "READY");
   assert.equal(AUTH_SYSTEM_PROMPT.includes(AUTH_TOKEN), true);
-  assert.equal(AUTH_USER_PROMPT.includes(AUTH_TOKEN), true);
+  // User is a GET /health request; the body token stays in the system prompt only
+  // so the model is not asked to "return exactly READY" (that framing regresses).
+  assert.equal(AUTH_USER_PROMPT.includes(AUTH_TOKEN), false);
+  assert.match(AUTH_USER_PROMPT, /GET \/health/);
   assert.equal(AUTH_SYSTEM_PROMPT.includes("AUTHENTICATION_OK"), false);
   assert.equal(AUTH_USER_PROMPT.includes("AUTHENTICATION_OK"), false);
   assert.match(AUTH_SYSTEM_PROMPT, /CI connectivity and health probe/);
   assert.match(AUTH_USER_PROMPT, /CI connectivity and health probe/);
-  assert.match(AUTH_SYSTEM_PROMPT, /not a password, secret, or login/);
+  assert.match(AUTH_SYSTEM_PROMPT, /passwords, or secrets|password/);
   assert.match(AUTH_USER_PROMPT, /not a password, secret, or login/);
+  assert.match(AUTH_SYSTEM_PROMPT, /plain response body/);
   assert.ok(AUTH_SYSTEM_PROMPT.length > AUTH_REPLY_MAX_CHARS);
   assert.ok(AUTH_USER_PROMPT.length > AUTH_REPLY_MAX_CHARS);
+  assert.equal(AUTH_SYSTEM_PROMPT.includes("Reply with exactly"), false);
+  assert.equal(AUTH_USER_PROMPT.includes("Return exactly"), false);
   assert.equal(normalizeAuthReply(null), "");
   assert.equal(isAuthenticationOk(null), false);
 });
@@ -512,7 +520,8 @@ test("process-tickets lists privately, refuses send, and does not log ticket bod
   assert.equal(JSON.stringify(captured[0].body).includes(CANARY), false);
   assert.equal(JSON.stringify(captured[1].body).includes(CANARY), true);
   assert.match(PROCESS_SYSTEM_PROMPT, /SUPPORT_AGENT_SCHEDULE_ENABLED/);
-  assert.match(AUTH_USER_PROMPT, /READY/);
+  assert.match(AUTH_SYSTEM_PROMPT, /READY/);
+  assert.equal(AUTH_USER_PROMPT.includes("READY"), false);
   assert.equal(AUTH_USER_PROMPT.includes("AUTHENTICATION_OK"), false);
 });
 
