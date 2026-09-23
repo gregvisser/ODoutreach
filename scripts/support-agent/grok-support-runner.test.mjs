@@ -12,6 +12,8 @@ import {
   AUTH_USER_PROMPT,
   CONSECUTIVE_REFUSAL_AUTO_FINISH,
   CONSECUTIVE_REFUSAL_REMINDER,
+  NO_PROGRESS_AUTO_FINISH_AFTER_ROUNDS,
+  NO_PROGRESS_REMINDER_AFTER_ROUNDS,
   DEFAULT_SUPPORT_MODEL,
   GROK_STEP_TIMEOUT_MINUTES,
   PROCESS_SYSTEM_PROMPT,
@@ -713,5 +715,76 @@ test("round limit ends with finish UNVERIFIED instead of exit-only ROUND_LIMIT",
   assert.match(text, /reason=round_limit/);
   assert.match(text, /status=ROUND_LIMIT/);
   assert.match(text, /event=finish status=UNVERIFIED/);
+  assertPublic(logs);
+});
+
+test("PROCESS_SYSTEM_PROMPT documents denied_git patterns and no-retry guidance", () => {
+  assert.match(PROCESS_SYSTEM_PROMPT, /denied_git/);
+  assert.match(PROCESS_SYSTEM_PROMPT, /git add -A/);
+  assert.match(PROCESS_SYSTEM_PROMPT, /Never retry/);
+  assert.match(PROCESS_SYSTEM_PROMPT, /finish with UNVERIFIED/);
+});
+
+test("no-progress reminder is injected after exploratory rounds without a repair", async () => {
+  const captured = [];
+  const rounds = NO_PROGRESS_REMINDER_AFTER_ROUNDS + 1;
+  const responses = [];
+  for (let i = 0; i < rounds; i += 1) {
+    responses.push({
+      json: toolMessage([
+        i === 0
+          ? { id: "call_list", name: "list_open_tickets", args: {} }
+          : { id: `call_read_${i}`, name: "read_file", args: { path: "package.json" } },
+      ]),
+    });
+  }
+  responses.push({
+    json: toolMessage([{ id: "call_done", name: "finish", args: { status: "UNVERIFIED" } }]),
+  });
+  await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    maxModelRounds: rounds + 2,
+    cwd: process.cwd(),
+    log: () => {},
+    commandRunner: async () => ({ exitCode: 0, stdout: "[]", stderr: "", elapsed: 1, timedOut: false }),
+    fetchImpl: scriptedFetch(responses, captured),
+  });
+  assert.ok(captured.length >= NO_PROGRESS_REMINDER_AFTER_ROUNDS);
+  const reminderRound = captured[NO_PROGRESS_REMINDER_AFTER_ROUNDS - 1];
+  const messages = reminderRound.body.messages;
+  const reminder = messages.find(
+    (message) => message.role === "user" && message.content?.includes("No repair progress"),
+  );
+  assert.ok(reminder, "expected no-progress reminder before the reminder round");
+});
+
+test("no-progress auto-finishes UNVERIFIED before burning the full round budget", async () => {
+  const logs = [];
+  const rounds = NO_PROGRESS_AUTO_FINISH_AFTER_ROUNDS;
+  const responses = [];
+  for (let i = 0; i < rounds; i += 1) {
+    responses.push({
+      json: toolMessage([
+        i === 0
+          ? { id: "call_list", name: "list_open_tickets", args: {} }
+          : { id: `call_read_${i}`, name: "read_file", args: { path: "package.json" } },
+      ]),
+    });
+  }
+  const result = await runSupportAgent({
+    mode: "process-tickets",
+    apiKey: API_KEY,
+    maxModelRounds: 20,
+    cwd: process.cwd(),
+    log: (line) => logs.push(line),
+    commandRunner: async () => ({ exitCode: 0, stdout: "[]", stderr: "", elapsed: 1, timedOut: false }),
+    fetchImpl: scriptedFetch(responses, []),
+  });
+  assert.equal(result.exitCode, 0);
+  const text = logs.join("\n");
+  assert.match(text, /reason=no_progress/);
+  assert.match(text, /event=finish status=UNVERIFIED/);
+  assert.equal(text.includes("ROUND_LIMIT"), false);
   assertPublic(logs);
 });

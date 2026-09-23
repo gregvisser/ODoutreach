@@ -45,6 +45,14 @@ export const MAX_MODEL_ROUNDS = 20;
 export const CONSECUTIVE_REFUSAL_AUTO_FINISH = 8;
 /** Inject a finish reminder into the model context after this many consecutive refusals. */
 export const CONSECUTIVE_REFUSAL_REMINDER = 4;
+/**
+ * After listing tickets, if the model has still made no repair progress by this
+ * round, inject a finish reminder. Progress means a successful write_file,
+ * git commit, gh pr create, support:resolve, or support:escalate.
+ */
+export const NO_PROGRESS_REMINDER_AFTER_ROUNDS = 8;
+/** Auto-finish UNVERIFIED when there is still no repair progress by this round. */
+export const NO_PROGRESS_AUTO_FINISH_AFTER_ROUNDS = 14;
 export const MODEL_OUTPUT_CAP = 12_000;
 const MAX_ARGV = 40;
 const MAX_ARG_CHARS = 4_000;
@@ -288,7 +296,15 @@ Tools:
 - list_open_tickets and get_ticket wrap npm run support:list / support:get. Screenshot bytes are not inlined; if a screenshot is essential and the text is not enough, finish UNVERIFIED and escalate.
 - run_repo_command argv only, no shell. npm scripts: support:list, support:get, support:resolve, support:escalate, lint, typecheck, test, build. git: status, diff, log, show, checkout, switch, branch, add, commit (requires -m), push, fetch, rev-parse, stash, merge. gh: pr create/view/checks/diff/list/comment/merge/status and run view/list/watch. No --admin, no force-push, no push to main.
 - read_file / write_file stay inside the repo. Secret paths and the rail files above are refused.
-- finish with PASS, FAIL, or UNVERIFIED. PASS is refused until list_open_tickets has succeeded. The model step is capped at 20 minutes; if you cannot finish safely, call finish with UNVERIFIED.`;
+- finish with PASS, FAIL, or UNVERIFIED. PASS is refused until list_open_tickets has succeeded. The model step is capped at 20 minutes; if you cannot finish safely, call finish with UNVERIFIED.
+
+Tool-rail clarity (match the allowlist; do not retry refusals):
+- After list_open_tickets + get_ticket, either make a concrete repair (write_file, then git add <paths>, git commit -m, push, gh pr create) or escalate / finish UNVERIFIED. Do not spend the remaining rounds only re-reading files.
+- Never retry a command or path that was just refused. Refusals are final for that argv/path.
+- Common denied_git patterns: git add -A / git add --all / git add . ; git commit without -m/--message ; git commit --no-verify ; git checkout/switch -B/-C/-f/--force ; git push --force / -f / to main or master ; unknown git subcommands (pull, rebase, reset, rm, clean, cherry-pick, …).
+- Common path refusals: absolute paths outside the repo, missing parent directories, .env/.azure/.git/node_modules, *.pem/*.key, and support rail files on write.
+- Prefer existing repo-relative paths discovered via git status/diff/log or prior successful reads. Guessing deep paths that do not exist wastes rounds.
+- If the ticket is unclear, blocked on secrets/production, or you cannot verify a fix quickly, call finish with UNVERIFIED (or support:escalate) instead of looping.`;
 
 const TOOLS = [
   {
@@ -316,7 +332,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "run_repo_command",
-      description: "Run one allowlisted git, gh, or npm command. argv is an array of strings. No shell. Refused commands are not executed.",
+      description: "Run one allowlisted git, gh, or npm command. argv is an array of strings. No shell. Allowed git: status, diff, log, show, checkout, switch, branch, add (named paths only — not -A/--all/.), commit (-m required, no --no-verify), push (no force, no main), fetch, rev-parse, stash, merge. Allowed gh: pr create|view|checks|diff|list|comment|merge|status; run view|list|watch. Allowed npm scripts: support:list|get|resolve|escalate, lint, typecheck, test, build. Refused commands are not executed — do not retry them.",
       parameters: {
         type: "object",
         properties: { argv: { type: "array", items: { type: "string" } } },
@@ -329,7 +345,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read a UTF-8 repository file. Refuses secret paths. Content is not written to the public log.",
+      description: "Read a UTF-8 repository file by repo-relative path whose parent already exists. Refuses secrets (.env/.azure/.git), node_modules, and escapes. Content is not written to the public log. Do not retry a refused path.",
       parameters: {
         type: "object",
         properties: { path: { type: "string" } },
@@ -776,7 +792,7 @@ async function runCommand(argv, ctx) {
   if (!decision.ok) {
     return {
       logFields: { event: "tool", name: "run_repo_command", exit: 1, command_class: "denied", reason: decision.reason, timed_out: false },
-      contentForModel: `Command refused (${decision.reason}).`,
+      contentForModel: `Command refused (${decision.reason}). Do not retry this argv. Allowed git subcommands: status,diff,log,show,checkout,switch,branch,add,commit,push,fetch,rev-parse,stash,merge. git add needs named paths (not -A/--all/.). git commit needs -m. No force-push or push to main. Allowed gh: pr create|view|checks|diff|list|comment|merge|status; run view|list|watch. Allowed npm scripts: support:list|get|resolve|escalate, lint, typecheck, test, build. If blocked, call finish with UNVERIFIED.`,
     };
   }
   const remaining = ctx.deadlineAt - Date.now();
@@ -787,6 +803,7 @@ async function runCommand(argv, ctx) {
     signal: ctx.signal,
     timeoutMs,
   });
+  if (result.exitCode === 0 && isProgressArgv(argv)) ctx.madeProgress = true;
   return {
     result,
     logFields: {
@@ -799,6 +816,14 @@ async function runCommand(argv, ctx) {
     },
     contentForModel: wrapUntrusted(privateOutput(result)),
   };
+}
+
+function isProgressArgv(argv) {
+  if (!Array.isArray(argv) || argv.length === 0) return false;
+  if (argv[0] === "git" && argv[1] === "commit") return true;
+  if (argv[0] === "gh" && argv[1] === "pr" && argv[2] === "create") return true;
+  if (argv[0] === "npm" && argv[1] === "run" && (argv[2] === "support:resolve" || argv[2] === "support:escalate")) return true;
+  return false;
 }
 
 async function executeTool(name, args, ctx) {
@@ -848,7 +873,7 @@ async function executeTool(name, args, ctx) {
     if (!pathDecision.ok) {
       return {
         logFields: { event: "tool", name: "read_file", exit: 1, reason: pathDecision.reason, timed_out: false },
-        contentForModel: `Read refused (${pathDecision.reason}).`,
+        contentForModel: `Read refused (${pathDecision.reason}). Use an existing repo-relative path. Do not retry this path. If diagnosis is stuck, call finish with UNVERIFIED.`,
       };
     }
     try {
@@ -860,7 +885,7 @@ async function executeTool(name, args, ctx) {
     } catch {
       return {
         logFields: { event: "tool", name: "read_file", exit: 1, reason: "path", timed_out: false },
-        contentForModel: "Read refused (path).",
+        contentForModel: "Read refused (path). Use an existing repo-relative path. Do not retry this path. If diagnosis is stuck, call finish with UNVERIFIED.",
       };
     }
   }
@@ -893,6 +918,7 @@ async function executeTool(name, args, ctx) {
         contentForModel: "Write refused (path).",
       };
     }
+    ctx.madeProgress = true;
     return {
       logFields: { event: "tool", name: "write_file", exit: 0, timed_out: false },
       contentForModel: `Wrote ${contents.length} bytes.`,
@@ -932,6 +958,9 @@ function reasonFrom(err) {
 
 const REFUSAL_REMINDER_TEXT =
   "Several tools were refused in a row (denied git, invalid path, or similar). Do not retry the same refused operations. Call the finish tool now with status UNVERIFIED.";
+
+const NO_PROGRESS_REMINDER_TEXT =
+  "No repair progress yet (no successful write_file, git commit, gh pr create, support:resolve, or support:escalate). Stop exploratory reads. Either make a concrete allowlisted repair now or call finish with status UNVERIFIED.";
 
 /** @param {Record<string, unknown>} logFields */
 export function isToolRefusalLogFields(logFields) {
@@ -1059,6 +1088,8 @@ export async function runSupportAgent(options) {
       round: 0,
       consecutiveRefusals: 0,
       refusalReminderSent: false,
+      madeProgress: false,
+      noProgressReminderSent: false,
     };
     const messages = [
       { role: "system", content: PROCESS_SYSTEM_PROMPT },
@@ -1070,6 +1101,18 @@ export async function runSupportAgent(options) {
         : MAX_MODEL_ROUNDS;
     for (let round = 1; round <= maxModelRounds; round += 1) {
       ctx.round = round;
+      if (ctx.listed && !ctx.madeProgress && round >= NO_PROGRESS_AUTO_FINISH_AFTER_ROUNDS) {
+        return logFinishUnverified(ctx, log, { errorReason: "no_progress", errorExit: 0 });
+      }
+      if (
+        ctx.listed
+        && !ctx.madeProgress
+        && round >= NO_PROGRESS_REMINDER_AFTER_ROUNDS
+        && !ctx.noProgressReminderSent
+      ) {
+        ctx.noProgressReminderSent = true;
+        messages.push({ role: "user", content: NO_PROGRESS_REMINDER_TEXT });
+      }
       assertWithinDeadline(deadlineAt, options.signal);
       log(formatLog({ event: "xai_request", round, mode }));
       const parsed = await postChat({
