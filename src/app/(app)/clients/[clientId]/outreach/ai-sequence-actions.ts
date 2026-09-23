@@ -1,80 +1,65 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
-import { describeUnhandledAiFailure } from "@/server/ai/ai-failure-messages";
-import { draftSequenceForClient } from "@/server/ai/draft-sequence";
+import {
+  SEQUENCE_DRAFT_START_FAILED_MESSAGE,
+  sequenceDraftClientId,
+} from "@/lib/ai/sequence-draft-start";
+import { reportError } from "@/lib/logger";
+import { beginSequenceDraftRun } from "@/server/ai/sequence-draft-run";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientEmailTemplateMutator } from "@/server/email-templates/mutator-access";
 import { requireClientAccess } from "@/server/tenant/access";
 
 /**
- * Server action behind the "Write a sequence with AI" button.
+ * Server action behind "Write a sequence with AI".
  *
- * Authorisation is deliberately the SAME gate as writing a template by hand
- * (`requireClientEmailTemplateMutator`), not a weaker one. What this produces is
- * a set of draft templates for one client, so anybody allowed to type those
- * drafts is allowed to ask for them; and nobody who is not, is not.
+ * It records a draft run and redirects. It does not call the model and it
+ * does not send mail. The model runs after the response closes — see
+ * `sequence-draft-run.ts`.
  *
- * The action itself sends nothing and approves nothing — see
- * `draft-sequence.ts` for why that separation is load-bearing.
+ * Every non-redirect failure is logged and turned into the same
+ * `templateError` banner. On the previous action, `requireOpensDoorsStaff`,
+ * client access, the template mutator, a missing id, and `loadBrief` all
+ * threw with nobody to catch them. Next delivered that as a failed action,
+ * `error.tsx` painted "The action didn't complete", and the banner never
+ * appeared. A throw before the model call does that in under a second. A
+ * throw after a pool wait can look like the ~30s failure. Only a failure
+ * that reaches `redirect()` shows the banner (the ~80–90s provider abort).
  */
 
-function messageForFailure(reason: string): string {
-  switch (reason) {
-    case "ai_features_switched_off":
-      return "AI features are switched off. Nothing was drafted and nothing was charged.";
-    case "no_api_key":
-      return "The AI is not configured yet, so nothing was drafted. Ask an administrator to add the key.";
-    case "no_rate_for_model":
-      return "No price is recorded for that model, so the call was refused rather than run unbilled.";
-    case "client_not_found":
-      return "That client workspace could not be found.";
-    case "unusable_answer":
-      return "The AI did not return a usable sequence. Nothing was saved — please try again.";
-    default:
-      return (
-        describeUnhandledAiFailure(reason) ?? "The sequence could not be drafted. Nothing was saved."
-      );
-  }
+function redirectToStartFailure(clientId: string): never {
+  const params = new URLSearchParams();
+  params.set("templateError", SEQUENCE_DRAFT_START_FAILED_MESSAGE);
+  redirect(`/clients/${clientId}/templates?${params.toString()}#ai-sequence-draft`);
 }
 
-export async function draftClientSequenceWithAiAction(
-  formData: FormData,
-): Promise<void> {
-  const staff = await requireOpensDoorsStaff();
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  if (!clientId) throw new Error("Missing clientId.");
+export async function draftClientSequenceWithAiAction(formData: FormData): Promise<void> {
+  const rawClientId = formData.get("clientId");
+  const clientId = sequenceDraftClientId(typeof rawClientId === "string" ? rawClientId : "");
 
-  await requireClientAccess(staff, clientId);
-  await requireClientEmailTemplateMutator(staff, clientId);
+  try {
+    const staff = await requireOpensDoorsStaff();
+    if (!clientId) {
+      reportError(new Error("Missing clientId."), { scope: "ai.sequence-draft" });
+      return;
+    }
 
-  const result = await draftSequenceForClient({
-    clientId,
-    staffUserId: staff.id,
-  });
+    await requireClientAccess(staff, clientId);
+    await requireClientEmailTemplateMutator(staff, clientId);
 
-  revalidatePath(`/clients/${clientId}/templates`);
-  revalidatePath(`/clients/${clientId}/outreach`);
-
-  const params = new URLSearchParams();
-  if (result.ok) {
-    const warning =
-      result.unknownPlaceholders.length > 0
-        ? ` One or more drafts use a placeholder we cannot fill (${result.unknownPlaceholders.join(", ")}) — fix it before approving.`
-        : "";
-    params.set(
-      "template",
-      `${result.steps.length} drafts written for days ${result.steps
-        .map((s) => s.absoluteDay)
-        .join(", ")}. Read and approve each one before it can be sent.${warning}`,
-    );
-  } else {
-    params.set("templateError", messageForFailure(result.reason));
+    const started = await beginSequenceDraftRun({
+      clientId,
+      staffUserId: staff.id,
+    });
+    const params = new URLSearchParams();
+    params.set("sequenceDraft", started.runId);
+    redirect(`/clients/${clientId}/templates?${params.toString()}#ai-sequence-draft`);
+  } catch (err) {
+    unstable_rethrow(err);
+    reportError(err, { scope: "ai.sequence-draft", clientId: clientId ?? undefined });
+    if (!clientId) return;
+    redirectToStartFailure(clientId);
   }
-
-  redirect(
-    `/clients/${clientId}/templates?${params.toString()}#client-email-templates`,
-  );
 }

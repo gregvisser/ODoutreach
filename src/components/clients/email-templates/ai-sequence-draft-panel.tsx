@@ -1,6 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
-import { draftClientSequenceWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-sequence-actions";
-import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { AiSequenceDraftForm } from "@/components/clients/email-templates/ai-sequence-draft-form";
+import { AiSequenceDraftStatus } from "@/components/clients/email-templates/ai-sequence-draft-status";
 import {
   Card,
   CardContent,
@@ -32,17 +32,19 @@ export function AiSequenceDraftPanel({
   canMutate,
   aiEnabled,
   aiConfigured,
+  sequenceDraftRunId,
 }: {
   clientId: string;
   clientName: string;
   canMutate: boolean;
   aiEnabled: boolean;
   aiConfigured: boolean;
+  sequenceDraftRunId?: string | null;
 }) {
   const cadence = SEQUENCE_CADENCE_DAYS.join(", ");
 
   return (
-    <Card className="border-border/80 shadow-sm">
+    <Card id="ai-sequence-draft" className="scroll-mt-20 border-border/80 shadow-sm">
       <CardHeader>
         <CardTitle>Write a whole sequence with AI</CardTitle>
         <CardDescription>
@@ -54,6 +56,9 @@ export function AiSequenceDraftPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {sequenceDraftRunId ? (
+          <AiSequenceDraftStatus clientId={clientId} runId={sequenceDraftRunId} />
+        ) : null}
         {!aiEnabled ? (
           <OptionalAiUnavailable label="Write a sequence with AI" />
         ) : !aiConfigured ? (
@@ -66,12 +71,7 @@ export function AiSequenceDraftPanel({
             You do not have permission to add templates to this workspace.
           </p>
         ) : (
-          <form action={draftClientSequenceWithAiAction}>
-            <input type="hidden" name="clientId" value={clientId} />
-            <FormSubmitButton pendingLabel="Writing the sequence…">
-              Write a sequence with AI
-            </FormSubmitButton>
-          </form>
+          <AiSequenceDraftForm clientId={clientId} />
         )}
         <p className="text-xs text-muted-foreground">
           The AI writes the words only. The schedule — days {cadence} — is fixed by

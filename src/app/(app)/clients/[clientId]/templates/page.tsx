@@ -107,7 +107,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         </div>
       </details>
 
-      <details open={sequenceDraftingEnabled} className="rounded-lg border p-4">
+      <details open={sequenceDraftingEnabled || Boolean(firstParam(sp.sequenceDraft))} className="rounded-lg border p-4">
         <summary className="cursor-pointer font-semibold">Draft emails with AI</summary>
         <div className="mt-4">
       <AiSequenceDraftPanel
@@ -116,6 +116,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
         canMutate={canMutateTemplates}
         aiEnabled={sequenceDraftingEnabled}
         aiConfigured={isProductAiConfigured()}
+        sequenceDraftRunId={firstParam(sp.sequenceDraft)}
       />
 
         </div>

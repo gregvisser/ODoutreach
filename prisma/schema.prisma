@@ -309,6 +309,7 @@ model StaffUser {
   aiSendTimeAdviceRequested       AiSendTimeAdvice[]               @relation("AiSendTimeAdviceRequestedBy")
   aiRepPerformanceRequested       AiRepPerformanceReview[]         @relation("AiRepPerformanceRequestedBy")
   aiTitleMessageRequested         AiTitleMessageReview[]           @relation("AiTitleMessageRequestedBy")
+  aiSequenceDraftRunsRequested    AiSequenceDraftRun[]             @relation("AiSequenceDraftRunRequestedBy")
   clientsLaunchApproved           Client[]                         @relation("ClientLaunchApprovedBy")
   clientsAccountGradeSet          Client[]                         @relation("ClientAccountGradeSetBy")
   clientsServiceTierSet           Client[]                         @relation("ClientServiceTierSetBy")
@@ -615,6 +616,8 @@ model Client {
   aiSendTimeAdvice                AiSendTimeAdvice[]
   aiRepPerformanceReviews         AiRepPerformanceReview[]
   aiTitleMessageReviews           AiTitleMessageReview[]
+  /// Background "Write a sequence with AI" jobs. See `AiSequenceDraftRun`.
+  aiSequenceDraftRuns             AiSequenceDraftRun[]
   sendingCalendars               ClientSendingCalendar[]
 
   @@index([deletedAt])
@@ -2101,6 +2104,48 @@ model AiUsageEvent {
   @@index([clientId, createdAt])
   @@index([feature, createdAt])
   @@index([createdAt])
+}
+
+/// One staff click of "Write a sequence with AI".
+///
+/// The model call is too slow to hold the browser's server-action POST open:
+/// that request was being cut at about 30s (the app error screen) or surviving
+/// until the 90s provider abort (the unavailable banner). This row is created
+/// and the POST returns immediately. The call runs afterwards, once, and the
+/// page polls this row. It does not send mail and it does not approve templates.
+/// Dropping the table removes the progress record only — draft templates, if
+/// any were written, stay on `ClientEmailTemplate`.
+enum AiSequenceDraftRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model AiSequenceDraftRun {
+  id                     String                   @id @default(cuid())
+  clientId               String
+  requestedByStaffUserId String?
+  status                 AiSequenceDraftRunStatus
+  /// Equals `clientId` while the run is QUEUED or RUNNING, and null once it
+  /// has finished. A unique column so one workspace has one draft in flight.
+  /// PostgreSQL allows many nulls, so finished runs do not collide.
+  activeClientId         String?                  @unique
+  /// Machine reason for a FAILED row. Not shown raw to staff.
+  reason                 String?
+  /// Staff-facing sentence once the run has finished.
+  message                String?                  @db.Text
+  templateIds            String[]                 @default([])
+  startedAt              DateTime?
+  finishedAt             DateTime?
+  createdAt              DateTime                 @default(now())
+
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestedBy StaffUser? @relation("AiSequenceDraftRunRequestedBy", fields: [requestedByStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedByStaffUserId])
 }
 
 /// An AI critique of one campaign's copy, kept so a paid-for review survives a
