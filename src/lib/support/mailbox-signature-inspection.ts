@@ -26,6 +26,29 @@ export type SignatureImageSourceSummary = {
   likelyBrokenInOutbound: boolean;
 };
 
+/** Staff Activity shows plain-text snapshots, not the HTML MIME recipients receive. */
+export const SUPPORT_SIGNATURE_VERIFICATION_LIMITS = {
+  staffActivityShowsSentHtml: false,
+  staffActivityBodySnapshotIsPlainTextOnly: true,
+  description:
+    "Activity outbound detail stores a plain-text message snapshot only. It does not show the final HTML sent to recipients (signature block and remote images are assembled at send). Mailbox Preview reflects stored signature HTML; recipient-side image rendering cannot be confirmed from Activity.",
+} as const;
+
+export function extractStoredImageUrls(html: string | null | undefined): string[] {
+  if (!html?.trim()) return [];
+  const srcRe = /\bsrc\s*=\s*["']([^"']+)["']/gi;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = srcRe.exec(html)) !== null) {
+    const raw = m[1]!.trim();
+    if (seen.has(raw)) continue;
+    seen.add(raw);
+    out.push(raw);
+  }
+  return out;
+}
+
 export type MailboxSignatureInspectionInput = {
   client: {
     id: string;
@@ -65,23 +88,40 @@ export type MailboxSignatureInspection = {
     textLength: number;
     hasHtml: boolean;
     hasText: boolean;
+    /** Absolute image URLs from stored signature HTML (`img src=`), in document order. */
+    storedImageUrls: string[];
     imageSources: SignatureImageSourceSummary[];
     linkStatus: ReturnType<typeof signatureLinkStatusFor>;
-    operatorState: ReturnType<typeof getOperatorSignatureState>;
+    operatorState: Pick<
+      ReturnType<typeof getOperatorSignatureState>,
+      | "kind"
+      | "label"
+      | "shortDescription"
+      | "recommendedAction"
+      | "sendReadyFromSignature"
+    >;
     sendSelectionSource: string;
     plainTextPreview: string;
   };
+  /** True when stored signature + mailbox readiness look sound in ODoutreach (not recipient inbox). */
+  storedSignatureHealthy: boolean;
+  /** One-line report for tickets — e.g. healthy storage vs needs a code/config fix. */
+  supportConclusion: string;
+  verificationLimits: typeof SUPPORT_SIGNATURE_VERIFICATION_LIMITS;
   proposedFixes: string[];
 };
 
+export type ClientMailboxSignatureInspectionReport = {
+  client: { id: string; slug: string; name: string };
+  verificationLimits: typeof SUPPORT_SIGNATURE_VERIFICATION_LIMITS;
+  mailboxes: MailboxSignatureInspection[];
+  /** Set when every mailbox in the report is storage-healthy. */
+  supportConclusion: string;
+};
+
 function summarizeImageSources(html: string | null): SignatureImageSourceSummary[] {
-  if (!html?.trim()) return [];
-  const srcRe = /\bsrc\s*=\s*["']([^"']+)["']/gi;
-  const urls: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = srcRe.exec(html)) !== null) {
-    urls.push(m[1]!.trim());
-  }
+  const urls = extractStoredImageUrls(html);
+  if (urls.length === 0) return [];
   const buckets = new Map<string, SignatureImageSourceSummary>();
 
   for (const link of urls) {
@@ -123,10 +163,79 @@ function summarizeImageSources(html: string | null): SignatureImageSourceSummary
   return [...buckets.values()].sort((a, b) => b.count - a.count);
 }
 
+const READY_OPERATOR_KINDS = new Set(["ready_od", "ready_gmail"]);
+
+export function assessStoredSignatureHealth(
+  inspection: Omit<
+    MailboxSignatureInspection,
+    "proposedFixes" | "storedSignatureHealthy" | "supportConclusion" | "verificationLimits"
+  >,
+): { healthy: boolean; supportConclusion: string } {
+  const { mailbox, signature } = inspection;
+  const operator = signature.operatorState;
+
+  if (mailbox.connectionStatus !== "CONNECTED") {
+    return {
+      healthy: false,
+      supportConclusion:
+        "Mailbox is not connected — signature settings in ODoutreach may not apply until Connect succeeds.",
+    };
+  }
+  if (signature.syncError) {
+    return {
+      healthy: false,
+      supportConclusion:
+        "Signature sync last failed — stored signature may be stale until Gmail sync or manual save succeeds.",
+    };
+  }
+  if (signature.linkStatus.tone === "blocked") {
+    return {
+      healthy: false,
+      supportConclusion:
+        "Stored signature links to a blocked host — sending is stopped until signature HTML is corrected.",
+    };
+  }
+  if (signature.imageSources.some((s) => s.likelyBrokenInOutbound)) {
+    return {
+      healthy: false,
+      supportConclusion:
+        "Stored signature uses inline attachment or data URLs that usually break in outbound HTML — replace with an absolute https:// logo URL.",
+    };
+  }
+  if (!READY_OPERATOR_KINDS.has(operator.kind)) {
+    return {
+      healthy: false,
+      supportConclusion: `Mailbox signature readiness is "${operator.label}" — not fully ready for branded sends.`,
+    };
+  }
+
+  const httpsLogos = signature.storedImageUrls.filter((u) => /^https:\/\//i.test(u));
+  const logoNote =
+    httpsLogos.length > 0
+      ? ` Stored logo URL(s): ${httpsLogos.join(", ")}.`
+      : signature.storedImageUrls.length === 0
+        ? " No image URLs in stored HTML (text-only or no logo tag)."
+        : "";
+
+  return {
+    healthy: true,
+    supportConclusion:
+      `Stored signature healthy (${operator.label}); Mailboxes Preview should reflect stored HTML.${logoNote} ` +
+      "Recipient-side image rendering is unconfirmed — Activity shows plain-text snapshots only, not sent HTML.",
+  };
+}
+
 function buildProposedFixes(
   input: MailboxSignatureInspectionInput,
-  inspection: Omit<MailboxSignatureInspection, "proposedFixes">,
+  inspection: Omit<
+    MailboxSignatureInspection,
+    "proposedFixes" | "storedSignatureHealthy" | "supportConclusion" | "verificationLimits"
+  >,
+  health: { healthy: boolean },
 ): string[] {
+  if (health.healthy) {
+    return [];
+  }
   const fixes: string[] = [];
   const { mailbox, signature } = inspection;
   const operatorState = signature.operatorState;
@@ -183,12 +292,6 @@ function buildProposedFixes(
     );
   }
 
-  if (fixes.length === 0 && operatorState.sendReadyFromSignature) {
-    fixes.push(
-      "Signature storage looks healthy. If the image still missing in live mail, compare Preview signature with a test send and check the recipient client is not blocking remote images.",
-    );
-  }
-
   return [...new Set(fixes)];
 }
 
@@ -223,6 +326,7 @@ export function inspectMailboxSignature(
   const text =
     input.mailbox.senderSignatureText?.trim() ??
     (normHtml.length > 0 ? htmlSignatureToText(normHtml) : "");
+  const storedImageUrls = extractStoredImageUrls(input.mailbox.senderSignatureHtml);
   const imageSources = summarizeImageSources(input.mailbox.senderSignatureHtml);
   const ownDomains = ownDomainsFor({
     mailboxEmails: input.allMailboxEmails,
@@ -238,7 +342,10 @@ export function inspectMailboxSignature(
   const plainTextPreview =
     text.length > 320 ? `${text.slice(0, 320)}…` : text;
 
-  const base: Omit<MailboxSignatureInspection, "proposedFixes"> = {
+  const base: Omit<
+    MailboxSignatureInspection,
+    "proposedFixes" | "storedSignatureHealthy" | "supportConclusion" | "verificationLimits"
+  > = {
     client: {
       id: input.client.id,
       slug: input.client.slug,
@@ -260,6 +367,7 @@ export function inspectMailboxSignature(
       textLength: text.length,
       hasHtml: normHtml.length > 0,
       hasText: text.length > 0,
+      storedImageUrls,
       imageSources,
       linkStatus,
       operatorState: {
@@ -274,9 +382,35 @@ export function inspectMailboxSignature(
     },
   };
 
+  const health = assessStoredSignatureHealth(base);
+
   return {
     ...base,
-    proposedFixes: buildProposedFixes(input, base),
+    storedSignatureHealthy: health.healthy,
+    supportConclusion: health.supportConclusion,
+    verificationLimits: SUPPORT_SIGNATURE_VERIFICATION_LIMITS,
+    proposedFixes: buildProposedFixes(input, base, health),
+  };
+}
+
+export function inspectClientMailboxSignatures(
+  client: MailboxSignatureInspectionInput["client"],
+  mailboxes: MailboxSignatureInspectionInput["mailbox"][],
+): ClientMailboxSignatureInspectionReport {
+  const emails = mailboxes.map((m) => m.email);
+  const reports = mailboxes.map((mailbox) =>
+    inspectMailboxSignature({ client, mailbox, allMailboxEmails: emails }),
+  );
+  const allHealthy = reports.length > 0 && reports.every((r) => r.storedSignatureHealthy);
+  const supportConclusion = allHealthy
+    ? `All ${String(reports.length)} mailbox(es): stored signature healthy; recipient render unconfirmed in staff UI. ${SUPPORT_SIGNATURE_VERIFICATION_LIMITS.description}`
+    : reports.map((r) => `${r.mailbox.email}: ${r.supportConclusion}`).join(" ");
+
+  return {
+    client: { id: client.id, slug: client.slug, name: client.name },
+    verificationLimits: SUPPORT_SIGNATURE_VERIFICATION_LIMITS,
+    mailboxes: reports,
+    supportConclusion,
   };
 }
 

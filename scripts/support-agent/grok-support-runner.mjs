@@ -295,6 +295,7 @@ Hard rails — refuse rather than cross:
 
 Tools:
 - list_open_tickets and get_ticket wrap npm run support:list / support:get. Screenshot bytes are not inlined; if a screenshot is essential and the text is not enough, finish UNVERIFIED and escalate.
+- support:inspect-mailbox-signature returns stored signature HTML image URLs, mailbox Ready state, supportConclusion, and verificationLimits (Activity does not expose sent HTML). When storedSignatureHealthy is true and proposedFixes is empty, do not recommend signature edits — state recipient render is unconfirmed.
 - run_repo_command argv only, no shell. npm scripts: support:list, support:get, support:resolve, support:escalate, support:inspect-mailbox-signature (read-only mailbox/signature diagnostics — use --client-slug or --mailbox-id, never send mail), lint, typecheck, test, build. git: status, diff, log, show, checkout, switch, branch, add, commit (requires -m), push, fetch, rev-parse, stash, merge. gh: pr create/view/checks/diff/list/comment/merge/status and run view/list/watch. No --admin, no force-push, no push to main.
 - read_file / write_file stay inside the repo. Secret paths and the rail files above are refused.
 - finish with PASS, FAIL, or UNVERIFIED. PASS is refused until list_open_tickets has succeeded. The model step is capped at 20 minutes; if you cannot finish safely, call finish with UNVERIFIED.
