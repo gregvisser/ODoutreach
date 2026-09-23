@@ -7,7 +7,7 @@ import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-
 import {
   SEQUENCE_ENROLLMENT_STOPPED_CODE,
   SEQUENCE_ENROLLMENT_STOPPED_MESSAGE,
-  sequenceEnrollmentBlocksQueuedSend,
+  sequenceEnrollmentBlocksDispatchForStepSend,
 } from "@/lib/email-sequences/sequence-enrollment-send-hold";
 
 import { mailboxDailySendCap } from "@/lib/mailbox-identities";
@@ -39,12 +39,18 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
     if (!reconcilingAcceptedSend) {
       const linked = await tx.clientEmailSequenceStepSend.findFirst({
         where: { outboundEmailId: current.id, clientId: current.clientId },
-        select: { enrollment: { select: { status: true, clientId: true } } },
+        select: {
+          status: true,
+          enrollment: { select: { status: true, clientId: true } },
+        },
       });
       if (
         linked?.enrollment &&
         linked.enrollment.clientId === current.clientId &&
-        sequenceEnrollmentBlocksQueuedSend(linked.enrollment.status)
+        sequenceEnrollmentBlocksDispatchForStepSend(
+          linked.enrollment.status,
+          linked.status,
+        )
       ) {
         await tx.outboundEmail.update({ where: { id: current.id }, data: {
           status: "FAILED", claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null,

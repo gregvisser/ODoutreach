@@ -572,7 +572,7 @@ async function linkSelectedCampaign() {
   await prisma.clientEmailSequence.create({ data: { id: "selection-sequence", clientId: "client", contactListId: "selection-list", name: "Synthetic", status: "APPROVED" } });
   await prisma.clientEmailSequenceStep.create({ data: { id: "selection-step", sequenceId: "selection-sequence", templateId: "selection-template", position: 2, category: "FOLLOW_UP_1" } });
   await prisma.clientEmailSequenceEnrollment.create({ data: { id: "selection-enrollment", clientId: "client", sequenceId: "selection-sequence", contactListId: "selection-list", contactId: "selection-contact", status: "PENDING" } });
-  await prisma.clientEmailSequenceStepSend.create({ data: { clientId: "client", sequenceId: "selection-sequence", enrollmentId: "selection-enrollment", stepId: "selection-step", templateId: "selection-template", contactListId: "selection-list", contactId: "selection-contact", idempotencyKey: "selection-test", status: "SENT", outboundEmailId: "outbound" } });
+  await prisma.clientEmailSequenceStepSend.create({ data: { clientId: "client", sequenceId: "selection-sequence", enrollmentId: "selection-enrollment", stepId: "selection-step", templateId: "selection-template", contactListId: "selection-list", contactId: "selection-contact", idempotencyKey: "selection-test", status: "READY", outboundEmailId: "outbound" } });
   await prisma.outboundEmail.update({ where: { id: "outbound" }, data: { metadata: { sendOrigin: "AUTOMATED_SEQUENCE" } } });
   vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", JSON.stringify({ clientId: "client", sequenceIds: ["selection-sequence"] }));
 }
@@ -590,7 +590,7 @@ it.each(["GOOGLE", "MICROSOFT"] as const)("rechecks the campaign selection after
   expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
 });
 it("holds a queued follow-up after the enrolment stops even without a campaign selection", async () => {
-  await seed("LEGACY");
+  await seed("GOOGLE");
   await linkSelectedCampaign();
   vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", "");
   await prisma.clientEmailSequenceEnrollment.update({ where: { id: "selection-enrollment" }, data: { status: "COMPLETED" } });

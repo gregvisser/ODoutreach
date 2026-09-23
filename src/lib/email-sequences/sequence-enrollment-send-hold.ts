@@ -1,4 +1,7 @@
-import type { ClientEmailSequenceEnrollmentStatus } from "@/generated/prisma/enums";
+import type {
+  ClientEmailSequenceEnrollmentStatus,
+  ClientEmailSequenceStepSendStatus,
+} from "@/generated/prisma/enums";
 
 /**
  * A linked reply marks the enrolment COMPLETED. Pause and exclusion are the
@@ -9,6 +12,28 @@ export function sequenceEnrollmentBlocksQueuedSend(
   status: ClientEmailSequenceEnrollmentStatus | null | undefined,
 ): boolean {
   return status === "COMPLETED" || status === "PAUSED" || status === "EXCLUDED";
+}
+
+/**
+ * Dispatch-time guard for a step-send row linked to this outbound. A stopped
+ * enrolment must not send a follow-up that is still PLANNED/READY/BLOCKED/FAILED,
+ * but must not block unrelated mail or an intro row whose step-send is already
+ * SENT (provider reconciliation / non-sequence unit fixtures).
+ */
+export function sequenceEnrollmentBlocksDispatchForStepSend(
+  enrollmentStatus: ClientEmailSequenceEnrollmentStatus | null | undefined,
+  stepSendStatus: ClientEmailSequenceStepSendStatus | null | undefined,
+): boolean {
+  if (!sequenceEnrollmentBlocksQueuedSend(enrollmentStatus)) return false;
+  if (
+    stepSendStatus == null ||
+    stepSendStatus === "SENT" ||
+    stepSendStatus === "SKIPPED" ||
+    stepSendStatus === "SUPPRESSED"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export const REPLY_STOPPED_FOLLOWUP_CODE = "REPLY_STOPPED_FOLLOWUP";

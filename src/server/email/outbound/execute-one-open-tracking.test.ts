@@ -37,6 +37,7 @@ vi.mock("@/lib/db", () => ({
       outboundEmail: { findUnique, findFirst: findUnique, updateMany },
       clientSendingCalendar: { findMany: async () => [] },
       mailboxSendReservation: { findUnique: vi.fn(async () => ({ id:"slot", clientId:"c1", mailboxIdentityId:"m1", status:"RESERVED", windowKey:new Date().toISOString().slice(0,10) })) },
+      ...executeOnePrismaTransactionExtras(),
     })),
     outboundEmail: { findUnique, updateMany },
     clientMailboxIdentity: { findFirst: findFirstMbox },
@@ -76,6 +77,7 @@ vi.mock("@/server/outreach/suppression-guard", () => ({
 import { TRACKING_DNS_MAX_AGE_DAYS } from "@/lib/tracking/client-open-tracking";
 
 import { executeOutboundSend } from "./execute-one";
+import { executeOnePrismaTransactionExtras } from "./execute-one-prisma-transaction-mock";
 
 const PIXEL_PATH = "/api/track/open/";
 const VERIFIED_AT = new Date("2026-08-01T00:00:00.000Z");

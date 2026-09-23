@@ -171,7 +171,7 @@ The Grok step cannot sit for half an hour. The job wrapper is longer than the st
 
 `stopFollowUpsForLinkedReply` now fails other `QUEUED` or `PROCESSING` rows on that enrolment when `dispatchStartedAt` is null and no provider message id exists, and releases the mailbox reservation. The replied-to send is not rewritten. A replay after the enrolment is already `COMPLETED` still holds a leftover queued follow-up.
 
-`beginOutboundDispatch` refuses the provider call when the linked enrolment is `COMPLETED`, `PAUSED`, or `EXCLUDED`, including when `CAMPAIGN_SCHEDULER_SELECTION` is unset. Reconciliation of an already accepted send is unchanged. A row a reply handler already failed returns that sentence instead of the unconfirmed-send warning.
+`beginOutboundDispatch` refuses the provider call when the linked step-send is still `PLANNED`/`READY`/`BLOCKED`/`FAILED` and the enrolment is `COMPLETED`, `PAUSED`, or `EXCLUDED` (including when `CAMPAIGN_SCHEDULER_SELECTION` is unset). Rows with no sequence link or an already-`SENT` step-send are unchanged. Reconciliation of an already accepted send is unchanged. A row a reply handler already failed returns that sentence instead of the unconfirmed-send warning.
 
 **Not covered:** if `dispatchStartedAt` is already set, the send has started and is not recalled. That race is milliseconds, not the pacing window.
 
