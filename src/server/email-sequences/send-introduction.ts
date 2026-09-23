@@ -16,7 +16,7 @@ import {
   clientLinkDomainAligned,
   resolveClientLinkBaseUrl,
 } from "@/lib/clients/client-link-domain";
-import { STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON } from "@/lib/clients/outreach-sequence-send-staff-copy";
+import { NO_READY_STEP_SENDS_MESSAGE, STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON } from "@/lib/clients/outreach-sequence-send-staff-copy";
 import {
   SEQUENCE_INTRODUCTION_BATCH_CAP,
 } from "@/lib/controlled-pilot-constants";
@@ -486,7 +486,7 @@ export async function sendSequenceStepBatch(input: {
   if (stepSendRows.length === 0) {
     throw new SequenceStepSendError(
       "NO_READY_ROWS",
-      `No READY ${category} step-send records for this sequence. Re-run 'Prepare send records' for this step first.`,
+      NO_READY_STEP_SENDS_MESSAGE,
       category,
     );
   }
@@ -641,11 +641,9 @@ export async function sendSequenceStepBatch(input: {
     category === "INTRODUCTION"
       ? "SEQUENCE_INTRODUCTION"
       : "SEQUENCE_FOLLOW_UP";
-  // One-click unsubscribe is wired when the public base URL is
-  // configured. For live sequence sends the governance helper no
-  // longer gates on this — the dispatcher's suppression + capacity
-  // checks provide safety. The flag is still passed so CONTROLLED_PILOT
-  // paths retain their stricter gate.
+  // Usable opt-out: an aligned hosted URL, or a mailbox that can receive
+  // mailto STOP. Real-prospect sequence governance blocks when this is false.
+  // CONTROLLED_PILOT still applies its stricter LIVE_PROSPECT gate as well.
   const oneClickUnsubscribeReady = oneClickReady;
   const allowlistDomainSet = new Set(
     allowlist.domains.map((d) => d.toLowerCase()),

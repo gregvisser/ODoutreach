@@ -21,10 +21,17 @@ describe("humanizeLaunchBlocker", () => {
     expect(sync.hrefSuffix).toBe("/suppression");
   });
 
-  it("maps 'contacts loaded but none eligible' to the contacts page", () => {
+  it("maps 'contacts loaded but none eligible' to the Lists tab", () => {
     const hint = humanizeLaunchBlocker("Launch readiness blocker: Contacts.");
     expect(hint.text).toMatch(/eligible/i);
     expect(hint.hrefSuffix).toBe("/contacts");
+    expect(hint.actionLabel).toBe("Open lists");
+  });
+
+  it("names the Do-not-contact tab rather than a suppression screen", () => {
+    const hint = humanizeLaunchBlocker("Suppression is not configured.");
+    expect(hint.actionLabel).toBe("Open do-not-contact");
+    expect(hint.text).toMatch(/do-not-contact/i);
   });
 
   it("maps sequence + enrollment blockers to outreach", () => {

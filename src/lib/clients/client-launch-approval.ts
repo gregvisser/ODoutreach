@@ -208,11 +208,11 @@ export function evaluateClientLaunchApproval(
     },
     {
       id: "suppression",
-      label: "Suppression configured",
+      label: "Do-not-contact configured",
       ok: suppressionDone,
       detail: suppressionDone
-        ? "Suppression sheet attached"
-        : "Attach the client's suppression Google Sheet",
+        ? "Do-not-contact sheet attached"
+        : "Attach the client's do-not-contact Google Sheet",
     },
     {
       id: "contacts",
