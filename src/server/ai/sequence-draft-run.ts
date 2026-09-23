@@ -3,11 +3,15 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
+import {
+  SEQUENCE_DRAFT_RUN_GRACE_MS,
+  sequenceDraftRunDeadlineMs,
+} from "@/lib/ai/sequence-draft-timing";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-import { AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
 import { draftSequenceForClient } from "./draft-sequence";
+import { classifyAiProviderFailure } from "./provider-transport-error";
 import {
   SEQUENCE_DRAFT_INTERRUPTED_MESSAGE,
   sequenceDraftFailureMessage,
@@ -28,11 +32,11 @@ import {
  *     client never receives `x-action-redirect`.
  *   * About 25–30s: the silent POST was cut before `redirect()`. Same
  *     `error.tsx`. The model call might still have been running.
- *   * About 80–90s: when the POST survived, `AbortSignal.timeout` of
- *     {@link AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS} fired inside the metered
- *     call, the failure was caught, and the page redirected to the
- *     "temporarily unavailable" banner. That is the only path that reached
- *     the banner.
+ *   * At the model abort (90s in production before this budget was raised):
+ *     `AbortSignal.timeout` fired inside the metered call, the failure was
+ *     caught, and the page showed "The AI provider is temporarily unavailable".
+ *     That sentence is the timeout classification. The run grace and the page
+ *     poll sit after the abort so a finished save is still recorded and shown.
  *
  * Lengthening the abort does not help the first two clocks, and a second
  * automatic call would bill a timeout that may already have been served. The
@@ -44,14 +48,9 @@ import {
  * Reply classification is unchanged and still uses the short timeout.
  */
 
-/** Extra time after the model abort for the row to be marked finished. */
-export const SEQUENCE_DRAFT_RUN_GRACE_MS = 30_000;
+export { SEQUENCE_DRAFT_RUN_GRACE_MS, sequenceDraftRunDeadlineMs };
 
 const ACTIVE_STATUSES = ["QUEUED", "RUNNING"] as const;
-
-export function sequenceDraftRunDeadlineMs(): number {
-  return AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS + SEQUENCE_DRAFT_RUN_GRACE_MS;
-}
 
 export function isSequenceDraftRunStale(
   run: { status: string; startedAt: Date | null; createdAt: Date },
@@ -280,6 +279,7 @@ export async function executeSequenceDraftRun(runId: string): Promise<void> {
         scope: "ai.sequence-draft-run",
         clientId: run.clientId,
         runId,
+        failureClass: classifyAiProviderFailure(result.reason),
         reason: result.reason,
       },
       "Sequence draft run failed",

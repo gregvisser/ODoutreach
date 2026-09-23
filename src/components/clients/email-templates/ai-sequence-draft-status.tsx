@@ -115,8 +115,8 @@ export function AiSequenceDraftStatus({
         aria-live="polite"
         className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
       >
-        Writing the sequence… This can take a minute. Nothing is sent, and each
-        email stays a draft until a person approves it.
+        Writing the sequence… This can take a few minutes. Nothing is sent, and
+        each email stays a draft until a person approves it.
       </div>
     );
   }

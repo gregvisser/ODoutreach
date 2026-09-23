@@ -21,6 +21,8 @@ vi.mock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
 vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => void task() }));
 vi.mock("./draft-sequence", () => ({ draftSequenceForClient: draftMock }));
 
+import { logger } from "@/lib/logger";
+
 import { AI_CALL_TIMEOUT_MS, AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
 import { SEQUENCE_DRAFT_INTERRUPTED_MESSAGE } from "./sequence-draft-messages";
 import {
@@ -46,12 +48,13 @@ beforeEach(() => {
 describe("sequence draft run deadline", () => {
   it("keeps reply classification on the short timeout", () => {
     expect(AI_CALL_TIMEOUT_MS).toBe(20_000);
-    expect(AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS).toBe(90_000);
-    expect(sequenceDraftRunDeadlineMs()).toBe(120_000);
+    expect(AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS).toBe(180_000);
+    expect(sequenceDraftRunDeadlineMs()).toBe(210_000);
   });
 
   it("treats an open run as stale only after the model timeout plus grace", () => {
-    const createdAt = new Date(NOW.getTime() - 119_000);
+    const deadline = sequenceDraftRunDeadlineMs();
+    const createdAt = new Date(NOW.getTime() - (deadline - 1_000));
     expect(
       isSequenceDraftRunStale(
         { status: "RUNNING", startedAt: createdAt, createdAt },
@@ -60,7 +63,11 @@ describe("sequence draft run deadline", () => {
     ).toBe(false);
     expect(
       isSequenceDraftRunStale(
-        { status: "RUNNING", startedAt: new Date(NOW.getTime() - 120_001), createdAt },
+        {
+          status: "RUNNING",
+          startedAt: new Date(NOW.getTime() - (deadline + 1)),
+          createdAt,
+        },
         NOW,
       ),
     ).toBe(true);
@@ -166,7 +173,7 @@ describe("executeSequenceDraftRun", () => {
     });
     draftMock.mockResolvedValueOnce({
       ok: false,
-      reason: "The operation was aborted due to timeout",
+      reason: "xai_timeout: exceeded 180000ms",
     });
 
     await executeSequenceDraftRun("run-1");
@@ -176,13 +183,21 @@ describe("executeSequenceDraftRun", () => {
       where: { id: "run-1", status: "RUNNING" },
       data: expect.objectContaining({
         status: "FAILED",
-        reason: "The operation was aborted due to timeout",
+        reason: "xai_timeout: exceeded 180000ms",
         message:
           "The AI provider is temporarily unavailable. Nothing was charged — try again shortly.",
         templateIds: [],
         activeClientId: null,
       }),
     });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failureClass: "timeout",
+        reason: "xai_timeout: exceeded 180000ms",
+        runId: "run-1",
+      }),
+      "Sequence draft run failed",
+    );
   });
 
   it("marks a thrown drafter failure once and does not try again", async () => {

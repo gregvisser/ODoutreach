@@ -1,6 +1,9 @@
 import "server-only";
 
+import type { XaiReasoningEffort } from "@/lib/ai/sequence-draft-timing";
+
 import { AI_CALL_TIMEOUT_MS } from "./anthropic-messages";
+import { providerTransportError, sanitizeProviderErrorDetail } from "./provider-transport-error";
 
 const XAI_CHAT_COMPLETIONS_URL = "https://api.x.ai/v1/chat/completions";
 
@@ -20,6 +23,8 @@ export interface XaiChatCompletionsRequest {
   readonly fetchImpl?: typeof fetch;
   /** Per-call override; defaults to {@link AI_CALL_TIMEOUT_MS}. */
   readonly timeoutMs?: number;
+  /** Omitted when unset. grok-4.7 defaults to high when the field is absent. */
+  readonly reasoningEffort?: XaiReasoningEffort;
 }
 
 export interface XaiChatCompletionsResponse {
@@ -100,41 +105,64 @@ export async function callXaiChatCompletions(
   req: XaiChatCompletionsRequest,
 ): Promise<XaiChatCompletionsResponse> {
   const doFetch = req.fetchImpl ?? fetch;
+  const timeoutMs = req.timeoutMs ?? AI_CALL_TIMEOUT_MS;
 
-  const response = await doFetch(XAI_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${req.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      messages: [
-        { role: "system", content: req.system },
-        { role: "user", content: req.userText },
-      ],
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: req.tool.name,
-            description: req.tool.description,
-            parameters: req.tool.input_schema,
-          },
-        },
-      ],
-      tool_choice: {
+  const payload: {
+    model: string;
+    max_tokens: number;
+    messages: Array<{ role: string; content: string }>;
+    tools: Array<{
+      type: "function";
+      function: {
+        name: string;
+        description: string;
+        parameters: Readonly<Record<string, unknown>>;
+      };
+    }>;
+    tool_choice: { type: "function"; function: { name: string } };
+    reasoning_effort?: XaiReasoningEffort;
+  } = {
+    model: req.model,
+    max_tokens: req.maxTokens,
+    messages: [
+      { role: "system", content: req.system },
+      { role: "user", content: req.userText },
+    ],
+    tools: [
+      {
         type: "function",
-        function: { name: req.tool.name },
+        function: {
+          name: req.tool.name,
+          description: req.tool.description,
+          parameters: req.tool.input_schema,
+        },
       },
-    }),
-    signal: AbortSignal.timeout(req.timeoutMs ?? AI_CALL_TIMEOUT_MS),
-  });
+    ],
+    tool_choice: {
+      type: "function",
+      function: { name: req.tool.name },
+    },
+  };
+  if (req.reasoningEffort) payload.reasoning_effort = req.reasoningEffort;
+
+  let response: Response;
+  try {
+    response = await doFetch(XAI_CHAT_COMPLETIONS_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${req.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    throw providerTransportError({ vendor: "xai", timeoutMs, err });
+  }
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`xai_http_${response.status}: ${detail.slice(0, 300)}`);
+    const detail = sanitizeProviderErrorDetail(await response.text().catch(() => ""));
+    throw new Error(detail ? `xai_http_${response.status}: ${detail}` : `xai_http_${response.status}`);
   }
 
   const body: unknown = await response.json();
