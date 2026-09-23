@@ -589,6 +589,16 @@ it.each(["GOOGLE", "MICROSOFT"] as const)("rechecks the campaign selection after
   expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", dispatchStartedAt: null, lastErrorCode: "CAMPAIGN_SELECTION_HELD" });
   expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
 });
+it("holds a queued follow-up after the enrolment stops even without a campaign selection", async () => {
+  await seed("LEGACY");
+  await linkSelectedCampaign();
+  vi.stubEnv("CAMPAIGN_SCHEDULER_SELECTION", "");
+  await prisma.clientEmailSequenceEnrollment.update({ where: { id: "selection-enrollment" }, data: { status: "COMPLETED" } });
+  const row = await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } });
+  expect(await beginOutboundDispatch(row)).toMatchObject({ ok: false, error: "This recipient's sequence is paused, finished, or stopped, so this email was not sent." });
+  expect(await prisma.outboundEmail.findUniqueOrThrow({ where: { id: "outbound" } })).toMatchObject({ status: "FAILED", dispatchStartedAt: null, lastErrorCode: "SEQUENCE_ENROLLMENT_STOPPED" });
+  expect(await prisma.mailboxSendReservation.findFirstOrThrow()).toMatchObject({ status: "RELEASED" });
+});
 it("permits the linked selected automatic campaign at the durable boundary", async () => {
   await seed("LEGACY");
   await linkSelectedCampaign();

@@ -4,6 +4,11 @@ import { prisma } from "@/lib/db";
 import { countBookedSendSlotsInUtcWindow, lockSendingMailboxInTransaction, recomputeMailboxLedgerCounterInTransaction, markReservationConsumedForOutboundInTransaction, markReservationReleasedForOutboundInTransaction } from "@/server/mailbox/sending-policy";
 import { AUTOMATED_SEND_HELD_MESSAGE, isAutomatedSequenceSend } from "@/lib/email-sequences/send-origin";
 import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-scheduler-selection";
+import {
+  SEQUENCE_ENROLLMENT_STOPPED_CODE,
+  SEQUENCE_ENROLLMENT_STOPPED_MESSAGE,
+  sequenceEnrollmentBlocksQueuedSend,
+} from "@/lib/email-sequences/sequence-enrollment-send-hold";
 
 import { mailboxDailySendCap } from "@/lib/mailbox-identities";
 
@@ -23,7 +28,34 @@ export async function beginOutboundDispatch(row: OutboundEmail, rfc822MessageId?
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "OutboundEmail" WHERE id = ${row.id} FOR UPDATE`;
     const current = await tx.outboundEmail.findFirst({ where: { id: row.id, status: "PROCESSING", providerMessageId: null, dispatchStartedAt: null, sendAttempt: row.sendAttempt, claimedAt: row.claimedAt } });
-    if (!current) return false;
+    if (!current) {
+      const existing = await tx.outboundEmail.findFirst({
+        where: { id: row.id, clientId: row.clientId, status: "FAILED", dispatchStartedAt: null },
+        select: { lastErrorMessage: true },
+      });
+      if (existing?.lastErrorMessage) return { ok: false as const, error: existing.lastErrorMessage };
+      return false;
+    }
+    if (!reconcilingAcceptedSend) {
+      const linked = await tx.clientEmailSequenceStepSend.findFirst({
+        where: { outboundEmailId: current.id, clientId: current.clientId },
+        select: { enrollment: { select: { status: true, clientId: true } } },
+      });
+      if (
+        linked?.enrollment &&
+        linked.enrollment.clientId === current.clientId &&
+        sequenceEnrollmentBlocksQueuedSend(linked.enrollment.status)
+      ) {
+        await tx.outboundEmail.update({ where: { id: current.id }, data: {
+          status: "FAILED", claimedAt: null, claimExpiresAt: null, providerIdempotencyKey: null,
+          nextRetryAt: null, lastErrorCode: SEQUENCE_ENROLLMENT_STOPPED_CODE,
+          lastErrorMessage: SEQUENCE_ENROLLMENT_STOPPED_MESSAGE,
+          failureReason: SEQUENCE_ENROLLMENT_STOPPED_MESSAGE,
+        } });
+        await markReservationReleasedForOutboundInTransaction(tx, current.id);
+        return { ok: false as const, error: SEQUENCE_ENROLLMENT_STOPPED_MESSAGE };
+      }
+    }
     if (!reconcilingAcceptedSend && isAutomatedSequenceSend(current.metadata)) {
       // Serialize the final permission check with changes to the client switch.
       // A provider-confirmed historical send is reconciliation, not a new send.

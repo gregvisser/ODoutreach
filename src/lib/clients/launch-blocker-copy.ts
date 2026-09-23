@@ -49,30 +49,30 @@ export function humanizeLaunchBlocker(raw: string): LaunchBlockerHint {
   }
   if (l.includes("suppression is not configured")) {
     return {
-      text: "Attach the client's suppression Google Sheet.",
+      text: "Attach the client's do-not-contact Google Sheet.",
       hrefSuffix: "/suppression",
-      actionLabel: "Open suppression",
+      actionLabel: "Open do-not-contact",
     };
   }
   if (l.includes("launch readiness blocker: suppression")) {
     return {
-      text: "Finish suppression — attach the sheet and let it sync.",
+      text: "Finish do-not-contact — attach the sheet and let it sync.",
       hrefSuffix: "/suppression",
-      actionLabel: "Open suppression",
+      actionLabel: "Open do-not-contact",
     };
   }
   if (l.includes("no contacts are loaded")) {
     return {
       text: "Import contacts into an email list.",
       hrefSuffix: "/contacts",
-      actionLabel: "Open contacts",
+      actionLabel: "Open lists",
     };
   }
   if (l.includes("launch readiness blocker: contacts")) {
     return {
-      text: "Add at least one eligible (non-suppressed) contact with an email address.",
+      text: "Add at least one eligible contact with an email address on Lists.",
       hrefSuffix: "/contacts",
-      actionLabel: "Open contacts",
+      actionLabel: "Open lists",
     };
   }
   if (l.includes("launchable production sequence")) {

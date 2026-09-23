@@ -182,7 +182,7 @@ export default async function ClientContactsPage({ params }: Props) {
             href={`${base}/suppression`}
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >
-            Open suppression
+            Open do-not-contact
           </Link>
         </div>
       </div>

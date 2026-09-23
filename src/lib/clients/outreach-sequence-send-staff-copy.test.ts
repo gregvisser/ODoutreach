@@ -6,10 +6,18 @@ import {
   humanizeSequenceLaunchDisabledReason,
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
   LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
+  NO_READY_STEP_SENDS_MESSAGE,
   sequenceIntroductionBatchLimitCopy,
   STALE_RECIPIENTS_CLIENT_NOW_LIVE_COPY,
   STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON,
 } from "@/lib/clients/outreach-sequence-send-staff-copy";
+
+describe("NO_READY_STEP_SENDS_MESSAGE", () => {
+  it("points at Review recipients and does not name a removed button", () => {
+    expect(NO_READY_STEP_SENDS_MESSAGE).toMatch(/Review recipients/);
+    expect(NO_READY_STEP_SENDS_MESSAGE).not.toMatch(/Prepare send records/);
+  });
+});
 
 describe("humanizeSequenceLaunchDisabledReason", () => {
   it("maps legacy sequence status phrasing", () => {

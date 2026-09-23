@@ -191,7 +191,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         pillStatus: "not_started",
         metric: "Not configured",
         href: `${base}/suppression`,
-        actionLabel: "Open suppression",
+        actionLabel: "Open do-not-contact",
       };
     }
     if (!input.googleSheetsEnvReady) {
@@ -201,7 +201,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         pillStatus: "needs_attention",
         metric: "Google Sheets not connected",
         href: `${base}/suppression`,
-        actionLabel: "Open suppression",
+        actionLabel: "Open do-not-contact",
       };
     }
     if (!input.suppressionLatestSyncAt) {
@@ -211,7 +211,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
         pillStatus: "needs_attention",
         metric: "Needs sync",
         href: `${base}/suppression`,
-        actionLabel: "Open suppression",
+        actionLabel: "Open do-not-contact",
       };
     }
     return {
@@ -220,7 +220,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
       pillStatus: "ready",
       metric: "Synced",
       href: `${base}/suppression`,
-      actionLabel: "Open suppression",
+      actionLabel: "Open do-not-contact",
     };
   })();
 
@@ -243,7 +243,7 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
       pillStatus: pill,
       metric: `${String(input.contactsTotal)} ${contactNoun} total · ${String(input.contactsEligible)} eligible`,
       href: `${base}/contacts`,
-      actionLabel: "Open contacts",
+      actionLabel: "Open lists",
     };
   })();
 
@@ -315,7 +315,7 @@ export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string
     return "Brief not started";
   }
   if (!input.suppressionSheetCount) {
-    return "Configure suppression";
+    return "Set up do-not-contact";
   }
   if (input.connectedSendingCount < 1) {
     return "Connect mailboxes";

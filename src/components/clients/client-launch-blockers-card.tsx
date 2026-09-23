@@ -37,7 +37,7 @@ export function ClientLaunchBlockersCard({ clientId, blockers }: Props) {
           This client activates automatically the moment every item below is
           done — these are the exact checks the system runs. Some aren&apos;t
           shown as setup steps (for example a mailbox signature or a synced
-          suppression sheet), so a client can look finished but still wait here.
+          do-not-contact sheet), so a client can look finished but still wait here.
         </CardDescription>
       </CardHeader>
       <CardContent>

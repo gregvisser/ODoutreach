@@ -78,6 +78,10 @@ export function sequenceIntroductionBatchLimitCopy(hardCap: number): string {
  * Short paragraph for the live sequence launch panel. Kept in one place
  * so unit tests can assert we do not surface internal-domain wording.
  */
+/** Shown when Launch is pressed and no READY recipient rows exist. */
+export const NO_READY_STEP_SENDS_MESSAGE =
+  "No recipients are ready for this step. Open Review recipients, then launch again.";
+
 export const LIVE_SEQUENCE_LAUNCH_INTRO_HELP =
   "Sends use your connected mailboxes, daily limits, and suppression rules. Eligibility is re-checked when you launch.";
 

@@ -86,9 +86,9 @@ export function buildGettingStartedViewModel(
     },
     {
       id: "suppression",
-      label: "Configure suppression",
+      label: "Set up do-not-contact",
       description:
-        "Attach the client's email and domain suppression Google Sheet ids before importing contacts.",
+        "Attach the client's email and domain do-not-contact Google Sheets before importing contacts.",
       href: `${base}/suppression`,
       done: input.suppressionSheetCount > 0,
     },
@@ -96,7 +96,7 @@ export function buildGettingStartedViewModel(
       id: "contacts",
       label: "Import contacts into an email list",
       description:
-        "Create an email list and import contacts via CSV or RocketReach. Suppression is applied at enrollment.",
+        "Create an email list and import contacts via CSV or RocketReach. Do-not-contact rules are applied at enrollment.",
       href: `${base}/contacts`,
       done: input.contactsTotal > 0,
     },

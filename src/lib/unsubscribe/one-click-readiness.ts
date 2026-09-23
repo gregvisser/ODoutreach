@@ -11,9 +11,10 @@
  *   * the public base URL is an absolute `http(s)` origin — localhost
  *     is accepted so local dev flows still mark the feature as ready.
  *
- * Real prospect sends still require LIVE_PROSPECT launch approval,
- * operator confirmation, and suppression/capacity checks — this
- * helper only reports whether the unsubscribe rail is wired.
+ * Sequence sends to real prospects require an ACTIVE client and a usable
+ * unsubscribe rail (aligned hosted URL or mailto). CONTROLLED_PILOT still
+ * requires LIVE_PROSPECT launch approval. This helper only reports whether
+ * a public base URL is configured; sequence dispatch uses the rail check.
  */
 
 import { normaliseUnsubscribeMailtoAddress } from "@/lib/unsubscribe/list-unsubscribe-headers";

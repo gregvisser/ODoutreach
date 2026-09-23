@@ -20,6 +20,13 @@ const prismaMock = vi.hoisted(() => ({
   clientEmailSequenceEnrollment: {
     updateMany: vi.fn(),
   },
+  outboundEmail: {
+    updateMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
+  mailboxSendReservation: {
+    updateMany: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -168,6 +175,48 @@ describe("stopFollowUpsForLinkedReply", () => {
     expect(
       prismaMock.clientEmailSequenceEnrollment.updateMany,
     ).not.toHaveBeenCalled();
+  });
+
+  it("holds a queued follow-up on the same enrolment and leaves the replied send alone", async () => {
+    prismaMock.clientEmailSequenceStepSend.findMany.mockImplementation(
+      async (args: { where?: { outboundEmail?: unknown } }) => {
+        if (args.where?.outboundEmail) {
+          return [{ outboundEmailId: "follow-up-queued" }];
+        }
+        return [
+          {
+            enrollmentId: "enr-1",
+            enrollment: { id: "enr-1", status: "PENDING", clientId: "c1" },
+          },
+        ];
+      },
+    );
+    prismaMock.clientEmailSequenceEnrollment.updateMany.mockResolvedValue({
+      count: 1,
+    });
+    prismaMock.outboundEmail.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.outboundEmail.findUnique.mockResolvedValue({
+      mailboxIdentityId: null,
+    });
+    prismaMock.mailboxSendReservation.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await stopFollowUpsForLinkedReply({
+      clientId: "c1",
+      outboundEmailId: "intro-sent",
+    });
+
+    expect(result).toEqual({ enrollmentsStopped: 1, followUpsHeld: 1 });
+    const held = prismaMock.outboundEmail.updateMany.mock.calls[0]![0]!;
+    expect(held.where.id).toBe("follow-up-queued");
+    expect(held.where.dispatchStartedAt).toBeNull();
+    expect(held.where.status).toEqual({ in: ["QUEUED", "PROCESSING"] });
+    expect(held.data.status).toBe("FAILED");
+    expect(held.data.lastErrorCode).toBe("REPLY_STOPPED_FOLLOWUP");
+    expect(held.data.lastErrorMessage).toMatch(/reply arrived/i);
+    expect(prismaMock.mailboxSendReservation.updateMany).toHaveBeenCalledWith({
+      where: { outboundEmailId: "follow-up-queued", status: "RESERVED" },
+      data: { status: "RELEASED" },
+    });
   });
 
   it("scopes the lookup to the supplied clientId and outboundEmailId", async () => {
