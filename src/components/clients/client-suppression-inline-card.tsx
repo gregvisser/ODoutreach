@@ -26,6 +26,11 @@ import {
   suppressionSyncStatusLabel,
   suppressionSyncUnavailableCopy,
 } from "@/lib/suppression/staff-labels";
+import {
+  suppressionConfirmRemovalButtonLabel,
+  suppressionConfirmRemovalPanelBody,
+  suppressionConfirmRemovalPanelTitle,
+} from "@/lib/suppression/staff-sync-copy";
 
 type SourceRow = {
   id: string;
@@ -391,14 +396,10 @@ export function ClientSuppressionInlineCard({
         {canManageSheets && blockedShrink ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
             <p className="font-medium text-foreground">
-              Nothing was deleted. Everyone on the list is still blocked.
+              {suppressionConfirmRemovalPanelTitle()}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Put the missing rows back in the Sheet and sync again. Only use
-              the button below if you are certain those{" "}
-              {String(blockedShrink.removed)}{" "}
-              {blockedShrink.kind === "EMAIL" ? "addresses" : "domains"} are meant
-              to be contactable again — it cannot be undone from here.
+              {suppressionConfirmRemovalPanelBody(blockedShrink.removed, blockedShrink.kind)}
             </p>
             <Button
               type="button"
@@ -408,7 +409,7 @@ export function ClientSuppressionInlineCard({
               disabled={pending}
               onClick={() => sync(blockedShrink.kind, true)}
             >
-              {`Remove them anyway (${String(blockedShrink.removed)})`}
+              {suppressionConfirmRemovalButtonLabel(blockedShrink.removed)}
             </Button>
           </div>
         ) : null}
