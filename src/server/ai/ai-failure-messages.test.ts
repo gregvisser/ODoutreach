@@ -51,6 +51,16 @@ describe("describeUnhandledAiFailure", () => {
     expect(describeUnhandledAiFailure("The operation was aborted due to timeout")).toContain(
       "temporarily unavailable",
     );
+    expect(describeUnhandledAiFailure("xai_timeout: exceeded 180000ms")).toContain(
+      "temporarily unavailable",
+    );
+    expect(describeUnhandledAiFailure("xai_network: fetch failed ECONNRESET")).toContain(
+      "temporarily unavailable",
+    );
+  });
+
+  it("does not call a rejected 400 an outage when the body mentions timeout", () => {
+    expect(describeUnhandledAiFailure("xai_http_400: request timeout field invalid")).toBeNull();
   });
 
   it("returns null for a reason it doesn't recognise, so the caller keeps its own message", () => {

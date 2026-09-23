@@ -1,6 +1,7 @@
 import "server-only";
 
 import { AI_MODELS } from "@/lib/ai/model-catalog";
+import { sequenceDraftReasoningEffort } from "@/lib/ai/sequence-draft-timing";
 import {
   buildSequenceDraftingInput,
   parseSequenceDraftToolUse,
@@ -142,6 +143,7 @@ export async function draftSequenceForClient(args: {
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: SEQUENCE_DRAFTING_TOOL,
         timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+        reasoningEffort: sequenceDraftReasoningEffort(model),
       });
       return {
         result: parseSequenceDraftToolUse(response.content),

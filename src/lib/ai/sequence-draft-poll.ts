@@ -1,12 +1,15 @@
+import { SEQUENCE_DRAFT_POLL_GIVE_UP_MS } from "./sequence-draft-timing";
+
 /** How often the templates page asks whether a detached draft run has finished. */
 export const SEQUENCE_DRAFT_POLL_INTERVAL_MS = 2_000;
 
 /**
  * Stop asking after this long even if the server still says the run is open.
- * The server has its own deadline and will not start a second model call.
- * This only stops the browser from polling forever.
+ * Defined with the model timeout so a longer draft is still on screen when it
+ * finishes. The server will not start a second model call. This only stops
+ * the browser from polling forever.
  */
-export const SEQUENCE_DRAFT_POLL_GIVE_UP_MS = 150_000;
+export { SEQUENCE_DRAFT_POLL_GIVE_UP_MS };
 
 /** Transient status-request failures tolerated before the page stops polling. */
 export const SEQUENCE_DRAFT_POLL_MAX_FAILURES = 5;

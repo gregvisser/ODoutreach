@@ -15,9 +15,10 @@ describe("sequence draft staff copy", () => {
   });
 
   it("maps a provider timeout to the unavailable banner", () => {
-    expect(sequenceDraftFailureMessage("The operation was aborted due to timeout")).toBe(
-      "The AI provider is temporarily unavailable. Nothing was charged — try again shortly.",
-    );
+    const banner =
+      "The AI provider is temporarily unavailable. Nothing was charged — try again shortly.";
+    expect(sequenceDraftFailureMessage("xai_timeout: exceeded 180000ms")).toBe(banner);
+    expect(sequenceDraftFailureMessage("The operation was aborted due to timeout")).toBe(banner);
   });
 
   it("does not show a raw provider body", () => {

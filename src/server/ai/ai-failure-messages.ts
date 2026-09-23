@@ -25,6 +25,11 @@ export function describeUnhandledAiFailure(reason: string): string | null {
   if (/anthropic_http_429\b/.test(reason) || /xai_http_429\b/.test(reason)) {
     return "The AI is temporarily rate-limited. Nothing was charged — try again shortly.";
   }
+  // A 4xx is a rejected request, not an outage. Checked before the timeout
+  // word so a 400 body that mentions "timeout" is not called an outage.
+  if (/^(?:anthropic|xai)_http_4\d\d\b/.test(reason)) {
+    return null;
+  }
   if (
     /anthropic_http_5\d\d\b/.test(reason) ||
     /anthropic_unreadable_body/.test(reason) ||

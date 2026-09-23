@@ -1,6 +1,9 @@
 import "server-only";
 
+import type { XaiReasoningEffort } from "@/lib/ai/sequence-draft-timing";
+
 import { resolveProductAiProvider } from "./ai-provider";
+import { providerTransportError, sanitizeProviderErrorDetail } from "./provider-transport-error";
 import { callXaiChatCompletions } from "./xai-chat-completions";
 
 /**
@@ -33,15 +36,11 @@ const ANTHROPIC_VERSION = "2023-06-01";
 export const AI_CALL_TIMEOUT_MS = 20_000;
 
 /**
- * Sequence drafting is operator-triggered, returns up to 4k tokens with a large
- * brief, and runs Azure → api.x.ai — too slow for the inline-ingestion budget.
- *
- * This bounds the model call only. The staff click does not wait on it: the
- * browser request returns as soon as a draft run is recorded, and the call
- * finishes afterwards. See `sequence-draft-run.ts`. Reply classification keeps
- * {@link AI_CALL_TIMEOUT_MS}.
+ * Sequence-draft model budget. Defined in `sequence-draft-timing.ts` so the
+ * run deadline and the browser poll share one number. Reply classification
+ * keeps {@link AI_CALL_TIMEOUT_MS}.
  */
-export const AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS = 90_000;
+export { AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "@/lib/ai/sequence-draft-timing";
 
 export interface AnthropicToolDefinition {
   readonly name: string;
@@ -69,6 +68,11 @@ export interface AnthropicMessagesRequest {
   readonly fetchImpl?: typeof fetch;
   /** Per-call override; defaults to {@link AI_CALL_TIMEOUT_MS}. */
   readonly timeoutMs?: number;
+  /**
+   * xAI only. Ignored on the Anthropic path. Sequence drafting sets `low`
+   * for grok models whose default effort is `high`.
+   */
+  readonly reasoningEffort?: XaiReasoningEffort;
 }
 
 export interface AnthropicMessagesResponse {
@@ -96,6 +100,7 @@ export async function postAnthropicMessages(
   req: AnthropicMessagesRequest,
 ): Promise<AnthropicMessagesResponse> {
   const doFetch = req.fetchImpl ?? fetch;
+  const timeoutMs = req.timeoutMs ?? AI_CALL_TIMEOUT_MS;
 
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -104,25 +109,32 @@ export async function postAnthropicMessages(
   };
   if (req.workspaceId) headers["anthropic-workspace-id"] = req.workspaceId;
 
-  const response = await doFetch(ANTHROPIC_MESSAGES_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      system: req.system,
-      messages: [{ role: "user", content: req.userText }],
-      tools: [req.tool],
-      tool_choice: { type: "tool", name: req.tool.name },
-    }),
-    signal: AbortSignal.timeout(req.timeoutMs ?? AI_CALL_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await doFetch(ANTHROPIC_MESSAGES_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: req.model,
+        max_tokens: req.maxTokens,
+        system: req.system,
+        messages: [{ role: "user", content: req.userText }],
+        tools: [req.tool],
+        tool_choice: { type: "tool", name: req.tool.name },
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    throw providerTransportError({ vendor: "anthropic", timeoutMs, err });
+  }
 
   if (!response.ok) {
     // The body often carries the real reason (rate limit, bad key, overloaded).
-    // Bounded because it lands in an `outcomeCode` column.
-    const detail = await response.text().catch(() => "");
-    throw new Error(`anthropic_http_${response.status}: ${detail.slice(0, 300)}`);
+    // Bounded because it lands in an `outcomeCode` column. Keys are stripped.
+    const detail = sanitizeProviderErrorDetail(await response.text().catch(() => ""));
+    throw new Error(
+      detail ? `anthropic_http_${response.status}: ${detail}` : `anthropic_http_${response.status}`,
+    );
   }
 
   const body: unknown = await response.json();
@@ -153,6 +165,7 @@ export async function callAiToolMessages(
       tool: req.tool,
       fetchImpl: req.fetchImpl,
       timeoutMs: req.timeoutMs,
+      reasoningEffort: req.reasoningEffort,
     });
   }
   return postAnthropicMessages(req);

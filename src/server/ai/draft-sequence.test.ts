@@ -87,6 +87,7 @@ beforeEach(() => {
   callAnthropicMock.mockReset();
   process.env.AI_MODEL_PROVIDER = "anthropic";
   delete process.env.XAI_API_KEY;
+  delete process.env.XAI_MODEL;
   process.env.ANTHROPIC_API_KEY = "sk-ant-test";
   delete process.env.AI_FEATURES;
 });
@@ -265,6 +266,23 @@ describe("when it cannot draft", () => {
     expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
       AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
     );
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+  });
+
+  it("asks grok-4.7 for low reasoning effort on the long drafting timeout", async () => {
+    process.env.AI_MODEL_PROVIDER = "xai";
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.XAI_API_KEY = "xai-test-key";
+    process.env.XAI_MODEL = "grok-4.7";
+    modelAnswers(goodSteps());
+
+    await draftSequenceForClient({ clientId: "client-1", staffUserId: "staff-1" });
+
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+      AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    );
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBe("low");
+    expect(callAnthropicMock.mock.calls[0][0].model).toBe("grok-4.7");
   });
 
   it("does not require ANTHROPIC_API_KEY when provider is xai", async () => {

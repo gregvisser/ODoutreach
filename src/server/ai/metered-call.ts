@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
 import { isPersonalDataUncovered } from "./ai-feature-data-policy";
+import { classifyAiProviderFailure } from "./provider-transport-error";
 
 import type { AiFeature } from "@/generated/prisma/client";
 
@@ -164,7 +165,17 @@ export async function runMeteredAiCall<T>(
       latencyMs: Date.now() - startedAt,
       outcomeCode: code,
     });
-    logger.warn({ scope: "ai.call", feature, model, clientSlug: client.slug, code }, "AI call failed");
+    logger.warn(
+      {
+        scope: "ai.call",
+        feature,
+        model,
+        clientSlug: client.slug,
+        failureClass: classifyAiProviderFailure(code),
+        code,
+      },
+      "AI call failed",
+    );
     return { ok: false, reason: code };
   }
 
