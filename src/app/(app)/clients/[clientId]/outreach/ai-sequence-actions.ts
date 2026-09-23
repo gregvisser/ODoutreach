@@ -1,51 +1,65 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
-import { logger } from "@/lib/logger";
-import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import {
+  SEQUENCE_DRAFT_START_FAILED_MESSAGE,
+  sequenceDraftClientId,
+} from "@/lib/ai/sequence-draft-start";
+import { reportError } from "@/lib/logger";
 import { beginSequenceDraftRun } from "@/server/ai/sequence-draft-run";
+import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { requireClientEmailTemplateMutator } from "@/server/email-templates/mutator-access";
 import { requireClientAccess } from "@/server/tenant/access";
 
 /**
- * Server action behind the "Write a sequence with AI" button.
+ * Server action behind "Write a sequence with AI".
  *
- * Authorisation is the same gate as writing a template by hand. The action
- * does not call the model and does not send mail. It records a draft run and
- * redirects at once; the model call runs after the response is closed. See
- * `sequence-draft-run.ts` for why the browser request must not wait.
+ * It records a draft run and redirects. It does not call the model and it
+ * does not send mail. The model runs after the response closes — see
+ * `sequence-draft-run.ts`.
+ *
+ * Every non-redirect failure is logged and turned into the same
+ * `templateError` banner. On the previous action, `requireOpensDoorsStaff`,
+ * client access, the template mutator, a missing id, and `loadBrief` all
+ * threw with nobody to catch them. Next delivered that as a failed action,
+ * `error.tsx` painted "The action didn't complete", and the banner never
+ * appeared. A throw before the model call does that in under a second. A
+ * throw after a pool wait can look like the ~30s failure. Only a failure
+ * that reaches `redirect()` shows the banner (the ~80–90s provider abort).
  */
 
+function redirectToStartFailure(clientId: string): never {
+  const params = new URLSearchParams();
+  params.set("templateError", SEQUENCE_DRAFT_START_FAILED_MESSAGE);
+  redirect(`/clients/${clientId}/templates?${params.toString()}#ai-sequence-draft`);
+}
+
 export async function draftClientSequenceWithAiAction(formData: FormData): Promise<void> {
-  const staff = await requireOpensDoorsStaff();
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  if (!clientId) throw new Error("Missing clientId.");
+  const rawClientId = formData.get("clientId");
+  const clientId = sequenceDraftClientId(typeof rawClientId === "string" ? rawClientId : "");
 
-  await requireClientAccess(staff, clientId);
-  await requireClientEmailTemplateMutator(staff, clientId);
-
-  let runId: string;
   try {
+    const staff = await requireOpensDoorsStaff();
+    if (!clientId) {
+      reportError(new Error("Missing clientId."), { scope: "ai.sequence-draft" });
+      return;
+    }
+
+    await requireClientAccess(staff, clientId);
+    await requireClientEmailTemplateMutator(staff, clientId);
+
     const started = await beginSequenceDraftRun({
       clientId,
       staffUserId: staff.id,
     });
-    runId = started.runId;
-  } catch (err) {
-    logger.error(
-      { err, scope: "ai.sequence-draft", clientId },
-      "Could not start a sequence draft run",
-    );
     const params = new URLSearchParams();
-    params.set(
-      "templateError",
-      "The sequence could not be started. Nothing was drafted and nothing was sent.",
-    );
+    params.set("sequenceDraft", started.runId);
     redirect(`/clients/${clientId}/templates?${params.toString()}#ai-sequence-draft`);
+  } catch (err) {
+    unstable_rethrow(err);
+    reportError(err, { scope: "ai.sequence-draft", clientId: clientId ?? undefined });
+    if (!clientId) return;
+    redirectToStartFailure(clientId);
   }
-
-  const params = new URLSearchParams();
-  params.set("sequenceDraft", runId);
-  redirect(`/clients/${clientId}/templates?${params.toString()}#ai-sequence-draft`);
 }

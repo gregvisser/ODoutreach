@@ -1,7 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
-import { draftClientSequenceWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-sequence-actions";
+import { AiSequenceDraftForm } from "@/components/clients/email-templates/ai-sequence-draft-form";
 import { AiSequenceDraftStatus } from "@/components/clients/email-templates/ai-sequence-draft-status";
-import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import {
   Card,
   CardContent,
@@ -72,12 +71,7 @@ export function AiSequenceDraftPanel({
             You do not have permission to add templates to this workspace.
           </p>
         ) : (
-          <form action={draftClientSequenceWithAiAction}>
-            <input type="hidden" name="clientId" value={clientId} />
-            <FormSubmitButton pendingLabel="Starting the draft…">
-              Write a sequence with AI
-            </FormSubmitButton>
-          </form>
+          <AiSequenceDraftForm clientId={clientId} />
         )}
         <p className="text-xs text-muted-foreground">
           The AI writes the words only. The schedule — days {cadence} — is fixed by

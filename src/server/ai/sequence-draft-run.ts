@@ -18,20 +18,28 @@ import {
  * Detach "Write a sequence with AI" from the browser request.
  *
  * The button used to be a server action that awaited the xAI call and only
- * then redirected. The POST sent no bytes until that redirect, so two clocks
- * raced:
+ * then redirected, with no catch around the action. Three clocks fell out of
+ * that:
  *
- *   * About 25–30s: the silent POST was cut. Next rendered `error.tsx`
- *     ("The action didn't complete"). The model call might still have been
- *     running on the server.
+ *   * Under a second: a throw before `redirect()` (auth, access, the template
+ *     mutator, a missing id, or Prisma in `loadBrief`) became a failed action.
+ *     `error.tsx` hid the message. The same screen appears immediately when
+ *     the POST comes back as HTML or as an unrecognised action, because the
+ *     client never receives `x-action-redirect`.
+ *   * About 25–30s: the silent POST was cut before `redirect()`. Same
+ *     `error.tsx`. The model call might still have been running.
  *   * About 80–90s: when the POST survived, `AbortSignal.timeout` of
- *     {@link AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS} fired, the failure was
- *     caught, and the page redirected to the "temporarily unavailable" banner.
+ *     {@link AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS} fired inside the metered
+ *     call, the failure was caught, and the page redirected to the
+ *     "temporarily unavailable" banner. That is the only path that reached
+ *     the banner.
  *
- * Lengthening that abort does not help the first clock, and a second automatic
- * call would bill a timeout that may already have been served. So the action
- * records a row and returns. `after()` runs the existing one-shot drafter once
- * the response has closed. The templates page polls the row.
+ * Lengthening the abort does not help the first two clocks, and a second
+ * automatic call would bill a timeout that may already have been served. The
+ * action records a row and returns. Throws before that redirect become the
+ * start-failed banner. `after()` runs the existing one-shot drafter once the
+ * response has closed. The templates page polls the row. The button also
+ * catches an action rejection so a non-RSC response stays on the card.
  *
  * Reply classification is unchanged and still uses the short timeout.
  */
