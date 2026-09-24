@@ -7,6 +7,8 @@
  * never render bare values like `EMAIL` / `NOT_CONFIGURED` to staff.
  */
 
+import { isSuppressionHeldShrinkLastError } from "@/lib/suppression/staff-sync-copy";
+
 export type SuppressionKindRaw = "EMAIL" | "DOMAIN";
 
 export function suppressionKindLabel(kind: SuppressionKindRaw | string): string {
@@ -40,9 +42,20 @@ export type SuppressionSyncStatusRaw =
   | "SUCCESS"
   | "ERROR";
 
+export type SuppressionSyncStatusContext = {
+  lastError?: string | null;
+};
+
 export function suppressionSyncStatusLabel(
   status: SuppressionSyncStatusRaw | string,
+  context?: SuppressionSyncStatusContext,
 ): string {
+  if (
+    status === "ERROR" &&
+    isSuppressionHeldShrinkLastError(context?.lastError)
+  ) {
+    return "List held — sending continues";
+  }
   switch (status) {
     case "NOT_CONFIGURED":
       return "Not connected";
@@ -101,7 +114,14 @@ export function suppressionSourceIsConnected(
 
 export function suppressionSyncStatusBadgeVariant(
   status: SuppressionSyncStatusRaw | string,
+  context?: SuppressionSyncStatusContext,
 ): "default" | "secondary" | "outline" | "destructive" {
+  if (
+    status === "ERROR" &&
+    isSuppressionHeldShrinkLastError(context?.lastError)
+  ) {
+    return "outline";
+  }
   switch (status) {
     case "SUCCESS":
       return "default";
@@ -114,4 +134,36 @@ export function suppressionSyncStatusBadgeVariant(
     default:
       return "outline";
   }
+}
+
+/** Amber warning chrome for held-shrink (refused replace), not a send blocker. */
+export const SUPPRESSION_HELD_SHRINK_BADGE_CLASSNAME =
+  "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300";
+
+export const SUPPRESSION_HELD_SHRINK_MESSAGE_CLASSNAME =
+  "text-amber-800 dark:text-amber-300";
+
+export function suppressionSyncStatusBadgeClassName(
+  status: SuppressionSyncStatusRaw | string,
+  context?: SuppressionSyncStatusContext,
+): string | undefined {
+  if (
+    status === "ERROR" &&
+    isSuppressionHeldShrinkLastError(context?.lastError)
+  ) {
+    return SUPPRESSION_HELD_SHRINK_BADGE_CLASSNAME;
+  }
+  return undefined;
+}
+
+export function suppressionSyncLastErrorClassName(
+  status: SuppressionSyncStatusRaw | string,
+  context?: SuppressionSyncStatusContext,
+): string | undefined {
+  if (status === "ERROR") {
+    return isSuppressionHeldShrinkLastError(context?.lastError)
+      ? SUPPRESSION_HELD_SHRINK_MESSAGE_CLASSNAME
+      : "text-destructive";
+  }
+  return undefined;
 }

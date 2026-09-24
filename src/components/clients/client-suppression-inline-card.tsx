@@ -20,9 +20,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { GoogleSheetsSharingCallout } from "@/components/suppression/google-sheets-sharing-callout";
+import { SuppressionHeldShrinkCallout } from "@/components/suppression/suppression-held-shrink-callout";
 import {
   suppressionKindShortLabel,
   suppressionSourceIsConnected,
+  suppressionSyncLastErrorClassName,
   suppressionSyncStatusLabel,
   suppressionSyncUnavailableCopy,
 } from "@/lib/suppression/staff-labels";
@@ -30,7 +32,9 @@ import {
   suppressionConfirmRemovalButtonLabel,
   suppressionConfirmRemovalPanelBody,
   suppressionConfirmRemovalPanelTitle,
+  suppressionStaffFacingSyncLastError,
 } from "@/lib/suppression/staff-sync-copy";
+import { cn } from "@/lib/utils";
 
 type SourceRow = {
   id: string;
@@ -164,6 +168,7 @@ export function ClientSuppressionInlineCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <SuppressionHeldShrinkCallout sources={sources} />
         {canManageSheets ? (
           <>
             {googleServiceAccountConfigured && googleServiceAccountClientEmail ? (
@@ -366,28 +371,43 @@ export function ClientSuppressionInlineCard({
             {sources.length === 0 ? (
               <li>No do-not-contact sheets connected yet.</li>
             ) : null}
-            {sources.map((s) => (
-              <li key={s.id}>
-                {suppressionKindShortLabel(s.kind)} ·{" "}
-                {suppressionSyncStatusLabel(s.syncStatus)}
-                {typeof s.entryCount === "number"
-                  ? ` · ${s.entryCount.toLocaleString()} ${
-                      s.entryCount === 1
-                        ? s.kind === "EMAIL"
-                          ? "address"
-                          : "domain"
-                        : s.kind === "EMAIL"
-                          ? "addresses"
-                          : "domains"
-                    } on the list`
-                  : ""}
-                {` · reading ${s.sheetRange?.trim() || "Sheet1!A1:Z50000"}`}
-                {s.lastSyncedAt
-                  ? ` · last sync ${s.lastSyncedAt.slice(0, 16).replace("T", " ")}`
-                  : ""}
-                {s.lastError ? ` · ${s.lastError}` : ""}
-              </li>
-            ))}
+            {sources.map((s) => {
+              const statusContext = { lastError: s.lastError };
+              const staffError = suppressionStaffFacingSyncLastError(
+                s.kind,
+                s.lastError,
+              );
+              const errorClass = suppressionSyncLastErrorClassName(
+                s.syncStatus,
+                statusContext,
+              );
+              return (
+                <li key={s.id}>
+                  {suppressionKindShortLabel(s.kind)} ·{" "}
+                  {suppressionSyncStatusLabel(s.syncStatus, statusContext)}
+                  {typeof s.entryCount === "number"
+                    ? ` · ${s.entryCount.toLocaleString()} ${
+                        s.entryCount === 1
+                          ? s.kind === "EMAIL"
+                            ? "address"
+                            : "domain"
+                          : s.kind === "EMAIL"
+                            ? "addresses"
+                            : "domains"
+                      } on the list`
+                    : ""}
+                  {` · reading ${s.sheetRange?.trim() || "Sheet1!A1:Z50000"}`}
+                  {s.lastSyncedAt
+                    ? ` · last sync ${s.lastSyncedAt.slice(0, 16).replace("T", " ")}`
+                    : ""}
+                  {staffError ? (
+                    <span className={cn("block mt-0.5", errorClass)}>
+                      {staffError}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
 
