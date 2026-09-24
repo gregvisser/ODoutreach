@@ -342,8 +342,8 @@ export function UniversePageClient({
         </form>
       </div>
 
-      <div className="rounded-lg border border-border/80 shadow-sm overflow-x-auto">
-        <Table>
+      <div className="rounded-lg border border-border/80 shadow-sm">
+        <Table scroll="viewport">
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">

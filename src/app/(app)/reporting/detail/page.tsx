@@ -139,14 +139,15 @@ export default async function ReportDetailPage({ searchParams }: Props) {
             Each row is a record behind the {def.label.toLowerCase()} count.
           </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent>
           {rows.length === 0 ? (
             <p className="rounded-md border border-dashed border-border/80 bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
               No matching records for this scope and period.
             </p>
           ) : (
+            <div className="max-h-[max(16rem,calc(100dvh-11rem))] overflow-auto">
             <table className="w-full text-left text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2">When</th>
                   <th className="px-3 py-2">Recipient</th>
@@ -188,6 +189,7 @@ export default async function ReportDetailPage({ searchParams }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>

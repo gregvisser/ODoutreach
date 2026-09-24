@@ -143,7 +143,7 @@ export function SuppressionRowsInspectableTable({
       <p className="text-[11px] text-muted-foreground">{summary}</p>
 
       {rows.length === 0 ? null : (
-        <Table>
+        <Table scroll="viewport">
           <TableHeader>
             <TableRow>
               <TableHead>{valueLabel}</TableHead>

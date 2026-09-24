@@ -34,6 +34,8 @@ type ClientPickerProps = {
   name?: string;
   disabled?: boolean;
   placeholder?: string;
+  /** Asks for a choice before the surrounding form can submit. */
+  required?: boolean;
 };
 
 export function ClientPicker({
@@ -46,6 +48,7 @@ export function ClientPicker({
   name,
   disabled = false,
   placeholder = "Search clients",
+  required = false,
 }: ClientPickerProps) {
   const router = useRouter();
   const listId = useId();
@@ -102,7 +105,9 @@ export function ClientPicker({
       <label htmlFor={`${listId}-button`} className="mb-1 block text-xs font-medium text-muted-foreground">
         {label}
       </label>
-      {name ? <input type="hidden" name={name} value={value ?? ""} /> : null}
+      {name ? (
+        <input type="hidden" name={name} value={value ?? ""} required={required} />
+      ) : null}
       <button
         id={`${listId}-button`}
         type="button"
@@ -110,6 +115,8 @@ export function ClientPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-required={required || undefined}
+        aria-invalid={required && !value ? true : undefined}
         onClick={() => setOpen((current) => !current)}
         className={cn(
           "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 text-left text-sm max-md:h-11 max-md:min-h-11",
@@ -163,6 +170,9 @@ export function ClientPicker({
             ) : null}
           </ul>
         </div>
+      ) : null}
+      {required && !value ? (
+        <p className="mt-1 text-xs text-muted-foreground">Choose a client</p>
       ) : null}
     </div>
   );
