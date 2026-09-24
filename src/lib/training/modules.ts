@@ -1311,8 +1311,8 @@ export const STAFF_VIDEO_SCRIPTS: readonly StaffVideoScript[] = [
     script: [
       "Open Reports — this is your default landing page.",
       "Walk through the KPI strip: Sent, Delivered, Replies, Bounces, Opt-outs.",
-      "Switch from All accessible clients to a single client using the filter pills.",
-      "Point out that all numbers are live from the database — there are no rollup tables.",
+      "Switch from All accessible clients to a single client using the client dropdown.",
+      "Point out that every figure is counted live, for the clients you can access.",
       "Show the per-client breakdown table at the bottom and explain Reply rate and Not reached.",
       "Close by saying: if Reports looks wrong, look at Activity for that client next, not at Admin operations.",
     ],

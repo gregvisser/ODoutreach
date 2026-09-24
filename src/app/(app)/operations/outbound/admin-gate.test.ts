@@ -49,8 +49,8 @@ describe("Admin operations gate (PR #140)", () => {
   });
 
   it("describes itself as admin-only on the page intro", () => {
-    expect(PAGE_SOURCE).toMatch(/Admin-only delivery/);
-    expect(PAGE_SOURCE).toMatch(/Not in the staff\s+sidebar/);
+    expect(PAGE_SOURCE).toMatch(/for administrators/);
+    expect(PAGE_SOURCE).toMatch(/not in the\s+menu/);
   });
 
   it("re-checks super-admin in every mutation action handler", () => {

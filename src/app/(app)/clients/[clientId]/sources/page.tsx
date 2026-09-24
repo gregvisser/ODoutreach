@@ -88,7 +88,7 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
         <CardHeader>
           <CardTitle>Lists for this client</CardTitle>
           <CardDescription>
-            Lists belong to this workspace only. Click a list to open delivery status and members.
+            Lists belong to this client only. Open a list to see who is on it and whether mail went out.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -2,9 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
 
+import { StickyFilterBar } from "@/components/app-shell/sticky-filter-bar";
+import { ClientPicker } from "@/components/clients/client-picker";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -61,64 +61,45 @@ export default async function ActivityPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <p className="rounded-lg border border-amber-400/40 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
-        <span className="font-medium">Admin-only legacy view.</span>{" "}
-        The day-to-day Activity surface lives inside each client workspace —
-        open a client from{" "}
+        <span className="font-medium">Administrator view.</span>{" "}
+        Day-to-day activity lives on each client&apos;s Activity tab. Open a client from{" "}
         <Link prefetch={false}
           href="/clients"
           className="font-medium underline-offset-2 hover:underline"
         >
           Clients
         </Link>{" "}
-        and use the Activity tab there. Per-client Activity groups replies
-        by mailbox, links into reply detail, and hides unrelated mailbox
-        inbox mail. This page is kept as a cross-client debug view and is
-        not in the staff sidebar.
+        and use Activity. That tab groups replies by mailbox, opens the reply,
+        and hides unrelated inbox mail. This page is a cross-client check and
+        is not in the menu.
       </p>
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <StickyFilterBar className="lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Activity (admin legacy view)</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Activity</h1>
           <p className="mt-1 text-muted-foreground">
-            Cross-client sends and inbound replies — filter by workspace when needed.
+            Sends and replies across clients. Choose one client when you need to.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link prefetch={false}
-            href="/activity"
-            className={cn(
-              buttonVariants({
-                variant: !clientFilter ? "secondary" : "outline",
-                size: "sm",
-              }),
-            )}
-          >
-            All
-          </Link>
-          {clients.map((c) => (
-            <Link prefetch={false}
-              key={c.id}
-              href={`/activity?client=${c.id}`}
-              className={cn(
-                buttonVariants({
-                  variant: clientFilter === c.id ? "secondary" : "outline",
-                  size: "sm",
-                }),
-              )}
-            >
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      </div>
+        <ClientPicker
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            href: `/activity?client=${c.id}`,
+          }))}
+          value={clientFilter ?? null}
+          allLabel="All accessible clients"
+          allHref="/activity"
+        />
+      </StickyFilterBar>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
             <CardTitle>Sent emails</CardTitle>
-            <CardDescription>Outbound operational log</CardDescription>
+            <CardDescription>Emails this team has sent</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table scroll="contained">
               <TableHeader>
                 <TableRow>
                   <TableHead>To</TableHead>
@@ -162,10 +143,10 @@ export default async function ActivityPage({ searchParams }: Props) {
         <Card className="border-border/80 shadow-sm">
           <CardHeader>
             <CardTitle>Replies</CardTitle>
-            <CardDescription>Inbound reply capture</CardDescription>
+            <CardDescription>Replies that came back</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table scroll="contained">
               <TableHeader>
                 <TableRow>
                   <TableHead>From</TableHead>

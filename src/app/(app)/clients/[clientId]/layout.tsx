@@ -12,7 +12,7 @@ export default async function ClientWorkspaceLayout({
   const { clientId } = await params;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8 md:[--table-sticky-top:7.25rem]">
       <Suspense fallback={<div className="h-10 border-b border-border/80 pb-3" aria-hidden />}>
         <ClientWorkspaceSubnav clientId={clientId} />
       </Suspense>

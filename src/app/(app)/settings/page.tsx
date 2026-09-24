@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AiBadge } from "@/components/ai/ai-badge";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -204,18 +205,20 @@ export default async function SettingsPage() {
 
           <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">AI spend</CardTitle>
+              <CardTitle className="text-lg">
+                <AiBadge>AI spend</AiBadge>
+              </CardTitle>
               <CardDescription>
                 What each client&apos;s AI usage cost, month by month, for
-                invoicing. Every call is recorded as it happens — including the
+                invoicing. Every call is recorded as it happens, including
                 refusals and failures, which cost nothing.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
-                Tokens in, tokens out, cost and client, per call. Refused calls
-                stay visible so a switched-off feature never looks the same as a
-                broken one.
+                Each call shows the client, the cost, and how much was used.
+                Refused calls stay visible so a switched-off feature never looks
+                the same as a broken one.
               </p>
               <Link prefetch={false}
                 href="/settings/ai-spend"

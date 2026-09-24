@@ -12,11 +12,11 @@ export default async function ResearchReviewPage({ params, searchParams }: { par
   const base = `/clients/${clientId}/research-review`;
   return <section aria-label="Research candidate review" className="space-y-5">
     <h1 className="text-2xl font-semibold">Research candidates</h1>
-    <p>Review the evidence before adding anyone to a contact list. Original decisions are historical; the current check below rechecks targeting and do-not-contact protection when you open this page.</p>
-    <p>This page does not import contacts or send emails. Acceptance and automatic research are not yet available.</p>
-    <a href={`${base}?page=${page}`} className="underline">Refresh current checks</a>
+    <p className="max-w-3xl text-sm text-muted-foreground">Review the evidence before adding anyone to a list. The original decision is kept. The current check below looks again at who you want to reach, and at do-not-contact, each time you open this page.</p>
+    <p className="max-w-3xl text-sm text-muted-foreground">This page does not import contacts or send emails. Acceptance and automatic research are not yet available.</p>
+    <a href={`${base}?page=${page}`} className="inline-flex min-h-11 items-center underline md:min-h-0">Refresh current checks</a>
     {!data.candidates.length && <p>No research candidates on this page.</p>}
-    {data.candidates.map(candidate => <article key={candidate.id} className="space-y-2 rounded border p-4" aria-label={candidate.email ?? "Candidate without email"}>
+    {data.candidates.map(candidate => <article key={candidate.id} className="space-y-2 rounded-lg border p-4 break-words" aria-label={candidate.email ?? "Candidate without email"}>
       <h2 className="font-semibold">{candidate.email ?? "Email unavailable"}</h2>
       <p>{candidate.company ?? "Company unavailable"} · Plan: {candidate.planName}</p>
       <p>Original decision: {labels[candidate.original.status]} · {candidate.evaluatedAt}</p>
@@ -26,7 +26,7 @@ export default async function ResearchReviewPage({ params, searchParams }: { par
       <p>Job title: {candidate.evidence.titles ?? "Missing"} · Industry: {candidate.evidence.industries ?? "Missing"}</p>
       <p>Seniority: {candidate.evidence.seniorities ?? "Missing"} · Region: {candidate.evidence.regions ?? "Missing"}</p>
     </article>)}
-    <nav aria-label="Research candidate pages" className="flex gap-4">
+    <nav aria-label="Research candidate pages" className="flex flex-wrap gap-4">
       {page > 0 && <Link href={`${base}?page=${page - 1}`} prefetch={false}>Previous candidates</Link>}
       {data.hasNext && <Link href={`${base}?page=${page + 1}`} prefetch={false}>Next candidates</Link>}
     </nav>

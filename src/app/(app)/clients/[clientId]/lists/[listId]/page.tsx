@@ -175,8 +175,8 @@ export default async function ListDetailPage({ params }: Props) {
               : ""}
           </CardDescription>
           <p className="mt-1 text-xs text-muted-foreground/80">
-            &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
-            connected mailbox/provider. It does not guarantee inbox placement.
+            &ldquo;Sent from mailbox&rdquo; means the email was handed to the
+            connected mailbox. It does not guarantee it reached the inbox.
             If no bounce is recorded, the system has not seen a delivery failure.
           </p>
           <p className="mt-1 text-xs text-muted-foreground/80">

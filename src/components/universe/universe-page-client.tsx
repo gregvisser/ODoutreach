@@ -5,16 +5,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { createListFromUniverseAction } from "@/app/(app)/universe/actions";
+import { ClientPicker } from "@/components/clients/client-picker";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -219,7 +213,7 @@ export function UniversePageClient({
             <Input id="industry" name="industry" defaultValue={filters.industry} disabled={pending} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="jobTitle">Job1 Title contains</Label>
+            <Label htmlFor="jobTitle">Job title contains</Label>
             <Input id="jobTitle" name="jobTitle" defaultValue={filters.jobTitle} disabled={pending} />
           </div>
           <div className="space-y-1.5">
@@ -240,11 +234,11 @@ export function UniversePageClient({
               className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
             >
               <option value="lastSeen">Last seen (newest first)</option>
-              <option value="name">Name (A→Z)</option>
-              <option value="company">Employer (A→Z)</option>
-              <option value="country">Country (A→Z)</option>
-              <option value="city">City (A→Z)</option>
-              <option value="email">A Emails (A→Z)</option>
+              <option value="name">Name (A to Z)</option>
+              <option value="company">Employer (A to Z)</option>
+              <option value="country">Country (A to Z)</option>
+              <option value="city">City (A to Z)</option>
+              <option value="email">Email (A to Z)</option>
             </select>
           </div>
         </div>
@@ -301,7 +295,7 @@ export function UniversePageClient({
             }
             const r = res.result;
             setActionMessage(
-              `Created list “${r.listName}” with ${String(r.addedToList)} contacts (${String(r.materializedNewContacts)} new in this workspace, ${String(r.reusedExistingContacts)} already in this workspace). Rows skipped in the list: ${String(r.listSkippedDuplicates)}; skipped with no email: ${String(r.skippedNoEmail)}.`,
+              `Created list “${r.listName}” with ${String(r.addedToList)} contacts (${String(r.materializedNewContacts)} new for this client, ${String(r.reusedExistingContacts)} already on this client). Skipped because they were already on the list: ${String(r.listSkippedDuplicates)}. Skipped because they have no email: ${String(r.skippedNoEmail)}.`,
             );
             const submittedClientId = String(fd.get("clientId") ?? "").trim();
             if (submittedClientId) {
@@ -315,26 +309,19 @@ export function UniversePageClient({
         >
           <input type="hidden" name="universeContactIds" value={[...selected].join(",")} />
           <div className="space-y-1.5">
-            <Label>Client workspace</Label>
-            <Select
-              value={clientId}
-              onValueChange={(v) => setClientId(v ?? "")}
+            <ClientPicker
+              label="Client"
+              clients={clients.map((c) => ({
+                id: c.id,
+                name: formatClientWorkspaceSelectLabel(clients, c.id),
+              }))}
+              value={clientId || null}
+              allLabel={null}
+              placeholder="Choose client"
               disabled={clients.length === 0}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Choose client">
-                  {formatClientWorkspaceSelectLabel(clients, clientId)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <input type="hidden" name="clientId" value={clientId} />
+              name="clientId"
+              onValueChange={(id) => setClientId(id ?? "")}
+            />
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="listName">List name</Label>

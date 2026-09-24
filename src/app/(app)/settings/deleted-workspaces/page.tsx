@@ -33,7 +33,7 @@ export default async function DeletedWorkspacesPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <h1 className="text-2xl font-semibold">Deleted workspaces</h1>
         <p className="text-muted-foreground">
-          Only a super-admin can view or restore deleted workspaces.
+          Only the owner account can view or restore deleted clients.
         </p>
         <Link prefetch={false}
           href="/settings"
@@ -70,8 +70,8 @@ export default async function DeletedWorkspacesPage() {
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">Deleted workspaces</h1>
         <p className="text-muted-foreground">
-          Soft-deleted workspaces are hidden everywhere and stop sending, but
-          their data is untouched and they can be restored for{" "}
+          Deleted clients are hidden everywhere and stop sending, but
+          their data is kept and they can be restored for{" "}
           {WORKSPACE_RECOVERY_WINDOW_DAYS} days. Permanent destruction is a
           separate, deliberate step that is not available here.
         </p>

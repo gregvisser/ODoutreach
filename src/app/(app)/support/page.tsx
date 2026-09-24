@@ -59,11 +59,10 @@ export default async function SupportPage() {
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Support
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">Tickets</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Support requests</h1>
         <p className="mt-1 text-muted-foreground">
-          Report any issue you hit using ODoutreach. Add screenshots and a
-          priority — the developer picks up each ticket, fixes it, and closes
-          it.
+          Tell us about a problem in the app. Add screenshots and how urgent
+          it is. Someone will pick it up, fix it, and close the request.
         </p>
       </div>
 

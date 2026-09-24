@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AiBadge } from "@/components/ai/ai-badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
@@ -45,7 +46,9 @@ export default async function AiSpendPage({ searchParams }: Props) {
   if (!staff.isSuperAdmin) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
-        <h1 className="text-2xl font-semibold">AI spend</h1>
+        <h1 className="text-2xl font-semibold">
+          <AiBadge>AI spend</AiBadge>
+        </h1>
         <p className="text-muted-foreground">
           Only the owner account can see AI spend across clients.
         </p>
@@ -70,7 +73,9 @@ export default async function AiSpendPage({ searchParams }: Props) {
     <div className="mx-auto max-w-5xl space-y-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">AI spend</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            <AiBadge>AI spend</AiBadge>
+          </h1>
           <p className="mt-1 text-muted-foreground">
             What each client&apos;s AI usage cost in <strong>{month.label}</strong>,
             for invoicing. Every AI call is recorded as it happens — including
@@ -111,10 +116,9 @@ export default async function AiSpendPage({ searchParams }: Props) {
 
       {!featuresSwitchedOn ? (
         <div className="rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-          <strong>AI features are switched off.</strong> <code>AI_FEATURES</code>{" "}
-          is set to off, so calls are being refused rather than made. Refusals
-          still appear below, costing nothing, so an intentional pause never
-          looks the same as a silent failure.
+          <strong>AI features are switched off.</strong> Calls are refused
+          rather than made. Refusals still appear below, costing nothing, so a
+          deliberate pause never looks the same as a silent failure.
         </div>
       ) : null}
 
@@ -126,8 +130,7 @@ export default async function AiSpendPage({ searchParams }: Props) {
           <strong>Nothing was charged this month.</strong> All{" "}
           {NUMBER.format(totals.totalCalls)} calls were refused or failed, so
           there is nothing to invoice. If that is not deliberate, the usual cause
-          is a missing <code>XAI_API_KEY</code> (or Anthropic key when
-          <code>AI_MODEL_PROVIDER=anthropic</code>) in the Azure app settings.
+          is that AI has not been switched on in the app settings.
         </div>
       ) : null}
 

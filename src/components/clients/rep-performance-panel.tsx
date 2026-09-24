@@ -1,5 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { explainClientRepPerformanceWithAiAction } from "@/app/(app)/clients/[clientId]/mailboxes/ai-rep-performance-actions";
+import { AiBadge } from "@/components/ai/ai-badge";
 import {
   Card,
   CardContent,
@@ -219,7 +220,9 @@ export function RepPerformancePanel({
   return (
     <Card id="ai-sender-comparison" className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Compare our senders with AI</CardTitle>
+        <CardTitle>
+          <AiBadge>Compare our senders with AI</AiBadge>
+        </CardTitle>
         <CardDescription>
           Counts what each mailbox sent and what came back, checks whether the
           differences are bigger than normal variation, then asks the AI to
@@ -247,8 +250,8 @@ export function RepPerformancePanel({
           <OptionalAiUnavailable label="Compare our senders" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
-            The AI is not configured on this environment yet, so nothing can be
-            analysed. Ask an administrator to add the API key.
+            AI is not set up yet, so nothing can be analysed. Ask an administrator
+            to turn it on.
           </p>
         ) : !canMutate ? (
           <p className="text-sm text-muted-foreground">
@@ -261,7 +264,7 @@ export function RepPerformancePanel({
               variant="secondary"
               pendingLabel="Comparing the senders…"
             >
-              {review ? "Compare them again" : "Compare our senders"}
+              <AiBadge>{review ? "Compare them again" : "Compare our senders"}</AiBadge>
             </FormSubmitButton>
           </form>
         )}

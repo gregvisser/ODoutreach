@@ -97,10 +97,7 @@ export function ClientMailboxInboxPanel({
     }
     return (
       <p className="text-sm text-muted-foreground">
-        Replies are checked by reading each connected mailbox (
-        <span className="text-foreground">Microsoft Mail.Read</span> or{" "}
-        <span className="text-foreground">Gmail readonly</span>). Click{" "}
-        <strong>Check for replies</strong> to pull the latest messages into Activity.
+        Choose a mailbox, then check it for new replies. They show on Activity.
       </p>
     );
   };
@@ -121,8 +118,7 @@ export function ClientMailboxInboxPanel({
           {connectedMailboxes.map((m) => {
             const oauthOk = m.provider === "GOOGLE" ? oauthGoogleReady : oauthMicrosoftReady;
             return (
-              <div key={m.id} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground sm:hidden">Check</span>
+              <div key={m.id} className="flex max-w-full flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   size="sm"

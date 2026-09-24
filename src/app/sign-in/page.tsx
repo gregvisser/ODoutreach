@@ -37,11 +37,11 @@ export default async function SignInPage({
             {brand.brandName}
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            {brand.productName} operations
+            {brand.productName}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Sign in with your Microsoft work account. Multi-factor authentication is enforced by your
-            organization in Microsoft Entra ID.
+            Sign in with your Microsoft work account. Your organisation&apos;s
+            sign-in checks, including extra verification, still apply.
           </p>
         </div>
         <MicrosoftSignInButton callbackUrl={callbackUrl} />

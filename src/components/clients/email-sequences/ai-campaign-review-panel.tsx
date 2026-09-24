@@ -1,5 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { reviewClientCampaignWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-campaign-review-actions";
+import { AiBadge } from "@/components/ai/ai-badge";
 import {
   Card,
   CardContent,
@@ -179,7 +180,9 @@ export function AiCampaignReviewPanel({
   return (
     <Card id="ai-campaign-review" className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Score a campaign&apos;s writing with AI</CardTitle>
+        <CardTitle>
+          <AiBadge>Score a campaign&apos;s writing with AI</AiBadge>
+        </CardTitle>
         <CardDescription>
           Reads every email in one campaign and scores the <strong>writing</strong>{" "}
           out of 100, with a short critique of what to tighten before it goes out.
@@ -202,8 +205,8 @@ export function AiCampaignReviewPanel({
           <OptionalAiUnavailable label="Review with AI" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
-            The AI is not configured on this environment yet, so nothing can be
-            reviewed. Ask an administrator to add the API key.
+            AI is not set up yet, so nothing can be reviewed. Ask an administrator
+            to turn it on.
           </p>
         ) : sequences.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -243,7 +246,7 @@ export function AiCampaignReviewPanel({
                           variant="secondary"
                           pendingLabel="Reading the campaign…"
                         >
-                          {review ? "Review again" : "Review with AI"}
+                          <AiBadge>{review ? "Review again" : "Review with AI"}</AiBadge>
                         </FormSubmitButton>
                       </form>
                     )}

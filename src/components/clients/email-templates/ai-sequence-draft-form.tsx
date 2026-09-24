@@ -7,6 +7,7 @@ import {
   SEQUENCE_DRAFT_START_FAILED_MESSAGE,
   isSequenceDraftRedirectError,
 } from "@/lib/ai/sequence-draft-start";
+import { AiBadge } from "@/components/ai/ai-badge";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 /**
@@ -44,7 +45,7 @@ export function AiSequenceDraftForm({ clientId }: { clientId: string }) {
       ) : null}
       <input type="hidden" name="clientId" value={clientId} />
       <FormSubmitButton pendingLabel="Starting the draft…">
-        Write a sequence with AI
+        <AiBadge>Write a sequence with AI</AiBadge>
       </FormSubmitButton>
     </form>
   );

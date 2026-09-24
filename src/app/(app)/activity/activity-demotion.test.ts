@@ -48,10 +48,10 @@ describe("/activity demotion (PR #140 G11)", () => {
     expect(PAGE_SOURCE).not.toContain("requireStaffUser");
   });
 
-  it("global Activity is labelled as an admin-only legacy view", () => {
-    expect(PAGE_SOURCE).toContain("Activity (admin legacy view)");
-    expect(PAGE_SOURCE).toMatch(/Admin-only legacy view/);
-    expect(PAGE_SOURCE).toMatch(/not in the staff sidebar/);
+  it("global Activity is labelled as an administrator view and kept out of the menu", () => {
+    expect(PAGE_SOURCE).toContain(">Activity<");
+    expect(PAGE_SOURCE).toMatch(/Administrator view/);
+    expect(PAGE_SOURCE).toMatch(/not in the menu/);
   });
 
   it("per-client Activity route remains intact", () => {

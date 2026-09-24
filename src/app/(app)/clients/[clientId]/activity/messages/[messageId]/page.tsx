@@ -149,8 +149,8 @@ export default async function InboundMessageDetailPage({ params }: Props) {
             </Badge>
           </div>
           <CardDescription>
-            Conversation snapshot stored by the inbox sync. Full bodies
-            are fetched on demand and cached here for this workspace.
+            What we stored when this reply was checked. The full message is
+            loaded when you open it, and kept for this client.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -247,13 +247,13 @@ export default async function InboundMessageDetailPage({ params }: Props) {
         <CardHeader>
           <CardTitle>Reply history</CardTitle>
           <CardDescription>
-            Outbound replies sent from ODoutreach for this inbound message.
+            Replies sent from here for this message.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {replyHistory.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No replies sent yet from this workspace.
+              No replies sent yet for this client.
             </p>
           ) : (
             <ol className="space-y-2">

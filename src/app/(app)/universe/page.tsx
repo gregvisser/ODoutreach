@@ -67,7 +67,7 @@ export default async function UniversePage({ searchParams }: Props) {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Universe</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
-          All imported contacts are stored here for reuse across client workspaces.
+          All imported contacts are stored here for reuse across the clients you work on.
         </p>
       </div>
 
