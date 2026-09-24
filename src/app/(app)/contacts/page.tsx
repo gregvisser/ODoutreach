@@ -191,12 +191,14 @@ export default async function ContactsPage({ searchParams }: Props) {
           </p>
         </div>
         <ClientPicker
-          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            href: directoryHref({ clientFilter: c.id, search, offset: 0 }),
+          }))}
           value={clientFilter ?? null}
           allLabel="All accessible clients"
-          hrefFor={(id) =>
-            directoryHref({ clientFilter: id ?? undefined, search, offset: 0 })
-          }
+          allHref={directoryHref({ search, offset: 0 })}
         />
       </StickyFilterBar>
 
@@ -282,7 +284,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         </p>
       ) : null}
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="overflow-visible border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle>Directory</CardTitle>
           <CardDescription>

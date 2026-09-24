@@ -61,7 +61,6 @@ export function ClientMailboxInboxPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [key, setKey] = useState(0);
-  const [mailboxId, setMailboxId] = useState(connectedMailboxes[0]?.id ?? "");
   const [message, setMessage] = useState<{
     type: "ok" | "err";
     text: string;
@@ -115,35 +114,20 @@ export function ClientMailboxInboxPanel({
       )}
 
       {connectedMailboxes.length > 0 && (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end" key={key}>
-          {(() => {
-            const m = connectedMailboxes.find((row) => row.id === mailboxId) ?? connectedMailboxes[0];
-            if (!m) return null;
+        <div className="flex flex-wrap gap-2" key={key}>
+          {connectedMailboxes.map((m) => {
             const oauthOk = m.provider === "GOOGLE" ? oauthGoogleReady : oauthMicrosoftReady;
             return (
-              <div className="flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-end">
-                <label className="block min-w-0 flex-1 text-sm">
-                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Mailbox</span>
-                  <select
-                    value={m.id}
-                    onChange={(event) => setMailboxId(event.target.value)}
-                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm max-md:h-11"
-                  >
-                    {connectedMailboxes.map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {replySyncButtonLabel(row)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div key={m.id} className="flex max-w-full flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
                   disabled={!canSync || pending || !oauthOk}
                   onClick={() => onSync(m.id, m.provider)}
+                  title={m.label}
                 >
-                  Check for replies
+                  {replySyncButtonLabel(m)}
                 </Button>
                 <span className="text-xs text-muted-foreground">
                   {formatReplyCheckAttempt(m.lastSyncAt)}
@@ -155,7 +139,7 @@ export function ClientMailboxInboxPanel({
                 ) : null}
               </div>
             );
-          })()}
+          })}
         </div>
       )}
 

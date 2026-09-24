@@ -116,10 +116,14 @@ export default async function SuppressionPage({ searchParams }: Props) {
           </p>
         </div>
         <ClientPicker
-          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            href: `/suppression?client=${c.id}`,
+          }))}
           value={clientFilter ?? null}
           allLabel="All accessible clients"
-          hrefFor={(id) => (id ? `/suppression?client=${id}` : "/suppression")}
+          allHref="/suppression"
         />
       </StickyFilterBar>
 

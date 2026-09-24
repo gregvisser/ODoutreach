@@ -1,6 +1,8 @@
 export type ClientPickerOption = {
   id: string;
   name: string;
+  /** Where to go when this client is chosen. A string so a server page can pass it. */
+  href?: string;
 };
 
 /**

@@ -32,11 +32,9 @@ test.describe("Universe — build a sequence with this list", () => {
     await expect(row).toBeVisible();
     await row.getByRole("checkbox").check();
 
-    // The client picker is a Base UI Select — its trigger carries no
-    // form-label association Playwright's `getByLabel` can follow, so it is
-    // targeted by its stable `data-slot` instead (there is only one on this
-    // page; the native `<select>` filters above it are NOT this control).
-    await content.locator('[data-slot="select-trigger"]').click();
+    // The client field is the shared searchable picker. Open it and choose
+    // the fixture client. The success link below is what this journey proves.
+    await content.getByRole("button", { name: "Client" }).click();
     await page.getByRole("option", { name: E2E_CLIENT.name }).click();
 
     const listName = `E2E CTA list ${Date.now()}`;

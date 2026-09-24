@@ -116,15 +116,17 @@ export default async function ReportingPage({ searchParams }: Props) {
           </p>
         </div>
         <ClientPicker
-          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            href: `/reporting?client=${c.id}${rangeQuery}`,
+          }))}
           value={clientFilter ?? null}
           allLabel="All accessible clients"
-          hrefFor={(id) =>
-            id
-              ? `/reporting?client=${id}${rangeQuery}`
-              : range
-                ? `/reporting?from=${range.fromIso}&to=${range.toIso}`
-                : "/reporting"
+          allHref={
+            range
+              ? `/reporting?from=${range.fromIso}&to=${range.toIso}`
+              : "/reporting"
           }
         />
       </StickyFilterBar>

@@ -101,12 +101,14 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
       <StickyFilterBar>
         <ClientPicker
           label="Client"
-          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            href: `/operations/outbound?client=${c.id}`,
+          }))}
           value={clientFilter ?? null}
           allLabel="All accessible clients"
-          hrefFor={(id) =>
-            id ? `/operations/outbound?client=${id}` : "/operations/outbound"
-          }
+          allHref="/operations/outbound"
         />
       </StickyFilterBar>
 

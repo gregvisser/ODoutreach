@@ -81,10 +81,14 @@ export default async function ActivityPage({ searchParams }: Props) {
           </p>
         </div>
         <ClientPicker
-          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          clients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            href: `/activity?client=${c.id}`,
+          }))}
           value={clientFilter ?? null}
           allLabel="All accessible clients"
-          hrefFor={(id) => (id ? `/activity?client=${id}` : "/activity")}
+          allHref="/activity"
         />
       </StickyFilterBar>
 

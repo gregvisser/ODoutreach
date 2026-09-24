@@ -13,7 +13,7 @@ export default async function ResearchReviewPage({ params, searchParams }: { par
   return <section aria-label="Research candidate review" className="space-y-5">
     <h1 className="text-2xl font-semibold">Research candidates</h1>
     <p className="max-w-3xl text-sm text-muted-foreground">Review the evidence before adding anyone to a list. The original decision is kept. The current check below looks again at who you want to reach, and at do-not-contact, each time you open this page.</p>
-    <p className="max-w-3xl text-sm text-muted-foreground">This page does not import contacts or send email. You cannot accept a candidate or run research from here yet.</p>
+    <p className="max-w-3xl text-sm text-muted-foreground">This page does not import contacts or send emails. Acceptance and automatic research are not yet available.</p>
     <a href={`${base}?page=${page}`} className="inline-flex min-h-11 items-center underline md:min-h-0">Refresh current checks</a>
     {!data.candidates.length && <p>No research candidates on this page.</p>}
     {data.candidates.map(candidate => <article key={candidate.id} className="space-y-2 rounded-lg border p-4 break-words" aria-label={candidate.email ?? "Candidate without email"}>

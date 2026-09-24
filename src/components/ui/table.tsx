@@ -11,20 +11,44 @@ function Table({
 }: React.ComponentProps<"table"> & {
   /**
    * `page` — the page scrolls and the header sticks under the app header.
+   * Horizontal scrolling is added only when the table is wider than the
+   * container, because an overflow ancestor would trap the sticky header.
    * `contained` — the table scrolls inside a capped region (use inside a card
    * that sits alongside other content).
    */
   scroll?: "contained" | "page"
 }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [widerThanContainer, setWiderThanContainer] = React.useState(false);
+
+  React.useEffect(() => {
+    if (scroll !== "page") return undefined;
+    const container = containerRef.current;
+    const table = container?.querySelector("table");
+    if (!container || !table) return undefined;
+    const measure = () => {
+      setWiderThanContainer(table.scrollWidth > container.clientWidth + 1);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(table);
+    return () => observer.disconnect();
+  }, [scroll]);
+
   return (
     <div
+      ref={containerRef}
       data-slot="table-container"
       data-scroll={scroll}
+      data-wide={widerThanContainer ? "true" : "false"}
       className={cn(
         "group/table relative w-full",
         scroll === "contained"
           ? "max-h-[min(70vh,40rem)] overflow-auto"
-          : "overflow-x-auto overflow-y-clip",
+          : widerThanContainer
+            ? "overflow-x-auto overflow-y-clip"
+            : "overflow-x-clip overflow-y-clip",
       )}
     >
       <table
@@ -43,7 +67,10 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
       className={cn(
         "z-10 bg-card [&_tr]:border-b",
         "group-data-[scroll=contained]/table:sticky group-data-[scroll=contained]/table:top-0",
-        "group-data-[scroll=page]/table:sticky group-data-[scroll=page]/table:top-[var(--table-sticky-top,4rem)]",
+        // A sideways-scrolling wrapper is its own scrollport. A 4rem offset
+        // inside that box pulls the header down over the first rows, so page
+        // mode only sticks when the table fits and the page itself scrolls.
+        "group-data-[scroll=page]/table:group-data-[wide=false]/table:sticky group-data-[scroll=page]/table:group-data-[wide=false]/table:top-[var(--table-sticky-top,4rem)]",
         className,
       )}
       {...props}
@@ -55,7 +82,12 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
       data-slot="table-body"
-      className={cn("[&_tr:last-child]:border-0", className)}
+      className={cn(
+        "[&_tr:last-child]:border-0",
+        // Keep a scrolled row below the sticky header, including for clicks.
+        "[&_tr]:scroll-mt-[calc(var(--table-sticky-top,4rem)+2.75rem)]",
+        className,
+      )}
       {...props}
     />
   )

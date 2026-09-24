@@ -23,9 +23,12 @@ type ClientPickerProps = {
    * Pass null to hide that option (for example a required form field).
    */
   allLabel?: string | null;
-  /** When set, choosing a client navigates to this URL. Preserves the caller's query shape. */
-  hrefFor?: (clientId: string | null) => string;
-  /** When set, choosing a client updates local state instead of navigating. */
+  /** Where the all-clients option navigates. A string, never a function. */
+  allHref?: string;
+  /**
+   * Local selection, for a picker that already lives in a client component.
+   * Server pages must pass `href` on each client and `allHref` instead.
+   */
   onValueChange?: (clientId: string | null) => void;
   /** Renders a hidden input so the choice submits with a surrounding form. */
   name?: string;
@@ -38,7 +41,7 @@ export function ClientPicker({
   value,
   label = "Client",
   allLabel = "All accessible clients",
-  hrefFor,
+  allHref,
   onValueChange,
   name,
   disabled = false,
@@ -83,11 +86,15 @@ export function ClientPicker({
   function choose(clientId: string | null) {
     setOpen(false);
     setQuery("");
-    if (hrefFor) {
-      router.push(hrefFor(clientId));
+    if (onValueChange) {
+      onValueChange(clientId);
       return;
     }
-    onValueChange?.(clientId);
+    const href =
+      clientId === null
+        ? allHref
+        : clients.find((client) => client.id === clientId)?.href;
+    if (href) router.push(href);
   }
 
   return (

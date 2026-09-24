@@ -10,10 +10,12 @@ import { cn } from "@/lib/utils";
  */
 export function AiIcon({ className }: { className?: string }) {
   return (
-    <Sparkles
-      aria-label="AI"
-      className={cn("size-4 shrink-0 text-primary", className)}
-    />
+    <span aria-hidden="true" className="inline-flex">
+      <Sparkles
+        aria-label="AI"
+        className={cn("size-4 shrink-0 text-primary", className)}
+      />
+    </span>
   );
 }
 

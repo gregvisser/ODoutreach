@@ -48,7 +48,7 @@ export default async function AppLayout({
         isSuperAdmin={gate.staff.isSuperAdmin}
         googleReconnectsAttentionCount={googleReconnectsAttentionCount}
       />
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
+      <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-x-clip overflow-y-auto">
         <AppHeader brand={brand} isSuperAdmin={gate.staff.isSuperAdmin} googleReconnectsAttentionCount={googleReconnectsAttentionCount} />
         <main className="min-w-0 flex-1 bg-background px-4 py-6 md:px-8 md:py-8">
           {children}

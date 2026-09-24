@@ -54,7 +54,8 @@ describe("ClientPicker source", () => {
     expect(source).toContain('role="listbox"');
     expect(source).toContain("Search clients");
     expect(source).toContain("All accessible clients");
-    expect(source).toContain("hrefFor");
+    expect(source).toContain("allHref");
+    expect(source).not.toContain("hrefFor");
     expect(source).toContain("router.push");
   });
 });
