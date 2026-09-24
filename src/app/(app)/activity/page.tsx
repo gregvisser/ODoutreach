@@ -95,7 +95,7 @@ export default async function ActivityPage({ searchParams }: Props) {
             <CardDescription>Emails this team has sent</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table scroll="contained">
               <TableHeader>
                 <TableRow>
                   <TableHead>To</TableHead>
@@ -142,7 +142,7 @@ export default async function ActivityPage({ searchParams }: Props) {
             <CardDescription>Replies that came back</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table scroll="contained">
               <TableHeader>
                 <TableRow>
                   <TableHead>From</TableHead>

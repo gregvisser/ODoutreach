@@ -69,7 +69,7 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Client workspace
+            {client.name}
           </p>
           <h1 className="text-3xl font-semibold tracking-tight">Templates</h1>
           <p className="mt-1 max-w-2xl text-muted-foreground">

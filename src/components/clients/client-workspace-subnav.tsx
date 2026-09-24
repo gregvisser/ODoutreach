@@ -106,7 +106,7 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
             // not making navigation faster, it was making the page load fail.
             prefetch={false}
             className={cn(
-              "inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors",
+              "inline-flex shrink-0 items-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors max-md:min-h-11",
               active
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

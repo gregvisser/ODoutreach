@@ -119,7 +119,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table scroll="contained">
               <TableHeader>
                 <TableRow>
                   <TableHead>Workspace</TableHead>
@@ -231,7 +231,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table scroll="contained">
             <TableHeader>
               <TableRow>
                 <TableHead>Time</TableHead>
@@ -323,7 +323,7 @@ function OpsTable({
         {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table scroll="contained">
           <TableHeader>
             <TableRow>
               <TableHead>To</TableHead>

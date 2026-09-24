@@ -44,6 +44,35 @@ Authenticated pages need a database and a Microsoft sign-in, and neither was ava
 - Privacy (unchanged copy, layout check): `privacy-390.png`, `privacy-820.png`, `privacy-1440.png`
 - `/reporting` while signed out redirects to sign-in and keeps `callbackUrl`: `reporting-signed-out-390.png` and the 820 and 1440 pairs
 
+## Follow-up — 24 September 2026, same pull request
+
+Desktop controls are the original heights again (`h-8`, `h-7`, `h-6`, `size-8`). Phone widths (`max-md`) keep a 44px target on buttons, inputs, the menu, the client tabs and the client picker. `Table` takes `scroll="page"` (default: the page scrolls, header sticks under the app header) or `scroll="contained"` (capped region). Reports breakdown, activity and admin operations use contained because those tables sit beside other blocks. Client pages set `--table-sticky-top` so a sticky head clears the tab row.
+
+| Route | What changed |
+| --- | --- |
+| `/` and `/dashboard` | Redirects only. No screen of their own. |
+| `/clients/[id]` overview | Shared tab row, button density and table scroll. Checklist copy was already staff-facing. |
+| Brief | Dropped “ICP” and “workspace” from the introduction. |
+| Contacts / lists | Import description no longer says “workspace”. Two action buttons stay; they are a fixed pair. |
+| List detail | “Sent from mailbox” no longer names the product or the provider. |
+| Email review | Refresh and paging links meet the phone tap size and wrap. No AI call on this page. |
+| Mailboxes | “Check for replies” is one button plus a mailbox dropdown, instead of one button per mailbox. |
+| Onboarding | Redirects into the brief. No separate copy. |
+| Outreach | AI cards already use `AiBadge`. No further AI entry point. |
+| Research review | Plainer explanation. Cards wrap on a narrow screen. Research plans are saved criteria, not an AI call, so they do not get sparkles. |
+| Setup help | Already written for the customer’s IT contact. Layout inherits the shell. |
+| Sources | List description says “this client”. Research plans are not AI. |
+| Do-not-contact (client) | Shared shell. Status wording, including “List held — sending continues”, unchanged. |
+| Activity, reply and message | “ODoutreach” and “workspace” removed from the explanations. Classified replies already use the sparkles badge. |
+| `/activity/outbound/[id]` | Shared button and table behaviour. The page is an administrator record. |
+| `/reporting/detail` | Date note no longer says “right now metric”. |
+| Google logins | Table scrolls with the page. Copy was already plain. |
+| Settings branding, staff access, internal test addresses | Shared form controls. Owner-only gates stay. |
+| Deleted clients | “Super-admin” and “soft-deleted workspaces” rewritten. |
+| Support request detail | Sheets already cap at the viewport. Actions stay a short fixed set. |
+| Training, a module, staff handover | How-do-I search already has sparkles. Module text is the training script. |
+| Privacy, terms, unsubscribe | Public legal and unsubscribe copy left as written so it still matches what the product does. |
+
 ## Left as they are
 
 - Sending, scheduling, do-not-contact rules, readiness, open tracking, auth and the data model.

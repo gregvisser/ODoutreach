@@ -61,6 +61,7 @@ export function ClientMailboxInboxPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [key, setKey] = useState(0);
+  const [mailboxId, setMailboxId] = useState(connectedMailboxes[0]?.id ?? "");
   const [message, setMessage] = useState<{
     type: "ok" | "err";
     text: string;
@@ -97,10 +98,7 @@ export function ClientMailboxInboxPanel({
     }
     return (
       <p className="text-sm text-muted-foreground">
-        Replies are checked by reading each connected mailbox (
-        <span className="text-foreground">Microsoft Mail.Read</span> or{" "}
-        <span className="text-foreground">Gmail readonly</span>). Click{" "}
-        <strong>Check for replies</strong> to pull the latest messages into Activity.
+        Choose a mailbox, then check it for new replies. They show on Activity.
       </p>
     );
   };
@@ -117,21 +115,35 @@ export function ClientMailboxInboxPanel({
       )}
 
       {connectedMailboxes.length > 0 && (
-        <div className="flex flex-wrap gap-2" key={key}>
-          {connectedMailboxes.map((m) => {
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end" key={key}>
+          {(() => {
+            const m = connectedMailboxes.find((row) => row.id === mailboxId) ?? connectedMailboxes[0];
+            if (!m) return null;
             const oauthOk = m.provider === "GOOGLE" ? oauthGoogleReady : oauthMicrosoftReady;
             return (
-              <div key={m.id} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground sm:hidden">Check</span>
+              <div className="flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="block min-w-0 flex-1 text-sm">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Mailbox</span>
+                  <select
+                    value={m.id}
+                    onChange={(event) => setMailboxId(event.target.value)}
+                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm max-md:h-11"
+                  >
+                    {connectedMailboxes.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {replySyncButtonLabel(row)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
                   disabled={!canSync || pending || !oauthOk}
                   onClick={() => onSync(m.id, m.provider)}
-                  title={m.label}
                 >
-                  {replySyncButtonLabel(m)}
+                  Check for replies
                 </Button>
                 <span className="text-xs text-muted-foreground">
                   {formatReplyCheckAttempt(m.lastSyncAt)}
@@ -143,7 +155,7 @@ export function ClientMailboxInboxPanel({
                 ) : null}
               </div>
             );
-          })}
+          })()}
         </div>
       )}
 

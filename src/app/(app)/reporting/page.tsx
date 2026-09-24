@@ -273,7 +273,7 @@ export default async function ReportingPage({ searchParams }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table scroll="contained">
               <TableHeader>
                 <TableRow>
                   <TableHead>Client</TableHead>

@@ -17,9 +17,9 @@ export default async function EmailReviewPage({ params, searchParams }: { params
     <h1 className="text-2xl font-semibold">Emails waiting for your approval</h1>
     <p>Emails can be held because automatic sending is off, or because another client recently contacted the recipient. Review the email and any recent contact history before choosing to queue it. Approving one email leaves the client’s automatic sending setting unchanged.</p>
     <p>Current mailbox limits, warm-up, sending days and do-not-contact checks still apply. Approval queues the email; it does not prove delivery.</p>
-    <a href={`${base}?page=${page}`} className="underline">Refresh review status</a>
+    <a href={`${base}?page=${page}`} className="inline-flex min-h-11 items-center underline md:min-h-0">Refresh review status</a>
     {data.emails.length ? data.emails.map(email => <HeldEmailReview key={`${email.id}:${email.reviewToken}`} clientId={clientId} email={email} />) : <p>No emails waiting on this page.</p>}
-    <nav aria-label="Email review pages" className="flex gap-4">
+    <nav aria-label="Email review pages" className="flex flex-wrap gap-4">
       {page > 0 && <Link prefetch={false} href={`${base}?page=${page - 1}`}>Previous emails</Link>}
       {data.hasNext && <Link prefetch={false} href={`${base}?page=${page + 1}`}>Next emails</Link>}
     </nav>

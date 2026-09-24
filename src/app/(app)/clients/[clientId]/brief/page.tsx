@@ -82,9 +82,9 @@ export default async function ClientBriefPage({ params }: Props) {
               </Badge>
             </div>
             <p className="max-w-2xl text-muted-foreground">
-              Business and targeting truth for this workspace — identity, ICP,
-              positioning, and compliance. Sender signatures and mailbox setup
-              live under Mailboxes.
+              Who this client is, who they want to reach, how they describe
+              themselves, and the rules outreach must follow. Signatures and
+              mailbox setup live under Mailboxes.
             </p>
           </div>
         </div>

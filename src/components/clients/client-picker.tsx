@@ -105,7 +105,7 @@ export function ClientPicker({
         aria-controls={listId}
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 text-left text-sm",
+          "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 text-left text-sm max-md:h-11 max-md:min-h-11",
           "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}
@@ -121,7 +121,7 @@ export function ClientPicker({
             onChange={(event) => setQuery(event.target.value)}
             placeholder={placeholder}
             aria-label={placeholder}
-            className="min-h-11 w-full border-b border-border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
+            className="h-9 w-full border-b border-border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground max-md:h-11"
           />
           <ul
             id={listId}
@@ -177,7 +177,7 @@ function PickerOption({
       aria-selected={selected}
       onClick={onClick}
       className={cn(
-        "flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm hover:bg-muted",
+        "flex h-9 w-full items-center gap-2 px-3 text-left text-sm hover:bg-muted max-md:h-11",
         selected && "bg-muted font-medium",
       )}
     >

@@ -4,11 +4,28 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  scroll = "page",
+  ...props
+}: React.ComponentProps<"table"> & {
+  /**
+   * `page` — the page scrolls and the header sticks under the app header.
+   * `contained` — the table scrolls inside a capped region (use inside a card
+   * that sits alongside other content).
+   */
+  scroll?: "contained" | "page"
+}) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full max-h-[min(70vh,40rem)] overflow-auto"
+      data-scroll={scroll}
+      className={cn(
+        "group/table relative w-full",
+        scroll === "contained"
+          ? "max-h-[min(70vh,40rem)] overflow-auto"
+          : "overflow-x-auto overflow-y-clip",
+      )}
     >
       <table
         data-slot="table"
@@ -23,7 +40,12 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("sticky top-0 z-10 bg-card [&_tr]:border-b", className)}
+      className={cn(
+        "z-10 bg-card [&_tr]:border-b",
+        "group-data-[scroll=contained]/table:sticky group-data-[scroll=contained]/table:top-0",
+        "group-data-[scroll=page]/table:sticky group-data-[scroll=page]/table:top-[var(--table-sticky-top,4rem)]",
+        className,
+      )}
       {...props}
     />
   )

@@ -152,8 +152,8 @@ export default async function ClientActivityPage({ params, searchParams }: Props
             check Do-not-contact for the current blocked contacts.
           </p>
           <p className="mt-3 text-xs text-muted-foreground/80">
-            &ldquo;Sent from mailbox&rdquo; means ODoutreach handed the email to the
-            connected mailbox/provider. It does not guarantee inbox placement.
+            &ldquo;Sent from mailbox&rdquo; means the email was handed to the
+            connected mailbox. It does not guarantee it reached the inbox.
           </p>
           <p className="mt-1 text-xs text-muted-foreground/80">
             &ldquo;Queued&rdquo; means the email is waiting for the sender to
@@ -172,7 +172,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
 
       <details className="rounded-lg border border-border/60 bg-muted/10" open={mode === "all"}>
         <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
-          {mode === "all" ? "Full workspace history" : "Recent sequence events"}
+          {mode === "all" ? "Full history for this client" : "Recent sequence events"}
           <span className="ml-2 text-xs text-muted-foreground/70">
             (newest first — collapsed by default)
           </span>
@@ -196,7 +196,7 @@ export default async function ClientActivityPage({ params, searchParams }: Props
                 }
                 className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
-                {mode === "all" ? "Show outreach only" : "Show full workspace history"}
+                {mode === "all" ? "Show outreach only" : "Show full history"}
               </Link>
             </div>
           </div>

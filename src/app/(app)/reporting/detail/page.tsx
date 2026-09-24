@@ -118,8 +118,8 @@ export default async function ReportDetailPage({ searchParams }: Props) {
 
       {!def.windowed && range ? (
         <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          This is a live &ldquo;right now&rdquo; metric — it has no history, so
-          the selected date range doesn&apos;t change it.
+          This figure is the current total. It has no history, so the dates
+          you picked do not change it.
         </p>
       ) : null}
 

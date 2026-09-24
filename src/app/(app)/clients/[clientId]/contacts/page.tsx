@@ -216,7 +216,7 @@ export default async function ClientContactsPage({ params }: Props) {
             <div>
               <CardTitle>Import contacts</CardTitle>
               <CardDescription>
-                Bring contacts into this workspace from RocketReach or CSV, then
+                Bring contacts in from RocketReach or a spreadsheet, then
                 choose the finished list when you build an outreach sequence.
               </CardDescription>
             </div>
