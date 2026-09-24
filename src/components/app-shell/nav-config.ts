@@ -8,7 +8,7 @@ import {
   MailQuestion,
   PieChart,
   Settings,
-  Sparkles,
+  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -59,7 +59,7 @@ export const mainNav: NavItem[] = [
   // queue nobody works.
   { title: "Replies to answer", href: "/replies", icon: MailQuestion },
   { title: "Clients", href: "/clients", icon: Users },
-  { title: "New client", href: "/clients/new", icon: Sparkles },
+  { title: "New client", href: "/clients/new", icon: UserPlus },
   { title: "Universe", href: "/universe", icon: Globe2 },
   // Cross-client blocked list. Named "Blocked contacts" (not "Do-not-contact")
   // so it doesn't collide with the per-client "Do-not-contact" workspace tab,

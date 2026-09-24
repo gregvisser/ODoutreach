@@ -92,8 +92,9 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
   return (
     <nav
       aria-label="Client workspace"
-      className="-mx-1 flex flex-wrap gap-1 border-b border-border/80 pb-3"
+      className="border-b border-border/80 bg-background md:sticky md:top-16 md:z-30"
     >
+      <div className="flex gap-1 overflow-x-auto pb-2">
       {items.map((item) => {
         const active = item.isActive();
         return (
@@ -105,7 +106,7 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
             // not making navigation faster, it was making the page load fail.
             prefetch={false}
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors",
               active
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -115,6 +116,7 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 }
