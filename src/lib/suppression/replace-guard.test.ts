@@ -28,7 +28,7 @@ describe("decideSuppressionReplace", () => {
       removed: 373,
     });
     expect(d.refusal.reason).toContain("373");
-    expect(d.refusal.reason).toContain("still blocked");
+    expect(d.refusal.reason).toContain("stay blocked");
   });
 
   it("refuses a large proportional shrink", () => {
@@ -61,7 +61,8 @@ describe("decideSuppressionReplace", () => {
     const result = decideSuppressionReplace("DOMAIN", replacement, entries(100));
     expect(result).toMatchObject({ allowed: false, refusal: { removed: 100, previousCount: 100, wouldWrite: size } });
     if (result.allowed) throw new Error("expected refusal");
-    expect(result.refusal.reason).toContain(`would load ${size}`);
+    expect(result.refusal.reason).toContain("Sending continues");
+    expect(result.refusal.reason).toContain("100");
   });
 
   it("does not let additions conceal a single removed entry", () => {

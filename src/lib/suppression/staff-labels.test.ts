@@ -4,10 +4,13 @@ import {
   suppressionKindLabel,
   suppressionKindShortLabel,
   suppressionSourceIsConnected,
+  suppressionSyncLastErrorClassName,
+  suppressionSyncStatusBadgeClassName,
   suppressionSyncStatusBadgeVariant,
   suppressionSyncStatusLabel,
   suppressionSyncUnavailableCopy,
 } from "@/lib/suppression/staff-labels";
+import { suppressionReplaceRefusalMessage } from "@/lib/suppression/staff-sync-copy";
 
 describe("Suppression staff labels (PR #138)", () => {
   it("translates kind enums to staff-friendly strings", () => {
@@ -44,6 +47,27 @@ describe("Suppression staff labels (PR #138)", () => {
     expect(suppressionSyncStatusBadgeVariant("ERROR")).toBe("destructive");
     expect(suppressionSyncStatusBadgeVariant("SYNCING")).toBe("secondary");
     expect(suppressionSyncStatusBadgeVariant("NOT_CONFIGURED")).toBe("outline");
+  });
+
+  it("maps held-shrink ERROR to warning chrome, not destructive failure", () => {
+    const heldError = suppressionReplaceRefusalMessage("EMAIL", 205, 172, 33);
+    const context = { lastError: heldError };
+    expect(suppressionSyncStatusLabel("ERROR", context)).toBe(
+      "List held — sending continues",
+    );
+    expect(suppressionSyncStatusBadgeVariant("ERROR", context)).toBe("outline");
+    expect(suppressionSyncStatusBadgeClassName("ERROR", context)).toContain(
+      "amber",
+    );
+    expect(suppressionSyncLastErrorClassName("ERROR", context)).toContain(
+      "amber",
+    );
+    expect(suppressionSyncStatusLabel("ERROR", { lastError: "403 forbidden" })).toBe(
+      "Last sync failed",
+    );
+    expect(suppressionSyncStatusBadgeVariant("ERROR", { lastError: "403" })).toBe(
+      "destructive",
+    );
   });
 });
 

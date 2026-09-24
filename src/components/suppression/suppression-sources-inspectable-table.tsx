@@ -14,9 +14,13 @@ import {
 } from "@/components/ui/table";
 import {
   suppressionKindLabel,
+  suppressionSyncLastErrorClassName,
+  suppressionSyncStatusBadgeClassName,
   suppressionSyncStatusBadgeVariant,
   suppressionSyncStatusLabel,
 } from "@/lib/suppression/staff-labels";
+import { suppressionStaffFacingSyncLastError } from "@/lib/suppression/staff-sync-copy";
+import { cn } from "@/lib/utils";
 
 /**
  * PR #140 (G7) — staff-inspectable Do-not-contact tables.
@@ -85,7 +89,7 @@ function applyFilters(
       s.spreadsheetId ?? "",
       s.sheetRange ?? "",
       suppressionKindLabel(s.kind),
-      suppressionSyncStatusLabel(s.syncStatus),
+      suppressionSyncStatusLabel(s.syncStatus, { lastError: s.lastError }),
     ]
       .filter(Boolean)
       .map((v) => v.toLowerCase());
@@ -106,8 +110,8 @@ function applyFilters(
         break;
       case "status":
         cmp = compareString(
-          suppressionSyncStatusLabel(a.syncStatus),
-          suppressionSyncStatusLabel(b.syncStatus),
+          suppressionSyncStatusLabel(a.syncStatus, { lastError: a.lastError }),
+          suppressionSyncStatusLabel(b.syncStatus, { lastError: b.lastError }),
         );
         break;
     }
@@ -259,14 +263,43 @@ export function SuppressionSourcesInspectableTable({
                 {s.sheetRange ?? "Sheet1!A1:Z50000"}
               </TableCell>
               <TableCell>
-                <Badge variant={suppressionSyncStatusBadgeVariant(s.syncStatus)}>
-                  {suppressionSyncStatusLabel(s.syncStatus)}
-                </Badge>
-                {s.lastError ? (
-                  <p className="mt-1 max-w-[200px] truncate text-[10px] text-destructive">
-                    {s.lastError}
-                  </p>
-                ) : null}
+                {(() => {
+                  const statusContext = { lastError: s.lastError };
+                  const staffError = suppressionStaffFacingSyncLastError(
+                    s.kind,
+                    s.lastError,
+                  );
+                  return (
+                    <>
+                      <Badge
+                        variant={suppressionSyncStatusBadgeVariant(
+                          s.syncStatus,
+                          statusContext,
+                        )}
+                        className={suppressionSyncStatusBadgeClassName(
+                          s.syncStatus,
+                          statusContext,
+                        )}
+                      >
+                        {suppressionSyncStatusLabel(s.syncStatus, statusContext)}
+                      </Badge>
+                      {staffError ? (
+                        <p
+                          className={cn(
+                            "mt-1 max-w-[200px] truncate text-[10px]",
+                            suppressionSyncLastErrorClassName(
+                              s.syncStatus,
+                              statusContext,
+                            ),
+                          )}
+                          title={staffError}
+                        >
+                          {staffError}
+                        </p>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </TableCell>
               <TableCell className="text-right text-muted-foreground">
                 {rowCount(s)}
