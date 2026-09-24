@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { displayHistoryLabel } from "@/lib/display-cutoff";
 
+import { ClientPicker } from "@/components/clients/client-picker";
+import { StickyFilterBar } from "@/components/app-shell/sticky-filter-bar";
 import { ReportsDateRangePicker } from "@/components/reports/reports-date-range-picker";
 import {
   Card,
@@ -9,8 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   formatBounceRate,
   formatRate,
@@ -100,42 +108,26 @@ export default async function ReportingPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <StickyFilterBar className="lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Reports</h1>
-          <p className="mt-1 text-muted-foreground">
-            Operational outreach metrics for accessible workspaces. Live
-            counts from the database — no rollup tables.
+          <p className="mt-1 max-w-2xl text-muted-foreground">
+            Live outreach figures for the clients you can access.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link prefetch={false}
-            href={range ? `/reporting?from=${range.fromIso}&to=${range.toIso}` : "/reporting"}
-            className={cn(
-              buttonVariants({
-                variant: !clientFilter ? "secondary" : "outline",
-                size: "sm",
-              }),
-            )}
-          >
-            All accessible clients
-          </Link>
-          {clients.map((c) => (
-            <Link prefetch={false}
-              key={c.id}
-              href={`/reporting?client=${c.id}${rangeQuery}`}
-              className={cn(
-                buttonVariants({
-                  variant: clientFilter === c.id ? "secondary" : "outline",
-                  size: "sm",
-                }),
-              )}
-            >
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      </div>
+        <ClientPicker
+          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          value={clientFilter ?? null}
+          allLabel="All accessible clients"
+          hrefFor={(id) =>
+            id
+              ? `/reporting?client=${id}${rangeQuery}`
+              : range
+                ? `/reporting?from=${range.fromIso}&to=${range.toIso}`
+                : "/reporting"
+          }
+        />
+      </StickyFilterBar>
 
       <ReportsDateRangePicker
         clientId={clientFilter ?? null}
@@ -152,18 +144,17 @@ export default async function ReportingPage({ searchParams }: Props) {
             </p>
           </div>
           <CardDescription>
-            Every count below is a live database read. Sends are only counted
-            when the provider returned a message id or recorded a send time.
-            {" "}Link unsubscribes count completed unsubscribe-link requests.
-            Removal requests received by reply and manual blocks are shown in
-            Do-not-contact separately.
+            Every figure is counted as it stands now. A send is included only
+            after the mailbox confirms it went. Link unsubscribes are people
+            who used the unsubscribe link. Removal requests in replies, and
+            addresses blocked by hand, are listed under Do-not-contact.
             {range ? (
               <>
                 {" "}
-                Sent, replies, link unsubscribes, opens, bounces and failures are
-                filtered to the selected dates. Queued, Sent not confirmed,
-                Suppressed / skipped and Contacts are live right-now values — they have no
-                history, so the date range doesn&apos;t change them.
+                Sent, replies, link unsubscribes, opens, bounces and failures
+                follow the dates you picked. Queued, sent but not confirmed,
+                suppressed or skipped, and contacts are current figures. They
+                have no history, so the date range does not change them.
               </>
             ) : null}
           </CardDescription>
@@ -277,37 +268,37 @@ export default async function ReportingPage({ searchParams }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Per-client breakdown</CardTitle>
             <CardDescription>
-              Open a row by selecting that workspace in the filter chips above.
-              {" "}{timeLabel}, send-proof verified.
+              Choose a client in the filter to open that client&apos;s report.
+              {" "}{timeLabel}. Confirmed sends only.
             </CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2">Client</th>
-                  <th className="px-3 py-2 text-right">Sent</th>
-                  <th className="px-3 py-2 text-right">Queued</th>
-                  <th className="px-3 py-2 text-right">Replies</th>
-                  <th className="px-3 py-2 text-right">Reply rate</th>
-                  <th className="px-3 py-2 text-right">Link unsubscribes</th>
-                  <th className="px-3 py-2 text-right">Bounces</th>
-                  <th className="px-3 py-2 text-right">Failed</th>
-                  <th className="px-3 py-2 text-right">Not reached</th>
-                  <th className="px-3 py-2 text-right">Not confirmed</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead className="text-right">Sent</TableHead>
+                  <TableHead className="text-right">Queued</TableHead>
+                  <TableHead className="text-right">Replies</TableHead>
+                  <TableHead className="text-right">Reply rate</TableHead>
+                  <TableHead className="text-right">Link unsubscribes</TableHead>
+                  <TableHead className="text-right">Bounces</TableHead>
+                  <TableHead className="text-right">Failed</TableHead>
+                  <TableHead className="text-right">Not reached</TableHead>
+                  <TableHead className="text-right">Not confirmed</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {metricsData.byClient.map((row) => (
-                  <tr key={row.clientId} className="hover:bg-muted/40">
-                    <td className="px-3 py-2 font-medium">
+                  <TableRow key={row.clientId}>
+                    <TableCell className="font-medium">
                       <Link prefetch={false}
                         className="underline-offset-2 hover:underline"
                         href={`/reporting?client=${row.clientId}${rangeQuery}`}
                       >
                         {row.clientName}
                       </Link>
-                    </td>
+                    </TableCell>
                     <DrillCell
                       href={detailHref("sent", row.clientId)}
                       value={row.metrics.sent.toLocaleString()}
@@ -320,9 +311,9 @@ export default async function ReportingPage({ searchParams }: Props) {
                       href={detailHref("replies", row.clientId)}
                       value={row.metrics.replies.toLocaleString()}
                     />
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {formatRate(row.metrics.replyRate)}
-                    </td>
+                    </TableCell>
                     <DrillCell
                       href={detailHref("unsubscribes", row.clientId)}
                       value={row.metrics.unsubscribes.toLocaleString()}
@@ -335,16 +326,16 @@ export default async function ReportingPage({ searchParams }: Props) {
                       href={detailHref("failed", row.clientId)}
                       value={row.metrics.failed.toLocaleString()}
                     />
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {row.metrics.notReached.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {row.metrics.sendProofMissing.toLocaleString()}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
@@ -451,10 +442,10 @@ function MetricItem({
 /** F5 — a right-aligned per-client table cell whose number drills into detail. */
 function DrillCell({ href, value }: { href: string; value: string }) {
   return (
-    <td className="px-3 py-2 text-right tabular-nums">
+    <TableCell className="text-right tabular-nums">
       <Link prefetch={false} href={href} className="underline-offset-2 hover:underline">
         {value}
       </Link>
-    </td>
+    </TableCell>
   );
 }

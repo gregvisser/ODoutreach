@@ -50,10 +50,9 @@ describe("ReportingDailySnapshot is runtime-dead (PR #140)", () => {
   it("the /reporting page reads live database counts only", () => {
     expect(REPORTING_PAGE_SOURCE).toContain("loadGlobalOutreachMetrics");
     expect(REPORTING_PAGE_SOURCE).toContain("loadClientOutreachMetrics");
-    // Copy must continue to label the source of truth as the live DB.
-    expect(REPORTING_PAGE_SOURCE).toMatch(
-      /Live\s+counts? from the database|live\s+counts? from the database/,
-    );
+    // Staff-facing copy says the figures are live, without naming tables.
+    expect(REPORTING_PAGE_SOURCE).toMatch(/Live outreach figures/);
+    expect(REPORTING_PAGE_SOURCE).not.toMatch(/rollup tables/);
   });
 
   it("does not surface a 'No snapshot data' empty state any more", () => {

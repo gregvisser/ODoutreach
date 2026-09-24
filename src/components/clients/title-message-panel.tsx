@@ -1,5 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { adviseClientTitleMessagesWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-title-message-actions";
+import { AiBadge } from "@/components/ai/ai-badge";
 import {
   Card,
   CardContent,
@@ -246,7 +247,9 @@ export function TitleMessagePanel({
   return (
     <Card id="ai-message-fit" className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Which campaign suits which job title</CardTitle>
+        <CardTitle>
+          <AiBadge>Which campaign suits which job title</AiBadge>
+        </CardTitle>
         <CardDescription>
           Sorts the people you have emailed into audiences by job title, counts
           how each campaign did with each one, checks whether the differences are
@@ -277,8 +280,8 @@ export function TitleMessagePanel({
           <OptionalAiUnavailable label="Compare campaigns by job title" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
-            The AI is not configured on this environment yet, so nothing can be
-            analysed. Ask an administrator to add the API key.
+            AI is not set up yet, so nothing can be analysed. Ask an administrator
+            to turn it on.
           </p>
         ) : !canMutate ? (
           <p className="text-sm text-muted-foreground">
@@ -291,7 +294,7 @@ export function TitleMessagePanel({
               variant="secondary"
               pendingLabel="Comparing the campaigns…"
             >
-              {review ? "Run it again" : "Compare campaigns by job title"}
+              <AiBadge>{review ? "Run it again" : "Compare campaigns by job title"}</AiBadge>
             </FormSubmitButton>
           </form>
         )}

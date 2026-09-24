@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AiClassificationBadge } from "@/components/ai/ai-badge";
 import { ReplyOwnershipBadge } from "@/components/activity/reply-ownership-badge";
 import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import {
@@ -87,7 +88,7 @@ export default async function RepliesNeedingAPersonPage({
           Replies waiting for a person
         </h1>
         <p className="text-muted-foreground max-w-3xl text-sm">
-          Review unanswered replies across every client workspace. On each page,
+          Review unanswered replies across every client. On each page,
           people asking to talk come first, then the longest wait. Replies
           somebody has answered, marked handled, or added to do-not-contact drop
           off this list automatically.
@@ -123,7 +124,7 @@ export default async function RepliesNeedingAPersonPage({
           <span className="font-medium">
             {aiOff
               ? "Automatic sorting is switched off."
-              : `${String(unclassifiedCount)} of these have not been read by the assistant.`}
+              : `${String(unclassifiedCount)} of these have not been read yet.`}
           </span>{" "}
           They are all still listed here and still need a person — an unsorted
           reply is never treated as one you can ignore. It just means nobody has
@@ -291,10 +292,15 @@ function ClassificationBadge({ entry }: { entry: TriagedReplyWithClaim }) {
     entry.classification === null
       ? UNCLASSIFIED_BADGE
       : replyClassificationBadge(entry.classification);
+  if (entry.classification === null) {
+    return (
+      <Badge variant="outline" className={cn("w-fit", badge.className)}>
+        {badge.text}
+      </Badge>
+    );
+  }
   return (
-    <Badge variant="outline" className={cn("w-fit", badge.className)}>
-      {badge.text}
-    </Badge>
+    <AiClassificationBadge text={badge.text} className={badge.className} />
   );
 }
 

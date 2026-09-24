@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AiBadge } from "@/components/ai/ai-badge";
 import { AiSequenceDraftPanel } from "@/components/clients/email-templates/ai-sequence-draft-panel";
 import { ClientEmailTemplatesPanel } from "@/components/clients/email-templates/client-email-templates-panel";
 import { SequenceTemplateStructurePanel } from "@/components/clients/email-templates/sequence-template-structure-panel";
@@ -108,7 +109,9 @@ export default async function ClientTemplatesPage({ params, searchParams }: Prop
       </details>
 
       <details open={sequenceDraftingEnabled || Boolean(firstParam(sp.sequenceDraft))} className="rounded-lg border p-4">
-        <summary className="cursor-pointer font-semibold">Draft emails with AI</summary>
+        <summary className="cursor-pointer font-semibold">
+          <AiBadge>Draft emails with AI</AiBadge>
+        </summary>
         <div className="mt-4">
       <AiSequenceDraftPanel
         clientId={client.id}

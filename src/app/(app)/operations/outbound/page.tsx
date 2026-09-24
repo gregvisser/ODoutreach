@@ -11,6 +11,8 @@ import {
   SenderReadinessHeadlineBadge,
   SenderReadinessPanel,
 } from "@/components/ops/sender-readiness-panel";
+import { StickyFilterBar } from "@/components/app-shell/sticky-filter-bar";
+import { ClientPicker } from "@/components/clients/client-picker";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -90,45 +92,30 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Admin operations</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground">
-          Admin-only delivery and queue troubleshooting. Not in the staff
-          sidebar — normal staff use Reports, Clients, Universe, Blocked contacts,
-          Activity, and Training for day-to-day work.
+          Delivery and queue checks for administrators. This page is not in the
+          menu. Day-to-day work stays on Reports, Clients, Universe, Blocked
+          contacts and Training.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Workspace:</span>
-        <Link prefetch={false}
-          href="/operations/outbound"
-          className={cn(
-            buttonVariants({ variant: !clientFilter ? "secondary" : "outline", size: "sm" }),
-          )}
-        >
-          All in scope
-        </Link>
-        {clients.map((c) => (
-          <Link prefetch={false}
-            key={c.id}
-            href={`/operations/outbound?client=${c.id}`}
-            className={cn(
-              buttonVariants({
-                variant: clientFilter === c.id ? "secondary" : "outline",
-                size: "sm",
-              }),
-            )}
-          >
-            {c.name}
-          </Link>
-        ))}
-      </div>
+      <StickyFilterBar>
+        <ClientPicker
+          label="Client"
+          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          value={clientFilter ?? null}
+          allLabel="All accessible clients"
+          hrefFor={(id) =>
+            id ? `/operations/outbound?client=${id}` : "/operations/outbound"
+          }
+        />
+      </StickyFilterBar>
 
       {!clientFilter ? (
         <Card>
           <CardHeader>
             <CardTitle>Sender readiness by workspace</CardTitle>
             <CardDescription>
-              Quick view across clients you can access — open a row in Operations or the client workspace for
-              full checks.
+              A short check of every client you can open. Open a client for the full checks.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -137,7 +124,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                 <TableRow>
                   <TableHead>Workspace</TableHead>
                   <TableHead>State</TableHead>
-                  <TableHead>Effective From (preview)</TableHead>
+                  <TableHead>From address</TableHead>
                   <TableHead className="text-right">Open</TableHead>
                 </TableRow>
               </TableHeader>
@@ -160,7 +147,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                           href={`/operations/outbound?client=${c.id}`}
                         >
-                          Ops
+                          Open
                         </Link>
                       </TableCell>
                     </TableRow>
@@ -169,7 +156,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
               </TableBody>
             </Table>
             {clients.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">No workspaces in scope.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">No clients you can open.</p>
             ) : null}
           </CardContent>
         </Card>

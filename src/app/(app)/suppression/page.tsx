@@ -1,8 +1,6 @@
-import Link from "next/link";
-
 import { runSuppressionSyncAction } from "@/app/(app)/suppression/actions";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { StickyFilterBar } from "@/components/app-shell/sticky-filter-bar";
+import { ClientPicker } from "@/components/clients/client-picker";
 import {
   Card,
   CardContent,
@@ -105,7 +103,7 @@ export default async function SuppressionPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <StickyFilterBar className="lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Do-not-contact
@@ -113,38 +111,17 @@ export default async function SuppressionPage({ searchParams }: Props) {
           <h1 className="text-3xl font-semibold tracking-tight">People blocked from outreach</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground">
             Email addresses and whole domains that must never receive outreach.
-            Each source applies only to its own client workspace, and every
-            send checks this list before queueing.
+            Each list applies only to its own client, and every send checks
+            the list before anything is queued.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link prefetch={false}
-            href="/suppression"
-            className={cn(
-              buttonVariants({
-                variant: !clientFilter ? "secondary" : "outline",
-                size: "sm",
-              }),
-            )}
-          >
-            All
-          </Link>
-          {clients.map((c) => (
-            <Link prefetch={false}
-              key={c.id}
-              href={`/suppression?client=${c.id}`}
-              className={cn(
-                buttonVariants({
-                  variant: clientFilter === c.id ? "secondary" : "outline",
-                  size: "sm",
-                }),
-              )}
-            >
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      </div>
+        <ClientPicker
+          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          value={clientFilter ?? null}
+          allLabel="All accessible clients"
+          hrefFor={(id) => (id ? `/suppression?client=${id}` : "/suppression")}
+        />
+      </StickyFilterBar>
 
       {syncBanner?.kind === "ok" ? (
         <p className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">

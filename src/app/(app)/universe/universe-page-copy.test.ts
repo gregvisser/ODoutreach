@@ -33,9 +33,9 @@ describe("Universe page copy (operator)", () => {
     expect(universeHeadsSource).toContain("UNIVERSE_CONTACT_FIELD_COLUMNS");
   });
 
-  it("shows client display name in the workspace selector trigger", () => {
-    expect(clientSource).toContain("formatClientWorkspaceSelectLabel");
-    expect(clientSource).toContain("{formatClientWorkspaceSelectLabel(clients, clientId)}");
+  it("shows client display name in the shared client picker", () => {
+    expect(clientSource).toContain("ClientPicker");
+    expect(clientSource).toContain("formatClientWorkspaceSelectLabel(clients, c.id)");
   });
 
   // PR #138 — visible-column controls and richer sort options.

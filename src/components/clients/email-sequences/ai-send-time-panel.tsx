@@ -1,5 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { adviseClientSendTimesWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-send-time-actions";
+import { AiBadge } from "@/components/ai/ai-badge";
 import {
   Card,
   CardContent,
@@ -197,7 +198,9 @@ export function AiSendTimePanel({
   return (
     <Card id="ai-send-times" className="border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Work out our best send times with AI</CardTitle>
+        <CardTitle>
+          <AiBadge>Work out our best send times with AI</AiBadge>
+        </CardTitle>
         <CardDescription>
           Counts this client&apos;s own sends and replies by day and hour, then
           asks the AI to read the table and say which times are worth using. It{" "}
@@ -221,8 +224,8 @@ export function AiSendTimePanel({
           <OptionalAiUnavailable label="Work out our best send times" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
-            The AI is not configured on this environment yet, so nothing can be
-            analysed. Ask an administrator to add the API key.
+            AI is not set up yet, so nothing can be analysed. Ask an administrator
+            to turn it on.
           </p>
         ) : !canMutate ? (
           <p className="text-sm text-muted-foreground">
@@ -235,7 +238,7 @@ export function AiSendTimePanel({
               variant="secondary"
               pendingLabel="Reading the sending history…"
             >
-              {advice ? "Work them out again" : "Work out our best send times"}
+              <AiBadge>{advice ? "Work them out again" : "Work out our best send times"}</AiBadge>
             </FormSubmitButton>
           </form>
         )}

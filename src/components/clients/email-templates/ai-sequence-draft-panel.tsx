@@ -1,3 +1,4 @@
+import { AiBadge } from "@/components/ai/ai-badge";
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { AiSequenceDraftForm } from "@/components/clients/email-templates/ai-sequence-draft-form";
 import { AiSequenceDraftStatus } from "@/components/clients/email-templates/ai-sequence-draft-status";
@@ -46,7 +47,9 @@ export function AiSequenceDraftPanel({
   return (
     <Card id="ai-sequence-draft" className="scroll-mt-20 border-border/80 shadow-sm">
       <CardHeader>
-        <CardTitle>Write a whole sequence with AI</CardTitle>
+        <CardTitle>
+          <AiBadge>Write a whole sequence with AI</AiBadge>
+        </CardTitle>
         <CardDescription>
           Drafts {SEQUENCE_CADENCE_DAYS.length} emails for {clientName} in one go — sent on days{" "}
           {cadence} — using this client&apos;s brief. They are written as{" "}
@@ -63,8 +66,8 @@ export function AiSequenceDraftPanel({
           <OptionalAiUnavailable label="Write a sequence with AI" />
         ) : !aiConfigured ? (
           <p className="text-sm text-muted-foreground">
-            The AI is not configured on this environment yet, so nothing can be
-            drafted. Ask an administrator to add the API key.
+            AI is not set up yet, so nothing can be drafted. Ask an administrator
+            to turn it on.
           </p>
         ) : !canMutate ? (
           <p className="text-sm text-muted-foreground">

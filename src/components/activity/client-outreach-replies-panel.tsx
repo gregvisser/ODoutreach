@@ -5,6 +5,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 
 import { ReplyOwnershipBadge } from "@/components/activity/reply-ownership-badge";
+import { AiClassificationBadge } from "@/components/ai/ai-badge";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -136,7 +137,13 @@ function MailboxGroupRow({
                     const badge = r.classification
                       ? replyClassificationBadge(r.classification)
                       : UNCLASSIFIED_BADGE;
-                    return (
+                    return r.classification ? (
+                      <AiClassificationBadge
+                        text={badge.text}
+                        className={badge.className}
+                        title={r.classificationRationale ?? undefined}
+                      />
+                    ) : (
                       <Badge
                         variant="outline"
                         className={cn("text-[11px]", badge.className)}

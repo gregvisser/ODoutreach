@@ -22,12 +22,12 @@ describe("Global Contacts page (PR #138 + PR #140 admin-only)", () => {
   it("surfaces a banner pointing staff at Universe and Sources", () => {
     expect(pageSource).toContain('href="/universe"');
     expect(pageSource).toContain("Sources");
-    expect(pageSource).toMatch(/not in the\s+staff sidebar/);
+    expect(pageSource).toMatch(/not in the menu/);
   });
 
-  it("titles itself as an admin-only legacy tools surface (PR #140)", () => {
-    expect(pageSource).toContain("Contacts (admin legacy tools)");
-    expect(pageSource).toMatch(/Admin-only legacy tools/);
+  it("titles itself as an administrator tool (PR #140)", () => {
+    expect(pageSource).toContain(">Contacts<");
+    expect(pageSource).toMatch(/Administrator tools/);
   });
 
   it("redirects non-admin staff to /universe (PR #140)", () => {

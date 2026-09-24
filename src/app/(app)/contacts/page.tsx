@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { StickyFilterBar } from "@/components/app-shell/sticky-filter-bar";
+import { ClientPicker } from "@/components/clients/client-picker";
 import { Badge } from "@/components/ui/badge";
 import { ContactReadinessBadge } from "@/components/contacts/contact-readiness-badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -167,59 +169,36 @@ export default async function ContactsPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <p className="rounded-lg border border-amber-400/40 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
-        <span className="font-medium">Admin-only legacy tools.</span>{" "}
-        The day-to-day contact directory lives on{" "}
+        <span className="font-medium">Administrator tools.</span>{" "}
+        The contact directory you use day to day is{" "}
         <Link prefetch={false}
           href="/universe"
           className="font-medium underline-offset-2 hover:underline"
         >
           Universe
         </Link>
-        , and per-client imports live on each client&rsquo;s{" "}
-        <span className="font-medium">Sources</span> tab. This page is kept
-        only for cross-client CSV import and per-row send tooling that an
-        administrator may occasionally need, and is intentionally not in the
-        staff sidebar.
+        . Imports for one client live on that client&rsquo;s{" "}
+        <span className="font-medium">Sources</span> tab. This page is only
+        for a spreadsheet import across clients, and for sending to one row.
+        It is not in the menu.
       </p>
 
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <StickyFilterBar className="lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Contacts (admin legacy tools)</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Contacts</h1>
           <p className="mt-1 text-muted-foreground">
-            Cross-client contact directory — filter to a single workspace when needed.
+            Contacts across clients. Choose one client when you need to.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">Filter:</span>
-          <Link prefetch={false}
-            href={directoryHref({ search, offset: 0 })}
-            className={cn(
-              buttonVariants({
-                variant: !clientFilter ? "secondary" : "outline",
-                size: "sm",
-              }),
-            )}
-          >
-            All (in scope)
-          </Link>
-          {clients.map((c) => (
-            <Link prefetch={false}
-              key={c.id}
-              // Carry the search, reset the page — switching workspace while
-              // looking someone up should keep looking for that person.
-              href={directoryHref({ clientFilter: c.id, search, offset: 0 })}
-              className={cn(
-                buttonVariants({
-                  variant: clientFilter === c.id ? "secondary" : "outline",
-                  size: "sm",
-                }),
-              )}
-            >
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      </div>
+        <ClientPicker
+          clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+          value={clientFilter ?? null}
+          allLabel="All accessible clients"
+          hrefFor={(id) =>
+            directoryHref({ clientFilter: id ?? undefined, search, offset: 0 })
+          }
+        />
+      </StickyFilterBar>
 
       <section className="rounded-lg border border-border/80 bg-card p-6 shadow-sm space-y-2">
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -227,7 +206,7 @@ export default async function ContactsPage({ searchParams }: Props) {
         </p>
         <h2 className="text-xl font-semibold tracking-tight">Import contacts</h2>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          Upload a CSV for any workspace you can access, or open a client&apos;s Sources tab for RocketReach.
+          Upload a spreadsheet for any client you can open, or use that client&apos;s Sources tab for RocketReach.
         </p>
         <p className="text-xs text-muted-foreground">
           Cross-client directory and send tools are below.{" "}
@@ -433,7 +412,7 @@ export default async function ContactsPage({ searchParams }: Props) {
             <p className="py-8 text-center text-sm text-muted-foreground">
               {search
                 ? "No contacts match your search."
-                : "No contacts in scope — import a CSV or adjust access."}
+                : "No contacts yet. Import a spreadsheet, or ask for access to the client."}
             </p>
           ) : null}
 

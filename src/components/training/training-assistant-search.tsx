@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { AiIcon } from "@/components/ai/ai-badge";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,8 +129,8 @@ export function TrainingAssistantSearch() {
         )}
         aria-label="Search how-to questions"
       >
-        <Search className="h-4 w-4" />
-        <span className="hidden sm:inline">How do I...?</span>
+        <AiIcon />
+        <span className="hidden lg:inline">How do I...?</span>
         <kbd
           suppressHydrationWarning
           className="hidden rounded border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline"
@@ -142,7 +142,12 @@ export function TrainingAssistantSearch() {
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent side="top" className="mx-auto w-full max-w-xl border-x sm:max-w-xl">
           <SheetHeader>
-            <SheetTitle>How do I...?</SheetTitle>
+            <SheetTitle>
+              <span className="inline-flex items-center gap-2">
+                <AiIcon />
+                How do I...?
+              </span>
+            </SheetTitle>
             <SheetDescription>
               Ask a question about using this system. Answers come only from the training
               material, and every answer links to where it came from.

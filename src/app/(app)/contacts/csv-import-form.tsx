@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 
 import { importContactsCsvAction, type CsvImportOutcome } from "@/app/(app)/contacts/actions";
 import { previewContactsCsvAction } from "@/app/(app)/contacts/preview-actions";
+import { ClientPicker } from "@/components/clients/client-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -200,34 +201,28 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
             <input type="hidden" name="returnTo" value="sources" />
           ) : null}
           <div className="grid gap-2 sm:max-w-md">
-            <Label htmlFor="clientId">Client workspace</Label>
             {lockedClientId ? (
               <>
+                <Label>Client</Label>
                 <input type="hidden" name="clientId" value={lockedClientId} />
                 <p className="rounded-md border border-border/80 bg-muted/40 px-3 py-2 text-sm">
                   {clients.find((c) => c.id === lockedClientId)?.name ?? "This client"}
                 </p>
               </>
             ) : (
-              <select
-                id="clientId"
+              <ClientPicker
+                label="Client"
                 name="clientId"
-                required
-                value={selectedClientId}
-                onChange={(e) => {
-                  setSelectedClientId(e.target.value);
+                clients={clients}
+                value={selectedClientId || null}
+                allLabel={null}
+                placeholder="Choose a client"
+                onValueChange={(id) => {
+                  setSelectedClientId(id ?? "");
                   setExistingListId("");
                   resetPreview();
                 }}
-                className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-              >
-                <option value="">Select client…</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              />
             )}
           </div>
           <div className="grid gap-2 sm:max-w-md">
