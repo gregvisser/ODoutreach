@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
@@ -8,6 +9,7 @@ import { cn } from "@/lib/utils";
 export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
+  const activeTabRef = useRef<HTMLAnchorElement>(null);
   const clientFromQuery = searchParams?.get("client") ?? null;
   const base = `/clients/${clientId}`;
 
@@ -89,17 +91,23 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
     },
   ];
 
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [pathname]);
+
   return (
     <nav
       aria-label="Client workspace"
-      className="border-b border-border/80 bg-background md:sticky md:top-16 md:z-30"
+      className="sticky top-16 z-30 border-b border-border/80 bg-background"
     >
-      <div className="flex gap-1 overflow-x-auto pb-2">
+      <div className="relative">
+      <div className="flex gap-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {items.map((item) => {
         const active = item.isActive();
         return (
           <Link
             key={item.label}
+            ref={active ? activeTabRef : undefined}
             href={item.href}
             // See app-sidebar.tsx: these nine tabs are the other half of the
             // prefetch burst production sheds with 503. Prefetching them was
@@ -116,6 +124,9 @@ export function ClientWorkspaceSubnav({ clientId }: { clientId: string }) {
           </Link>
         );
       })}
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background to-transparent md:hidden" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent md:hidden" />
       </div>
     </nav>
   );

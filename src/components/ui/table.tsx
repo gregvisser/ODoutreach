@@ -10,13 +10,14 @@ function Table({
   ...props
 }: React.ComponentProps<"table"> & {
   /**
-   * `page` — the page scrolls and the header sticks under the app header.
-   * Horizontal scrolling is added only when the table is wider than the
-   * container, because an overflow ancestor would trap the sticky header.
-   * `contained` — the table scrolls inside a capped region (use inside a card
-   * that sits alongside other content).
+   * `page` — the page scrolls and the header sticks under the app header
+   * when the table fits the column.
+   * `contained` — a short capped region beside other content.
+   * `viewport` — a wide list. The region scrolls both ways, its height tracks
+   * the viewport, and the header sticks inside that region. Pagination stays
+   * outside the table.
    */
-  scroll?: "contained" | "page"
+  scroll?: "contained" | "page" | "viewport"
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [widerThanContainer, setWiderThanContainer] = React.useState(false);
@@ -44,11 +45,13 @@ function Table({
       data-wide={widerThanContainer ? "true" : "false"}
       className={cn(
         "group/table relative w-full",
-        scroll === "contained"
-          ? "max-h-[min(70vh,40rem)] overflow-auto"
-          : widerThanContainer
-            ? "overflow-x-auto overflow-y-clip"
-            : "overflow-x-clip overflow-y-clip",
+        scroll === "viewport"
+          ? "max-h-[max(16rem,calc(100dvh-11rem))] overflow-auto"
+          : scroll === "contained"
+            ? "max-h-[min(70vh,40rem)] overflow-auto"
+            : widerThanContainer
+              ? "overflow-x-auto overflow-y-clip"
+              : "overflow-x-clip overflow-y-clip",
       )}
     >
       <table
@@ -67,6 +70,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
       className={cn(
         "z-10 bg-card [&_tr]:border-b",
         "group-data-[scroll=contained]/table:sticky group-data-[scroll=contained]/table:top-0",
+        "group-data-[scroll=viewport]/table:sticky group-data-[scroll=viewport]/table:top-0",
         // A sideways-scrolling wrapper is its own scrollport. A 4rem offset
         // inside that box pulls the header down over the first rows, so page
         // mode only sticks when the table fits and the page itself scrolls.

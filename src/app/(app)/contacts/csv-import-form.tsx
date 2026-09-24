@@ -217,6 +217,7 @@ export function CsvImportForm({ clients, listsByClientId = {}, lockedClientId }:
                 value={selectedClientId || null}
                 allLabel={null}
                 placeholder="Choose a client"
+                required
                 onValueChange={(id) => {
                   setSelectedClientId(id ?? "");
                   setExistingListId("");

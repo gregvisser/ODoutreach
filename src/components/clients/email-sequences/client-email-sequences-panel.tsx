@@ -299,9 +299,9 @@ export function ClientEmailSequencesPanel(props: Props) {
                 : "No sequences yet. Expand \"New sequence\" above, then open your draft here to review recipients and launch."}
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border/70">
+            <div className="max-h-[max(16rem,calc(100dvh-11rem))] overflow-auto rounded-lg border border-border/70">
               <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b border-border/70 bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="sticky top-0 z-10 border-b border-border/70 bg-card text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">Sequence</th>
                     <th className="px-3 py-2 font-medium">List</th>

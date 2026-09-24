@@ -110,20 +110,23 @@ export function NewReplyNotifier() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-50 w-80 rounded-lg border border-emerald-400/60 bg-background p-4 shadow-lg"
+      className="fixed z-50 rounded-lg border border-emerald-400/60 bg-background shadow-lg max-md:inset-x-3 max-md:bottom-[max(0.75rem,env(safe-area-inset-bottom))] max-md:p-3 md:right-4 md:bottom-4 md:w-80 md:p-4"
     >
+      <div className="max-md:flex max-md:items-center max-md:gap-3">
+      <div className="min-w-0 flex-1">
       <p className="text-sm font-semibold text-foreground">New reply received</p>
-      <p className="mt-1 truncate text-sm text-muted-foreground">
+      <p className="mt-0.5 truncate text-sm text-muted-foreground">
         <span className="font-medium text-foreground">{toast.fromEmail}</span>
         {" · "}
         {toast.clientName}
       </p>
       {toast.subject ? (
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground max-md:hidden">
           {toast.subject}
         </p>
       ) : null}
-      <div className="mt-3 flex items-center gap-3">
+      </div>
+      <div className="mt-3 flex items-center gap-3 max-md:mt-0 max-md:shrink-0">
         <Link prefetch={false}
           href={`/clients/${toast.clientId}/activity`}
           onClick={acknowledge}
@@ -138,6 +141,7 @@ export function NewReplyNotifier() {
         >
           Dismiss
         </button>
+      </div>
       </div>
     </div>
   );

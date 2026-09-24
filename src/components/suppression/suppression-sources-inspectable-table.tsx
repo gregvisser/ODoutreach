@@ -224,7 +224,7 @@ export function SuppressionSourcesInspectableTable({
         </p>
       </div>
 
-      <Table>
+      <Table scroll="viewport">
         <TableHeader>
           <TableRow>
             <TableHead>Client</TableHead>
