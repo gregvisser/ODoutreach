@@ -160,6 +160,8 @@ describe("explainRepPerformance", () => {
     if (!result.ok) throw new Error("unreachable");
     expect(result.findings).toHaveLength(1);
     expect(result.anyDistinguishable).toBe(true);
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(180_000);
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
 
     const written = prismaMock.aiRepPerformanceReview.create.mock.calls[0][0]
       .data as {

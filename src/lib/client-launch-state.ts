@@ -309,6 +309,13 @@ export function buildLaunchReadinessRows(input: LaunchReadinessPanelInput): Laun
 /** One-line status for the command center header. */
 export function deriveLaunchStageLabel(input: ClientLaunchSnapshotInput): string {
   if (input.brief.status === "ready" && isOutreachModuleReady(input)) {
+    // Readiness stays the same boolean. The headline still has to say when
+    // the mailbox pool is short of the recommended five, because "Ready"
+    // on its own reads as full capacity.
+    if (getOutreachMailboxCapacityTier(input.connectedSendingCount) === "reduced") {
+      const daily = input.connectedSendingCount * OUTREACH_MAILBOX_DAILY_CAP;
+      return `Ready to launch — reduced capacity (${String(input.connectedSendingCount)} of ${String(input.recommendedMailboxCount)} mailboxes connected, ${String(daily)}/day)`;
+    }
     return "Ready to launch";
   }
   if (input.brief.status === "empty") {

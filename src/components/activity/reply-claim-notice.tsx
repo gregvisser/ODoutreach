@@ -63,7 +63,7 @@ export function ReplyClaimNotice({
           : ""}
       </p>
       <p className="mt-1 text-sm text-amber-800/90 dark:text-amber-200/80">
-        Check with them before you reply, so this prospect doesn&apos;t get two
+        Check with them before you reply, so this sender doesn&apos;t get two
         answers. You can still act — nothing here is locked.
       </p>
     </div>

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
-import { format } from "date-fns";
 
 import {
   markEnrollmentCompletedAction,
@@ -18,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -75,12 +75,7 @@ type Props = {
 };
 
 function formatTs(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return format(new Date(iso), "d MMM yyyy, HH:mm");
-  } catch {
-    return iso;
-  }
+  return formatStaffDateTime(iso);
 }
 
 function enrolmentStatusLabel(
@@ -174,7 +169,7 @@ export function ClientLinkedReplyDetail({ clientId, detail }: Props) {
             </Badge>
           </div>
           <CardDescription>
-            What the prospect replied. The full body is available on the
+            What the sender wrote. The full body is available on the
             mailbox message page when the reply was captured via mailbox sync.
           </CardDescription>
         </CardHeader>
@@ -279,7 +274,7 @@ export function ClientLinkedReplyDetail({ clientId, detail }: Props) {
             </Badge>
           </div>
           <CardDescription>
-            Status of this prospect inside the linked sequence. Stopping
+            Status of the sender in the linked sequence. Stopping
             here prevents any future follow-up sends for this enrolment.
           </CardDescription>
         </CardHeader>

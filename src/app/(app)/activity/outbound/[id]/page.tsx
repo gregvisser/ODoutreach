@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -125,7 +125,7 @@ export default async function OutboundDetailPage({ params }: Props) {
             <div key={label} className="flex justify-between gap-4 border-b border-border/40 py-2 last:border-0">
               <span className="text-muted-foreground">{label}</span>
               <span className="tabular-nums text-muted-foreground">
-                {d ? format(d, "MMM d, yyyy HH:mm:ss") : "—"}
+                {d ? formatStaffDateTime(d) : "—"}
               </span>
             </div>
           ))}
@@ -216,7 +216,7 @@ export default async function OutboundDetailPage({ params }: Props) {
               >
                 <span className="font-mono text-xs">{ev.eventType}</span>
                 <span className="text-xs text-muted-foreground">
-                  {format(ev.createdAt, "MMM d HH:mm:ss")}
+                  {formatStaffDateTime(ev.createdAt)}
                 </span>
               </div>
             ))}
@@ -243,7 +243,7 @@ export default async function OutboundDetailPage({ params }: Props) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{r.fromEmail}</span>
                   <span className="text-xs text-muted-foreground">
-                    {format(r.receivedAt, "MMM d HH:mm")}
+                    {formatStaffDateTime(r.receivedAt)}
                   </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2">

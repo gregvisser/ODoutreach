@@ -61,6 +61,12 @@ export default async function ClientOutreachPage({
   const accessible = await getAccessibleClientIds(staff);
   const { clientId } = await params;
   const sp = searchParams ? await searchParams : {};
+  const pendingSequenceId = firstParam(sp.campaignReviewPending);
+  const pendingSince = firstParam(sp.campaignReviewSince);
+  const campaignReviewPending =
+    pendingSequenceId && pendingSince && /^\d{10,16}$/.test(pendingSince)
+      ? { sequenceId: pendingSequenceId, since: pendingSince }
+      : null;
 
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
@@ -221,6 +227,7 @@ export default async function ClientOutreachPage({
           ok: firstParam(sp.campaignReview),
           error: firstParam(sp.campaignReviewError),
         }}
+        pending={campaignReviewPending}
       />
 
       <AiSendTimePanel

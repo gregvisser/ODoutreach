@@ -287,6 +287,8 @@ describe("adviseTitleMessages — the answer", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.reviewId).toBe("review-1");
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(180_000);
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
     expect(result.anyDistinguishable).toBe(true);
     expect(result.findings).toHaveLength(1);
     expect(result.costMicroUsd).toBeGreaterThan(0);

@@ -20,7 +20,7 @@ export function GoogleOauthTestUsersPanel({
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         While the Google OAuth app is in{" "}
-        <span className="font-medium text-foreground">Testing</span> status,
+        <span className="font-medium text-foreground">Testing status</span>,
         only explicitly listed test users can connect a Google Workspace
         mailbox. Add their email addresses on the consent screen&apos;s test
         users list, then they can complete the Google sign-in flow.

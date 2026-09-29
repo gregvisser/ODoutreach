@@ -11,7 +11,10 @@ import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
 import { isPersonalDataUncovered } from "./ai-feature-data-policy";
-import { classifyAiProviderFailure } from "./provider-transport-error";
+import {
+  classifyAiProviderFailure,
+  sanitizeProviderErrorDetail,
+} from "./provider-transport-error";
 
 import type { AiFeature } from "@/generated/prisma/client";
 
@@ -65,10 +68,16 @@ export type MeteredAiCallOutcome<T> =
   | { readonly ok: true; readonly result: T; readonly costMicroUsd: number }
   | { readonly ok: false; readonly reason: string };
 
-/** Truncate a provider error to something safe and useful on a ledger row. */
+/**
+ * Provider failure text for the ledger and the server log.
+ *
+ * The transport layer already strips keys from HTTP bodies. This pass covers
+ * a throw that still carries one, and caps the length the ledger column keeps.
+ */
 function outcomeCodeFromError(err: unknown): string {
   const message = err instanceof Error ? err.message : "call_failed";
-  return message.slice(0, 200);
+  const safe = sanitizeProviderErrorDetail(message);
+  return safe.length > 0 ? safe : "call_failed";
 }
 
 export async function runMeteredAiCall<T>(
@@ -165,16 +174,16 @@ export async function runMeteredAiCall<T>(
       latencyMs: Date.now() - startedAt,
       outcomeCode: code,
     });
-    logger.warn(
+    logger.error(
       {
         scope: "ai.call",
         feature,
         model,
         clientSlug: client.slug,
         failureClass: classifyAiProviderFailure(code),
-        code,
+        providerError: code,
       },
-      "AI call failed",
+      "AI provider call failed",
     );
     return { ok: false, reason: code };
   }

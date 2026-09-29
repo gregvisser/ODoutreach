@@ -1,3 +1,5 @@
+import { formatStaffDate } from "@/lib/datetime/staff-datetime";
+
 /**
  * PR #131 → PR #132 — Pure delivery-status derivation for list detail
  * view and outreach metrics.
@@ -139,7 +141,7 @@ export function deriveDeliveryStatus(
 
 export function deriveOpensLabel(openedAt: Date | null): string {
   if (openedAt) {
-    return `Opened ${openedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+    return `Opened ${formatStaffDate(openedAt)}`;
   }
   return "Not tracked";
 }

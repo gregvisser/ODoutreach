@@ -1,5 +1,8 @@
 import "server-only";
 
+import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+
 import {
   buildCampaignReviewInput,
   CAMPAIGN_REVIEW_PROMPT_VERSION,
@@ -11,13 +14,19 @@ import {
   type CampaignReviewStepInput,
 } from "@/lib/ai/campaign-review";
 import { AI_MODELS } from "@/lib/ai/model-catalog";
+import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import { prisma } from "@/lib/db";
 import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy";
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
 import { callAiToolMessages } from "./anthropic-messages";
+import {
+  campaignReviewFailureMessage,
+  campaignReviewSuccessMessage,
+} from "./campaign-review-messages";
 import { runMeteredAiCall } from "./metered-call";
+import { sanitizeProviderErrorDetail } from "./provider-transport-error";
 
 /**
  * Score and critique one campaign, and record what it cost.
@@ -152,6 +161,7 @@ export async function reviewCampaign(args: {
 
   const model = resolveProductAiModel(AI_MODELS.CAMPAIGN_REVIEW);
   const apiKey = resolveProductAiApiKey();
+  const budget = onDemandToolCallBudget(model);
 
   const outcome = await runMeteredAiCall({
     client: loaded.client,
@@ -168,6 +178,8 @@ export async function reviewCampaign(args: {
         userText: buildCampaignReviewInput(loaded.campaign),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: CAMPAIGN_REVIEW_TOOL,
+        timeoutMs: budget.timeoutMs,
+        reasoningEffort: budget.reasoningEffort,
       });
       return {
         result: parseCampaignReviewToolUse(response.content),
@@ -182,7 +194,18 @@ export async function reviewCampaign(args: {
     },
   });
 
-  if (!outcome.ok) return { ok: false, reason: outcome.reason };
+  if (!outcome.ok) {
+    logger.error(
+      {
+        scope: "ai.review-campaign",
+        clientSlug: loaded.client.slug,
+        sequenceId: args.sequenceId,
+        providerError: outcome.reason,
+      },
+      "Campaign review provider call failed",
+    );
+    return { ok: false, reason: outcome.reason };
+  }
 
   const parsed = outcome.result;
   if (!parsed) {
@@ -227,6 +250,114 @@ export async function reviewCampaign(args: {
     summary: parsed.summary,
     findings: parsed.findings,
     costMicroUsd: outcome.costMicroUsd,
+  };
+}
+
+/**
+ * Cheap checks before a review is detached from the browser request.
+ * A missing sequence or an empty one must redirect immediately. The model
+ * call is the part that outlives the POST.
+ */
+export async function preflightCampaignReview(args: {
+  clientId: string;
+  sequenceId: string;
+}): Promise<{ ok: true } | { ok: false; reason: "sequence_not_found" | "no_steps" }> {
+  const loaded = await loadCampaign(args);
+  if (loaded === null) return { ok: false, reason: "sequence_not_found" };
+  if (loaded === "no_steps") return { ok: false, reason: "no_steps" };
+  return { ok: true };
+}
+
+/**
+ * Run the review after the server action has responded.
+ *
+ * The button used to await the model on the POST. That POST was cut at about
+ * 30s (the app error screen) or survived only until the 20s provider abort
+ * (the unavailable banner). The action now records nothing and returns. This
+ * schedules the one existing call. Tests pass `schedule` so they do not need
+ * a Next.js request scope.
+ */
+export function scheduleCampaignReview(
+  args: { clientId: string; sequenceId: string; staffUserId: string },
+  schedule: (run: () => Promise<void>) => void = (run) => {
+    after(() => run());
+  },
+): void {
+  schedule(async () => {
+    try {
+      await reviewCampaign(args);
+    } catch (err) {
+      const providerError =
+        err instanceof Error ? sanitizeProviderErrorDetail(err.message) : "call_failed";
+      logger.error(
+        {
+          scope: "ai.review-campaign",
+          clientId: args.clientId,
+          sequenceId: args.sequenceId,
+          providerError,
+        },
+        "Campaign review failed after the response was sent",
+      );
+    } finally {
+      revalidatePath(`/clients/${args.clientId}/outreach`);
+    }
+  });
+}
+
+/** How far a status poll looks behind the click, for app/database clock skew. */
+const CAMPAIGN_REVIEW_SINCE_SKEW_MS = 5_000;
+
+export type CampaignReviewAttempt =
+  | { readonly state: "pending" }
+  | { readonly state: "succeeded"; readonly message: string }
+  | { readonly state: "failed"; readonly message: string };
+
+/**
+ * What the detached review has done since the click.
+ *
+ * Reads the usage ledger (written for every outcome, including a provider
+ * failure) and the review row. It does not start another model call.
+ */
+export async function readCampaignReviewAttempt(args: {
+  clientId: string;
+  sequenceId: string;
+  since: Date;
+}): Promise<CampaignReviewAttempt> {
+  const since = new Date(args.since.getTime() - CAMPAIGN_REVIEW_SINCE_SKEW_MS);
+  const usage = await prisma.aiUsageEvent.findFirst({
+    where: {
+      clientId: args.clientId,
+      feature: "CAMPAIGN_REVIEW",
+      subjectType: "ClientEmailSequence",
+      subjectId: args.sequenceId,
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { status: true, outcomeCode: true },
+  });
+  if (!usage) return { state: "pending" };
+  if (usage.status !== "OK") {
+    return {
+      state: "failed",
+      message: campaignReviewFailureMessage(usage.outcomeCode ?? "call_failed"),
+    };
+  }
+  const review = await prisma.aiCampaignReview.findFirst({
+    where: {
+      clientId: args.clientId,
+      sequenceId: args.sequenceId,
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { score: true, findings: true },
+  });
+  if (!review) {
+    return { state: "failed", message: campaignReviewFailureMessage("unusable_answer") };
+  }
+  const findingCount = Array.isArray(review.findings) ? review.findings.length : 0;
+  return {
+    state: "succeeded",
+    message: campaignReviewSuccessMessage(review.score, findingCount),
   };
 }
 

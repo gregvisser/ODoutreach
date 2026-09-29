@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { format } from "date-fns";
-
 import { syncMailboxInboxForMailboxAction } from "@/app/(app)/clients/mailbox-inbox-actions";
 import { Button } from "@/components/ui/button";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { replySyncButtonLabel } from "@/lib/inbox/reply-sync-copy";
 import { formatReplyCheckAttempt } from "@/lib/inbox/reply-health";
 import {
@@ -180,7 +179,7 @@ export function ClientMailboxInboxPanel({
               {messages.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {format(new Date(m.receivedAt), "yyyy-MM-dd HH:mm")}
+                    {formatStaffDateTime(m.receivedAt)}
                   </TableCell>
                   <TableCell className="max-w-[8rem] truncate text-xs" title={m.mailbox.email}>
                     {m.mailbox.email}

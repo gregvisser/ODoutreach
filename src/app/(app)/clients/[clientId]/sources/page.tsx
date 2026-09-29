@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ResearchPlanPanel } from "@/components/clients/research-plan-panel";
 import { listResearchPlans } from "@/server/prospect-research/plans";
+import { formatStaffDate } from "@/lib/datetime/staff-datetime";
 import { researchCriteriaSchema } from "@/lib/prospect-research/qualification";
 
 import { CsvImportForm, type ClientListOption } from "@/app/(app)/contacts/csv-import-form";
@@ -40,12 +41,6 @@ type Props = {
   }>;
 };
 
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
 export default async function ClientSourcesPage({ params, searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
@@ -56,7 +51,7 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
   if (!bundle.client) notFound();
   const client = bundle.client;
   const researchPlans = await listResearchPlans(staff, client.id);
-  const planViews = researchPlans.map(plan => ({ ...plan, criteria: researchCriteriaSchema.parse(plan.criteria), createdAt: DATE_FORMATTER.format(plan.createdAt) }));
+  const planViews = researchPlans.map(plan => ({ ...plan, criteria: researchCriteriaSchema.parse(plan.criteria), createdAt: formatStaffDate(plan.createdAt) }));
 
   const lists = await listContactListsForClient(client.id);
   const listOptions: ClientListOption[] = lists.map((l) => ({
@@ -68,7 +63,7 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
     id: l.id,
     name: l.name,
     memberCount: l.memberCount,
-    updatedAt: DATE_FORMATTER.format(l.updatedAt),
+    updatedAt: formatStaffDate(l.updatedAt),
   }));
 
   return (

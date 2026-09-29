@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { SendingDayDetails, type SendingDayDetailsValue } from "./sending-day-details";
-import { format } from "date-fns";
-
 import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
@@ -11,17 +9,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { outboundStatusLabel } from "@/lib/ui/status-labels";
 import { cn } from "@/lib/utils";
 import type { GovernedSendLedgerRow } from "@/server/queries/governed-send-ledger";
 
 function ts(iso: string | null) {
-  if (!iso) return "—";
-  try {
-    return format(new Date(iso), "d MMM, HH:mm");
-  } catch {
-    return iso;
-  }
+  return formatStaffDateTime(iso);
 }
 
 function reservationLabel(status: string | null): string {

@@ -1,4 +1,5 @@
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import {
   prepareClientEmailSequenceStepSendsAction,
   sendClientEmailSequenceIntroductionAction,
@@ -87,12 +88,7 @@ const FOLLOW_UP_CATEGORIES: readonly ClientEmailTemplateCategory[] = [
 
 function formatRelative(iso: string | null): string {
   if (!iso) return "never";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch {
-    return iso;
-  }
+  return formatStaffDateTime(iso);
 }
 
 function categoryLabel(category: ClientEmailTemplateCategory): string {

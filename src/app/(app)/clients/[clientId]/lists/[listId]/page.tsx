@@ -18,18 +18,13 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { loadClientContactListDetail } from "@/server/queries/client-contact-list-detail";
 import { getAccessibleClientIds } from "@/server/tenant/access";
 import { ListDetailContactTable } from "@/components/lists/list-detail-contact-table";
+import { formatStaffDate } from "@/lib/datetime/staff-datetime";
 
 export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ clientId: string; listId: string }>;
 };
-
-const DATE_FMT = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 function SummaryCard({
   label,
@@ -100,7 +95,7 @@ export default async function ListDetailPage({ params }: Props) {
         <p className="mt-1 max-w-2xl text-muted-foreground">
           {detail.isArchived
             ? "Archived list — contacts remain available in Universe."
-            : `Created ${DATE_FMT.format(detail.createdAt)} · Updated ${DATE_FMT.format(detail.updatedAt)}`}
+            : `Created ${formatStaffDate(detail.createdAt)} · Updated ${formatStaffDate(detail.updatedAt)}`}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
           <p className="text-xs text-muted-foreground">

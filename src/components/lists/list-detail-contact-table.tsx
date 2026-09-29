@@ -3,24 +3,15 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import type { ContactDeliveryRow } from "@/server/queries/client-contact-list-detail";
 
 type Props = {
   contacts: ContactDeliveryRow[];
 };
 
-const DATE_FMT = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 function formatDate(d: Date | string | null): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return DATE_FMT.format(date);
+  return formatStaffDateTime(d);
 }
 
 function statusBadge(status: string) {

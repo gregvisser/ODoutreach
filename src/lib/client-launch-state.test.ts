@@ -73,6 +73,21 @@ describe("deriveLaunchStageLabel", () => {
     ).toBe("Ready to launch");
   });
 
+  it("names reduced mailbox capacity in the headline without changing readiness", () => {
+    expect(
+      deriveLaunchStageLabel(
+        baseInput({
+          brief: readyBrief,
+          outreachPilotRunnable: true,
+          hasProductionLaunchableSequence: true,
+          enrolledContactsCount: 2,
+          connectedSendingCount: 1,
+          recommendedMailboxCount: 5,
+        }),
+      ),
+    ).toBe("Ready to launch — reduced capacity (1 of 5 mailboxes connected, 30/day)");
+  });
+
   it("returns Brief not started when brief empty", () => {
     expect(deriveLaunchStageLabel(baseInput({}))).toBe("Brief not started");
   });

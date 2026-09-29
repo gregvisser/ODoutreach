@@ -1,6 +1,7 @@
 import "server-only";
 
 import { AI_MODELS } from "@/lib/ai/model-catalog";
+import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildSendTimeAdviceInput,
   parseSendTimeAdviceToolUse,
@@ -114,6 +115,7 @@ export async function adviseSendTimes(args: {
 
   const model = resolveProductAiModel(AI_MODELS.SEND_TIME_ADVICE);
   const apiKey = resolveProductAiApiKey();
+  const budget = onDemandToolCallBudget(model);
 
   const outcome = await runMeteredAiCall({
     client: { id: client.id, slug: client.slug },
@@ -137,6 +139,8 @@ export async function adviseSendTimes(args: {
         }),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: SEND_TIME_ADVICE_TOOL,
+        timeoutMs: budget.timeoutMs,
+        reasoningEffort: budget.reasoningEffort,
       });
       return {
         result: parseSendTimeAdviceToolUse(response.content),

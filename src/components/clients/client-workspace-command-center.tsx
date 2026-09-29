@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { ClientLogo } from "@/components/clients/client-logo";
 
 type Props = {
+  clientId: string;
   clientName: string;
   clientSlug: string;
   clientStatus: string;
@@ -18,6 +19,7 @@ type Props = {
  * readiness rows do not say better.
  */
 export function ClientWorkspaceCommandCenter({
+  clientId,
   clientName,
   clientSlug,
   clientStatus,
@@ -30,6 +32,7 @@ export function ClientWorkspaceCommandCenter({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 gap-4">
           <ClientLogo
+            clientId={clientId}
             clientName={clientName}
             logoUrl={logoUrl}
             logoAltText={logoAltText}

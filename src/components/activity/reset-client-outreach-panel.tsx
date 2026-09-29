@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatStaffDate } from "@/lib/datetime/staff-datetime";
 import { cn } from "@/lib/utils";
 
 import {
@@ -154,7 +155,7 @@ export function ResetClientOutreachPanel({
           <p className="text-sm">
             Records created before{" "}
             <span className="font-medium">
-              {new Date(preview.cutoffIso).toLocaleDateString()}
+              {formatStaffDate(preview.cutoffIso)}
             </span>{" "}
             that will be <span className="font-medium">permanently deleted</span>:
           </p>

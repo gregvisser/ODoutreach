@@ -347,6 +347,7 @@ export function GlobalBrandEditor({ canEdit, effective, stored }: Props) {
                   <span className="mx-1 rounded bg-muted px-1 font-mono text-[11px]">
                     {previewBrandName} {previewProductName}
                   </span>
+                  {" "}
                   when blank.
                 </>
               }

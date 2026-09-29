@@ -80,6 +80,7 @@ export default async function ClientsPage() {
                   <TableCell className="font-medium">
                     <span className="flex items-center gap-3">
                       <ClientLogo
+                        clientId={c.id}
                         clientName={c.name}
                         logoUrl={c.logoUrl}
                         logoAltText={c.logoAltText}

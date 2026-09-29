@@ -1,6 +1,7 @@
 import "server-only";
 
 import { AI_MODELS } from "@/lib/ai/model-catalog";
+import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildTitleMessageInput,
   parseTitleMessageToolUse,
@@ -193,6 +194,7 @@ export async function adviseTitleMessages(args: {
 
   const model = resolveProductAiModel(AI_MODELS.TITLE_MESSAGE_FIT);
   const apiKey = resolveProductAiApiKey();
+  const budget = onDemandToolCallBudget(model);
 
   const outcome = await runMeteredAiCall({
     client: { id: client.id, slug: client.slug },
@@ -220,6 +222,8 @@ export async function adviseTitleMessages(args: {
         }),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: TITLE_MESSAGE_TOOL,
+        timeoutMs: budget.timeoutMs,
+        reasoningEffort: budget.reasoningEffort,
       });
       return {
         result: parseTitleMessageToolUse(response.content),

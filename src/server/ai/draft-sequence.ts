@@ -1,7 +1,7 @@
 import "server-only";
 
 import { AI_MODELS } from "@/lib/ai/model-catalog";
-import { sequenceDraftReasoningEffort } from "@/lib/ai/sequence-draft-timing";
+import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildSequenceDraftingInput,
   parseSequenceDraftToolUse,
@@ -16,10 +16,7 @@ import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy"
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import {
-  AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
-  callAiToolMessages,
-} from "./anthropic-messages";
+import { callAiToolMessages } from "./anthropic-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -126,6 +123,7 @@ export async function draftSequenceForClient(args: {
 
   const model = resolveProductAiModel(AI_MODELS.SEQUENCE_DRAFTING);
   const apiKey = resolveProductAiApiKey();
+  const budget = onDemandToolCallBudget(model);
 
   const outcome = await runMeteredAiCall({
     client: loaded.client,
@@ -142,8 +140,8 @@ export async function draftSequenceForClient(args: {
         userText: buildSequenceDraftingInput(loaded.brief),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: SEQUENCE_DRAFTING_TOOL,
-        timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
-        reasoningEffort: sequenceDraftReasoningEffort(model),
+        timeoutMs: budget.timeoutMs,
+        reasoningEffort: budget.reasoningEffort,
       });
       return {
         result: parseSequenceDraftToolUse(response.content),

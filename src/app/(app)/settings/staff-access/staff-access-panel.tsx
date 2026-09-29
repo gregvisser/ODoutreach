@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { format } from "date-fns";
+import { formatStaffDate } from "@/lib/datetime/staff-datetime";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -225,9 +225,9 @@ function StaffRowActions({
         : "—";
 
   const meta = [
-    row.invitedAt ? `Invited ${format(new Date(row.invitedAt), "d MMM yyyy")}` : null,
+    row.invitedAt ? `Invited ${formatStaffDate(row.invitedAt)}` : null,
     row.invitationLastSentAt
-      ? `Last sent ${format(new Date(row.invitationLastSentAt), "d MMM yyyy")}`
+      ? `Last sent ${formatStaffDate(row.invitationLastSentAt)}`
       : null,
     row.invitedByEmail ? `By ${row.invitedByEmail}` : null,
   ]
