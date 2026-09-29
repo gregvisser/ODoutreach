@@ -224,7 +224,7 @@ export function AutomaticListTopUpPanel({
           ))}
         </ul>
       ) : null}
-      <p role="status" className="text-sm">{message}</p>
+      {message ? <p role="status" className="text-sm">{message}</p> : null}
     </section>
   );
 }
