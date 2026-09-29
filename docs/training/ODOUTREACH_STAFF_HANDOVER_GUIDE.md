@@ -58,6 +58,7 @@ At a high level:
 
 - **Replies** are collected automatically from connected mailboxes (Azure WebJob in production; the GitHub **Sync replies** workflow also refreshes do-not-contact sheets). Use **Check replies** on Mailboxes only when you need an extra pull; you do not need to sync manually for ordinary daily work.
 - **Open tracking** is off by design — Activity does not show opens as a deliverability signal.
+- **Mailbox capacity is per mailbox.** Each connected mailbox sends up to its own daily cap. Recipients waiting on pacing or that cap send automatically; staff do not launch again to clear them. Do-not-contact, unsubscribe, bounce, reply-stop, pause, and a disconnected mailbox stay held. Do not ask the client to approve a wait.
 - **Product AI** (sparkle icon on drafting and review features) runs on **xAI Grok** when enabled. It drafts and advises only; it never sends mail. Optional outreach AI needs `AI_OUTREACH_FEATURES` turned on in the environment.
 - **Automatic reply labels** (AI sorting on the Replies queue) are not in use for prospect data — replies arrive unlabelled and need a person to read them.
 - Mailboxes marked **reconnect required** cannot send until the mailbox owner signs in again through Microsoft or Google.
@@ -78,6 +79,6 @@ At a high level:
 2. Open Mailboxes and check connected inboxes and capacity (branded signatures can be set on Mailboxes, including the one-click **Set branded signatures** action).
 3. Open **Contacts / Sources** and the **Universe** tab; explain CSV/RocketReach imports and deduplication.
 4. Open Do-not-contact and explain emails/domains never to contact; mention **List held — sending continues** when a sheet shrink is refused.
-5. Open Outreach and show list, mailbox, introduction, optional follow-up, preview, send; explain Human sending follow-ups need a manual launch.
+5. Open Outreach and show list, mailbox, introduction, optional follow-up, preview, send. Human sending follow-ups still need a first manual launch. After that, pacing and mailbox-capacity waits send on their own — each mailbox up to its own daily cap, and staff do not launch again to clear them. Do-not-contact stays blocked.
 6. Open **Replies waiting for a person** in the sidebar and show how to open and work a reply.
 7. Open Training and show the printable guide at `/training/staff-handover` plus the module list.

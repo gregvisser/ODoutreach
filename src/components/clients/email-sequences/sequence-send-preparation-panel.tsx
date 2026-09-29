@@ -9,6 +9,7 @@ import {
 import {
   humanizeSequenceLaunchDisabledReason,
   isDispatchHoldReason,
+  PACING_HOLD_REASON,
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
   LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
   sequenceIntroductionBatchLimitCopy,
@@ -425,7 +426,7 @@ function IntroSendDispatchBlock({
   const waiting = Math.max(0, readyNow - sendNow);
   const blocked = introSend.blockedCount + introSend.suppressedCount;
 
-  const introModalBody = `This requests introduction emails for up to ${String(sendNow)} contacts. Final calendar, pacing and safety checks may hold some or all of them. ${waiting > 0 ? `${String(waiting)} remaining recipients stay pending for a later staff launch; they are not automatically queued. ` : ""}Check the launch result and Activity to confirm what was queued. Follow-ups are launched separately.`;
+  const introModalBody = `This requests introduction emails for up to ${String(sendNow)} contacts. Final calendar, pacing and safety checks may hold some or all of them. ${waiting > 0 ? `${String(waiting)} remaining recipients stay queued and send automatically as mailbox capacity frees up. ` : ""}Check the launch result and Activity to confirm what was queued. Follow-ups are launched separately.`;
 
   return (
     <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs">
@@ -458,7 +459,7 @@ function IntroSendDispatchBlock({
         {introSend.heldReadyCount > 0 && (
           <p>
             {staffCopyForDispatchHold(
-              introSend.heldReadyReason ?? "Held back by send pacing",
+              introSend.heldReadyReason ?? PACING_HOLD_REASON,
             )}{" "}
             {String(introSend.heldReadyCount)} recipient
             {introSend.heldReadyCount === 1 ? " is" : "s are"} waiting on that.
@@ -664,7 +665,7 @@ function StepSendDispatchBlock({
         {stepSnapshot.heldReadyCount > 0 && (
           <p>
             {staffCopyForDispatchHold(
-              stepSnapshot.heldReadyReason ?? "Held back by send pacing",
+              stepSnapshot.heldReadyReason ?? PACING_HOLD_REASON,
             )}
           </p>
         )}

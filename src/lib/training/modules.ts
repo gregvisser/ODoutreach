@@ -1223,7 +1223,7 @@ export const STAFF_HANDOVER_CHECKLIST: readonly StaffHandoverChecklistItem[] = [
   {
     step: "Launch sequence",
     detail:
-      "Schedule or send only when the list, mailbox and copy are ready. Production launches use the main sequence path, not the small-batch confirmation tool.",
+      "Schedule or send only when the list, mailbox and copy are ready. Recipients held for mailbox capacity send automatically on later runs; do not launch again just to clear pacing. Do-not-contact and other safety holds stay held. Production launches use the main sequence path, not the small-batch confirmation tool.",
   },
   {
     step: "Read replies",

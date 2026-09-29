@@ -14,14 +14,14 @@ One page for OpensDoors staff. Run through this every working day before you tre
 
 - Almost every OpensDoors customer workspace uses **Human sending** on the Overview.
 - Only the internal **BidlowAI** test workspace is set up for **Machine sending** (automated follow-ups). Do not change other clients to Machine sending without Greg’s agreement.
-- In **Human sending**, follow-up steps **do not send by themselves**. Each day, open each active client’s **Outreach** tab and look for follow-up steps that are ready; launch them after you have reviewed the recipient and message.
+- In **Human sending**, the **first** launch of a follow-up is still yours. Each day, open each active client’s **Outreach** tab and launch follow-up steps that are due and have not been launched. After that launch, a recipient held only for pacing or mailbox capacity sends automatically — do not launch again to clear it.
 - Matched replies still **stop** further follow-ups on that sequence automatically — check the reply detail shows follow-ups stopped.
 
 ## 3. Mailboxes and sending
 
 - Open each client you are actively sending for → **Mailboxes**.
 - Fix any **Reconnect** warning by asking the mailbox owner to sign in again (Microsoft or Google). Disconnected mailboxes cannot send or receive checks.
-- Glance at daily capacity and warm-up — the “30 per day” ceiling includes staff replies and reserved sends.
+- Glance at daily capacity and warm-up — the “30 per day” ceiling is **per mailbox** and includes staff replies and reserved sends. One mailbox filling up does not reduce another. You do not relaunch a sequence to free capacity; waiting recipients send automatically. Do-not-contact and a disconnected mailbox stay held.
 
 ## 4. Do-not-contact and “List held”
 

@@ -73,8 +73,9 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "If an email is held for review, open Email approvals and read the recipient, sender, message and any recent contact from another client. Approve only when another email is appropriate.",
       "In Email approvals, choose Next allowed sending time or Choose a later sending time. A later time is entered in UK time (Europe/London); check the displayed UTC equivalent. Changing the time requires a fresh review tick.",
       "After approval, check the saved earliest attempt in Activity. The worker may send later because of sending hours, warm-up, allowance or safety holds. Queued is not Sent, and Sent does not prove Inbox placement. An uncertain approval needs a status check before any further action.",
-      "Each mailbox has a ceiling of 30 total emails per day, including staff replies and reserved sends. Warm-up can allow fewer outreach emails; the displayed pool capacity is not a promise that all 30 can go out immediately.",
-      "Automatic follow-ups require Machine sending and an active scheduler. In Human sending, review due recipients and use the follow-up send control. Do not change sending mode just to clear a hold.",
+      "Each mailbox has its own ceiling of 30 total emails per day, including staff replies and reserved sends. One mailbox filling up does not reduce another mailbox sending the same sequence. Warm-up can allow fewer outreach emails; the displayed capacity is not a promise that all 30 can go out immediately.",
+      "Recipients waiting on pacing or that ceiling send automatically. Do not launch again to clear pacing, and do not ask the client to approve the wait. Do-not-contact, unsubscribe, bounce, a reply that stops the sequence, a pause, and a disconnected mailbox stay held.",
+      "Automatic follow-ups require Machine sending and an active scheduler. In Human sending, review due recipients and use the follow-up send control for the first launch. Do not change sending mode just to clear a hold.",
     ],
   },
   {

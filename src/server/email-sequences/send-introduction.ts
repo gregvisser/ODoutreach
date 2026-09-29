@@ -19,6 +19,7 @@ import {
 import {
   CALENDAR_HOLD_REASON,
   CAPACITY_HOLD_REASON,
+  CORPORATE_HOLD_REASON,
   FAIR_SHARE_HOLD_REASON,
   isDispatchHoldReason,
   NO_READY_STEP_SENDS_MESSAGE,
@@ -53,7 +54,10 @@ import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { loadClientCalendarPlanningContext } from "@/server/mailbox/client-sending-calendar";
 import { pacedAllowanceForSendingWindow } from "@/lib/mailboxes/calendar-send-pacing";
-import { fairSendsThisLaunch } from "@/lib/mailboxes/mailbox-fair-share";
+import {
+  contendersForMailbox,
+  fairSendsThisLaunch,
+} from "@/lib/mailboxes/mailbox-fair-share";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import {
   MANUAL_SEND_COOLDOWN_MINUTES,
@@ -1040,11 +1044,12 @@ export async function sendSequenceStepBatch(input: {
                 m.id,
                 fairSendsThisLaunch({
                   sequenceId,
-                  mailboxId: m.id,
-                  preferredMailboxId,
                   pacedRemaining: rem,
-                  owners: fairShare.ownersByMailbox.get(m.id) ?? [],
-                  autoPickPeers: fairShare.autoPickPeers,
+                  contenders: contendersForMailbox({
+                    mailboxId: m.id,
+                    readySequenceIds: fairShare.readySequenceIds,
+                    sentTodayByMailboxSequence: fairShare.sentTodayByMailboxSequence,
+                  }),
                 }),
               );
             }
@@ -1313,9 +1318,7 @@ export async function sendSequenceStepBatch(input: {
             // into a 45-minute wait sends them looking for a problem that does
             // not exist.
             const reason = heldByCorporateGate
-              ? `Held back by the ${String(MANUAL_SEND_GROUP_SIZE)}-at-a-time release for corporate accounts — ` +
-                `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent. ` +
-                `Launch this sequence again after that wait; it will not send on its own.`
+              ? `${CORPORATE_HOLD_REASON} The next group of ${String(MANUAL_SEND_GROUP_SIZE)} is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent.`
               : heldByFairShare
                 ? FAIR_SHARE_HOLD_REASON
                 : heldByPacing
@@ -1345,6 +1348,24 @@ export async function sendSequenceStepBatch(input: {
       `Sequence ${category} dispatch failed: ${msg}`,
       category,
     );
+  }
+
+  // Rows this launch did not reach (the per-run batch bound) stay READY.
+  // Stamp them as a pacing hold so the scheduled tick continues them.
+  // Rows already given a reason — delay, suppression, fair share — are left
+  // alone. This does not enrol anyone and does not change a hard stop.
+  if (dispatchable.length > 0) {
+    await prisma.clientEmailSequenceStepSend.updateMany({
+      where: {
+        clientId,
+        sequenceId,
+        stepId,
+        status: "READY",
+        outboundEmailId: null,
+        OR: [{ blockedReason: null }, { blockedReason: "" }],
+      },
+      data: { blockedReason: PACING_HOLD_REASON },
+    });
   }
 
   for (const r of txResults) {
@@ -1469,7 +1490,8 @@ export type SequenceStepSendUiSnapshot = {
   earliestEligibleAtIso: string | null;
   /**
    * READY rows a previous launch deferred (pacing, calendar, capacity, or
-   * mailbox share). They stay unsent until staff launch again.
+   * mailbox share). The scheduled tick sends them when that mailbox's own
+   * allowance opens. Staff do not launch again.
    */
   heldReadyCount: number;
   /** The most common deferral sentence among {@link heldReadyCount}. */

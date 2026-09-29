@@ -12,7 +12,7 @@ const { prismaMock } = vi.hoisted(() => {
     client: { findUniqueOrThrow: vi.fn() },
     clientSendingCalendar: { findMany: async () => [] },
     clientEmailSequence: { findUnique: vi.fn(), findMany: vi.fn() },
-    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn() },
+    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), groupBy: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },
     outboundEmail: { findMany: vi.fn() },
     $queryRaw: vi.fn(async () => []),

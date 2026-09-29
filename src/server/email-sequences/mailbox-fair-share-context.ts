@@ -1,11 +1,13 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import type { MailboxShareOwner } from "@/lib/mailboxes/mailbox-fair-share";
+import { fairShareSentKey } from "@/lib/mailboxes/mailbox-fair-share";
 
 export type FairShareDispatchContext = {
-  ownersByMailbox: ReadonlyMap<string, readonly MailboxShareOwner[]>;
-  autoPickPeers: number;
+  /** Sequences that still have READY recipients, including the one launching. */
+  readySequenceIds: readonly string[];
+  /** Key `${mailboxId}|${sequenceId}` → sends booked in this sending window. */
+  sentTodayByMailboxSequence: ReadonlyMap<string, number>;
 };
 
 const SLOT_USING_STATUSES = [
@@ -28,9 +30,10 @@ function sequenceIdFromMetadata(metadata: unknown): string | null {
 }
 
 /**
- * Who is still waiting on each pinned mailbox, and how many auto-pick
- * sequences are waiting beside this launch. Read once per dispatch, before
- * the reservation transaction.
+ * Who still has READY work, and how many sends each sequence has booked on
+ * each mailbox in this window. Read once per dispatch, before the reservation
+ * transaction. Counts are per mailbox: mailbox A's sends are not stored
+ * against mailbox B.
  */
 export async function loadFairShareDispatchContext(input: {
   clientId: string;
@@ -39,60 +42,49 @@ export async function loadFairShareDispatchContext(input: {
 }): Promise<FairShareDispatchContext> {
   const sequences = await prisma.clientEmailSequence.findMany({
     where: { clientId: input.clientId, status: "APPROVED" },
-    select: { id: true, launchPreferredMailboxId: true },
+    select: { id: true },
   });
-  if (sequences.length === 0) return { ownersByMailbox: new Map(), autoPickPeers: 0 };
-
-  const readyGroups = await prisma.clientEmailSequenceStepSend.groupBy({
-    by: ["sequenceId"],
-    where: {
-      clientId: input.clientId,
-      status: "READY",
-      sequenceId: { in: sequences.map((sequence) => sequence.id) },
-    },
-    _count: { _all: true },
-  });
+  const readyGroups = sequences.length === 0
+    ? []
+    : await prisma.clientEmailSequenceStepSend.groupBy({
+        by: ["sequenceId"],
+        where: {
+          clientId: input.clientId,
+          status: "READY",
+          sequenceId: { in: sequences.map((sequence) => sequence.id) },
+        },
+        _count: { _all: true },
+      });
   const readyBySequence = new Map(
     readyGroups.map((group) => [group.sequenceId, group._count._all]),
   );
+  const readySequenceIds = [
+    ...new Set([
+      ...sequences
+        .filter((sequence) => (readyBySequence.get(sequence.id) ?? 0) > 0)
+        .map((sequence) => sequence.id),
+      input.sequenceId,
+    ]),
+  ];
+  const readySet = new Set(readySequenceIds);
+  const sentTodayByMailboxSequence = new Map<string, number>();
+  if (readySequenceIds.length === 0) {
+    return { readySequenceIds, sentTodayByMailboxSequence };
+  }
 
-  const waiting = sequences.filter((sequence) => (readyBySequence.get(sequence.id) ?? 0) > 0);
-  const autoPickPeers = waiting.filter(
-    (sequence) => sequence.id !== input.sequenceId && !sequence.launchPreferredMailboxId,
-  ).length;
-
-  const pinned = waiting.flatMap((sequence) => {
-    const mailboxId = sequence.launchPreferredMailboxId;
-    return mailboxId ? [{ id: sequence.id, mailboxId }] : [];
-  });
-  const ownersByMailbox = new Map<string, MailboxShareOwner[]>();
-  if (pinned.length === 0) return { ownersByMailbox, autoPickPeers };
-
-  const mailboxIds = [...new Set(pinned.map((sequence) => sequence.mailboxId))];
   const sentRows = await prisma.outboundEmail.findMany({
     where: {
       clientId: input.clientId,
-      mailboxIdentityId: { in: mailboxIds },
       queuedAt: { gte: input.windowStart },
       status: { in: [...SLOT_USING_STATUSES] },
     },
     select: { mailboxIdentityId: true, metadata: true },
   });
-  const sentByKey = new Map<string, number>();
   for (const row of sentRows) {
     const sequenceId = sequenceIdFromMetadata(row.metadata);
-    if (!sequenceId || !row.mailboxIdentityId) continue;
-    const key = `${row.mailboxIdentityId}|${sequenceId}`;
-    sentByKey.set(key, (sentByKey.get(key) ?? 0) + 1);
+    if (!sequenceId || !row.mailboxIdentityId || !readySet.has(sequenceId)) continue;
+    const key = fairShareSentKey(row.mailboxIdentityId, sequenceId);
+    sentTodayByMailboxSequence.set(key, (sentTodayByMailboxSequence.get(key) ?? 0) + 1);
   }
-
-  for (const sequence of pinned) {
-    const list = ownersByMailbox.get(sequence.mailboxId) ?? [];
-    list.push({
-      sequenceId: sequence.id,
-      sentToday: sentByKey.get(`${sequence.mailboxId}|${sequence.id}`) ?? 0,
-    });
-    ownersByMailbox.set(sequence.mailboxId, list);
-  }
-  return { ownersByMailbox, autoPickPeers };
+  return { readySequenceIds, sentTodayByMailboxSequence };
 }

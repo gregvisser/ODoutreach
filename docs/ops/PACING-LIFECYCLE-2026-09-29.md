@@ -1,6 +1,20 @@
 # Pacing lifecycle — 29 September 2026
 
-Read-only code trace for Human-mode introductions that stay on "Held back by send pacing", and for the red "Process open client calendars" step. No production database was queried. Workflow evidence is from the GitHub Actions API.
+## Current contract (supersedes the relaunch notes below)
+
+Capacity is computed **per mailbox**. Each connected mailbox has its own daily cap, warm-up ramp, spacing, and per-tick batch. Several mailboxes can send the same sequence at the same time, each up to its own cap. One mailbox filling up does not reduce another mailbox, and nothing borrows spare capacity from a second mailbox to exceed the first mailbox's cap.
+
+When more than one sequence still has recipients on the **same** mailbox, that mailbox's open slots are split between them. A sequence that is already ahead yields, so launch order cannot starve the other one. The split never raises a cap.
+
+A row held only because of pacing, the sending calendar, mailbox capacity, a shared-mailbox split, or the corporate at-a-time release stays `READY`. The five-minute scheduled tick sends it when that mailbox's allowance opens. Staff do not launch again and do not watch the clock. The Outreach status is "Queued — sends automatically as mailbox capacity frees up" (or the calendar / next-day / shared-capacity equivalent).
+
+Hard stops stay held: do-not-contact and suppression, unsubscribe, bounce, reply-stop, an explicit pause, and a mailbox that is disconnected or unhealthy. The migration `20260929183000_auto_release_pacing_holds` only rewrites the sentence on `READY` pacing holds. It does not change status and it does not clear a suppression hold. The tick uses the same rule, so rows already stored with the old "launch again" sentence are picked up even before that migration runs.
+
+Enrolment is unchanged. Planning recipients does not send them. The first launch is still a staff action. Open tracking stays off. Do-not-contact stays fail-closed. Nothing in this path asks a client to approve a send.
+
+The trace under "What staff were seeing" describes the system **before** this contract. Do not follow its "launch again" instructions.
+
+Read-only code trace for Human-mode introductions that stayed on "Held back by send pacing", and for the red "Process open client calendars" step. No production database was queried. Workflow evidence is from the GitHub Actions API.
 
 ## What staff are seeing
 
@@ -51,9 +65,10 @@ Every existing gate still runs at dispatch: do-not-contact, cooldown, governance
 
 ## What staff do
 
-- A row held for pacing, the sending calendar, or "no mailbox capacity" will not send on its own. Launch that sequence again during sending hours (or on the next sending day, if the mailbox has used today's allowance).
-- If the sentence says another sequence on this mailbox needs its share, launch that sequence first, then launch this one again.
-- Machine follow-ups that are past the automatic window are a separate case. See below.
+- Do not launch a sequence again because of pacing, the sending calendar, or mailbox capacity. Those rows send on the next scheduled tick once that mailbox's own allowance opens.
+- One mailbox reaching its cap does not stop the client's other mailboxes from sending the same sequence.
+- A do-not-contact, suppression, unsubscribe, bounce, reply-stop, pause, or disconnected mailbox stays held. Reconnect the mailbox, or leave the safety stop in place. Do not ask the client to approve anything.
+- Machine follow-ups that are past the automatic window are a separate case. See below. The first follow-up launch on a Human sending client is still a staff action. After that launch, a pacing hold continues on its own.
 
 ## Process outbound queue — false failure
 

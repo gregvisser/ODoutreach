@@ -2,11 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadScheduledOutreachPlan } from "@/server/mailbox/scheduled-outreach";
 import { syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
 import { advanceDueSequenceFollowUps } from "@/server/email-sequences/advance-due-followups";
+import { resumePacingHeldSends } from "@/server/email-sequences/resume-pacing-holds";
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
 
 export const runtime = "nodejs";
+
+/**
+ * Pacing resume runs for every open calendar, including Human sending.
+ * Follow-up advancement stays limited to clients that enabled Machine sending.
+ * Errors from either part fail the tick; a disconnected mailbox is a skip
+ * inside pacing resume and does not by itself fail the run.
+ */
+async function runScheduledAdvance(clientId: string) {
+  const pacing = await resumePacingHeldSends({ clientId });
+  const advance = await advanceDueSequenceFollowUps({ clientId });
+  return {
+    ...advance,
+    pacing,
+    skippedSteps: [...pacing.skippedSteps, ...advance.skippedSteps],
+    errors: [...pacing.errors, ...advance.errors],
+  };
+}
 
 /** Versioned path: old deployments cannot silently ignore scheduled scoping. */
 export async function POST(req: NextRequest) {
@@ -30,7 +48,7 @@ export async function POST(req: NextRequest) {
     const result = body.phase === "sync"
       ? await syncActiveClientMailboxInboxes({ mailboxId: body.mailboxId, clientIds: plan.clientIds, maxMailboxes: 1, perMailboxTop: 10 })
       : body.phase === "advance"
-        ? await advanceDueSequenceFollowUps({ clientId: body.clientId })
+        ? await runScheduledAdvance(body.clientId)
         : await processOutboundSendQueue({ limit: 25, clientIds: plan.clientIds });
     return NextResponse.json({ schedulerProtocol: 1, ...jobResponseBody(result) }, { status: jobOutcome(result).status });
   } catch (error) {
