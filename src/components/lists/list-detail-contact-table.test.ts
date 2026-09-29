@@ -36,6 +36,7 @@ function row(partial: Partial<ContactDeliveryRow>): ContactDeliveryRow {
     mobile: null,
     office: null,
     isSuppressed: false,
+    originNote: null,
     sequenceName: null,
     stepName: null,
     mailboxLabel: null,

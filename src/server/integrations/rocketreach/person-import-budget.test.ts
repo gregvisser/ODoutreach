@@ -1,5 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
-vi.mock("@/lib/db", () => ({ prisma: {} }));
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    rocketReachEnrichment: { findMany: vi.fn(async () => []) },
+    contactUniverseSource: { findMany: vi.fn(async () => []) },
+    contactUniverse: { findMany: vi.fn(async () => []) },
+    contact: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+  },
+}));
 vi.mock("@/server/contacts/contact-lists", () => ({ attachContactsToClientList: vi.fn() }));
 vi.mock("@/server/contacts/contact-universe", () => ({ upsertContactUniverseAndRecordSource: vi.fn() }));
 vi.mock("@/server/outreach/suppression-guard", () => ({ evaluateSuppression: vi.fn(), refreshContactSuppressionFlagsForClient: vi.fn() }));

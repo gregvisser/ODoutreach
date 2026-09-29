@@ -367,6 +367,7 @@ export function ListDetailContactTable({ contacts }: Props) {
                         </p>
                       )}
                       <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs sm:grid-cols-4">
+                        <Detail label="Where this person came from" value={c.originNote} />
                         <Detail label="First name" value={c.firstName} />
                         <Detail label="Last name" value={c.lastName} />
                         <Detail label="Industry" value={c.industry} />

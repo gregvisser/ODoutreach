@@ -1,6 +1,12 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ staff: vi.fn(), access: vi.fn(), target: vi.fn(), list: vi.fn(), importer: vi.fn() }));
+const m = vi.hoisted(() => ({ staff: vi.fn(), access: vi.fn(), target: vi.fn(), list: vi.fn(), importer: vi.fn(), findList: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    contactList: { findFirst: m.findList, delete: vi.fn() },
+    contactListMember: { count: vi.fn().mockResolvedValue(0) },
+  },
+}));
 vi.mock("@/server/auth/staff", () => ({ requireOpensDoorsStaff: m.staff }));
 vi.mock("@/server/tenant/access", () => ({ requireClientAccess: m.access }));
 vi.mock("@/server/contacts/contact-lists", () => ({ resolveImportListTarget: m.target, resolveImportListForClient: m.list }));
@@ -12,7 +18,8 @@ beforeEach(() => {
   m.staff.mockResolvedValue({ id: "staff", isSuperAdmin: false });
   m.access.mockResolvedValue(undefined); m.target.mockReturnValue({ newListName: input.newListName });
   m.list.mockResolvedValue({ id: "list", name: input.newListName, clientId: input.clientId });
-  m.importer.mockResolvedValue({ ok: true, imported: 1, errors: [] });
+  m.findList.mockResolvedValue(null);
+  m.importer.mockResolvedValue({ ok: true, imported: 1, errors: [], contactListId: "list" });
 });
 it("passes an industry-only search using the documented provider key and retains the credit cap", async () => {
   expect(await runRocketReachImportAction(input)).toMatchObject({ ok: true });

@@ -67,6 +67,8 @@ export const E2E_APP_ENV: Record<string, string> = {
   GOOGLE_SERVICE_ACCOUNT_JSON: "",
   GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: "",
   ROCKETREACH_API_KEY: "",
+  ROCKETREACH_AUTO_REFILL: "off",
+  ROCKETREACH_MIN_CREDIT_FLOOR: "",
 
   // Dev-only simulation routes stay off.
   ALLOW_DEV_OUTBOUND_QUEUE: "false",
