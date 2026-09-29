@@ -120,7 +120,7 @@ export function deriveDeliveryStatus(
   // The contact is enrolled and prepared to send (step-send READY or
   // PLANNED) but NO OutboundEmail exists yet — nothing has been handed
   // to the send pipeline. This is "Awaiting send", NOT "Queued". These
-  // go out on the next launch / send-queue run. Labelling them "Queued"
+  // go out the next time staff launch this sequence. Labelling them "Queued"
   // is what made the per-list count disagree with the workspace Reports
   // page (which only counts real queued OutboundEmail rows).
   if (
