@@ -37,6 +37,8 @@ import { formatReplyCheckAttempt } from "@/lib/inbox/reply-health";
 import { ClientEmailSequenceForm } from "./client-email-sequence-form";
 import { ArchiveSequenceConfirmForm } from "./sequence-archive-confirm-form";
 import { SequenceSendPreparationPanel } from "./sequence-send-preparation-panel";
+import { AutomaticListTopUpPanel } from "./automatic-list-top-up-panel";
+import type { SequenceListTopUpView } from "@/lib/clients/rocketreach-top-up-view";
 
 /**
  * Outreach-page section for per-client email sequences.
@@ -78,6 +80,8 @@ type Props = {
   }>;
   sequencePrepSnapshots: SequencePrepSnapshot[];
   stepSendSnapshots: SequenceStepSendUiSnapshot[];
+  /** Automatic list top-up for the selected sequence. Null when none is selected. */
+  listTopUp: SequenceListTopUpView | null;
 };
 
 function outreachListHref(clientId: string): string {
@@ -581,6 +585,14 @@ export function ClientEmailSequencesPanel(props: Props) {
                 on {formatDate(selected.approvedAtIso)}
               </p>
             )}
+
+            {props.listTopUp ? (
+              <AutomaticListTopUpPanel
+                clientId={clientId}
+                topUp={props.listTopUp}
+                canMutate={canMutate}
+              />
+            ) : null}
 
             <LaunchReadinessBlock
               readiness={launchReadinessBySequenceId[selected.id] ?? null}

@@ -1,0 +1,55 @@
+# Adds people to a sequence list when a staff member has turned top-up on.
+# It does not enrol contacts and it does not send email.
+# ROCKETREACH_AUTO_REFILL must also be on in the App Service, or the route
+# returns a clean no-op.
+name: RocketReach list top-up
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekday UK working hours, every 15 minutes. 07:00–18:00 UTC.
+    - cron: "*/15 7-18 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odoutreach-rocketreach-refill
+  cancel-in-progress: false
+
+jobs:
+  refill-lists:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refill lists that are below their threshold
+        env:
+          REFILL_URL: https://opensdoors.bidlow.co.uk/api/internal/rocketreach-refill/v1
+          PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}
+        run: |
+          if [ -z "${PROCESS_QUEUE_SECRET}" ]; then
+            echo "PROCESS_QUEUE_SECRET is not configured; skipping list top-up."
+            exit 0
+          fi
+          response_file="/tmp/rocketreach-refill.json"
+          status="000"
+          if ! status=$(curl -sS -o "$response_file" -w "%{http_code}" \
+            --max-time 180 \
+            -X POST "$REFILL_URL" \
+            -H "Authorization: Bearer ${PROCESS_QUEUE_SECRET}" \
+            -H "Content-Type: application/json" \
+            --data '{}'); then
+            echo "List top-up curl failed before a valid HTTP response."
+            status="000"
+          fi
+          echo "List top-up HTTP status: ${status}"
+          if [ -f "$response_file" ]; then
+            cat "$response_file"
+          fi
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            exit 1
+          fi
+          ok=$(jq -r 'try .ok catch ""' "$response_file" 2>/dev/null || echo "")
+          if [ "$ok" != "true" ]; then
+            echo "List top-up reported a failure."
+            exit 1
+          fi

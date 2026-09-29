@@ -323,6 +323,8 @@ model StaffUser {
   familyProposalsDecided          SuppressedDomainFamilyProposal[] @relation("FamilyProposalDecidedBy")
   replyClaims                     ReplyClaim[]
   repliesHandled                  InboundReply[]                   @relation("InboundReplyHandledBy")
+  rocketReachPlanRunsTriggered    RocketReachPlanRun[]             @relation("RocketReachPlanRunTriggeredBy")
+  sequenceListRefillRulesEnabled  SequenceListRefillRule[]         @relation("SequenceListRefillEnabledBy")
 
   @@index([invitedById])
 }
@@ -452,6 +454,9 @@ model SupportTicketComment {
 
 model Client {
   prospectResearchPlans ProspectResearchPlan[]
+  rocketReachPlanRuns RocketReachPlanRun[]
+  sequenceListRefillRules SequenceListRefillRule[]
+  rocketReachCreditReservations RocketReachCreditReservation[]
   id                               String                    @id @default(cuid())
   name                             String
   slug                             String                    @unique
@@ -971,6 +976,9 @@ model Contact {
   country                String?
   industry               String?
   source                 ContactSource @default(MANUAL)
+  /// UK GDPR source notice for contacts added by automatic list top-up.
+  /// Null on manually imported people. Never used as a send or enrolment input.
+  originNote             String?
   importBatchId          String?
   /// Cached flag after suppression check (refresh on sync)
   isSuppressed           Boolean       @default(false)
@@ -1056,6 +1064,7 @@ model ContactUniverseSource {
   @@index([clientId])
   @@index([importBatchId])
   @@index([sourceType])
+  @@index([rocketReachPersonId])
 }
 
 /// Named reusable list of contacts (universal-contact bridge, PR D1).
@@ -1495,6 +1504,8 @@ model ClientEmailSequence {
   /// model or in the launch rail reads them, and a review can neither block
   /// nor clear a launch.
   aiReviews              AiCampaignReview[]
+  refillRule             SequenceListRefillRule?
+  rocketReachPlanRuns    RocketReachPlanRun[]
 
   @@index([clientId])
   @@index([clientId, status])
@@ -2401,6 +2412,8 @@ model TrainingAssistantUnansweredQuestion {
 /// Immutable saved targeting proposal. Saving never authorises provider spending.
 model ProspectResearchPlan {
   run ProspectResearchRun?
+  executions RocketReachPlanRun[]
+  refillRules SequenceListRefillRule[]
   id               String   @id @default(cuid())
   clientId         String
   name             String
@@ -2454,4 +2467,105 @@ model ProspectResearchCandidate {
   decision Json
   evaluatedAt DateTime @default(now())
   request ProspectResearchRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+/// One execution of a saved research plan: a staff click, a list top-up, or a free preview.
+/// Automatic top-up rows never enrol contacts and never send email.
+model RocketReachPlanRun {
+  id                 String                    @id @default(cuid())
+  clientId           String
+  planId             String
+  sequenceId         String?
+  contactListId      String?
+  triggeredByStaffId String?
+  trigger            RocketReachPlanRunTrigger
+  status             RocketReachPlanRunStatus
+  startedAt          DateTime                  @default(now())
+  finishedAt         DateTime?
+  creditsReserved    Int                       @default(0)
+  creditsUsed        Int                       @default(0)
+  contactsAdded      Int                       @default(0)
+  skipped            Json
+  detail             String?                   @db.Text
+  dryRun             Boolean                   @default(false)
+
+  client       Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan         ProspectResearchPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sequence     ClientEmailSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
+  triggeredBy  StaffUser?           @relation("RocketReachPlanRunTriggeredBy", fields: [triggeredByStaffId], references: [id], onDelete: SetNull)
+  reservations RocketReachCreditReservation[]
+
+  @@index([clientId, startedAt])
+  @@index([planId, startedAt])
+  @@index([sequenceId, startedAt])
+}
+
+enum RocketReachPlanRunTrigger {
+  MANUAL
+  AUTO_REFILL
+  PREVIEW
+}
+
+enum RocketReachPlanRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  PREVIEW
+}
+
+enum RocketReachCreditReservationState {
+  RESERVED
+  CHARGED
+  RELEASED
+}
+
+/// A paid lookup slot taken before the HTTP call. RELEASED returns the slot to the budget
+/// when RocketReach did not return contact details. CHARGED and in-flight RESERVED both count.
+model RocketReachCreditReservation {
+  id         String                            @id @default(cuid())
+  clientId   String
+  runId      String
+  ruleId     String?
+  profileId  String
+  state      RocketReachCreditReservationState @default(RESERVED)
+  reservedAt DateTime                          @default(now())
+  resolvedAt DateTime?
+
+  client Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  run    RocketReachPlanRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, profileId])
+  @@index([clientId, reservedAt, state])
+  @@index([ruleId, reservedAt, state])
+}
+
+/// Per-sequence list top-up. Off until a named staff member turns it on.
+/// The scheduled job may add people to the sequence's list. It must not enrol or send.
+model SequenceListRefillRule {
+  id                 String    @id @default(cuid())
+  sequenceId         String    @unique
+  clientId           String
+  planId             String
+  enabled            Boolean   @default(false)
+  lowWaterMark       Int
+  maxCreditsPerRun   Int
+  maxCreditsPerDay   Int
+  maxCreditsPerMonth Int
+  balanceFloor       Int
+  searchStart        Int       @default(1)
+  enabledByStaffId   String?
+  enabledAt          DateTime?
+  disabledAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  sequence  ClientEmailSequence  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  client    Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan      ProspectResearchPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  enabledBy StaffUser?           @relation("SequenceListRefillEnabledBy", fields: [enabledByStaffId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, enabled])
+  @@index([planId])
+  @@index([enabledByStaffId])
 }

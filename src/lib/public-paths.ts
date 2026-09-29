@@ -22,6 +22,9 @@ export function isPublicPath(pathname: string): boolean {
   // The scheduler also validates PROCESS_QUEUE_SECRET in its exact route.
   if (pathname === "/api/internal/scheduled-outreach/v1") return true;
   if (pathname === "/api/internal/campaign-scheduler/v1") return true;
+  // RocketReach list top-up. The route checks PROCESS_QUEUE_SECRET itself.
+  // It adds people to a list. It does not enrol and it does not send.
+  if (pathname === "/api/internal/rocketreach-refill/v1") return true;
   // Public one-click unsubscribe endpoints. The token itself is the proof.
   if (pathname.startsWith("/unsubscribe/")) return true;
   if (pathname.startsWith("/api/unsubscribe/")) return true;

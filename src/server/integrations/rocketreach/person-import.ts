@@ -2,14 +2,21 @@ import "server-only";
 
 import type { ContactSource } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import { ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
+import {
+  matchKnownSearchProfile,
+  type RocketReachSearchIdentity,
+} from "@/lib/clients/rocketreach-known-match";
 import {
   extractDomainFromEmail,
   isValidEmailFormat,
   normalizeEmail,
 } from "@/lib/normalize";
+import { normalizeLinkedInUrl } from "@/lib/universe/normalize-identifiers";
 import { attachContactsToClientList } from "@/server/contacts/contact-lists";
 import { upsertContactUniverseAndRecordSource } from "@/server/contacts/contact-universe";
 import { evaluateSuppression, refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
+import { loadKnownRocketReachIndexes } from "./known-profiles";
 
 /** Documented RocketReach API v2 bases (see https://docs.rocketreach.co/reference/people-search-api). */
 export const ROCKETREACH_API_V2_SEARCH =
@@ -17,28 +24,45 @@ export const ROCKETREACH_API_V2_SEARCH =
 export const ROCKETREACH_API_V2_LOOKUP =
   "https://api.rocketreach.co/api/v2/person/lookup";
 
-const MAX_IMPORT = 10;
+const MAX_IMPORT = ROCKETREACH_MAX_IMPORT;
+
+export type RocketReachLookupGovernor = {
+  /** Reserve the credit before the paid HTTP call. `proceed: false` stops the run. */
+  reserve: (profileId: number) => Promise<{ proceed: boolean; reason?: string }>;
+  settle: (profileId: number, outcome: "charged" | "released" | "kept") => Promise<void>;
+};
 
 export type RocketReachImportInput = {
   clientId: string;
   /** Raw JSON body for POST /person/search — must include at least a `query` object. */
   searchBody: Record<string, unknown>;
-  /** PR D2: every import must attach imported contacts to a named list. */
-  contactListId: string;
+  /** Existing list. Omit when `ensureContactList` creates the list only after a contact is ready. */
+  contactListId?: string;
+  ensureContactList?: () => Promise<{ id: string; name: string }>;
   /** List display name for Universe attribution. */
   targetListName: string;
   addedByStaffUserId?: string | null;
+  /** Set on contacts created by automatic list top-up. */
+  originNote?: string | null;
+  sourceLabel?: string | null;
+  governor?: RocketReachLookupGovernor;
 };
 
 export type RocketReachImportResult =
   | {
       ok: true;
       imported: number;
+      importedWithoutLookup: number;
       skippedNoEmail: number;
       skippedInvalid: number;
       skippedDuplicate: number;
+      skippedAlreadyKnown: number;
+      flaggedSuppressed: number;
+      creditsUsed: number;
+      lookupsAttempted: number;
+      searchProfileCount: number;
       errors: string[];
-      contactListId: string;
+      contactListId: string | null;
       listAttachedAdded: number;
       listAttachedSkipped: number;
       universeCreated: number;
@@ -46,87 +70,98 @@ export type RocketReachImportResult =
     }
   | { ok: false; error: string };
 
-type SearchProfile = { id?: number };
 type LookupProfile = Record<string, unknown>;
 
-function extractSearchProfiles(json: unknown): SearchProfile[] {
-  if (Array.isArray(json)) return json as SearchProfile[];
+export type RocketReachSearchHit = RocketReachSearchIdentity;
+
+function extractSearchRows(json: unknown): unknown[] {
+  if (Array.isArray(json)) return json;
   if (json && typeof json === "object") {
-    const o = json as Record<string, unknown>;
+    const record = json as Record<string, unknown>;
     for (const key of ["profiles", "people", "results", "data"]) {
-      const v = o[key];
-      if (Array.isArray(v)) return v as SearchProfile[];
+      const value = record[key];
+      if (Array.isArray(value)) return value;
     }
   }
   return [];
 }
 
-function pickEmailFromLookup(p: LookupProfile): string | null {
+function collectEmails(profile: LookupProfile): string[] {
+  const found: string[] = [];
   const candidates = [
-    p.recommended_professional_email,
-    p.recommended_email,
-    p.current_work_email,
-    p.recommended_personal_email,
-    p.current_personal_email,
+    profile.recommended_professional_email,
+    profile.recommended_email,
+    profile.current_work_email,
+    profile.recommended_personal_email,
+    profile.current_personal_email,
   ];
-  for (const c of candidates) {
-    if (typeof c === "string") {
-      const e = normalizeEmail(c);
-      if (e && isValidEmailFormat(e)) return e;
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const email = normalizeEmail(candidate);
+      if (email && isValidEmailFormat(email)) found.push(email);
     }
   }
-  const emails = p.emails;
+  const emails = profile.emails;
   if (Array.isArray(emails)) {
     for (const row of emails) {
       if (row && typeof row === "object" && "email" in row) {
-        const e = normalizeEmail(String((row as { email?: string }).email ?? ""));
-        if (e && isValidEmailFormat(e)) return e;
+        const email = normalizeEmail(String((row as { email?: string }).email ?? ""));
+        if (email && isValidEmailFormat(email)) found.push(email);
       }
     }
   }
-  return null;
+  return [...new Set(found)];
 }
 
-/**
- * Extract a best-effort phone number from a RocketReach lookup payload.
- * RocketReach returns `phones` as either an array of strings or an array of
- * `{ number, type }` objects; we match by the provided type hints and fall
- * back to the first valid number when no typed match is found.
- */
-function pickPhoneFromLookup(
-  p: LookupProfile,
-  typeHints: readonly string[],
-): string | null {
-  const phones = p.phones;
-  if (!Array.isArray(phones)) return null;
+export function searchIdentityFromProfile(raw: unknown): RocketReachSearchHit | null {
+  if (!raw || typeof raw !== "object") return null;
+  const profile = raw as LookupProfile;
+  const id = profile.id;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) return null;
+  const linkedinUrl =
+    typeof profile.linkedin_url === "string"
+      ? profile.linkedin_url
+      : typeof profile.linkedinUrl === "string"
+        ? profile.linkedinUrl
+        : null;
+  return {
+    id,
+    name: typeof profile.name === "string" ? profile.name : null,
+    title: typeof profile.current_title === "string" ? profile.current_title : null,
+    employer: typeof profile.current_employer === "string" ? profile.current_employer : null,
+    location: typeof profile.location === "string" ? profile.location : null,
+    linkedinUrl,
+    linkedinNormalized: normalizeLinkedInUrl(linkedinUrl),
+    emails: collectEmails(profile),
+  };
+}
 
-  const hints = typeHints.map((h) => h.toLowerCase());
+function pickEmailFromLookup(profile: LookupProfile): string | null {
+  return collectEmails(profile)[0] ?? null;
+}
+
+function pickPhoneFromLookup(profile: LookupProfile, typeHints: readonly string[]): string | null {
+  const phones = profile.phones;
+  if (!Array.isArray(phones)) return null;
+  const hints = typeHints.map((hint) => hint.toLowerCase());
   const typed: string[] = [];
   const untyped: string[] = [];
-
   for (const entry of phones) {
     if (typeof entry === "string") {
-      const v = entry.trim();
-      if (v) untyped.push(v);
+      const value = entry.trim();
+      if (value) untyped.push(value);
       continue;
     }
     if (entry && typeof entry === "object") {
       const row = entry as { number?: unknown; type?: unknown };
       const raw = typeof row.number === "string" ? row.number.trim() : "";
       if (!raw) continue;
-      const t = typeof row.type === "string" ? row.type.toLowerCase() : "";
-      if (hints.some((h) => t.includes(h))) {
-        typed.push(raw);
-      } else {
-        untyped.push(raw);
-      }
+      const type = typeof row.type === "string" ? row.type.toLowerCase() : "";
+      if (hints.some((hint) => type.includes(hint))) typed.push(raw);
+      else untyped.push(raw);
     }
   }
-
   if (typed.length > 0) return typed[0] ?? null;
-  // Only fall back to untyped numbers when callers explicitly asked for the
-  // broadest hint set so we don't double-count a single phone as both mobile
-  // and office when type is unknown.
   if (hints.includes("office") && untyped.length > 0) return untyped[0] ?? null;
   return null;
 }
@@ -138,6 +173,224 @@ function splitName(name: unknown): { first?: string; last?: string } {
   return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
+type PersistCounters = {
+  imported: number;
+  skippedInvalid: number;
+  skippedDuplicate: number;
+  flaggedSuppressed: number;
+  universeCreated: number;
+  universeMatched: number;
+  touchedContactIds: string[];
+};
+
+async function persistRocketReachContact(
+  counters: PersistCounters,
+  input: {
+    clientId: string;
+    profileId: number;
+    email: string;
+    profile: LookupProfile;
+    originNote: string | null;
+    sourceLabel: string;
+  },
+): Promise<void> {
+  const norm = normalizeEmail(input.email);
+  if (!norm || !isValidEmailFormat(norm)) {
+    counters.skippedInvalid++;
+    return;
+  }
+  const { first, last } = splitName(input.profile.name);
+  const company = typeof input.profile.current_employer === "string" ? input.profile.current_employer : null;
+  const title = typeof input.profile.current_title === "string" ? input.profile.current_title : null;
+  const linkedin = typeof input.profile.linkedin_url === "string" ? input.profile.linkedin_url : null;
+  const city = typeof input.profile.city === "string" && input.profile.city.trim() ? input.profile.city.trim() : null;
+  const country =
+    typeof input.profile.country === "string" && input.profile.country.trim() ? input.profile.country.trim() : null;
+  const industry =
+    typeof input.profile.company_industry === "string" && input.profile.company_industry.trim()
+      ? input.profile.company_industry.trim()
+      : typeof input.profile.industry === "string" && input.profile.industry.trim()
+        ? input.profile.industry.trim()
+        : null;
+  const loc =
+    typeof input.profile.location === "string" && input.profile.location.trim()
+      ? input.profile.location.trim()
+      : [input.profile.city, input.profile.region, input.profile.country]
+          .filter((value) => typeof value === "string" && value.trim())
+          .join(", ") || null;
+  const mobilePhone = pickPhoneFromLookup(input.profile, ["mobile", "cell", "personal"]);
+  const officePhone = pickPhoneFromLookup(input.profile, ["office", "work", "direct", "landline"]);
+  const fullName =
+    typeof input.profile.name === "string" && input.profile.name.trim()
+      ? input.profile.name.trim()
+      : [first, last].filter(Boolean).join(" ") || null;
+
+  const existing = await prisma.contact.findUnique({
+    where: { clientId_email: { clientId: input.clientId, email: norm } },
+    select: { id: true },
+  });
+  const universe = await upsertContactUniverseAndRecordSource(prisma, {
+    emailNormalized: norm,
+    linkedInRaw: linkedin,
+    mobilePhoneRaw: mobilePhone,
+    officePhoneRaw: officePhone,
+    firstName: first ?? null,
+    lastName: last ?? null,
+    fullName,
+    companyName: company,
+    jobTitle: title,
+    location: loc,
+    city,
+    country,
+    industry,
+    firstSeenClientId: input.clientId,
+    firstSeenSourceType: "ROCKETREACH",
+    sourceLabel: input.sourceLabel,
+    rocketReachPersonId: String(input.profileId),
+    rawSourceMetadata: { rocketReachProfileId: input.profileId },
+  });
+  if (universe.created) counters.universeCreated++;
+  else counters.universeMatched++;
+
+  if (existing) {
+    counters.skippedDuplicate++;
+    await prisma.contact.updateMany({
+      where: { id: existing.id, universeContactId: null },
+      data: { universeContactId: universe.universeId },
+    });
+    counters.touchedContactIds.push(existing.id);
+    return;
+  }
+
+  const source: ContactSource = "ROCKETREACH";
+  const initialSuppression = await evaluateSuppression(input.clientId, norm, company || null);
+  if (initialSuppression.suppressed) counters.flaggedSuppressed++;
+  const contact = await prisma.contact.create({
+    data: {
+      isSuppressed: initialSuppression.suppressed,
+      lastSuppressionCheckAt: new Date(),
+      clientId: input.clientId,
+      email: norm,
+      emailDomain: extractDomainFromEmail(norm) || null,
+      fullName,
+      firstName: first ?? null,
+      lastName: last ?? null,
+      company,
+      title,
+      linkedIn: linkedin,
+      mobilePhone,
+      officePhone,
+      location: loc,
+      city,
+      country,
+      industry,
+      source,
+      originNote: input.originNote,
+      universeContactId: universe.universeId,
+    },
+  });
+  await prisma.rocketReachEnrichment.create({
+    data: {
+      clientId: input.clientId,
+      contactId: contact.id,
+      externalId: String(input.profileId),
+      status: "FETCHED",
+      rawPayload: {
+        ...input.profile,
+        _od: {
+          linkedinUrl: linkedin,
+          location: loc,
+          importedAt: new Date().toISOString(),
+          originNote: input.originNote,
+        },
+      } as object,
+      fetchedAt: new Date(),
+    },
+  });
+  counters.touchedContactIds.push(contact.id);
+  counters.imported++;
+}
+
+function profileFromUniverse(fields: {
+  email: string;
+  fullName: string | null;
+  companyName: string | null;
+  jobTitle: string | null;
+  linkedinUrl: string | null;
+  location: string | null;
+  city: string | null;
+  country: string | null;
+  industry: string | null;
+}): LookupProfile {
+  return {
+    name: fields.fullName,
+    current_employer: fields.companyName,
+    current_title: fields.jobTitle,
+    linkedin_url: fields.linkedinUrl,
+    location: fields.location,
+    city: fields.city,
+    country: fields.country,
+    company_industry: fields.industry,
+    recommended_professional_email: fields.email,
+  };
+}
+
+export async function searchRocketReachIdentities(
+  searchBody: Record<string, unknown>,
+): Promise<{ ok: true; identities: RocketReachSearchHit[] } | { ok: false; error: string }> {
+  const apiKey = process.env.ROCKETREACH_API_KEY?.trim();
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: "ROCKETREACH_API_KEY is not set — add it to the server environment to enable API import.",
+    };
+  }
+  const requestedSize = searchBody.page_size ?? MAX_IMPORT;
+  if (typeof requestedSize !== "number" || !Number.isSafeInteger(requestedSize) || requestedSize < 1) {
+    return { ok: false, error: "Search batch size must be a positive whole number." };
+  }
+  const lookupLimit = Math.min(requestedSize, MAX_IMPORT);
+  let searchRes: Response;
+  try {
+    searchRes = await fetch(ROCKETREACH_API_V2_SEARCH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Api-Key": apiKey },
+      body: JSON.stringify({ ...searchBody, page_size: lookupLimit }),
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "RocketReach search request failed" };
+  }
+  const searchText = await searchRes.text();
+  let searchJson: unknown;
+  try {
+    searchJson = JSON.parse(searchText) as unknown;
+  } catch {
+    return { ok: false, error: `RocketReach search returned non-JSON (HTTP ${String(searchRes.status)})` };
+  }
+  if (!searchRes.ok) {
+    return {
+      ok: false,
+      error: `RocketReach search failed (HTTP ${String(searchRes.status)}): ${searchText.slice(0, 500)}`,
+    };
+  }
+  const identities: RocketReachSearchHit[] = [];
+  const seen = new Set<number>();
+  for (const row of extractSearchRows(searchJson)) {
+    const identity = searchIdentityFromProfile(row);
+    if (!identity || seen.has(identity.id)) continue;
+    seen.add(identity.id);
+    identities.push(identity);
+    if (identities.length >= lookupLimit) break;
+  }
+  if (identities.length === 0) {
+    return {
+      ok: false,
+      error: "RocketReach search returned no profile ids — refine the query or check API credits.",
+    };
+  }
+  return { ok: true, identities };
+}
+
 export async function importRocketReachPeopleForClient(
   input: RocketReachImportInput,
 ): Promise<RocketReachImportResult> {
@@ -145,276 +398,152 @@ export async function importRocketReachPeopleForClient(
   if (!apiKey) {
     return {
       ok: false,
-      error:
-        "ROCKETREACH_API_KEY is not set — add it to the server environment to enable API import.",
+      error: "ROCKETREACH_API_KEY is not set — add it to the server environment to enable API import.",
     };
   }
+  const searched = await searchRocketReachIdentities(input.searchBody);
+  if (!searched.ok) return searched;
+  const identities = searched.identities;
 
-  const { clientId, searchBody, contactListId, targetListName, addedByStaffUserId } = input;
-  // Bound the request and subsequent paid lookups at the transport boundary,
-  // including callers using raw search JSON. Never expand a smaller batch.
-  const requestedSize = searchBody.page_size ?? MAX_IMPORT;
-  if (typeof requestedSize !== "number" || !Number.isSafeInteger(requestedSize) || requestedSize < 1) {
-    return { ok: false, error: "Search batch size must be a positive whole number." };
-  }
-  const lookupLimit = Math.min(requestedSize, MAX_IMPORT);
-  const headers = {
-    "Content-Type": "application/json",
-    "Api-Key": apiKey,
+  const known = await loadKnownRocketReachIndexes(input.clientId, identities);
+  const counters: PersistCounters = {
+    imported: 0,
+    skippedInvalid: 0,
+    skippedDuplicate: 0,
+    flaggedSuppressed: 0,
+    universeCreated: 0,
+    universeMatched: 0,
+    touchedContactIds: [],
   };
-
-  let searchRes: Response;
-  try {
-    searchRes = await fetch(ROCKETREACH_API_V2_SEARCH, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ ...searchBody, page_size: lookupLimit }),
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "RocketReach search request failed",
-    };
-  }
-
-  const searchText = await searchRes.text();
-  let searchJson: unknown;
-  try {
-    searchJson = JSON.parse(searchText) as unknown;
-  } catch {
-    return {
-      ok: false,
-      error: `RocketReach search returned non-JSON (HTTP ${String(searchRes.status)})`,
-    };
-  }
-
-  if (!searchRes.ok) {
-    return {
-      ok: false,
-      error: `RocketReach search failed (HTTP ${String(searchRes.status)}): ${searchText.slice(0, 500)}`,
-    };
-  }
-
-  const profiles: SearchProfile[] = extractSearchProfiles(searchJson);
-  const ids = [...new Set(profiles
-    .map((p) => p?.id)
-    .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0))]
-    .slice(0, lookupLimit);
-
-  if (ids.length === 0) {
-    return {
-      ok: false,
-      error: "RocketReach search returned no profile ids — refine the query or check API credits.",
-    };
-  }
-
-  let imported = 0;
   let skippedNoEmail = 0;
-  let skippedInvalid = 0;
-  let skippedDuplicate = 0;
-  let universeCreated = 0;
-  let universeMatched = 0;
+  let skippedAlreadyKnown = 0;
+  let importedWithoutLookup = 0;
+  let creditsUsed = 0;
+  let lookupsAttempted = 0;
   const errors: string[] = [];
-  const touchedContactIds: string[] = [];
+  const sourceLabel = input.sourceLabel?.trim() || `RocketReach → ${input.targetListName}`;
+  const originNote = input.originNote?.trim() || null;
 
-  for (const id of ids) {
-    let lookupRes: Response;
-    try {
-      const url = new URL(ROCKETREACH_API_V2_LOOKUP);
-      url.searchParams.set("id", String(id));
-      lookupRes = await fetch(url.toString(), { headers: { "Api-Key": apiKey } });
-    } catch (e) {
-      errors.push(`id ${String(id)}: ${e instanceof Error ? e.message : "lookup failed"}`);
+  for (const identity of identities) {
+    const match = matchKnownSearchProfile(identity, known);
+    if (match?.kind === "client") {
+      skippedAlreadyKnown++;
+      counters.touchedContactIds.push(match.contactId);
       continue;
     }
-
-    const lookupText = await lookupRes.text();
-    let lookupJson: unknown;
-    try {
-      lookupJson = JSON.parse(lookupText) as unknown;
-    } catch {
-      skippedInvalid++;
-      continue;
-    }
-
-    if (!lookupRes.ok) {
-      errors.push(`id ${String(id)}: HTTP ${String(lookupRes.status)}`);
-      continue;
-    }
-
-    const profile = lookupJson as LookupProfile;
-    const email = pickEmailFromLookup(profile);
-    if (!email) {
+    if (match?.kind === "known-incomplete") {
+      skippedAlreadyKnown++;
       skippedNoEmail++;
       continue;
     }
-
-    const norm = normalizeEmail(email);
-    if (!norm || !isValidEmailFormat(norm)) {
-      skippedInvalid++;
-      continue;
-    }
-
-    const { first, last } = splitName(profile.name);
-    const company =
-      typeof profile.current_employer === "string" ? profile.current_employer : null;
-    const title =
-      typeof profile.current_title === "string" ? profile.current_title : null;
-    const linkedin =
-      typeof profile.linkedin_url === "string" ? profile.linkedin_url : null;
-    const city =
-      typeof profile.city === "string" && profile.city.trim()
-        ? profile.city.trim()
-        : null;
-    const country =
-      typeof profile.country === "string" && profile.country.trim()
-        ? profile.country.trim()
-        : null;
-    const industry =
-      typeof profile.company_industry === "string" && profile.company_industry.trim()
-        ? profile.company_industry.trim()
-        : typeof profile.industry === "string" && profile.industry.trim()
-          ? profile.industry.trim()
-          : null;
-    const loc =
-      typeof profile.location === "string" && profile.location.trim()
-        ? profile.location.trim()
-        : [profile.city, profile.region, profile.country]
-            .filter((x) => typeof x === "string" && x.trim())
-            .join(", ") || null;
-    const mobilePhone = pickPhoneFromLookup(profile, [
-      "mobile",
-      "cell",
-      "personal",
-    ]);
-    const officePhone = pickPhoneFromLookup(profile, [
-      "office",
-      "work",
-      "direct",
-      "landline",
-    ]);
-
-    const emailDomain = extractDomainFromEmail(norm) || null;
-    const fullName =
-      typeof profile.name === "string" && profile.name.trim()
-        ? profile.name.trim()
-        : [first, last].filter(Boolean).join(" ") || null;
-
-    const existing = await prisma.contact.findUnique({
-      where: { clientId_email: { clientId, email: norm } },
-      select: { id: true },
-    });
-
-    const u = await upsertContactUniverseAndRecordSource(prisma, {
-      emailNormalized: norm,
-      linkedInRaw: linkedin,
-      mobilePhoneRaw: mobilePhone,
-      officePhoneRaw: officePhone,
-      firstName: first ?? null,
-      lastName: last ?? null,
-      fullName,
-      companyName: company,
-      jobTitle: title,
-      location: loc,
-      city,
-      country,
-      industry,
-      firstSeenClientId: clientId,
-      firstSeenSourceType: "ROCKETREACH",
-      sourceLabel: `RocketReach → ${targetListName}`,
-      rocketReachPersonId: String(id),
-      rawSourceMetadata: { rocketReachProfileId: id },
-    });
-    if (u.created) universeCreated++;
-    else universeMatched++;
-
-    if (existing) {
-      skippedDuplicate++;
-      await prisma.contact.updateMany({
-        where: { id: existing.id, universeContactId: null },
-        data: { universeContactId: u.universeId },
+    if (match?.kind === "universe") {
+      skippedAlreadyKnown++;
+      const before = counters.imported;
+      await persistRocketReachContact(counters, {
+        clientId: input.clientId,
+        profileId: identity.id,
+        email: match.fields.email,
+        profile: profileFromUniverse(match.fields),
+        originNote,
+        sourceLabel,
       });
-      touchedContactIds.push(existing.id);
+      if (counters.imported > before) importedWithoutLookup++;
       continue;
     }
 
-    const source: ContactSource = "ROCKETREACH";
-
-    const initialSuppression = await evaluateSuppression(clientId, norm, company || null);
-    const contact = await prisma.contact.create({
-      data: {
-        isSuppressed: initialSuppression.suppressed,
-        lastSuppressionCheckAt: new Date(),
-        clientId,
-        email: norm,
-        emailDomain,
-        fullName,
-        firstName: first ?? null,
-        lastName: last ?? null,
-        company,
-        title,
-        linkedIn: linkedin,
-        mobilePhone,
-        officePhone,
-        location: loc,
-        city,
-        country,
-        industry,
-        source,
-        universeContactId: u.universeId,
-      },
-    });
-
-    const metaPayload = {
-      ...profile,
-      _od: {
-        linkedinUrl: linkedin,
-        location: loc,
-        importedAt: new Date().toISOString(),
-      },
-    };
-
-    await prisma.rocketReachEnrichment.create({
-      data: {
-        clientId,
-        contactId: contact.id,
-        externalId: String(id),
-        status: "FETCHED",
-        rawPayload: metaPayload as object,
-        fetchedAt: new Date(),
-      },
-    });
-
-    touchedContactIds.push(contact.id);
-    imported++;
+    let reserved = false;
+    let outcome: "charged" | "released" | "kept" = "kept";
+    try {
+      if (input.governor) {
+        const reservation = await input.governor.reserve(identity.id);
+        if (!reservation.proceed) {
+          errors.push(reservation.reason ?? "Stopped before a paid lookup.");
+          break;
+        }
+        reserved = true;
+      }
+      lookupsAttempted++;
+      const url = new URL(ROCKETREACH_API_V2_LOOKUP);
+      url.searchParams.set("id", String(identity.id));
+      let lookupRes: Response;
+      try {
+        lookupRes = await fetch(url.toString(), { headers: { "Api-Key": apiKey } });
+      } catch (error) {
+        errors.push(`id ${String(identity.id)}: ${error instanceof Error ? error.message : "lookup failed"}`);
+        continue;
+      }
+      const lookupText = await lookupRes.text();
+      let lookupJson: unknown;
+      try {
+        lookupJson = JSON.parse(lookupText) as unknown;
+      } catch {
+        counters.skippedInvalid++;
+        continue;
+      }
+      if (!lookupRes.ok) {
+        errors.push(`id ${String(identity.id)}: HTTP ${String(lookupRes.status)}`);
+        continue;
+      }
+      const profile = lookupJson as LookupProfile;
+      const email = pickEmailFromLookup(profile);
+      if (!email) {
+        outcome = "released";
+        skippedNoEmail++;
+        continue;
+      }
+      outcome = "charged";
+      creditsUsed++;
+      await persistRocketReachContact(counters, {
+        clientId: input.clientId,
+        profileId: identity.id,
+        email,
+        profile,
+        originNote,
+        sourceLabel,
+      });
+    } finally {
+      if (reserved && input.governor) await input.governor.settle(identity.id, outcome);
+    }
   }
 
+  let contactListId = input.contactListId ?? null;
   let listAttachedAdded = 0;
   let listAttachedSkipped = 0;
-  if (touchedContactIds.length > 0) {
+  if (counters.touchedContactIds.length > 0) {
+    if (!contactListId) {
+      if (!input.ensureContactList) {
+        return { ok: false, error: "Choose a list before importing." };
+      }
+      const created = await input.ensureContactList();
+      contactListId = created.id;
+    }
     const attachResult = await attachContactsToClientList({
-      clientId,
+      clientId: input.clientId,
       contactListId,
-      contactIds: touchedContactIds,
-      addedByStaffUserId: addedByStaffUserId ?? null,
+      contactIds: counters.touchedContactIds,
+      addedByStaffUserId: input.addedByStaffUserId ?? null,
     });
     listAttachedAdded = attachResult.added;
     listAttachedSkipped = attachResult.skipped;
   }
-
-  await refreshContactSuppressionFlagsForClient(clientId);
-
+  await refreshContactSuppressionFlagsForClient(input.clientId);
   return {
     ok: true,
-    imported,
+    imported: counters.imported,
+    importedWithoutLookup,
     skippedNoEmail,
-    skippedInvalid,
-    skippedDuplicate,
+    skippedInvalid: counters.skippedInvalid,
+    skippedDuplicate: counters.skippedDuplicate,
+    skippedAlreadyKnown,
+    flaggedSuppressed: counters.flaggedSuppressed,
+    creditsUsed,
+    lookupsAttempted,
+    searchProfileCount: identities.length,
     errors: errors.slice(0, 12),
     contactListId,
     listAttachedAdded,
     listAttachedSkipped,
-    universeCreated,
-    universeMatched,
+    universeCreated: counters.universeCreated,
+    universeMatched: counters.universeMatched,
   };
 }

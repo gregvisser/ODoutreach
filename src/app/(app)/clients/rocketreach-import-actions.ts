@@ -9,11 +9,7 @@ import {
   ROCKETREACH_IMPORT_CONFIRMATION_PHRASE,
   isRocketReachImportConfirmationValid,
 } from "@/lib/clients/rocketreach-import-safety";
-import {
-  resolveImportListForClient,
-  resolveImportListTarget,
-} from "@/server/contacts/contact-lists";
-import { importRocketReachPeopleForClient } from "@/server/integrations/rocketreach/person-import";
+import { runRocketReachListImport } from "@/server/integrations/rocketreach/run-import";
 import { requireClientAccess } from "@/server/tenant/access";
 
 // PR D2: every import must be routed to a named ContactList. The operator
@@ -49,6 +45,8 @@ export type RocketReachImportActionResult =
       skippedNoEmail: number;
       skippedInvalid: number;
       skippedDuplicate: number;
+      skippedAlreadyKnown: number;
+      creditsUsed: number;
       errors: string[];
       contactListId: string;
       contactListName: string;
@@ -59,19 +57,11 @@ export type RocketReachImportActionResult =
     }
   | { ok: false; error: string };
 
-function listErrorMessage(code: string): string {
-  switch (code) {
-    case "CONTACT_LIST_NOT_FOUND":
-      return "Selected list no longer exists — choose another or type a new name.";
-    case "CONTACT_LIST_WRONG_CLIENT":
-      return "Selected list belongs to a different client workspace.";
-    case "CONTACT_LIST_NAME_REQUIRED":
-      return "Enter a list name before importing.";
-    case "CONTACT_LIST_NAME_TOO_LONG":
-      return "List name must be 120 characters or fewer.";
-    default:
-      return "Could not resolve the target list.";
-  }
+function revalidateImport(clientId: string) {
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}/sources`);
+  revalidatePath("/contacts");
+  revalidatePath("/universe");
 }
 
 export async function runRocketReachImportAction(
@@ -108,46 +98,26 @@ export async function runRocketReachImportAction(
       };
     }
 
-    const target = resolveImportListTarget({
+    const result = await runRocketReachListImport({
+      clientId: parsed.data.clientId,
+      staffId: staff.id,
       existingListId: parsed.data.existingListId,
       newListName: parsed.data.newListName,
-    });
-    if ("error" in target) {
-      return { ok: false, error: target.error };
-    }
-    let list: { id: string; name: string; clientId: string | null };
-    try {
-      list = await resolveImportListForClient({
-        clientId: parsed.data.clientId,
-        target,
-        createdByStaffUserId: staff.id,
-      });
-    } catch (e) {
-      const code = e instanceof Error ? e.message : String(e);
-      return { ok: false, error: listErrorMessage(code) };
-    }
-
-    const result = await importRocketReachPeopleForClient({
-      clientId: parsed.data.clientId,
       searchBody: body,
-      contactListId: list.id,
-      targetListName: list.name,
-      addedByStaffUserId: staff.id,
     });
     if (!result.ok) return result;
-    revalidatePath(`/clients/${parsed.data.clientId}`);
-    revalidatePath(`/clients/${parsed.data.clientId}/sources`);
-    revalidatePath("/contacts");
-    revalidatePath("/universe");
+    revalidateImport(parsed.data.clientId);
     return {
       ok: true,
       imported: result.imported,
       skippedNoEmail: result.skippedNoEmail,
       skippedInvalid: result.skippedInvalid,
       skippedDuplicate: result.skippedDuplicate,
+      skippedAlreadyKnown: result.skippedAlreadyKnown,
+      creditsUsed: result.creditsUsed,
       errors: result.errors,
       contactListId: result.contactListId,
-      contactListName: list.name,
+      contactListName: result.contactListName,
       listAttachedAdded: result.listAttachedAdded,
       listAttachedSkipped: result.listAttachedSkipped,
       universeCreated: result.universeCreated,
@@ -184,25 +154,6 @@ export async function runRocketReachImportAction(
     };
   }
 
-  const target = resolveImportListTarget({
-    existingListId: parsed.data.existingListId,
-    newListName: parsed.data.newListName,
-  });
-  if ("error" in target) {
-    return { ok: false, error: target.error };
-  }
-  let list: { id: string; name: string; clientId: string | null };
-  try {
-    list = await resolveImportListForClient({
-      clientId: parsed.data.clientId,
-      target,
-      createdByStaffUserId: staff.id,
-    });
-  } catch (e) {
-    const code = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: listErrorMessage(code) };
-  }
-
   const pageSize = parsed.data.pageSize ?? 10;
   const searchBody: Record<string, unknown> = {
     query: q,
@@ -211,27 +162,26 @@ export async function runRocketReachImportAction(
     order_by: parsed.data.orderBy ?? "relevance",
   };
 
-  const result = await importRocketReachPeopleForClient({
+  const result = await runRocketReachListImport({
     clientId: parsed.data.clientId,
+    staffId: staff.id,
+    existingListId: parsed.data.existingListId,
+    newListName: parsed.data.newListName,
     searchBody,
-    contactListId: list.id,
-    targetListName: list.name,
-    addedByStaffUserId: staff.id,
   });
   if (!result.ok) return result;
-  revalidatePath(`/clients/${parsed.data.clientId}`);
-  revalidatePath(`/clients/${parsed.data.clientId}/sources`);
-  revalidatePath("/contacts");
-  revalidatePath("/universe");
+  revalidateImport(parsed.data.clientId);
   return {
     ok: true,
     imported: result.imported,
     skippedNoEmail: result.skippedNoEmail,
     skippedInvalid: result.skippedInvalid,
     skippedDuplicate: result.skippedDuplicate,
+    skippedAlreadyKnown: result.skippedAlreadyKnown,
+    creditsUsed: result.creditsUsed,
     errors: result.errors,
     contactListId: result.contactListId,
-    contactListName: list.name,
+    contactListName: result.contactListName,
     listAttachedAdded: result.listAttachedAdded,
     listAttachedSkipped: result.listAttachedSkipped,
     universeCreated: result.universeCreated,

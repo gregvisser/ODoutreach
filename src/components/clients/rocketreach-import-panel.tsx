@@ -19,6 +19,8 @@ import {
   ROCKETREACH_SAVED_LIST_IMPORT_SUPPORTED,
 } from "@/lib/clients/rocketreach-list-import-capability";
 import { ROCKETREACH_SIMPLE_SEARCH_LABELS } from "@/lib/clients/rocketreach-simple-search-labels";
+import { rocketReachClickCostEstimate } from "@/lib/clients/rocketreach-credit-estimate";
+import type { RocketReachCreditSnapshot } from "@/lib/clients/rocketreach-account-balance";
 import {
   Card,
   CardContent,
@@ -36,6 +38,7 @@ type ExistingList = {
 type Props = {
   clientId: string;
   apiKeyConfigured: boolean;
+  creditBalance: RocketReachCreditSnapshot;
   existingLists: ExistingList[];
   /**
    * Raw JSON import — server should set this only when `ROCKETREACH_IMPORT_JSON_DEBUG`
@@ -47,6 +50,7 @@ type Props = {
 export function RocketReachImportPanel({
   clientId,
   apiKeyConfigured,
+  creditBalance,
   existingLists,
   allowAdvancedRocketReachJson = false,
 }: Props) {
@@ -69,6 +73,7 @@ export function RocketReachImportPanel({
   const hasListTarget =
     existingListId.trim().length > 0 || newListName.trim().length > 0;
   const confirmationOk = isRocketReachImportConfirmationValid(confirmationPhrase);
+  const cost = rocketReachClickCostEstimate(maxResults);
 
   return (
     <Card className="border-border/80 shadow-sm">
@@ -174,10 +179,16 @@ export function RocketReachImportPanel({
 
           <div className="mt-3 rounded-md border border-amber-400/60 bg-amber-50/60 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100">
             <p className="font-medium">RocketReach may use credits</p>
+            <p className="mt-1 text-sm font-medium text-foreground">{cost.headline}</p>
             <p className="mt-1 text-xs text-muted-foreground dark:text-amber-100/90">
-              Charges depend on your RocketReach plan. Searches only run after
-              you submit this form — opening the page does not consume
-              credits.
+              {cost.detail}
+            </p>
+            <p className="mt-2 text-xs" role="status">
+              {creditBalance.state === "ready"
+                ? creditBalance.label
+                : creditBalance.state === "unavailable"
+                  ? creditBalance.message
+                  : "RocketReach is not configured, so the credit balance cannot be shown."}
             </p>
             <p className="mt-2 text-xs">
               Type <code className="text-xs">{ROCKETREACH_IMPORT_CONFIRMATION_PHRASE}</code> to continue.
@@ -275,7 +286,7 @@ export function RocketReachImportPanel({
                   });
                   if (r.ok) {
                     setMessage(
-                      `Done — saved ${String(r.imported)} people to list “${r.contactListName}” and Universe (${String(r.universeCreated)} new, ${String(r.universeMatched)} matched). Skipped: no email ${String(r.skippedNoEmail)}, invalid ${String(r.skippedInvalid)}, duplicate ${String(r.skippedDuplicate)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
+                      `Done — saved ${String(r.imported)} people to list “${r.contactListName}” and Universe (${String(r.universeCreated)} new, ${String(r.universeMatched)} matched). Credits used: ${String(r.creditsUsed)}. Skipped: no email ${String(r.skippedNoEmail)}, invalid ${String(r.skippedInvalid)}, duplicate ${String(r.skippedDuplicate)}, already known ${String(r.skippedAlreadyKnown)}.${r.errors.length ? ` Notes: ${r.errors.join("; ")}` : ""}`,
                     );
                     router.refresh();
                   } else {

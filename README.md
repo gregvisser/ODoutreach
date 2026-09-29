@@ -178,7 +178,9 @@ Before enqueueing mail to a recipient address (any other code path you add):
 | `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | Recommended | e.g. `https://login.microsoftonline.com/<tenant-id>/v2.0/` |
 | `STAFF_EMAIL_DOMAINS` | No | Comma-separated allowed email domains for staff UI |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | No† | Sheets API for suppression sync |
-| `ROCKETREACH_API_KEY` | No | Enrichment stub |
+| `ROCKETREACH_API_KEY` | No | RocketReach People Search and lookup |
+| `ROCKETREACH_AUTO_REFILL` | No | `true` turns on automatic list top-up. Unset is off. See `docs/ops/ROCKETREACH-AUTO-REFILL.md` |
+| `ROCKETREACH_MIN_CREDIT_FLOOR` | No | Optional account-balance floor for automatic list top-up |
 | `SEED_ENTRA_OBJECT_ID` | No | Seed script — Entra `oid` for demo `StaffUser` |
 | `EMAIL_PROVIDER` | No | `mock` (default) or `resend` |
 | `RESEND_API_KEY` | No‡ | Resend API key when `EMAIL_PROVIDER=resend` |

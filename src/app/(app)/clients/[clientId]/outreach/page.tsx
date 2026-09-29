@@ -36,6 +36,7 @@ import {
   getAccessibleClientIds,
 } from "@/server/tenant/access";
 import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
+import { loadSequenceListTopUp } from "@/server/prospect-research/auto-refill";
 import { mailboxRowOperatorStatus } from "@/lib/mailboxes/mailboxes-operator-model";
 
 export const dynamic = "force-dynamic";
@@ -148,6 +149,9 @@ export default async function ClientOutreachPage({
     });
 
   const preSendPreviewEnabled = isPreSendPreviewEnabled();
+  const listTopUp = selectedSequenceId
+    ? await loadSequenceListTopUp(client.id, selectedSequenceId)
+    : null;
 
   const launchReadinessBySequenceId = buildSequenceLaunchReadinessMap({
     sequences: sequencesOverview.sequences,
@@ -206,6 +210,7 @@ export default async function ClientOutreachPage({
         launchMailboxOptions={launchMailboxOptions}
         sequencePrepSnapshots={sequencePrepSnapshots}
         stepSendSnapshots={stepSendBundle.snapshots}
+        listTopUp={listTopUp}
       />
 
       <AiCampaignReviewPanel

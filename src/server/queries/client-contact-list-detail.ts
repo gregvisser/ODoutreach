@@ -28,6 +28,8 @@ export type ContactDeliveryRow = {
   mobile: string | null;
   office: string | null;
   isSuppressed: boolean;
+  /** UK GDPR source line, set when automatic list top-up added this person. */
+  originNote: string | null;
   sequenceName: string | null;
   stepName: string | null;
   mailboxLabel: string | null;
@@ -117,6 +119,7 @@ export async function loadClientContactListDetail(
           mobilePhone: true,
           officePhone: true,
           isSuppressed: true,
+          originNote: true,
         },
       },
     },
@@ -303,6 +306,7 @@ export async function loadClientContactListDetail(
       mobile: c.mobilePhone ?? null,
       office: c.officePhone ?? null,
       isSuppressed: c.isSuppressed,
+      originNote: c.originNote ?? null,
       sequenceName: ss?.sequence?.name ?? null,
       stepName: ss?.step?.template?.category ?? null,
       mailboxLabel: mailboxLabel ?? null,

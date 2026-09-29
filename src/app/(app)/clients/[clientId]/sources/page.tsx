@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ResearchPlanPanel } from "@/components/clients/research-plan-panel";
 import { listResearchPlans } from "@/server/prospect-research/plans";
 import { formatStaffDate } from "@/lib/datetime/staff-datetime";
+import { listLatestManualPlanRunNotes } from "@/server/prospect-research/execute-plan";
 import { researchCriteriaSchema } from "@/lib/prospect-research/qualification";
 
 import { CsvImportForm, type ClientListOption } from "@/app/(app)/contacts/csv-import-form";
@@ -23,6 +24,7 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listContactListsForClient } from "@/server/contacts/contact-lists";
 import { loadClientWorkspaceBundle } from "@/server/queries/client-workspace-bundle";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+import { loadRocketReachCreditSnapshot } from "@/server/integrations/rocketreach/account";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +52,21 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
   const bundle = await loadClientWorkspaceBundle(clientId, accessible, staff);
   if (!bundle.client) notFound();
   const client = bundle.client;
-  const researchPlans = await listResearchPlans(staff, client.id);
-  const planViews = researchPlans.map(plan => ({ ...plan, criteria: researchCriteriaSchema.parse(plan.criteria), createdAt: formatStaffDate(plan.createdAt) }));
+  const [researchPlans, runNotes, lists, creditBalance] = await Promise.all([
+    listResearchPlans(staff, client.id),
+    listLatestManualPlanRunNotes(client.id),
+    listContactListsForClient(client.id),
+    bundle.rocketReachEnvReady
+      ? loadRocketReachCreditSnapshot()
+      : Promise.resolve({ state: "unconfigured" as const }),
+  ]);
+  const planViews = researchPlans.map(plan => ({
+    ...plan,
+    criteria: researchCriteriaSchema.parse(plan.criteria),
+    createdAt: formatStaffDate(plan.createdAt),
+    lastRun: runNotes[plan.id] ?? null,
+  }));
 
-  const lists = await listContactListsForClient(client.id);
   const listOptions: ClientListOption[] = lists.map((l) => ({
     id: l.id,
     name: l.name,
@@ -77,7 +90,7 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
       </div>
 
       <ContactImportResultBanner params={sp} />
-      <ResearchPlanPanel clientId={client.id} plans={planViews} />
+      <ResearchPlanPanel clientId={client.id} plans={planViews} lists={listOptions} />
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
@@ -139,6 +152,7 @@ export default async function ClientSourcesPage({ params, searchParams }: Props)
       <RocketReachImportPanel
         clientId={client.id}
         apiKeyConfigured={bundle.rocketReachEnvReady}
+        creditBalance={creditBalance}
         existingLists={listOptions}
         allowAdvancedRocketReachJson={
           process.env.ROCKETREACH_IMPORT_JSON_DEBUG === "1" ||
