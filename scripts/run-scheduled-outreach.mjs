@@ -1,6 +1,33 @@
 import { pathToFileURL } from 'node:url';
 
-/** Finite, versioned run. Never fall back to an older unscoped send endpoint. */
+/** Keep a failure sentence. Drop secrets and prospect addresses before the Actions log. */
+function scrubJobText(value) {
+  return String(value)
+    .replace(/Bearer\s+\S+/gi, '[redacted]')
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, '[redacted]')
+    .replace(/\b(?:sk-ant|xai|sk)-[A-Za-z0-9_-]{6,}\b/g, '[redacted]')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[redacted-email]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+}
+
+export function publicJobNotes(result) {
+  const lines = [];
+  if (Array.isArray(result?.errors)) {
+    for (const entry of result.errors) if (typeof entry === 'string' && entry.trim()) lines.push(scrubJobText(entry));
+  }
+  if (typeof result?.error === 'string' && result.error.trim()) lines.push(scrubJobText(result.error));
+  if (Array.isArray(result?.skippedSteps)) {
+    for (const entry of result.skippedSteps) if (typeof entry === 'string' && entry.trim()) lines.push(`skipped: ${scrubJobText(entry)}`);
+  }
+  return lines.slice(0, 10);
+}
+
+/**
+ * Finite, versioned run. Never fall back to an older unscoped send endpoint.
+ * @param {{ url: string, secret: string, timeoutMs?: number, budgetMs?: number, now?: () => number, fetchImpl?: typeof fetch, onBatch?: (batch: Record<string, unknown>) => void }} options
+ */
 export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, budgetMs = 20 * 60_000, now = Date.now, fetchImpl = fetch, onBatch = () => {} }) {
   if (!url || !secret) throw Error('Scheduled outreach URL or secret is not configured');
   if (!Number.isSafeInteger(budgetMs) || budgetMs <= 0 || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw Error('Invalid scheduled outreach time budget');
@@ -15,8 +42,13 @@ export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, b
       headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
       body: JSON.stringify({ schedulerProtocol: 1, ...body }),
     });
-    if (response.status !== 200 && response.status !== 207) throw Error(`Scheduled outreach HTTP ${response.status}`);
-    const result = await response.json();
+    const raw = await response.text();
+    let result = null;
+    try { result = JSON.parse(raw); } catch { result = null; }
+    if (response.status !== 200 && response.status !== 207) {
+      const notes = publicJobNotes(result);
+      throw Error(`Scheduled outreach HTTP ${response.status}${notes.length ? `: ${notes.join('; ')}` : ''}`);
+    }
     if (result?.schedulerProtocol !== 1 || typeof result.ok !== 'boolean') throw Error('Unsupported scheduled outreach response');
     return result;
   };
@@ -36,11 +68,13 @@ export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, b
       const result = await request(body);
       if (!result.ok) summary.failed++;
       if (result.skipped === true) summary.skipped++;
-      onBatch({ phase: body.phase, ok: result.ok, skipped: result.skipped === true });
-    } catch {
+      const notes = publicJobNotes(result);
+      onBatch({ phase: body.phase, ok: result.ok, skipped: result.skipped === true, ...(notes.length ? { errors: notes } : {}) });
+    } catch (error) {
       // A timeout may follow committed work. Record it without blind retries.
       summary.unverified++;
-      onBatch({ phase: body.phase, unverified: true });
+      const message = scrubJobText(error instanceof Error ? error.message : 'Scheduled outreach failed');
+      onBatch({ phase: body.phase, unverified: true, error: message });
     }
   };
   for (const mailboxId of plan.mailboxIds) await batch({ phase: 'sync', mailboxId });

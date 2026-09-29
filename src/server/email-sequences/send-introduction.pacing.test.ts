@@ -23,9 +23,10 @@ const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     client: { findUniqueOrThrow: vi.fn() },
     clientSendingCalendar: { findMany: async () => [] },
-    clientEmailSequence: { findUnique: vi.fn() },
-    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn() },
+    clientEmailSequence: { findUnique: vi.fn(), findMany: vi.fn() },
+    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },
+    outboundEmail: { findMany: vi.fn() },
     // Warm-up anchors on days actually sent on. Empty = never sent.
     $queryRaw: vi.fn(async () => []),
     mailboxSendReservation: { count: vi.fn() },
@@ -221,15 +222,21 @@ describe("send pacing fires inside the real dispatcher", () => {
     for (const m of [
       prismaMock.client.findUniqueOrThrow,
       prismaMock.clientEmailSequence.findUnique,
+      prismaMock.clientEmailSequence.findMany,
       prismaMock.clientEmailSequenceStepSend.findMany,
+      prismaMock.clientEmailSequenceStepSend.groupBy,
       prismaMock.clientEmailSequenceStepSend.update,
       prismaMock.clientMailboxIdentity.findMany,
+      prismaMock.outboundEmail.findMany,
       prismaMock.mailboxSendReservation.count,
       prismaMock.$transaction,
     ]) {
       m.mockReset();
     }
     prismaMock.mailboxSendReservation.count.mockResolvedValue(0);
+    prismaMock.clientEmailSequence.findMany.mockResolvedValue([]);
+    prismaMock.clientEmailSequenceStepSend.groupBy.mockResolvedValue([]);
+    prismaMock.outboundEmail.findMany.mockResolvedValue([]);
     prismaMock.clientEmailSequenceStepSend.update.mockResolvedValue({} as never);
     vi.mocked(evaluateSuppression).mockReset();
     vi.mocked(evaluateSuppression).mockResolvedValue({ suppressed: false } as never);

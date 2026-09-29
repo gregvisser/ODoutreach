@@ -22,6 +22,14 @@ it("uses server-selected client scope for queue dispatch", async () => {
   await POST(request({ schedulerProtocol: 1, phase: "queue", clientIds: ["forged"] }) as never);
   expect(m.queue).toHaveBeenCalledWith({ limit: 25, clientIds: ["client"] });
 });
+it("returns a sanitized error when a scheduled phase throws", async () => {
+  m.advance.mockRejectedValue(new Error("connect postgres://opensdoors:super-secret@db.internal/prod failed"));
+  const response = await POST(request({ schedulerProtocol: 1, phase: "advance", clientId: "client" }) as never);
+  expect(response.status).toBe(500);
+  const body = await response.json() as { errors?: string[] };
+  expect(body.errors?.[0]).toMatch(/failed/);
+  expect(body.errors?.[0]).not.toMatch(/super-secret|postgres:\/\//);
+});
 it("preserves partial failure instead of declaring a clean scheduled run", async () => {
   m.queue.mockResolvedValue({ claimed: 1, completed: 0, errors: ["synthetic failure"] });
   const response = await POST(request({ schedulerProtocol: 1, phase: "queue" }) as never);

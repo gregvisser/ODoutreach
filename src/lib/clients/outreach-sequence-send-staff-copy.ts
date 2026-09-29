@@ -82,6 +82,58 @@ export function sequenceIntroductionBatchLimitCopy(hardCap: number): string {
 export const NO_READY_STEP_SENDS_MESSAGE =
   "No recipients are ready for this step. Open Review recipients, then launch again.";
 
+/**
+ * Persisted on a READY row when pacing deferred it. Staff must launch again;
+ * the scheduler does not send Human introductions on its own.
+ */
+export const PACING_HOLD_REASON =
+  "Held back by send pacing — the next batch is during today's sending hours. Launch this sequence again then; it will not send on its own.";
+
+export const CALENDAR_HOLD_REASON =
+  "Waiting for the next allowed batch in this client's sending calendar. Launch this sequence again during those hours; it will not send on its own.";
+
+export const CAPACITY_HOLD_REASON =
+  "No mailbox capacity remaining in this sending day. Launch this sequence again on the next sending day; it will not send on its own.";
+
+export const FAIR_SHARE_HOLD_REASON =
+  "Held back so another sequence on this mailbox gets its share of the current batch. Launch that sequence during sending hours, then launch this one again. It will not send on its own.";
+
+/** True for a deferral that left the row READY for another launch. */
+export function isDispatchHoldReason(raw: string | null | undefined): boolean {
+  if (!raw || !raw.trim()) return false;
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes("send pacing") ||
+    lower.includes("sending calendar") ||
+    lower.includes("mailbox capacity") ||
+    lower.includes("at-a-time release") ||
+    lower.includes("gets its share")
+  );
+}
+
+/**
+ * Staff sentence for a pacing / calendar / capacity / fair-share hold,
+ * including rows saved before this copy was introduced.
+ */
+export function staffCopyForDispatchHold(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("gets its share") || lower.includes("another sequence")) {
+    return FAIR_SHARE_HOLD_REASON;
+  }
+  if (lower.includes("sending calendar")) return CALENDAR_HOLD_REASON;
+  if (lower.includes("mailbox capacity")) return CAPACITY_HOLD_REASON;
+  if (lower.includes("at-a-time release")) {
+    return `${raw} Launch this sequence again after that wait; it will not send on its own.`;
+  }
+  return PACING_HOLD_REASON;
+}
+
+/** Follow-ups older than the automatic window stay for a person to send. */
+export function staleAutoFollowUpStaffCopy(count: number, days: number): string {
+  const noun = count === 1 ? "follow-up is" : "follow-ups are";
+  return `${String(count)} ${noun} past the ${String(days)}-day automatic send window. The scheduler will not send them. Use Send now on this step.`;
+}
+
 export const LIVE_SEQUENCE_LAUNCH_INTRO_HELP =
   "Sends use your connected mailboxes, daily limits, and suppression rules. Eligibility is re-checked when you launch.";
 

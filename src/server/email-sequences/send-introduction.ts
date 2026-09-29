@@ -16,7 +16,15 @@ import {
   clientLinkDomainAligned,
   resolveClientLinkBaseUrl,
 } from "@/lib/clients/client-link-domain";
-import { NO_READY_STEP_SENDS_MESSAGE, STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON } from "@/lib/clients/outreach-sequence-send-staff-copy";
+import {
+  CALENDAR_HOLD_REASON,
+  CAPACITY_HOLD_REASON,
+  FAIR_SHARE_HOLD_REASON,
+  isDispatchHoldReason,
+  NO_READY_STEP_SENDS_MESSAGE,
+  PACING_HOLD_REASON,
+  STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON,
+} from "@/lib/clients/outreach-sequence-send-staff-copy";
 import {
   SEQUENCE_INTRODUCTION_BATCH_CAP,
 } from "@/lib/controlled-pilot-constants";
@@ -45,12 +53,14 @@ import { isEffectivePrimaryMailbox } from "@/lib/mailbox-identities";
 import { effectiveDailyCap } from "@/lib/mailboxes/mailbox-warmup";
 import { loadClientCalendarPlanningContext } from "@/server/mailbox/client-sending-calendar";
 import { pacedAllowanceForSendingWindow } from "@/lib/mailboxes/calendar-send-pacing";
+import { fairSendsThisLaunch } from "@/lib/mailboxes/mailbox-fair-share";
 import { extractDomainFromEmail, normalizeEmail } from "@/lib/normalize";
 import {
   MANUAL_SEND_COOLDOWN_MINUTES,
   MANUAL_SEND_GROUP_SIZE,
 } from "@/lib/outreach/manual-send-window";
 import { loadCorporateReleaseAllowance } from "@/server/email-sequences/corporate-release-gate";
+import { loadFairShareDispatchContext } from "@/server/email-sequences/mailbox-fair-share-context";
 import { requireClientAccess } from "@/server/tenant/access";
 import type {
   ClientMailboxIdentity,
@@ -64,7 +74,11 @@ import {
   composeSequenceEmail,
   describeCompositionBlocker,
 } from "@/lib/email-sequences/sequence-email-composition";
-import { isFollowUpTooStaleForAutoSend } from "@/lib/email-sequences/auto-followup-window";
+import {
+  freshnessDaysToMs,
+  isFollowUpTooStaleForAutoSend,
+  resolveAutoFollowUpFreshnessDays,
+} from "@/lib/email-sequences/auto-followup-window";
 import {
   confirmedPreviousSendTime,
 } from "@/lib/email-sequences/followup-sent-intro-policy";
@@ -925,6 +939,11 @@ export async function sendSequenceStepBatch(input: {
     // Corporate release groups use the same accounting day as the mailbox cap.
     windowStart: sendingWindow.startsAt,
   });
+  const fairShare = await loadFairShareDispatchContext({
+    clientId,
+    sequenceId,
+    windowStart: sendingWindow.startsAt,
+  });
 
   try {
     await prisma.$transaction(
@@ -939,6 +958,11 @@ export async function sendSequenceStepBatch(input: {
         // is told "no capacity remaining", which is untrue: the mailbox has
         // plenty of capacity and is simply waiting out the 45-minute gap.
         let heldByCorporateGate = false;
+        // Set when a slot is open but this sequence must leave it for another
+        // sequence on the same mailbox.
+        let heldByFairShare = false;
+        const takenThisLaunch = new Map<string, number>();
+        const launchAllowance = new Map<string, number>();
         for (const m of pool) {
           // Warm-up ramp: caps cold-outreach volume until a mailbox has a
           // history of sending. No-op once warmed, or when the flag is off.
@@ -1011,6 +1035,25 @@ export async function sendSequenceStepBatch(input: {
           for (const m of sorted) {
             const rem = localRemaining.get(m.id) ?? 0;
             if (rem <= 0) continue;
+            if (!launchAllowance.has(m.id)) {
+              launchAllowance.set(
+                m.id,
+                fairSendsThisLaunch({
+                  sequenceId,
+                  mailboxId: m.id,
+                  preferredMailboxId,
+                  pacedRemaining: rem,
+                  owners: fairShare.ownersByMailbox.get(m.id) ?? [],
+                  autoPickPeers: fairShare.autoPickPeers,
+                }),
+              );
+            }
+            const shareLeft =
+              (launchAllowance.get(m.id) ?? 0) - (takenThisLaunch.get(m.id) ?? 0);
+            if (shareLeft <= 0) {
+              heldByFairShare = true;
+              continue;
+            }
 
             const idempotencyKey = `${reservationPrefix}:${pr.stepSend.idempotencyKey}`;
             const reserve = await tryReserveSendSlotInTransaction(tx, {
@@ -1255,6 +1298,7 @@ export async function sendSequenceStepBatch(input: {
               allowlistedDomain: pr.decision.allowlistedDomain,
             });
             localRemaining.set(m.id, Math.max(0, rem - 1));
+            takenThisLaunch.set(m.id, (takenThisLaunch.get(m.id) ?? 0) + 1);
             placed = true;
             break;
           }
@@ -1270,12 +1314,15 @@ export async function sendSequenceStepBatch(input: {
             // not exist.
             const reason = heldByCorporateGate
               ? `Held back by the ${String(MANUAL_SEND_GROUP_SIZE)}-at-a-time release for corporate accounts — ` +
-                `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent.`
-              : heldByPacing
-                ? sendingWindow.calendar || sendingWindow.pausedUntil
-                  ? "Waiting for the next allowed batch in this client's sending calendar."
-                  : "Held back by send pacing — waiting for the next allowed batch."
-                : "No mailbox capacity remaining in this sending day.";
+                `the next group is available ${String(MANUAL_SEND_COOLDOWN_MINUTES)} minutes after the last one was sent. ` +
+                `Launch this sequence again after that wait; it will not send on its own.`
+              : heldByFairShare
+                ? FAIR_SHARE_HOLD_REASON
+                : heldByPacing
+                  ? sendingWindow.calendar || sendingWindow.pausedUntil
+                    ? CALENDAR_HOLD_REASON
+                    : PACING_HOLD_REASON
+                  : CAPACITY_HOLD_REASON;
             blocked.push({
               stepSendId: pr.stepSend.id,
               contactEmail: toEmail,
@@ -1420,6 +1467,20 @@ export type SequenceStepSendUiSnapshot = {
   delayPendingCount: number;
   /** Earliest moment any blocked-by-delay row will become eligible. */
   earliestEligibleAtIso: string | null;
+  /**
+   * READY rows a previous launch deferred (pacing, calendar, capacity, or
+   * mailbox share). They stay unsent until staff launch again.
+   */
+  heldReadyCount: number;
+  /** The most common deferral sentence among {@link heldReadyCount}. */
+  heldReadyReason: string | null;
+  /**
+   * Follow-up rows that are due and older than the automatic send window.
+   * The scheduler will not send them. Always 0 for introductions.
+   */
+  staleAutoSendCount: number;
+  /** Days in {@link staleAutoSendCount}. The manual Send now path ignores it. */
+  autoFollowUpFreshnessDays: number;
   hardCap: number;
   sendable: boolean;
   disabledReason: string | null;
@@ -1501,6 +1562,10 @@ export async function loadSequenceStepSendUiSnapshots(
     return { allowlist, snapshots: [] };
   }
 
+  const autoFollowUpFreshnessDays = resolveAutoFollowUpFreshnessDays(
+    process.env.SEQUENCE_FOLLOWUP_AUTOSEND_MAX_OVERDUE_DAYS,
+  );
+  const autoFollowUpMaxOverdueMs = freshnessDaysToMs(autoFollowUpFreshnessDays);
   const sequenceIds = sequences.map((s) => s.id);
   // Load both the step-send rows for the sequences (for counts) AND
   // the previous-category SENT rows (for the delay-elapsed hints).
@@ -1560,6 +1625,9 @@ export async function loadSequenceStepSendUiSnapshots(
       let previousStepMissingCount = 0;
       let delayPendingCount = 0;
       let earliestEligibleAtMs: number | null = null;
+      let heldReadyCount = 0;
+      let staleAutoSendCount = 0;
+      const heldReasonBuckets = new Map<string, number>();
 
       // Resolve previous-category step for this sequence (if any).
       const prevCategory = previousCategoryFor(category);
@@ -1595,6 +1663,15 @@ export async function loadSequenceStepSendUiSnapshots(
               allowlistBlockedReadyCount += 1;
             }
 
+            if (isDispatchHoldReason(r.blockedReason)) {
+              heldReadyCount += 1;
+              const heldReason = (r.blockedReason ?? "").trim();
+              heldReasonBuckets.set(
+                heldReason,
+                (heldReasonBuckets.get(heldReason) ?? 0) + 1,
+              );
+            }
+
             if (prevCategory !== null) {
               const prevSentAtIso =
                 prevSentByEnrollmentId?.get(r.enrollmentId) ?? null;
@@ -1604,6 +1681,18 @@ export async function loadSequenceStepSendUiSnapshots(
                 const eligibleAtMs =
                   Date.parse(prevSentAtIso) + Math.max(0, step.delayDays) * DAY_MS +
                   Math.max(0, step.delayHours ?? 0) * 60 * 60 * 1000;
+                if (
+                  isFollowUpTooStaleForAutoSend({
+                    prevSentAtMs: Date.parse(prevSentAtIso),
+                    delayMs:
+                      Math.max(0, step.delayDays) * DAY_MS +
+                      Math.max(0, step.delayHours ?? 0) * 60 * 60 * 1000,
+                    nowMs,
+                    maxOverdueMs: autoFollowUpMaxOverdueMs,
+                  })
+                ) {
+                  staleAutoSendCount += 1;
+                }
                 if (nowMs < eligibleAtMs) {
                   delayPendingCount += 1;
                   if (
@@ -1726,6 +1815,12 @@ export async function loadSequenceStepSendUiSnapshots(
           earliestEligibleAtMs === null
             ? null
             : new Date(earliestEligibleAtMs).toISOString(),
+        heldReadyCount,
+        heldReadyReason:
+          [...heldReasonBuckets.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ??
+          null,
+        staleAutoSendCount,
+        autoFollowUpFreshnessDays,
         hardCap: SEQUENCE_INTRODUCTION_BATCH_CAP,
         sendable: disabledReason === null,
         disabledReason,

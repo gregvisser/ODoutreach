@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
-import { runScheduledOutreach } from "../scripts/run-scheduled-outreach.mjs";
+import { publicJobNotes, runScheduledOutreach } from "../scripts/run-scheduled-outreach.mjs";
 let server: Server | undefined;
 const requests: Record<string, unknown>[] = [];
 async function endpoint(handler: (body: Record<string, unknown>) => { status?: number; body: object } | null) {
@@ -56,6 +56,49 @@ it("stops starting work when the whole-run budget expires and marks remaining ph
   });
   expect(await runScheduledOutreach({ url, secret: "synthetic", budgetMs: 100, now: () => clock })).toMatchObject({ ok: false, attempted: 1, unverified: 3 });
   expect(requests.map(body => body.phase)).toEqual(["plan", "sync"]);
+});
+it("logs the real advance error and redacts addresses", async () => {
+  const seen: Record<string, unknown>[] = [];
+  const url = await endpoint(body => ({
+    status: body.phase === "advance" ? 207 : 200,
+    body: body.phase === "plan"
+      ? { ...plan, mailboxIds: [] }
+      : body.phase === "advance"
+        ? { schedulerProtocol: 1, ok: false, errors: ["FOLLOW_UP_1 failed for ada@client.example: database timeout"] }
+        : { schedulerProtocol: 1, ok: true },
+  }));
+  const result = await runScheduledOutreach({ url, secret: "synthetic", onBatch: batch => { seen.push(batch); } });
+  expect(result.ok).toBe(false);
+  const advance = seen.find(batch => batch.phase === "advance");
+  expect(JSON.stringify(advance)).toMatch(/database timeout/);
+  expect(JSON.stringify(advance)).not.toMatch(/ada@client\.example/);
+});
+it("logs an already-complete step as a skip note, not a failed batch", async () => {
+  const seen: Record<string, unknown>[] = [];
+  const url = await endpoint(body => ({
+    body: body.phase === "plan"
+      ? { ...plan, mailboxIds: [] }
+      : {
+          schedulerProtocol: 1,
+          ok: true,
+          skippedSteps: body.phase === "advance" ? ["already complete or no ready recipients — skipped"] : [],
+        },
+  }));
+  const result = await runScheduledOutreach({ url, secret: "synthetic", onBatch: batch => { seen.push(batch); } });
+  expect(result.ok).toBe(true);
+  expect(result.failed).toBe(0);
+  expect(JSON.stringify(seen)).toMatch(/skipped: already complete/);
+});
+it("includes a thrown phase error in the batch log", async () => {
+  const seen: Record<string, unknown>[] = [];
+  const url = await endpoint(body => body.phase === "plan"
+    ? { body: { ...plan, mailboxIds: [] } }
+    : { status: 500, body: { errors: ["Scheduled outreach could not complete"] } });
+  await expect(runScheduledOutreach({ url, secret: "synthetic", onBatch: batch => { seen.push(batch); } })).resolves.toMatchObject({ ok: false, unverified: 2 });
+  expect(JSON.stringify(seen)).toMatch(/could not complete/);
+});
+it("publicJobNotes keeps a skip distinct from a failure", () => {
+  expect(publicJobNotes({ skippedSteps: ["empty step"], errors: [] })).toEqual(["skipped: empty step"]);
 });
 it("rejects an invalid budget before making any request", async () => {
   const url = await endpoint(() => ({ body: plan }));

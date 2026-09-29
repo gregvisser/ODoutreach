@@ -7,9 +7,12 @@ import {
 } from "@/app/(app)/clients/[clientId]/outreach/sequence-actions";
 import {
   humanizeSequenceLaunchDisabledReason,
+  isDispatchHoldReason,
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
   LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
   sequenceIntroductionBatchLimitCopy,
+  staffCopyForDispatchHold,
+  staleAutoFollowUpStaffCopy,
 } from "@/lib/clients/outreach-sequence-send-staff-copy";
 import { SequencePhraseConfirmLaunch } from "@/components/clients/email-sequences/sequence-phrase-confirm-launch";
 import type { SequenceLaunchReadiness } from "@/lib/email-sequences/launch-readiness";
@@ -99,6 +102,7 @@ function categoryLabel(category: ClientEmailTemplateCategory): string {
 }
 
 function humanizeBlockedReason(raw: string): string {
+  if (isDispatchHoldReason(raw)) return staffCopyForDispatchHold(raw);
   const lower = raw.toLowerCase();
   // Workspace-wide outreach cooldown — surface the eligibility date if
   // it's already embedded in the raw reason (the planner formats it as
@@ -455,6 +459,15 @@ function IntroSendDispatchBlock({
         {sendNow > 0 && (
           <p>{sequenceIntroductionBatchLimitCopy(cap)}</p>
         )}
+        {introSend.heldReadyCount > 0 && (
+          <p>
+            {staffCopyForDispatchHold(
+              introSend.heldReadyReason ?? "Held back by send pacing",
+            )}{" "}
+            {String(introSend.heldReadyCount)} recipient
+            {introSend.heldReadyCount === 1 ? " is" : "s are"} waiting on that.
+          </p>
+        )}
         {introSend.blockedReasonCounts.length > 0 && (
           <details className="mt-1">
             <summary className="cursor-pointer font-medium text-foreground">
@@ -644,6 +657,21 @@ function StepSendDispatchBlock({
           <span className="font-medium text-foreground">Handed to queue</span>: {String(stepSnapshot.sentCount)}
         </p>
         <p>{sequenceIntroductionBatchLimitCopy(stepSnapshot.hardCap)}</p>
+        {stepSnapshot.staleAutoSendCount > 0 && (
+          <p>
+            {staleAutoFollowUpStaffCopy(
+              stepSnapshot.staleAutoSendCount,
+              stepSnapshot.autoFollowUpFreshnessDays,
+            )}
+          </p>
+        )}
+        {stepSnapshot.heldReadyCount > 0 && (
+          <p>
+            {staffCopyForDispatchHold(
+              stepSnapshot.heldReadyReason ?? "Held back by send pacing",
+            )}
+          </p>
+        )}
         <p className="text-muted-foreground/90">
           Waiting on previous step: {String(stepSnapshot.previousStepMissingCount)} · Waiting for delay:{" "}
           {String(stepSnapshot.delayPendingCount)} · Earliest prepared send:{" "}

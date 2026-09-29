@@ -360,7 +360,9 @@ export function ListDetailContactTable({ contacts }: Props) {
                       )}
                       {c.sendStatus === "Awaiting send" && (
                         <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          Awaiting send — this contact is eligible and will be emailed on the next launch / send run. Nothing has been handed to the mailbox yet.
+                          {c.skipReason
+                            ? c.skipReason
+                            : "Awaiting send — this contact is eligible and will be emailed the next time you launch this sequence. Nothing has been handed to the mailbox yet."}
                         </p>
                       )}
                       {c.sendStatus === "Queued" && (
