@@ -71,7 +71,7 @@ export function humanizeSequenceLaunchDisabledReason(raw: string | null | undefi
 
 export function sequenceIntroductionBatchLimitCopy(hardCap: number): string {
   const cap = hardCap > 0 ? hardCap : SEQUENCE_INTRODUCTION_BATCH_CAP;
-  return `This launch queues up to ${String(cap)} eligible emails. Sending follows the calendar, warm-up and remaining mailbox allowance; queueing does not mean immediate delivery.`;
+  return `This launch queues up to ${String(cap)} eligible emails. Recipients still waiting send automatically as each mailbox's own capacity frees up; queueing does not mean immediate delivery.`;
 }
 
 /**
@@ -83,48 +83,73 @@ export const NO_READY_STEP_SENDS_MESSAGE =
   "No recipients are ready for this step. Open Review recipients, then launch again.";
 
 /**
- * Persisted on a READY row when pacing deferred it. Staff must launch again;
- * the scheduler does not send Human introductions on its own.
+ * Persisted on a READY row when pacing deferred it. The scheduled tick sends
+ * it when the mailbox's own allowance opens. Staff do not launch again.
  */
 export const PACING_HOLD_REASON =
-  "Held back by send pacing — the next batch is during today's sending hours. Launch this sequence again then; it will not send on its own.";
+  "Queued — sends automatically as mailbox capacity frees up.";
 
 export const CALENDAR_HOLD_REASON =
-  "Waiting for the next allowed batch in this client's sending calendar. Launch this sequence again during those hours; it will not send on its own.";
+  "Queued — sends automatically when this client's sending window is open.";
 
 export const CAPACITY_HOLD_REASON =
-  "No mailbox capacity remaining in this sending day. Launch this sequence again on the next sending day; it will not send on its own.";
+  "Queued — sends automatically on the next sending day as mailbox capacity frees up.";
 
 export const FAIR_SHARE_HOLD_REASON =
-  "Held back so another sequence on this mailbox gets its share of the current batch. Launch that sequence during sending hours, then launch this one again. It will not send on its own.";
+  "Queued — sends automatically as this mailbox's shared capacity frees up.";
 
-/** True for a deferral that left the row READY for another launch. */
+export const CORPORATE_HOLD_REASON =
+  "Queued — sends automatically when the next at-a-time release opens.";
+
+/**
+ * Safety stops. A sentence that matches one of these stays held even if it
+ * also mentions pacing or capacity. The scheduler must not release it.
+ */
+const HARD_STOP_HOLD =
+  /suppress|do[- ]not[- ]contact|\bdnc\b|unsubscribe|bounce|reply-stop|paused|disconnect|unhealthy/i;
+
+export function isHardStopHoldReason(raw: string | null | undefined): boolean {
+  if (!raw || !raw.trim()) return false;
+  return HARD_STOP_HOLD.test(raw);
+}
+
+/** True for a pacing / calendar / capacity deferral that the tick may send. */
 export function isDispatchHoldReason(raw: string | null | undefined): boolean {
   if (!raw || !raw.trim()) return false;
+  if (isHardStopHoldReason(raw)) return false;
   const lower = raw.toLowerCase();
   return (
     lower.includes("send pacing") ||
     lower.includes("sending calendar") ||
+    lower.includes("sending window") ||
     lower.includes("mailbox capacity") ||
     lower.includes("at-a-time release") ||
-    lower.includes("gets its share")
+    lower.includes("gets its share") ||
+    lower.includes("shared capacity") ||
+    lower.includes("sends automatically") ||
+    lower.includes("will not send on its own") ||
+    lower.includes("launch this sequence again")
   );
 }
 
 /**
  * Staff sentence for a pacing / calendar / capacity / fair-share hold,
- * including rows saved before this copy was introduced.
+ * including rows saved before automatic resume was introduced.
  */
 export function staffCopyForDispatchHold(raw: string): string {
   const lower = raw.toLowerCase();
-  if (lower.includes("gets its share") || lower.includes("another sequence")) {
+  if (
+    lower.includes("gets its share") ||
+    lower.includes("another sequence") ||
+    lower.includes("shared capacity")
+  ) {
     return FAIR_SHARE_HOLD_REASON;
   }
-  if (lower.includes("sending calendar")) return CALENDAR_HOLD_REASON;
-  if (lower.includes("mailbox capacity")) return CAPACITY_HOLD_REASON;
-  if (lower.includes("at-a-time release")) {
-    return `${raw} Launch this sequence again after that wait; it will not send on its own.`;
+  if (lower.includes("sending calendar") || lower.includes("sending window")) {
+    return CALENDAR_HOLD_REASON;
   }
+  if (lower.includes("at-a-time release")) return CORPORATE_HOLD_REASON;
+  if (lower.includes("next sending day")) return CAPACITY_HOLD_REASON;
   return PACING_HOLD_REASON;
 }
 

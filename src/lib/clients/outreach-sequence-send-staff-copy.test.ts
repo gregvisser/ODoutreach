@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CALENDAR_HOLD_REASON,
+  CAPACITY_HOLD_REASON,
   classifySequenceDispatchOutcome,
+  CORPORATE_HOLD_REASON,
   describeSequenceDispatchOutcome,
+  FAIR_SHARE_HOLD_REASON,
   humanizeSequenceLaunchDisabledReason,
   isDispatchHoldReason,
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
@@ -216,17 +220,32 @@ describe("describeSequenceDispatchOutcome", () => {
 });
 
 describe("dispatch hold copy", () => {
-  it("tells staff a pacing hold will not send until they launch again", () => {
-    expect(PACING_HOLD_REASON).toMatch(/Held back by send pacing/i);
-    expect(PACING_HOLD_REASON).toMatch(/sending hours/i);
-    expect(PACING_HOLD_REASON).toMatch(/Launch this sequence again/i);
-    expect(PACING_HOLD_REASON).toMatch(/will not send on its own/i);
-    expect(isDispatchHoldReason(PACING_HOLD_REASON)).toBe(true);
+  it("tells staff a pacing hold sends automatically and does not ask them to launch again", () => {
+    for (const line of [
+      PACING_HOLD_REASON,
+      CALENDAR_HOLD_REASON,
+      CAPACITY_HOLD_REASON,
+      FAIR_SHARE_HOLD_REASON,
+      CORPORATE_HOLD_REASON,
+    ]) {
+      expect(line).toMatch(/sends automatically/i);
+      expect(line).not.toMatch(/launch again/i);
+      expect(line).not.toMatch(/will not send on its own/i);
+      expect(line).not.toMatch(/approve/i);
+      expect(isDispatchHoldReason(line)).toBe(true);
+    }
     expect(
       staffCopyForDispatchHold(
         "Held back by send pacing — waiting for the next allowed batch.",
       ),
     ).toBe(PACING_HOLD_REASON);
+    expect(
+      staffCopyForDispatchHold(
+        "Held back so another sequence on this mailbox gets its share of the current batch.",
+      ),
+    ).toBe(FAIR_SHARE_HOLD_REASON);
+    expect(isDispatchHoldReason("On the suppression list.")).toBe(false);
+    expect(isDispatchHoldReason("Recipient suppressed at dispatch (do-not-contact).")).toBe(false);
   });
 
   it("names a manual Send now for follow-ups past the automatic window", () => {

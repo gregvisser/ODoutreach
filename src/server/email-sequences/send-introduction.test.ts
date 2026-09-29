@@ -18,7 +18,7 @@ const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     client: { findUniqueOrThrow: vi.fn() },
     clientEmailSequence: { findUnique: vi.fn(), findMany: vi.fn() },
-    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn() },
+    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), groupBy: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },
     outboundEmail: { findMany: vi.fn() },
     clientSendingCalendar: { findMany: async () => [] },
@@ -192,6 +192,7 @@ describe("sendSequenceStepBatch — governance gate", () => {
     prismaMock.clientEmailSequenceStepSend.findMany.mockReset();
     prismaMock.clientEmailSequenceStepSend.groupBy.mockReset();
     prismaMock.clientEmailSequenceStepSend.update.mockReset();
+    prismaMock.clientEmailSequenceStepSend.updateMany.mockReset();
     prismaMock.outboundEmail.findMany.mockReset();
     prismaMock.clientMailboxIdentity.findMany.mockReset();
     prismaMock.mailboxSendReservation.count.mockReset();
@@ -204,6 +205,7 @@ describe("sendSequenceStepBatch — governance gate", () => {
     prismaMock.clientEmailSequence.findMany.mockResolvedValue([]);
     prismaMock.clientEmailSequenceStepSend.groupBy.mockResolvedValue([]);
     prismaMock.outboundEmail.findMany.mockResolvedValue([]);
+    prismaMock.clientEmailSequenceStepSend.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.clientEmailSequenceStepSend.update.mockResolvedValue(
       {} as never,
     );
@@ -617,7 +619,8 @@ describe("sendSequenceStepBatch — governance gate", () => {
       confirmationPhrase: "SEND INTRODUCTION",
     });
     expect(result.counts.queued).toBe(0);
-    expect(result.blocked[0].reason).toContain("No mailbox capacity");
+    expect(result.blocked[0].reason).toContain("mailbox capacity");
+    expect(result.blocked[0].reason).toMatch(/sends automatically/i);
     expect(outboundCreate).not.toHaveBeenCalled();
   });
 });

@@ -24,7 +24,7 @@ const { prismaMock } = vi.hoisted(() => {
     client: { findUniqueOrThrow: vi.fn() },
     clientSendingCalendar: { findMany: async () => [] },
     clientEmailSequence: { findUnique: vi.fn(), findMany: vi.fn() },
-    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn() },
+    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), groupBy: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },
     outboundEmail: { findMany: vi.fn() },
     // Warm-up anchors on days actually sent on. Empty = never sent.
@@ -226,6 +226,7 @@ describe("send pacing fires inside the real dispatcher", () => {
       prismaMock.clientEmailSequenceStepSend.findMany,
       prismaMock.clientEmailSequenceStepSend.groupBy,
       prismaMock.clientEmailSequenceStepSend.update,
+      prismaMock.clientEmailSequenceStepSend.updateMany,
       prismaMock.clientMailboxIdentity.findMany,
       prismaMock.outboundEmail.findMany,
       prismaMock.mailboxSendReservation.count,
@@ -238,6 +239,7 @@ describe("send pacing fires inside the real dispatcher", () => {
     prismaMock.clientEmailSequenceStepSend.groupBy.mockResolvedValue([]);
     prismaMock.outboundEmail.findMany.mockResolvedValue([]);
     prismaMock.clientEmailSequenceStepSend.update.mockResolvedValue({} as never);
+    prismaMock.clientEmailSequenceStepSend.updateMany.mockResolvedValue({ count: 0 } as never);
     vi.mocked(evaluateSuppression).mockReset();
     vi.mocked(evaluateSuppression).mockResolvedValue({ suppressed: false } as never);
 
@@ -267,7 +269,7 @@ describe("send pacing fires inside the real dispatcher", () => {
     expect(result.counts.queued).toBe(0);
     expect(result.counts.blockedPlanClassifier).toBe(1);
     expect(result.blocked).toHaveLength(1);
-    expect(result.blocked[0].reason).toMatch(/held back by send pacing/i);
+    expect(result.blocked[0].reason).toMatch(/sends automatically/i);
     expect(result.blocked[0].contactEmail).toBe(RECIPIENT);
   });
 
@@ -312,7 +314,7 @@ describe("send pacing fires inside the real dispatcher", () => {
     const result = await dispatch();
 
     expect(result.counts.queued).toBe(0);
-    expect(result.blocked[0].reason).toMatch(/held back by send pacing/i);
+    expect(result.blocked[0].reason).toMatch(/sends automatically/i);
   });
 
   /**
@@ -342,7 +344,7 @@ describe("send pacing fires inside the real dispatcher", () => {
     };
     expect(call.where).toEqual({ id: "ss-pacing" });
     // A reason is recorded so an operator can see why nothing moved...
-    expect(call.data.blockedReason).toMatch(/held back by send pacing/i);
+    expect(call.data.blockedReason).toMatch(/sends automatically/i);
     // ...but the status is untouched, so the row is still READY next time.
     expect(call.data).not.toHaveProperty("status");
     expect(Object.keys(call.data)).toEqual(["blockedReason"]);
