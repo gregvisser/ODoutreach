@@ -7,6 +7,11 @@ vi.mock("@/lib/db", () => ({ prisma: { sequenceListRefillRule: { findMany: db.fi
 vi.mock("@/server/integrations/rocketreach/account", () => ({ loadRocketReachCreditSnapshot: vi.fn() }));
 vi.mock("@/server/integrations/rocketreach/person-import", () => ({ searchRocketReachIdentities: vi.fn() }));
 vi.mock("@/server/prospect-research/execute-plan", () => ({ executeSavedResearchPlan: vi.fn() }));
+vi.mock("@/server/prospect-research/universe-harvest", () => ({
+  applyUniverseHarvest: vi.fn(async () => ({ ok: true, added: 0, created: 0, attached: 0, matches: [], skipped: {} })),
+  collectUniverseHarvest: vi.fn(async () => ({ ok: true, matches: [], skipped: {} })),
+  UNIVERSE_HARVEST_BATCH: 50,
+}));
 vi.mock("@/server/tenant/access", () => ({ requireClientAccess: vi.fn() }));
 
 import { runDueRocketReachListRefills } from "./auto-refill";

@@ -2,7 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { previewSequenceListTopUpAction, saveSequenceListRefillAction } from "@/app/(app)/clients/list-refill-actions";
+import {
+  addUniverseMatchesAction,
+  previewSequenceListTopUpAction,
+  previewUniverseMatchesAction,
+  saveSequenceListRefillAction,
+} from "@/app/(app)/clients/list-refill-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +24,16 @@ type PreviewMatch = {
   employer: string | null;
   location: string | null;
   wouldLookup: boolean;
+  source: "Universe" | "RocketReach";
+};
+
+type UniverseMatch = {
+  universeId: string;
+  name: string;
+  title: string | null;
+  employer: string | null;
+  location: string | null;
+  kind: "attach" | "create";
 };
 
 export function AutomaticListTopUpPanel({
@@ -33,6 +48,7 @@ export function AutomaticListTopUpPanel({
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [preview, setPreview] = useState<PreviewMatch[] | null>(null);
+  const [universeMatches, setUniverseMatches] = useState<UniverseMatch[] | null>(null);
   const [pending, startTransition] = useTransition();
   const rule = topUp.rule;
   const status = !rule?.enabled
@@ -88,6 +104,7 @@ export function AutomaticListTopUpPanel({
               setMessage(result.ok ? (enabled ? "Automatic list top-up is on for this sequence." : "Automatic list top-up is off for this sequence.") : result.error);
               if (result.ok) {
                 setPreview(null);
+                setUniverseMatches(null);
                 router.refresh();
               }
             });
@@ -133,6 +150,7 @@ export function AutomaticListTopUpPanel({
                     setMessage(result.error);
                     return;
                   }
+                  setUniverseMatches(null);
                   setPreview(result.matches);
                   setMessage(result.detail);
                 });
@@ -140,16 +158,67 @@ export function AutomaticListTopUpPanel({
             >
               Preview top-up
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pending || topUp.plans.length === 0}
+              onClick={(event) => {
+                const form = event.currentTarget.form;
+                const planId = String(new FormData(form ?? undefined).get("planId") ?? "");
+                setMessage("");
+                startTransition(async () => {
+                  const result = await previewUniverseMatchesAction(clientId, topUp.sequenceId, planId);
+                  if (!result.ok) {
+                    setUniverseMatches(null);
+                    setMessage(result.error);
+                    return;
+                  }
+                  setPreview(null);
+                  setUniverseMatches(result.matches);
+                  setMessage(result.detail);
+                });
+              }}
+            >
+              Find matches in Universe
+            </Button>
+            {universeMatches && universeMatches.length > 0 ? (
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={(event) => {
+                  const planId = String(new FormData(event.currentTarget.form ?? undefined).get("planId") ?? "");
+                  startTransition(async () => {
+                    const result = await addUniverseMatchesAction(clientId, topUp.sequenceId, planId);
+                    setMessage(result.ok ? result.detail : result.error);
+                    if (result.ok) {
+                      setUniverseMatches(null);
+                      router.refresh();
+                    }
+                  });
+                }}
+              >
+                Add Universe matches to the list
+              </Button>
+            ) : null}
           </div>
         </form>
       ) : (
         <p className="text-xs text-muted-foreground">You can review top-up status here. Changing it needs a staff member who can edit this sequence.</p>
       )}
+      {universeMatches && universeMatches.length > 0 ? (
+        <ul className="space-y-1 text-xs">
+          {universeMatches.map((match) => (
+            <li key={match.universeId}>
+              {match.name}{match.title ? ` · ${match.title}` : ""}{match.employer ? ` · ${match.employer}` : ""}{match.location ? ` · ${match.location}` : ""} — {match.kind === "create" ? "Re-harvest from Universe, no credit" : "Already held by this client, no credit"}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {preview && preview.length > 0 ? (
         <ul className="space-y-1 text-xs">
           {preview.map((match) => (
-            <li key={`${match.name}-${match.employer ?? ""}`}>
-              {match.name}{match.title ? ` · ${match.title}` : ""}{match.employer ? ` · ${match.employer}` : ""}{match.location ? ` · ${match.location}` : ""} — {match.wouldLookup ? "would use 1 credit" : "already known, no credit"}
+            <li key={`${match.source}-${match.name}-${match.employer ?? ""}`}>
+              {match.name}{match.title ? ` · ${match.title}` : ""}{match.employer ? ` · ${match.employer}` : ""}{match.location ? ` · ${match.location}` : ""} — {match.source === "Universe" ? "Universe, no credit" : match.wouldLookup ? "RocketReach, would use 1 credit" : "RocketReach, already known, no credit"}
             </li>
           ))}
         </ul>

@@ -3,6 +3,7 @@ import {
   clientAllowsListRefill,
   decideListRefill,
   effectiveBalanceFloor,
+  listNeedsPeople,
   isRocketReachAutoRefillEnabled,
   sequenceRefillRuleInputSchema,
   type RefillDecisionInput,
@@ -43,6 +44,7 @@ describe("RocketReach automatic list top-up policy", () => {
     expect(decideListRefill(ready())).toEqual({ action: "refill", lookupBudget: 3 });
     expect(decideListRefill(ready({ killSwitchOn: false })).action).toBe("skip");
     expect(decideListRefill(ready({ readyNotEnrolled: 5 })).action).toBe("skip");
+    expect(listNeedsPeople(ready({ balance: { ok: false, reason: "unavailable" } }))).toEqual({ action: "fill", gap: 3 });
   });
 
   it("stops at the balance floor and at the day, month, and per-run budgets", () => {

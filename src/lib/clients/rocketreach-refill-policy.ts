@@ -64,7 +64,24 @@ export type RefillDecision =
   | { action: "skip"; reason: string }
   | { action: "refill"; lookupBudget: number };
 
-export function decideListRefill(input: RefillDecisionInput): RefillDecision {
+export type ListPeopleNeed =
+  | { action: "skip"; reason: string }
+  | { action: "fill"; gap: number };
+
+/** Whether the list is short of ready people. This does not look at RocketReach credits. */
+export function listNeedsPeople(
+  input: Pick<
+    RefillDecisionInput,
+    | "killSwitchOn"
+    | "floorEnvInvalid"
+    | "client"
+    | "sequenceArchived"
+    | "listArchived"
+    | "planBelongsToClient"
+    | "readyNotEnrolled"
+    | "lowWaterMark"
+  >,
+): ListPeopleNeed {
   if (!input.killSwitchOn) {
     return { action: "skip", reason: "ROCKETREACH_AUTO_REFILL is off." };
   }
@@ -84,6 +101,12 @@ export function decideListRefill(input: RefillDecisionInput): RefillDecision {
       reason: `The list already has ${String(input.readyNotEnrolled)} ready contacts who are not enrolled. The threshold is ${String(input.lowWaterMark)}.`,
     };
   }
+  return { action: "fill", gap: input.lowWaterMark - input.readyNotEnrolled };
+}
+
+export function decideListRefill(input: RefillDecisionInput): RefillDecision {
+  const need = listNeedsPeople(input);
+  if (need.action === "skip") return need;
   if (!input.balance.ok) return { action: "skip", reason: input.balance.reason };
   if (input.balance.remaining !== "unlimited" && input.balance.remaining <= input.balanceFloor) {
     return {
@@ -93,7 +116,7 @@ export function decideListRefill(input: RefillDecisionInput): RefillDecision {
   }
   const dayLeft = input.maxCreditsPerDay - input.creditsReservedToday;
   const monthLeft = input.maxCreditsPerMonth - input.creditsReservedThisMonth;
-  const gap = input.lowWaterMark - input.readyNotEnrolled;
+  const gap = need.gap;
   const lookupBudget = Math.min(
     ROCKETREACH_MAX_IMPORT,
     input.maxCreditsPerRun,

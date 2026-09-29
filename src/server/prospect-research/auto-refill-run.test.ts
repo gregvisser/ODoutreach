@@ -30,6 +30,7 @@ const balance = vi.hoisted(() => vi.fn());
 const execute = vi.hoisted(() => vi.fn());
 const search = vi.hoisted(() => vi.fn());
 const known = vi.hoisted(() => vi.fn());
+const harvest = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => {
   const reservation = {
@@ -80,6 +81,11 @@ vi.mock("@/server/integrations/rocketreach/account", () => ({ loadRocketReachCre
 vi.mock("@/server/integrations/rocketreach/person-import", () => ({ searchRocketReachIdentities: search }));
 vi.mock("@/server/integrations/rocketreach/known-profiles", () => ({ loadKnownRocketReachIndexes: known }));
 vi.mock("@/server/prospect-research/execute-plan", () => ({ executeSavedResearchPlan: execute }));
+vi.mock("@/server/prospect-research/universe-harvest", () => ({
+  applyUniverseHarvest: harvest,
+  collectUniverseHarvest: vi.fn(async () => ({ ok: true, matches: [], skipped: {} })),
+  UNIVERSE_HARVEST_BATCH: 50,
+}));
 vi.mock("@/server/tenant/access", () => ({ requireClientAccess: vi.fn(async () => undefined) }));
 
 import { emptyKnownProfileIndexes } from "@/lib/clients/rocketreach-known-match";
@@ -145,11 +151,24 @@ beforeEach(() => {
   balance.mockResolvedValue({ state: "ready", remaining: 12, label: "12 credits", fetchedAt: "2026-09-29T00:00:00.000Z" });
   execute.mockReset();
   execute.mockResolvedValue(imported);
+  harvest.mockReset();
+  harvest.mockResolvedValue({ ok: true, added: 0, created: 0, attached: 0, matches: [], skipped: {} });
   search.mockReset();
   known.mockReset();
   known.mockResolvedValue(emptyKnownProfileIndexes());
   vi.stubEnv("ROCKETREACH_AUTO_REFILL", "true");
   vi.stubEnv("ROCKETREACH_MIN_CREDIT_FLOOR", "");
+});
+
+it("fills the list from Universe and does not call RocketReach when that closes the gap", async () => {
+  harvest.mockImplementation(async () => {
+    state.members = [{ contactId: "a" }, { contactId: "b" }, { contactId: "c" }, { contactId: "d" }, { contactId: "e" }];
+    return { ok: true, added: 5, created: 2, attached: 3, matches: [], skipped: {} };
+  });
+  const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(result).toMatchObject({ refilled: 1, failed: 0 });
+  expect(execute).not.toHaveBeenCalled();
+  expect(state.createdRuns.at(-1)).toMatchObject({ creditsUsed: 0, contactsAdded: 5, status: "COMPLETED" });
 });
 
 it("refills only the list and advances the search cursor when the list is below the threshold", async () => {

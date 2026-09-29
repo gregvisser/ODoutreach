@@ -13,6 +13,11 @@ function londonDate(on: Date): string {
   return `${day} ${MONTHS[month - 1] ?? "Jan"} ${year}`;
 }
 
+/** One-line UK GDPR source notice for a person copied from this client's own Universe row. */
+export function universeHarvestOrigin(on: Date): string {
+  return `Re-harvested from Universe on ${londonDate(on)}`;
+}
+
 /** One-line UK GDPR source notice. Plan names cannot add a second line. */
 export function automaticSourceOrigin(planName: string, on: Date): string {
   const name = planName.replace(/\s+/g, " ").trim().slice(0, 120);

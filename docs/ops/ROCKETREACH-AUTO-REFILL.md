@@ -8,7 +8,7 @@ Greg Visser is the only approver. Do not ask the client to approve this.
 
 - **Sources → Prospect research plans → Run plan into list.** Same confirmation phrase as a manual search (`SEARCH ROCKETREACH`), same filters, same cap of 10 lookups. Every run records who ran it, when, credits used, contacts added, and why people were skipped.
 - **Sources → Search prospects on RocketReach.** The card shows the account credit balance (cached for five minutes, from RocketReach's free account endpoint) and the worst-case credit cost of the click. People already known by RocketReach profile id, LinkedIn URL, or email are skipped before a paid lookup. A brand-new list is created only when at least one person is saved. If a search fails or nobody is saved, that new list is not left behind.
-- **Outreach → selected sequence → Automatic list top-up.** Status, last run, credits used, budget left, and the on/off control. **Preview top-up** shows the matches and an estimate. Preview does not spend credits.
+- **Outreach → selected sequence → Automatic list top-up.** Status, last run, credits used, budget left, and the on/off control. **Preview top-up** shows Universe matches against the RocketReach shortfall and an estimated credit cost. **Find matches in Universe** is free: it previews, then **Add Universe matches to the list** writes them. Neither action enrols or sends. Preview does not spend credits.
 
 People added by the scheduled job are labelled `Sourced automatically from plan <name> on <date>` on the contact and in Universe. Open the list and expand the person to read "Where this person came from".
 
@@ -29,7 +29,9 @@ To turn one sequence off, type `DISABLE LIST TOP-UP` on that sequence. To stop e
 
 The job looks at sequences whose top-up is on. It counts list members who have an email, are not on a do-not-contact flag, and are not enrolled. If that count is already at the threshold, it logs a skip and stops.
 
-Otherwise it searches with the plan (job title, industry, seniority, region), skips people already in Universe or on this client, and reserves one credit **before** each paid lookup. It stops at the per-run cap (never more than 10), the daily budget, the monthly budget, or the balance floor. Do-not-contact is checked again when the person is saved, the same way a manual import checks it. Suppressed people can still be saved and flagged. They are not enrolled and they are not emailed.
+Otherwise it looks in Universe first, using people this client already sourced whose title, employer or industry, seniority, and location match the saved plan. People already on the list, people enrolled on this sequence, do-not-contact, blocked companies and domains, and the 10-day cooldown are left out. A person sourced only for another client is not copied: the privacy policy does not share personal data between customers for outreach, and Universe is kept for de-duplication. New people added from Universe are labelled `Re-harvested from Universe on <date>`. People this client already holds keep their existing origin and are only attached to the list.
+
+RocketReach is used for the remaining shortfall. The job skips people already in Universe or on this client, and reserves one credit **before** each paid lookup. It stops at the per-run cap (never more than 10), the daily budget, the monthly budget, or the balance floor. Do-not-contact is checked again when the person is saved, the same way a manual import checks it. Suppressed people can still be saved and flagged. They are not enrolled and they are not emailed.
 
 Day and month budgets use UTC, the same clock as mailbox daily caps.
 

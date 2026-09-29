@@ -8,6 +8,7 @@ import {
   decideListRefill,
   effectiveBalanceFloor,
   isRocketReachAutoRefillEnabled,
+  listNeedsPeople,
   parseOptionalCreditFloor,
   sequenceRefillRuleInputSchema,
   type SequenceRefillRuleInput,
@@ -22,6 +23,7 @@ import {
 import { loadKnownRocketReachIndexes } from "@/server/integrations/rocketreach/known-profiles";
 import { matchKnownSearchProfile } from "@/lib/clients/rocketreach-known-match";
 import { executeSavedResearchPlan } from "@/server/prospect-research/execute-plan";
+import { applyUniverseHarvest, collectUniverseHarvest, UNIVERSE_HARVEST_BATCH } from "@/server/prospect-research/universe-harvest";
 import { requireClientAccess, type StaffIdentity } from "@/server/tenant/access";
 
 const ACTIVE_RESERVATION = ["RESERVED", "CHARGED"] as const;
@@ -159,7 +161,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
     include: {
       client: { select: { status: true, deletedAt: true, autonomousSendEnabled: true } },
       sequence: { select: { id: true, clientId: true, contactListId: true, archivedAt: true, contactList: { select: { archivedAt: true } } } },
-      plan: { select: { id: true, name: true, clientId: true } },
+      plan: { select: { id: true, name: true, clientId: true, criteria: true } },
     },
   });
   const balance = await loadRocketReachCreditSnapshot({ force: true, now: now.getTime() });
@@ -171,13 +173,61 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
   let refilled = 0;
   const errors: string[] = [];
   for (const rule of rules) {
-    const decision = decideListRefill({
+    const readyBefore = await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId);
+    const need = listNeedsPeople({
       killSwitchOn: true,
       client: rule.client,
       sequenceArchived: rule.sequence.archivedAt !== null,
       listArchived: rule.sequence.contactList.archivedAt !== null,
       planBelongsToClient: rule.plan.clientId === rule.clientId && rule.sequence.clientId === rule.clientId,
-      readyNotEnrolled: await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId),
+      readyNotEnrolled: readyBefore,
+      lowWaterMark: rule.lowWaterMark,
+      floorEnvInvalid: floorEnv === "invalid",
+    });
+    if (need.action === "skip") {
+      skipped++;
+      await recordSkip({
+        clientId: rule.clientId,
+        planId: rule.planId,
+        sequenceId: rule.sequenceId,
+        reason: need.reason,
+      });
+      continue;
+    }
+    let universeAdded = 0;
+    let universeDetail = "";
+    try {
+      const harvested = await applyUniverseHarvest({
+        clientId: rule.clientId,
+        sequenceId: rule.sequenceId,
+        contactListId: rule.sequence.contactListId,
+        criteria: rule.plan.criteria,
+        now,
+        maxToAdd: need.gap,
+        staffId: null,
+      });
+      if (!harvested.ok) {
+        failed++;
+        errors.push(harvested.error);
+        continue;
+      }
+      universeAdded = harvested.added;
+      universeDetail = harvested.added
+        ? `Universe added ${String(harvested.added)} (${String(harvested.created)} new, ${String(harvested.attached)} already held by this client). `
+        : "";
+    } catch (error) {
+      failed++;
+      errors.push(error instanceof Error ? error.message : "Universe re-harvest failed.");
+      continue;
+    }
+    const readyAfter = await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId);
+    const decision = decideListRefill({
+      killSwitchOn: true,
+      client: rule.client,
+      sequenceArchived: rule.sequence.archivedAt !== null,
+      listArchived: rule.sequence.contactList.archivedAt !== null,
+      planBelongsToClient: true,
+      readyNotEnrolled: readyAfter,
       lowWaterMark: rule.lowWaterMark,
       balance:
         balance.state === "ready"
@@ -192,13 +242,34 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       floorEnvInvalid: floorEnv === "invalid",
     });
     if (decision.action === "skip") {
-      skipped++;
-      await recordSkip({
-        clientId: rule.clientId,
-        planId: rule.planId,
-        sequenceId: rule.sequenceId,
-        reason: decision.reason,
-      });
+      if (universeAdded > 0) {
+        await prisma.rocketReachPlanRun.create({
+          data: {
+            clientId: rule.clientId,
+            planId: rule.planId,
+            sequenceId: rule.sequenceId,
+            contactListId: rule.sequence.contactListId,
+            trigger: "AUTO_REFILL",
+            status: "COMPLETED",
+            finishedAt: new Date(),
+            creditsUsed: 0,
+            creditsReserved: 0,
+            contactsAdded: universeAdded,
+            skipped: { universeAdded },
+            detail: `${universeDetail}No RocketReach lookup. ${decision.reason}`,
+            dryRun: false,
+          },
+        });
+        refilled++;
+      } else {
+        skipped++;
+        await recordSkip({
+          clientId: rule.clientId,
+          planId: rule.planId,
+          sequenceId: rule.sequenceId,
+          reason: decision.reason,
+        });
+      }
       continue;
     }
     const origin = automaticSourceOrigin(rule.plan.name, now);
@@ -240,6 +311,15 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
           await prisma.sequenceListRefillRule.update({ where: { id: rule.id }, data: { searchStart: 1 } });
         }
       } else if (result.ok) {
+        if (universeDetail && result.runId) {
+          await prisma.rocketReachPlanRun.update({
+            where: { id: result.runId },
+            data: {
+              contactsAdded: result.imported + universeAdded,
+              detail: `${universeDetail}RocketReach added ${String(result.imported)}.`,
+            },
+          });
+        }
         const nextStart = result.searchProfileCount < decision.lookupBudget ? 1 : rule.searchStart + result.searchProfileCount;
         await prisma.sequenceListRefillRule.update({
           where: { id: rule.id },
@@ -330,9 +410,10 @@ export async function previewSequenceListTopUp(
 ): Promise<
   | {
       ok: true;
-      matches: { name: string; title: string | null; employer: string | null; location: string | null; wouldLookup: boolean }[];
+      matches: { name: string; title: string | null; employer: string | null; location: string | null; wouldLookup: boolean; source: "Universe" | "RocketReach" }[];
       estimatedCredits: number;
       alreadyKnown: number;
+      universeMatches: number;
       detail: string;
     }
   | { ok: false; error: string }
@@ -346,12 +427,23 @@ export async function previewSequenceListTopUp(
   const plan = await prisma.prospectResearchPlan.findFirst({ where: { id: planId, clientId } });
   if (!plan) return { ok: false, error: "Choose a research plan saved on this client." };
   const rule = await prisma.sequenceListRefillRule.findUnique({ where: { sequenceId } });
+  const ready = await countReadyNotEnrolled(clientId, sequenceId, sequence.contactListId);
+  const universeCap = rule ? Math.max(0, rule.lowWaterMark - ready) : UNIVERSE_HARVEST_BATCH;
+  const universe = await collectUniverseHarvest({
+    clientId,
+    sequenceId,
+    contactListId: sequence.contactListId,
+    criteria: plan.criteria,
+    now: new Date(),
+    maxToAdd: universeCap,
+  });
+  if (!universe.ok) return universe;
   const mapped = researchPlanToSearchBody(plan.criteria, rule?.maxCreditsPerRun ?? Math.min(plan.maxLookups, 10), rule?.searchStart ?? 1);
   if (!mapped.ok) return mapped;
   const searched = await searchRocketReachIdentities(mapped.body);
   if (!searched.ok) return searched;
   const known = await loadKnownRocketReachIndexes(clientId, searched.identities);
-  const matches = searched.identities.map((identity) => {
+  const rocketReachMatches = searched.identities.map((identity) => {
     const hit = matchKnownSearchProfile(identity, known);
     return {
       name: identity.name ?? `RocketReach profile ${String(identity.id)}`,
@@ -359,13 +451,25 @@ export async function previewSequenceListTopUp(
       employer: identity.employer,
       location: identity.location,
       wouldLookup: hit === null,
+      source: "RocketReach" as const,
     };
   });
-  const alreadyKnown = matches.filter((match) => !match.wouldLookup).length;
-  const unknown = matches.length - alreadyKnown;
-  const ready = await countReadyNotEnrolled(clientId, sequenceId, sequence.contactListId);
-  const gap = Math.max(0, (rule?.lowWaterMark ?? unknown) - ready);
-  const estimatedCredits = gap === 0 ? 0 : Math.min(unknown, mapped.body.page_size, gap);
+  const alreadyKnown = rocketReachMatches.filter((match) => !match.wouldLookup).length;
+  const unknown = rocketReachMatches.length - alreadyKnown;
+  const gap = rule ? Math.max(0, rule.lowWaterMark - ready) : Math.max(0, unknown - ready);
+  const shortfall = Math.max(0, gap - universe.matches.length);
+  const estimatedCredits = shortfall === 0 ? 0 : Math.min(unknown, mapped.body.page_size, shortfall);
+  const matches = [
+    ...universe.matches.map((match) => ({
+      name: match.name,
+      title: match.title,
+      employer: match.employer,
+      location: match.location,
+      wouldLookup: false,
+      source: "Universe" as const,
+    })),
+    ...rocketReachMatches,
+  ];
   await prisma.rocketReachPlanRun.create({
     data: {
       clientId,
@@ -380,8 +484,8 @@ export async function previewSequenceListTopUp(
       creditsReserved: 0,
       contactsAdded: 0,
       dryRun: true,
-      skipped: { alreadyKnown, wouldLookup: unknown },
-      detail: `Preview only. Estimated credits ${String(estimatedCredits)}. No lookup was made.`,
+      skipped: { alreadyKnown, wouldLookup: unknown, universeMatches: universe.matches.length },
+      detail: `Preview only. Universe ${String(universe.matches.length)}. RocketReach lookups about ${String(estimatedCredits)}. No lookup was made.`,
     },
   });
   return {
@@ -389,7 +493,8 @@ export async function previewSequenceListTopUp(
     matches,
     estimatedCredits,
     alreadyKnown,
-    detail: `Preview only. ${String(unknown)} ${unknown === 1 ? "person would" : "people would"} need a lookup, about ${String(estimatedCredits)} credit${estimatedCredits === 1 ? "" : "s"}. ${String(alreadyKnown)} already known and skipped. No contact was added and no credit was spent.`,
+    universeMatches: universe.matches.length,
+    detail: `Preview only. Universe can add ${String(universe.matches.length)} without credits. RocketReach would look up about ${String(estimatedCredits)} credit${estimatedCredits === 1 ? "" : "s"} for the shortfall. ${String(alreadyKnown)} RocketReach ${alreadyKnown === 1 ? "row is" : "rows are"} already known. No contact was added and no credit was spent.`,
   };
 }
 

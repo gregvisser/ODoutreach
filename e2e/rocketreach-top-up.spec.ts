@@ -47,6 +47,7 @@ test("shows the credit estimate and an off automatic list top-up without spendin
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("Status: Off");
   await expect(panel.getByRole("button", { name: "Preview top-up" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Find matches in Universe" })).toBeVisible();
   await expect(panel.getByText("Greg Visser is the only approver")).toBeVisible();
   await expect(panel.getByText("does not enrol", { exact: false })).toBeVisible();
 
