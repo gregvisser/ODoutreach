@@ -16,6 +16,7 @@ import {
   ROCKETREACH_TOP_UP_ENABLE_PHRASE,
 } from "@/lib/clients/rocketreach-import-safety";
 import { AUTOMATIC_LIST_TOP_UP_TRAINING } from "@/lib/clients/rocketreach-top-up-copy";
+import { formatStaffDate, formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import type { SequenceListTopUpView } from "@/lib/clients/rocketreach-top-up-view";
 
 type PreviewMatch = {
@@ -70,10 +71,10 @@ export function AutomaticListTopUpPanel({
       </p>
       <p className="text-xs text-muted-foreground">
         List: {topUp.listName}. Ready and not enrolled: {String(topUp.readyNotEnrolled)}.
-        {rule?.enabledByName ? ` Turned on by ${rule.enabledByName}${rule.enabledAt ? ` on ${rule.enabledAt.slice(0, 10)}` : ""}.` : ""}
+        {rule?.enabledByName ? ` Turned on by ${rule.enabledByName}${rule.enabledAt ? ` on ${formatStaffDate(rule.enabledAt)}` : ""}.` : ""}
       </p>
       <p className="text-xs text-muted-foreground">
-        Last run: {topUp.lastRun ? `${topUp.lastRun.status} · ${topUp.lastRun.finishedAt?.replace("T", " ").slice(0, 16) ?? ""} UTC · credits ${String(topUp.lastRun.creditsUsed)} · added ${String(topUp.lastRun.contactsAdded)}. ${topUp.lastRun.detail ?? ""}` : "None yet."}
+        Last run: {topUp.lastRun ? `${topUp.lastRun.status} · ${formatStaffDateTime(topUp.lastRun.finishedAt)} · credits ${String(topUp.lastRun.creditsUsed)} · added ${String(topUp.lastRun.contactsAdded)}. ${topUp.lastRun.detail ?? ""}` : "None yet."}
       </p>
       <p className="text-xs text-muted-foreground">
         Credits reserved today: {String(topUp.creditsUsedToday)}

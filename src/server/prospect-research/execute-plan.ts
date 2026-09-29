@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { researchPlanToSearchBody } from "@/lib/prospect-research/plan-to-search";
 import {
   runRocketReachListImport,
@@ -126,8 +127,7 @@ export async function listLatestManualPlanRunNotes(clientId: string): Promise<Re
   for (const run of runs) {
     if (notes[run.planId]) continue;
     const who = run.triggeredBy?.displayName?.trim() || run.triggeredBy?.email || "a staff member";
-    const when = run.startedAt.toISOString().slice(0, 16).replace("T", " ");
-    notes[run.planId] = `${who} on ${when} UTC. Contacts added ${String(run.contactsAdded)}. Credits used ${String(run.creditsUsed)}. ${run.detail ?? ""}`.trim();
+    notes[run.planId] = `${who} on ${formatStaffDateTime(run.startedAt)}. Contacts added ${String(run.contactsAdded)}. Credits used ${String(run.creditsUsed)}. ${run.detail ?? ""}`.trim();
   }
   return notes;
 }
