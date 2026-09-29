@@ -209,6 +209,7 @@ export function RepPerformancePanel({
   aiConfigured,
   review,
   flash,
+  surface = "mailboxes",
 }: {
   clientId: string;
   canMutate: boolean;
@@ -216,6 +217,8 @@ export function RepPerformancePanel({
   aiConfigured: boolean;
   review: StoredRepPerformanceReview | null;
   flash: { ok: string | null; error: string | null };
+  /** Which page the result should come back to. Both pages show this panel. */
+  surface?: "mailboxes" | "outreach";
 }) {
   return (
     <Card id="ai-sender-comparison" className="border-border/80 shadow-sm">
@@ -260,6 +263,7 @@ export function RepPerformancePanel({
         ) : (
           <form action={explainClientRepPerformanceWithAiAction}>
             <input type="hidden" name="clientId" value={clientId} />
+            <input type="hidden" name="surface" value={surface} />
             <FormSubmitButton
               variant="secondary"
               pendingLabel="Comparing the senders…"

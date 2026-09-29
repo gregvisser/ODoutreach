@@ -14,7 +14,7 @@ import {
   type SequenceRefillRuleInput,
 } from "@/lib/clients/rocketreach-refill-policy";
 import type { SequenceListTopUpView } from "@/lib/clients/rocketreach-top-up-view";
-import { researchPlanToSearchBody } from "@/lib/prospect-research/plan-to-search";
+import { researchPlanToPreviewSearch } from "@/lib/prospect-research/plan-to-search";
 import { loadRocketReachCreditSnapshot } from "@/server/integrations/rocketreach/account";
 import {
   searchRocketReachIdentities,
@@ -438,10 +438,13 @@ export async function previewSequenceListTopUp(
     maxToAdd: universeCap,
   });
   if (!universe.ok) return universe;
-  const mapped = researchPlanToSearchBody(plan.criteria, rule?.maxCreditsPerRun ?? Math.min(plan.maxLookups, 10), rule?.searchStart ?? 1);
+  const mapped = researchPlanToPreviewSearch(plan.criteria, rule?.maxCreditsPerRun ?? Math.min(plan.maxLookups, 10), rule?.searchStart ?? 1);
   if (!mapped.ok) return mapped;
-  const searched = await searchRocketReachIdentities(mapped.body);
+  const searched = mapped.body
+    ? await searchRocketReachIdentities(mapped.body)
+    : { ok: true as const, identities: [] };
   if (!searched.ok) return searched;
+  const pageSize = mapped.body?.page_size ?? 0;
   const known = await loadKnownRocketReachIndexes(clientId, searched.identities);
   const rocketReachMatches = searched.identities.map((identity) => {
     const hit = matchKnownSearchProfile(identity, known);
@@ -458,7 +461,7 @@ export async function previewSequenceListTopUp(
   const unknown = rocketReachMatches.length - alreadyKnown;
   const gap = rule ? Math.max(0, rule.lowWaterMark - ready) : Math.max(0, unknown - ready);
   const shortfall = Math.max(0, gap - universe.matches.length);
-  const estimatedCredits = shortfall === 0 ? 0 : Math.min(unknown, mapped.body.page_size, shortfall);
+  const estimatedCredits = shortfall === 0 ? 0 : Math.min(unknown, pageSize, shortfall);
   const matches = [
     ...universe.matches.map((match) => ({
       name: match.name,
@@ -485,7 +488,7 @@ export async function previewSequenceListTopUp(
       contactsAdded: 0,
       dryRun: true,
       skipped: { alreadyKnown, wouldLookup: unknown, universeMatches: universe.matches.length },
-      detail: `Preview only. Universe ${String(universe.matches.length)}. RocketReach lookups about ${String(estimatedCredits)}. No lookup was made.`,
+      detail: [`Preview only. Universe ${String(universe.matches.length)}. RocketReach lookups about ${String(estimatedCredits)}. No lookup was made.`, mapped.note].filter(Boolean).join(" "),
     },
   });
   return {
@@ -494,7 +497,7 @@ export async function previewSequenceListTopUp(
     estimatedCredits,
     alreadyKnown,
     universeMatches: universe.matches.length,
-    detail: `Preview only. Universe can add ${String(universe.matches.length)} without credits. RocketReach would look up about ${String(estimatedCredits)} credit${estimatedCredits === 1 ? "" : "s"} for the shortfall. ${String(alreadyKnown)} RocketReach ${alreadyKnown === 1 ? "row is" : "rows are"} already known. No contact was added and no credit was spent.`,
+    detail: [`Preview only. Universe can add ${String(universe.matches.length)} without credits. RocketReach would look up about ${String(estimatedCredits)} credit${estimatedCredits === 1 ? "" : "s"} for the shortfall. ${String(alreadyKnown)} RocketReach ${alreadyKnown === 1 ? "row is" : "rows are"} already known. No contact was added and no credit was spent.`, mapped.note].filter(Boolean).join(" "),
   };
 }
 

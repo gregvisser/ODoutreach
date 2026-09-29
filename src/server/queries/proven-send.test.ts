@@ -67,7 +67,12 @@ vi.mock("@/server/internal-seed/seed-allowlist", () => ({
   listActiveInternalSeedEmails: async () => [] as string[],
 }));
 
-import { buildProvenSentWhere, getLatestProvenSendAt } from "./proven-send";
+import {
+  buildProvenSendHistoryWhere,
+  buildProvenSentWhere,
+  getLatestProvenSendAt,
+  isProvenOutboundSend,
+} from "./proven-send";
 import { loadClientOutreachMetrics } from "./outreach-metrics";
 
 beforeEach(() => {
@@ -166,5 +171,28 @@ describe("the Overview and the Activity tab count the same sends", () => {
       /\[\s*"SENT",\s*"DELIVERED",\s*"REPLIED",\s*"BOUNCED"\s*\]/,
     );
     expect(metricsSource).toContain("buildProvenSentWhere");
+  });
+});
+
+describe("proven sends for the AI history panels", () => {
+  it("counts a provider-confirmed send and ignores a queued row", () => {
+    expect(isProvenOutboundSend({ status: "SENT", sentAt: new Date(), providerMessageId: "p" })).toBe(true);
+    expect(isProvenOutboundSend({ status: "REPLIED", sentAt: null, providerMessageId: "p" })).toBe(true);
+    expect(isProvenOutboundSend({ status: "SENT", sentAt: null, providerMessageId: null })).toBe(false);
+    expect(isProvenOutboundSend({ status: "QUEUED", sentAt: new Date(), providerMessageId: null })).toBe(false);
+    expect(isProvenOutboundSend({ status: "BLOCKED_SUPPRESSION", sentAt: null, providerMessageId: null })).toBe(false);
+    expect(isProvenOutboundSend({ status: "FAILED", sentAt: null, providerMessageId: null })).toBe(false);
+  });
+
+  it("scopes history to one client, proven statuses, and the lookback", () => {
+    const since = new Date("2026-04-01T00:00:00Z");
+    const where = buildProvenSendHistoryWhere({ clientId: "client-1", seedEmails: [], since });
+    expect(where.clientId).toBe("client-1");
+    expect(where.status).toEqual({ in: ["SENT", "DELIVERED", "REPLIED", "BOUNCED"] });
+    expect(where.OR).toEqual([
+      { sentAt: { gte: since } },
+      { sentAt: null, providerMessageId: { not: null }, createdAt: { gte: since } },
+    ]);
+    expect(JSON.stringify(where)).not.toMatch(/openedAt|openCount/);
   });
 });

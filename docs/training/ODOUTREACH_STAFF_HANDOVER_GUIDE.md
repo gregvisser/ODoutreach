@@ -54,6 +54,20 @@ At a high level:
 25. Glossary
 26. Quick handover script
 
+## Common tasks the How do I bar can answer
+
+The in-app assistant searches this guide's task sections. The short version:
+
+- **Connect a mailbox:** Mailboxes → Add mailbox → Microsoft 365 or Google → Save → Connect. The mailbox owner finishes the sign-in. Reconnect is the same step. Google logins in the sidebar lists Google mailboxes that need a fresh sign-in. Setup help has the Microsoft admin-consent link.
+- **Add a client:** New client in the sidebar. Tabs include Email approvals between Outreach and Activity.
+- **CSV:** Sources → preview, then confirm. Rows land on the chosen list and in Universe.
+- **RocketReach:** Sources card, type SEARCH ROCKETREACH. Industries must be names from that card's list.
+- **Research plan:** Sources → Prospect research plans. Industries are picked from the RocketReach list and cannot be saved otherwise. Saving does not search or spend credits.
+- **Preview top-up:** a dry run on Outreach. It does not spend credits. An industry that is not on the RocketReach list is skipped and named. Automatic top-up stays off until a named member of staff turns it on. Greg Visser approves it.
+- **Queued:** not Sent. Pacing and mailbox capacity send later on their own. Do-not-contact, unsubscribe, bounce, reply-stop, pause, and a disconnected mailbox stay held.
+- **Do-not-contact fails closed.** Do not delete a block to force a send.
+- **AI:** xAI Grok only. Drafts and advice never send. Best send times, job-title fit, and sender comparison count emails that were actually sent and the replies linked to them. Open tracking is off, so opens are not used. Compare our senders is on Outreach and on Mailboxes.
+
 ## Key limitations
 
 - **Replies** are collected automatically from connected mailboxes (Azure WebJob in production; the GitHub **Sync replies** workflow also refreshes do-not-contact sheets). Use **Check replies** on Mailboxes only when you need an extra pull; you do not need to sync manually for ordinary daily work.

@@ -82,6 +82,23 @@ describe("assessSendTimeEvidence — refuses to guess from too little data", () 
     expect(verdict.sufficient).toBe(false);
     if (verdict.sufficient) throw new Error("unreachable");
     expect(verdict.reason).toContain("sends");
+    expect(verdict.reason).toContain("30");
+  });
+
+  it("names the real send count when every hour is too thin to compare", () => {
+    // 40 real sends, none of them in a slot of 25. The refusal must not
+    // read as if nothing was sent.
+    const verdict = assessSendTimeEvidence([
+      ...sendsAt("2026-07-13T08:30:00Z", 10, 1),
+      ...sendsAt("2026-07-14T09:30:00Z", 10, 1),
+      ...sendsAt("2026-07-15T10:30:00Z", 10, 0),
+      ...sendsAt("2026-07-16T13:30:00Z", 10, 0),
+    ]);
+    expect(verdict.sufficient).toBe(false);
+    if (verdict.sufficient) throw new Error("unreachable");
+    expect(verdict.reason).toContain("40");
+    expect(verdict.reason).toContain(String(MIN_TOTAL_SENDS));
+    expect(verdict.reason).not.toMatch(/0 of the 200/);
   });
 
   it("refuses when almost nobody replied, however much was sent", () => {

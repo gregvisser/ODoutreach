@@ -18,6 +18,11 @@ import {
 } from "@/lib/ai/send-time-evidence";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import {
+  buildProvenSendHistoryWhere,
+  provenSendInstant,
+} from "@/server/queries/proven-send";
+import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
 import { callAiToolMessages } from "./anthropic-messages";
@@ -66,27 +71,32 @@ export type AdviseSendTimesResult =
  * deliberately NOT counted here: an unlinked reply has no send time to
  * attribute, and spreading it across slots would invent the pattern we are
  * asking about.
+ *
+ * Sends are proven outbound rows (SENT, DELIVERED, REPLIED, BOUNCED), not
+ * queued or suppressed rows, and not opens. Open tracking is off.
  */
 async function loadSendOutcomes(args: {
   clientId: string;
   since: Date;
 }): Promise<SendOutcome[]> {
+  const seedEmails = await listActiveInternalSeedEmails();
   const rows = await prisma.outboundEmail.findMany({
-    where: {
+    where: buildProvenSendHistoryWhere({
       clientId: args.clientId,
-      sentAt: { not: null, gte: args.since },
-    },
+      seedEmails,
+      since: args.since,
+    }),
     select: {
       sentAt: true,
+      createdAt: true,
       _count: { select: { inboundReplies: true } },
     },
   });
 
-  return rows.flatMap((row) =>
-    row.sentAt === null
-      ? []
-      : [{ sentAt: row.sentAt, replied: row._count.inboundReplies > 0 }],
-  );
+  return rows.map((row) => ({
+    sentAt: provenSendInstant(row),
+    replied: row._count.inboundReplies > 0,
+  }));
 }
 
 export async function adviseSendTimes(args: {

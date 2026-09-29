@@ -125,7 +125,9 @@ describe("assessRepEvidence", () => {
     expect(verdict.sufficient).toBe(false);
     if (verdict.sufficient) throw new Error("unreachable");
     expect(verdict.reason).toContain(String(MIN_TOTAL_SENDS));
-    // The operator has to be told WHY their 100 sends counted as zero.
+    // The operator has to be told WHY their 100 sends counted as zero,
+    // and the sentence has to name those 100 sends rather than only the zero.
+    expect(verdict.reason).toContain("100");
     expect(verdict.reason).toContain(String(MIN_REP_SENDS));
   });
 

@@ -92,6 +92,59 @@ export function buildProvenSentWhere(
 }
 
 /**
+ * One outbound row the provider has confirmed left the building.
+ *
+ * `sentAt` is the usual proof. Older rows can be confirmed by
+ * `providerMessageId` alone and carry no `sentAt`. Queued, failed, and
+ * suppressed rows are not sends. Opens are not a send and are not read here.
+ */
+export function isProvenOutboundSend(row: {
+  status: string;
+  sentAt: Date | null;
+  providerMessageId: string | null;
+}): boolean {
+  if (!(PROVEN_SEND_STATUSES as readonly string[]).includes(row.status)) return false;
+  if (row.sentAt !== null) return true;
+  return typeof row.providerMessageId === "string" && row.providerMessageId.length > 0;
+}
+
+/**
+ * Proven sends for a lookback used by the data-driven AI panels.
+ *
+ * Same statuses as {@link buildProvenSentWhere}. A row with `sentAt` in the
+ * window counts on that timestamp. A proven row with no `sentAt` still counts,
+ * using `createdAt` as the only clock it has, so a client who has sent is not
+ * reported as having sent nothing. Seed addresses are excluded the same way
+ * as the rest of the product.
+ */
+export function buildProvenSendHistoryWhere(input: {
+  clientId: Prisma.OutboundEmailWhereInput["clientId"];
+  seedEmails: string[];
+  since: Date;
+}): Prisma.OutboundEmailWhereInput {
+  const seedExclusion =
+    input.seedEmails.length > 0 ? { toEmail: { notIn: input.seedEmails } } : {};
+  return {
+    clientId: input.clientId,
+    ...seedExclusion,
+    status: { in: [...PROVEN_SEND_STATUSES] },
+    OR: [
+      { sentAt: { gte: input.since } },
+      {
+        sentAt: null,
+        providerMessageId: { not: null },
+        createdAt: { gte: input.since },
+      },
+    ],
+  };
+}
+
+/** Clock time for a proven send. `sentAt` when the provider stored one. */
+export function provenSendInstant(row: { sentAt: Date | null; createdAt: Date }): Date {
+  return row.sentAt ?? row.createdAt;
+}
+
+/**
  * When this client last provably sent an email — whatever channel sent it and
  * whatever kind of send it was. `null` means it has genuinely never sent one.
  *

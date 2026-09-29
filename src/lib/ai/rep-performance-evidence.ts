@@ -245,12 +245,14 @@ export function assessRepEvidence(
   const totalReplied = qualifying.reduce((sum, b) => sum + b.replied, 0);
   const totalPositive = qualifying.reduce((sum, b) => sum + b.positive, 0);
   const totalBounced = qualifying.reduce((sum, b) => sum + b.bounced, 0);
+  const observedSent = outcomes.length;
 
   if (totalSent < MIN_TOTAL_SENDS) {
-    return {
-      sufficient: false,
-      reason: `Not enough sending to compare senders — ${String(totalSent)} of the ${String(MIN_TOTAL_SENDS)} needed. Only senders with at least ${String(MIN_REP_SENDS)} emails of their own are counted, because below that a reply rate is mostly luck.`,
-    };
+    const reason =
+      observedSent === totalSent
+        ? `Not enough sending to compare senders — ${String(totalSent)} of the ${String(MIN_TOTAL_SENDS)} needed. Only senders with at least ${String(MIN_REP_SENDS)} emails of their own are counted, because below that a reply rate is mostly luck.`
+        : `Not enough sending to compare senders — ${String(observedSent)} emails were sent, and ${String(totalSent)} of them are from a mailbox with at least ${String(MIN_REP_SENDS)} emails of its own. ${String(MIN_TOTAL_SENDS)} sends from those mailboxes are needed, because below ${String(MIN_REP_SENDS)} a reply rate is mostly luck.`;
+    return { sufficient: false, reason };
   }
   if (totalReplied < MIN_TOTAL_REPLIES) {
     return {

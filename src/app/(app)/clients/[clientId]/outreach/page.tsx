@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AiCampaignReviewPanel } from "@/components/clients/email-sequences/ai-campaign-review-panel";
 import { AiSendTimePanel } from "@/components/clients/email-sequences/ai-send-time-panel";
 import { TitleMessagePanel } from "@/components/clients/title-message-panel";
+import { RepPerformancePanel } from "@/components/clients/rep-performance-panel";
 import { ClientEmailSequencesPanel } from "@/components/clients/email-sequences/client-email-sequences-panel";
 import { EmailPreviewPanel } from "@/components/clients/email-preview/email-preview-panel";
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/server/email-sequences/queries";
 import { loadLatestSendTimeAdvice } from "@/server/ai/advise-send-times";
 import { loadLatestTitleMessageReview } from "@/server/ai/advise-title-messages";
+import { loadLatestRepPerformanceReview } from "@/server/ai/explain-rep-performance";
 import { loadLatestCampaignReviews } from "@/server/ai/review-campaign";
 import { isPreSendPreviewEnabled } from "@/server/email-rendering/pre-send-preview";
 import { getClientEmailSequenceMutationAllowed } from "@/server/email-sequences/mutator-access";
@@ -81,6 +83,7 @@ export default async function ClientOutreachPage({
     campaignReviews,
     sendTimeAdvice,
     titleMessageReview,
+    repPerformanceReview,
   ] = await Promise.all([
     loadClientEmailSequencesOverview(client.id),
     getClientEmailSequenceMutationAllowed(staff, client.id),
@@ -91,6 +94,7 @@ export default async function ClientOutreachPage({
     loadLatestCampaignReviews(client.id),
     loadLatestSendTimeAdvice(client.id),
     loadLatestTitleMessageReview(client.id),
+    loadLatestRepPerformanceReview(client.id),
   ]);
 
   const sequenceFlashRaw = firstParam(sp.sequence);
@@ -257,6 +261,19 @@ export default async function ClientOutreachPage({
         flash={{
           ok: firstParam(sp.titleMessage),
           error: firstParam(sp.titleMessageError),
+        }}
+      />
+
+      <RepPerformancePanel
+        clientId={client.id}
+        canMutate={canMutateSequences}
+        aiEnabled={areAiFeaturesEnabled("REP_PERFORMANCE")}
+        aiConfigured={isProductAiConfigured()}
+        review={repPerformanceReview}
+        surface="outreach"
+        flash={{
+          ok: firstParam(sp.repPerformance),
+          error: firstParam(sp.repPerformanceError),
         }}
       />
 

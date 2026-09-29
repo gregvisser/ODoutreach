@@ -5,7 +5,7 @@ import { saveResearchPlan } from "./plans";
 import { approveResearchRun, reserveResearchRequest } from "./request-budget";
 import { stageResearchCandidate, listResearchCandidates } from "./candidates";
 const staff = { id: "candidate-staff", role: "OPERATOR" as const };
-const evidence = { titles: "Director", industries: "Manufacturing", seniorities: "Director", regions: "UK" };
+const evidence = { titles: "Director", industries: "Manufacturing - General", seniorities: "Director", regions: "UK" };
 let requestId: string;
 let runId: string;
 const input = () => ({ clientId: "candidate-client", requestId, providerProfileId: "1", email: "person@example.test", company: "Synthetic Manufacturing", evidence });
@@ -15,7 +15,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(() => { throw Error("No provider calls"); }));
   await prisma.staffUser.create({ data: { ...staff, entraObjectId: staff.id, email: "staff@example.test" } });
   await prisma.client.createMany({ data: [{ id: "candidate-client", name: "Synthetic", slug: "candidate-client" }, { id: "other", name: "Other", slug: "other" }] });
-  const plan = await saveResearchPlan(staff, "candidate-client", { name: "Synthetic staging", criteria: { titles: ["Director"], industries: ["Manufacturing"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 2 });
+  const plan = await saveResearchPlan(staff, "candidate-client", { name: "Synthetic staging", criteria: { titles: ["Director"], industries: ["Manufacturing - General"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 2 });
   runId = (await approveResearchRun(staff, "candidate-client", plan.id)).id;
   const reserved = await reserveResearchRequest({ clientId: "candidate-client", runId, requestKey: "lookup:1", kind: "LOOKUP" });
   if (!reserved.acquired) throw Error("Fixture reservation failed");

@@ -13,7 +13,7 @@ test("staff can choose Machine sending while optional AI stays locked", async ({
   await expect(page.getByRole("button", { name: "Write a sequence with AI", exact: true })).toBeDisabled();
   await expect(page.getByText(/You can still write, review and schedule emails yourself using Human sending/)).toBeVisible();
   await workspaceTabs.getByRole("link", { name: "Outreach", exact: true }).click();
-  for (const name of ["Review with AI", "Work out our best send times", "Compare campaigns by job title"]) {
+  for (const name of ["Review with AI", "Work out our best send times", "Compare campaigns by job title", "Compare our senders"]) {
     await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
   }
   await workspaceTabs.getByRole("link", { name: "Mailboxes", exact: true }).click();

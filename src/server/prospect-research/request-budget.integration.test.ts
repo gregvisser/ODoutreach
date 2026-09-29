@@ -10,7 +10,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(() => { throw Error("No provider calls"); }));
   await prisma.staffUser.create({ data: { ...staff, entraObjectId: staff.id, email: "staff@example.test" } });
   await prisma.client.createMany({ data: [{ id: "budget-client", name: "Synthetic", slug: "budget-client" }, { id: "other", name: "Other", slug: "other" }] });
-  const plan = await saveResearchPlan(staff, "budget-client", { name: "Synthetic budget", criteria: { titles: ["Director"], industries: ["Manufacturing"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 2 });
+  const plan = await saveResearchPlan(staff, "budget-client", { name: "Synthetic budget", criteria: { titles: ["Director"], industries: ["Manufacturing - General"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 2 });
   runId = (await approveResearchRun(staff, "budget-client", plan.id)).id;
 });
 afterEach(() => { expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
@@ -47,14 +47,14 @@ it("reapproval never resets consumed allowance or resumes a paused run", async (
   expect(await reserve("lookup:4")).toMatchObject({ reason: "PAUSED" });
 });
 it("concurrent approvals create one run and one approval audit", async () => {
-  const plan = await saveResearchPlan(staff, "budget-client", { name: "Second synthetic plan", criteria: { titles: ["Director"], industries: ["Manufacturing"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 1 });
+  const plan = await saveResearchPlan(staff, "budget-client", { name: "Second synthetic plan", criteria: { titles: ["Director"], industries: ["Manufacturing - General"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 1 });
   const runs = await Promise.all([approveResearchRun(staff, "budget-client", plan.id), approveResearchRun(staff, "budget-client", plan.id)]);
   expect(runs[0].id).toBe(runs[1].id);
   expect(await prisma.auditLog.count({ where: { entityId: runs[0].id, entityType: "ProspectResearchRun" } })).toBe(1);
   await expect(approveResearchRun(staff, "other", plan.id)).rejects.toThrow("RESEARCH_PLAN_UNAVAILABLE");
 });
 it("approval and pause roll back when their audit fails", async () => {
-  const plan = await saveResearchPlan(staff, "budget-client", { name: "Audit rollback plan", criteria: { titles: ["Director"], industries: ["Manufacturing"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 1 });
+  const plan = await saveResearchPlan(staff, "budget-client", { name: "Audit rollback plan", criteria: { titles: ["Director"], industries: ["Manufacturing - General"], seniorities: ["Director"], regions: ["UK"] }, maxLookups: 1 });
   const missingStaff = { ...staff, id: "nonexistent-staff" };
   await expect(approveResearchRun(missingStaff, "budget-client", plan.id)).rejects.toThrow();
   expect(await prisma.prospectResearchRun.count({ where: { planId: plan.id } })).toBe(0);

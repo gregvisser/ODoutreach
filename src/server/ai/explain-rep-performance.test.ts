@@ -369,15 +369,18 @@ describe("explainRepPerformance", () => {
 
     const where = prismaMock.outboundEmail.findMany.mock.calls[0][0].where as {
       clientId: string;
-      sentAt: { gte: Date };
+      status?: { in?: string[] };
+      OR?: { sentAt?: { gte?: Date } }[];
       mailboxIdentityId: { not: null };
     };
     expect(where.clientId).toBe("client-1");
     expect(where.mailboxIdentityId).toEqual({ not: null });
+    expect(where.status?.in).toEqual(["SENT", "DELIVERED", "REPLIED", "BOUNCED"]);
     const expected = new Date(
       NOW.getTime() - REP_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
     );
-    expect(where.sentAt.gte.toISOString()).toBe(expected.toISOString());
+    expect(where.OR?.[0]?.sentAt?.gte?.toISOString()).toBe(expected.toISOString());
+    expect(JSON.stringify(where)).not.toMatch(/openedAt|openCount/);
   });
 });
 

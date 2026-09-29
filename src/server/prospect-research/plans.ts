@@ -1,12 +1,19 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isRocketReachIndustry } from "@/lib/clients/rocketreach-industries";
 import { researchPlanSchema } from "@/lib/prospect-research/qualification";
 import { requireClientAccess } from "@/server/tenant/access";
 import type { StaffIdentity } from "@/server/tenant/access";
 
+export const INVALID_ROCKETREACH_INDUSTRIES = "INVALID_ROCKETREACH_INDUSTRIES";
+
 export async function saveResearchPlan(staff: StaffIdentity, clientId: string, input: unknown) {
   await requireClientAccess(staff, clientId);
   const plan = researchPlanSchema.parse(input);
+  const invalid = plan.criteria.industries.filter((industry) => !isRocketReachIndustry(industry));
+  if (invalid.length > 0) {
+    throw new Error(`${INVALID_ROCKETREACH_INDUSTRIES}:${invalid.join(", ")}`);
+  }
   return prisma.$transaction(async tx => {
     // Recheck at write time: deleted workspaces must not receive new plans.
     const client = await tx.client.findFirst({ where: { id: clientId, deletedAt: null }, select: { id: true } });

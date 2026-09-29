@@ -128,7 +128,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "10-minute handover script",
     bullets: [
-      "Open OpensDoors, show Overview and the client tabs (Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Activity).",
+      "Open OpensDoors, show Overview and the client tabs (Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Email approvals, Activity).",
       "Show Mailboxes, capacity, signatures, and reconnect warning states. Read the explainer card.",
       "Show Sources import choices, Universe, and explain RocketReach credits and the confirmation phrase requirement.",
       "Show Do-not-contact (titled \"People blocked from outreach\" at the cross-client view) and explain why it is a hard safety check.",
@@ -136,6 +136,118 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Show how a held email is reviewed in Email approvals and how its earliest sending time appears in Activity. During training, do not approve a real email unless that particular send is intended and authorised.",
       "On Mailboxes, use Check replies, then open Activity and read a reply. Show its stopped sequence and, for an opt-out, its recorded contact block.",
       "Explain that Admin operations is support-only and not in the sidebar.",
+    ],
+  },
+  {
+    title: "Connect a new mailbox",
+    bullets: [
+      "Open the client, then Mailboxes, and choose Add mailbox. Enter the sending address, choose Microsoft 365 or Google, and Save. Saving the row does not send email.",
+      "On that row choose Connect. A Microsoft 365 or Google sign-in window opens. The person who can sign in to that mailbox finishes the prompt. They do not need an ODoutreach login.",
+      "Reconnect is the same sign-in when the row says connection error or reconnect required. Google mailboxes that need a fresh sign-in are also listed under Google logins in the sidebar.",
+      "If Microsoft asks an administrator to approve the app, open the client's Setup help tab and use the admin-consent link for that domain. Connecting does not send email and does not touch contacts.",
+      "After it reads Connected, set the signature. Google Workspace can use Sync from Gmail. Microsoft 365 does not expose the signature, so use Set signature or Set branded signatures. A mailbox with no signature cannot launch.",
+      "Settings is not where you connect a mailbox. Connect and reconnect happen on the client's Mailboxes tab.",
+    ],
+  },
+  {
+    title: "Add a client",
+    bullets: [
+      "Any OpensDoors staff member can add a client. Use New client in the sidebar, or Clients and then Add client.",
+      "Enter the business name and details, then Create workspace. You land on Overview. The tabs are Overview, Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Email approvals, and Activity.",
+      "Complete the Brief and choose Save brief. Saving a brief does not send email. The workspace stays ONBOARDING until Launch readiness is complete, then it becomes ACTIVE on the next visit to Overview.",
+    ],
+  },
+  {
+    title: "Import contacts from a CSV",
+    bullets: [
+      "Open the client's Sources tab. CSV import is preview, then confirm. Preview does not save anyone. Confirm writes the rows.",
+      "Every confirmed import is added to the client list you chose and, as individual people, to Universe. Universe deduplicates, mainly by email.",
+      "Check the rows on Lists, or across clients in Universe. Do-not-contact still applies before any send.",
+    ],
+  },
+  {
+    title: "Import from RocketReach",
+    bullets: [
+      "RocketReach search is on the client's Sources tab, in the RocketReach card. A search can spend RocketReach credits.",
+      "Type the confirmation phrase SEARCH ROCKETREACH before the search runs. Choose a destination list. The industry filter, when you use one, must be a name from that card's industry list.",
+      "Imported people land on the list you chose and in Universe. The import does not enrol them in a sequence and does not send email.",
+    ],
+  },
+  {
+    title: "Use Universe and lists",
+    bullets: [
+      "Universe is in the sidebar. It is the shared directory of people from imports. Filter, sort, and choose visible columns, then create a client list from the selection.",
+      "A list belongs to one client. Open it from the client's Lists tab. A sequence sends to exactly one list.",
+      "Deleting a list does not delete the people from Universe. Do-not-contact still blocks a send.",
+    ],
+  },
+  {
+    title: "Templates, sequences, follow-ups, and launch",
+    bullets: [
+      "Write and approve emails on the Templates tab. Do not type a signature into the body: the mailbox signature is appended when the email sends. Unknown placeholders block approval.",
+      "Build the sequence on Outreach. One Introduction step is enough. Add a follow-up only when you want one. Choose the list and either auto-pick or one connected mailbox. Saving a sequence does not send.",
+      "Preview the subject, body, signature, and recipients before launch. Launch queues eligible emails. It does not mean every email leaves immediately.",
+      "In Human sending, the first launch of a follow-up is yours. Open Outreach and launch follow-up steps that are due. Do not turn on Machine sending just to clear a hold. Only the internal BidlowAI workspace is set up for Machine sending.",
+      "A matched reply stops further follow-ups on that sequence. Open the reply and confirm it says Stopped. Use Stop follow-ups if it has not stopped.",
+    ],
+  },
+  {
+    title: "Pacing and the word Queued",
+    bullets: [
+      "Queued is not Sent. Sent means the mailbox accepted the message. Sent does not prove the message reached the inbox.",
+      "Recipients held only for pacing, the sending window, or a mailbox's own daily capacity stay Queued and send automatically on a later run. Do not launch the sequence again to clear that queue, and do not ask the client to approve the wait.",
+      "Each mailbox has its own ceiling. One mailbox filling up does not reduce another mailbox on the same sequence.",
+      "Do-not-contact, unsubscribe, bounce, a reply that stops the sequence, a pause, and a disconnected mailbox stay held. Those are not pacing, and they do not send automatically.",
+    ],
+  },
+  {
+    title: "Read replies",
+    bullets: [
+      "Replies to answer, in the sidebar, is the queue of replies still waiting on a person, across clients. Claim a reply by opening it.",
+      "Connected mailboxes are checked automatically. Use Check replies on the client's Mailboxes tab when you want an extra pull. Then read the message on Activity or on the reply itself.",
+      "A disconnected mailbox cannot be checked until someone reconnects it. Answer from ODoutreach so the reply stays on the same mailbox and thread.",
+    ],
+  },
+  {
+    title: "Do-not-contact and blocked contacts",
+    bullets: [
+      "Do-not-contact fails closed. An address, domain, or exact company name on the block list is not emailed. A similar company name or a missing employer can require review rather than a send.",
+      "The per-client tab is Do-not-contact. The cross-client page is Blocked contacts in the sidebar, titled People blocked from outreach.",
+      "Keep the Google Sheets shared with the service account and check that the last sync succeeded before a new send. Removing a name from the sheet does not clear a block that is already stored. Do not delete a block to make a sync or a send succeed.",
+      "A clear removal request in a reply is blocked when the reply is processed. If no block is recorded, use the immediate Do-not-contact action. Do not wait for a sheet sync, and do not use the allow-again confirmation unless Greg Visser has agreed.",
+    ],
+  },
+  {
+    title: "Raise a support ticket",
+    bullets: [
+      "Open Support in the sidebar. Give the ticket a short title and describe what you were doing, what you expected, and what happened. You can attach up to three screenshots (PNG, JPG, GIF, or WEBP, 5MB each).",
+      "If the How do I bar at the top of the app cannot answer, it offers Raise a support ticket. That creates the same kind of ticket and includes the question you asked.",
+      "Use a ticket for a bug, a stuck queue, or a step you cannot complete. Do not requeue mail or change a do-not-contact block to work around it.",
+    ],
+  },
+  {
+    title: "Save a research plan",
+    bullets: [
+      "Research plans are on the client's Sources tab, under Prospect research plans. Enter job titles, seniority, and regions one per line. Industries must be chosen from the RocketReach industry list — the same names as the RocketReach card. A typed industry that is not on that list cannot be saved.",
+      "Save research draft stores the plan only. It does not search, spend credits, import contacts, or send email.",
+      "Run plan into list uses the same RocketReach search, the same SEARCH ROCKETREACH confirmation, and the same cap as the card. It does not enrol anyone and it does not send email.",
+    ],
+  },
+  {
+    title: "Preview a list top-up",
+    bullets: [
+      "Automatic list top-up is off until a named member of staff turns it on for that sequence. Greg Visser is the approver. It also needs the server setting for automatic refill, an Active client, and Machine sending. It adds people to the sequence's list. It does not enrol them and it does not send email.",
+      "Preview top-up is a dry run. It shows how many matching people are already in Universe and about how many RocketReach credits the shortfall would take. It does not spend credits and it does not add contacts.",
+      "If a saved plan names an industry that is not on the RocketReach list, preview skips that industry and says so. It still does not spend credits. Save a new plan with industry names from the RocketReach card before a real run.",
+    ],
+  },
+  {
+    title: "AI drafts, review, send times, and sender comparison",
+    bullets: [
+      "Product AI runs on xAI Grok. It drafts and advises only. It never sends email, and it does not use open tracking. Open tracking is off.",
+      "On Templates, Draft emails with AI writes a sequence of draft emails from the client brief. Each draft stays unapproved until a person reads it. Nothing sends until that person approves it and someone launches from Outreach.",
+      "On Outreach, Review with AI scores one campaign's writing. Work out our best send times reads this client's sent emails and the replies linked to them, by weekday and hour. Compare campaigns by job title does the same from people who were actually sent a campaign. Compare our senders is on Outreach and on Mailboxes. It compares mailboxes, not people, using sent emails and linked replies.",
+      "If there is not enough sent mail or not enough replies, those panels say how many were sent and stop. They do not guess, and that check does not spend AI credits. Bounces and replies are outcomes. Opens are not used.",
     ],
   },
 ];
