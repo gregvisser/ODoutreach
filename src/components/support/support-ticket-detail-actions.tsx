@@ -65,8 +65,8 @@ export function SupportTicketDetailActions({
       <CardHeader>
         <CardTitle className="text-base">Actions</CardTitle>
         <CardDescription>
-          Anyone can open a ticket. The developer fixes the issue and closes the
-          ticket here.
+          Anyone can open a ticket. Only the owner account can resolve and close
+          it here.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -173,8 +173,8 @@ export function SupportTicketDetailActions({
         {!isOwner ? (
           <p className="text-xs text-muted-foreground">
             {isResolved
-              ? "This ticket has been resolved."
-              : "This ticket is open. The developer will pick it up and close it once fixed."}
+              ? "This ticket is resolved. Only the owner account can reopen it."
+              : "This ticket is open. Only the owner account can resolve and close it."}
           </p>
         ) : null}
       </CardContent>

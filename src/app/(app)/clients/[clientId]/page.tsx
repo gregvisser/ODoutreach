@@ -246,6 +246,7 @@ export default async function ClientDetailPage({ params, searchParams }: Props) 
   return (
     <div className="space-y-8">
       <ClientWorkspaceCommandCenter
+        clientId={client.id}
         clientName={client.name}
         clientSlug={client.slug}
         clientStatus={clientStatusLabel(client.status)}

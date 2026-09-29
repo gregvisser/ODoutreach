@@ -5,6 +5,7 @@ import {
   deleteClientEmailTemplateAction,
   returnClientEmailTemplateToDraftAction,
 } from "@/app/(app)/clients/[clientId]/outreach/template-actions";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { Badge } from "@/components/ui/badge";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import {
@@ -58,16 +59,7 @@ type Props = {
 };
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatStaffDateTime(iso);
 }
 
 function statusBadgeVariant(

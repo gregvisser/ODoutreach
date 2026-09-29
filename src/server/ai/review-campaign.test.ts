@@ -4,8 +4,8 @@ const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
   prismaMock: {
     clientEmailSequence: { findFirst: vi.fn(), update: vi.fn() },
     clientEmailTemplate: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-    aiCampaignReview: { create: vi.fn(), findMany: vi.fn() },
-    aiUsageEvent: { create: vi.fn() },
+    aiCampaignReview: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+    aiUsageEvent: { create: vi.fn(), findFirst: vi.fn() },
   },
   callAnthropicMock: vi.fn(),
 }));
@@ -19,16 +19,22 @@ vi.mock("./anthropic-messages", () => ({
   callAiToolMessages: callAnthropicMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/server", () => ({ after: vi.fn() }));
 
 import {
   CAMPAIGN_REVIEW_PROMPT_VERSION,
   CAMPAIGN_REVIEW_TOOL,
   MAX_SUGGESTION_CHARS,
 } from "@/lib/ai/campaign-review";
+import { AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "@/lib/ai/sequence-draft-timing";
+import { logger } from "@/lib/logger";
 
 import {
   loadLatestCampaignReviews,
+  readCampaignReviewAttempt,
   reviewCampaign,
+  scheduleCampaignReview,
   stepsToAbsoluteDays,
 } from "./review-campaign";
 
@@ -101,7 +107,9 @@ beforeEach(() => {
   prismaMock.clientEmailTemplate.updateMany.mockReset();
   prismaMock.aiCampaignReview.create.mockReset().mockResolvedValue({ id: "review-1" });
   prismaMock.aiCampaignReview.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.aiCampaignReview.findFirst.mockReset().mockResolvedValue(null);
   prismaMock.aiUsageEvent.create.mockReset().mockResolvedValue({ id: "usage-1" });
+  prismaMock.aiUsageEvent.findFirst.mockReset().mockResolvedValue(null);
   callAnthropicMock.mockReset();
   process.env.AI_MODEL_PROVIDER = "anthropic";
   delete process.env.XAI_API_KEY;
@@ -332,5 +340,120 @@ describe("loadLatestCampaignReviews", () => {
     ]);
     const latest = await loadLatestCampaignReviews("client-1");
     expect(latest.get("seq-1")?.findings).toEqual([]);
+  });
+});
+
+describe("the grok budget that sequence drafting already uses", () => {
+  it("gives grok-4.7 three minutes and low reasoning effort", async () => {
+    process.env.AI_MODEL_PROVIDER = "xai";
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.XAI_API_KEY = "xai-test-key";
+    process.env.XAI_MODEL = "grok-4.7";
+    modelAnswers(GOOD_REVIEW);
+
+    await run();
+
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+      AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    );
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBe("low");
+  });
+
+  it("keeps the long timeout for a non-reasoning model and does not set effort", async () => {
+    modelAnswers(GOOD_REVIEW);
+    await run();
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+      AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    );
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+  });
+
+  it("logs a provider failure without the API key", async () => {
+    callAnthropicMock.mockRejectedValue(
+      new Error("xai_timeout: exceeded 180000ms Bearer xai-supersecretvalue"),
+    );
+    const result = await run();
+    expect(result.ok).toBe(false);
+    const logged = JSON.stringify(vi.mocked(logger.error).mock.calls);
+    expect(logged).toContain("xai_timeout");
+    expect(logged).not.toContain("supersecret");
+  });
+});
+
+describe("readCampaignReviewAttempt", () => {
+  const since = new Date("2026-09-29T10:00:00Z");
+
+  it("stays pending until a usage row exists", async () => {
+    prismaMock.aiUsageEvent.findFirst.mockResolvedValue(null);
+    await expect(
+      readCampaignReviewAttempt({ clientId: "client-1", sequenceId: "seq-1", since }),
+    ).resolves.toEqual({ state: "pending" });
+  });
+
+  it("reports a provider failure from the ledger", async () => {
+    prismaMock.aiUsageEvent.findFirst.mockResolvedValue({
+      status: "ERROR",
+      outcomeCode: "xai_timeout: exceeded 180000ms",
+    });
+    const attempt = await readCampaignReviewAttempt({
+      clientId: "client-1",
+      sequenceId: "seq-1",
+      since,
+    });
+    expect(attempt.state).toBe("failed");
+    if (attempt.state !== "failed") return;
+    expect(attempt.message).toContain("temporarily unavailable");
+  });
+
+  it("reports the stored score once the review row exists", async () => {
+    prismaMock.aiUsageEvent.findFirst.mockResolvedValue({ status: "OK", outcomeCode: null });
+    prismaMock.aiCampaignReview.findFirst.mockResolvedValue({
+      score: 71,
+      findings: [{ title: "one" }],
+    });
+    const attempt = await readCampaignReviewAttempt({
+      clientId: "client-1",
+      sequenceId: "seq-1",
+      since,
+    });
+    expect(attempt.state).toBe("succeeded");
+    if (attempt.state !== "succeeded") return;
+    expect(attempt.message).toContain("71");
+    expect(attempt.message).toContain("1 thing");
+  });
+
+  it("treats a billed call with no review row as an unusable answer", async () => {
+    prismaMock.aiUsageEvent.findFirst.mockResolvedValue({ status: "OK", outcomeCode: null });
+    prismaMock.aiCampaignReview.findFirst.mockResolvedValue(null);
+    const attempt = await readCampaignReviewAttempt({
+      clientId: "client-1",
+      sequenceId: "seq-1",
+      since,
+    });
+    expect(attempt.state).toBe("failed");
+    if (attempt.state !== "failed") return;
+    expect(attempt.message).toContain("usable review");
+  });
+});
+
+describe("scheduleCampaignReview", () => {
+  it("returns before the model call, and redacts a key thrown afterwards", async () => {
+    const queued: Array<() => Promise<void>> = [];
+    scheduleCampaignReview(
+      { clientId: "client-1", sequenceId: "seq-1", staffUserId: "staff-1" },
+      (run) => {
+        queued.push(run);
+      },
+    );
+    expect(queued).toHaveLength(1);
+    expect(callAnthropicMock).not.toHaveBeenCalled();
+
+    prismaMock.clientEmailSequence.findFirst.mockRejectedValue(
+      new Error("db Bearer xai-supersecretvalue"),
+    );
+    await queued[0]?.();
+    const logged = JSON.stringify(vi.mocked(logger.error).mock.calls);
+    expect(logged).toContain("Campaign review failed after the response was sent");
+    expect(logged).not.toContain("supersecret");
   });
 });

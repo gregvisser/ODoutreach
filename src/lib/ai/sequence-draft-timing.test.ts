@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+  onDemandToolCallBudget,
   SEQUENCE_DRAFT_POLL_GIVE_UP_MS,
   SEQUENCE_DRAFT_RUN_GRACE_MS,
   sequenceDraftReasoningEffort,
@@ -32,5 +33,18 @@ describe("sequence draft timing", () => {
     expect(sequenceDraftReasoningEffort("grok-4-fast-non-reasoning")).toBeUndefined();
     expect(sequenceDraftReasoningEffort("grok-4.20-0309-non-reasoning")).toBeUndefined();
     expect(sequenceDraftReasoningEffort("claude-haiku-4-5-20251001")).toBeUndefined();
+  });
+
+  it("gives campaign review and the advice panels the same grok budget as drafting", () => {
+    expect(onDemandToolCallBudget("grok-4.7")).toEqual({
+      timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+      reasoningEffort: "low",
+    });
+    expect(onDemandToolCallBudget("grok-4.6").reasoningEffort).toBe("low");
+    expect(onDemandToolCallBudget("grok-4-fast-non-reasoning")).toEqual({
+      timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+      reasoningEffort: undefined,
+    });
+    expect(onDemandToolCallBudget("claude-haiku-4-5-20251001").reasoningEffort).toBeUndefined();
   });
 });

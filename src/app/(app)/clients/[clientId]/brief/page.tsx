@@ -60,6 +60,7 @@ export default async function ClientBriefPage({ params }: Props) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex gap-4">
           <ClientLogo
+            clientId={client.id}
             clientName={client.name}
             logoUrl={client.logoUrl}
             logoAltText={client.logoAltText}

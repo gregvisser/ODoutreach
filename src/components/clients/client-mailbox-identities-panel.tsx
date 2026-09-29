@@ -4,8 +4,7 @@ import { SendingDayDetails, type SendingDayDetailsValue } from "./sending-day-de
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { format } from "date-fns";
-
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import {
   disconnectMailboxIdentity,
   prepareMailboxOAuthConnection,
@@ -315,7 +314,7 @@ function providerConnectionHint(
         new Date(),
       );
       if (!row.connectedAt) return countdown ? `${countdown.label}.` : "Connected.";
-      const connectedLabel = `Connected ${format(new Date(row.connectedAt), "d MMM yyyy, HH:mm")}`;
+      const connectedLabel = `Connected ${formatStaffDateTime(row.connectedAt)}`;
       return countdown ? `${countdown.label}. ${connectedLabel}.` : connectedLabel;
     }
     case "CONNECTION_ERROR":
@@ -931,7 +930,7 @@ export function ClientMailboxIdentitiesPanel({
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {row.workspaceRemovedAt
-                          ? format(new Date(row.workspaceRemovedAt), "d MMM yyyy, HH:mm")
+                          ? formatStaffDateTime(row.workspaceRemovedAt)
                           : "—"}
                       </TableCell>
                       <TableCell>

@@ -99,6 +99,8 @@ describe("adviseSendTimes", () => {
     expect(result.summary).toContain("Monday");
     expect(result.windows).toHaveLength(1);
     expect(result.evidence.length).toBeGreaterThan(0);
+    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(180_000);
+    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
   });
 
   it("SPENDS NOTHING when the history is too thin", async () => {

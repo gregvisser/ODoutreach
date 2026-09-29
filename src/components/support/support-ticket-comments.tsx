@@ -2,10 +2,9 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
-
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { cn } from "@/lib/utils";
 
 import {
@@ -71,7 +70,7 @@ export function SupportTicketComments({
                   {c.authorName ?? c.authorEmail}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {format(new Date(c.createdAt), "d MMM yyyy, HH:mm")}
+                  {formatStaffDateTime(c.createdAt)}
                 </span>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">

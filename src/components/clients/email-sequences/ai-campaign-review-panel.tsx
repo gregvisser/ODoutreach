@@ -1,5 +1,6 @@
 import { OptionalAiUnavailable } from "@/components/clients/optional-ai-unavailable";
 import { reviewClientCampaignWithAiAction } from "@/app/(app)/clients/[clientId]/outreach/ai-campaign-review-actions";
+import { AiCampaignReviewStatus } from "@/components/clients/email-sequences/ai-campaign-review-status";
 import { AiBadge } from "@/components/ai/ai-badge";
 import {
   Card,
@@ -148,6 +149,7 @@ export function AiCampaignReviewPanel({
   sequences,
   reviewsBySequenceId,
   flash,
+  pending,
 }: {
   clientId: string;
   canMutate: boolean;
@@ -160,6 +162,8 @@ export function AiCampaignReviewPanel({
   }>;
   reviewsBySequenceId: ReadonlyMap<string, StoredCampaignReview>;
   flash: { ok: string | null; error: string | null };
+  /** Set while a detached review is still running for one sequence. */
+  pending?: { sequenceId: string; since: string } | null;
 }) {
   // Row 133 finding 1 — the most recently reviewed sequence floats to the
   // top and starts expanded; every other review starts collapsed, so
@@ -234,6 +238,12 @@ export function AiCampaignReviewPanel({
                       <p className="text-sm text-muted-foreground">
                         You do not have permission to review this campaign.
                       </p>
+                    ) : pending?.sequenceId === sequence.id ? (
+                      <AiCampaignReviewStatus
+                        clientId={clientId}
+                        sequenceId={sequence.id}
+                        since={pending.since}
+                      />
                     ) : (
                       <form action={reviewClientCampaignWithAiAction}>
                         <input type="hidden" name="clientId" value={clientId} />

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { format } from "date-fns";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 
 import { StickyFilterBar } from "@/components/app-shell/sticky-filter-bar";
 import { ClientPicker } from "@/components/clients/client-picker";
@@ -131,8 +131,8 @@ export default async function ActivityPage({ searchParams }: Props) {
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {row.sentAt
-                        ? format(row.sentAt, "MMM d HH:mm")
-                        : format(row.createdAt, "MMM d HH:mm")}
+                        ? formatStaffDateTime(row.sentAt)
+                        : formatStaffDateTime(row.createdAt)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -186,7 +186,7 @@ export default async function ActivityPage({ searchParams }: Props) {
                       </div>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
-                      {format(row.receivedAt, "MMM d HH:mm")}
+                      {formatStaffDateTime(row.receivedAt)}
                     </TableCell>
                   </TableRow>
                 ))}

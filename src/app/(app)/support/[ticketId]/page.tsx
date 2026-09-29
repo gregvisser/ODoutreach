@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 
 import {
   Card,
@@ -57,7 +57,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
     `Priority: ${supportPriorityLabel(ticket.priority)}`,
     `Status: ${supportStatusLabel(ticket.status)}`,
     `Reported by: ${ticket.reporterEmail}`,
-    `Logged: ${format(ticket.createdAt, "d MMM yyyy, HH:mm")}`,
+    `Logged: ${formatStaffDateTime(ticket.createdAt)}`,
     `Screenshots attached: ${ticket.attachments.length}`,
     "",
     "Issue detail:",
@@ -96,7 +96,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
           <CardDescription>
             Logged by {ticket.createdBy?.displayName ?? ticket.reporterEmail} (
             {ticket.reporterEmail}) on{" "}
-            {format(ticket.createdAt, "d MMM yyyy, HH:mm")}
+            {formatStaffDateTime(ticket.createdAt)}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -164,6 +164,7 @@ export function ClientBrandPanel({
               <span className="mx-1 rounded bg-muted px-1 font-mono text-[11px]">
                 {clientName} logo
               </span>
+              {" "}
               when blank.
             </p>
             <Input

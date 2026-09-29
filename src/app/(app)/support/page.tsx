@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { format } from "date-fns";
 
 import {
   Card,
@@ -15,6 +14,7 @@ import {
   supportStatusBadgeClass,
   supportStatusLabel,
 } from "@/lib/support/support-labels";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
@@ -112,6 +112,13 @@ export default async function SupportPage() {
                       >
                         {t.title}
                       </Link>
+                      <Link
+                        prefetch={false}
+                        href={`/support/${t.id}`}
+                        className="ml-3 text-xs font-medium text-foreground underline underline-offset-2"
+                      >
+                        Open ticket
+                      </Link>
                       {t._count.attachments > 0 ? (
                         <span className="ml-2 text-xs text-muted-foreground">
                           📎 {t._count.attachments}
@@ -136,7 +143,7 @@ export default async function SupportPage() {
                       {t.createdBy?.displayName ?? t.reporterEmail}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-muted-foreground">
-                      {format(t.createdAt, "d MMM yyyy, HH:mm")}
+                      {formatStaffDateTime(t.createdAt)}
                     </td>
                   </tr>
                 ))}

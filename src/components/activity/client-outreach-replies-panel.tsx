@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { format } from "date-fns";
-
 import { ReplyOwnershipBadge } from "@/components/activity/reply-ownership-badge";
 import { AiClassificationBadge } from "@/components/ai/ai-badge";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +16,7 @@ import {
   replyClassificationBadge,
   UNCLASSIFIED_BADGE,
 } from "@/lib/ai/reply-classification-display";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { cn } from "@/lib/utils";
 
 import type { ReplyClassification } from "@/generated/prisma/enums";
@@ -60,11 +59,7 @@ type Props = {
 };
 
 function formatTs(iso: string): string {
-  try {
-    return format(new Date(iso), "d MMM yyyy, HH:mm");
-  } catch {
-    return iso;
-  }
+  return formatStaffDateTime(iso);
 }
 
 function MailboxGroupRow({

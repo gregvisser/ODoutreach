@@ -12,6 +12,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { AI_MODELS, RATE_VERSION } from "@/lib/ai/model-catalog";
+import { logger } from "@/lib/logger";
 
 import { runMeteredAiCall } from "./metered-call";
 
@@ -170,6 +171,24 @@ describe("a call that fails", () => {
     const row = writtenRow();
     expect(row.status).toBe("ERROR");
     expect(row.outcomeCode).toMatch(/529|overloaded|call_failed/);
+  });
+
+  it("logs the provider error and strips the API key", async () => {
+    const out = await runMeteredAiCall({
+      ...baseArgs,
+      invoke: async () => {
+        throw new Error("xai_timeout: exceeded 180000ms Bearer xai-supersecretvalue");
+      },
+    });
+
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.reason).toContain("xai_timeout");
+    expect(out.reason).not.toContain("supersecret");
+    const logged = JSON.stringify(vi.mocked(logger.error).mock.calls);
+    expect(logged).toContain("xai_timeout");
+    expect(logged).toContain("AI provider call failed");
+    expect(logged).not.toContain("supersecret");
   });
 
   it("does not throw at the caller — a model outage must not break reply ingestion", async () => {

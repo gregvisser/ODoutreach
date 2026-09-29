@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { format } from "date-fns";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 
 import {
   ReleaseStaleLocksButton,
@@ -248,7 +248,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
               {snap.recentEvents.map((ev) => (
                 <TableRow key={ev.id}>
                   <TableCell className="text-muted-foreground whitespace-nowrap">
-                    {format(ev.receivedAt, "MMM d HH:mm:ss")}
+                    {formatStaffDateTime(ev.receivedAt)}
                   </TableCell>
                   <TableCell>{ev.client?.name ?? "—"}</TableCell>
                   <TableCell className="font-mono text-xs">{ev.eventType}</TableCell>

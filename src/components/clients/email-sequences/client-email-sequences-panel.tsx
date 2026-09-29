@@ -31,6 +31,7 @@ import type {
 
 import type { SequenceStepSendUiSnapshot } from "@/server/email-sequences/send-introduction";
 import type { SequencePrepSnapshot } from "@/server/email-sequences/step-sends";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { formatReplyCheckAttempt } from "@/lib/inbox/reply-health";
 
 import { ClientEmailSequenceForm } from "./client-email-sequence-form";
@@ -95,16 +96,7 @@ function outreachSequenceHref(
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatStaffDateTime(iso);
 }
 
 function prepCountsForStatus(prep: SequencePrepSnapshot | undefined): PrepCountsSlice | null {

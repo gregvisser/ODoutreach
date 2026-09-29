@@ -37,4 +37,20 @@ describe("Support ticket resolve form — minimum resolution note (row 156)", ()
     const src = readFileSync(componentPath, "utf8");
     expect(src).toContain("${MIN_RESOLUTION_NOTE_LENGTH} characters");
   });
+
+  it("tells non-owners that only the owner account can resolve", () => {
+    const src = readFileSync(componentPath, "utf8");
+    expect(src).toContain("Only the owner account can resolve and close it.");
+    expect(src).toContain("Only the owner account can reopen it.");
+    expect(src).not.toContain("The developer will pick it up");
+  });
+
+  it("links each support-list row to the ticket with Open ticket", () => {
+    const page = readFileSync(
+      join(process.cwd(), "src/app/(app)/support/page.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("Open ticket");
+    expect(page).toContain("href={`/support/${t.id}`}");
+  });
 });

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { AI_MODELS } from "@/lib/ai/model-catalog";
+import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildRepPerformanceInput,
   parseRepPerformanceToolUse,
@@ -166,6 +167,7 @@ export async function explainRepPerformance(args: {
 
   const model = resolveProductAiModel(AI_MODELS.REP_PERFORMANCE);
   const apiKey = resolveProductAiApiKey();
+  const budget = onDemandToolCallBudget(model);
 
   const outcome = await runMeteredAiCall({
     client: { id: client.id, slug: client.slug },
@@ -191,6 +193,8 @@ export async function explainRepPerformance(args: {
         }),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: REP_PERFORMANCE_TOOL,
+        timeoutMs: budget.timeoutMs,
+        reasoningEffort: budget.reasoningEffort,
       });
       return {
         result: parseRepPerformanceToolUse(response.content),

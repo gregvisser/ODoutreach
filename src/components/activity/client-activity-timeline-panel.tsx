@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +9,7 @@ import {
   type TimelineEvent,
   type TimelineEventSeverity,
 } from "@/lib/activity/client-activity-timeline";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,11 +39,7 @@ const SEVERITY_DOT_CLASS: Record<TimelineEventSeverity, string> = {
 };
 
 function eventTimestamp(date: Date): string {
-  try {
-    return format(date, "yyyy-MM-dd HH:mm") + " UTC";
-  } catch {
-    return date.toISOString();
-  }
+  return formatStaffDateTime(date);
 }
 
 function SummaryTile({

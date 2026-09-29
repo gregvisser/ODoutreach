@@ -15,9 +15,16 @@
  * Sequence drafting therefore asks those models for `low` effort (the setting
  * xAI documents for simple tool calls) and allows three minutes of wall clock,
  * under that four-minute idle limit.
+ *
+ * Campaign review and the other staff-triggered advice calls (send time,
+ * job-title fit, sender comparison) send a similar forced tool call. They
+ * used to keep the 20s classification abort, so grok's default high effort
+ * was reported as "The AI provider is temporarily unavailable". They share
+ * this budget through {@link onDemandToolCallBudget}. Reply classification
+ * and the short training assistant do not.
  */
 
-/** Model HTTP abort for sequence drafting only. */
+/** Model HTTP abort for sequence drafting and the other staff-triggered tool calls. */
 export const AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS = 180_000;
 
 /**
@@ -58,4 +65,20 @@ const SEQUENCE_DRAFT_REASONING_MODELS: ReadonlySet<string> = new Set([
 export function sequenceDraftReasoningEffort(model: string): XaiReasoningEffort | undefined {
   if (!SEQUENCE_DRAFT_REASONING_MODELS.has(model)) return undefined;
   return SEQUENCE_DRAFT_REASONING_EFFORT;
+}
+
+/**
+ * Wall clock and reasoning effort for a staff-triggered forced tool call.
+ *
+ * Same numbers as sequence drafting (#706). `reasoningEffort` is omitted for
+ * models that reject the field, so a non-reasoning model is not a 400.
+ */
+export function onDemandToolCallBudget(model: string): {
+  timeoutMs: number;
+  reasoningEffort: XaiReasoningEffort | undefined;
+} {
+  return {
+    timeoutMs: AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
+    reasoningEffort: sequenceDraftReasoningEffort(model),
+  };
 }

@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 
 import {
   Table,
@@ -14,8 +14,7 @@ import {
 } from "@/server/staff-access/list-recent-staff-audit";
 
 function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return format(d, "d MMM yyyy, HH:mm");
+  return formatStaffDateTime(iso);
 }
 
 export async function StaffAccessRecentActivity() {

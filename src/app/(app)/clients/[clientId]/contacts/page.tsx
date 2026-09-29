@@ -14,6 +14,7 @@ import {
   MISSING_EMAIL_KPI_DISPLAY,
   MISSING_IDENTIFIER_KPI_DISPLAY,
 } from "@/lib/contacts/contact-status-display";
+import { formatStaffDate } from "@/lib/datetime/staff-datetime";
 import {
   rocketReachConnectionStatus,
   rocketReachStatusBadgeTone,
@@ -31,17 +32,8 @@ type Props = {
   params: Promise<{ clientId: string }>;
 };
 
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
 function formatDate(value: Date | string | null | undefined): string {
-  if (!value) return "—";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return DATE_FORMATTER.format(date);
+  return formatStaffDate(value);
 }
 
 function listStatusBadgeVariant(
