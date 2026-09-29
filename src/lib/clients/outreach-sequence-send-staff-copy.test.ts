@@ -4,10 +4,14 @@ import {
   classifySequenceDispatchOutcome,
   describeSequenceDispatchOutcome,
   humanizeSequenceLaunchDisabledReason,
+  isDispatchHoldReason,
   LIVE_SEQUENCE_LAUNCH_FOLLOW_HELP,
   LIVE_SEQUENCE_LAUNCH_INTRO_HELP,
   NO_READY_STEP_SENDS_MESSAGE,
+  PACING_HOLD_REASON,
   sequenceIntroductionBatchLimitCopy,
+  staffCopyForDispatchHold,
+  staleAutoFollowUpStaffCopy,
   STALE_RECIPIENTS_CLIENT_NOW_LIVE_COPY,
   STALE_RECIPIENTS_CLIENT_NOW_LIVE_REASON,
 } from "@/lib/clients/outreach-sequence-send-staff-copy";
@@ -208,5 +212,26 @@ describe("describeSequenceDispatchOutcome", () => {
       stillPending: 0,
     });
     expect(msg).toBe("0 introductions queued");
+  });
+});
+
+describe("dispatch hold copy", () => {
+  it("tells staff a pacing hold will not send until they launch again", () => {
+    expect(PACING_HOLD_REASON).toMatch(/Held back by send pacing/i);
+    expect(PACING_HOLD_REASON).toMatch(/sending hours/i);
+    expect(PACING_HOLD_REASON).toMatch(/Launch this sequence again/i);
+    expect(PACING_HOLD_REASON).toMatch(/will not send on its own/i);
+    expect(isDispatchHoldReason(PACING_HOLD_REASON)).toBe(true);
+    expect(
+      staffCopyForDispatchHold(
+        "Held back by send pacing — waiting for the next allowed batch.",
+      ),
+    ).toBe(PACING_HOLD_REASON);
+  });
+
+  it("names a manual Send now for follow-ups past the automatic window", () => {
+    expect(staleAutoFollowUpStaffCopy(3, 3)).toMatch(/past the 3-day automatic send window/);
+    expect(staleAutoFollowUpStaffCopy(3, 3)).toMatch(/will not send them/);
+    expect(staleAutoFollowUpStaffCopy(1, 3)).toMatch(/Use Send now/);
   });
 });

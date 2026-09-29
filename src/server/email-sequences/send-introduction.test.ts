@@ -17,9 +17,10 @@ import type { StaffUser } from "@/generated/prisma/client";
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     client: { findUniqueOrThrow: vi.fn() },
-    clientEmailSequence: { findUnique: vi.fn() },
-    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn() },
+    clientEmailSequence: { findUnique: vi.fn(), findMany: vi.fn() },
+    clientEmailSequenceStepSend: { findMany: vi.fn(), update: vi.fn(), groupBy: vi.fn() },
     clientMailboxIdentity: { findMany: vi.fn() },
+    outboundEmail: { findMany: vi.fn() },
     clientSendingCalendar: { findMany: async () => [] },
     // Warm-up now anchors on days actually sent on, resolved via a raw query
     // (countSendingDaysForPool). Default to "never sent" so these fixtures keep
@@ -187,8 +188,11 @@ describe("sendSequenceStepBatch — governance gate", () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
     prismaMock.client.findUniqueOrThrow.mockReset();
     prismaMock.clientEmailSequence.findUnique.mockReset();
+    prismaMock.clientEmailSequence.findMany.mockReset();
     prismaMock.clientEmailSequenceStepSend.findMany.mockReset();
+    prismaMock.clientEmailSequenceStepSend.groupBy.mockReset();
     prismaMock.clientEmailSequenceStepSend.update.mockReset();
+    prismaMock.outboundEmail.findMany.mockReset();
     prismaMock.clientMailboxIdentity.findMany.mockReset();
     prismaMock.mailboxSendReservation.count.mockReset();
     prismaMock.$transaction.mockReset();
@@ -197,6 +201,9 @@ describe("sendSequenceStepBatch — governance gate", () => {
       suppressed: false,
     } as never);
     prismaMock.mailboxSendReservation.count.mockResolvedValue(0);
+    prismaMock.clientEmailSequence.findMany.mockResolvedValue([]);
+    prismaMock.clientEmailSequenceStepSend.groupBy.mockResolvedValue([]);
+    prismaMock.outboundEmail.findMany.mockResolvedValue([]);
     prismaMock.clientEmailSequenceStepSend.update.mockResolvedValue(
       {} as never,
     );

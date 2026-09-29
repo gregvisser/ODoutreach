@@ -3,7 +3,10 @@ import { validateFollowUpScope } from "@/lib/email-sequences/followup-scope";
 import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-scheduler-selection";
 
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
+import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { prisma } from "@/lib/db";
+import { isEmptyAdvanceStep } from "@/lib/email-sequences/advance-step-skip";
+import { logger } from "@/lib/logger";
 import {
   freshnessDaysToMs,
   resolveAutoFollowUpFreshnessDays,
@@ -13,7 +16,7 @@ import { previousCategoryFor } from "@/lib/email-sequences/sequence-send-executi
 import { autonomousClientWhereFilter } from "@/lib/safety/autonomous-client-filter";
 import { resolveAutonomousRelayState } from "@/server/safety/autonomous-mode";
 
-import { sendSequenceStepBatch } from "./send-introduction";
+import { sendSequenceStepBatch, SequenceStepSendError } from "./send-introduction";
 import { planSequenceStepSends } from "./step-sends";
 
 /**
@@ -59,6 +62,8 @@ export type AdvanceFollowUpsResult = {
   followUpsQueued: number;
   /** True when automation was paused by the kill-switch (no work done). */
   paused?: boolean;
+  /** Already-complete or empty steps. Logged, and not a failed run. */
+  skippedSteps: string[];
   errors: string[];
 };
 
@@ -88,6 +93,7 @@ export async function advanceDueSequenceFollowUps(opts?: {
     sequencesProcessed: 0,
     stepsProcessed: 0,
     followUpsQueued: 0,
+    skippedSteps: [],
     errors: [],
   };
 
@@ -224,11 +230,22 @@ export async function advanceDueSequenceFollowUps(opts?: {
             await opts.onQueued(client.id, batch.queued.map(row => row.outboundEmailId));
           }
         } catch (e) {
-          result.errors.push(
-            `${client.id}/${seq.id}/${category}: ${
-              e instanceof Error ? e.message : String(e)
-            }`,
+          const code = e instanceof SequenceStepSendError ? e.code : undefined;
+          const detail = sanitizeJobErrorText(
+            e instanceof Error ? e.message : String(e),
           );
+          const line = `${client.id}/${seq.id}/${category}: ${
+            isEmptyAdvanceStep(code)
+              ? "already complete or no ready recipients — skipped"
+              : detail
+          }`;
+          if (isEmptyAdvanceStep(code)) {
+            result.skippedSteps.push(line);
+            logger.info({ event: "sequence_advance_skip", category }, line);
+          } else {
+            result.errors.push(line);
+            logger.error({ event: "sequence_advance_error", category }, line);
+          }
           // continue — one failing step must not stop the rest
         }
       }

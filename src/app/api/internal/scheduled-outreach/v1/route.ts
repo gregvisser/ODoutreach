@@ -3,6 +3,7 @@ import { loadScheduledOutreachPlan } from "@/server/mailbox/scheduled-outreach";
 import { syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
 import { advanceDueSequenceFollowUps } from "@/server/email-sequences/advance-due-followups";
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
+import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
 
 export const runtime = "nodejs";
@@ -32,7 +33,15 @@ export async function POST(req: NextRequest) {
         ? await advanceDueSequenceFollowUps({ clientId: body.clientId })
         : await processOutboundSendQueue({ limit: 25, clientIds: plan.clientIds });
     return NextResponse.json({ schedulerProtocol: 1, ...jobResponseBody(result) }, { status: jobOutcome(result).status });
-  } catch {
-    return NextResponse.json({ schedulerProtocol: 1, ok: false, error: "Scheduled outreach could not complete" }, { status: 500 });
+  } catch (error) {
+    const detail = sanitizeJobErrorText(
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : "Scheduled outreach could not complete",
+    );
+    return NextResponse.json(
+      { schedulerProtocol: 1, ok: false, errors: [detail] },
+      { status: 500 },
+    );
   }
 }

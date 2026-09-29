@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  isDispatchHoldReason,
+  staffCopyForDispatchHold,
+} from "@/lib/clients/outreach-sequence-send-staff-copy";
 import { prisma } from "@/lib/db";
 import {
   deriveDeliveryStatus,
@@ -376,6 +380,12 @@ function deriveSkipReason(input: {
   isSuppressed: boolean;
   hasEmail: boolean;
 }): string | null {
+  if (
+    input.deliveryStatus === "Awaiting send" &&
+    isDispatchHoldReason(input.blockedReason)
+  ) {
+    return staffCopyForDispatchHold(input.blockedReason ?? "");
+  }
   if (input.deliveryStatus === "Suppressed / skipped") {
     if (input.blockedReason && input.blockedReason.trim()) {
       return humanizeStepSendBlockedReason(input.blockedReason.trim());

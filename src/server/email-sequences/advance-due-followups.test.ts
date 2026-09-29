@@ -56,6 +56,9 @@ describe("advance-due-followups wiring", () => {
   it("isolates per-step failures so one bad step cannot abort the run", () => {
     expect(advancer).toContain("try {");
     expect(advancer).toContain("result.errors.push");
+    expect(advancer).toContain("isEmptyAdvanceStep");
+    expect(advancer).toContain("result.skippedSteps.push");
+    expect(advancer).toContain("sanitizeJobErrorText");
   });
 
   it("has an env kill-switch to pause automatic sending without a deploy", () => {
