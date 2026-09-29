@@ -235,7 +235,7 @@ const onboardingModule: TrainingModule = {
     "The workspace appears in the Clients list with the correct name and Workspace ID.",
     "Overview loads with the tab row along the top, the Getting started checklist filled with pending items, and a Launch readiness panel showing all seven modules with a status pill each.",
     "Internal notes name the account manager (Samantha) and the main client contact (James Munro).",
-    "The status pill on Overview reads ONBOARDING (or ACTIVE only after launch approval).",
+    "The status pill on Overview reads ONBOARDING until every Launch readiness section is complete, then flips to ACTIVE automatically on the next visit to Overview.",
   ],
   commonMistakes: [
     'Typing a marketing name instead of the canonical legal name — use "OpensDoors", not "OpensDoors Ltd – Growth Team".',
@@ -466,7 +466,7 @@ const mailboxesModule: TrainingModule = {
     "One mailbox is marked Primary — used as a tie-break for the planner, not an exclusive lock.",
     "Every mailbox has a non-empty signature, either synced from Gmail or pasted manually.",
     'Check the live connected count and each mailbox’s remaining warm-up capacity; the example count is not a live status check.',
-    "Sender readiness shows a live email provider (not a non-delivery transport) when the client is approved for real outreach delivery.",
+    "Sender readiness shows a live email provider (not a non-delivery transport) when launch readiness is complete and the workspace is ACTIVE.",
     "When you send a verification email, it lands in the inbox you chose and matches what preview showed on Outreach.",
   ],
   commonMistakes: [
