@@ -205,12 +205,17 @@ export function assessSendTimeEvidence(
 
   const totalSent = slots.reduce((sum, s) => sum + s.sent, 0);
   const totalReplied = slots.reduce((sum, s) => sum + s.replied, 0);
+  const observedSent = outcomes.length;
 
   if (totalSent < MIN_TOTAL_SENDS) {
-    return {
-      sufficient: false,
-      reason: `Not enough sends yet — ${String(totalSent)} of the ${String(MIN_TOTAL_SENDS)} needed before send times can be compared.`,
-    };
+    // `totalSent` is only the mail that already sits in a thick enough slot.
+    // Reporting that figure alone said "0 of the 200" for a client that had
+    // sent real outreach spread across many hours. The sentence names both.
+    const reason =
+      observedSent === totalSent
+        ? `Not enough sends yet — ${String(observedSent)} of the ${String(MIN_TOTAL_SENDS)} needed before send times can be compared.`
+        : `Not enough sends in comparable times of day yet — ${String(observedSent)} emails were sent, and ${String(totalSent)} of them fall in a weekday-and-hour with at least ${String(MIN_SLOT_SENDS)} sends. ${String(MIN_TOTAL_SENDS)} sends in those comparable times are needed before send times can be compared.`;
+    return { sufficient: false, reason };
   }
   if (totalReplied < MIN_TOTAL_REPLIES) {
     return {

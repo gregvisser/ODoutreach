@@ -57,7 +57,9 @@ type EnrollmentRow = {
   contact: { title: string | null };
   stepSends: {
     outboundEmail: {
+      status: string;
       sentAt: Date | null;
+      providerMessageId: string | null;
       inboundReplies: { classification: string | null }[];
     } | null;
   }[];
@@ -82,7 +84,9 @@ function enrollments(spec: {
       stepSends: [
         {
           outboundEmail: {
+            status: spec.neverSent ? "QUEUED" : "SENT",
             sentAt: spec.neverSent ? null : SENT_AT,
+            providerMessageId: spec.neverSent ? null : "provider-1",
             inboundReplies: didReply
               ? [{ classification: i % 3 === 0 ? "POSITIVE" : "NOT_INTERESTED" }]
               : [],

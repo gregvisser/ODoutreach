@@ -223,7 +223,7 @@ const onboardingModule: TrainingModule = {
     {
       title: "Click Create workspace",
       detail:
-        "You land on the Overview. The tab row along the top is how you move around the workspace: Overview · Brief · Mailboxes · Setup help · Do-not-contact · Sources · Lists · Templates · Outreach · Activity. Further down, the Launch readiness panel lists the seven modules that decide whether this client can go live — Brief, Mailboxes, Sources, Do-not-contact, Lists, Outreach, Activity — each with a status pill and a link. The client stays in ONBOARDING until every required step is complete.",
+        "You land on the Overview. The tab row along the top is how you move around the workspace: Overview · Brief · Mailboxes · Setup help · Do-not-contact · Sources · Lists · Templates · Outreach · Email approvals · Activity. Further down, the Launch readiness panel lists the seven modules that decide whether this client can go live — Brief, Mailboxes, Sources, Do-not-contact, Lists, Outreach, Activity — each with a status pill and a link. The client stays in ONBOARDING until every required step is complete.",
     },
     {
       title: "Bookmark the Overview",
@@ -695,7 +695,7 @@ const suppressionModule: TrainingModule = {
   title: "Do-not-contact — email and domain sheets",
   tagline: "Two OpensDoors Google Sheets stand between outreach and the wrong inbox.",
   purpose:
-    "Do-not-contact is how we keep outreach safe. OpensDoors maintains one Google Sheet of blocked email addresses and one of blocked domains. The Do-not-contact tab on each client workspace stores those sheet URLs, triggers sync, and renders the last-sync status. Nothing ships without these sheets being present and healthy.",
+    "Do-not-contact is how we keep outreach safe, and it fails closed. A stored block stays in place: removing a name from the sheet does not clear it, and nobody deletes a block to force a send. OpensDoors maintains one Google Sheet of blocked email addresses and one of blocked domains. The Do-not-contact tab on each client workspace stores those sheet URLs, triggers sync, and renders the last-sync status. Nothing ships without these sheets being present and healthy.",
   details: [
     "Each client has its own Do-not-contact sheets — we never share a do-not-contact list across clients. Admin-level Google service account credentials are already configured; staff only paste sheet URLs and click Sync.",
     "The service account email shown on the page (the one ending gserviceaccount.com) is the identity staff share each sheet with as Viewer. It is not a secret.",
@@ -1032,7 +1032,7 @@ const settingsModule: TrainingModule = {
   title: "Settings and admin",
   tagline: "What admins configure — and what ordinary operators should not touch.",
   purpose:
-    "Settings is for platform-level configuration, not per-client work. Team access, sign-in/security, sending defaults and integration credentials live here. Per-client configuration (Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Activity) always lives inside the client workspace.",
+    "Settings is for platform-level configuration, not per-client work. Team access, sign-in/security, sending defaults and integration credentials live here. Per-client configuration (Brief, Mailboxes, Setup help, Do-not-contact, Sources, Lists, Templates, Outreach, Email approvals, Activity) always lives inside the client workspace.",
   details: [
     "Authentication is handled by Microsoft 365 — invitations and role changes flow through the OpensDoors tenant. Multi-factor auth, session length and conditional access are tenant-level policies, not portal switches.",
     'Blast radius matters: a wrong toggle in Settings affects every client at once. When in doubt, ask an admin — there is no fast-path fix.',

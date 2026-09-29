@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { resetIntegrationDatabase, closeIntegrationPool } from "@/test/integration/database";
 import { saveResearchPlan, listResearchPlans } from "./plans";
 const staff = { id: "research-staff", role: "OPERATOR" as const };
-const input = { name: "Synthetic plan", criteria: { titles: ["Director"], industries: ["Manufacturing"], seniorities: ["Director"], regions: ["United Kingdom"] }, maxLookups: 10 };
+const input = { name: "Synthetic plan", criteria: { titles: ["Director"], industries: ["Manufacturing - General"], seniorities: ["Director"], regions: ["United Kingdom"] }, maxLookups: 10 };
 beforeEach(async () => {
   await resetIntegrationDatabase();
   vi.stubGlobal("fetch", vi.fn(() => { throw Error("No network authorised"); }));
@@ -20,6 +20,11 @@ it("ordinary staff persist criteria and an audit without importing or sending", 
   expect(await prisma.auditLog.findFirstOrThrow()).toMatchObject({ entityId: saved.id, staffUserId: staff.id, metadata: { state: "DRAFT", providerCallsAuthorised: false } });
   expect(await prisma.contact.count()).toBe(0);
   expect(await prisma.outboundEmail.count()).toBe(0);
+});
+it("rejects an industry that is not in the RocketReach list without writing a plan", async () => {
+  await expect(saveResearchPlan(staff, "research-a", { ...input, criteria: { ...input.criteria, industries: ["QA0929 test industry"] } })).rejects.toThrow(/INVALID_ROCKETREACH_INDUSTRIES/);
+  expect(await prisma.prospectResearchPlan.count()).toBe(0);
+  expect(await prisma.auditLog.count()).toBe(0);
 });
 it("rejects invalid budgets without writing a plan or audit", async () => {
   await expect(saveResearchPlan(staff, "research-a", { ...input, maxLookups: 101 })).rejects.toThrow();

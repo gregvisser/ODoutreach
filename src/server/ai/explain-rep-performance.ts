@@ -19,6 +19,8 @@ import {
 } from "@/lib/ai/rep-performance-evidence";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { buildProvenSendHistoryWhere } from "@/server/queries/proven-send";
+import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
 import { callAiToolMessages } from "./anthropic-messages";
@@ -88,15 +90,22 @@ function mailboxLabel(row: {
  * matcher missed for each — which is itself uneven. The panel says so, and it is
  * one of the reasons the significance threshold is set where it is rather than
  * lower.
+ *
+ * The rows are proven sends (SENT, DELIVERED, REPLIED, BOUNCED). Opens are not
+ * read. Open tracking is off.
  */
 async function loadRepOutcomes(args: {
   clientId: string;
   since: Date;
 }): Promise<RepSendOutcome[]> {
+  const seedEmails = await listActiveInternalSeedEmails();
   const rows = await prisma.outboundEmail.findMany({
     where: {
-      clientId: args.clientId,
-      sentAt: { not: null, gte: args.since },
+      ...buildProvenSendHistoryWhere({
+        clientId: args.clientId,
+        seedEmails,
+        since: args.since,
+      }),
       mailboxIdentityId: { not: null },
     },
     select: {

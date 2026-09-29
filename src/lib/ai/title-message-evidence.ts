@@ -334,6 +334,13 @@ interface FamilyBucket {
 export function assessTitleMessageEvidence(
   outcomes: readonly TitleMessageOutcome[],
   messages: readonly MessageIdentity[],
+  /**
+   * How many people were enrolled in the window, including those never sent.
+   * Outcomes themselves are only people who were actually sent. When this is
+   * larger than `outcomes.length`, the refusal can say so instead of claiming
+   * nobody was enrolled.
+   */
+  enrolledInWindow = outcomes.length,
 ): TitleMessageVerdict {
   const labels = new Map(messages.map((m) => [m.sequenceId, m.label]));
 
@@ -390,10 +397,13 @@ export function assessTitleMessageEvidence(
   }
 
   if (totalEnrollments === 0) {
+    const waiting = Math.max(0, enrolledInWindow - totalEnrollments);
     return {
       sufficient: false,
       reason:
-        "Nobody has been enrolled in a campaign in this window, so there is nothing to compare.",
+        waiting > 0
+          ? `${String(waiting)} people were enrolled in this window, but none of them has a sent email yet, so there is nothing to compare. Queued and held recipients are not counted as sends.`
+          : "Nobody has been enrolled in a campaign in this window, so there is nothing to compare.",
     };
   }
 

@@ -55,4 +55,29 @@ describe("searchTrainingContent", () => {
     const matches = searchTrainingContent("How do I connect a mailbox?");
     expect(matches.length).toBeGreaterThan(0);
   });
+
+  it.each([
+    ["How do I connect a new mailbox?", /add mailbox/i],
+    ["How do I reconnect a Google mailbox?", /google logins/i],
+    ["How do I add a client?", /new client/i],
+    ["How do I import contacts from a CSV?", /preview, then confirm/i],
+    ["How do I import from RocketReach?", /SEARCH ROCKETREACH/],
+    ["How do I use Universe?", /universe is in the sidebar/i],
+    ["How do I open a list?", /lists tab/i],
+    ["How do I write a template?", /templates tab/i],
+    ["How do I add a follow-up?", /follow-up/i],
+    ["How do I launch a sequence?", /launch queues/i],
+    ["What does Queued mean for pacing?", /queued is not sent/i],
+    ["How do I read replies?", /replies to answer/i],
+    ["How does do-not-contact work?", /fails closed/i],
+    ["How do I raise a support ticket?", /support in the sidebar/i],
+    ["How do I save a research plan?", /rocketreach industry list/i],
+    ["What does Preview top-up do?", /dry run/i],
+    ["How do I draft emails with AI?", /xAI Grok/],
+    ["Where is the sender comparison?", /compare our senders/i],
+  ])("answers %s from training content", (question, pattern) => {
+    const matches = searchTrainingContent(question);
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches.some((match) => pattern.test(match.chunk.text))).toBe(true);
+  });
 });

@@ -6,6 +6,7 @@ import { saveResearchPlanAction } from "@/app/(app)/clients/research-plan-action
 import { runResearchPlanIntoListAction } from "@/app/(app)/clients/research-plan-run-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ROCKETREACH_INDUSTRY_GROUPS } from "@/lib/clients/rocketreach-industries";
 import { ROCKETREACH_IMPORT_CONFIRMATION_PHRASE } from "@/lib/clients/rocketreach-import-safety";
 import { rocketReachClickCostEstimate } from "@/lib/clients/rocketreach-credit-estimate";
 import type { ResearchCriteria } from "@/lib/prospect-research/qualification";
@@ -21,6 +22,27 @@ export type SavedResearchPlanView = {
 export function ResearchPlanPanel({ clientId, plans, lists }: { clientId: string; plans: SavedResearchPlanView[]; lists: { id: string; name: string }[] }) {
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
+  const [currentIndustry, setCurrentIndustry] = useState("");
+  const [keptIndustries, setKeptIndustries] = useState<string[]>([]);
+  const chosenIndustries = [currentIndustry, ...keptIndustries].filter(Boolean);
+  function chooseIndustry(next: string) {
+    if (!next || next === currentIndustry) return;
+    setKeptIndustries(kept => (
+      currentIndustry && !kept.includes(currentIndustry)
+        ? [...kept.filter(name => name !== next), currentIndustry]
+        : kept.filter(name => name !== next)
+    ));
+    setCurrentIndustry(next);
+  }
+  function removeIndustry(name: string) {
+    if (name === currentIndustry) {
+      const [promoted, ...rest] = keptIndustries;
+      setCurrentIndustry(promoted ?? "");
+      setKeptIndustries(rest);
+      return;
+    }
+    setKeptIndustries(kept => kept.filter(item => item !== name));
+  }
   return <section aria-label="Prospect research plans" className="space-y-4 rounded-xl border p-5">
     <h2 className="text-xl font-semibold">Prospect research plans</h2>
     <Link href={`/clients/${clientId}/research-review`} prefetch={false} className="underline">Review research candidates</Link>
@@ -29,16 +51,38 @@ export function ResearchPlanPanel({ clientId, plans, lists }: { clientId: string
       event.preventDefault();
       const form = event.currentTarget;
       const data = new FormData(form);
-      const criteria = Object.fromEntries(Object.keys(labels).map(key => [key, String(data.get(key) ?? "").split("\n").map(term => term.trim()).filter(Boolean)]));
+      const lineField = (key: string) => String(data.get(key) ?? "").split("\n").map(term => term.trim()).filter(Boolean);
+      const criteria = {
+        titles: lineField("titles"),
+        industries: data.getAll("industries").map(value => String(value).trim()).filter(Boolean),
+        seniorities: lineField("seniorities"),
+        regions: lineField("regions"),
+      };
       startTransition(async () => {
         const result = await saveResearchPlanAction(clientId, { name: String(data.get("name") ?? ""), criteria, maxLookups: Number(data.get("maxLookups")) });
         setMessage(result.ok ? "Research draft saved. No credits spent and no contacts imported." : result.error ?? "Could not save.");
-        if (result.ok) form.reset();
+        if (result.ok) {
+          setCurrentIndustry("");
+          setKeptIndustries([]);
+          form.reset();
+        }
       });
     }}>
       <label className="block">Plan name<Input name="name" required minLength={3} maxLength={120} /></label>
-      <p>Enter one acceptable term per line in each field. Include regional aliases explicitly if needed. Missing evidence will require review.</p>
-      <div className="grid gap-3 md:grid-cols-2">{Object.entries(labels).map(([key, label]) => <label className="block" key={key}>{label}<textarea name={key} required maxLength={2400} rows={3} className="block w-full rounded border p-2" /></label>)}</div>
+      <p>Enter one job title, seniority, or region per line. Industries are chosen from the RocketReach list — the same names as the RocketReach card. A name that is not on that list cannot be saved. Saving does not search or spend credits.</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        {(["titles", "seniorities", "regions"] as const).map(key => <label className="block" key={key}>{labels[key]}<textarea name={key} required maxLength={2400} rows={3} className="block w-full rounded border p-2" /></label>)}
+        <div className="space-y-1.5">
+          <label htmlFor="research-plan-industries" className="block">Industries</label>
+          <select id="research-plan-industries" name="industries" required value={currentIndustry} onChange={event => chooseIndustry(event.target.value)} className="block h-9 w-full rounded border bg-background px-2">
+            <option value="">Choose an industry</option>
+            {ROCKETREACH_INDUSTRY_GROUPS.map(group => <optgroup key={group.category} label={group.category}>{group.industries.map(name => <option key={name} value={name}>{name}</option>)}</optgroup>)}
+          </select>
+          {keptIndustries.map(name => <input key={name} type="hidden" name="industries" value={name} />)}
+          {chosenIndustries.length > 0 ? <ul className="space-y-1 text-sm">{chosenIndustries.map(name => <li key={name}>{name} <button type="button" className="underline" onClick={() => removeIndustry(name)}>Remove {name}</button></li>)}</ul> : null}
+          <p className="text-xs text-muted-foreground">Choose a name from the RocketReach list. Pick another to add it. A name that is not on the list cannot be saved.</p>
+        </div>
+      </div>
       <label className="block">Proposed total lookups<Input name="maxLookups" type="number" required min={1} max={100} step={1} defaultValue={10} /></label>
       <p>This is a limit for this plan, not a price estimate or permission to spend.</p>
       <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save research draft"}</Button>

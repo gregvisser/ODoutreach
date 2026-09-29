@@ -49,6 +49,50 @@ export function researchPlanToSearchBody(
   };
 }
 
+export type PreviewSearchPlan =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      /** Null when every industry was invalid, so RocketReach must not be called. */
+      body: PlanSearchBody | null;
+      skippedIndustries: readonly string[];
+      note: string;
+    };
+
+/**
+ * Dry-run mapping. Invalid industries are skipped and named. A plan whose
+ * industries are all invalid does not become an unfiltered RocketReach search.
+ * The live spend path stays on {@link researchPlanToSearchBody}, which refuses.
+ */
+export function researchPlanToPreviewSearch(
+  criteriaInput: unknown,
+  maxLookups: number,
+  start: number,
+): PreviewSearchPlan {
+  const criteria = researchCriteriaSchema.safeParse(criteriaInput);
+  if (!criteria.success) return { ok: false, error: "This research plan's targeting is incomplete." };
+  const skippedIndustries = criteria.data.industries.filter((industry) => !isRocketReachIndustry(industry));
+  const valid = criteria.data.industries.filter((industry) => isRocketReachIndustry(industry));
+  if (valid.length === 0) {
+    return {
+      ok: true,
+      body: null,
+      skippedIndustries,
+      note: `RocketReach was not searched because none of these industries are in the RocketReach list: ${skippedIndustries.join(", ")}. Save a new plan using the industry names from the RocketReach card. Universe was still checked. No credit was spent.`,
+    };
+  }
+  const mapped = researchPlanToSearchBody(
+    { ...criteria.data, industries: valid },
+    maxLookups,
+    start,
+  );
+  if (!mapped.ok) return mapped;
+  const note = skippedIndustries.length
+    ? `Skipped industries that are not in the RocketReach list: ${skippedIndustries.join(", ")}. The preview used the remaining industries. No credit was spent.`
+    : "";
+  return { ok: true, body: mapped.body, skippedIndustries, note };
+}
+
 export function criteriaSummary(criteria: ResearchCriteria): string {
   return [
     `Titles: ${criteria.titles.join("; ")}`,

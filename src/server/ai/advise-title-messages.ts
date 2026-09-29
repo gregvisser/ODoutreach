@@ -21,6 +21,7 @@ import {
 } from "@/lib/ai/title-message-evidence";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { isProvenOutboundSend } from "@/server/queries/proven-send";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
 import { callAiToolMessages } from "./anthropic-messages";
@@ -106,7 +107,7 @@ async function loadTitleMessageOutcomes(args: {
   clientId: string;
   since: Date;
   until: Date;
-}): Promise<TitleMessageOutcome[]> {
+}): Promise<{ outcomes: TitleMessageOutcome[]; enrolled: number }> {
   const rows = await prisma.clientEmailSequenceEnrollment.findMany({
     where: {
       clientId: args.clientId,
@@ -119,7 +120,9 @@ async function loadTitleMessageOutcomes(args: {
         select: {
           outboundEmail: {
             select: {
+              status: true,
               sentAt: true,
+              providerMessageId: true,
               inboundReplies: { select: { classification: true } },
             },
           },
@@ -135,9 +138,12 @@ async function loadTitleMessageOutcomes(args: {
       .filter((e): e is NonNullable<typeof e> => e !== null);
 
     // Never emailed, so never given the chance to reply. Not a trial.
-    if (!sends.some((e) => e.sentAt !== null)) continue;
+    // Proven send only: queued, failed, and suppressed rows are not sends.
+    // Opens are not read. Open tracking is off.
+    const sent = sends.filter((email) => isProvenOutboundSend(email));
+    if (sent.length === 0) continue;
 
-    const replies = sends.flatMap((e) => e.inboundReplies);
+    const replies = sent.flatMap((e) => e.inboundReplies);
     outcomes.push({
       sequenceId: row.sequenceId,
       title: row.contact.title,
@@ -146,7 +152,7 @@ async function loadTitleMessageOutcomes(args: {
     });
   }
 
-  return outcomes;
+  return { outcomes, enrolled: rows.length };
 }
 
 async function loadMessageIdentities(clientId: string): Promise<MessageIdentity[]> {
@@ -178,11 +184,12 @@ export async function adviseTitleMessages(args: {
   const since = new Date(now.getTime() - TITLE_MESSAGE_LOOKBACK_DAYS * day);
   const until = new Date(now.getTime() - TITLE_MESSAGE_MATURITY_DAYS * day);
 
-  const [outcomes, messages] = await Promise.all([
+  const [loaded, messages] = await Promise.all([
     loadTitleMessageOutcomes({ clientId: client.id, since, until }),
     loadMessageIdentities(client.id),
   ]);
-  const verdict = assessTitleMessageEvidence(outcomes, messages);
+  const { outcomes } = loaded;
+  const verdict = assessTitleMessageEvidence(outcomes, messages, loaded.enrolled);
 
   // The gate. Fails closed BEFORE any money is spent: no call, no ledger row for
   // a call that did not happen, and a reason that names what is actually

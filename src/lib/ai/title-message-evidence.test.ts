@@ -85,6 +85,15 @@ describe("assessTitleMessageEvidence — the refusals", () => {
     expect(verdict.reason).toMatch(/nobody has been enrolled/i);
   });
 
+  it("says people were enrolled but not sent, rather than that nobody was enrolled", () => {
+    const verdict = assessTitleMessageEvidence([], MESSAGES, 12);
+    expect(verdict.sufficient).toBe(false);
+    if (verdict.sufficient) return;
+    expect(verdict.reason).toContain("12");
+    expect(verdict.reason).toMatch(/sent email/i);
+    expect(verdict.reason).not.toMatch(/nobody has been enrolled/i);
+  });
+
   /**
    * THE HEADLINE REFUSAL. A family that only ever received ONE campaign has
    * nothing to compare that campaign against, and the reason has to say so —

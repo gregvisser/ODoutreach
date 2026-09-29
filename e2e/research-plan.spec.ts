@@ -16,7 +16,7 @@ test("staff save and reload a research draft without importing or sending", asyn
   const panel = page.getByRole("region", { name: "Prospect research plans", exact: true });
   await panel.getByLabel("Plan name", { exact: true }).fill("Synthetic manufacturing directors");
   await panel.getByLabel("Job titles", { exact: true }).fill("IT director");
-  await panel.getByLabel("Industries", { exact: true }).fill("Manufacturing");
+  await panel.getByLabel("Industries", { exact: true }).selectOption("Manufacturing - General");
   await panel.getByLabel("Seniority levels", { exact: true }).fill("Director");
   await panel.getByLabel("Regions", { exact: true }).fill("United Kingdom\nUK");
   await panel.getByLabel("Proposed total lookups", { exact: true }).fill("5");

@@ -154,13 +154,16 @@ describe("adviseSendTimes", () => {
     expect(where.clientId).toBe("client-1");
   });
 
-  it("bounds the history to the lookback window", async () => {
+  it("bounds the history to the lookback window and proven send statuses", async () => {
     await adviseSendTimes({ clientId: "client-1", staffUserId: "staff-1", now: NOW });
     const where = prismaMock.outboundEmail.findMany.mock.calls[0]?.[0]?.where as {
-      sentAt?: { gte?: Date };
+      status?: { in?: string[] };
+      OR?: { sentAt?: { gte?: Date } }[];
     };
     const expected = new Date(NOW.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-    expect(where.sentAt?.gte?.getTime()).toBe(expected.getTime());
+    expect(where.status?.in).toEqual(["SENT", "DELIVERED", "REPLIED", "BOUNCED"]);
+    expect(where.OR?.[0]?.sentAt?.gte?.getTime()).toBe(expected.getTime());
+    expect(JSON.stringify(where)).not.toMatch(/openedAt|openCount/);
   });
 
   it("refuses a soft-deleted workspace", async () => {

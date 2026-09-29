@@ -58,6 +58,7 @@ export async function explainClientRepPerformanceWithAiAction(
   const result = await explainRepPerformance({ clientId, staffUserId: staff.id });
 
   revalidatePath(`/clients/${clientId}/mailboxes`);
+  revalidatePath(`/clients/${clientId}/outreach`);
 
   const params = new URLSearchParams();
   if (result.ok) {
@@ -71,5 +72,7 @@ export async function explainClientRepPerformanceWithAiAction(
     params.set("repPerformanceError", messageForFailure(result.reason));
   }
 
-  redirect(`/clients/${clientId}/mailboxes?${params.toString()}#ai-sender-comparison`);
+  const surface = String(formData.get("surface") ?? "");
+  const page = surface === "outreach" ? "outreach" : "mailboxes";
+  redirect(`/clients/${clientId}/${page}?${params.toString()}#ai-sender-comparison`);
 }
