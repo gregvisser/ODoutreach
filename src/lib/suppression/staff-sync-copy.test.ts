@@ -58,7 +58,7 @@ describe("suppression staff sync copy", () => {
     expect(msg).toContain("Sending continues");
     expect(msg).toContain("33 emails");
     expect(msg).toContain("31 domains");
-    expect(msg).toContain("check with the client first");
+    expect(msg).toContain("check with the project lead (Greg Visser) first");
   });
 
   it("builds email-only and domain-only summaries", () => {

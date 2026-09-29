@@ -11,7 +11,7 @@ function heldShrinkFollowUp(kind: SuppressionListKind, removed: number): string 
   const blockNoun = noun(kind, removed);
   return (
     `If those rows were removed by mistake, restore them in the sheet and sync. ` +
-    `If they really should be unblocked, check with the client first. ` +
+    `If they really should be unblocked, check with the project lead (Greg Visser) first. ` +
     `Only if you deliberately rebuilt the list and want those ${String(removed)} ${blockNoun} to become contactable again, use the separate confirmation control on this screen — not a normal Sync.`
   );
 }
@@ -35,7 +35,7 @@ export function suppressionReplaceRefusalMessage(
       `Sending continues. Your Do Not Contact sheet did not contain any usable ${sheetNoun}, ` +
       `but we still hold ${String(previousCount)} blocked ${blockNoun} from before, so those stay blocked to be safe. ` +
       `Check the sheet tab and range, restore the list if it was cleared by mistake, then sync again. ` +
-      `If those ${blockNoun} really should be unblocked, check with the client first before using the confirmation control on this screen.`
+      `If those ${blockNoun} really should be unblocked, check with the project lead (Greg Visser) first before using the confirmation control on this screen.`
     );
   }
 
@@ -61,7 +61,7 @@ export function suppressionHeldShrinkCombinedStaffMessage(args: {
 
   const followUp =
     "If those rows were removed by mistake, restore them in the sheet and sync. " +
-    "If they really should be unblocked, check with the client first.";
+    "If they really should be unblocked, check with the project lead (Greg Visser) first.";
 
   if (hasEmail && hasDomain) {
     const emailWord = emailRemoved === 1 ? "email" : "emails";

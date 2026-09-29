@@ -390,7 +390,7 @@
     },
     {
       "what": "Inferring related company domains from the domain string",
-      "instead": "bt.com does not imply bteurope.com and never can be derived from text. Related companies are detected from a SHARED MICROSOFT 365 TENANT and surfaced for the client to confirm (PR #244 gave the detection a caller and a screen; PR #273 added tenant matching). The client confirms; the system never guesses.",
+      "instead": "bt.com does not imply bteurope.com and never can be derived from text. Related companies are detected from a SHARED MICROSOFT 365 TENANT and surfaced for OpensDoors staff to confirm (PR #244 gave the detection a caller and a screen; PR #273 added tenant matching). Staff confirm in the UI ('Related company domains you have confirmed'); the system never guesses.",
       "agreed_with_client": true,
       "agreed_basis": "bidlow_account_knowledge"
     },

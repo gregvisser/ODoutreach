@@ -150,6 +150,27 @@ hours; it is the only one this row changes.
 to `*/15 * * * *`. `.github/workflows/process-outbound-queue.yml`: not
 touched.
 
+## When the workflow shows red but replies still arrive
+
+Production reply collection runs on the **Azure WebJob** when `REPLY_SYNC_RUNNER=azure`
+(the GitHub **Call reply sync endpoint** step is skipped). Staff still see new
+replies in Activity and on **Replies waiting for a person** from that path.
+
+The same `sync-replies.yml` job also runs **Sync do-not-contact sheets**
+(`scripts/run-suppression-sheets.mjs`). That step can record a **PARTIAL**
+failure when a sheet sync is **refused because the sheet shrank** (fail-closed:
+existing blocks stay in place). Those outcomes increment `refusedShrink` and
+contribute to the **Fail run — PARTIAL** step — the run goes **red** even
+though inbound mail was not affected.
+
+**That red run is not a reply outage.** Treat it as “do-not-contact held a
+shrink safely”; check the client’s Do-not-contact page for **List held —
+sending continues** and follow the on-screen copy. Only escalate to Greg if
+you genuinely need those rows unblocked.
+
+If the reply-sync step itself failed (mailbox failures or unverified batches in
+`/tmp/run-problems.txt`), that is separate and needs investigation.
+
 ## Proof it fires
 
 `relay/reply-sync-schedule.test.ts` reads the real workflow YAML files and

@@ -12,14 +12,17 @@ ODoutreach helps OpensDoors create a client workspace, connect sending inboxes, 
 
 ## Daily workflow checklist
 
-1. Check Mailboxes (connection status and capacity — signature setup is admin-only).
-2. Import contacts (Sources / Contacts); confirm rows in **Universe** or **Contacts** as needed.
-3. Check Do-not-contact.
-4. Build a simple intro sequence.
-5. Choose mailbox.
-6. Preview.
-7. Send or schedule.
-8. Check Activity replies.
+See **[Staff daily checklist](./STAFF-DAILY-CHECKLIST.md)** for the one-page routine OpensDoors staff should run every working day.
+
+At a high level:
+
+1. Work **Replies waiting for a person** (sidebar) — claim and answer replies; do not leave rows in **Waiting too long**.
+2. Check Mailboxes (connection status and capacity — signature setup is available to all staff on the Mailboxes page).
+3. Import contacts (Sources / Contacts) when needed; confirm rows in **Universe** or **Contacts**.
+4. Check Do-not-contact.
+5. For **Human sending** clients (every OpensDoors customer workspace except the internal **BidlowAI** test client on Machine sending), review the Outreach tab for follow-up steps that are ready and launch them — follow-ups do not send by themselves in Human sending.
+6. Build or adjust sequences, preview, send or schedule introductions as needed.
+7. Scan Activity for errors, unsubscribes, and sequence progress.
 
 ## Staff handover sections
 
@@ -53,8 +56,11 @@ ODoutreach helps OpensDoors create a client workspace, connect sending inboxes, 
 
 ## Key limitations
 
-- Replies are checked manually using Check replies unless automatic reply sync is enabled for the deployment.
-- Mailboxes marked reconnect required cannot send until Microsoft or Google authentication is completed.
+- **Replies** are collected automatically from connected mailboxes (Azure WebJob in production; the GitHub **Sync replies** workflow also refreshes do-not-contact sheets). Use **Check replies** on Mailboxes only when you need an extra pull; you do not need to sync manually for ordinary daily work.
+- **Open tracking** is off by design — Activity does not show opens as a deliverability signal.
+- **Product AI** (sparkle icon on drafting and review features) runs on **xAI Grok** when enabled. It drafts and advises only; it never sends mail. Optional outreach AI needs `AI_OUTREACH_FEATURES` turned on in the environment.
+- **Automatic reply labels** (AI sorting on the Replies queue) are not in use for prospect data — replies arrive unlabelled and need a person to read them.
+- Mailboxes marked **reconnect required** cannot send until the mailbox owner signs in again through Microsoft or Google.
 - RocketReach search uses live credits; do not search or import without a clear operator confirmation.
 
 ## Safety rules
@@ -63,14 +69,15 @@ ODoutreach helps OpensDoors create a client workspace, connect sending inboxes, 
 - Do not use disconnected mailboxes.
 - Check Do-not-contact before outreach.
 - Check replies daily.
+- Do not use the do-not-contact **Yes — allow … to be contacted again** confirmation without checking with Greg Visser first.
 - Use Admin operations only for delivery support.
 
 ## 10-minute handover script
 
-1. Open the client Overview and explain the workspace status.
-2. Open Mailboxes and check connected inboxes and capacity (full branded signatures are stored in ODoutreach by administrators).
+1. Open the client Overview and explain the workspace status (ONBOARDING until Launch readiness is complete, then ACTIVE automatically).
+2. Open Mailboxes and check connected inboxes and capacity (branded signatures can be set on Mailboxes, including the one-click **Set branded signatures** action).
 3. Open **Contacts / Sources** and the **Universe** tab; explain CSV/RocketReach imports and deduplication.
-4. Open Do-not-contact and explain emails/domains never to contact.
-5. Open Outreach and show list, mailbox, introduction, optional follow-up, preview, send.
-6. Open Activity and click through the Check replies explanation without syncing unless approved.
-7. Open Training and show this guide plus the module list.
+4. Open Do-not-contact and explain emails/domains never to contact; mention **List held — sending continues** when a sheet shrink is refused.
+5. Open Outreach and show list, mailbox, introduction, optional follow-up, preview, send; explain Human sending follow-ups need a manual launch.
+6. Open **Replies waiting for a person** in the sidebar and show how to open and work a reply.
+7. Open Training and show the printable guide at `/training/staff-handover` plus the module list.

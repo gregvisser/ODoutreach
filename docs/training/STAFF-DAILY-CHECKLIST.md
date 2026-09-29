@@ -1,0 +1,47 @@
+# ODoutreach — staff daily checklist
+
+One page for OpensDoors staff. Run through this every working day before you treat outreach as “done”.
+
+## 1. Replies queue (first)
+
+- Open **Replies waiting for a person** in the sidebar (`/replies`).
+- Work the list top to bottom. Open each reply, read it, and respond or mark it handled.
+- **Claim** replies by opening them — colleagues see who is working on what.
+- Do not leave replies sitting in **Waiting too long** (the amber summary at the top). Those are past the time we said we would answer.
+- Replies are fetched automatically from connected mailboxes (Azure WebJob). You do not need to press **Check replies** every day unless you want a fresh pull from Mailboxes.
+
+## 2. Follow-ups (Human sending clients)
+
+- Almost every OpensDoors customer workspace uses **Human sending** on the Overview.
+- Only the internal **BidlowAI** test workspace is set up for **Machine sending** (automated follow-ups). Do not change other clients to Machine sending without Greg’s agreement.
+- In **Human sending**, follow-up steps **do not send by themselves**. Each day, open each active client’s **Outreach** tab and look for follow-up steps that are ready; launch them after you have reviewed the recipient and message.
+- Matched replies still **stop** further follow-ups on that sequence automatically — check the reply detail shows follow-ups stopped.
+
+## 3. Mailboxes and sending
+
+- Open each client you are actively sending for → **Mailboxes**.
+- Fix any **Reconnect** warning by asking the mailbox owner to sign in again (Microsoft or Google). Disconnected mailboxes cannot send or receive checks.
+- Glance at daily capacity and warm-up — the “30 per day” ceiling includes staff replies and reserved sends.
+
+## 4. Do-not-contact and “List held”
+
+- Before any new send, confirm do-not-contact is in good shape (sheet synced, blocks make sense).
+- If sync status shows **List held — sending continues** (amber), the system is **keeping extra blocks in place** because the Google Sheet is shorter than what we already hold. **Sending continues**; those people stay blocked, which is the safe default.
+- Do **not** press **Yes — allow … to be contacted again** (the destructive confirmation on Do-not-contact) unless Greg Visser has agreed the sheet is correct and those contacts should truly be unblocked.
+
+## 5. AI features (sparkle icon)
+
+- Sparkle-marked features (**draft sequence**, **review campaign**, send-time advice, and similar) only **draft or advise**. They **never** send email.
+- Every AI draft still needs a **person** to read, edit if needed, and approve before anything goes out.
+- **Automatic reply labels** are off for prospect replies — the Replies queue will not sort warm leads for you; read the messages yourself.
+- Product AI uses **xAI Grok** when enabled; it is not OpenAI or Anthropic in production.
+
+## 6. When something is wrong
+
+- Raise a **Support** ticket from the app (or via Training assistant **Raise a support ticket**) for bugs, stuck queues, or anything you do not understand.
+- **Greg Visser** is the project lead and the only approver for unusual actions (unblocking do-not-contact shrinks, Machine sending, governance exceptions, and similar). Neither OpensDoors customers nor their prospects sign off anything in ODoutreach.
+
+## Quick links
+
+- Printable training guide: `/training/staff-handover`
+- Full handover notes: [ODOUTREACH_STAFF_HANDOVER_GUIDE.md](./ODOUTREACH_STAFF_HANDOVER_GUIDE.md)
