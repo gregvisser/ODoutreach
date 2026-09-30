@@ -11,10 +11,13 @@
  * to let it become:
  *
  * 1. IT IS NOT A LAUNCH GATE, IN EITHER DIRECTION.
- *    The score is advisory and nothing reads it but a screen. It cannot block a
- *    launch, and — far more dangerous — it cannot clear one. Whether a sequence
- *    may be sent is decided by `evaluateSequenceLaunchReadiness`, which is
- *    deterministic, offline, and knows nothing about this file.
+ *    The score is advisory for a hand-sent sequence. It cannot block that
+ *    launch, and it cannot clear one. Whether a hand-sent sequence may be sent
+ *    is decided by `evaluateSequenceLaunchReadiness`, which is deterministic,
+ *    offline, and knows nothing about this file.
+ *    An AI campaign does read this score. Under 75 it rewrites. When the
+ *    rewrite budget is used it still sends and records the score. That
+ *    decision lives in the AI campaign state machine, not in this file.
  *
  *    That separation is not stylistic. This AI currently REFUSES every call in
  *    production (no API key is set), so an AI check wired into the launch rail
@@ -36,7 +39,7 @@
  * reviews non-comparable. Stored on every row so a critique written under an
  * older prompt is not silently read as a current one.
  */
-export const CAMPAIGN_REVIEW_PROMPT_VERSION = "2026-08-29";
+export const CAMPAIGN_REVIEW_PROMPT_VERSION = "2026-09-30";
 
 /**
  * How much of one finding's advice we keep.
@@ -103,6 +106,9 @@ export const CAMPAIGN_REVIEW_SYSTEM_PROMPT = [
   "For each finding, name the email it is about and say what to change.",
   "DESCRIBE the change in one or two sentences. DO NOT write replacement copy:",
   "you are reviewing this campaign, not rewriting it.",
+  "When the score is under 75, each finding must name the habit that cost the points,",
+  "in words a rewriter can apply using only facts already in the campaign.",
+  "Do not suggest adding a statistic, a client name, a price, or a case study that was not given.",
   "",
   "You are judging the writing ONLY. You are not deciding whether this campaign",
   "may be sent — that is decided elsewhere, by checks you cannot see. Never say a",

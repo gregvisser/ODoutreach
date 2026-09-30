@@ -393,6 +393,7 @@ async function writeEmails(campaign: CampaignRow): Promise<AiCampaignOutcome> {
       size ? `Company size: ${size}` : null,
     ].filter((line): line is string => line !== null).join("\n"),
     revisionNotes: campaign.reviewFeedback ?? undefined,
+    revisionRound: campaign.reviewRounds,
   });
   if (!drafted.ok) throw new Error(drafted.reason);
   await setSequenceSteps({
@@ -423,7 +424,11 @@ async function reviewEmails(campaign: CampaignRow): Promise<AiCampaignOutcome & 
   };
 }
 
-async function approveEmails(campaign: CampaignRow, actorId: string): Promise<AiCampaignOutcome> {
+async function approveEmails(
+  campaign: CampaignRow,
+  actorId: string,
+  qualityNote: string | null,
+): Promise<AiCampaignOutcome> {
   if (!campaign.sequenceId) throw new Error("There is no email sequence to approve.");
   const steps = await prisma.clientEmailSequenceStep.findMany({
     where: { sequenceId: campaign.sequenceId },
@@ -464,7 +469,8 @@ async function approveEmails(campaign: CampaignRow, actorId: string): Promise<Ai
           metadata: {
             systemApprovalKind: AI_CAMPAIGN_SYSTEM_APPROVAL,
             campaignId: campaign.id,
-            note: "Approved by the AI campaign after the writing check passed.",
+            note: qualityNote ?? "Approved by the AI campaign after the writing check passed.",
+            scoreRelease: qualityNote !== null,
           },
         },
       });
@@ -773,7 +779,7 @@ async function perform(
     return { outcome: { reviewScore: reviewed.reviewScore }, extras };
   }
   if (decision.type === "approve") {
-    return { outcome: await approveEmails(campaign, actor.id), extras };
+    return { outcome: await approveEmails(campaign, actor.id, decision.qualityNote ?? null), extras };
   }
   if (decision.type === "prepare") {
     return { outcome: await prepareSend(campaign, actor.id), extras };

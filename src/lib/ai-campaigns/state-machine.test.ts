@@ -42,7 +42,7 @@ describe("AI campaign transitions", () => {
 });
 
 describe("review threshold loop", () => {
-  it("revises while the score stays under 75 and stops after three checks", () => {
+  it("revises while the score stays under 75 and checks remain", () => {
     let snapshot = aiCampaignSnapshot({ status: "REVIEWING", draftReady: true });
     expect(decideAiCampaignTick(snapshot)).toEqual({ type: "review" });
 
@@ -62,21 +62,73 @@ describe("review threshold loop", () => {
     snapshot = reduceAiCampaign(snapshot, { type: "write" }, { draftReady: true });
     snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: 74 });
     expect(snapshot.reviewRounds).toBe(3);
-    expect(decideAiCampaignTick(snapshot)).toMatchObject({ type: "needs_staff" });
-    expect(reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot)).status).toBe("NEEDS_STAFF");
+    expect(decideAiCampaignTick(snapshot).type).toBe("approve");
   });
 
-  it("still waits for staff when a writing score stays under 75", () => {
+  it("approves and launches when the writing check reaches 75", () => {
     const snapshot = aiCampaignSnapshot({
       status: "REVIEWING",
-      reviewScore: 74,
-      reviewRounds: 3,
+      reviewScore: 75,
+      reviewRounds: 1,
       draftReady: true,
+      contactsSourced: 5,
+      targetContactCount: 5,
+      pendingWork: 5,
     });
     const decision = decideAiCampaignTick(snapshot);
-    expect(decision).toMatchObject({ type: "needs_staff" });
-    expect(reduceAiCampaign(snapshot, decision).status).toBe("NEEDS_STAFF");
-    expect(decision.type === "needs_staff" ? decision.reason : "").toMatch(/were not sent/);
+    expect(decision).toEqual({ type: "approve" });
+    const prepared = reduceAiCampaign(snapshot, decision, { templatesApproved: true });
+    expect(prepared.status).toBe("PREPARING");
+    const launching = reduceAiCampaign(prepared, { type: "prepare" }, { sequencePrepared: true });
+    expect(launching.status).toBe("LAUNCHING");
+    const running = reduceAiCampaign(launching, { type: "launch" }, { introStarted: true });
+    expect(running.status).toBe("RUNNING");
+    expect(decideAiCampaignTick(running).type).toBe("run");
+  });
+
+  it("sends after the rewrite budget when the score stays under 75", () => {
+    let snapshot = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 72,
+      reviewRounds: 3,
+      draftReady: true,
+      contactsSourced: 5,
+      targetContactCount: 5,
+      pendingWork: 5,
+    });
+    const decision = decideAiCampaignTick(snapshot);
+    expect(decision.type).toBe("approve");
+    if (decision.type !== "approve") return;
+    expect(decision.qualityNote).toMatch(/scored 72 after 3 checks/);
+    expect(decision.qualityNote).toMatch(/sending continues/);
+    expect(decision.qualityNote).not.toMatch(/were not sent|Review recipients|member of staff/i);
+    const steps: string[] = [decision.type];
+    snapshot = reduceAiCampaign(snapshot, decision, { templatesApproved: true });
+    expect(snapshot.status).toBe("PREPARING");
+    for (const outcome of [{ sequencePrepared: true }, { introStarted: true }]) {
+      const next = decideAiCampaignTick(snapshot);
+      steps.push(next.type);
+      expect(next.type).not.toBe("needs_staff");
+      snapshot = reduceAiCampaign(snapshot, next, outcome);
+    }
+    expect(steps).toEqual(["approve", "prepare", "launch"]);
+    expect(snapshot.status).toBe("RUNNING");
+    expect(decideAiCampaignTick(snapshot).type).toBe("run");
+  });
+
+  it("does not wait for staff when any score stays under 75 after the last check", () => {
+    for (const reviewScore of [0, 49, 72, 74]) {
+      const snapshot = aiCampaignSnapshot({
+        status: "REVIEWING",
+        reviewScore,
+        reviewRounds: 3,
+        draftReady: true,
+      });
+      const decision = decideAiCampaignTick(snapshot);
+      expect(decision.type).toBe("approve");
+      expect(reduceAiCampaign(snapshot, decision, { templatesApproved: true }).status).toBe("PREPARING");
+      expect(reduceAiCampaign(snapshot, decision).status).not.toBe("NEEDS_STAFF");
+    }
   });
 
   it("has no staff approval between a passing writing check and sending", () => {

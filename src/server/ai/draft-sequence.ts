@@ -4,6 +4,7 @@ import { AI_MODELS } from "@/lib/ai/model-catalog";
 import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildSequenceDraftingInput,
+  buildSequenceRevisionTurn,
   parseSequenceDraftToolUse,
   SEQUENCE_DRAFTING_SYSTEM_PROMPT,
   SEQUENCE_DRAFTING_TOOL,
@@ -11,6 +12,10 @@ import {
   type DraftedSequenceStep,
   type SequenceDraftBrief,
 } from "@/lib/ai/sequence-drafting";
+import {
+  AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+  isLastAiCampaignRewrite,
+} from "@/lib/ai-campaigns/policy";
 import { prisma } from "@/lib/db";
 import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy";
 import { logger } from "@/lib/logger";
@@ -121,6 +126,8 @@ export async function draftSequenceForClient(args: {
   campaignBrief?: string;
   /** Review notes when an AI campaign is rewriting a low score. */
   revisionNotes?: string;
+  /** How many writing checks have already been stored. Used to mark the last rewrite. */
+  revisionRound?: number;
 }): Promise<DraftSequenceResult> {
   const loaded = await loadBrief(args.clientId);
   if (!loaded) return { ok: false, reason: "client_not_found" };
@@ -147,7 +154,10 @@ export async function draftSequenceForClient(args: {
             ? `<campaign>\n${args.campaignBrief.trim().slice(0, 4000)}\n</campaign>`
             : null,
           args.revisionNotes?.trim()
-            ? `Revise the emails using this review. Keep only placeholders the product already allows. Do not invent placeholder names.\n<review>\n${args.revisionNotes.trim().slice(0, 4000)}\n</review>`
+            ? buildSequenceRevisionTurn(
+                args.revisionNotes,
+                isLastAiCampaignRewrite(args.revisionRound ?? 0, AI_CAMPAIGN_MAX_REVIEW_ROUNDS),
+              )
             : null,
         ].filter((part): part is string => part !== null).join("\n\n"),
         maxTokens: MAX_OUTPUT_TOKENS,
@@ -197,9 +207,9 @@ export async function draftSequenceForClient(args: {
           content: step.body,
           createdByStaffUserId: args.staffUserId,
           // This function still writes DRAFT with no approver. An AI campaign
-          // may approve later, only after the review score clears, and that
-          // approval is recorded as AI on the template. The manual draft
-          // button never reaches that step.
+          // may approve later: at 75 or more on the next tick, or after the
+          // rewrite budget with the score recorded. That approval is recorded
+          // as AI on the template. The manual draft button never reaches it.
           status: "DRAFT",
           approvedByStaffUserId: null,
           approvedAt: null,

@@ -13,9 +13,13 @@ export const AI_CAMPAIGN_PAUSE_PHRASE = "PAUSE AI CAMPAIGN";
 export const AI_CAMPAIGN_RESUME_PHRASE = "RESUME AI CAMPAIGN";
 export const AI_CAMPAIGN_STOP_PHRASE = "STOP AI CAMPAIGN";
 
-/** A campaign below this score is rewritten, then held for staff if it stays low. */
+/**
+ * A campaign below this score is rewritten.
+ * After {@link AI_CAMPAIGN_MAX_REVIEW_ROUNDS} checks it is still sent, and the score is recorded.
+ * The line stays at 75. A low score does not wait for a person and does not block sending.
+ */
 export const AI_CAMPAIGN_REVIEW_THRESHOLD = 75;
-/** How many reviews run before a low score waits for a person. */
+/** How many reviews run before a low score is sent with the score recorded. */
 export const AI_CAMPAIGN_MAX_REVIEW_ROUNDS = 3;
 /**
  * How many hard failures of the same step ask for a person.
@@ -209,14 +213,41 @@ export function aiCampaignSequenceHeldFromAutoSend(input: {
   return input.status !== "RUNNING" && input.status !== "LAUNCHING";
 }
 
+/**
+ * The write that follows a failed check is the last one when the next check
+ * would use up the review budget. The first draft (no checks yet) is not a rewrite.
+ */
+export function isLastAiCampaignRewrite(
+  reviewRounds: number,
+  maxReviewRounds: number = AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+): boolean {
+  return reviewRounds > 0 && reviewRounds >= maxReviewRounds - 1;
+}
+
+/**
+ * Timeline text when the rewrite budget is used and the score is still under the line.
+ * Sending continues. The words must not say the emails were held or not sent.
+ */
+export function aiCampaignScoreReleaseMessage(score: number, rounds: number): string {
+  return `The emails scored ${String(score)} after ${String(rounds)} checks. They are still under ${String(AI_CAMPAIGN_REVIEW_THRESHOLD)}, and there are no checks left, so sending continues with this score on the record.`;
+}
+
 export function reviewFeedbackText(
   summary: string,
-  findings: readonly { finding: string; suggestion: string }[],
+  findings: readonly { finding: string; suggestion: string; severity?: string; area?: string }[],
 ): string {
-  const lines = [summary.trim()];
-  for (const finding of findings.slice(0, 12)) {
-    const line = `${finding.finding.trim()} ${finding.suggestion.trim()}`.trim();
-    if (line) lines.push(line);
-  }
+  const lines = [`Overall: ${summary.trim()}`];
+  findings.slice(0, 12).forEach((finding, index) => {
+    const where = [finding.severity?.trim(), finding.area?.trim()].filter((part): part is string => Boolean(part)).join(", ");
+    const change = finding.suggestion.trim();
+    const line = [
+      `${String(index + 1)}.`,
+      where ? `(${where})` : null,
+      finding.finding.trim(),
+      change ? `Change: ${change}` : null,
+    ].filter((part): part is string => Boolean(part)).join(" ");
+    if (line.length > 3) lines.push(line);
+  });
+  lines.push("Rewrite so each numbered point is fixed. Use only facts from the brief. Do not add a statistic, a client name, a price, or a case study that was not given.");
   return lines.filter((line) => line.length > 0).join("\n").slice(0, 4000);
 }

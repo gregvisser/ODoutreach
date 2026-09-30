@@ -187,6 +187,23 @@ describe("drafting a sequence", () => {
     expect(sent).toContain("Flat roof repair");
     expect(sent).toContain("Facilities Manager");
   });
+
+  it("sends numbered review notes and marks the last rewrite", async () => {
+    modelAnswers(goodSteps());
+    await draftSequenceForClient({
+      clientId: "client-1",
+      staffUserId: "staff-1",
+      campaignBrief: "Contact facilities managers about planned maintenance.",
+      revisionNotes: "1. (high, opening) The first line is generic. Change: Name their role.",
+      revisionRound: 2,
+    });
+
+    const sent = callAnthropicMock.mock.calls[0][0].userText as string;
+    expect(sent).toContain("This is the last rewrite");
+    expect(sent).toContain("Name their role");
+    expect(sent).toContain("<review>");
+    expect(sent.toLowerCase()).toContain("untrusted");
+  });
 });
 
 describe("when it cannot draft", () => {

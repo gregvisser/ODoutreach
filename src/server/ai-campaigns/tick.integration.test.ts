@@ -12,7 +12,8 @@ import { tickAiCampaignsForClient } from "./tick";
  * One confirmation has already been given. The scheduled tick must source
  * this client's people, enroll the ones who pass the same recipient gates
  * as Review recipients, plan the introduction, and launch. Nobody clicks
- * Review recipients. A score under 75 is not exercised here: that stop stays.
+ * Review recipients. A score under 75 after three checks still launches.
+ * The score is recorded. It does not wait for staff.
  *
  * Drafting and the writing check are stubbed so the test does not call xAI.
  * RocketReach is not called because Universe already fills the target.
@@ -378,5 +379,62 @@ describe("AI campaign tick from sourcing to launch", () => {
     expect(
       await prisma.clientEmailSequenceEnrollment.count({ where: { sequenceId: HUMAN_SEQUENCE_ID } }),
     ).toBe(0);
+  });
+
+  it("still launches when three writing checks stay under 75", async () => {
+    ai.draft.mockClear();
+    ai.review.mockClear();
+    const scores = [71, 68, 72];
+    let call = 0;
+    ai.review.mockImplementation(async () => {
+      const score = scores[Math.min(call, scores.length - 1)] ?? 72;
+      call += 1;
+      return {
+        ok: true,
+        reviewId: `itest-low-${String(score)}-${String(call)}`,
+        score,
+        summary: "The opening is still generic.",
+        findings: [
+          {
+            severity: "high" as const,
+            area: "opening" as const,
+            finding: "The first email does not name the prospect's role.",
+            suggestion: "Open with their role and one reason from the brief.",
+          },
+        ],
+        costMicroUsd: 0,
+      };
+    });
+
+    const statuses: string[] = [];
+    let launched = false;
+    for (let step = 0; step < 16; step += 1) {
+      const result = await tickAiCampaignsForClient(CLIENT_ID);
+      expect(result.errors).toEqual([]);
+      const campaign = await prisma.aiOutreachCampaign.findUniqueOrThrow({
+        where: { id: CAMPAIGN_ID },
+        select: { status: true, reviewScore: true, reviewRounds: true, staffAlert: true },
+      });
+      statuses.push(campaign.status);
+      if (campaign.status === "RUNNING") {
+        launched = true;
+        expect(campaign.reviewScore).toBe(72);
+        expect(campaign.reviewRounds).toBe(3);
+        expect(campaign.staffAlert).toBeNull();
+        break;
+      }
+    }
+
+    expect(launched).toBe(true);
+    expect(statuses).not.toContain("NEEDS_STAFF");
+    expect(ai.review).toHaveBeenCalledTimes(3);
+    expect(ai.draft.mock.calls.length).toBeGreaterThanOrEqual(3);
+
+    const events = await prisma.aiOutreachCampaignEvent.findMany({ where: { campaignId: CAMPAIGN_ID } });
+    const text = events.map((event) => event.message).join("\n");
+    expect(text).toMatch(/scored 72 after 3 checks/);
+    expect(text).toMatch(/sending continues/);
+    expect(text).not.toMatch(/were not sent/);
+    expect(text).not.toMatch(/Review recipients/);
   });
 });

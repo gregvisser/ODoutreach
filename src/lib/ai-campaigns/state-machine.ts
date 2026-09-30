@@ -14,6 +14,7 @@ import {
   AI_CAMPAIGN_LOW_WATER,
   AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
   AI_CAMPAIGN_REVIEW_THRESHOLD,
+  aiCampaignScoreReleaseMessage,
 } from "./policy";
 
 export const AI_CAMPAIGN_STATUSES = [
@@ -68,7 +69,7 @@ export type AiCampaignDecision =
   | { type: "review" }
   | { type: "revise" }
   | { type: "needs_staff"; reason: string }
-  | { type: "approve" }
+  | { type: "approve"; qualityNote?: string }
   | { type: "prepare" }
   | { type: "launch" }
   | { type: "run" }
@@ -134,6 +135,22 @@ function endDateReached(snapshot: AiCampaignSnapshot): boolean {
   return snapshot.endsAt !== null && snapshot.now.getTime() >= snapshot.endsAt.getTime();
 }
 
+/**
+ * Under the line, rewrite while checks remain.
+ * When the rewrite budget is used, approve and record the score.
+ * A low score alone does not wait for staff and does not stop sending.
+ * Do-not-contact, caps, and pacing still apply on the send path after this.
+ */
+function reviewDecision(snapshot: AiCampaignSnapshot): AiCampaignDecision {
+  if (snapshot.reviewScore === null) return { type: "review" };
+  if (snapshot.reviewScore >= snapshot.reviewThreshold) return { type: "approve" };
+  if (snapshot.reviewRounds < snapshot.maxReviewRounds) return { type: "revise" };
+  return {
+    type: "approve",
+    qualityNote: aiCampaignScoreReleaseMessage(snapshot.reviewScore, snapshot.reviewRounds),
+  };
+}
+
 export function decideAiCampaignTick(
   snapshot: AiCampaignSnapshot,
   command: AiCampaignCommand = "tick",
@@ -175,15 +192,8 @@ export function decideAiCampaignTick(
     }
     case "WRITING":
       return snapshot.draftReady ? { type: "review" } : { type: "write" };
-    case "REVIEWING": {
-      if (snapshot.reviewScore === null) return { type: "review" };
-      if (snapshot.reviewScore >= snapshot.reviewThreshold) return { type: "approve" };
-      if (snapshot.reviewRounds < snapshot.maxReviewRounds) return { type: "revise" };
-      return {
-        type: "needs_staff",
-        reason: `The emails scored ${String(snapshot.reviewScore)} after ${String(snapshot.reviewRounds)} checks. They were not sent.`,
-      };
-    }
+    case "REVIEWING":
+      return reviewDecision(snapshot);
     case "REVISING":
       return { type: "write" };
     case "PREPARING":

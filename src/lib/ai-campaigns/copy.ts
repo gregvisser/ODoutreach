@@ -33,7 +33,7 @@ export function aiCampaignStageSentence(status: AiCampaignStatus, staffAlert: st
     case "NEEDS_STAFF":
       return "The machine stopped before sending and is waiting for a member of staff.";
     case "PREPARING":
-      return "The emails passed the check. The machine is getting people ready to be contacted.";
+      return "The machine is getting people ready to be contacted. The writing check score is on this page.";
     case "LAUNCHING":
       return "The machine is starting to send. Later emails go out as each mailbox has room.";
     case "RUNNING":
@@ -64,7 +64,9 @@ export function aiCampaignDecisionMessage(decision: AiCampaignDecision): string 
     case "needs_staff":
       return decision.reason;
     case "approve":
-      return "The emails passed the check and were approved for sending.";
+      return decision.qualityNote && decision.qualityNote.length > 0
+        ? decision.qualityNote
+        : "The emails passed the check and were approved for sending.";
     case "prepare":
       return "People were prepared for the first email.";
     case "launch":

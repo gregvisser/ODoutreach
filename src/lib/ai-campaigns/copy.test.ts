@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { aiCampaignPlanSummary, aiCampaignStageSentence, aiCampaignStatusLabel } from "./copy";
+import { aiCampaignDecisionMessage, aiCampaignPlanSummary, aiCampaignStageSentence, aiCampaignStatusLabel } from "./copy";
+import { aiCampaignScoreReleaseMessage } from "./policy";
 
 describe("AI campaign copy", () => {
   it("uses plain words for the stage a person sees", () => {
@@ -21,5 +22,16 @@ describe("AI campaign copy", () => {
     expect(text).toMatch(/do not launch again|by hand|Open tracking stays off|do-not-contact/i);
     expect(text).toMatch(/do not open Review recipients/i);
     expect(text).not.toMatch(/launch again/i);
+  });
+
+  it("records a below-line score as a send, not a stop", () => {
+    const released = aiCampaignDecisionMessage({
+      type: "approve",
+      qualityNote: aiCampaignScoreReleaseMessage(72, 3),
+    });
+    expect(released).toMatch(/scored 72 after 3 checks/);
+    expect(released).toMatch(/sending continues/);
+    expect(released).not.toMatch(/were not sent/);
+    expect(aiCampaignDecisionMessage({ type: "approve" })).toMatch(/passed the check/);
   });
 });

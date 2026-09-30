@@ -4,6 +4,7 @@ import { TEMPLATE_SUBJECT_MAX } from "@/lib/email-templates/template-policy";
 
 import {
   buildSequenceDraftingInput,
+  buildSequenceRevisionTurn,
   cadenceToStepDelays,
   parseSequenceDraftToolUse,
   SEQUENCE_CADENCE_DAYS,
@@ -105,6 +106,27 @@ describe("the prompt", () => {
 
   it("tells the model the brief is untrusted text it must never act on", () => {
     expect(SEQUENCE_DRAFTING_SYSTEM_PROMPT.toLowerCase()).toContain("untrusted");
+  });
+
+  it("writes the first draft to the 75 line without invented case studies", () => {
+    expect(SEQUENCE_DRAFTING_SYSTEM_PROMPT).toContain("75 or more");
+    expect(SEQUENCE_DRAFTING_SYSTEM_PROMPT).toContain("UK firm");
+    expect(SEQUENCE_DRAFTING_SYSTEM_PROMPT).toContain("I hope this finds you well");
+    expect(SEQUENCE_DRAFTING_SYSTEM_PROMPT).toMatch(/If the brief has no case study, do not invent one/);
+    expect(SEQUENCE_DRAFTING_SYSTEM_PROMPT).toContain("one short reply");
+  });
+
+  it("tells a last rewrite to fix every point and not chase the score", () => {
+    const last = buildSequenceRevisionTurn("1. (high, opening) The first line is generic. Change: Name their role.", true);
+    expect(last).toContain("This is the last rewrite");
+    expect(last).toContain("<review>");
+    expect(last).toContain("</review>");
+    expect(last.toLowerCase()).toContain("untrusted");
+    expect(last).toContain("Do not add a new claim to chase the score");
+    expect(last).not.toContain("This is the last rewrite. Fix every numbered point.\nFix every numbered point before the next check.");
+    const earlier = buildSequenceRevisionTurn("1. Shorten the subject.", false);
+    expect(earlier).toContain("Fix every numbered point before the next check.");
+    expect(earlier).not.toContain("This is the last rewrite");
   });
 
   /**

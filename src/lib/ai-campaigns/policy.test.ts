@@ -1,23 +1,64 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  aiCampaignScoreReleaseMessage,
   aiCampaignSequenceHeldFromAutoSend,
   clampBatchToMailboxCap,
   creditsAllowedForAiCampaign,
   followUpSequenceIds,
   isAiCampaignConfirmation,
   isAiCampaignsEnabled,
+  isLastAiCampaignRewrite,
   mailboxSlotsRemaining,
   mayAddPersonToAiCampaign,
   replyStopsSequence,
+  reviewFeedbackText,
   sequenceMachineApprovalStep,
   staffMayControlAiCampaign,
   templateMachineApprovalStep,
   AI_CAMPAIGN_CONFIRMATION_PHRASE,
   AI_CAMPAIGN_FAILURE_LIMIT,
+  AI_CAMPAIGN_REVIEW_THRESHOLD,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
   AI_CAMPAIGN_TRANSIENT_BACKOFF_MS,
 } from "./policy";
+
+describe("writing check feedback", () => {
+  it("keeps the send line at 75", () => {
+    expect(AI_CAMPAIGN_REVIEW_THRESHOLD).toBe(75);
+  });
+
+  it("marks the rewrite before the last check as the last rewrite", () => {
+    expect(isLastAiCampaignRewrite(0)).toBe(false);
+    expect(isLastAiCampaignRewrite(1)).toBe(false);
+    expect(isLastAiCampaignRewrite(2)).toBe(true);
+    expect(isLastAiCampaignRewrite(3)).toBe(true);
+  });
+
+  it("numbers findings so a rewrite can apply them without invented facts", () => {
+    const text = reviewFeedbackText("The opening is generic.", [
+      {
+        severity: "high",
+        area: "opening",
+        finding: "The first email starts with I hope this finds you well.",
+        suggestion: "Start with the prospect's role.",
+      },
+    ]);
+    expect(text).toContain("Overall: The opening is generic.");
+    expect(text).toContain("1. (high, opening)");
+    expect(text).toContain("Change: Start with the prospect's role.");
+    expect(text).toMatch(/Do not add a statistic/);
+    expect(text.length).toBeLessThanOrEqual(4000);
+  });
+
+  it("records a below-line score as a send", () => {
+    const message = aiCampaignScoreReleaseMessage(72, 3);
+    expect(message).toMatch(/scored 72 after 3 checks/);
+    expect(message).toMatch(/still under 75/);
+    expect(message).toMatch(/sending continues/);
+    expect(message).not.toMatch(/were not sent|Review recipients|member of staff/i);
+  });
+});
 
 describe("AI campaign provider retry", () => {
   it("waits one five-minute outreach pass and still escalates hard failures at three", () => {

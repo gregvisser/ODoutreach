@@ -321,6 +321,13 @@ describe("buildCampaignReviewInput", () => {
     expect(CAMPAIGN_REVIEW_SYSTEM_PROMPT.toLowerCase()).toContain("untrusted");
   });
 
+  it("asks for findings a rewrite can apply without invented facts", () => {
+    expect(CAMPAIGN_REVIEW_SYSTEM_PROMPT).toContain("under 75");
+    expect(CAMPAIGN_REVIEW_SYSTEM_PROMPT).toContain("Do not suggest adding a statistic");
+    expect(CAMPAIGN_REVIEW_SYSTEM_PROMPT).toContain("Be honest and be willing to use the low end");
+    expect(CAMPAIGN_REVIEW_PROMPT_VERSION).toBe("2026-09-30");
+  });
+
   it("carries a prompt version, so an old review is not read as a current one", () => {
     expect(CAMPAIGN_REVIEW_PROMPT_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}/);
   });
