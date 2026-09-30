@@ -12,7 +12,8 @@ import { tickAiCampaignsForClient } from "./tick";
  * One confirmation has already been given. The scheduled tick must source
  * this client's people, enroll the ones who pass the same recipient gates
  * as Review recipients, plan the introduction, and launch. Nobody clicks
- * Review recipients. A score under 75 is not exercised here: that stop stays.
+ * Review recipients. A score under 75 keeps rewriting and is not sent. This
+ * test uses a passing score.
  *
  * Drafting and the writing check are stubbed so the test does not call xAI.
  * RocketReach is not called because Universe already fills the target.

@@ -12,7 +12,7 @@ import {
 import {
   AI_CAMPAIGN_FAILURE_LIMIT,
   AI_CAMPAIGN_LOW_WATER,
-  AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+  AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT,
   AI_CAMPAIGN_REVIEW_THRESHOLD,
 } from "./policy";
 
@@ -45,6 +45,7 @@ export type AiCampaignSnapshot = {
   reviewScore: number | null;
   reviewRounds: number;
   reviewThreshold: number;
+  /** Runaway ceiling. A low writing score keeps rewriting until this many checks. */
   maxReviewRounds: number;
   listExhausted: boolean;
   draftReady: boolean;
@@ -105,7 +106,7 @@ export function aiCampaignSnapshot(overrides: Partial<AiCampaignSnapshot> = {}):
     reviewScore: null,
     reviewRounds: 0,
     reviewThreshold: AI_CAMPAIGN_REVIEW_THRESHOLD,
-    maxReviewRounds: AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+    maxReviewRounds: AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT,
     listExhausted: false,
     draftReady: false,
     templatesApproved: false,
@@ -177,11 +178,15 @@ export function decideAiCampaignTick(
       return snapshot.draftReady ? { type: "review" } : { type: "write" };
     case "REVIEWING": {
       if (snapshot.reviewScore === null) return { type: "review" };
+      // At or above the line the emails may be approved. Below the line they are rewritten.
       if (snapshot.reviewScore >= snapshot.reviewThreshold) return { type: "approve" };
+      // A low score never waits for staff merely because it has been checked a few times.
+      // Rewriting continues until the score passes, a person pauses or stops the campaign,
+      // or this runaway ceiling is hit.
       if (snapshot.reviewRounds < snapshot.maxReviewRounds) return { type: "revise" };
       return {
         type: "needs_staff",
-        reason: `The emails scored ${String(snapshot.reviewScore)} after ${String(snapshot.reviewRounds)} checks. They were not sent.`,
+        reason: `The emails scored ${String(snapshot.reviewScore)} after ${String(snapshot.reviewRounds)} checks and stayed below the line. Rewriting has stopped so this does not continue without a person. They were not sent.`,
       };
     }
     case "REVISING":
@@ -259,6 +264,8 @@ export function reduceAiCampaign(
     case "needs_staff":
       return { ...next, status: "NEEDS_STAFF", consecutiveFailures: 0 };
     case "approve":
+      // A score under the line must not approve, even if a caller asks.
+      if (snapshot.reviewScore === null || snapshot.reviewScore < snapshot.reviewThreshold) return snapshot;
       return outcome.templatesApproved
         ? { ...next, status: "PREPARING", templatesApproved: true, consecutiveFailures: 0 }
         : next;

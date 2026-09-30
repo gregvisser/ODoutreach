@@ -41,7 +41,7 @@ it("resumes pacing holds for the planned client before machine follow-ups", asyn
   expect(m.resume.mock.invocationCallOrder[0]).toBeLessThan(m.advance.mock.invocationCallOrder[0]);
 });
 it("fails the tick when an AI campaign reports a problem and does not hide it behind a clean advance", async () => {
-  m.tick.mockResolvedValue({ processed: 1, errors: ["The emails scored 60 after 3 checks. They were not sent."] });
+  m.tick.mockResolvedValue({ processed: 1, errors: ["No people were found within the credit budget."] });
   const response = await POST(request({ schedulerProtocol: 1, phase: "advance", clientId: "client" }) as never);
   expect(response.status).toBe(207);
   expect(m.tick).toHaveBeenCalledWith("client");
