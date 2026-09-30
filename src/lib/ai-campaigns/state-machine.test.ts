@@ -66,6 +66,19 @@ describe("review threshold loop", () => {
     expect(reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot)).status).toBe("NEEDS_STAFF");
   });
 
+  it("still waits for staff when a writing score stays under 75", () => {
+    const snapshot = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 74,
+      reviewRounds: 3,
+      draftReady: true,
+    });
+    const decision = decideAiCampaignTick(snapshot);
+    expect(decision).toMatchObject({ type: "needs_staff" });
+    expect(reduceAiCampaign(snapshot, decision).status).toBe("NEEDS_STAFF");
+    expect(decision.type === "needs_staff" ? decision.reason : "").toMatch(/were not sent/);
+  });
+
   it("has no staff approval between a passing writing check and sending", () => {
     const steps: string[] = [];
     let snapshot = aiCampaignSnapshot({
@@ -224,6 +237,7 @@ describe("repeated failures", () => {
   it("asks for a person after the failure limit and not before", () => {
     let snapshot = aiCampaignSnapshot();
     const first = noteStageFailure(snapshot, "The writing service did not answer.");
+    expect(first.retryable).toBe(false);
     expect(first.snapshot.status).toBe("SOURCING");
     expect(first.snapshot.consecutiveFailures).toBe(1);
     snapshot = first.snapshot;
@@ -231,6 +245,117 @@ describe("repeated failures", () => {
     const third = noteStageFailure(snapshot, "The writing service did not answer.");
     expect(third.snapshot.status).toBe("NEEDS_STAFF");
     expect(third.decision.type).toBe("needs_staff");
+    if (third.decision.type === "needs_staff") {
+      expect(third.decision.reason).toMatch(/Waiting for a member of staff/);
+      expect(third.decision.reason).toMatch(/The writing service did not answer/);
+    }
+  });
+
+  it("stays on Writing when xAI returns 429 resource-exhausted and does not count it", () => {
+    const writing = aiCampaignSnapshot({ status: "WRITING", consecutiveFailures: 2, draftReady: false });
+    const noted = noteStageFailure(writing, "xai_http_429: resource-exhausted");
+    expect(noted.retryable).toBe(true);
+    expect(noted.snapshot.status).toBe("WRITING");
+    expect(noted.snapshot.consecutiveFailures).toBe(2);
+    expect(noted.decision).toMatchObject({ type: "hold" });
+    if (noted.decision.type === "hold") {
+      expect(noted.decision.reason).toMatch(/xAI busy, will retry/);
+      expect(noted.decision.reason).toMatch(/capacity/);
+    }
+    expect(decideAiCampaignTick(noted.snapshot)).toEqual({ type: "write" });
+
+    const running = aiCampaignSnapshot({
+      status: "RUNNING",
+      introStarted: true,
+      pendingWork: 5,
+      contactsSourced: 5,
+      targetContactCount: 5,
+    });
+    const stillRunning = noteStageFailure(running, "xai_http_429: resource-exhausted");
+    expect(stillRunning.retryable).toBe(true);
+    expect(stillRunning.snapshot.status).toBe("RUNNING");
+    expect(stillRunning.snapshot.consecutiveFailures).toBe(0);
+    expect(decideAiCampaignTick(stillRunning.snapshot)).toEqual({ type: "run" });
+  });
+
+  it("stays Running when xAI times out and does not count it", () => {
+    const running = aiCampaignSnapshot({
+      status: "RUNNING",
+      introStarted: true,
+      pendingWork: 4,
+      contactsSourced: 5,
+      targetContactCount: 5,
+      consecutiveFailures: 0,
+    });
+    const noted = noteStageFailure(running, "xai_timeout: exceeded 180000ms");
+    expect(noted.retryable).toBe(true);
+    expect(noted.snapshot.status).toBe("RUNNING");
+    expect(noted.snapshot.consecutiveFailures).toBe(0);
+    if (noted.decision.type === "hold") {
+      expect(noted.decision.reason).toMatch(/xAI busy, will retry/);
+      expect(noted.decision.reason).toMatch(/did not answer in time/);
+    }
+    expect(decideAiCampaignTick(noted.snapshot)).toEqual({ type: "run" });
+  });
+
+  it("does not ask for staff after many capacity and timeout failures", () => {
+    let snapshot = aiCampaignSnapshot({ status: "WRITING" });
+    const reasons = [
+      "xai_http_429: resource-exhausted",
+      "xai_timeout: exceeded 180000ms",
+      "xai_http_429: model at capacity",
+      "resource_exhausted",
+      "xai_http_503: overloaded",
+      "xai_network: fetch failed",
+    ];
+    for (const reason of reasons) {
+      const noted = noteStageFailure(snapshot, reason);
+      expect(noted.retryable).toBe(true);
+      expect(noted.snapshot.status).toBe("WRITING");
+      snapshot = noted.snapshot;
+    }
+    expect(snapshot.consecutiveFailures).toBe(0);
+    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "write" });
+  });
+
+  it("still asks for staff after three hard writing failures, including one between timeouts", () => {
+    let snapshot = aiCampaignSnapshot({ status: "REVIEWING", draftReady: true });
+    snapshot = noteStageFailure(snapshot, "unusable_answer").snapshot;
+    snapshot = noteStageFailure(snapshot, "xai_timeout: exceeded 180000ms").snapshot;
+    expect(snapshot.status).toBe("REVIEWING");
+    expect(snapshot.consecutiveFailures).toBe(1);
+    snapshot = noteStageFailure(snapshot, "xai_http_401: invalid api key").snapshot;
+    const third = noteStageFailure(snapshot, "xai_http_400: invalid request");
+    expect(third.retryable).toBe(false);
+    expect(third.snapshot.status).toBe("NEEDS_STAFF");
+    expect(third.snapshot.consecutiveFailures).toBe(3);
+    expect(third.decision.type).toBe("needs_staff");
+  });
+
+  it("counts a mailbox capacity hold and an empty recipient list as hard failures", () => {
+    const running = aiCampaignSnapshot({ status: "RUNNING", introStarted: true, pendingWork: 1 });
+    const capacity = noteStageFailure(
+      running,
+      "Queued — sends automatically as mailbox capacity frees up.",
+    );
+    expect(capacity.retryable).toBe(false);
+    expect(capacity.snapshot.status).toBe("RUNNING");
+    expect(capacity.snapshot.consecutiveFailures).toBe(1);
+
+    const empty = noteStageFailure(
+      running,
+      "No recipients are ready for this step. Open Review recipients, then launch again.",
+    );
+    expect(empty.retryable).toBe(false);
+    expect(empty.snapshot.consecutiveFailures).toBe(1);
+  });
+
+  it("does not treat a rejected request that mentions timeout as capacity", () => {
+    const writing = aiCampaignSnapshot({ status: "WRITING" });
+    const noted = noteStageFailure(writing, "xai_http_400: request timeout field invalid");
+    expect(noted.retryable).toBe(false);
+    expect(noted.snapshot.status).toBe("WRITING");
+    expect(noted.snapshot.consecutiveFailures).toBe(1);
   });
 });
 

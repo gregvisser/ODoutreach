@@ -5,6 +5,11 @@
  */
 
 import {
+  aiCampaignHardFailureMessage,
+  aiCampaignTransientRetryMessage,
+  isTransientAiCampaignProviderFailure,
+} from "./provider-failure";
+import {
   AI_CAMPAIGN_FAILURE_LIMIT,
   AI_CAMPAIGN_LOW_WATER,
   AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
@@ -286,16 +291,25 @@ export function reduceAiCampaign(
 export function noteStageFailure(
   snapshot: AiCampaignSnapshot,
   message: string,
-): { snapshot: AiCampaignSnapshot; decision: AiCampaignDecision } {
+): { snapshot: AiCampaignSnapshot; decision: AiCampaignDecision; retryable: boolean } {
+  if (isTransientAiCampaignProviderFailure(message)) {
+    return {
+      snapshot,
+      decision: { type: "hold", reason: aiCampaignTransientRetryMessage(message) },
+      retryable: true,
+    };
+  }
   const failures = snapshot.consecutiveFailures + 1;
   if (failures >= snapshot.failureLimit) {
     return {
       snapshot: { ...snapshot, consecutiveFailures: failures, status: "NEEDS_STAFF" },
-      decision: { type: "needs_staff", reason: message },
+      decision: { type: "needs_staff", reason: aiCampaignHardFailureMessage(message, true) },
+      retryable: false,
     };
   }
   return {
     snapshot: { ...snapshot, consecutiveFailures: failures },
-    decision: { type: "hold", reason: message },
+    decision: { type: "hold", reason: aiCampaignHardFailureMessage(message, false) },
+    retryable: false,
   };
 }

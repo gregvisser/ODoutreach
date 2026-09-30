@@ -32,6 +32,16 @@ describe("AI campaign safety wiring", () => {
     expect(send).toContain("aiCampaignAllowsAutomatedSend");
   });
 
+  it("retries transient xAI failures without failing the scheduled job", () => {
+    expect(tick).toContain("AI_CAMPAIGN_TRANSIENT_BACKOFF_MS");
+    expect(tick).toContain("if (failed.retryable)");
+    const retry = tick.indexOf("if (failed.retryable)");
+    const jobError = tick.indexOf('logger.error({ event: "ai_campaign_tick"');
+    expect(retry).toBeGreaterThan(-1);
+    expect(jobError).toBeGreaterThan(retry);
+    expect(tick.slice(retry, jobError)).toContain("return null");
+  });
+
   it("runs from the existing five-minute advance, after pacing resume", () => {
     expect(route).toContain("tickAiCampaignsForClient");
     expect(route).toContain("resumePacingHeldSends");

@@ -17,8 +17,16 @@ export const AI_CAMPAIGN_STOP_PHRASE = "STOP AI CAMPAIGN";
 export const AI_CAMPAIGN_REVIEW_THRESHOLD = 75;
 /** How many reviews run before a low score waits for a person. */
 export const AI_CAMPAIGN_MAX_REVIEW_ROUNDS = 3;
-/** The same step may fail this many times before a person is asked. */
+/**
+ * How many hard failures of the same step ask for a person.
+ * Transient xAI capacity and timeouts do not count.
+ */
 export const AI_CAMPAIGN_FAILURE_LIMIT = 3;
+/**
+ * How long to wait after xAI is busy or times out.
+ * Matches the five-minute outreach pass. The same tick does not call xAI again.
+ */
+export const AI_CAMPAIGN_TRANSIENT_BACKOFF_MS = 5 * 60 * 1000;
 /** Top up the list when fewer than this many people are waiting to be emailed. */
 export const AI_CAMPAIGN_LOW_WATER = 5;
 /** Recorded on the template when the campaign approves its own copy. */
