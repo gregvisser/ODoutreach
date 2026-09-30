@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { closeIntegrationPool, integrationDatabaseUrl, resetIntegrationDatabase } from "@/test/integration/database";
@@ -41,8 +41,52 @@ beforeEach(async () => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); });
 afterAll(async () => { await prisma.$disconnect(); await pool.end(); await closeIntegrationPool(); });
+const LOCK_ATTEMPTS = 8;
+function lockUnavailable(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "55P03";
+}
+async function releaseDb(db: PoolClient) {
+  try { await db.query("ROLLBACK"); db.release(); } catch { db.release(true); }
+}
+// SHARE NOWAIT loses to a moment of autovacuum (ShareUpdateExclusive). The planner
+// reports that as busy; these tests need the snapshot, so they try again. A failed
+// attempt must release the client or afterAll waits out the hook timeout.
+async function openInspection(group: Parameters<typeof inspectIdentityGroup>[1]) {
+  let last: unknown;
+  for (let attempt = 1; attempt <= LOCK_ATTEMPTS; attempt++) {
+    const db = await pool.connect();
+    let began = false;
+    try {
+      const pid = (await db.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      await db.query("BEGIN");
+      began = true;
+      const checked = await inspectIdentityGroup(db, group, manifest.cutoffBefore);
+      return { db, pid, checked };
+    } catch (error) {
+      if (began) { try { await db.query("ROLLBACK"); } catch { /* transaction already aborted */ } }
+      db.release(true);
+      last = error;
+      if (!lockUnavailable(error) || attempt === LOCK_ATTEMPTS) {
+        if (lockUnavailable(error)) {
+          const holders = await pool.query(`SELECT a.pid, l.mode, l.granted, a.state, left(a.query, 160) AS query
+            FROM pg_locks l JOIN pg_class c ON c.oid = l.relation
+            LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+            WHERE c.relname = 'ClientEmailSequenceStepSend'`);
+          throw new Error(`Lock on ClientEmailSequenceStepSend stayed busy: ${JSON.stringify(holders.rows)}`, { cause: error });
+        }
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200 * attempt));
+    }
+  }
+  throw last;
+}
 async function reviewed() {
-  const result = await planIdentityConsolidation(pool, manifest);
+  let result = await planIdentityConsolidation(pool, manifest);
+  for (let attempt = 1; result.groups[0].blockers.includes("BUSY_OR_TIMEOUT") && attempt < LOCK_ATTEMPTS; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 200 * attempt));
+    result = await planIdentityConsolidation(pool, manifest);
+  }
   expect(result.groups[0].status).toBe("candidate");
   return parseRetainedIdentityInstallation({ version: 1,
     manifest: { ...manifest, groups: [{ ...manifest.groups[0], expectedFingerprints: result.groups[0].fingerprints }] },
@@ -171,15 +215,20 @@ it("a claim committed ahead of installation blocks the reviewed repair", async (
 
 it("a stale claim waiting behind the install row lock cannot reappear after mapping commits", async () => {
   const review = await reviewed();
-  const db = await pool.connect();
-  const pid = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid as number;
-  await db.query("BEGIN");
-  const checked = await inspectIdentityGroup(db, review.installation.manifest.groups[0], manifest.cutoffBefore);
-  expect(checked.status).toBe("candidate");
-  await db.query('UPDATE "InboundMailboxMessage" SET "supersededByMessageId"=$1 WHERE id=$2', ["a", "b"]);
-  const claim = claimReplyForStaff({ clientId: "client", staffUserId: "staff", subject: { subjectType: "INBOUND_MESSAGE", subjectId: "b" } });
-  try { await waitForBlocked(pid, "FOR SHARE"); await db.query("COMMIT"); }
-  finally { await db.query("ROLLBACK"); db.release(); }
+  const { db, pid, checked } = await openInspection(review.installation.manifest.groups[0]);
+  let claim: ReturnType<typeof claimReplyForStaff> | undefined;
+  try {
+    expect(checked.status).toBe("candidate");
+    await db.query('UPDATE "InboundMailboxMessage" SET "supersededByMessageId"=$1 WHERE id=$2', ["a", "b"]);
+    claim = claimReplyForStaff({ clientId: "client", staffUserId: "staff", subject: { subjectType: "INBOUND_MESSAGE", subjectId: "b" } });
+    await waitForBlocked(pid, "FOR SHARE");
+    await db.query("COMMIT");
+  } catch (error) {
+    await releaseDb(db);
+    await claim?.catch(() => undefined);
+    throw error;
+  }
+  await releaseDb(db);
   await claim;
   expect(await prisma.replyClaim.count()).toBe(0);
   expect((await rows())[1].supersededByMessageId).toBe("a");
@@ -199,18 +248,21 @@ it("rejects changed fingerprints or a wrong approved canonical without a partial
 
 it("an incomplete provider replay waiting behind installation rechecks the newly committed mapping", async () => {
   const review = await reviewed();
-  const db = await pool.connect();
-  const pid = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid as number;
-  await db.query("BEGIN");
-  await inspectIdentityGroup(db, review.installation.manifest.groups[0], manifest.cutoffBefore);
-  await db.query('UPDATE "InboundMailboxMessage" SET "supersededByMessageId"=$1 WHERE id=$2', ["a", "b"]);
-  const pending = persistSyncedInboundMessage({
-    where: { mailboxIdentityId_providerMessageId: { mailboxIdentityId: "mailbox", providerMessageId: "unverified-move" } },
-    create: { clientId: "client", mailboxIdentityId: "mailbox", providerMessageId: "unverified-move",
-      fromEmail: identity.fromEmail, receivedAt: new Date() }, update: {},
-  }, { internetMessageId: identity.internetMessageId }).then(() => "persisted", () => "blocked");
-  try { await waitForBlocked(pid, 'LOCK TABLE "InboundMailboxMessage"'); await db.query("COMMIT"); }
-  finally { await db.query("ROLLBACK"); db.release(); }
+  const { db, pid } = await openInspection(review.installation.manifest.groups[0]);
+  let pending: Promise<string> | undefined;
+  try {
+    await db.query('UPDATE "InboundMailboxMessage" SET "supersededByMessageId"=$1 WHERE id=$2', ["a", "b"]);
+    pending = persistSyncedInboundMessage({
+      where: { mailboxIdentityId_providerMessageId: { mailboxIdentityId: "mailbox", providerMessageId: "unverified-move" } },
+      create: { clientId: "client", mailboxIdentityId: "mailbox", providerMessageId: "unverified-move",
+        fromEmail: identity.fromEmail, receivedAt: new Date() }, update: {},
+    }, { internetMessageId: identity.internetMessageId }).then(() => "persisted", () => "blocked");
+    await waitForBlocked(pid, 'LOCK TABLE "InboundMailboxMessage"');
+    await db.query("COMMIT");
+  } finally {
+    await releaseDb(db);
+    await pending?.catch(() => undefined);
+  }
   expect(await pending).toBe("blocked");
   expect(await prisma.inboundMailboxMessage.count()).toBe(2);
 });
