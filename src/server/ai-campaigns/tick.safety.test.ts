@@ -16,6 +16,10 @@ describe("AI campaign safety wiring", () => {
     expect(tick).toContain("draftSequenceForClient");
     expect(tick).toContain("reviewCampaign");
     expect(tick).toContain("executeSavedResearchPlan");
+    expect(tick).toContain("enrollSequenceContacts");
+    expect(tick).toContain("planSequenceStepSends");
+    expect(tick).toContain("enrollCampaignRecipients");
+    expect(tick).not.toMatch(/sequencePrepared\s*=\s*sequence\?\.status/);
     expect(tick).not.toContain("autoPrepareSequenceForLaunch");
     expect(tick).not.toContain("openTracking");
     expect(tick).not.toContain("bypassCooldown: true");

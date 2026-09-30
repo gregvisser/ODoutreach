@@ -65,12 +65,14 @@ One side effect per campaign per pass. A lock stops two passes overlapping.
 The tick runs only for clients already in the scheduled plan, so the sending
 calendar still applies.
 
-1. This client's Universe contacts first (same client only).
-2. RocketReach for the shortfall, inside the campaign total and daily budget, and inside the account floor. Known people are skipped before a lookup is paid.
+1. This client's Universe contacts first (same client only). A zero or unknown RocketReach balance does not skip this step.
+2. RocketReach for the shortfall, inside the campaign total and daily budget, and inside the account floor. Known people are skipped before a lookup is paid. When nothing can be bought and Universe has nobody left, the campaign writes what it has, or waits for staff if it found nobody.
 3. Write intro and follow-ups with xAI, using the client brief and the campaign brief. Placeholders still have to be valid or approval fails.
-4. Score with the existing campaign review. Below 75, rewrite, up to 3 checks. Still below 75: pause for staff and do not send.
-5. Record template approval as system kind `AI` (no fake staff approver), then prepare and send through `sendSequenceStepBatch`.
-6. Keep sending follow-ups and topping up until the target, the budget, the end date, or the matches run out.
+4. Score with the existing campaign review. Below 75, rewrite, up to 3 checks. Still below 75: pause for staff and do not send. That writing-check stop is the only approval wait. There is no second staff approval of the copy, the sequence, or the recipient list.
+5. Add sourced people to the sequence with the same enrollment the **Review recipients** button uses (`enrollSequenceContacts`), then plan the introduction with the same planner (`planSequenceStepSends`). Do-not-contact, unsubscribe, suppression, and same-client checks stay fail-closed. Nothing in this path sets a bypass. Staff do not open Review recipients. Approving the sequence is not the same as preparing recipients: the sequence is approved in the previous step, before anyone is enrolled. Treating approval as preparation made the next tick launch and throw `NO_READY_ROWS` (production campaign `cmunv36r500gxg2mqm8wfrhoe` on `8e090b88`, score 76, five RocketReach contacts left on the list).
+6. Send through `sendSequenceStepBatch`, then keep sending follow-ups and topping up until the target, the budget, the end date, or the matches run out. A later tick that finds everyone already enrolled keeps going. It does not stop and ask for Review recipients. An empty list, an archived sequence, or a list with nobody sendable still fails closed.
+
+A campaign on **Getting people ready** enrolls on the next tick. Approving the sequence does not skip that step. A campaign already moved to **Waiting for a member of staff** for another reason stays there.
 
 A paused AI campaign, and every AI campaign while the kill switch is off, is left out of automatic follow-ups. That includes a client that also has Machine sending on. Sequences that are not part of an AI campaign are unchanged. Mail already sitting in the send queue can still go out; the switch stops new work from being queued.
 
@@ -93,5 +95,5 @@ the same wait. There is no "send anyway" button.
 2. `AI_OUTREACH_FEATURES`, `XAI_API_KEY`, and `XAI_MODEL` already working for draft and review.
 3. `ROCKETREACH_API_KEY` present and `ROCKETREACH_MIN_CREDIT_FLOOR` set if a floor is wanted.
 4. CI `verify` and `E2E (Playwright)` green on the merge.
-5. A staff member with an outreach role (not a viewer) starts one campaign on a test client and confirms the timeline moves without a second confirmation.
-6. Confirm a Human client's sequences still need a person for the first send.
+5. A staff member with an outreach role (not a viewer) starts one campaign on a test client and confirms the timeline moves without a second confirmation. After the writing check passes, the timeline must show people being prepared and then sending, with no **Review recipients** click.
+6. Confirm a Human client's sequences still need a person for the first send, including Review recipients.

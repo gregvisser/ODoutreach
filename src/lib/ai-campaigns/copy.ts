@@ -103,7 +103,7 @@ export function aiCampaignPlanSummary(input: {
     input.companySizeLabel
       ? `Company size ${input.companySizeLabel} is saved with the campaign and given to the writer. The RocketReach search uses job title, industry, and country, the same filters as a manual search.`
       : "Company size is not set.",
-    "Do-not-contact and unsubscribe stay blocked. Each mailbox keeps its own daily limit. Open tracking stays off.",
+    "Do-not-contact, unsubscribe, suppression, and same-client checks stay in place. The machine adds people who pass them. You do not open Review recipients for this campaign. Each mailbox keeps its own daily limit. Open tracking stays off.",
     "A reply stops further emails to that person. You read and answer replies. The client is not asked to approve anything.",
     "Pausing or stopping this campaign does not change campaigns you still send by hand.",
   ];

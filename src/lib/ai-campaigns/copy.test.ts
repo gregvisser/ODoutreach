@@ -19,6 +19,7 @@ describe("AI campaign copy", () => {
     expect(text).toMatch(/Sending/);
     expect(text).not.toMatch(/cron|idempoten|webhook|payload|enrol/i);
     expect(text).toMatch(/do not launch again|by hand|Open tracking stays off|do-not-contact/i);
+    expect(text).toMatch(/do not open Review recipients/i);
     expect(text).not.toMatch(/launch again/i);
   });
 });

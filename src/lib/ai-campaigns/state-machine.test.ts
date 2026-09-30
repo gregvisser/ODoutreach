@@ -25,8 +25,13 @@ describe("AI campaign transitions", () => {
     expect(written.reviewScore).toBeNull();
   });
 
-  it("holds for staff when the budget is gone and nobody was found", () => {
-    const snapshot = aiCampaignSnapshot({ creditsAllowed: 0, contactsSourced: 0 });
+  it("still looks for this client's people when the credit balance is zero", () => {
+    const snapshot = aiCampaignSnapshot({ creditsAllowed: 0, contactsSourced: 0, listExhausted: false });
+    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "source" });
+  });
+
+  it("holds for staff when the list is exhausted and nobody was found", () => {
+    const snapshot = aiCampaignSnapshot({ creditsAllowed: 0, contactsSourced: 0, listExhausted: true });
     expect(decideAiCampaignTick(snapshot)).toMatchObject({ type: "needs_staff" });
   });
 
@@ -59,6 +64,33 @@ describe("review threshold loop", () => {
     expect(snapshot.reviewRounds).toBe(3);
     expect(decideAiCampaignTick(snapshot)).toMatchObject({ type: "needs_staff" });
     expect(reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot)).status).toBe("NEEDS_STAFF");
+  });
+
+  it("has no staff approval between a passing writing check and sending", () => {
+    const steps: string[] = [];
+    let snapshot = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 76,
+      reviewRounds: 1,
+      draftReady: true,
+      contactsSourced: 5,
+      targetContactCount: 5,
+      pendingWork: 5,
+    });
+    const outcomes = [
+      { templatesApproved: true },
+      { sequencePrepared: true },
+      { introStarted: true },
+    ];
+    for (const outcome of outcomes) {
+      const decision = decideAiCampaignTick(snapshot);
+      steps.push(decision.type);
+      expect(decision.type).not.toBe("needs_staff");
+      snapshot = reduceAiCampaign(snapshot, decision, outcome);
+    }
+    expect(steps).toEqual(["approve", "prepare", "launch"]);
+    expect(snapshot.status).toBe("RUNNING");
+    expect(decideAiCampaignTick(snapshot).type).toBe("run");
   });
 
   it("approves once a later check reaches the threshold", () => {

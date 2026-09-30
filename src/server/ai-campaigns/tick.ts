@@ -32,7 +32,7 @@ import { reviewCampaign } from "@/server/ai/review-campaign";
 import { findOrCreateClientContactListByName } from "@/server/contacts/contact-lists";
 import { approveTemplate, markTemplateReadyForReview } from "@/server/email-templates/mutations";
 import { advanceDueSequenceFollowUps } from "@/server/email-sequences/advance-due-followups";
-import { enrollSequenceContacts } from "@/server/email-sequences/enrollments";
+import { EnrollmentFailure, enrollSequenceContacts } from "@/server/email-sequences/enrollments";
 import {
   approveSequence,
   createSequence,
@@ -356,8 +356,9 @@ async function sourcePeople(
     rocketReachAdded = bought.imported;
     if (bought.searchProfileCount === 0) listExhausted = true;
     else if (bought.imported === 0) searchStart += pageSize;
-  } else if (stillNeed > 0 && allowance <= 0 && harvested.added === 0) {
-    listExhausted = false;
+  } else if (stillNeed > 0 && allowance <= 0) {
+    // Nothing more can be bought, and a repeat pass would only re-read Universe.
+    listExhausted = true;
   }
 
   const contactsSourced = await countSourced(campaign.clientId, structure.contactListId);
@@ -501,9 +502,35 @@ async function approveEmails(campaign: CampaignRow, actorId: string): Promise<Ai
   return { templatesApproved: true };
 }
 
+/**
+ * The manual Review recipients button throws when nobody new can be added.
+ * A running campaign hits that on every later tick once the list is enrolled.
+ * Keep going when people are already on the sequence. Still fail closed when
+ * the list is empty, the sequence is archived, or nobody sendable was enrolled.
+ */
+async function enrollCampaignRecipients(input: {
+  sequenceId: string;
+  clientId: string;
+  staffUserId: string;
+}): Promise<void> {
+  try {
+    await enrollSequenceContacts(input);
+  } catch (error) {
+    if (!(error instanceof EnrollmentFailure) || error.code !== "NO_ELIGIBLE_CONTACTS") throw error;
+    const existing = await prisma.clientEmailSequenceEnrollment.count({
+      where: { sequenceId: input.sequenceId, clientId: input.clientId },
+    });
+    if (existing === 0) throw error;
+    logger.info(
+      { event: "ai_campaign_enroll_noop", sequenceId: input.sequenceId, clientId: input.clientId },
+      "No new people to add. Existing recipients stay enrolled.",
+    );
+  }
+}
+
 async function prepareSend(campaign: CampaignRow, actorId: string): Promise<AiCampaignOutcome> {
   if (!campaign.sequenceId) throw new Error("There is no email sequence to prepare.");
-  await enrollSequenceContacts({
+  await enrollCampaignRecipients({
     sequenceId: campaign.sequenceId,
     clientId: campaign.clientId,
     staffUserId: actorId,
@@ -556,7 +583,7 @@ async function continueSending(campaign: CampaignRow, actor: StaffUser): Promise
   if (!campaign.sequenceId || !campaign.contactListId) {
     throw new Error("This campaign is not ready to keep sending.");
   }
-  await enrollSequenceContacts({
+  await enrollCampaignRecipients({
     sequenceId: campaign.sequenceId,
     clientId: campaign.clientId,
     staffUserId: actor.id,

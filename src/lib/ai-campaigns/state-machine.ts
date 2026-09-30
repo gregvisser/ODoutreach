@@ -117,7 +117,9 @@ export function aiCampaignSnapshot(overrides: Partial<AiCampaignSnapshot> = {}):
 
 function sourcingBlock(snapshot: AiCampaignSnapshot): "write" | "needs_staff" | null {
   if (snapshot.contactsSourced >= snapshot.targetContactCount && snapshot.contactsSourced > 0) return "write";
-  if (snapshot.listExhausted || snapshot.creditsAllowed <= 0) {
+  // A zero credit balance only stops paid lookups. This client's own people
+  // are free, so sourcing continues until that pass finds nobody left.
+  if (snapshot.listExhausted) {
     return snapshot.contactsSourced > 0 ? "write" : "needs_staff";
   }
   return null;
