@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CreateAiCampaignPanel } from "@/components/clients/ai-campaigns/create-ai-campaign-panel";
 import { AiCampaignReviewPanel } from "@/components/clients/email-sequences/ai-campaign-review-panel";
 import { AiSendTimePanel } from "@/components/clients/email-sequences/ai-send-time-panel";
 import { TitleMessagePanel } from "@/components/clients/title-message-panel";
@@ -40,6 +41,8 @@ import {
 import { isMailboxExecutionEligible } from "@/server/mailbox/sending-policy";
 import { loadSequenceListTopUp } from "@/server/prospect-research/auto-refill";
 import { mailboxRowOperatorStatus } from "@/lib/mailboxes/mailboxes-operator-model";
+import { staffMayControlAiCampaign } from "@/lib/ai-campaigns/policy";
+import { loadAiCampaignCreateContext } from "@/server/ai-campaigns/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +87,7 @@ export default async function ClientOutreachPage({
     sendTimeAdvice,
     titleMessageReview,
     repPerformanceReview,
+    aiCampaignContext,
   ] = await Promise.all([
     loadClientEmailSequencesOverview(client.id),
     getClientEmailSequenceMutationAllowed(staff, client.id),
@@ -95,6 +99,7 @@ export default async function ClientOutreachPage({
     loadLatestSendTimeAdvice(client.id),
     loadLatestTitleMessageReview(client.id),
     loadLatestRepPerformanceReview(client.id),
+    loadAiCampaignCreateContext(client.id),
   ]);
 
   const sequenceFlashRaw = firstParam(sp.sequence);
@@ -195,6 +200,21 @@ export default async function ClientOutreachPage({
           </Link>
         </CardContent>
       </Card>
+
+      {aiCampaignContext ? (
+        <CreateAiCampaignPanel
+          clientId={client.id}
+          canControl={canMutateSequences && staffMayControlAiCampaign(staff.role)}
+          clientStatus={aiCampaignContext.clientStatus}
+          killSwitchOn={aiCampaignContext.killSwitchOn}
+          prefillBrief={aiCampaignContext.prefillBrief}
+          knownJobTitles={aiCampaignContext.knownJobTitles}
+          knownIndustries={aiCampaignContext.knownIndustries}
+          campaigns={aiCampaignContext.campaigns}
+          openCampaignId={aiCampaignContext.openCampaignId}
+          error={firstParam(sp.aiCampaignError)}
+        />
+      ) : null}
 
       <ClientEmailSequencesPanel
         clientId={client.id}

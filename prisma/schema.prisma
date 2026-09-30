@@ -325,6 +325,7 @@ model StaffUser {
   repliesHandled                  InboundReply[]                   @relation("InboundReplyHandledBy")
   rocketReachPlanRunsTriggered    RocketReachPlanRun[]             @relation("RocketReachPlanRunTriggeredBy")
   sequenceListRefillRulesEnabled  SequenceListRefillRule[]         @relation("SequenceListRefillEnabledBy")
+  aiOutreachCampaignsStarted      AiOutreachCampaign[]             @relation("AiOutreachCampaignStartedBy")
 
   @@index([invitedById])
 }
@@ -623,6 +624,9 @@ model Client {
   aiTitleMessageReviews           AiTitleMessageReview[]
   /// Background "Write a sequence with AI" jobs. See `AiSequenceDraftRun`.
   aiSequenceDraftRuns             AiSequenceDraftRun[]
+  /// Autonomous outreach a member of staff started with one confirmation.
+  /// Human sequences on the same client are not part of this relation.
+  aiOutreachCampaigns             AiOutreachCampaign[]
   sendingCalendars               ClientSendingCalendar[]
 
   @@index([deletedAt])
@@ -1091,6 +1095,7 @@ model ContactList {
   sequences           ClientEmailSequence[]
   sequenceEnrollments ClientEmailSequenceEnrollment[]
   sequenceStepSends   ClientEmailSequenceStepSend[]
+  aiOutreachCampaigns AiOutreachCampaign[]
 
   @@index([clientId])
   @@index([name])
@@ -1453,6 +1458,8 @@ model ClientEmailTemplate {
   createdByStaffUserId  String?
   approvedByStaffUserId String?
   approvedAt            DateTime?
+  /// "AI" when an AI campaign approved this template after review. Null when a person approved it.
+  systemApprovalKind    String?
   archivedAt            DateTime?
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
@@ -1506,6 +1513,8 @@ model ClientEmailSequence {
   aiReviews              AiCampaignReview[]
   refillRule             SequenceListRefillRule?
   rocketReachPlanRuns    RocketReachPlanRun[]
+  /// Set when this sequence belongs to an AI campaign. Human sequences leave this empty.
+  aiOutreachCampaign     AiOutreachCampaign?
 
   @@index([clientId])
   @@index([clientId, status])
@@ -2414,6 +2423,7 @@ model ProspectResearchPlan {
   run ProspectResearchRun?
   executions RocketReachPlanRun[]
   refillRules SequenceListRefillRule[]
+  aiOutreachCampaigns AiOutreachCampaign[]
   id               String   @id @default(cuid())
   clientId         String
   name             String
@@ -2488,8 +2498,10 @@ model RocketReachPlanRun {
   skipped            Json
   detail             String?                   @db.Text
   dryRun             Boolean                   @default(false)
+  aiOutreachCampaignId String?
 
   client       Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  aiOutreachCampaign AiOutreachCampaign? @relation(fields: [aiOutreachCampaignId], references: [id], onDelete: SetNull)
   plan         ProspectResearchPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   sequence     ClientEmailSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
   triggeredBy  StaffUser?           @relation("RocketReachPlanRunTriggeredBy", fields: [triggeredByStaffId], references: [id], onDelete: SetNull)
@@ -2498,12 +2510,14 @@ model RocketReachPlanRun {
   @@index([clientId, startedAt])
   @@index([planId, startedAt])
   @@index([sequenceId, startedAt])
+  @@index([aiOutreachCampaignId])
 }
 
 enum RocketReachPlanRunTrigger {
   MANUAL
   AUTO_REFILL
   PREVIEW
+  AI_CAMPAIGN
 }
 
 enum RocketReachPlanRunStatus {
@@ -2527,6 +2541,7 @@ model RocketReachCreditReservation {
   clientId   String
   runId      String
   ruleId     String?
+  aiOutreachCampaignId String?
   profileId  String
   state      RocketReachCreditReservationState @default(RESERVED)
   reservedAt DateTime                          @default(now())
@@ -2534,10 +2549,12 @@ model RocketReachCreditReservation {
 
   client Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   run    RocketReachPlanRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  aiOutreachCampaign AiOutreachCampaign? @relation(fields: [aiOutreachCampaignId], references: [id], onDelete: SetNull)
 
   @@unique([runId, profileId])
   @@index([clientId, reservedAt, state])
   @@index([ruleId, reservedAt, state])
+  @@index([aiOutreachCampaignId, reservedAt, state])
 }
 
 /// Per-sequence list top-up. Off until a named staff member turns it on.
@@ -2568,4 +2585,95 @@ model SequenceListRefillRule {
   @@index([clientId, enabled])
   @@index([planId])
   @@index([enabledByStaffId])
+}
+
+/// One autonomous outreach run. Staff confirm once. The scheduled tick
+/// moves it from finding people through sending. Human sequences are separate.
+enum AiOutreachCampaignStatus {
+  SOURCING
+  WRITING
+  REVIEWING
+  REVISING
+  NEEDS_STAFF
+  PREPARING
+  LAUNCHING
+  RUNNING
+  PAUSED
+  STOPPED
+  COMPLETED
+  FAILED
+}
+
+model AiOutreachCampaign {
+  id                   String                   @id @default(cuid())
+  clientId             String
+  name                 String
+  status               AiOutreachCampaignStatus @default(SOURCING)
+  /// Status to return to after a pause. Empty unless the campaign is paused.
+  resumeStatus         AiOutreachCampaignStatus?
+  brief                String                   @db.Text
+  jobTitles            String[]                 @default([])
+  countries            String[]                 @default([])
+  industries           String[]                 @default([])
+  seniorities          String[]                 @default([])
+  companySizeMin       Int?
+  companySizeMax       Int?
+  targetContactCount   Int
+  creditBudgetTotal    Int
+  creditBudgetPerDay   Int
+  creditsUsed          Int                      @default(0)
+  /// Next RocketReach page. Known people are skipped before a lookup is paid.
+  searchStart          Int                      @default(1)
+  endsAt               DateTime?
+  contactListId        String?
+  sequenceId           String?                  @unique
+  researchPlanId       String?
+  reviewScore          Int?
+  reviewRounds         Int                      @default(0)
+  reviewFeedback       String?                  @db.Text
+  contactsSourced      Int                      @default(0)
+  listExhausted        Boolean                  @default(false)
+  pauseReason          String?                  @db.Text
+  staffAlert           String?                  @db.Text
+  consecutiveFailures  Int                      @default(0)
+  createdByStaffUserId String
+  startedAt            DateTime                 @default(now())
+  pausedAt             DateTime?
+  stoppedAt            DateTime?
+  completedAt          DateTime?
+  nextActionAt         DateTime?
+  lastTickedAt         DateTime?
+  /// Stops a second tick from doing the same step while the first is still running.
+  tickLockUntil        DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  client       Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy    StaffUser             @relation("AiOutreachCampaignStartedBy", fields: [createdByStaffUserId], references: [id], onDelete: Restrict)
+  contactList  ContactList?          @relation(fields: [contactListId], references: [id], onDelete: SetNull)
+  sequence     ClientEmailSequence?  @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
+  researchPlan ProspectResearchPlan? @relation(fields: [researchPlanId], references: [id], onDelete: SetNull)
+  events       AiOutreachCampaignEvent[]
+  rocketReachRuns RocketReachPlanRun[]
+  creditReservations RocketReachCreditReservation[]
+
+  @@index([clientId, status])
+  @@index([status, nextActionAt])
+  @@index([tickLockUntil])
+  @@index([createdByStaffUserId])
+  @@index([contactListId])
+  @@index([researchPlanId])
+}
+
+model AiOutreachCampaignEvent {
+  id         String   @id @default(cuid())
+  campaignId String
+  at         DateTime @default(now())
+  stage      String
+  kind       String
+  message    String   @db.Text
+
+  campaign AiOutreachCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, at])
 }

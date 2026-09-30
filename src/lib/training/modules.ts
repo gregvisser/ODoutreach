@@ -1242,6 +1242,12 @@ export const STAFF_HANDOVER_CHECKLIST: readonly StaffHandoverChecklistItem[] = [
     portalHref: "/suppression",
   },
   {
+    step: "Start an AI campaign",
+    detail:
+      "On a client's Outreach page, use Create AI campaign. Type START AI CAMPAIGN once. The machine finds people, writes the emails, checks them, and sends them. You handle replies. Sequences you still send by hand stay unchanged.",
+    portalHref: "/training",
+  },
+  {
     step: "Check mailbox status",
     detail:
       'Open a client\'s Mailboxes tab. Read the "What happens when you connect a mailbox?" explainer card. Verify every row reads Connected and shows daily capacity. Reconnect any row flagged for sign-in.',

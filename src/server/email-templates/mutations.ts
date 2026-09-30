@@ -271,7 +271,7 @@ export async function markTemplateReadyForReview(
 
 /** READY_FOR_REVIEW → APPROVED. Blocks on unknown placeholders. */
 export async function approveTemplate(
-  input: StatusMutationInput,
+  input: StatusMutationInput & { systemApprovalKind?: "AI" | null },
 ): Promise<ClientEmailTemplate> {
   const current = await loadTemplateForMutation(input.templateId, input.clientId);
   ensureTransition(current.status, "APPROVED");
@@ -303,8 +303,9 @@ export async function approveTemplate(
     where: { id: current.id },
     data: {
       status: "APPROVED",
-      approvedByStaffUserId: input.staffUserId,
+      approvedByStaffUserId: input.systemApprovalKind === "AI" ? null : input.staffUserId,
       approvedAt: new Date(),
+      systemApprovalKind: input.systemApprovalKind === "AI" ? "AI" : null,
     },
   });
 }

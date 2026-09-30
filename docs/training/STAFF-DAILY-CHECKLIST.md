@@ -31,8 +31,11 @@ One page for OpensDoors staff. Run through this every working day before you tre
 
 ## 5. AI features (sparkle icon)
 
-- Sparkle-marked features (**draft sequence**, **review campaign**, send-time advice, job-title fit, and **Compare our senders** on Outreach and Mailboxes) only **draft or advise**. They **never** send email. Those counts use emails that were actually sent and the replies linked to them. Open tracking is off, so opens are not used.
-- Every AI draft still needs a **person** to read, edit if needed, and approve before anything goes out.
+- Sparkle-marked features (**draft sequence**, **review campaign**, send-time advice, job-title fit, and **Compare our senders** on Outreach and Mailboxes) only **draft or advise**. They do not send email by themselves. Those counts use emails that were actually sent and the replies linked to them. Open tracking is off, so opens are not used.
+- Every AI draft on Templates still needs a **person** to read, edit if needed, and approve before a hand-sent sequence goes out.
+- **How do I start an AI campaign?** On the client's Outreach page, open **Create AI campaign**, read what the machine will do, and type **START AI CAMPAIGN**. That one confirmation is enough. The machine finds people, writes, checks, and sends. You handle replies. Do not turn on Machine sending for the client to get this. Pause or stop from the campaign page.
+
+
 - **Automatic reply labels** are off for prospect replies — the Replies queue will not sort warm leads for you; read the messages yourself.
 - Product AI uses **xAI Grok** when enabled; it is not OpenAI or Anthropic in production.
 

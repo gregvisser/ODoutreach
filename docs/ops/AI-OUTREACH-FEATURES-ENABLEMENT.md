@@ -4,7 +4,9 @@
 **This document does not enable production flags.** Merging it does not set
 Azure App Settings, does not add `ANTHROPIC_API_KEY`, and does not touch send
 governance, DNC, tracking-off defaults, mailbox OAuth, or reply-match order.
-AI assistance must not itself send mail (already true in code).
+Draft and review functions must not themselves send mail (already true in code).
+An AI campaign is a separate staff-started run: see `docs/ops/AI-CAMPAIGNS.md`.
+That run sends only through the existing sequence dispatcher, after its own score check.
 
 Authoritative switch: `src/lib/ai/ai-switch.ts` (`areAiFeaturesEnabled`).
 Every model call goes through `src/server/ai/metered-call.ts` (ledger + refusals).

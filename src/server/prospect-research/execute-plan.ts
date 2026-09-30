@@ -35,8 +35,9 @@ export async function executeSavedResearchPlan(args: {
   staffId: string | null;
   existingListId?: string;
   newListName?: string;
-  trigger: "MANUAL" | "AUTO_REFILL";
+  trigger: "MANUAL" | "AUTO_REFILL" | "AI_CAMPAIGN";
   sequenceId?: string | null;
+  aiOutreachCampaignId?: string | null;
   start?: number;
   pageSize?: number;
   originNote?: string | null;
@@ -55,6 +56,7 @@ export async function executeSavedResearchPlan(args: {
       clientId: args.clientId,
       planId: plan.id,
       sequenceId: args.sequenceId ?? null,
+      aiOutreachCampaignId: args.aiOutreachCampaignId ?? null,
       triggeredByStaffId: args.staffId,
       trigger: args.trigger,
       status: "RUNNING",

@@ -27,6 +27,7 @@ const { prismaMock } = vi.hoisted(() => {
     // exercising the bottom of the ramp rather than silently skipping it.
     $queryRaw: vi.fn(async () => []),
     mailboxSendReservation: { count: vi.fn() },
+    aiOutreachCampaign: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   };
   return { prismaMock };
@@ -196,12 +197,14 @@ describe("sendSequenceStepBatch — governance gate", () => {
     prismaMock.outboundEmail.findMany.mockReset();
     prismaMock.clientMailboxIdentity.findMany.mockReset();
     prismaMock.mailboxSendReservation.count.mockReset();
+    prismaMock.aiOutreachCampaign.findFirst.mockReset();
     prismaMock.$transaction.mockReset();
     vi.mocked(evaluateSuppression).mockReset();
     vi.mocked(evaluateSuppression).mockResolvedValue({
       suppressed: false,
     } as never);
     prismaMock.mailboxSendReservation.count.mockResolvedValue(0);
+    prismaMock.aiOutreachCampaign.findFirst.mockResolvedValue(null);
     prismaMock.clientEmailSequence.findMany.mockResolvedValue([]);
     prismaMock.clientEmailSequenceStepSend.groupBy.mockResolvedValue([]);
     prismaMock.outboundEmail.findMany.mockResolvedValue([]);

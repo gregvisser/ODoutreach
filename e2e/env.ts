@@ -68,6 +68,8 @@ export const E2E_APP_ENV: Record<string, string> = {
   GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: "",
   ROCKETREACH_API_KEY: "",
   ROCKETREACH_AUTO_REFILL: "off",
+  // The wizard must be able to save a campaign. Creation does not call AI or RocketReach.
+  AI_CAMPAIGNS_ENABLED: "true",
   ROCKETREACH_MIN_CREDIT_FLOOR: "",
 
   // Dev-only simulation routes stay off.
