@@ -9,6 +9,7 @@ import type { CreditBalance } from "@/lib/ai-campaigns/policy";
 import {
   AI_CAMPAIGN_LOW_WATER,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
+  AI_CAMPAIGN_TRANSIENT_BACKOFF_MS,
   creditsAllowedForAiCampaign,
   isAiCampaignsEnabled,
   reviewFeedbackText,
@@ -853,23 +854,44 @@ async function tickOne(campaign: CampaignRow, now: Date): Promise<string | null>
     if (decision.type === "needs_staff") return message;
     return null;
   } catch (error) {
-    const message = sanitizeJobErrorText(error instanceof Error ? error.message : "The AI campaign tick failed.");
+    const raw = sanitizeJobErrorText(error instanceof Error ? error.message : "The AI campaign tick failed.");
     const failed = noteStageFailure(aiCampaignSnapshot({
       status: campaign.status,
       consecutiveFailures: campaign.consecutiveFailures,
-    }), message);
+    }), raw);
+    const staffMessage = failed.decision.type === "hold" || failed.decision.type === "needs_staff"
+      ? failed.decision.reason
+      : raw;
     await prisma.aiOutreachCampaign.update({
       where: { id: campaign.id },
       data: {
         status: failed.snapshot.status,
         consecutiveFailures: failed.snapshot.consecutiveFailures,
-        staffAlert: failed.snapshot.status === "NEEDS_STAFF" ? message : campaign.staffAlert,
+        staffAlert: failed.snapshot.status === "NEEDS_STAFF" ? staffMessage : campaign.staffAlert,
         tickLockUntil: null,
+        ...(failed.retryable
+          ? { nextActionAt: new Date(now.getTime() + AI_CAMPAIGN_TRANSIENT_BACKOFF_MS) }
+          : {}),
       },
     });
-    await appendEvent(campaign.id, failed.snapshot.status, "error", message);
-    logger.error({ event: "ai_campaign_tick", campaignId: campaign.id }, message);
-    return message;
+    // The five-minute outreach pass is the backoff. Releasing the lock lets that
+    // pass retry. The scheduled job stays green so capacity does not page staff.
+    if (failed.retryable) {
+      await appendEvent(campaign.id, failed.snapshot.status, "info", staffMessage);
+      logger.warn(
+        { event: "ai_campaign_tick_retry", campaignId: campaign.id, reason: raw },
+        staffMessage,
+      );
+      return null;
+    }
+    await appendEvent(
+      campaign.id,
+      failed.snapshot.status,
+      failed.snapshot.status === "NEEDS_STAFF" ? "alert" : "error",
+      staffMessage,
+    );
+    logger.error({ event: "ai_campaign_tick", campaignId: campaign.id, reason: raw }, staffMessage);
+    return staffMessage;
   }
 }
 

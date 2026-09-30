@@ -14,8 +14,17 @@ import {
   staffMayControlAiCampaign,
   templateMachineApprovalStep,
   AI_CAMPAIGN_CONFIRMATION_PHRASE,
+  AI_CAMPAIGN_FAILURE_LIMIT,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
+  AI_CAMPAIGN_TRANSIENT_BACKOFF_MS,
 } from "./policy";
+
+describe("AI campaign provider retry", () => {
+  it("waits one five-minute outreach pass and still escalates hard failures at three", () => {
+    expect(AI_CAMPAIGN_TRANSIENT_BACKOFF_MS).toBe(5 * 60 * 1000);
+    expect(AI_CAMPAIGN_FAILURE_LIMIT).toBe(3);
+  });
+});
 
 describe("AI campaign kill switch", () => {
   it("stays off until the setting is an explicit on value", () => {

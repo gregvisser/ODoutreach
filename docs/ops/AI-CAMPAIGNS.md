@@ -89,6 +89,19 @@ The reason is on the campaign timeline, in the audit log, and on the scheduled
 job the first time it lands there. Later passes do not fail the cron again for
 the same wait. There is no "send anyway" button.
 
+xAI capacity and timeouts do not ask for a person. `xai_http_429`,
+`resource-exhausted`, a model-at-capacity response, and `xai_timeout` leave
+the campaign on the same step (Writing, Checking, Sending, and the rest).
+The timeline says xAI is busy and will retry. The next five-minute pass tries
+again. Those failures do not count toward the three hard failures that wait
+for staff, and they do not fail the scheduled job. A bad credential, a request
+xAI will keep rejecting, or an unusable draft still waits for staff after
+three in a row. A writing score under 75 after three checks still waits for
+staff and does not send. Do-not-contact, mailbox caps, the kill switch, and
+pause or stop are unchanged. The model abort stays at 180 seconds: writing
+and the writing check are separate ticks, and a longer silent call is cut by
+Azure's idle socket.
+
 ## Gates before `AI_CAMPAIGNS_ENABLED=true` in production
 
 1. Migration applied on the production database.
