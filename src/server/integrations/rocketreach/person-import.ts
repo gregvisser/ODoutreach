@@ -382,12 +382,9 @@ export async function searchRocketReachIdentities(
     identities.push(identity);
     if (identities.length >= lookupLimit) break;
   }
-  if (identities.length === 0) {
-    return {
-      ok: false,
-      error: "RocketReach search returned no profile ids — refine the query or check API credits.",
-    };
-  }
+  // An empty page is a normal search result. Search does not spend credits
+  // (see rocketReachPersonSearchCostsCredits); blaming the credit balance here
+  // sent staff to check ~68k remaining credits for a filter that matched nobody.
   return { ok: true, identities };
 }
 

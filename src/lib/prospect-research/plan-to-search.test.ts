@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildRocketReachCardQuery } from "@/lib/clients/rocketreach-search-query";
 import { researchPlanToPreviewSearch, researchPlanToSearchBody } from "./plan-to-search";
 
 const criteria = {
@@ -9,22 +10,46 @@ const criteria = {
 };
 
 describe("researchPlanToSearchBody", () => {
-  it("maps the four plan fields onto the manual RocketReach filters and the same cap", () => {
+  it("maps plan filters with the same query builder as the Sources card", () => {
     const mapped = researchPlanToSearchBody(criteria, 100, 3);
+    const card = buildRocketReachCardQuery({
+      currentTitle: ["Head of Procurement"],
+      industry: ["Construction - General"],
+      location: ["United Kingdom"],
+    });
     expect(mapped).toEqual({
       ok: true,
       body: {
-        query: {
-          current_title: ["Head of Procurement"],
-          company_industry: ["Construction - General"],
-          location: ["United Kingdom"],
-          management_levels: ["Director"],
-        },
+        query: card,
         page_size: 10,
         start: 3,
         order_by: "relevance",
       },
     });
+    if (!mapped.ok) throw new Error("expected a search body");
+    expect(mapped.body.query).not.toHaveProperty("management_levels");
+  });
+
+  it("keeps optional seniority off the RocketReach query for the logistics plan", () => {
+    const withSeniority = researchPlanToSearchBody({
+      titles: ["Head of Operations"],
+      industries: ["Logistics & Supply Chain - General"],
+      seniorities: ["Director"],
+      regions: ["United Kingdom"],
+    }, 10, 1);
+    const withoutSeniority = researchPlanToSearchBody({
+      titles: ["Head of Operations"],
+      industries: ["Logistics & Supply Chain - General"],
+      seniorities: [],
+      regions: ["United Kingdom"],
+    }, 10, 1);
+    const card = buildRocketReachCardQuery({
+      currentTitle: ["Head of Operations"],
+      industry: ["Logistics & Supply Chain - General"],
+      location: ["United Kingdom"],
+    });
+    expect(withSeniority).toEqual(withoutSeniority);
+    expect(withSeniority).toMatchObject({ ok: true, body: { query: card, page_size: 10, start: 1 } });
   });
 
   it("refuses an industry that the manual card would reject", () => {

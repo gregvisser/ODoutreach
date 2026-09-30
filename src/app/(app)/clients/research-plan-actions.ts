@@ -6,7 +6,7 @@ import { researchPlanSchema } from "@/lib/prospect-research/qualification";
 export async function saveResearchPlanAction(clientId: string, input: unknown) {
   const staff = await requireOpensDoorsStaff();
   const parsed = researchPlanSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Complete all four targeting fields and choose a whole-number lookup limit from 1 to 100." };
+  if (!parsed.success) return { ok: false, error: "Complete the plan name, job titles, industries, regions, and a whole-number lookup limit from 1 to 100. Seniority is optional." };
   try {
     await saveResearchPlan(staff, clientId, parsed.data);
     revalidatePath(`/clients/${clientId}/sources`);

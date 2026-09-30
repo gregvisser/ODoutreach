@@ -70,7 +70,16 @@ it("runs the saved plan through the existing import and records who, credits, an
   expect(importer).toHaveBeenCalledWith(expect.objectContaining({
     staffId: "staff-1",
     existingListId: "list-1",
-    searchBody: expect.objectContaining({ page_size: 10, order_by: "relevance" }),
+    searchBody: {
+      query: {
+        current_title: ["Head of Procurement"],
+        company_industry: ["Construction - General"],
+        location: ["United Kingdom"],
+      },
+      page_size: 10,
+      start: 1,
+      order_by: "relevance",
+    },
   }));
   expect(db.updates.at(-1)).toMatchObject({
     data: { status: "COMPLETED", creditsUsed: 1, contactsAdded: 1, contactListId: "list-1" },

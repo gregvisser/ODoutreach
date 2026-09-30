@@ -58,6 +58,8 @@ const ALIAS_GROUPS: readonly (readonly string[])[] = [
   ["donotcontact", "dnc", "suppression"],
   ["queue", "queued", "queues"],
   ["pacing", "paced"],
+  ["mean", "means", "meaning"],
+  ["contact", "contacts"],
   ["industry", "industries"],
   ["draft", "drafts", "drafting"],
   ["launch", "launches", "launching", "launched"],
@@ -106,6 +108,11 @@ export interface TrainingSearchMatch {
   readonly score: number;
 }
 
+interface ScoredTrainingMatch extends TrainingSearchMatch {
+  readonly coverage: number;
+  readonly titleCoverage: number;
+}
+
 /**
  * A question must clear this fraction of its own meaningful words appearing
  * in a chunk before that chunk counts as "in scope". Majority-overlap rather
@@ -117,6 +124,66 @@ export const MIN_MATCH_SCORE = 0.5;
 /** How many chunks to hand to the model when a question is in scope. */
 export const MAX_CONTEXT_CHUNKS = 5;
 
+/** The how-to title, after the module or guide prefix. */
+function chunkTitle(label: string): string {
+  const parts = label.split("—");
+  return (parts[parts.length - 1] ?? label).trim();
+}
+
+/**
+ * Training modules include read-only exercise steps ("Do not reconnect during
+ * training"). Those share the words of a real how-to and, on a tie, sort
+ * first because they were written earlier. A "how do I" question must not
+ * treat that prohibition as the answer.
+ */
+function isProhibitionTitle(label: string): boolean {
+  const title = chunkTitle(label);
+  const instruction = title.includes(":") ? title.slice(title.indexOf(":") + 1) : title;
+  return /\b(?:do not|don't|dont)\b/i.test(instruction);
+}
+
+function questionAsksWhatNotToDo(question: string): boolean {
+  return /\b(?:do not|don't|dont|avoid|never|must not)\b/i.test(question);
+}
+
+/**
+ * Score every in-scope chunk. Title overlap uses the how-to title, not the
+ * module prefix ("Mailboxes and sender identities"), so a prefix that merely
+ * contains "mailbox" does not tie with the staff guide section.
+ */
+function scoreTrainingChunks(
+  question: string,
+  chunks: readonly TrainingChunk[],
+): ScoredTrainingMatch[] {
+  const tokens = queryTokens(question);
+  if (tokens.length === 0) return [];
+
+  const uniqueQueryTokens = new Set(tokens);
+  const penaliseProhibition = !questionAsksWhatNotToDo(question);
+  const matches: ScoredTrainingMatch[] = [];
+
+  for (const chunk of chunks) {
+    const textTokens = new Set(tokenize(chunk.text));
+    const titleTokens = new Set(tokenize(chunkTitle(chunk.label)));
+    let overlap = 0;
+    let titleOverlap = 0;
+    for (const token of uniqueQueryTokens) {
+      if (textTokens.has(token) || titleTokens.has(token)) overlap += 1;
+      if (titleTokens.has(token)) titleOverlap += 1;
+    }
+    const coverage = overlap / uniqueQueryTokens.size;
+    const titleCoverage = titleOverlap / uniqueQueryTokens.size;
+    if (coverage < MIN_MATCH_SCORE) continue;
+    const kindBoost = chunk.kind === "handover_guide_section" ? 0.2 : 0;
+    const penalty = penaliseProhibition && isProhibitionTitle(chunk.label) ? 0.25 : 1;
+    const score = (coverage + titleCoverage * 0.5 + kindBoost) * penalty;
+    matches.push({ chunk, score, coverage, titleCoverage });
+  }
+
+  matches.sort((a, b) => b.score - a.score || b.titleCoverage - a.titleCoverage);
+  return matches;
+}
+
 /**
  * Score every chunk against a question and return the ones that clear
  * `MIN_MATCH_SCORE`, best first. An empty result means "out of scope" — the
@@ -126,31 +193,26 @@ export function searchTrainingContent(
   question: string,
   chunks: readonly TrainingChunk[] = TRAINING_ASSISTANT_CHUNKS,
 ): TrainingSearchMatch[] {
-  const tokens = queryTokens(question);
-  if (tokens.length === 0) return [];
+  return scoreTrainingChunks(question, chunks)
+    .slice(0, MAX_CONTEXT_CHUNKS)
+    .map(({ chunk, score }) => ({ chunk, score }));
+}
 
-  const uniqueQueryTokens = new Set(tokens);
-
-  const matches: TrainingSearchMatch[] = [];
-  for (const chunk of chunks) {
-    const textTokens = new Set(tokenize(chunk.text));
-    const labelTokens = new Set(tokenize(chunk.label));
-    let overlap = 0;
-    let labelOverlap = 0;
-    for (const token of uniqueQueryTokens) {
-      if (textTokens.has(token) || labelTokens.has(token)) overlap += 1;
-      if (labelTokens.has(token)) labelOverlap += 1;
-    }
-    // Body overlap decides whether the passage is in scope. A matching title
-    // ranks it ahead of an earlier passage that merely mentions the same words,
-    // so "connect a new mailbox" surfaces the how-to rather than a status step.
-    const coverage = overlap / uniqueQueryTokens.size;
-    const score = coverage + (labelOverlap / uniqueQueryTokens.size) * 0.5;
-    if (coverage >= MIN_MATCH_SCORE) {
-      matches.push({ chunk, score });
-    }
-  }
-
-  matches.sort((a, b) => b.score - a.score);
-  return matches.slice(0, MAX_CONTEXT_CHUNKS);
+/**
+ * A staff how-to whose title covers the question. The header bar used to hand
+ * the top passages to xAI and accept `canAnswer: false`. That veto fired for
+ * "How do I connect a new mailbox?" because a training-exercise step ("Do not
+ * reconnect during training") tied the real guide section and sorted first.
+ * A title-matched guide section is the answer; the model must not hide it.
+ */
+export function groundedTrainingAnswer(
+  question: string,
+  chunks: readonly TrainingChunk[] = TRAINING_ASSISTANT_CHUNKS,
+): TrainingSearchMatch | null {
+  const best = scoreTrainingChunks(question, chunks)[0];
+  if (!best) return null;
+  if (best.coverage < 1 || best.titleCoverage < 0.5) return null;
+  if (best.chunk.kind !== "handover_guide_section") return null;
+  if (isProhibitionTitle(best.chunk.label) && !questionAsksWhatNotToDo(question)) return null;
+  return { chunk: best.chunk, score: best.score };
 }

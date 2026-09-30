@@ -24,6 +24,14 @@ it("refuses empty targeting and budgets that cannot bound work", () => {
   expect(qualifyResearchCandidate({ ...criteria, regions: [] }, evidence, "CLEAR").status).toBe("REVIEW");
   for (const maxLookups of [0, 1.5, 101, Infinity]) expect(researchPlanSchema.safeParse({ name: "Synthetic plan", criteria, maxLookups }).success).toBe(false);
 });
+it("treats a blank seniority list as optional", () => {
+  expect(qualifyResearchCandidate({ ...criteria, seniorities: [] }, evidence, "CLEAR").status).toBe("MATCH");
+  expect(researchPlanSchema.safeParse({
+    name: "Synthetic plan",
+    criteria: { ...criteria, seniorities: [] },
+    maxLookups: 10,
+  }).success).toBe(true);
+});
 it("normalises case, spacing and punctuation in explicit phrases", () => {
   expect(qualifyResearchCandidate(criteria, { ...evidence, titles: "GROUP it-director" }, "CLEAR").status).toBe("MATCH");
 });

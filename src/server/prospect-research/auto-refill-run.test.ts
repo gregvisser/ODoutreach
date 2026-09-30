@@ -217,7 +217,13 @@ it("spends nothing when the credit balance cannot be read", async () => {
 
 it("treats an empty search page as a skip and restarts the cursor", async () => {
   state.rules = [{ ...rule, searchStart: 11 }];
-  execute.mockResolvedValue({ ok: false, error: "RocketReach search returned no profile ids — refine the query or check API credits.", runId: "run-1" });
+  execute.mockResolvedValue({
+    ok: true,
+    runId: "run-1",
+    searchProfileCount: 0,
+    imported: 0,
+    creditsUsed: 0,
+  });
   const result = await runDueRocketReachListRefills();
   expect(result).toMatchObject({ skipped: 1, failed: 0 });
   expect(state.ruleUpdates.at(-1)).toMatchObject({ data: { searchStart: 1 } });
@@ -247,4 +253,46 @@ it("previews matches and estimated credits without a paid lookup", async () => {
   expect(result).toMatchObject({ ok: true, estimatedCredits: 0, alreadyKnown: 0 });
   expect(state.createdRuns[0]).toMatchObject({ trigger: "PREVIEW", creditsUsed: 0, dryRun: true });
   expect(search).toHaveBeenCalledOnce();
+  const body = search.mock.calls[0]?.[0] as { query: Record<string, unknown> };
+  expect(body.query).toEqual({
+    current_title: ["Director"],
+    company_industry: ["Construction - General"],
+    location: ["United Kingdom"],
+  });
+  expect(body.query).not.toHaveProperty("management_levels");
+});
+
+it("reports an empty RocketReach page as no matches and does not look anyone up", async () => {
+  state.plan = {
+    id: "plan-1",
+    name: "Logistics",
+    maxLookups: 10,
+    criteria: {
+      titles: ["Head of Operations"],
+      industries: ["Logistics & Supply Chain - General"],
+      seniorities: ["Director"],
+      regions: ["United Kingdom"],
+    },
+  };
+  search.mockResolvedValue({ ok: true, identities: [] });
+  const result = await previewSequenceListTopUp(
+    { id: "staff-1", role: "OPERATOR" },
+    "client-1",
+    "seq-1",
+    "plan-1",
+  );
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error("expected a dry-run preview");
+  expect(result.detail).toContain("RocketReach found no matches for this plan — try broader filters");
+  expect(result.estimatedCredits).toBe(0);
+  expect(result.matches.filter((match) => match.source === "RocketReach")).toEqual([]);
+  expect(state.createdRuns[0]).toMatchObject({ trigger: "PREVIEW", creditsUsed: 0, creditsReserved: 0, dryRun: true });
+  expect(search).toHaveBeenCalledOnce();
+  const body = search.mock.calls[0]?.[0] as { query: Record<string, unknown> };
+  expect(body.query).toEqual({
+    current_title: ["Head of Operations"],
+    company_industry: ["Logistics & Supply Chain - General"],
+    location: ["United Kingdom"],
+  });
+  expect(JSON.stringify(body)).not.toMatch(/lookup/);
 });

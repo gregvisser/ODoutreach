@@ -14,7 +14,14 @@ import {
   type SequenceRefillRuleInput,
 } from "@/lib/clients/rocketreach-refill-policy";
 import type { SequenceListTopUpView } from "@/lib/clients/rocketreach-top-up-view";
-import { researchPlanToPreviewSearch } from "@/lib/prospect-research/plan-to-search";
+import {
+  previewMaySearchRocketReach,
+  rocketReachPersonSearchCostsCredits,
+} from "@/lib/clients/rocketreach-credit-estimate";
+import {
+  researchPlanToPreviewSearch,
+  ROCKETREACH_PLAN_EMPTY_SEARCH_MESSAGE,
+} from "@/lib/prospect-research/plan-to-search";
 import { loadRocketReachCreditSnapshot } from "@/server/integrations/rocketreach/account";
 import {
   searchRocketReachIdentities,
@@ -299,7 +306,10 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
             now,
           }),
       });
-      if (!result.ok && /no profile ids/i.test(result.error)) {
+      const emptySearch = result.ok
+        ? result.imported === 0 && result.searchProfileCount === 0
+        : /no profile ids|no matches for this plan/i.test(result.error);
+      if (emptySearch) {
         skipped++;
         if (result.runId) {
           await prisma.rocketReachPlanRun.update({
@@ -440,10 +450,19 @@ export async function previewSequenceListTopUp(
   if (!universe.ok) return universe;
   const mapped = researchPlanToPreviewSearch(plan.criteria, rule?.maxCreditsPerRun ?? Math.min(plan.maxLookups, 10), rule?.searchStart ?? 1);
   if (!mapped.ok) return mapped;
-  const searched = mapped.body
-    ? await searchRocketReachIdentities(mapped.body)
-    : { ok: true as const, identities: [] };
+  const searchCostsCredits = rocketReachPersonSearchCostsCredits();
+  let searchNote = "";
+  const searched = !mapped.body
+    ? { ok: true as const, identities: [] }
+    : previewMaySearchRocketReach(searchCostsCredits)
+      ? await searchRocketReachIdentities(mapped.body)
+      : { ok: true as const, identities: [] };
   if (!searched.ok) return searched;
+  if (mapped.body && !previewMaySearchRocketReach(searchCostsCredits)) {
+    searchNote = "Preview did not search RocketReach because a search would spend credits.";
+  } else if (mapped.body && searched.identities.length === 0) {
+    searchNote = ROCKETREACH_PLAN_EMPTY_SEARCH_MESSAGE;
+  }
   const pageSize = mapped.body?.page_size ?? 0;
   const known = await loadKnownRocketReachIndexes(clientId, searched.identities);
   const rocketReachMatches = searched.identities.map((identity) => {
@@ -488,7 +507,7 @@ export async function previewSequenceListTopUp(
       contactsAdded: 0,
       dryRun: true,
       skipped: { alreadyKnown, wouldLookup: unknown, universeMatches: universe.matches.length },
-      detail: [`Preview only. Universe ${String(universe.matches.length)}. RocketReach lookups about ${String(estimatedCredits)}. No lookup was made.`, mapped.note].filter(Boolean).join(" "),
+      detail: [`Preview only. Universe ${String(universe.matches.length)}. RocketReach lookups about ${String(estimatedCredits)}. No lookup was made.`, searchNote, mapped.note].filter(Boolean).join(" "),
     },
   });
   return {
@@ -497,7 +516,7 @@ export async function previewSequenceListTopUp(
     estimatedCredits,
     alreadyKnown,
     universeMatches: universe.matches.length,
-    detail: [`Preview only. Universe can add ${String(universe.matches.length)} without credits. RocketReach would look up about ${String(estimatedCredits)} credit${estimatedCredits === 1 ? "" : "s"} for the shortfall. ${String(alreadyKnown)} RocketReach ${alreadyKnown === 1 ? "row is" : "rows are"} already known. No contact was added and no credit was spent.`, mapped.note].filter(Boolean).join(" "),
+    detail: [`Preview only. Universe can add ${String(universe.matches.length)} without credits. RocketReach would look up about ${String(estimatedCredits)} credit${estimatedCredits === 1 ? "" : "s"} for the shortfall. ${String(alreadyKnown)} RocketReach ${alreadyKnown === 1 ? "row is" : "rows are"} already known. No contact was added and no credit was spent.`, searchNote, mapped.note].filter(Boolean).join(" "),
   };
 }
 
