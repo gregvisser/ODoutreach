@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { aiCampaignDecisionMessage } from "./copy";
+import { AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT } from "./policy";
 import {
   aiCampaignSnapshot,
   decideAiCampaignTick,
@@ -42,41 +44,98 @@ describe("AI campaign transitions", () => {
 });
 
 describe("review threshold loop", () => {
-  it("revises while the score stays under 75 and stops after three checks", () => {
+  it("keeps rewriting while the score stays under 75, including after three checks", () => {
     let snapshot = aiCampaignSnapshot({ status: "REVIEWING", draftReady: true });
+    expect(snapshot.maxReviewRounds).toBe(AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT);
     expect(decideAiCampaignTick(snapshot)).toEqual({ type: "review" });
 
-    snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: 70 });
-    expect(snapshot.reviewRounds).toBe(1);
-    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "revise" });
-
-    snapshot = reduceAiCampaign(snapshot, { type: "revise" });
-    expect(snapshot.status).toBe("REVISING");
-    expect(snapshot.reviewScore).toBeNull();
-    snapshot = reduceAiCampaign(snapshot, { type: "write" }, { draftReady: true });
-    snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: 60 });
-    expect(snapshot.reviewRounds).toBe(2);
-    expect(decideAiCampaignTick(snapshot).type).toBe("revise");
-
-    snapshot = reduceAiCampaign(snapshot, { type: "revise" });
-    snapshot = reduceAiCampaign(snapshot, { type: "write" }, { draftReady: true });
-    snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: 74 });
-    expect(snapshot.reviewRounds).toBe(3);
-    expect(decideAiCampaignTick(snapshot)).toMatchObject({ type: "needs_staff" });
-    expect(reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot)).status).toBe("NEEDS_STAFF");
+    const scores = [68, 70, 72, 74];
+    for (const score of scores) {
+      snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: score });
+      expect(snapshot.reviewScore).toBe(score);
+      const decision = decideAiCampaignTick(snapshot);
+      expect(decision).toEqual({ type: "revise" });
+      expect(decision.type).not.toBe("needs_staff");
+      const timeline = aiCampaignDecisionMessage(decision);
+      expect(timeline).toMatch(/below the line/);
+      expect(timeline).toMatch(/rewritten/);
+      expect(timeline).not.toMatch(/waiting for a member of staff/i);
+      snapshot = reduceAiCampaign(snapshot, decision);
+      expect(snapshot.status).toBe("REVISING");
+      expect(snapshot.status).not.toBe("NEEDS_STAFF");
+      snapshot = reduceAiCampaign(snapshot, { type: "write" }, { draftReady: true });
+    }
+    expect(snapshot.reviewRounds).toBe(4);
   });
 
-  it("still waits for staff when a writing score stays under 75", () => {
-    const snapshot = aiCampaignSnapshot({
+  it("keeps rewriting a score of 72 after three or more checks", () => {
+    for (const reviewRounds of [3, 4, 10]) {
+      const snapshot = aiCampaignSnapshot({
+        status: "REVIEWING",
+        reviewScore: 72,
+        reviewRounds,
+        draftReady: true,
+      });
+      const decision = decideAiCampaignTick(snapshot);
+      expect(decision).toEqual({ type: "revise" });
+      expect(reduceAiCampaign(snapshot, decision).status).toBe("REVISING");
+    }
+  });
+
+  it("asks for a person only after the runaway ceiling, not after a low score of 72", () => {
+    const stillRewriting = aiCampaignSnapshot({
       status: "REVIEWING",
-      reviewScore: 74,
-      reviewRounds: 3,
+      reviewScore: 72,
+      reviewRounds: AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT - 1,
       draftReady: true,
     });
-    const decision = decideAiCampaignTick(snapshot);
-    expect(decision).toMatchObject({ type: "needs_staff" });
-    expect(reduceAiCampaign(snapshot, decision).status).toBe("NEEDS_STAFF");
-    expect(decision.type === "needs_staff" ? decision.reason : "").toMatch(/were not sent/);
+    expect(decideAiCampaignTick(stillRewriting)).toEqual({ type: "revise" });
+
+    const ceiling = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 72,
+      reviewRounds: AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT,
+      draftReady: true,
+    });
+    const decision = decideAiCampaignTick(ceiling);
+    expect(decision.type).toBe("needs_staff");
+    expect(reduceAiCampaign(ceiling, decision).status).toBe("NEEDS_STAFF");
+    if (decision.type === "needs_staff") {
+      expect(decision.reason).toMatch(/below the line/);
+      expect(decision.reason).toMatch(/were not sent/);
+      expect(decision.reason).toMatch(new RegExp(`after ${String(AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT)} checks`));
+    }
+  });
+
+  it("approves at 75 and never approves or sends below 75", () => {
+    const passing = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 75,
+      reviewRounds: 4,
+      draftReady: true,
+    });
+    expect(decideAiCampaignTick(passing)).toEqual({ type: "approve" });
+    const prepared = reduceAiCampaign(passing, { type: "approve" }, { templatesApproved: true });
+    expect(prepared.status).toBe("PREPARING");
+
+    const latePass = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 75,
+      reviewRounds: AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT,
+      draftReady: true,
+    });
+    expect(decideAiCampaignTick(latePass)).toEqual({ type: "approve" });
+
+    const below = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 74,
+      reviewRounds: 12,
+      draftReady: true,
+    });
+    expect(decideAiCampaignTick(below)).toEqual({ type: "revise" });
+    const forced = reduceAiCampaign(below, { type: "approve" }, { templatesApproved: true });
+    expect(forced.status).toBe("REVIEWING");
+    expect(forced.templatesApproved).toBe(false);
   });
 
   it("has no staff approval between a passing writing check and sending", () => {

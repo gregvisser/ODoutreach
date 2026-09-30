@@ -15,9 +15,21 @@ import {
   templateMachineApprovalStep,
   AI_CAMPAIGN_CONFIRMATION_PHRASE,
   AI_CAMPAIGN_FAILURE_LIMIT,
+  AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+  AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT,
+  AI_CAMPAIGN_REVIEW_THRESHOLD,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
   AI_CAMPAIGN_TRANSIENT_BACKOFF_MS,
 } from "./policy";
+
+describe("AI campaign writing score", () => {
+  it("rewrites below 75 past three checks and only stops at the runaway ceiling", () => {
+    expect(AI_CAMPAIGN_REVIEW_THRESHOLD).toBe(75);
+    expect(AI_CAMPAIGN_MAX_REVIEW_ROUNDS).toBe(3);
+    expect(AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT).toBeGreaterThanOrEqual(30);
+    expect(AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT).toBeGreaterThan(AI_CAMPAIGN_MAX_REVIEW_ROUNDS);
+  });
+});
 
 describe("AI campaign provider retry", () => {
   it("waits one five-minute outreach pass and still escalates hard failures at three", () => {

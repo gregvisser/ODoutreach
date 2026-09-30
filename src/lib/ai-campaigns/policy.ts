@@ -13,10 +13,24 @@ export const AI_CAMPAIGN_PAUSE_PHRASE = "PAUSE AI CAMPAIGN";
 export const AI_CAMPAIGN_RESUME_PHRASE = "RESUME AI CAMPAIGN";
 export const AI_CAMPAIGN_STOP_PHRASE = "STOP AI CAMPAIGN";
 
-/** A campaign below this score is rewritten, then held for staff if it stays low. */
+/**
+ * Emails below this score are rewritten. They are not approved and they are not sent.
+ * A low score does not wait for a member of staff.
+ */
 export const AI_CAMPAIGN_REVIEW_THRESHOLD = 75;
-/** How many reviews run before a low score waits for a person. */
+/**
+ * A typical number of writing checks. It is not a stop.
+ * A score under the threshold keeps rewriting past this.
+ */
 export const AI_CAMPAIGN_MAX_REVIEW_ROUNDS = 3;
+/**
+ * Runaway ceiling for a writing score that stays under the threshold.
+ * Rewriting continues on every later tick until the score is at least 75,
+ * a person pauses or stops the campaign, or a hard failure hits the failure limit.
+ * Only after this many checks does a still-low score wait for a person, so a
+ * campaign cannot call the writer without end. Three checks is not this ceiling.
+ */
+export const AI_CAMPAIGN_REVIEW_RUNAWAY_LIMIT = 30;
 /**
  * How many hard failures of the same step ask for a person.
  * Transient xAI capacity and timeouts do not count.
