@@ -609,14 +609,13 @@ async function buildSnapshot(campaign: CampaignRow, now: Date): Promise<AiCampai
   let pendingWork = 0;
   let unenrolledReady = 0;
   if (campaign.sequenceId) {
-    const [steps, sequence, started, pending, ready] = await Promise.all([
+    // sequence.status APPROVED only means templates were approved — not that
+    // enroll + planSequenceStepSends has run. Treating APPROVED as "prepared"
+    // skips prepare and launch fails with NO_READY_ROWS (0 enrollments).
+    const [steps, started, pending, planned, ready] = await Promise.all([
       prisma.clientEmailSequenceStep.findMany({
         where: { sequenceId: campaign.sequenceId },
         select: { template: { select: { status: true, systemApprovalKind: true } } },
-      }),
-      prisma.clientEmailSequence.findFirst({
-        where: { id: campaign.sequenceId },
-        select: { status: true },
       }),
       prisma.clientEmailSequenceStepSend.count({
         where: {
@@ -627,13 +626,16 @@ async function buildSnapshot(campaign: CampaignRow, now: Date): Promise<AiCampai
       prisma.clientEmailSequenceEnrollment.count({
         where: { sequenceId: campaign.sequenceId, status: { in: ["PENDING", "PAUSED"] } },
       }),
+      prisma.clientEmailSequenceStepSend.count({
+        where: { sequenceId: campaign.sequenceId },
+      }),
       campaign.contactListId
         ? countReadyNotEnrolled(campaign.clientId, campaign.sequenceId, campaign.contactListId)
         : Promise.resolve(0),
     ]);
     draftReady = steps.length > 0;
     templatesApproved = steps.length > 0 && steps.every((step) => step.template.status === "APPROVED");
-    sequencePrepared = sequence?.status === "APPROVED";
+    sequencePrepared = planned > 0 || started > 0;
     introStarted = started > 0;
     pendingWork = pending;
     unenrolledReady = ready;

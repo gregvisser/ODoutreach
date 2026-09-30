@@ -160,6 +160,35 @@ describe("running campaign stop conditions", () => {
   });
 });
 
+
+describe("prepare before launch", () => {
+  it("PREPARING with approved templates still prepares when no step sends exist yet", () => {
+    const snapshot = aiCampaignSnapshot({
+      status: "PREPARING",
+      templatesApproved: true,
+      sequencePrepared: false,
+      draftReady: true,
+      killSwitchOn: true,
+      reviewScore: 76,
+      reviewRounds: 1,
+    });
+    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "prepare" });
+  });
+
+  it("PREPARING launches only after sequencePrepared is true", () => {
+    const snapshot = aiCampaignSnapshot({
+      status: "PREPARING",
+      templatesApproved: true,
+      sequencePrepared: true,
+      draftReady: true,
+      killSwitchOn: true,
+      reviewScore: 76,
+      reviewRounds: 1,
+    });
+    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "launch" });
+  });
+});
+
 describe("repeated failures", () => {
   it("asks for a person after the failure limit and not before", () => {
     let snapshot = aiCampaignSnapshot();
@@ -173,3 +202,5 @@ describe("repeated failures", () => {
     expect(third.decision.type).toBe("needs_staff");
   });
 });
+
+
