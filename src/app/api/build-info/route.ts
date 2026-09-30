@@ -8,5 +8,9 @@ export const runtime = "nodejs";
  * Non-secret build marker for deploy and routing verification.
  */
 export async function GET() {
-  return NextResponse.json(createBuildInfo());
+  return NextResponse.json(createBuildInfo(), {
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
 }
