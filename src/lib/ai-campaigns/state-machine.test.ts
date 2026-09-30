@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { AI_CAMPAIGN_TICK_BACKOFF_MS } from "./policy";
 import {
   aiCampaignSnapshot,
   decideAiCampaignTick,
   noteStageFailure,
   reduceAiCampaign,
+  resolveAiCampaignTickFailure,
 } from "./state-machine";
 
 describe("AI campaign transitions", () => {
@@ -231,6 +233,111 @@ describe("repeated failures", () => {
     const third = noteStageFailure(snapshot, "The writing service did not answer.");
     expect(third.snapshot.status).toBe("NEEDS_STAFF");
     expect(third.decision.type).toBe("needs_staff");
+  });
+});
+
+const TRANSIENT_WRITING_FAILURES = [
+  "xai_timeout: exceeded 180000ms",
+  "xai_http_429: resource_exhausted",
+  "xai_http_429: The model is at capacity due to high demand",
+] as const;
+
+describe("transient provider failures", () => {
+  it("stays on WRITING through three capacity and timeout failures", () => {
+    let snapshot = aiCampaignSnapshot({ status: "WRITING", draftReady: false, consecutiveFailures: 0 });
+    const now = new Date("2026-09-30T12:00:00.000Z");
+    for (const message of TRANSIENT_WRITING_FAILURES) {
+      const noted = noteStageFailure(snapshot, message);
+      expect(noted.snapshot.status).toBe("WRITING");
+      expect(noted.snapshot.consecutiveFailures).toBe(0);
+      expect(noted.decision.type).toBe("hold");
+      if (noted.decision.type === "hold") {
+        expect(noted.decision.reason).toMatch(/try this step again shortly/i);
+        expect(noted.decision.reason).not.toMatch(/member of staff|xai_|429/i);
+      }
+      const plan = resolveAiCampaignTickFailure(snapshot, message, now);
+      expect(plan.snapshot.status).toBe("WRITING");
+      expect(plan.holdUnsentMail).toBe(false);
+      expect(plan.jobError).toBeNull();
+      expect(plan.eventKind).toBe("info");
+      expect(plan.eventMessage).toMatch(/try this step again shortly/i);
+      expect(plan.staffAlert).toBe(plan.eventMessage);
+      expect(plan.nextActionAt?.toISOString()).toBe(
+        new Date(now.getTime() + AI_CAMPAIGN_TICK_BACKOFF_MS).toISOString(),
+      );
+      snapshot = noted.snapshot;
+    }
+    expect(snapshot.status).toBe("WRITING");
+    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "write" });
+  });
+
+  it("keeps REVIEWING and REVISING on the same step when the provider is down", () => {
+    for (const status of ["REVIEWING", "REVISING"] as const) {
+      const snapshot = aiCampaignSnapshot({ status, draftReady: true, consecutiveFailures: 2 });
+      const noted = noteStageFailure(snapshot, "xai_http_503: overloaded");
+      expect(noted.snapshot.status).toBe(status);
+      expect(noted.snapshot.consecutiveFailures).toBe(2);
+      expect(noted.decision.type).toBe("hold");
+      const plan = resolveAiCampaignTickFailure(snapshot, "xai_network: fetch failed ECONNRESET", snapshot.now);
+      expect(plan.holdUnsentMail).toBe(false);
+      expect(plan.snapshot.status).toBe(status);
+    }
+  });
+
+  it("does not let transient failures use up the staff limit", () => {
+    let snapshot = aiCampaignSnapshot({ status: "WRITING" });
+    snapshot = noteStageFailure(snapshot, "xai_timeout: exceeded 180000ms").snapshot;
+    snapshot = noteStageFailure(snapshot, "xai_http_503: unavailable").snapshot;
+    snapshot = noteStageFailure(snapshot, "The emails could not be checked.").snapshot;
+    expect(snapshot.status).toBe("WRITING");
+    expect(snapshot.consecutiveFailures).toBe(1);
+    snapshot = noteStageFailure(snapshot, "HTTP 429: resource-exhausted").snapshot;
+    expect(snapshot.consecutiveFailures).toBe(1);
+    snapshot = noteStageFailure(snapshot, "The emails could not be checked.").snapshot;
+    const third = noteStageFailure(snapshot, "no_api_key");
+    expect(third.snapshot.status).toBe("NEEDS_STAFF");
+    expect(third.decision.type).toBe("needs_staff");
+    const plan = resolveAiCampaignTickFailure(snapshot, "no_api_key", snapshot.now);
+    expect(plan.holdUnsentMail).toBe(true);
+    expect(plan.jobError).toBe("no_api_key");
+    expect(plan.snapshot.status).toBe("NEEDS_STAFF");
+  });
+
+  it("treats timeouts, capacity, and 503 as retryable and leaves faults for staff", () => {
+    const retryable = [
+      "xai_timeout: exceeded 180000ms",
+      "xai_http_429: resource-exhausted",
+      "xai_http_429: model at capacity",
+      "anthropic_http_503: overloaded",
+      "xai_http_502: bad gateway",
+      "xai_unreadable_body",
+      "The operation was aborted due to timeout",
+      "RocketReach search failed (HTTP 503): unavailable",
+    ];
+    for (const message of retryable) {
+      expect(noteStageFailure(aiCampaignSnapshot({ status: "WRITING", consecutiveFailures: 2 }), message).snapshot.status).toBe(
+        "WRITING",
+      );
+    }
+    const faults = [
+      "xai_http_401: invalid api key",
+      "xai_http_400: request timeout field invalid",
+      "xai_http_403: forbidden",
+      "no_api_key",
+      "ai_features_switched_off",
+      "unusable_answer",
+      "This person is on a do-not-contact list.",
+      "No new email-sendable contacts to enroll.",
+      "The mailbox has reached its daily limit.",
+      "No admin is available to run this AI campaign.",
+    ];
+    for (const message of faults) {
+      const noted = noteStageFailure(
+        aiCampaignSnapshot({ status: "WRITING", consecutiveFailures: 2 }),
+        message,
+      );
+      expect(noted.snapshot.status).toBe("NEEDS_STAFF");
+    }
   });
 });
 

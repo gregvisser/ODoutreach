@@ -32,6 +32,15 @@ describe("AI campaign safety wiring", () => {
     expect(send).toContain("aiCampaignAllowsAutomatedSend");
   });
 
+  it("retries a provider timeout without holding queued mail or asking for staff", () => {
+    const catchStart = tick.lastIndexOf("} catch (error)");
+    const catchBody = tick.slice(catchStart);
+    expect(catchBody).toContain("resolveAiCampaignTickFailure");
+    expect(catchBody).toContain("if (failed.holdUnsentMail && campaign.sequenceId)");
+    expect(catchBody).toContain("return failed.jobError");
+    expect(catchBody).not.toContain("status: \"NEEDS_STAFF\"");
+  });
+
   it("runs from the existing five-minute advance, after pacing resume", () => {
     expect(route).toContain("tickAiCampaignsForClient");
     expect(route).toContain("resumePacingHeldSends");

@@ -105,6 +105,7 @@ export function aiCampaignPlanSummary(input: {
       : "Company size is not set.",
     "Do-not-contact, unsubscribe, suppression, and same-client checks stay in place. The machine adds people who pass them. You do not open Review recipients for this campaign. Each mailbox keeps its own daily limit. Open tracking stays off.",
     "A reply stops further emails to that person. You read and answer replies. The client is not asked to approve anything.",
+    "If the writing service is busy or slow, the machine waits and tries again on its own.",
     "Pausing or stopping this campaign does not change campaigns you still send by hand.",
   ];
 }

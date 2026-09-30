@@ -84,6 +84,15 @@ no out-of-office label, so the conservative stop stays.
 
 ## Staff alerts
 
+A timeout, a rate limit, or a writing service that is at capacity does not ask
+for a person. The campaign stays on its current step. The timeline says the
+machine will try again, and the next scheduled pass retries. Those waits do
+not count toward the three-failure stop, and they do not hold mail that is
+already queued. A real fault (a bad key, a bad brief, a permanent refusal)
+still stops for staff after three failures in a row. Do-not-contact,
+unsubscribe, suppression, and mailbox caps stay fail-closed. A writing score
+that stays under 75 still waits for a person and is not sent.
+
 A campaign that needs a person is left in **Waiting for a member of staff**.
 The reason is on the campaign timeline, in the audit log, and on the scheduled
 job the first time it lands there. Later passes do not fail the cron again for

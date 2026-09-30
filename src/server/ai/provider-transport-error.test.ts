@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { isTransientAiCampaignFailure } from "@/lib/ai-campaigns/failure";
+
 import {
   classifyAiProviderFailure,
   providerTransportError,
@@ -16,6 +18,9 @@ describe("provider transport errors", () => {
 
     expect(err.message).toBe("xai_timeout: exceeded 180000ms");
     expect(classifyAiProviderFailure(err.message)).toBe("timeout");
+    expect(isTransientAiCampaignFailure(err.message)).toBe(true);
+    expect(isTransientAiCampaignFailure("xai_http_429: resource_exhausted")).toBe(true);
+    expect(isTransientAiCampaignFailure("xai_http_400: request timeout field invalid")).toBe(false);
   });
 
   it("names a socket failure as network and strips a bearer token", () => {

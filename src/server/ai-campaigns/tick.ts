@@ -9,6 +9,8 @@ import type { CreditBalance } from "@/lib/ai-campaigns/policy";
 import {
   AI_CAMPAIGN_LOW_WATER,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
+  AI_CAMPAIGN_TICK_BACKOFF_MS,
+  aiCampaignContactsStillNeeded,
   creditsAllowedForAiCampaign,
   isAiCampaignsEnabled,
   reviewFeedbackText,
@@ -19,8 +21,8 @@ import { aiCampaignDecisionMessage, companySizeLabel } from "@/lib/ai-campaigns/
 import {
   aiCampaignSnapshot,
   decideAiCampaignTick,
-  noteStageFailure,
   reduceAiCampaign,
+  resolveAiCampaignTickFailure,
   type AiCampaignDecision,
   type AiCampaignOutcome,
   type AiCampaignSnapshot,
@@ -321,7 +323,23 @@ async function sourcePeople(
     seniorities: campaign.seniorities,
     regions: campaign.countries,
   };
-  const shortfall = Math.max(0, campaign.targetContactCount - campaign.contactsSourced);
+  const alreadyListed = await countSourced(campaign.clientId, structure.contactListId);
+  const shortfall = aiCampaignContactsStillNeeded(campaign.targetContactCount, [
+    campaign.contactsSourced,
+    alreadyListed,
+  ]);
+  if (shortfall === 0) {
+    return {
+      contactsSourced: Math.max(campaign.contactsSourced, alreadyListed),
+      listExhausted: campaign.listExhausted,
+      searchStart: campaign.searchStart,
+      creditsUsed: await committedCredits(campaign.id),
+      detail: "Enough people are already on the list, so no further lookup was paid for.",
+      contactListId: structure.contactListId,
+      sequenceId: structure.sequenceId,
+      researchPlanId: structure.researchPlanId,
+    };
+  }
   const harvested = await applyUniverseHarvest({
     clientId: campaign.clientId,
     sequenceId: structure.sequenceId,
@@ -336,7 +354,11 @@ async function sourcePeople(
   let searchStart = campaign.searchStart;
   let listExhausted = false;
   let rocketReachAdded = 0;
-  const stillNeed = Math.max(0, shortfall - harvested.added);
+  const listedAfterHarvest = await countSourced(campaign.clientId, structure.contactListId);
+  const stillNeed = aiCampaignContactsStillNeeded(campaign.targetContactCount, [
+    campaign.contactsSourced,
+    listedAfterHarvest,
+  ]);
   if (stillNeed > 0 && allowance > 0) {
     const pageSize = Math.min(stillNeed, allowance, ROCKETREACH_MAX_IMPORT);
     const bought = await executeSavedResearchPlan({
@@ -725,7 +747,7 @@ async function saveCampaign(
       pausedAt: snapshot.status === "PAUSED" ? extras.now : snapshot.status === "RUNNING" ? null : undefined,
       stoppedAt: snapshot.status === "STOPPED" ? extras.now : undefined,
       completedAt: snapshot.status === "COMPLETED" ? extras.now : undefined,
-      nextActionAt: new Date(extras.now.getTime() + 5 * 60 * 1000),
+      nextActionAt: new Date(extras.now.getTime() + AI_CAMPAIGN_TICK_BACKOFF_MS),
       tickLockUntil: null,
     },
   });
@@ -841,6 +863,13 @@ async function tickOne(campaign: CampaignRow, now: Date): Promise<string | null>
         next = { ...next, status: "WRITING" };
       }
     }
+    if (
+      performed.extras.staffAlert === undefined &&
+      decision.type !== "hold" &&
+      decision.type !== "idle"
+    ) {
+      performed.extras.staffAlert = null;
+    }
     await saveCampaign(campaign, next, performed.extras);
     const message = decision.type === "source" && performed.extras.detail
       ? `${aiCampaignDecisionMessage(decision)} ${performed.extras.detail}`
@@ -854,22 +883,30 @@ async function tickOne(campaign: CampaignRow, now: Date): Promise<string | null>
     return null;
   } catch (error) {
     const message = sanitizeJobErrorText(error instanceof Error ? error.message : "The AI campaign tick failed.");
-    const failed = noteStageFailure(aiCampaignSnapshot({
+    const failed = resolveAiCampaignTickFailure(aiCampaignSnapshot({
       status: campaign.status,
       consecutiveFailures: campaign.consecutiveFailures,
-    }), message);
+    }), message, now);
     await prisma.aiOutreachCampaign.update({
       where: { id: campaign.id },
       data: {
         status: failed.snapshot.status,
         consecutiveFailures: failed.snapshot.consecutiveFailures,
-        staffAlert: failed.snapshot.status === "NEEDS_STAFF" ? message : campaign.staffAlert,
+        staffAlert: failed.staffAlert === undefined ? campaign.staffAlert : failed.staffAlert,
+        ...(failed.nextActionAt ? { nextActionAt: failed.nextActionAt } : {}),
         tickLockUntil: null,
       },
     });
-    await appendEvent(campaign.id, failed.snapshot.status, "error", message);
-    logger.error({ event: "ai_campaign_tick", campaignId: campaign.id }, message);
-    return message;
+    await appendEvent(campaign.id, failed.snapshot.status, failed.eventKind, failed.eventMessage);
+    if (failed.holdUnsentMail && campaign.sequenceId) {
+      await holdUnsentAiCampaignMail(campaign.clientId, campaign.sequenceId);
+    }
+    if (failed.jobError) {
+      logger.error({ event: "ai_campaign_tick", campaignId: campaign.id }, message);
+    } else {
+      logger.warn({ event: "ai_campaign_tick_retry", campaignId: campaign.id }, message);
+    }
+    return failed.jobError;
   }
 }
 

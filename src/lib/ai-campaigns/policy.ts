@@ -19,6 +19,12 @@ export const AI_CAMPAIGN_REVIEW_THRESHOLD = 75;
 export const AI_CAMPAIGN_MAX_REVIEW_ROUNDS = 3;
 /** The same step may fail this many times before a person is asked. */
 export const AI_CAMPAIGN_FAILURE_LIMIT = 3;
+/**
+ * When the next scheduled pass should look at the campaign again.
+ * Matches the five-minute outreach advance, so a busy writing service
+ * is tried on the following pass.
+ */
+export const AI_CAMPAIGN_TICK_BACKOFF_MS = 5 * 60 * 1000;
 /** Top up the list when fewer than this many people are waiting to be emailed. */
 export const AI_CAMPAIGN_LOW_WATER = 5;
 /** Recorded on the template when the campaign approves its own copy. */
@@ -116,6 +122,24 @@ export function mayAddPersonToAiCampaign(input: {
     return { ok: false, reason: "This person was sourced for a different client." };
   }
   return { ok: true };
+}
+
+/**
+ * How many more people this tick may add.
+ * The live list count is included so a stored total that is behind the list
+ * does not buy another page after the target is already on the list.
+ */
+export function aiCampaignContactsStillNeeded(
+  targetContactCount: number,
+  counts: readonly number[],
+): number {
+  let have = 0;
+  for (const count of counts) {
+    if (!Number.isFinite(count)) continue;
+    have = Math.max(have, Math.max(0, Math.trunc(count)));
+  }
+  const target = Number.isFinite(targetContactCount) ? Math.max(0, Math.trunc(targetContactCount)) : 0;
+  return Math.max(0, target - have);
 }
 
 /** Slots left today. Warm-up can only lower the mailbox cap, never raise it. */

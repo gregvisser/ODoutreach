@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  aiCampaignContactsStillNeeded,
   aiCampaignSequenceHeldFromAutoSend,
   clampBatchToMailboxCap,
   creditsAllowedForAiCampaign,
@@ -16,6 +17,16 @@ import {
   AI_CAMPAIGN_CONFIRMATION_PHRASE,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
 } from "./policy";
+
+describe("AI campaign contact target", () => {
+  it("does not ask for more people once the list or the stored total has reached the target", () => {
+    expect(aiCampaignContactsStillNeeded(5, [0, 0])).toBe(5);
+    expect(aiCampaignContactsStillNeeded(5, [0, 5])).toBe(0);
+    expect(aiCampaignContactsStillNeeded(5, [10])).toBe(0);
+    expect(aiCampaignContactsStillNeeded(5, [3, 4])).toBe(1);
+    expect(aiCampaignContactsStillNeeded(5, [-2, Number.NaN])).toBe(5);
+  });
+});
 
 describe("AI campaign kill switch", () => {
   it("stays off until the setting is an explicit on value", () => {

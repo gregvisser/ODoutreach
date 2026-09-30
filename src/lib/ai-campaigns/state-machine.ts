@@ -4,11 +4,13 @@
  * Calling decide again with the same snapshot returns the same decision.
  */
 
+import { aiCampaignTransientHoldMessage, isTransientAiCampaignFailure } from "./failure";
 import {
   AI_CAMPAIGN_FAILURE_LIMIT,
   AI_CAMPAIGN_LOW_WATER,
   AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
   AI_CAMPAIGN_REVIEW_THRESHOLD,
+  AI_CAMPAIGN_TICK_BACKOFF_MS,
 } from "./policy";
 
 export const AI_CAMPAIGN_STATUSES = [
@@ -287,6 +289,12 @@ export function noteStageFailure(
   snapshot: AiCampaignSnapshot,
   message: string,
 ): { snapshot: AiCampaignSnapshot; decision: AiCampaignDecision } {
+  if (isTransientAiCampaignFailure(message)) {
+    return {
+      snapshot: { ...snapshot },
+      decision: { type: "hold", reason: aiCampaignTransientHoldMessage(message) },
+    };
+  }
   const failures = snapshot.consecutiveFailures + 1;
   if (failures >= snapshot.failureLimit) {
     return {
@@ -297,5 +305,52 @@ export function noteStageFailure(
   return {
     snapshot: { ...snapshot, consecutiveFailures: failures },
     decision: { type: "hold", reason: message },
+  };
+}
+
+export type AiCampaignTickFailurePlan = {
+  snapshot: AiCampaignSnapshot;
+  decision: AiCampaignDecision;
+  eventMessage: string;
+  eventKind: "info" | "error";
+  /** Undefined leaves the stored alert unchanged. */
+  staffAlert: string | undefined;
+  /** Undefined leaves the stored time unchanged. */
+  nextActionAt: Date | undefined;
+  /** Queued mail stays queued while the machine is going to try again. */
+  holdUnsentMail: boolean;
+  /** Null keeps the scheduled job green. A real fault is still reported. */
+  jobError: string | null;
+};
+
+/** What the tick writes after a thrown step. Transient waits do not ask for staff. */
+export function resolveAiCampaignTickFailure(
+  snapshot: AiCampaignSnapshot,
+  message: string,
+  now: Date,
+): AiCampaignTickFailurePlan {
+  const noted = noteStageFailure(snapshot, message);
+  if (noted.decision.type === "hold" && isTransientAiCampaignFailure(message)) {
+    return {
+      snapshot: noted.snapshot,
+      decision: noted.decision,
+      eventMessage: noted.decision.reason,
+      eventKind: "info",
+      staffAlert: noted.decision.reason,
+      nextActionAt: new Date(now.getTime() + AI_CAMPAIGN_TICK_BACKOFF_MS),
+      holdUnsentMail: false,
+      jobError: null,
+    };
+  }
+  const needsStaff = noted.snapshot.status === "NEEDS_STAFF";
+  return {
+    snapshot: noted.snapshot,
+    decision: noted.decision,
+    eventMessage: message,
+    eventKind: "error",
+    staffAlert: needsStaff ? message : undefined,
+    nextActionAt: needsStaff ? undefined : new Date(now.getTime() + AI_CAMPAIGN_TICK_BACKOFF_MS),
+    holdUnsentMail: needsStaff,
+    jobError: message,
   };
 }
