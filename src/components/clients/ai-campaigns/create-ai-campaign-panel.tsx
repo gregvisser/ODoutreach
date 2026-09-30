@@ -100,7 +100,7 @@ export function CreateAiCampaignPanel({
       <div>
         <h2 className="text-lg font-semibold">Create AI campaign</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-          One confirmation starts the whole outreach. The machine finds people, writes the emails, checks them, and sends them. You handle replies. The client is not asked to approve anything.
+          One confirmation starts the whole outreach. The machine finds people, adds the ones who can be emailed, writes the emails, checks them, and sends them. You do not open Review recipients. You handle replies. The client is not asked to approve anything.
         </p>
       </div>
 

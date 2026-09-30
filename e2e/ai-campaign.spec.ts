@@ -28,6 +28,7 @@ test("creates an AI campaign from Outreach without calling AI or RocketReach", a
   await page.goto(`/clients/${clientId}/outreach`);
   const panel = page.getByRole("region", { name: "Create AI campaign" });
   await expect(panel).toBeVisible();
+  await expect(panel).toContainText("You do not open Review recipients");
   await panel.getByLabel("Who to contact, and the offer").fill(
     "Contact facilities managers in agriculture and offer a planned maintenance visit.",
   );
