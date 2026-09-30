@@ -1,5 +1,6 @@
 import "server-only";
 import { summarizeSequenceDelivery, type SequenceDeliverySummary } from "@/lib/clients/sequence-delivery-summary";
+import { aiCampaignAllowsAutomatedSend } from "@/server/ai-campaigns/send-authorization";
 import { AUTOMATED_SEQUENCE_SEND_ORIGIN, AUTOMATED_SEND_HELD_MESSAGE } from "@/lib/email-sequences/send-origin";
 
 import type {
@@ -533,7 +534,10 @@ export async function sendSequenceStepBatch(input: {
     }),
   ]);
   if (automated && client.autonomousSendEnabled !== true) {
-    throw new SequenceStepSendError("AUTOMATED_SEND_DISABLED", AUTOMATED_SEND_HELD_MESSAGE, category);
+    const aiCampaignSend = await aiCampaignAllowsAutomatedSend({ clientId, sequenceId });
+    if (!aiCampaignSend) {
+      throw new SequenceStepSendError("AUTOMATED_SEND_DISABLED", AUTOMATED_SEND_HELD_MESSAGE, category);
+    }
   }
   const pool = executionEligibleMailboxes(identities);
   if (pool.length === 0) {

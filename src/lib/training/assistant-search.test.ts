@@ -80,6 +80,7 @@ describe("searchTrainingContent", () => {
     ["How do I save a research plan?", /rocketreach industry list/i],
     ["What does Preview top-up do?", /dry run/i],
     ["How do I draft emails with AI?", /xAI Grok/],
+    ["How do I start an AI campaign?", /START AI CAMPAIGN/],
     ["Where is the sender comparison?", /compare our senders/i],
   ])("answers %s from training content", (question, pattern) => {
     const matches = searchTrainingContent(question);

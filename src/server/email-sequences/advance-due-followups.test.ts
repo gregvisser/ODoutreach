@@ -90,6 +90,7 @@ describe("the autonomous relay cannot generate follow-ups for other clients", ()
    * outreach for every active client.
    */
   it("narrows the client query by the relay allowlist", () => {
+    expect(advancer).toContain("aiCampaignSequenceHeldFromAutoSend");
     expect(advancer).toContain("autonomousClientWhereFilter");
     expect(advancer).toContain("relayClientFilter");
     // Spread INTO the where clause, not computed and forgotten.

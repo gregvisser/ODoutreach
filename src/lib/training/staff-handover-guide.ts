@@ -255,10 +255,20 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
   {
     title: "AI drafts, review, send times, and sender comparison",
     bullets: [
-      "Product AI runs on xAI Grok. It drafts and advises only. It never sends email, and it does not use open tracking. Open tracking is off.",
+      "Product AI runs on xAI Grok. A draft or a review on its own does not send email, and open tracking stays off. An AI campaign is the separate path that can send, and only after its own writing check.",
       "On Templates, Draft emails with AI writes a sequence of draft emails from the client brief. Each draft stays unapproved until a person reads it. Nothing sends until that person approves it and someone launches from Outreach.",
       "On Outreach, Review with AI scores one campaign's writing. Work out our best send times reads this client's sent emails and the replies linked to them, by weekday and hour. Compare campaigns by job title does the same from people who were actually sent a campaign. Compare our senders is on Outreach and on Mailboxes. It compares mailboxes, not people, using sent emails and linked replies.",
       "If there is not enough sent mail or not enough replies, those panels say how many were sent and stop. They do not guess, and that check does not spend AI credits. Bounces and replies are outcomes. Opens are not used.",
+    ],
+  },
+  {
+    title: "Start an AI campaign",
+    bullets: [
+      "Open the client's Outreach page and use Create AI campaign. The brief is filled in from the client brief. Suggest filters from the brief fills job titles, countries, and industries. Industries must be names from the RocketReach list. Company size is optional and is given to the writer. The RocketReach search uses job title, industry, and country.",
+      "Set how many people to contact, the RocketReach credit budget in total and per day, and an optional end date. Read what the machine will do. Type START AI CAMPAIGN and press Start AI campaign. That is the only confirmation. The client is not asked to approve anything.",
+      "The machine finds this client's own people first, then uses RocketReach for the shortfall inside the budget. People already known are skipped before a credit is spent. It writes the emails with xAI Grok and checks them. A low score is rewritten. If it stays low, nothing is sent and a member of staff is told.",
+      "Sending uses the same path as a campaign you send by hand. Do-not-contact and unsubscribe stay blocked. Each mailbox keeps its own daily limit. A disconnected mailbox pauses only that mailbox. Open tracking stays off. A reply stops further emails to that person. You handle replies.",
+      "Pause, resume, or stop from the campaign page. Type PAUSE AI CAMPAIGN, RESUME AI CAMPAIGN, or STOP AI CAMPAIGN. This does not change campaigns you still send by hand, and it does not turn on Machine sending for the client.",
     ],
   },
 ];

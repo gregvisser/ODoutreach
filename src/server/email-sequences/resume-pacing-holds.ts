@@ -7,6 +7,8 @@ import { isPacingAutoResumeRow } from "@/lib/email-sequences/pacing-auto-resume"
 import { getSequenceStepSendConfirmationPhrase } from "@/lib/email-sequences/sequence-send-execution-constants";
 import { logger } from "@/lib/logger";
 
+import { aiCampaignSequenceIdsHeldFromAutoSend } from "@/server/ai-campaigns/send-authorization";
+
 import { sendSequenceStepBatch, SequenceStepSendError } from "./send-introduction";
 
 /**
@@ -115,8 +117,16 @@ export async function resumePacingHeldSends(input: {
     }
   }
 
+  const heldAiSequences = new Set(await aiCampaignSequenceIdsHeldFromAutoSend(input.clientId));
+
   let processed = 0;
   for (const step of steps.values()) {
+    if (heldAiSequences.has(step.sequenceId)) {
+      result.skippedSteps.push(
+        `${input.clientId}/${step.sequenceId}/${step.category}: AI campaign is not sending`,
+      );
+      continue;
+    }
     if (processed >= MAX_STEPS_PER_TICK) break;
     processed += 1;
     result.stepsProcessed += 1;

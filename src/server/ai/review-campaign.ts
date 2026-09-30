@@ -43,6 +43,9 @@ import { sanitizeProviderErrorDetail } from "./provider-transport-error";
  * product while the API key is unset, and as a pass it would print a machine's
  * opinion next to the button that mails strangers.
  *
+ * The AI campaign orchestrator reads the stored score for its own campaigns
+ * only, after this function has finished. The manual launch rail still does not.
+ *
  * It also does not retry. A timed-out call may already have been served and
  * billed, so an automatic retry would charge the client twice.
  */

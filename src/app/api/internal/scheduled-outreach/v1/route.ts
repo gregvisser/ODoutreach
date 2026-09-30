@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadScheduledOutreachPlan } from "@/server/mailbox/scheduled-outreach";
 import { syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
+import { tickAiCampaignsForClient } from "@/server/ai-campaigns/tick";
 import { advanceDueSequenceFollowUps } from "@/server/email-sequences/advance-due-followups";
 import { resumePacingHeldSends } from "@/server/email-sequences/resume-pacing-holds";
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
@@ -11,18 +12,22 @@ export const runtime = "nodejs";
 
 /**
  * Pacing resume runs for every open calendar, including Human sending.
- * Follow-up advancement stays limited to clients that enabled Machine sending.
- * Errors from either part fail the tick; a disconnected mailbox is a skip
- * inside pacing resume and does not by itself fail the run.
+ * Follow-up advancement stays limited to clients that enabled Machine sending,
+ * plus sequences owned by a running AI campaign.
+ * The AI campaign tick is one step per campaign. It does not replace the
+ * human send path. Errors from any part fail the tick; a disconnected mailbox
+ * is a skip inside pacing resume and does not by itself fail the run.
  */
 async function runScheduledAdvance(clientId: string) {
   const pacing = await resumePacingHeldSends({ clientId });
   const advance = await advanceDueSequenceFollowUps({ clientId });
+  const aiCampaigns = await tickAiCampaignsForClient(clientId);
   return {
     ...advance,
     pacing,
+    aiCampaigns,
     skippedSteps: [...pacing.skippedSteps, ...advance.skippedSteps],
-    errors: [...pacing.errors, ...advance.errors],
+    errors: [...pacing.errors, ...advance.errors, ...aiCampaigns.errors],
   };
 }
 

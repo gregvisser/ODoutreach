@@ -117,6 +117,10 @@ export async function draftSequenceForClient(args: {
   staffUserId: string;
   /** Injectable so a test can pin the name stamp. */
   now?: Date;
+  /** Staff brief for an AI campaign. The manual draft button does not set this. */
+  campaignBrief?: string;
+  /** Review notes when an AI campaign is rewriting a low score. */
+  revisionNotes?: string;
 }): Promise<DraftSequenceResult> {
   const loaded = await loadBrief(args.clientId);
   if (!loaded) return { ok: false, reason: "client_not_found" };
@@ -137,7 +141,15 @@ export async function draftSequenceForClient(args: {
         workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEQUENCE_DRAFTING_SYSTEM_PROMPT,
-        userText: buildSequenceDraftingInput(loaded.brief),
+        userText: [
+          buildSequenceDraftingInput(loaded.brief),
+          args.campaignBrief?.trim()
+            ? `<campaign>\n${args.campaignBrief.trim().slice(0, 4000)}\n</campaign>`
+            : null,
+          args.revisionNotes?.trim()
+            ? `Revise the emails using this review. Keep only placeholders the product already allows. Do not invent placeholder names.\n<review>\n${args.revisionNotes.trim().slice(0, 4000)}\n</review>`
+            : null,
+        ].filter((part): part is string => part !== null).join("\n\n"),
         maxTokens: MAX_OUTPUT_TOKENS,
         tool: SEQUENCE_DRAFTING_TOOL,
         timeoutMs: budget.timeoutMs,
@@ -184,9 +196,10 @@ export async function draftSequenceForClient(args: {
           subject: step.subject,
           content: step.body,
           createdByStaffUserId: args.staffUserId,
-          // NOT NEGOTIABLE, and asserted by test. A machine does not approve
-          // its own copy, and these three fields are what stand between an AI
-          // draft and a real recipient.
+          // This function still writes DRAFT with no approver. An AI campaign
+          // may approve later, only after the review score clears, and that
+          // approval is recorded as AI on the template. The manual draft
+          // button never reaches that step.
           status: "DRAFT",
           approvedByStaffUserId: null,
           approvedAt: null,

@@ -13,6 +13,11 @@ import {
 } from "@/lib/email-sequences/auto-followup-window";
 import { getSequenceStepSendConfirmationPhrase } from "@/lib/email-sequences/sequence-send-execution-constants";
 import { previousCategoryFor } from "@/lib/email-sequences/sequence-send-execution-policy";
+import {
+  aiCampaignSequenceHeldFromAutoSend,
+  followUpSequenceIds,
+  isAiCampaignsEnabled,
+} from "@/lib/ai-campaigns/policy";
 import { autonomousClientWhereFilter } from "@/lib/safety/autonomous-client-filter";
 import { resolveAutonomousRelayState } from "@/server/safety/autonomous-mode";
 
@@ -141,24 +146,82 @@ export async function advanceDueSequenceFollowUps(opts?: {
   // Client consent below applies even when that relay is not running.
   const relayClientFilter = autonomousClientWhereFilter(resolveAutonomousRelayState());
 
+  const aiRows = isAiCampaignsEnabled()
+    ? await prisma.aiOutreachCampaign.findMany({
+        where: {
+          status: { in: ["RUNNING", "LAUNCHING"] },
+          sequenceId: { not: null },
+          ...(opts?.clientId ? { clientId: opts.clientId } : {}),
+        },
+        select: { clientId: true, sequenceId: true },
+      })
+    : [];
+  const aiSequenceIdsByClient = new Map<string, string[]>();
+  for (const row of aiRows) {
+    if (!row.sequenceId) continue;
+    const list = aiSequenceIdsByClient.get(row.clientId) ?? [];
+    list.push(row.sequenceId);
+    aiSequenceIdsByClient.set(row.clientId, list);
+  }
+  const aiClientIds = [...aiSequenceIdsByClient.keys()];
+  const killSwitchOn = isAiCampaignsEnabled();
+  const campaignRows = await prisma.aiOutreachCampaign.findMany({
+    where: {
+      sequenceId: { not: null },
+      ...(opts?.clientId ? { clientId: opts.clientId } : {}),
+    },
+    select: { sequenceId: true, status: true },
+  });
+  const heldSequenceIds = new Set(
+    campaignRows
+      .filter(
+        (row) =>
+          row.sequenceId !== null &&
+          aiCampaignSequenceHeldFromAutoSend({ killSwitchOn, status: row.status }),
+      )
+      .map((row) => row.sequenceId as string),
+  );
+
   const clients = await prisma.client.findMany({
     where: {
       status: "ACTIVE",
-      // The staff-facing switch is consent, even when no coding relay runs.
-      autonomousSendEnabled: true,
       // F2: a soft-deleted workspace stops advancing follow-ups (read-side; no rows mutated).
       deletedAt: null,
       ...(opts?.clientId ? { id: opts.clientId } : {}),
       ...relayClientFilter,
+      // Machine sending still advances every approved sequence. A client that
+      // is not on Machine sending only advances sequences owned by a running
+      // AI campaign, and only while AI_CAMPAIGNS_ENABLED is on.
+      OR: [
+        { autonomousSendEnabled: true },
+        ...(aiClientIds.length > 0 ? [{ id: { in: aiClientIds } }] : []),
+      ],
     },
-    select: { id: true },
+    select: { id: true, autonomousSendEnabled: true },
   });
 
   for (const client of clients) {
     result.clientsProcessed += 1;
+    const sequenceIds = followUpSequenceIds({
+      machineSend: client.autonomousSendEnabled === true,
+      requestedSequenceIds: opts?.sequenceIds ?? null,
+      aiRunningSequenceIds: aiSequenceIdsByClient.get(client.id) ?? [],
+    });
+    const visibleSequenceIds = sequenceIds
+      ? sequenceIds.filter((id) => !heldSequenceIds.has(id))
+      : null;
+    if (visibleSequenceIds && visibleSequenceIds.length === 0) continue;
 
     const sequences = await prisma.clientEmailSequence.findMany({
-      where: { clientId: client.id, status: "APPROVED", ...(opts?.sequenceIds ? { id: { in: opts.sequenceIds } } : {}) },
+      where: {
+        clientId: client.id,
+        status: "APPROVED",
+        ...(visibleSequenceIds
+          ? { id: { in: [...visibleSequenceIds] } }
+          : heldSequenceIds.size > 0
+            ? { id: { notIn: [...heldSequenceIds] } }
+            : {}),
+      },
       select: {
         id: true,
         steps: {

@@ -7,6 +7,7 @@ const { prismaMock, send } = vi.hoisted(() => ({
     client: { findFirst: vi.fn() },
     staffUser: { findFirst: vi.fn() },
     clientEmailSequenceStepSend: { findMany: vi.fn() },
+    aiOutreachCampaign: { findMany: vi.fn() },
   },
   send: vi.fn(),
 }));
@@ -43,6 +44,7 @@ describe("resumePacingHeldSends", () => {
     vi.clearAllMocks();
     prismaMock.client.findFirst.mockResolvedValue({ id: "client-1" });
     prismaMock.staffUser.findFirst.mockResolvedValue({ id: "admin-1", role: "ADMIN", isActive: true });
+    prismaMock.aiOutreachCampaign.findMany.mockResolvedValue([]);
     send.mockResolvedValue({ counts: { queued: 1 } });
   });
 
