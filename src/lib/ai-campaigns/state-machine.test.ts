@@ -160,7 +160,6 @@ describe("running campaign stop conditions", () => {
   });
 });
 
-
 describe("prepare before launch", () => {
   it("PREPARING with approved templates still prepares when no step sends exist yet", () => {
     const snapshot = aiCampaignSnapshot({
