@@ -1,6 +1,21 @@
 import { ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
 
 /**
+ * Classic People Search (`POST /api/v2/person/search`) does not spend credits.
+ * A lookup spends 1 credit when contact details come back.
+ * Universal People Search can charge 1 credit per page of results; this app
+ * does not call that endpoint. Preview may search only while this stays false.
+ */
+export function rocketReachPersonSearchCostsCredits(): boolean {
+  return false;
+}
+
+/** Preview must not call People Search when that call would spend credits. */
+export function previewMaySearchRocketReach(searchCostsCredits: boolean): boolean {
+  return !searchCostsCredits;
+}
+
+/**
  * Worst-case credits for one staff click or one plan run.
  * RocketReach search is free. A lookup spends 1 credit only when contact
  * details come back. People we already know are skipped before that call.

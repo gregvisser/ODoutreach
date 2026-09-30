@@ -56,6 +56,12 @@ describe("searchTrainingContent", () => {
     expect(matches.length).toBeGreaterThan(0);
   });
 
+  it("ranks the mailbox how-to ahead of the training-only do-not-reconnect step", () => {
+    const matches = searchTrainingContent("How do I connect a new mailbox?");
+    expect(matches[0]?.chunk.text).toMatch(/add mailbox/i);
+    expect(matches[0]?.chunk.label).toMatch(/connect or reconnect a mailbox/i);
+  });
+
   it.each([
     ["How do I connect a new mailbox?", /add mailbox/i],
     ["How do I reconnect a Google mailbox?", /google logins/i],

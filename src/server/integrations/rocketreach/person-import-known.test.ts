@@ -61,7 +61,7 @@ it("does not create a list when the search returns nothing", async () => {
     searchBody: { query: { keyword: ["x"] }, page_size: 2 },
     ensureContactList: ensure,
   });
-  expect(result.ok).toBe(false);
+  expect(result).toMatchObject({ ok: true, imported: 0, creditsUsed: 0, searchProfileCount: 0, contactListId: null });
   expect(ensure).not.toHaveBeenCalled();
 });
 
@@ -128,4 +128,26 @@ it("reserves a credit before each paid lookup and stops when the budget says so"
   expect(order[1]).toContain("lookup");
   expect(order.at(-1)).toBe("reserve 2");
   expect(result.ok && result.errors).toContain("Daily credit budget is used.");
+});
+
+it("treats an empty search page as no matches and does not call lookup", async () => {
+  vi.stubEnv("ROCKETREACH_API_KEY", "synthetic-not-sent");
+  const transport = vi.fn(async (url: string) => {
+    expect(url).toBe(ROCKETREACH_API_V2_SEARCH);
+    return Response.json({ profiles: [] });
+  });
+  vi.stubGlobal("fetch", transport);
+  const result = await importRocketReachPeopleForClient({
+    ...base,
+    searchBody: { query: { current_title: ["Head of Operations"], location: ["United Kingdom"] }, page_size: 10 },
+  });
+  expect(result).toMatchObject({
+    ok: true,
+    imported: 0,
+    creditsUsed: 0,
+    lookupsAttempted: 0,
+    searchProfileCount: 0,
+  });
+  expect(transport).toHaveBeenCalledTimes(1);
+  expect(String(result.ok ? "" : result.error)).not.toMatch(/credit/i);
 });

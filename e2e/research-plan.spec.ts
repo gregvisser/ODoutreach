@@ -27,4 +27,18 @@ test("staff save and reload a research draft without importing or sending", asyn
   await expect(panel.getByText("Regions: United Kingdom; UK", { exact: true })).toBeVisible();
   expect((await pool.query('SELECT * FROM "ProspectResearchPlan" WHERE "clientId"=$1', [clientId])).rows).toHaveLength(1);
   for (const table of ["Contact", "OutboundEmail"]) expect((await pool.query(`SELECT id FROM "${table}" WHERE "clientId"=$1`, [clientId])).rowCount).toBe(0);
+
+  await panel.getByLabel("Plan name", { exact: true }).fill("Logistics heads");
+  await panel.getByLabel("Job titles", { exact: true }).fill("Head of Operations");
+  await panel.getByLabel("Industries", { exact: true }).selectOption("Logistics & Supply Chain - General");
+  await panel.getByLabel("Regions", { exact: true }).fill("United Kingdom");
+  await panel.getByLabel("Proposed total lookups", { exact: true }).fill("5");
+  await panel.getByRole("button", { name: "Save research draft", exact: true }).click();
+  await expect(panel.locator("form").first().getByRole("status")).toHaveText("Research draft saved. No credits spent and no contacts imported.");
+  await page.reload();
+  const saved = panel.getByRole("listitem").filter({ hasText: "Logistics heads · Draft" });
+  await expect(saved).toBeVisible();
+  await expect(saved).toContainText("Job titles: Head of Operations");
+  await expect(saved).toContainText("Seniority levels:");
+  await expect(saved).not.toContainText("Director");
 });

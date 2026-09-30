@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 const terms = z.array(z.string().trim().min(2).max(120)).min(1).max(20);
-/** Each field is explicit: missing targeting must never become match-everyone. */
+/** Seniority is a Universe keyword, not a required RocketReach facet. */
+const optionalTerms = z.array(z.string().trim().min(2).max(120)).max(20);
+/** Each required field is explicit: missing targeting must never become match-everyone. */
 export const researchCriteriaSchema = z.object({
   titles: terms,
   industries: terms,
-  seniorities: terms,
+  seniorities: optionalTerms,
   regions: terms,
 }).strict();
 export const researchPlanSchema = z.object({
@@ -35,6 +37,7 @@ export function qualifyResearchCandidate(
   const missing: string[] = [];
   const mismatched: string[] = [];
   for (const key of Object.keys(criteria) as (keyof ResearchCriteria)[]) {
+    if (criteria[key].length === 0) continue;
     const actual = normalise(evidence[key] ?? "");
     if (!actual) { missing.push(key); continue; }
     // Phrase boundaries avoid e.g. matching "IT" inside "hospitality".
@@ -45,5 +48,6 @@ export function qualifyResearchCandidate(
   }
   if (mismatched.length) return result("NO_MATCH", mismatched.map(key => `No explicit ${key} match in the available evidence.`));
   if (missing.length) return result("REVIEW", missing.map(key => `Missing ${key} evidence.`));
-  return result("MATCH", ["All four targeting fields have explicit matching evidence. Recheck suppression before accepting into a list."]);
+  const supplied = (Object.keys(criteria) as (keyof ResearchCriteria)[]).filter((key) => criteria[key].length > 0).length;
+  return result("MATCH", [`All ${String(supplied)} supplied targeting fields have explicit matching evidence. Recheck suppression before accepting into a list.`]);
 }

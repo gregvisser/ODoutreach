@@ -139,7 +139,7 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     ],
   },
   {
-    title: "Connect a new mailbox",
+    title: "Connect or reconnect a mailbox",
     bullets: [
       "Open the client, then Mailboxes, and choose Add mailbox. Enter the sending address, choose Microsoft 365 or Google, and Save. Saving the row does not send email.",
       "On that row choose Connect. A Microsoft 365 or Google sign-in window opens. The person who can sign in to that mailbox finishes the prompt. They do not need an ODoutreach login.",
@@ -166,9 +166,9 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     ],
   },
   {
-    title: "Import from RocketReach",
+    title: "Import contacts from RocketReach",
     bullets: [
-      "RocketReach search is on the client's Sources tab, in the RocketReach card. A search can spend RocketReach credits.",
+      "Import contacts from RocketReach on the client's Sources tab, in the RocketReach card. A search can spend RocketReach credits.",
       "Type the confirmation phrase SEARCH ROCKETREACH before the search runs. Choose a destination list. The industry filter, when you use one, must be a name from that card's industry list.",
       "Imported people land on the list you chose and in Universe. The import does not enrol them in a sequence and does not send email.",
     ],
@@ -189,6 +189,14 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
       "Preview the subject, body, signature, and recipients before launch. Launch queues eligible emails. It does not mean every email leaves immediately.",
       "In Human sending, the first launch of a follow-up is yours. Open Outreach and launch follow-up steps that are due. Do not turn on Machine sending just to clear a hold. Only the internal BidlowAI workspace is set up for Machine sending.",
       "A matched reply stops further follow-ups on that sequence. Open the reply and confirm it says Stopped. Use Stop follow-ups if it has not stopped.",
+    ],
+  },
+  {
+    title: "Add a follow-up step",
+    bullets: [
+      "Open the client, then Outreach, and open the sequence. One Introduction step is enough.",
+      "Choose Add follow-up to add a follow-up step. Set the delay for that step. Saving the sequence does not send email.",
+      "In Human sending, you launch a due follow-up step from Outreach. Do not turn on Machine sending just to clear a hold. Only the internal BidlowAI workspace is set up for Machine sending.",
     ],
   },
   {
@@ -218,17 +226,20 @@ export const STAFF_HANDOVER_SECTIONS: readonly StaffHandoverSection[] = [
     ],
   },
   {
-    title: "Raise a support ticket",
+    title: "Raise or resolve a support ticket",
     bullets: [
       "Open Support in the sidebar. Give the ticket a short title and describe what you were doing, what you expected, and what happened. You can attach up to three screenshots (PNG, JPG, GIF, or WEBP, 5MB each).",
       "If the How do I bar at the top of the app cannot answer, it offers Raise a support ticket. That creates the same kind of ticket and includes the question you asked.",
       "Use a ticket for a bug, a stuck queue, or a step you cannot complete. Do not requeue mail or change a do-not-contact block to work around it.",
+      "To resolve a support ticket, open it from Support in the sidebar. Anyone can open a ticket. Only the owner account can resolve and close it.",
+      "Write a resolution note of at least 10 characters explaining what was fixed. The reporter reads that note. Then choose Resolve & close.",
+      "Once the ticket is resolved, the owner account can choose Reopen ticket on the same page.",
     ],
   },
   {
     title: "Save a research plan",
     bullets: [
-      "Research plans are on the client's Sources tab, under Prospect research plans. Enter job titles, seniority, and regions one per line. Industries must be chosen from the RocketReach industry list — the same names as the RocketReach card. A typed industry that is not on that list cannot be saved.",
+      "Research plans are on the client's Sources tab, under Prospect research plans. Enter job titles and regions one per line. Seniority is optional. Industries must be chosen from the RocketReach industry list — the same names as the RocketReach card. A typed industry that is not on that list cannot be saved.",
       "Save research draft stores the plan only. It does not search, spend credits, import contacts, or send email.",
       "Run plan into list uses the same RocketReach search, the same SEARCH ROCKETREACH confirmation, and the same cap as the card. It does not enrol anyone and it does not send email.",
     ],

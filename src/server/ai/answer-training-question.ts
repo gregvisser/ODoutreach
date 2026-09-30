@@ -4,12 +4,13 @@ import { AI_MODELS } from "@/lib/ai/model-catalog";
 import {
   buildTrainingAssistantInput,
   parseTrainingAssistantToolUse,
+  MAX_ANSWER_CHARS,
   TRAINING_ASSISTANT_PROMPT_VERSION,
   TRAINING_ASSISTANT_SYSTEM_PROMPT,
   TRAINING_ASSISTANT_TOOL,
 } from "@/lib/ai/training-assistant-prompt";
 import { getTrainingAssistantChunk } from "@/lib/training/assistant-content";
-import { searchTrainingContent } from "@/lib/training/assistant-search";
+import { groundedTrainingAnswer, searchTrainingContent } from "@/lib/training/assistant-search";
 import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
@@ -119,6 +120,25 @@ export async function answerTrainingQuestion(args: {
 }): Promise<AnswerTrainingQuestionResult> {
   const question = args.question.trim();
   if (!question) return { ok: false, reason: "empty_question" };
+
+  // Title-matched staff guide sections are already the answer. Asking xAI to
+  // approve them let a tied "do not reconnect during training" passage veto
+  // "How do I connect a new mailbox?" on the header bar.
+  const grounded = groundedTrainingAnswer(question);
+  if (grounded) {
+    const answer = grounded.chunk.text.trim().slice(0, MAX_ANSWER_CHARS);
+    logger.info(
+      { scope: "training-assistant", chunkId: grounded.chunk.id },
+      "Answered a training-assistant question from a title-matched passage",
+    );
+    return {
+      ok: true,
+      canAnswer: true,
+      answer,
+      citations: [{ label: grounded.chunk.label, href: grounded.chunk.href }],
+      costMicroUsd: 0,
+    };
+  }
 
   const matches = searchTrainingContent(question);
 

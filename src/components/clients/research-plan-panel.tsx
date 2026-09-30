@@ -69,9 +69,11 @@ export function ResearchPlanPanel({ clientId, plans, lists }: { clientId: string
       });
     }}>
       <label className="block">Plan name<Input name="name" required minLength={3} maxLength={120} /></label>
-      <p>Enter one job title, seniority, or region per line. Industries are chosen from the RocketReach list — the same names as the RocketReach card. A name that is not on that list cannot be saved. Saving does not search or spend credits.</p>
+      <p>Enter one job title or region per line. Seniority is optional. Industries are chosen from the RocketReach list — the same names as the RocketReach card. A name that is not on that list cannot be saved. Saving does not search or spend credits.</p>
       <div className="grid gap-3 md:grid-cols-2">
-        {(["titles", "seniorities", "regions"] as const).map(key => <label className="block" key={key}>{labels[key]}<textarea name={key} required maxLength={2400} rows={3} className="block w-full rounded border p-2" /></label>)}
+        <label className="block">Job titles<textarea name="titles" required maxLength={2400} rows={3} className="block w-full rounded border p-2" /></label>
+        <label className="block">Seniority levels<textarea name="seniorities" maxLength={2400} rows={3} className="block w-full rounded border p-2" /></label>
+        <label className="block">Regions<textarea name="regions" required maxLength={2400} rows={3} className="block w-full rounded border p-2" /></label>
         <div className="space-y-1.5">
           <label htmlFor="research-plan-industries" className="block">Industries</label>
           <select id="research-plan-industries" name="industries" required value={currentIndustry} onChange={event => chooseIndustry(event.target.value)} className="block h-9 w-full rounded border bg-background px-2">

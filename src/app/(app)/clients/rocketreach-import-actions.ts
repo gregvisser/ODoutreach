@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { isRocketReachIndustry } from "@/lib/clients/rocketreach-industries";
+import { buildRocketReachCardQuery } from "@/lib/clients/rocketreach-search-query";
 
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
@@ -135,16 +136,13 @@ export async function runRocketReachImportAction(
     return { ok: false, error: "Access denied." };
   }
 
-  const q: Record<string, string[]> = {};
-  const k = parsed.data.keyword?.trim();
-  const co = parsed.data.companyName?.trim();
-  const ti = parsed.data.currentTitle?.trim();
-  const loc = parsed.data.location?.trim();
-  if (k) q.keyword = [k];
-  if (co) q.company_name = [co];
-  if (ti) q.current_title = [ti];
-  if (loc) q.location = [loc];
-  if (parsed.data.industry) q.company_industry = [parsed.data.industry];
+  const q = buildRocketReachCardQuery({
+    keyword: parsed.data.keyword ? [parsed.data.keyword] : undefined,
+    companyName: parsed.data.companyName ? [parsed.data.companyName] : undefined,
+    currentTitle: parsed.data.currentTitle ? [parsed.data.currentTitle] : undefined,
+    location: parsed.data.location ? [parsed.data.location] : undefined,
+    industry: parsed.data.industry ? [parsed.data.industry] : undefined,
+  });
 
   if (Object.keys(q).length === 0) {
     return {
