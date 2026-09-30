@@ -13,7 +13,9 @@ import {
   AI_CAMPAIGN_FAILURE_LIMIT,
   AI_CAMPAIGN_LOW_WATER,
   AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+  AI_CAMPAIGN_REVIEW_SOLID_FLOOR,
   AI_CAMPAIGN_REVIEW_THRESHOLD,
+  writingCheckSendDecision,
 } from "./policy";
 
 export const AI_CAMPAIGN_STATUSES = [
@@ -45,6 +47,7 @@ export type AiCampaignSnapshot = {
   reviewScore: number | null;
   reviewRounds: number;
   reviewThreshold: number;
+  reviewSolidFloor: number;
   maxReviewRounds: number;
   listExhausted: boolean;
   draftReady: boolean;
@@ -68,7 +71,7 @@ export type AiCampaignDecision =
   | { type: "review" }
   | { type: "revise" }
   | { type: "needs_staff"; reason: string }
-  | { type: "approve" }
+  | { type: "approve"; reason: string }
   | { type: "prepare" }
   | { type: "launch" }
   | { type: "run" }
@@ -105,6 +108,7 @@ export function aiCampaignSnapshot(overrides: Partial<AiCampaignSnapshot> = {}):
     reviewScore: null,
     reviewRounds: 0,
     reviewThreshold: AI_CAMPAIGN_REVIEW_THRESHOLD,
+    reviewSolidFloor: AI_CAMPAIGN_REVIEW_SOLID_FLOOR,
     maxReviewRounds: AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
     listExhausted: false,
     draftReady: false,
@@ -132,6 +136,14 @@ function sourcingBlock(snapshot: AiCampaignSnapshot): "write" | "needs_staff" | 
 
 function endDateReached(snapshot: AiCampaignSnapshot): boolean {
   return snapshot.endsAt !== null && snapshot.now.getTime() >= snapshot.endsAt.getTime();
+}
+
+function writingApprovedReason(snapshot: AiCampaignSnapshot): string {
+  const score = snapshot.reviewScore;
+  if (score === null || score >= snapshot.reviewThreshold) {
+    return "The emails passed the check and were approved for sending.";
+  }
+  return `The emails scored ${String(score)} after ${String(snapshot.reviewRounds)} checks. That is below the line of ${String(snapshot.reviewThreshold)} and still solid writing, so they were approved for sending without waiting for a member of staff.`;
 }
 
 export function decideAiCampaignTick(
@@ -177,8 +189,17 @@ export function decideAiCampaignTick(
       return snapshot.draftReady ? { type: "review" } : { type: "write" };
     case "REVIEWING": {
       if (snapshot.reviewScore === null) return { type: "review" };
-      if (snapshot.reviewScore >= snapshot.reviewThreshold) return { type: "approve" };
-      if (snapshot.reviewRounds < snapshot.maxReviewRounds) return { type: "revise" };
+      const send = writingCheckSendDecision({
+        score: snapshot.reviewScore,
+        rounds: snapshot.reviewRounds,
+        passLine: snapshot.reviewThreshold,
+        maxRounds: snapshot.maxReviewRounds,
+        solidFloor: snapshot.reviewSolidFloor,
+      });
+      if (send === "revise") return { type: "revise" };
+      if (send === "approve") {
+        return { type: "approve", reason: writingApprovedReason(snapshot) };
+      }
       return {
         type: "needs_staff",
         reason: `The emails scored ${String(snapshot.reviewScore)} after ${String(snapshot.reviewRounds)} checks. They were not sent.`,

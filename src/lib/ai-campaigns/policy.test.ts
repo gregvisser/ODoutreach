@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { scoreBand } from "@/lib/ai/campaign-review";
+
 import {
   aiCampaignSequenceHeldFromAutoSend,
   clampBatchToMailboxCap,
@@ -13,11 +15,40 @@ import {
   sequenceMachineApprovalStep,
   staffMayControlAiCampaign,
   templateMachineApprovalStep,
+  writingCheckSendDecision,
   AI_CAMPAIGN_CONFIRMATION_PHRASE,
   AI_CAMPAIGN_FAILURE_LIMIT,
+  AI_CAMPAIGN_MAX_REVIEW_ROUNDS,
+  AI_CAMPAIGN_REVIEW_SOLID_FLOOR,
+  AI_CAMPAIGN_REVIEW_THRESHOLD,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
   AI_CAMPAIGN_TRANSIENT_BACKOFF_MS,
 } from "./policy";
+
+describe("writing check send decision", () => {
+  it("keeps the near-miss floor on the solid writing band, under the pass line", () => {
+    expect(AI_CAMPAIGN_REVIEW_SOLID_FLOOR).toBeLessThan(AI_CAMPAIGN_REVIEW_THRESHOLD);
+    expect(AI_CAMPAIGN_REVIEW_THRESHOLD).toBe(75);
+    expect(AI_CAMPAIGN_MAX_REVIEW_ROUNDS).toBe(3);
+    expect(scoreBand(AI_CAMPAIGN_REVIEW_SOLID_FLOOR).id).toBe("solid");
+    expect(scoreBand(AI_CAMPAIGN_REVIEW_SOLID_FLOOR - 1).id).toBe("needs_work");
+    expect(scoreBand(AI_CAMPAIGN_REVIEW_THRESHOLD).id).toBe("solid");
+  });
+
+  it("approves a pass, rewrites a near-miss while checks remain, and sends it once they are used up", () => {
+    expect(writingCheckSendDecision({ score: 76, rounds: 1 })).toBe("approve");
+    expect(writingCheckSendDecision({ score: 72, rounds: 1 })).toBe("revise");
+    expect(writingCheckSendDecision({ score: 68, rounds: 2 })).toBe("revise");
+    expect(writingCheckSendDecision({ score: 72, rounds: 3 })).toBe("approve");
+    expect(writingCheckSendDecision({ score: 70, rounds: 3 })).toBe("approve");
+  });
+
+  it("does not send writing the review calls needs-work or weak", () => {
+    expect(writingCheckSendDecision({ score: 69, rounds: 3 })).toBe("needs_staff");
+    expect(writingCheckSendDecision({ score: 50, rounds: 3 })).toBe("needs_staff");
+    expect(writingCheckSendDecision({ score: 0, rounds: 3 })).toBe("needs_staff");
+  });
+});
 
 describe("AI campaign provider retry", () => {
   it("waits one five-minute outreach pass and still escalates hard failures at three", () => {

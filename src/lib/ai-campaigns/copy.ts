@@ -64,7 +64,7 @@ export function aiCampaignDecisionMessage(decision: AiCampaignDecision): string 
     case "needs_staff":
       return decision.reason;
     case "approve":
-      return "The emails passed the check and were approved for sending.";
+      return decision.reason;
     case "prepare":
       return "People were prepared for the first email.";
     case "launch":

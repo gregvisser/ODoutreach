@@ -42,7 +42,7 @@ describe("AI campaign transitions", () => {
 });
 
 describe("review threshold loop", () => {
-  it("revises while the score stays under 75 and stops after three checks", () => {
+  it("revises while the score stays under 75 and stops after three checks below solid", () => {
     let snapshot = aiCampaignSnapshot({ status: "REVIEWING", draftReady: true });
     expect(decideAiCampaignTick(snapshot)).toEqual({ type: "review" });
 
@@ -60,16 +60,16 @@ describe("review threshold loop", () => {
 
     snapshot = reduceAiCampaign(snapshot, { type: "revise" });
     snapshot = reduceAiCampaign(snapshot, { type: "write" }, { draftReady: true });
-    snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: 74 });
+    snapshot = reduceAiCampaign(snapshot, { type: "review" }, { reviewScore: 69 });
     expect(snapshot.reviewRounds).toBe(3);
     expect(decideAiCampaignTick(snapshot)).toMatchObject({ type: "needs_staff" });
     expect(reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot)).status).toBe("NEEDS_STAFF");
   });
 
-  it("still waits for staff when a writing score stays under 75", () => {
+  it("still waits for staff when the writing is below solid after three checks", () => {
     const snapshot = aiCampaignSnapshot({
       status: "REVIEWING",
-      reviewScore: 74,
+      reviewScore: 69,
       reviewRounds: 3,
       draftReady: true,
     });
@@ -77,6 +77,63 @@ describe("review threshold loop", () => {
     expect(decision).toMatchObject({ type: "needs_staff" });
     expect(reduceAiCampaign(snapshot, decision).status).toBe("NEEDS_STAFF");
     expect(decision.type === "needs_staff" ? decision.reason : "").toMatch(/were not sent/);
+    expect(decideAiCampaignTick(reduceAiCampaign(snapshot, decision)).type).toBe("idle");
+  });
+
+  it("sends a solid near-miss after three checks without asking staff", () => {
+    const scores = [71, 68, 72];
+    let snapshot = aiCampaignSnapshot({
+      status: "REVIEWING",
+      draftReady: true,
+      contactsSourced: 5,
+      targetContactCount: 5,
+      pendingWork: 5,
+    });
+    const steps: string[] = [];
+    for (const score of scores) {
+      const review = decideAiCampaignTick(snapshot);
+      steps.push(review.type);
+      snapshot = reduceAiCampaign(snapshot, review, { reviewScore: score });
+      const next = decideAiCampaignTick(snapshot);
+      steps.push(next.type);
+      if (next.type === "revise") {
+        snapshot = reduceAiCampaign(snapshot, next);
+        snapshot = reduceAiCampaign(snapshot, { type: "write" }, { draftReady: true });
+      } else if (next.type === "approve") {
+        expect(next.reason).toMatch(/scored 72/);
+        expect(next.reason).toMatch(/solid writing/);
+        expect(next.reason).toMatch(/without waiting for a member of staff/);
+        expect(next.reason).not.toMatch(/were not sent/);
+        snapshot = reduceAiCampaign(snapshot, next, { templatesApproved: true });
+      }
+    }
+    expect(steps).toEqual(["review", "revise", "review", "revise", "review", "approve"]);
+    expect(snapshot.status).toBe("PREPARING");
+    snapshot = reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot), { sequencePrepared: true });
+    snapshot = reduceAiCampaign(snapshot, decideAiCampaignTick(snapshot), { introStarted: true });
+    expect(snapshot.status).toBe("RUNNING");
+    expect(decideAiCampaignTick(snapshot).type).toBe("run");
+    expect(steps).not.toContain("needs_staff");
+  });
+
+  it("still rewrites a solid score while checks remain", () => {
+    const snapshot = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 74,
+      reviewRounds: 1,
+      draftReady: true,
+    });
+    expect(decideAiCampaignTick(snapshot)).toEqual({ type: "revise" });
+  });
+
+  it("approves the bottom of the solid band once checks are used up", () => {
+    const snapshot = aiCampaignSnapshot({
+      status: "REVIEWING",
+      reviewScore: 70,
+      reviewRounds: 3,
+      draftReady: true,
+    });
+    expect(decideAiCampaignTick(snapshot).type).toBe("approve");
   });
 
   it("has no staff approval between a passing writing check and sending", () => {
@@ -109,7 +166,10 @@ describe("review threshold loop", () => {
   it("approves once a later check reaches the threshold", () => {
     const reviewed = aiCampaignSnapshot({ status: "REVIEWING", reviewScore: 80, reviewRounds: 2, draftReady: true });
     const decision = decideAiCampaignTick(reviewed);
-    expect(decision).toEqual({ type: "approve" });
+    expect(decision).toEqual({
+      type: "approve",
+      reason: "The emails passed the check and were approved for sending.",
+    });
     const prepared = reduceAiCampaign(reviewed, decision, { templatesApproved: true });
     expect(prepared.status).toBe("PREPARING");
     const launching = reduceAiCampaign(prepared, { type: "prepare" }, { sequencePrepared: true });
@@ -120,7 +180,7 @@ describe("review threshold loop", () => {
 
   it("does not approve when the approval step did not succeed", () => {
     const reviewed = aiCampaignSnapshot({ status: "REVIEWING", reviewScore: 90, reviewRounds: 1 });
-    expect(reduceAiCampaign(reviewed, { type: "approve" }, {}).status).toBe("REVIEWING");
+    expect(reduceAiCampaign(reviewed, { type: "approve", reason: "The emails passed the check and were approved for sending." }, {}).status).toBe("REVIEWING");
   });
 });
 

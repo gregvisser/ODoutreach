@@ -1244,7 +1244,7 @@ export const STAFF_HANDOVER_CHECKLIST: readonly StaffHandoverChecklistItem[] = [
   {
     step: "Start an AI campaign",
     detail:
-      "On a client's Outreach page, use Create AI campaign. Type START AI CAMPAIGN once. The machine finds people, adds the ones who can be emailed, writes the emails, checks them, and sends them. You do not open Review recipients for an AI campaign. You handle replies. Sequences you still send by hand stay unchanged, and those still use Review recipients.",
+      "On a client's Outreach page, use Create AI campaign. Type START AI CAMPAIGN once. The machine finds people, adds the ones who can be emailed, writes the emails, checks them, and sends them. A solid score is sent without another click. A score under 70 after three checks waits for a person. You do not open Review recipients for an AI campaign. You handle replies. Sequences you still send by hand stay unchanged, and those still use Review recipients.",
     portalHref: "/training",
   },
   {

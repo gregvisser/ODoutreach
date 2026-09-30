@@ -68,7 +68,7 @@ calendar still applies.
 1. This client's Universe contacts first (same client only). A zero or unknown RocketReach balance does not skip this step.
 2. RocketReach for the shortfall, inside the campaign total and daily budget, and inside the account floor. Known people are skipped before a lookup is paid. When nothing can be bought and Universe has nobody left, the campaign writes what it has, or waits for staff if it found nobody.
 3. Write intro and follow-ups with xAI, using the client brief and the campaign brief. Placeholders still have to be valid or approval fails.
-4. Score with the existing campaign review. Below 75, rewrite, up to 3 checks. Still below 75: pause for staff and do not send. That writing-check stop is the only approval wait. There is no second staff approval of the copy, the sequence, or the recipient list.
+4. Score with the existing campaign review. Below 75, rewrite, up to 3 checks. After those checks, a score of 70 or above is the review's own solid band and is sent without a staff click. Below 70 the writing still needs work: pause for staff and do not send. That writing-check stop is the only approval wait, and it applies only when the writing is not solid. There is no second staff approval of the copy, the sequence, or the recipient list. A solid score does not bypass do-not-contact, unsubscribe, suppression, mailbox caps, or the other send checks.
 5. Add sourced people to the sequence with the same enrollment the **Review recipients** button uses (`enrollSequenceContacts`), then plan the introduction with the same planner (`planSequenceStepSends`). Do-not-contact, unsubscribe, suppression, and same-client checks stay fail-closed. Nothing in this path sets a bypass. Staff do not open Review recipients. Approving the sequence is not the same as preparing recipients: the sequence is approved in the previous step, before anyone is enrolled. Treating approval as preparation made the next tick launch and throw `NO_READY_ROWS` (production campaign `cmunv36r500gxg2mqm8wfrhoe` on `8e090b88`, score 76, five RocketReach contacts left on the list).
 6. Send through `sendSequenceStepBatch`, then keep sending follow-ups and topping up until the target, the budget, the end date, or the matches run out. A later tick that finds everyone already enrolled keeps going. It does not stop and ask for Review recipients. An empty list, an archived sequence, or a list with nobody sendable still fails closed.
 
@@ -96,8 +96,11 @@ The timeline says xAI is busy and will retry. The next five-minute pass tries
 again. Those failures do not count toward the three hard failures that wait
 for staff, and they do not fail the scheduled job. A bad credential, a request
 xAI will keep rejecting, or an unusable draft still waits for staff after
-three in a row. A writing score under 75 after three checks still waits for
-staff and does not send. Do-not-contact, mailbox caps, the kill switch, and
+three in a row. A writing score under 70 after three checks still waits for
+staff and does not send. A score from 70 to 74 after three checks missed 75
+by a small margin and is still solid writing, so it is approved and sent
+without a staff click. Scores under 75 are still rewritten while checks
+remain. Do-not-contact, mailbox caps, the kill switch, and
 pause or stop are unchanged. The model abort stays at 180 seconds: writing
 and the writing check are separate ticks, and a longer silent call is cut by
 Azure's idle socket.

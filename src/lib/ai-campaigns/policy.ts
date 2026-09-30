@@ -13,9 +13,20 @@ export const AI_CAMPAIGN_PAUSE_PHRASE = "PAUSE AI CAMPAIGN";
 export const AI_CAMPAIGN_RESUME_PHRASE = "RESUME AI CAMPAIGN";
 export const AI_CAMPAIGN_STOP_PHRASE = "STOP AI CAMPAIGN";
 
-/** A campaign below this score is rewritten, then held for staff if it stays low. */
+/**
+ * A campaign at or above this score is approved on that check.
+ * Below it, the emails are rewritten while checks remain.
+ */
 export const AI_CAMPAIGN_REVIEW_THRESHOLD = 75;
-/** How many reviews run before a low score waits for a person. */
+/**
+ * Lowest score the campaign review calls solid writing.
+ * `scoreBand` starts the solid band here. After the allowed checks, a score
+ * at or above this floor is sent without a staff click. Below it, the writing
+ * still needs work and the campaign waits for staff. This floor does not
+ * replace the pass line: a near-miss is rewritten first.
+ */
+export const AI_CAMPAIGN_REVIEW_SOLID_FLOOR = 70;
+/** How many reviews run before a score below the solid floor waits for a person. */
 export const AI_CAMPAIGN_MAX_REVIEW_ROUNDS = 3;
 /**
  * How many hard failures of the same step ask for a person.
@@ -207,6 +218,33 @@ export function aiCampaignSequenceHeldFromAutoSend(input: {
 }): boolean {
   if (!input.killSwitchOn) return true;
   return input.status !== "RUNNING" && input.status !== "LAUNCHING";
+}
+
+export type WritingCheckSendDecision = "approve" | "revise" | "needs_staff";
+
+/**
+ * What the writing check does with one score.
+ *
+ * At or above the pass line, approve now. Under it, with checks left, rewrite.
+ * Once the checks are used up, a score still in the solid band is approved so
+ * a near-miss does not wait for a person. Below that band, do not send.
+ * This is the writing score only. Do-not-contact, suppression, and mailbox
+ * caps are separate and are not decided here.
+ */
+export function writingCheckSendDecision(input: {
+  score: number;
+  rounds: number;
+  passLine?: number;
+  maxRounds?: number;
+  solidFloor?: number;
+}): WritingCheckSendDecision {
+  const passLine = input.passLine ?? AI_CAMPAIGN_REVIEW_THRESHOLD;
+  const maxRounds = input.maxRounds ?? AI_CAMPAIGN_MAX_REVIEW_ROUNDS;
+  const solidFloor = input.solidFloor ?? AI_CAMPAIGN_REVIEW_SOLID_FLOOR;
+  if (input.score >= passLine) return "approve";
+  if (input.rounds < maxRounds) return "revise";
+  if (input.score >= solidFloor) return "approve";
+  return "needs_staff";
 }
 
 export function reviewFeedbackText(
