@@ -4,6 +4,7 @@ import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import { PwaInstallPrompt } from "@/components/pwa/pwa-install-prompt";
 import { RegisterServiceWorker } from "@/components/pwa/register-service-worker";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { StaleBuildGuard } from "@/components/providers/stale-build-guard";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getGlobalBrand } from "@/server/branding/get-global-brand";
 
@@ -76,6 +77,7 @@ export default function RootLayout({
         <SessionProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </SessionProvider>
+        <StaleBuildGuard />
         <RegisterServiceWorker />
         <PwaInstallPrompt />
       </body>
