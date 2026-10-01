@@ -9,6 +9,7 @@ import {
   provisionPendingOrganisationMember,
   setOrganisationStatus,
   updateOrganisationFlags,
+  updateOrganisationHostname,
 } from "./platform-orgs";
 
 beforeEach(async () => {
@@ -88,4 +89,30 @@ it("creates an organisation, stores flags, suspends it, and provisions an owner 
 
   const invalid = await createOrganisationRecord({ name: "Bad", slug: "not a slug" });
   expect(invalid.ok).toBe(false);
+});
+
+it("stores a hostname on one organisation and leaves OpensDoors on its own host", async () => {
+  const created = await createOrganisationRecord({ name: "Northwind", slug: "northwind" });
+  expect(created.ok).toBe(true);
+  if (!created.ok) return;
+
+  const saved = await updateOrganisationHostname(created.organisationId, "northwind.bidlow.co.uk");
+  expect(saved).toEqual({ ok: true, organisationId: created.organisationId });
+
+  const opensDoors = await prisma.organisation.findUniqueOrThrow({
+    where: { id: OPENSDOORS_ORGANISATION_ID },
+  });
+  expect(opensDoors.hostname).not.toBe("northwind.bidlow.co.uk");
+
+  const taken = await updateOrganisationHostname(OPENSDOORS_ORGANISATION_ID, "northwind.bidlow.co.uk");
+  expect(taken).toEqual({ ok: false, error: "That hostname is already used." });
+
+  const cleared = await updateOrganisationHostname(created.organisationId, null);
+  expect(cleared.ok).toBe(true);
+  expect(
+    (await prisma.organisation.findUniqueOrThrow({ where: { id: created.organisationId } })).hostname,
+  ).toBeNull();
+  expect(
+    (await prisma.organisation.findUniqueOrThrow({ where: { id: OPENSDOORS_ORGANISATION_ID } })).hostname,
+  ).toBe(opensDoors.hostname);
 });

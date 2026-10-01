@@ -25,14 +25,14 @@ export type MicrosoftMailboxAuthorizeOptions = {
 
 export function buildMicrosoftMailboxAuthorizeUrl(
   oauthState: string,
-  options?: MicrosoftMailboxAuthorizeOptions,
+  options?: MicrosoftMailboxAuthorizeOptions & { redirectOrigin?: string | null },
 ): string {
   const clientId = process.env.MAILBOX_MICROSOFT_OAUTH_CLIENT_ID?.trim();
   if (!clientId) {
     throw new Error("MAILBOX_MICROSOFT_OAUTH_CLIENT_ID is not set");
   }
   const tenant = microsoftMailboxOAuthTenant();
-  const redirectUri = mailboxMicrosoftRedirectUri();
+  const redirectUri = mailboxMicrosoftRedirectUri(options?.redirectOrigin);
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -82,6 +82,7 @@ export function buildMicrosoftAdminConsentUrl(
 
 export async function exchangeMicrosoftMailboxAuthCode(
   code: string,
+  redirectOrigin?: string | null,
 ): Promise<{
   access_token: string;
   refresh_token?: string;
@@ -98,7 +99,7 @@ export async function exchangeMicrosoftMailboxAuthCode(
     );
   }
   const tenant = microsoftMailboxOAuthTenant();
-  const redirectUri = mailboxMicrosoftRedirectUri();
+  const redirectUri = mailboxMicrosoftRedirectUri(redirectOrigin);
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,

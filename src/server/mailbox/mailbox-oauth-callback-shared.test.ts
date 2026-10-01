@@ -5,6 +5,7 @@ import {
   MailboxOAuthFailure,
   mailboxEmailsAlign,
   mailboxOAuthFailureReasonOf,
+  mailboxOAuthRedirectToClient,
 } from "./mailbox-oauth-callback-shared";
 
 describe("mailboxEmailsAlign", () => {
@@ -53,5 +54,32 @@ describe("mailboxOAuthFailureReasonOf", () => {
     ).toBe("callback_failed");
     expect(mailboxOAuthFailureReasonOf("a string")).toBe("callback_failed");
     expect(mailboxOAuthFailureReasonOf(undefined)).toBe("callback_failed");
+  });
+});
+
+describe("mailboxOAuthRedirectToClient", () => {
+  it("returns the operator to the organisation host when one is supplied", () => {
+    const response = mailboxOAuthRedirectToClient(
+      "client-1",
+      { mailbox_oauth: "connected" },
+      "https://northwind.bidlow.co.uk",
+    );
+    expect(response.headers.get("location")).toBe(
+      "https://northwind.bidlow.co.uk/clients/client-1/mailboxes?mailbox_oauth=connected",
+    );
+  });
+
+  it("keeps the OpensDoors origin when no host is supplied", () => {
+    const previous = process.env.AUTH_URL;
+    process.env.AUTH_URL = "https://opensdoors.bidlow.co.uk/";
+    try {
+      const response = mailboxOAuthRedirectToClient("client-1", { mailbox_oauth: "connected" });
+      expect(response.headers.get("location")).toBe(
+        "https://opensdoors.bidlow.co.uk/clients/client-1/mailboxes?mailbox_oauth=connected",
+      );
+    } finally {
+      if (previous === undefined) delete process.env.AUTH_URL;
+      else process.env.AUTH_URL = previous;
+    }
   });
 });

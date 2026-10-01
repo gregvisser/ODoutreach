@@ -2,6 +2,7 @@ import { isMailboxRemovedFromWorkspace } from "@/lib/mailbox-workspace-removal";
 import { prisma } from "@/lib/db";
 import { tryGetOpensDoorsStaff } from "@/server/auth/staff";
 import { exchangeMicrosoftMailboxAuthCode } from "@/server/mailbox/microsoft-mailbox-oauth";
+import { mailboxOAuthOriginForRequest } from "@/server/tenant/hostname";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
 import { MAILBOX_OAUTH_EXPIRED_STATE_REASON } from "@/lib/mailboxes/mailbox-oauth-banner-message";
 import { isMailboxOAuthStateExpired } from "@/lib/mailboxes/mailbox-oauth-state-expiry";
@@ -49,6 +50,9 @@ export async function GET(req: Request) {
   const err = url.searchParams.get("error");
   const state = url.searchParams.get("state")?.trim();
   const code = url.searchParams.get("code")?.trim();
+  const oauthOrigin = await mailboxOAuthOriginForRequest();
+  const backToClient = (clientId: string, query: Record<string, string>) =>
+    mailboxOAuthRedirectToClient(clientId, query, oauthOrigin);
 
   // Tenant-wide admin consent (separate from a mailbox connect) redirects here
   // with `admin_consent` and no `code`/mailbox `state`. Show the customer's IT
@@ -62,7 +66,7 @@ export async function GET(req: Request) {
   }
 
   if (!state) {
-    return mailboxOAuthRedirectToClient("", {
+    return backToClient("", {
       mailbox_oauth: "error",
       reason: "missing_state",
     });
@@ -76,7 +80,7 @@ export async function GET(req: Request) {
   });
 
   if (!mailbox) {
-    return mailboxOAuthRedirectToClient("", {
+    return backToClient("", {
       mailbox_oauth: "error",
       reason: "unknown_state",
     });
@@ -98,7 +102,7 @@ export async function GET(req: Request) {
   // See the Google callback: the prepare step's 15-minute expiry, enforced. It
   // goes first, before anything else reasons about the row, and it writes nothing.
   if (isMailboxOAuthStateExpired(mailbox.oauthStateExpiresAt, new Date())) {
-    return mailboxOAuthRedirectToClient(clientId, {
+    return backToClient(clientId, {
       mailbox_oauth: "error",
       reason: MAILBOX_OAUTH_EXPIRED_STATE_REASON,
       oauth_mailbox_id: mailbox.id,
@@ -106,7 +110,7 @@ export async function GET(req: Request) {
   }
 
   if (isMailboxRemovedFromWorkspace(mailbox)) {
-    return mailboxOAuthRedirectToClient(clientId, {
+    return backToClient(clientId, {
       mailbox_oauth: "error",
       reason: "mailbox_removed",
       oauth_mailbox_id: mailbox.id,
@@ -142,7 +146,7 @@ export async function GET(req: Request) {
           shouldPreserveMailboxOnFailedOAuthAttempt(failedAttemptRow),
       },
     });
-    return mailboxOAuthRedirectToClient(clientId, {
+    return backToClient(clientId, {
       mailbox_oauth: "error",
       reason: "provider_denied",
       oauth_mailbox_id: mailbox.id,
@@ -150,7 +154,7 @@ export async function GET(req: Request) {
   }
 
   if (!code) {
-    return mailboxOAuthRedirectToClient(clientId, {
+    return backToClient(clientId, {
       mailbox_oauth: "error",
       reason: "missing_code",
       oauth_mailbox_id: mailbox.id,
@@ -161,7 +165,7 @@ export async function GET(req: Request) {
   const staffId = callbackStaff?.id ?? null;
 
   try {
-    const tokens = await exchangeMicrosoftMailboxAuthCode(code);
+    const tokens = await exchangeMicrosoftMailboxAuthCode(code, oauthOrigin);
     if (!tokens.refresh_token) {
       throw new MailboxOAuthFailure(
         MAILBOX_OAUTH_NO_REFRESH_TOKEN_REASON,
@@ -228,7 +232,7 @@ export async function GET(req: Request) {
       },
     });
 
-    return mailboxOAuthRedirectToClient(clientId, {
+    return backToClient(clientId, {
       mailbox_oauth: "connected",
       oauth_mailbox_id: mailbox.id,
     });
@@ -266,7 +270,7 @@ export async function GET(req: Request) {
         ...(mismatch ? { oauthActorEmail: mismatch.approvedEmail } : {}),
       },
     });
-    return mailboxOAuthRedirectToClient(clientId, {
+    return backToClient(clientId, {
       mailbox_oauth: "error",
       reason,
       oauth_mailbox_id: mailbox.id,

@@ -15,6 +15,7 @@ import {
 } from "@/server/mailbox/oauth-env";
 import { auditMailboxConnectionChange } from "@/server/mailbox/mailbox-connection-audit";
 import { buildMailboxOAuthAuthorizeUrlForPreparedState } from "@/server/mailbox/mailbox-oauth-authorize-url";
+import { mailboxOAuthOriginForRequest } from "@/server/tenant/hostname";
 import { reconcilePrimaryMailboxForClient } from "@/server/mailbox/mailbox-primary-consistency";
 import { requireClientMailboxMutator } from "@/server/mailbox-identities/mutator-access";
 
@@ -150,6 +151,7 @@ export async function prepareMailboxOAuthConnection(
       provider: row.provider,
       oauthState: state,
       mailboxEmailNormalized: row.emailNormalized,
+      redirectOrigin: await mailboxOAuthOriginForRequest(),
     });
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

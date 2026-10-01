@@ -487,6 +487,10 @@ model Organisation {
   id             String             @id @default(cuid())
   name           String
   slug           String             @unique
+  /// Public hostname for this organisation, such as northwind.bidlow.co.uk.
+  /// Null until a platform admin saves one. opensdoors.bidlow.co.uk is
+  /// reserved in code and stays OpensDoors even if this column says otherwise.
+  hostname       String?            @unique
   status         OrganisationStatus @default(ACTIVE)
   appLogoUrl     String?
   appMarkUrl     String?

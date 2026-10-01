@@ -98,6 +98,33 @@ export async function updateOrganisationFlags(
 }
 
 /**
+ * Save or clear the public hostname. The caller has already rejected
+ * schemes, paths, and the reserved OpensDoors host on any other organisation.
+ */
+export async function updateOrganisationHostname(
+  organisationId: string,
+  hostname: string | null,
+): Promise<OrganisationMutationResult> {
+  const existing = await prisma.organisation.findUnique({
+    where: { id: organisationId },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, error: "Organisation not found." };
+  try {
+    await prisma.organisation.update({
+      where: { id: organisationId },
+      data: { hostname },
+    });
+  } catch (error) {
+    if (uniqueConflict(error)) {
+      return { ok: false, error: "That hostname is already used." };
+    }
+    throw error;
+  }
+  return { ok: true, organisationId };
+}
+
+/**
  * Create a pending staff row and attach it to the named organisation.
  * Never sets platform or super-admin. Does not call Microsoft Graph.
  *
