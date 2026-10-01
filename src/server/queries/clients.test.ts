@@ -70,9 +70,23 @@ describe("listClientsForStaff — the counts shown on /clients", () => {
 
 describe("listSoftDeletedClients — the same lie on the recovery screen", () => {
   it("counts email sequences, not Campaign", async () => {
-    await listSoftDeletedClients();
+    await listSoftDeletedClients({ kind: "all-live" });
     const select = lastCountSelect();
     expect(select.emailSequences).toBe(true);
     expect(select).not.toHaveProperty("campaigns");
+  });
+
+  it("limits a non-platform owner to their organisation", async () => {
+    await listSoftDeletedClients({ kind: "organisation", organisationId: "org_opensdoors" });
+    expect(clientFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { deletedAt: { not: null }, organisationId: "org_opensdoors" },
+      }),
+    );
+  });
+
+  it("does not query when the staff member has no organisation", async () => {
+    await expect(listSoftDeletedClients({ kind: "none" })).resolves.toEqual([]);
+    expect(clientFindMany).not.toHaveBeenCalled();
   });
 });

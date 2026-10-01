@@ -16,6 +16,7 @@ import { areAiFeaturesEnabled } from "@/lib/ai/ai-switch";
 import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { getAiSpendReport } from "@/server/queries/ai-spend";
+import { loadClientAccessScope } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,10 @@ export default async function AiSpendPage({ searchParams }: Props) {
   }
 
   const params = await searchParams;
-  const { month, summary } = await getAiSpendReport(params?.month);
+  const scope = await loadClientAccessScope(staff.id);
+  const organisationId =
+    scope.kind === "all-live" ? undefined : scope.kind === "organisation" ? scope.organisationId : null;
+  const { month, summary } = await getAiSpendReport(params?.month, new Date(), organisationId);
   const { totals } = summary;
 
   const featuresSwitchedOn = areAiFeaturesEnabled();

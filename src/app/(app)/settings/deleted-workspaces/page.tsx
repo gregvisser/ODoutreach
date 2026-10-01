@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listSoftDeletedClients } from "@/server/queries/clients";
+import { loadClientAccessScope } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export default async function DeletedWorkspacesPage() {
     );
   }
 
-  const deleted = await listSoftDeletedClients();
+  const deleted = await listSoftDeletedClients(await loadClientAccessScope(staff.id));
 
   const deleterIds = Array.from(
     new Set(

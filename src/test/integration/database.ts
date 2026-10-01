@@ -70,6 +70,45 @@ export async function resetIntegrationDatabase(): Promise<void> {
       ],
     );
   }
+
+  // Integration fixtures create StaffUser rows and then act as OpensDoors.
+  // Production attaches that membership in the organisation migration and on
+  // invite. This trigger does the same for the throwaway database only, so a
+  // test does not silently become "no organisation" and fail closed. A test
+  // that needs a second organisation updates this row after insert.
+  if (rows.some((r) => r.tablename === "StaffUser")) {
+    await client.query(`
+      CREATE OR REPLACE FUNCTION attach_test_staff_to_opensdoors()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $fn$
+      BEGIN
+        INSERT INTO "OrganisationMember" (
+          "id", "organisationId", "staffUserId", "role", "createdAt", "updatedAt"
+        ) VALUES (
+          'orgmem_' || NEW."id",
+          'org_opensdoors',
+          NEW."id",
+          CASE
+            WHEN NEW."isSuperAdmin" THEN 'OWNER'::"OrganisationMemberRole"
+            WHEN NEW."role" = 'ADMIN' THEN 'ADMIN'::"OrganisationMemberRole"
+            ELSE 'USER'::"OrganisationMemberRole"
+          END,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )
+        ON CONFLICT ("staffUserId") DO NOTHING;
+        RETURN NEW;
+      END;
+      $fn$;
+
+      DROP TRIGGER IF EXISTS attach_test_staff_to_opensdoors ON "StaffUser";
+      CREATE TRIGGER attach_test_staff_to_opensdoors
+      AFTER INSERT ON "StaffUser"
+      FOR EACH ROW
+      EXECUTE FUNCTION attach_test_staff_to_opensdoors();
+    `);
+  }
 }
 
 export async function closeIntegrationPool(): Promise<void> {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { canAccessClient } from "@/server/tenant/access";
 
 export type ClearRepliesResult =
   | { ok: true; deleted: number }
@@ -25,6 +26,9 @@ export async function clearClientReplies(input: {
   const staff = await requireOpensDoorsStaff();
   if (!staff.isSuperAdmin) {
     return { ok: false, error: "Only the owner account can clear replies." };
+  }
+  if (!(await canAccessClient(staff, input.clientId))) {
+    return { ok: false, error: "Client not found." };
   }
 
   const client = await prisma.client.findFirst({
