@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { prismaMock, callAnthropicMock, reportErrorMock } = vi.hoisted(() => ({
   prismaMock: {
     client: { findFirst: vi.fn() },
+    staffUser: { findUnique: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
     trainingAssistantUnansweredQuestion: { create: vi.fn() },
   },
@@ -26,7 +27,9 @@ import { searchTrainingContent } from "@/lib/training/assistant-search";
 
 import { answerTrainingQuestion } from "./answer-training-question";
 
-const BIDLOWAI_CLIENT = { id: "client-bidlowai", slug: "bidlowai" };
+const HOME_ORGANISATION = {
+  organisationMembership: { organisation: { id: "org_opensdoors", slug: "opensdoors" } },
+};
 
 /** A question this codebase's own training content genuinely answers. */
 const IN_SCOPE_QUESTION = "How do I set a branded signature?";
@@ -47,7 +50,8 @@ function modelAnswers(input: unknown, usage = { inputTokens: 500, outputTokens: 
 }
 
 beforeEach(() => {
-  prismaMock.client.findFirst.mockReset().mockResolvedValue(BIDLOWAI_CLIENT);
+  prismaMock.client.findFirst.mockReset();
+  prismaMock.staffUser.findUnique.mockReset().mockResolvedValue(HOME_ORGANISATION);
   prismaMock.aiUsageEvent.create.mockReset().mockResolvedValue({ id: "usage-1" });
   prismaMock.trainingAssistantUnansweredQuestion.create
     .mockReset()
@@ -108,10 +112,15 @@ describe("a real answer carries a citation that resolves to real training conten
     expect(citation.label).toBe(realChunk?.label);
     expect(citation.href.startsWith("/training/")).toBe(true);
 
-    // Billed to bidlowai, not to whatever client the staff member was looking at.
+    // Billed to the staff member's organisation, not to a client workspace.
     expect(prismaMock.aiUsageEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ clientId: "client-bidlowai", feature: "TRAINING_ASSISTANT" }),
+        data: expect.objectContaining({
+          clientId: null,
+          clientSlugAtCall: "opensdoors",
+          organisationId: "org_opensdoors",
+          feature: "TRAINING_ASSISTANT",
+        }),
       }),
     );
   });

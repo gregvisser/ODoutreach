@@ -19,6 +19,8 @@ import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { supportTicketWhere } from "@/server/support/ticket-scope";
 import { loadClientAccessScope } from "@/server/tenant/access";
+import { organisationFeatureEnabledById } from "@/server/tenant/feature-gate";
+import { loadStaffHomeOrganisation } from "@/server/tenant/organisation-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,15 @@ const STATUS_ORDER: Record<string, number> = {
 
 export default async function SupportPage() {
   const staff = await requireOpensDoorsStaff();
+  const home = await loadStaffHomeOrganisation(staff.id);
+  if (home && !(await organisationFeatureEnabledById(home.organisationId, "supportDesk", true))) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Support</h1>
+        <p className="text-muted-foreground">The support desk is switched off for {home.name}.</p>
+      </div>
+    );
+  }
   const scope = await loadClientAccessScope(staff.id);
 
   const tickets = await prisma.supportTicket.findMany({

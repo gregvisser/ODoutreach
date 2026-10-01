@@ -12,6 +12,8 @@ import {
   type UniverseTableQuery,
 } from "@/server/queries/contact-universe-list";
 import { getAccessibleClientIds, loadClientAccessScope } from "@/server/tenant/access";
+import { organisationFeatureEnabledById } from "@/server/tenant/feature-gate";
+import { loadStaffHomeOrganisation } from "@/server/tenant/organisation-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,15 @@ type Props = {
 
 export default async function UniversePage({ searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
+  const home = await loadStaffHomeOrganisation(staff.id);
+  if (home && !(await organisationFeatureEnabledById(home.organisationId, "universe", true))) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Universe</h1>
+        <p className="text-muted-foreground">Universe is switched off for {home.name}.</p>
+      </div>
+    );
+  }
   const [accessible, scope] = await Promise.all([
     getAccessibleClientIds(staff),
     loadClientAccessScope(staff.id),

@@ -100,6 +100,53 @@ const inviteSchema = z.object({
   email: z.string().trim().email(),
 });
 
+const limitSchema = z.object({
+  organisationId: z.string().min(1),
+  rocketReachCreditAllowance: z.string(),
+  aiSpendCapMicroUsd: z.string(),
+});
+
+function optionalNonNegative(raw: string): number | null | "invalid" {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return "invalid";
+  return Number(trimmed);
+}
+
+export async function updateOrganisationLimitsAction(
+  _previous: PlatformFormState,
+  formData: FormData,
+): Promise<PlatformFormState> {
+  try {
+    await requirePlatformAdminForAction();
+    const parsed = limitSchema.safeParse({
+      organisationId: formData.get("organisationId"),
+      rocketReachCreditAllowance: String(formData.get("rocketReachCreditAllowance") ?? ""),
+      aiSpendCapMicroUsd: String(formData.get("aiSpendCapMicroUsd") ?? ""),
+    });
+    if (!parsed.success) return { error: "Organisation not found.", message: null };
+    const allowance = optionalNonNegative(parsed.data.rocketReachCreditAllowance);
+    const cap = optionalNonNegative(parsed.data.aiSpendCapMicroUsd);
+    if (allowance === "invalid" || cap === "invalid") {
+      return { error: "Enter a whole number, or leave the field empty for no cap.", message: null };
+    }
+    const { prisma } = await import("@/lib/db");
+    const existing = await prisma.organisation.findUnique({
+      where: { id: parsed.data.organisationId },
+      select: { id: true },
+    });
+    if (!existing) return { error: "Organisation not found.", message: null };
+    await prisma.organisation.update({
+      where: { id: parsed.data.organisationId },
+      data: { rocketReachCreditAllowance: allowance, aiSpendCapMicroUsd: cap },
+    });
+    revalidatePath(`/platform/${parsed.data.organisationId}`);
+    return { error: null, message: "Limits saved." };
+  } catch (error) {
+    return denied(error);
+  }
+}
+
 export async function inviteOrganisationOwnerAction(
   _previous: PlatformFormState,
   formData: FormData,

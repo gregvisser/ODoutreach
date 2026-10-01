@@ -28,12 +28,12 @@ import { runMeteredAiCall } from "./metered-call";
  * `STAFF_HANDOVER_CHECKLIST` and `staff-handover-guide.ts` and nothing else.
  * This file has no import path to `@/lib/db`'s client/prospect/reply tables
  * beyond the two writes it makes itself (the unanswered-question log, and
- * resolving the `bidlowai` billing client by slug) — neither read is a
+ * the staff member's organisation membership) — neither read is a
  * client's own data.
  *
  * WHO IS BILLED. Not whichever client a staff member happens to be looking
- * at — this is an internal ops tool, so every call is billed to the
- * `bidlowai` workspace regardless of what screen it was opened from.
+ * at, and not the bidlowai workspace. The call is billed to the staff
+ * member's organisation with no client id.
  *
  * THE ORDER OF OPERATIONS IS THE SAFETY PROPERTY, same as `adviseSendTimes`.
  * The lexical search runs BEFORE any model is called: a question with no
@@ -64,8 +64,6 @@ export type AnswerTrainingQuestionResult =
       readonly unansweredQuestionId: string | null;
     }
   | { readonly ok: false; readonly reason: string };
-
-const BIDLOWAI_CLIENT_SLUG = "bidlowai";
 
 type UnansweredReason =
   | "NO_MATCHING_CONTENT"
@@ -151,17 +149,19 @@ export async function answerTrainingQuestion(args: {
     return { ok: true, canAnswer: false, unansweredQuestionId };
   }
 
-  const client = await prisma.client.findFirst({
-    where: { slug: BIDLOWAI_CLIENT_SLUG, deletedAt: null },
-    select: { id: true, slug: true },
+  const staff = await prisma.staffUser.findUnique({
+    where: { email: args.askedByEmail.trim().toLowerCase() },
+    select: {
+      organisationMembership: {
+        select: { organisation: { select: { id: true, slug: true } } },
+      },
+    },
   });
-  if (!client) {
-    // Infrastructure fact, not a training gap — logged the same way so the
-    // question is not silently lost, but the reason says what actually
-    // happened rather than misreporting "no matching content".
+  const billedOrganisation = staff?.organisationMembership?.organisation ?? null;
+  if (!billedOrganisation) {
     logger.error(
-      { scope: "training-assistant", clientSlug: BIDLOWAI_CLIENT_SLUG },
-      "bidlowai billing client not found — cannot answer via the model",
+      { scope: "training-assistant" },
+      "training assistant caller is not in an organisation — cannot answer via the model",
     );
     const unansweredQuestionId = await recordUnansweredTrainingQuestion({
       question,
@@ -175,7 +175,9 @@ export async function answerTrainingQuestion(args: {
   const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
-    client,
+    client: null,
+    organisationId: billedOrganisation.id,
+    organisationSlug: billedOrganisation.slug,
     feature: "TRAINING_ASSISTANT",
     model,
     apiKey,

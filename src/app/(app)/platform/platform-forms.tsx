@@ -13,6 +13,7 @@ import {
   inviteOrganisationOwnerAction,
   setOrganisationStatusAction,
   updateOrganisationFlagsAction,
+  updateOrganisationLimitsAction,
   type PlatformFormState,
 } from "./actions";
 
@@ -118,6 +119,47 @@ export function OrganisationFlagsForm({
       </ul>
       <div className="flex flex-wrap items-center gap-3">
         <FormSubmitButton pendingLabel="Saving…">Save switches</FormSubmitButton>
+        <FormNotice state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function OrganisationLimitsForm({
+  organisationId,
+  rocketReachCreditAllowance,
+  aiSpendCapMicroUsd,
+}: {
+  organisationId: string;
+  rocketReachCreditAllowance: number | null;
+  aiSpendCapMicroUsd: number | null;
+}) {
+  const [state, action] = useActionState(updateOrganisationLimitsAction, initialState);
+  return (
+    <form action={action} className="grid gap-4 sm:grid-cols-2">
+      <input type="hidden" name="organisationId" value={organisationId} />
+      <div className="grid gap-2">
+        <Label htmlFor="rr-allowance">RocketReach credit allowance</Label>
+        <Input
+          id="rr-allowance"
+          name="rocketReachCreditAllowance"
+          inputMode="numeric"
+          defaultValue={rocketReachCreditAllowance ?? ""}
+          placeholder="No cap"
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="ai-cap">AI spend cap (micro-USD)</Label>
+        <Input
+          id="ai-cap"
+          name="aiSpendCapMicroUsd"
+          inputMode="numeric"
+          defaultValue={aiSpendCapMicroUsd ?? ""}
+          placeholder="No cap"
+        />
+      </div>
+      <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
+        <FormSubmitButton pendingLabel="Saving…">Save limits</FormSubmitButton>
         <FormNotice state={state} />
       </div>
     </form>

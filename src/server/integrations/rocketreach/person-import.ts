@@ -398,6 +398,27 @@ export async function importRocketReachPeopleForClient(
       error: "ROCKETREACH_API_KEY is not set — add it to the server environment to enable API import.",
     };
   }
+  const {
+    decideRocketReachSpend,
+    loadRocketReachCeiling,
+    recordRocketReachCreditUse,
+    rocketReachCeilingConstrains,
+  } = await import("@/server/tenant/feature-gate");
+  const { loadRocketReachCreditSnapshot } = await import("./account");
+  const ceiling = await loadRocketReachCeiling(input.clientId);
+  const ceilingConstrains = rocketReachCeilingConstrains(ceiling);
+  let balance: number | "unlimited" | "unknown" = "unknown";
+  if (ceilingConstrains) {
+    if (!ceiling.buyingEnabled) {
+      return { ok: false, error: "RocketReach buying is switched off for this organisation." };
+    }
+    const snapshot = await loadRocketReachCreditSnapshot();
+    balance = snapshot.state === "ready" ? snapshot.remaining : "unknown";
+    const decision = decideRocketReachSpend({ ceiling, balance, requested: 1 });
+    if (decision.allowed < 1) {
+      return { ok: false, error: decision.stopReason ?? "RocketReach buying is not available for this organisation." };
+    }
+  }
   const searched = await searchRocketReachIdentities(input.searchBody);
   if (!searched.ok) return searched;
   const identities = searched.identities;
@@ -416,6 +437,7 @@ export async function importRocketReachPeopleForClient(
   let skippedAlreadyKnown = 0;
   let importedWithoutLookup = 0;
   let creditsUsed = 0;
+  let spentThisRun = 0;
   let lookupsAttempted = 0;
   const errors: string[] = [];
   const sourceLabel = input.sourceLabel?.trim() || `RocketReach → ${input.targetListName}`;
@@ -451,6 +473,19 @@ export async function importRocketReachPeopleForClient(
     let reserved = false;
     let outcome: "charged" | "released" | "kept" = "kept";
     try {
+      if (ceilingConstrains) {
+        const remainingBalance =
+          typeof balance === "number" ? Math.max(0, balance - spentThisRun) : balance;
+        const next = decideRocketReachSpend({
+          ceiling: { ...ceiling, used: ceiling.used + spentThisRun },
+          balance: remainingBalance,
+          requested: 1,
+        });
+        if (next.allowed < 1) {
+          errors.push(next.stopReason ?? "RocketReach buying is not available for this organisation.");
+          break;
+        }
+      }
       if (input.governor) {
         const reservation = await input.governor.reserve(identity.id);
         if (!reservation.proceed) {
@@ -490,6 +525,10 @@ export async function importRocketReachPeopleForClient(
       }
       outcome = "charged";
       creditsUsed++;
+      spentThisRun++;
+      if (ceiling.organisationId) {
+        await recordRocketReachCreditUse(ceiling.organisationId, 1);
+      }
       await persistRocketReachContact(counters, {
         clientId: input.clientId,
         profileId: identity.id,

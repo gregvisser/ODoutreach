@@ -50,6 +50,10 @@ export async function startAiCampaign(input: {
   if (!isAiCampaignsEnabled()) {
     return { ok: false, error: "AI campaigns are switched off. Nothing was started." };
   }
+  const { clientFeatureEnabled } = await import("@/server/tenant/feature-gate");
+  if (!(await clientFeatureEnabled(input.clientId, "aiCampaigns", true))) {
+    return { ok: false, error: "AI campaigns are switched off for this organisation. Nothing was started." };
+  }
   const client = await prisma.client.findFirst({
     where: { id: input.clientId, deletedAt: null },
     select: { id: true, name: true, status: true },

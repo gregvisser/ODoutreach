@@ -159,6 +159,7 @@ import { ensureUnsubscribeLinkInPlainTextBody } from "@/lib/unsubscribe/ensure-u
 
 export type SequenceStepSendFailureCode =
   | "AUTOMATED_SEND_DISABLED"
+  | "HUMAN_SEND_DISABLED"
   | "CONFIRMATION_REQUIRED"
   | "SEQUENCE_NOT_FOUND"
   | "WRONG_CLIENT"
@@ -533,6 +534,18 @@ export async function sendSequenceStepBatch(input: {
       },
     }),
   ]);
+  const { clientFeatureEnabled } = await import("@/server/tenant/feature-gate");
+  if (automated) {
+    if (!(await clientFeatureEnabled(clientId, "machineSending", true))) {
+      throw new SequenceStepSendError("AUTOMATED_SEND_DISABLED", AUTOMATED_SEND_HELD_MESSAGE, category);
+    }
+  } else if (!(await clientFeatureEnabled(clientId, "humanSending", true))) {
+    throw new SequenceStepSendError(
+      "HUMAN_SEND_DISABLED",
+      "Human sending is switched off for this organisation.",
+      category,
+    );
+  }
   if (automated && client.autonomousSendEnabled !== true) {
     const aiCampaignSend = await aiCampaignAllowsAutomatedSend({ clientId, sequenceId });
     if (!aiCampaignSend) {
