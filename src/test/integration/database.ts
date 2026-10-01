@@ -13,6 +13,12 @@
 import { Pool } from "pg";
 
 import { assertSafeTestDatabase } from "../../../e2e/safe-database";
+import {
+  OPENSDOORS_FEATURE_FLAG_DEFAULTS,
+  OPENSDOORS_ORGANISATION_ID,
+  OPENSDOORS_ORGANISATION_NAME,
+  OPENSDOORS_ORGANISATION_SLUG,
+} from "@/lib/tenant/organisation";
 
 let pool: Pool | undefined;
 
@@ -47,6 +53,23 @@ export async function resetIntegrationDatabase(): Promise<void> {
 
   const tables = rows.map((r) => `"public"."${r.tablename}"`).join(", ");
   await client.query(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`);
+
+  // Client.organisationId is required and defaults to OpensDoors. Truncate
+  // removes that row, so put it back before any test inserts a client.
+  if (rows.some((r) => r.tablename === "Organisation")) {
+    await client.query(
+      `INSERT INTO "Organisation" (
+         "id", "name", "slug", "status", "featureFlags", "createdAt", "updatedAt"
+       ) VALUES ($1, $2, $3, 'ACTIVE', $4::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT ("id") DO NOTHING`,
+      [
+        OPENSDOORS_ORGANISATION_ID,
+        OPENSDOORS_ORGANISATION_NAME,
+        OPENSDOORS_ORGANISATION_SLUG,
+        JSON.stringify(OPENSDOORS_FEATURE_FLAG_DEFAULTS),
+      ],
+    );
+  }
 }
 
 export async function closeIntegrationPool(): Promise<void> {

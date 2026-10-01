@@ -1,6 +1,14 @@
 import "dotenv/config";
 
 import { extractDomainFromEmail, normalizeEmail } from "../src/lib/normalize";
+import {
+  membershipRoleForStaff,
+  OPENSDOORS_FEATURE_FLAG_DEFAULTS,
+  OPENSDOORS_ORGANISATION_ID,
+  OPENSDOORS_ORGANISATION_NAME,
+  OPENSDOORS_ORGANISATION_SLUG,
+  shouldBackfillPlatformAdmin,
+} from "../src/lib/tenant/organisation";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -25,6 +33,23 @@ async function main() {
       : "staff@opensdoors.example",
   );
 
+  await prisma.organisation.upsert({
+    where: { id: OPENSDOORS_ORGANISATION_ID },
+    create: {
+      id: OPENSDOORS_ORGANISATION_ID,
+      name: OPENSDOORS_ORGANISATION_NAME,
+      slug: OPENSDOORS_ORGANISATION_SLUG,
+      status: "ACTIVE",
+      featureFlags: OPENSDOORS_FEATURE_FLAG_DEFAULTS,
+    },
+    update: {},
+  });
+
+  const staffIsPlatformAdmin = shouldBackfillPlatformAdmin({
+    email: seedStaffEmail,
+    isSuperAdmin: true,
+  });
+
   const staff = await prisma.staffUser.upsert({
     where: { entraObjectId: seedEntraOid },
     create: {
@@ -36,12 +61,24 @@ async function main() {
       // flow is exercisable on local/staging. Production grants this capability
       // to greg@bidlow.co.uk as a separate, deliberate step (never via seed).
       isSuperAdmin: true,
+      isPlatformAdmin: staffIsPlatformAdmin,
     },
     update: {
       email: seedStaffEmail,
       displayName: "Demo Staff",
       isSuperAdmin: true,
+      isPlatformAdmin: staffIsPlatformAdmin,
     },
+  });
+
+  await prisma.organisationMember.upsert({
+    where: { staffUserId: staff.id },
+    create: {
+      organisationId: OPENSDOORS_ORGANISATION_ID,
+      staffUserId: staff.id,
+      role: membershipRoleForStaff({ isSuperAdmin: true, role: "ADMIN" }),
+    },
+    update: {},
   });
 
   const clientsData = [

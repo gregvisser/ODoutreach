@@ -10,6 +10,7 @@ const {
   staffUserDelete,
   staffUserFindUnique,
   staffUserUpdate,
+  organisationMemberCreate,
 } = vi.hoisted(() => ({
   createGuestInvitation: vi.fn(),
   logStaffAccessAudit: vi.fn(),
@@ -20,6 +21,7 @@ const {
   staffUserDelete: vi.fn(),
   staffUserFindUnique: vi.fn(),
   staffUserUpdate: vi.fn(),
+  organisationMemberCreate: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({
@@ -49,6 +51,9 @@ vi.mock("@/lib/db", () => ({
       findUnique: staffUserFindUnique,
       update: staffUserUpdate,
     },
+    organisationMember: {
+      create: organisationMemberCreate,
+    },
   },
 }));
 
@@ -63,6 +68,7 @@ describe("inviteStaffUser", () => {
     staffUserFindUnique.mockResolvedValue(null);
     staffUserCreate.mockResolvedValue({ id: "staff-1" });
     staffUserUpdate.mockResolvedValue({ id: "staff-1" });
+    organisationMemberCreate.mockResolvedValue({ id: "member-1" });
     createGuestInvitation.mockResolvedValue({
       invitationId: "invitation-1",
       invitedUserObjectId: "guest-oid",
@@ -73,6 +79,13 @@ describe("inviteStaffUser", () => {
   it("defaults a new staff invitation to OPERATOR", async () => {
     expect(await inviteStaffUser({ email: "staff@example.com" })).toMatchObject({ ok: true });
     expect(staffUserCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ role: "OPERATOR" }) });
+    expect(organisationMemberCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organisationId: "org_opensdoors",
+        staffUserId: "staff-1",
+        role: "USER",
+      }),
+    });
   });
 
   it("writes and invites using a trimmed, lowercase staff email", async () => {

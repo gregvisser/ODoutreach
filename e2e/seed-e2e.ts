@@ -16,6 +16,13 @@ import { Pool } from "pg";
 import { RATE_VERSION } from "../src/lib/ai/model-catalog";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
+  membershipRoleForStaff,
+  OPENSDOORS_FEATURE_FLAG_DEFAULTS,
+  OPENSDOORS_ORGANISATION_ID,
+  OPENSDOORS_ORGANISATION_NAME,
+  OPENSDOORS_ORGANISATION_SLUG,
+} from "../src/lib/tenant/organisation";
+import {
   E2E_AI_SPEND,
   E2E_CLIENT,
   E2E_CLIENT_B,
@@ -63,6 +70,18 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
   try {
+    await prisma.organisation.upsert({
+      where: { id: OPENSDOORS_ORGANISATION_ID },
+      create: {
+        id: OPENSDOORS_ORGANISATION_ID,
+        name: OPENSDOORS_ORGANISATION_NAME,
+        slug: OPENSDOORS_ORGANISATION_SLUG,
+        status: "ACTIVE",
+        featureFlags: OPENSDOORS_FEATURE_FLAG_DEFAULTS,
+      },
+      update: {},
+    });
+
     await prisma.staffUser.upsert({
       where: { entraObjectId: E2E_SUPER_ADMIN.entraObjectId },
       create: {
@@ -689,6 +708,24 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
     await prisma.outboundEmail.upsert({ where: { id: replyQueue.cappedId }, create: { id: replyQueue.cappedId, ...cappedData }, update: cappedData });
     const usedCapacity = { clientId: replyQueue.clientId, mailboxIdentityId: replyQueue.mailboxId, idempotencyKey: "e2e-used-capacity", windowKey: new Date().toISOString().slice(0, 10), status: "CONSUMED" as const };
     await prisma.mailboxSendReservation.upsert({ where: { id: "e2e-used-capacity" }, create: { id: "e2e-used-capacity", ...usedCapacity }, update: usedCapacity });
+
+    const staffRows = await prisma.staffUser.findMany({
+      select: { id: true, role: true, isSuperAdmin: true },
+    });
+    for (const person of staffRows) {
+      await prisma.organisationMember.upsert({
+        where: { staffUserId: person.id },
+        create: {
+          organisationId: OPENSDOORS_ORGANISATION_ID,
+          staffUserId: person.id,
+          role: membershipRoleForStaff({
+            isSuperAdmin: person.isSuperAdmin,
+            role: person.role,
+          }),
+        },
+        update: {},
+      });
+    }
   } finally {
     await prisma.$disconnect();
     await pool.end();
