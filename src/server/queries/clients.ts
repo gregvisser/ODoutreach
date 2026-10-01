@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import type { ClientAccessScope } from "@/server/tenant/access";
 
 export async function listClientsForStaff(accessibleClientIds: string[]) {
   if (accessibleClientIds.length === 0) {
@@ -82,12 +83,17 @@ export async function getClientByIdForStaff(
 
 /**
  * F2 — the super-admin recovery view: the ONLY query that returns soft-deleted
- * workspaces. Caller must be a super-admin (gate with `requireSuperAdmin`).
+ * workspaces. Caller must be a super-admin. A platform admin sees every
+ * organisation. Anyone else sees only their own organisation's deleted rows.
  * Ordered most-recently-deleted first so the recovery window is easy to read.
  */
-export async function listSoftDeletedClients() {
+export async function listSoftDeletedClients(scope: ClientAccessScope) {
+  if (scope.kind === "none") return [];
   return prisma.client.findMany({
-    where: { deletedAt: { not: null } },
+    where:
+      scope.kind === "organisation"
+        ? { deletedAt: { not: null }, organisationId: scope.organisationId }
+        : { deletedAt: { not: null } },
     orderBy: { deletedAt: "desc" },
     select: {
       id: true,

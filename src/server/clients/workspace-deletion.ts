@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { canDeleteWorkspace } from "@/server/tenant/access";
+import { canDeleteWorkspace, clientOrganisationAllowed } from "@/server/tenant/access";
 import { workspaceDeletionConfirmationMatches } from "@/lib/clients/workspace-deletion-confirm";
 
 /**
@@ -73,9 +73,12 @@ export async function softDeleteClientWorkspace(input: {
 
   const client = await prisma.client.findUnique({
     where: { id: input.clientId },
-    select: { id: true, name: true, deletedAt: true },
+    select: { id: true, name: true, deletedAt: true, organisationId: true },
   });
   if (!client) {
+    return { ok: false, reason: "not_found", message: "Workspace not found." };
+  }
+  if (!(await clientOrganisationAllowed(input.actor, client.organisationId))) {
     return { ok: false, reason: "not_found", message: "Workspace not found." };
   }
   if (client.deletedAt) {
@@ -141,9 +144,12 @@ export async function restoreClientWorkspace(input: {
 
   const client = await prisma.client.findUnique({
     where: { id: input.clientId },
-    select: { id: true, name: true, deletedAt: true },
+    select: { id: true, name: true, deletedAt: true, organisationId: true },
   });
   if (!client) {
+    return { ok: false, reason: "not_found", message: "Workspace not found." };
+  }
+  if (!(await clientOrganisationAllowed(input.actor, client.organisationId))) {
     return { ok: false, reason: "not_found", message: "Workspace not found." };
   }
   if (!client.deletedAt) {

@@ -1,7 +1,10 @@
 import "server-only";
 
+import { cache } from "react";
+
 import type { StaffRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import { hasPlatformAdminAccess } from "@/lib/tenant/organisation";
 
 /**
  * In-account staff roles were removed (2026-06): every active staff member gets
@@ -46,27 +49,80 @@ export function canDeleteWorkspace(staff: { isSuperAdmin: boolean }): boolean {
 }
 
 /**
- * THE tenant wall, in one place. Both the list form (`getAccessibleClientIds`)
- * and the single-id form (`canAccessClient`) build their query from this, so the
- * two can never drift apart — if the wall is ever narrowed (e.g. scoped to
- * `ClientMembership`, which `specs/BC-01-tenant-isolation.md` records as the
- * likely future), narrowing it here narrows both at once.
+ * Who this staff member may see.
  *
- * Roles removed: every active staff member may access every LIVE client. The
- * `deletedAt: null` filter is the wall that survives — soft-deleted workspaces
- * stay invisible to all normal paths (only `listSoftDeletedClients`, which is
- * super-admin-gated, can see them).
+ * - `all-live`: Bidlow platform admin (verified @bidlow.co.uk AND the flag).
+ *   Every live client, in every organisation. Soft-deleted rows stay on the
+ *   recovery query, not here.
+ * - `organisation`: every live client of that one organisation. OpensDoors
+ *   staff therefore still see every OpensDoors client.
+ * - `none`: no membership and not a platform admin. Sees nothing.
+ *
+ * Internal cron routes are not staff. They authenticate with
+ * PROCESS_QUEUE_SECRET and still walk every organisation's own client rows.
+ * They must not copy one client's data into another. Splitting those jobs so
+ * one organisation cannot fail another is a later stage.
  */
-function accessibleClientWhere(staff: StaffIdentity) {
-  void staff;
-  return { deletedAt: null } as const;
+export type ClientAccessScope =
+  | { kind: "all-live" }
+  | { kind: "organisation"; organisationId: string }
+  | { kind: "none" };
+
+export const loadClientAccessScope = cache(async (staffId: string): Promise<ClientAccessScope> => {
+  if (!staffId) return { kind: "none" };
+  const row = await prisma.staffUser.findUnique({
+    where: { id: staffId },
+    select: {
+      email: true,
+      isPlatformAdmin: true,
+      organisationMembership: { select: { organisationId: true } },
+    },
+  });
+  if (!row) return { kind: "none" };
+  if (hasPlatformAdminAccess(row)) return { kind: "all-live" };
+  if (!row.organisationMembership) return { kind: "none" };
+  return { kind: "organisation", organisationId: row.organisationMembership.organisationId };
+});
+
+/**
+ * Prisma filter for live clients this scope may touch. `none` matches no row.
+ * Both the list form and the single-id form use this, so they cannot drift.
+ */
+export function accessibleClientWhere(scope: ClientAccessScope): {
+  deletedAt: null;
+  organisationId?: string;
+  id?: { in: string[] };
+} {
+  if (scope.kind === "none") {
+    return { deletedAt: null, id: { in: [] } };
+  }
+  if (scope.kind === "all-live") {
+    return { deletedAt: null };
+  }
+  return { deletedAt: null, organisationId: scope.organisationId };
+}
+
+/**
+ * True when this staff member may act on a workspace in that organisation,
+ * including a soft-deleted one. Normal reads still hide deleted rows via
+ * `accessibleClientWhere`.
+ */
+export async function clientOrganisationAllowed(
+  staff: { id: string },
+  organisationId: string,
+): Promise<boolean> {
+  const scope = await loadClientAccessScope(staff.id);
+  if (scope.kind === "all-live") return true;
+  if (scope.kind === "organisation") return scope.organisationId === organisationId;
+  return false;
 }
 
 /**
  * Returns client IDs this staff member may load or mutate. Never use raw `clientId`
  * from the client without intersecting with this list.
  *
- * This reads every live client row, so use it ONLY when the caller genuinely
+ * This reads every live client in the staff member's organisation (or every
+ * organisation, for a platform admin). Use it ONLY when the caller genuinely
  * needs the whole list (a clients index, a cross-client report). To answer
  * "may this staff member touch THIS one client?", call `canAccessClient` /
  * `requireClientAccess` instead — they ask the database about one indexed row
@@ -75,8 +131,10 @@ function accessibleClientWhere(staff: StaffIdentity) {
 export async function getAccessibleClientIds(
   staff: StaffIdentity,
 ): Promise<string[]> {
+  const scope = await loadClientAccessScope(staff.id);
+  if (scope.kind === "none") return [];
   const rows = await prisma.client.findMany({
-    where: accessibleClientWhere(staff),
+    where: accessibleClientWhere(scope),
     select: { id: true },
   });
   return rows.map((r) => r.id);
@@ -95,8 +153,10 @@ export async function canAccessClient(
   clientId: string,
 ): Promise<boolean> {
   if (!clientId) return false;
+  const scope = await loadClientAccessScope(staff.id);
+  if (scope.kind === "none") return false;
   const row = await prisma.client.findFirst({
-    where: { ...accessibleClientWhere(staff), id: clientId },
+    where: { ...accessibleClientWhere(scope), id: clientId },
     select: { id: true },
   });
   return row !== null;

@@ -21,7 +21,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { resolveClientsPageEmptyCopy } from "@/lib/clients/clients-page-empty-state";
-import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getAccessibleClientIds } from "@/server/tenant/access";
@@ -31,16 +30,12 @@ export const dynamic = "force-dynamic";
 export default async function ClientsPage() {
   const staff = await requireOpensDoorsStaff();
   const accessible = await getAccessibleClientIds(staff);
-  // listClientsForStaff needs `accessible`; the total count does not —
-  // run them concurrently instead of one after another.
-  const [clients, totalClientsInDatabase] = await Promise.all([
-    listClientsForStaff(accessible),
-    // F2: exclude soft-deleted workspaces from the "exists but you can't see it" hint.
-    prisma.client.count({ where: { deletedAt: null } }),
-  ]);
+  const clients = await listClientsForStaff(accessible);
+  // The empty state is about THIS organisation. Counting every client in the
+  // database would tell one organisation that another organisation exists.
   const emptyCopy = resolveClientsPageEmptyCopy({
     listedClientCount: clients.length,
-    totalClientsInDatabase,
+    totalClientsInDatabase: clients.length,
   });
 
   return (

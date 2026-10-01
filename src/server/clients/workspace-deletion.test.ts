@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 type ClientRow = {
   id: string;
   name: string;
+  organisationId: string;
   deletedAt: Date | null;
   deletedByStaffUserId: string | null;
 };
@@ -65,6 +66,25 @@ vi.mock("@/lib/db", () => ({
           clients.find((c) => c.id === where.id) ?? null,
       ),
     },
+    staffUser: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+        if (where.id === "greg") {
+          return {
+            email: "greg@bidlow.co.uk",
+            isPlatformAdmin: true,
+            organisationMembership: { organisationId: "org_opensdoors" },
+          };
+        }
+        if (where.id === "opensdoors-owner") {
+          return {
+            email: "owner@opensdoors.co.uk",
+            isPlatformAdmin: false,
+            organisationMembership: { organisationId: "org_opensdoors" },
+          };
+        }
+        return null;
+      }),
+    },
     $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   },
 }));
@@ -76,11 +96,12 @@ import {
 
 const SUPER = { id: "greg", isSuperAdmin: true };
 const NORMAL = { id: "op", isSuperAdmin: false };
+const OPENSDOORS_OWNER = { id: "opensdoors-owner", isSuperAdmin: true };
 
-function seed(rows: ClientRow[]) {
+function seed(rows: Array<Omit<ClientRow, "organisationId"> & { organisationId?: string }>) {
   clients.length = 0;
   audit.length = 0;
-  for (const r of rows) clients.push({ ...r });
+  for (const r of rows) clients.push({ organisationId: "org_opensdoors", ...r });
 }
 
 beforeEach(() => {
@@ -141,6 +162,18 @@ describe("softDeleteClientWorkspace", () => {
     });
   });
 
+  it("does not delete another organisation's workspace", async () => {
+    seed([{ id: "c1", name: "Contoso", organisationId: "org_other", deletedAt: null, deletedByStaffUserId: null }]);
+    const res = await softDeleteClientWorkspace({
+      actor: OPENSDOORS_OWNER,
+      clientId: "c1",
+      typedConfirmation: "Contoso",
+    });
+    expect(res).toMatchObject({ ok: false, reason: "not_found" });
+    expect(clients[0].deletedAt).toBeNull();
+    expect(audit).toHaveLength(0);
+  });
+
   it("is idempotent-safe: a second delete reports already_deleted", async () => {
     seed([
       {
@@ -179,6 +212,22 @@ describe("restoreClientWorkspace", () => {
     seed([{ id: "c1", name: "Acme", deletedAt: null, deletedByStaffUserId: null }]);
     const res = await restoreClientWorkspace({ actor: SUPER, clientId: "c1" });
     expect(res).toMatchObject({ ok: false, reason: "not_deleted" });
+  });
+
+  it("does not restore another organisation's workspace", async () => {
+    seed([
+      {
+        id: "c1",
+        name: "Contoso",
+        organisationId: "org_other",
+        deletedAt: new Date("2026-06-01T00:00:00.000Z"),
+        deletedByStaffUserId: "someone",
+      },
+    ]);
+    const res = await restoreClientWorkspace({ actor: OPENSDOORS_OWNER, clientId: "c1" });
+    expect(res).toMatchObject({ ok: false, reason: "not_found" });
+    expect(clients[0].deletedAt).not.toBeNull();
+    expect(audit).toHaveLength(0);
   });
 
   it("restores a soft-deleted workspace and audits it", async () => {
