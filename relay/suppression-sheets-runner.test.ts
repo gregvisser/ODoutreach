@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
-import { runSuppressionSheets } from "../scripts/run-suppression-sheets.mjs";
+import { runSuppressionSheets, suppressionRunReport } from "../scripts/run-suppression-sheets.mjs";
 let server: Server | undefined;
 const requests: { method: string; path: string; body: Record<string, unknown> }[] = [];
 const inventory = { sources: 3, entries: [
@@ -30,9 +30,25 @@ it("reads inventory, syncs each linked sheet exactly once, and never posts an al
     ...["one", "two"].map(sourceId => ({ method: "POST", path: "/api/internal/suppression/sync-all", body: { sourceId } })),
   ]);
 });
-it("continues after a verified shrink refusal and reports partial failure", async () => {
+it("continues after a verified shrink refusal and does not fail the run", async () => {
   const url = await endpoint(body => ({ status: body.sourceId === "one" ? 207 : 200, body: result(String(body.sourceId), body.sourceId !== "one") }));
-  expect(await runSuppressionSheets({ url, secret: "synthetic" })).toMatchObject({ ok: false, succeeded: 1, failed: 1, refusedShrink: 1 });
+  const summary = await runSuppressionSheets({ url, secret: "synthetic" });
+  expect(summary).toMatchObject({ ok: true, succeeded: 1, failed: 0, refusedShrink: 1 });
+  expect(suppressionRunReport(summary)).toEqual({
+    warning: "1 do-not-contact sheets refused a shrink; existing blocks were kept",
+    problem: null,
+  });
+});
+it("still fails when a sheet breaks for a reason other than a shrink refusal", async () => {
+  const url = await endpoint(body => ({
+    status: body.sourceId === "one" ? 207 : 200,
+    body: body.sourceId === "one"
+      ? { sources: 1, succeeded: 0, failed: 1, ok: false, outcomes: [{ sourceId: "one", ok: false }] }
+      : result("two"),
+  }));
+  const summary = await runSuppressionSheets({ url, secret: "synthetic" });
+  expect(summary).toMatchObject({ ok: false, succeeded: 1, failed: 1, refusedShrink: 0 });
+  expect(suppressionRunReport(summary).problem).toMatch(/1 failed/);
 });
 it("does not retry a timed-out write and still checks the next sheet", async () => {
   const url = await endpoint(body => body.sourceId === "one" ? null : { body: result("two") });

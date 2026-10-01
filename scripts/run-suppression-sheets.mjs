@@ -34,7 +34,8 @@ export async function runSuppressionSheets({ url, secret, fetchImpl = fetch, tim
           result.succeeded !== (outcome.ok ? 1 : 0) || result.failed !== (outcome.ok ? 0 : 1) ||
           response.status !== (outcome.ok ? 200 : 207)) throw new Error("Inconsistent DNC source outcome");
       if (outcome.ok) summary.succeeded++;
-      else { summary.failed++; if (outcome.refusedShrink === true) summary.refusedShrink++; }
+      else if (outcome.refusedShrink === true) summary.refusedShrink++;
+      else summary.failed++;
       // Public workflow output contains counts only, never private source details.
       onBatch({ batch: summary.attempted, ok: outcome.ok, refusedShrink: outcome.refusedShrink === true });
     } catch {
@@ -45,13 +46,26 @@ export async function runSuppressionSheets({ url, secret, fetchImpl = fetch, tim
   return { ok: summary.failed === 0 && summary.unverified === 0, ...summary };
 }
 
+/** Shrink refusals stay in the log. They do not fail reply sync or sending. */
+export function suppressionRunReport(result) {
+  const warning = result.refusedShrink > 0
+    ? `${result.refusedShrink} do-not-contact sheets refused a shrink; existing blocks were kept`
+    : null;
+  const problem = result.ok
+    ? null
+    : `do-not-contact sheet sync: ${result.failed} failed (${result.refusedShrink} shrink refusals); ${result.unverified} unverified of ${result.planned} planned sheets`;
+  return { warning, problem };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const result = await runSuppressionSheets({ url: process.env.SUPPRESSION_SYNC_URL, secret: process.env.PROCESS_QUEUE_SECRET,
       onBatch: batch => console.log("DNC sheet batch", JSON.stringify(batch)) });
     console.log("DNC sheet summary", JSON.stringify(result));
-    if (!result.ok) {
-      await appendFile(process.env.RUN_PROBLEMS_PATH || "/tmp/run-problems.txt", `do-not-contact sheet sync: ${result.failed} failed (${result.refusedShrink} shrink refusals); ${result.unverified} unverified of ${result.planned} planned sheets\n`);
+    const report = suppressionRunReport(result);
+    if (report.warning) console.log(`::warning title=DNC shrink held::${report.warning}`);
+    if (report.problem) {
+      await appendFile(process.env.RUN_PROBLEMS_PATH || "/tmp/run-problems.txt", `${report.problem}\n`);
       process.exitCode = 1;
     }
   } catch {

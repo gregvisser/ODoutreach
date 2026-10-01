@@ -1,3 +1,5 @@
+import { isBenignEmptyRecipientNote } from "./benign-job-note";
+
 /**
  * Deciding whether a scheduled run actually succeeded.
  *
@@ -107,8 +109,11 @@ export function jobOutcome(result: unknown): JobOutcome {
   const reasons: string[] = [];
   let errorCount = 0;
   if (Array.isArray(record.errors)) {
-    errorCount = record.errors.length;
-    for (const entry of record.errors.slice(0, MAX_REASONS)) {
+    const realErrors = record.errors.filter(
+      (entry) => typeof entry !== "string" || !isBenignEmptyRecipientNote(entry),
+    );
+    errorCount = realErrors.length;
+    for (const entry of realErrors.slice(0, MAX_REASONS)) {
       reasons.push(typeof entry === "string" ? entry : JSON.stringify(entry));
     }
   }

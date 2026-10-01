@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
-import { publicJobNotes, runScheduledOutreach } from "../scripts/run-scheduled-outreach.mjs";
+import { publicJobNotes, runScheduledOutreach, scheduledBatchFailed } from "../scripts/run-scheduled-outreach.mjs";
 let server: Server | undefined;
 const requests: Record<string, unknown>[] = [];
 async function endpoint(handler: (body: Record<string, unknown>) => { status?: number; body: object } | null) {
@@ -96,6 +96,34 @@ it("includes a thrown phase error in the batch log", async () => {
     : { status: 500, body: { errors: ["Scheduled outreach could not complete"] } });
   await expect(runScheduledOutreach({ url, secret: "synthetic", onBatch: batch => { seen.push(batch); } })).resolves.toMatchObject({ ok: false, unverified: 2 });
   expect(JSON.stringify(seen)).toMatch(/could not complete/);
+});
+it("does not fail the clock when the only advance error is an empty recipient list", async () => {
+  const seen: Record<string, unknown>[] = [];
+  const url = await endpoint(body => ({
+    status: body.phase === "advance" ? 207 : 200,
+    body: body.phase === "plan"
+      ? { ...plan, mailboxIds: [] }
+      : body.phase === "advance"
+        ? {
+            schedulerProtocol: 1,
+            ok: false,
+            errors: ["No recipients are ready for this step. Open Review recipients, then launch again."],
+          }
+        : { schedulerProtocol: 1, ok: true },
+  }));
+  const result = await runScheduledOutreach({ url, secret: "synthetic", onBatch: batch => { seen.push(batch); } });
+  expect(result.ok).toBe(true);
+  expect(result.failed).toBe(0);
+  expect(seen.find(batch => batch.phase === "advance")).toMatchObject({ ok: true, skipped: true });
+});
+it("still fails the clock when an empty recipient list is not the only error", () => {
+  expect(scheduledBatchFailed({
+    ok: false,
+    errors: [
+      "No recipients are ready for this step. Open Review recipients, then launch again.",
+      "database timeout",
+    ],
+  })).toBe(true);
 });
 it("publicJobNotes keeps a skip distinct from a failure", () => {
   expect(publicJobNotes({ skippedSteps: ["empty step"], errors: [] })).toEqual(["skipped: empty step"]);
