@@ -49,8 +49,15 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
       // A recorded guest identity may sign in without replacing the owner's
       // separately provisioned primary Microsoft identity.
       if (byInvitedGuestObjectId.isSuperAdmin) return byInvitedGuestObjectId;
+      // A platform account is provisioned explicitly. A different Microsoft
+      // identity must not claim it by matching the guest object id.
+      if (byInvitedGuestObjectId.isPlatformAdmin) return null;
       return tx.staffUser.update({
-        where: { id: byInvitedGuestObjectId.id, isSuperAdmin: false },
+        where: {
+          id: byInvitedGuestObjectId.id,
+          isSuperAdmin: false,
+          isPlatformAdmin: false,
+        },
         data: {
           entraObjectId,
           displayName: displayName ?? byInvitedGuestObjectId.displayName,
@@ -65,9 +72,9 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
 
     const byEmail = await tx.staffUser.findUnique({ where: { email } });
     if (!byEmail) return null;
-    // Owner identities must be provisioned explicitly. An email match must
-    // never transfer owner privileges to a different Microsoft identity.
-    if (byEmail.isSuperAdmin) return null;
+    // Owner and platform identities must be provisioned explicitly. An email
+    // match must never transfer those privileges to a different Microsoft identity.
+    if (byEmail.isSuperAdmin || byEmail.isPlatformAdmin) return null;
     if (byEmail.guestInvitationState !== "PENDING" || byEmail.graphInvitedUserObjectId) {
       return null;
     }
@@ -79,6 +86,7 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
         id: byEmail.id,
         entraObjectId: byEmail.entraObjectId,
         isSuperAdmin: false,
+        isPlatformAdmin: false,
         guestInvitationState: "PENDING",
         graphInvitedUserObjectId: null,
       },
@@ -90,7 +98,9 @@ async function loadStaffRecord(): Promise<StaffUser | null> {
       },
     });
     const bound = await tx.staffUser.findUnique({ where: { id: byEmail.id } });
-    return bound?.entraObjectId === entraObjectId && !bound.isSuperAdmin ? bound : null;
+    return bound?.entraObjectId === entraObjectId && !bound.isSuperAdmin && !bound.isPlatformAdmin
+      ? bound
+      : null;
   });
 }
 

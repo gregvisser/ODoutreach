@@ -1,14 +1,11 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
-
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
-import { normalizeEmail } from "@/lib/normalize";
-import { membershipRoleForStaff, OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
-import { isStaffEmailAllowed, requireSuperAdminForAction } from "@/server/auth/staff";
+import { membershipRoleForStaff } from "@/lib/tenant/organisation";
+import { requireSuperAdminForAction } from "@/server/auth/staff";
 import { logStaffAccessAudit } from "@/server/staff-access/audit";
 import { assertLastActiveAdminProtected } from "@/server/staff-access/last-admin";
 import {
@@ -17,6 +14,10 @@ import {
   GuestInvitationError,
 } from "@/server/microsoft-graph/guest-invitations";
 import { formatInvitationErrorForBanner } from "@/lib/staff-access/invitation-errors";
+import {
+  inviteStaffIntoOrganisation,
+  staffInviteRedirectUrl,
+} from "@/server/tenant/invite-organisation-staff";
 
 function describeInvitationFailure(e: unknown, fallback: string): string {
   if (e instanceof GuestInvitationError) {
@@ -35,21 +36,38 @@ export type StaffActionResult =
 const staffRoleSchema = z.enum(["ADMIN", "MANAGER", "OPERATOR", "VIEWER"]);
 
 function inviteRedirectUrl(): string {
-  const explicit = process.env.STAFF_INVITE_REDIRECT_URL?.trim();
-  const authUrl = process.env.AUTH_URL?.trim();
-  const base = explicit || authUrl;
-  if (!base) {
-    throw new Error("Set AUTH_URL or STAFF_INVITE_REDIRECT_URL for invitation return URL");
-  }
-  return `${base.replace(/\/$/, "")}/sign-in`;
+  return staffInviteRedirectUrl();
 }
 
-function assertInviteeDomainAllowed(email: string): void {
-  if (!isStaffEmailAllowed({ email })) {
-    throw new Error(
-      "That email is not allowed by STAFF_EMAIL_DOMAINS — update policy or use an allowed address.",
-    );
+async function actorOrganisationId(staffUserId: string): Promise<string | null> {
+  const row = await prisma.organisationMember.findUnique({
+    where: { staffUserId },
+    select: { organisationId: true },
+  });
+  return row?.organisationId ?? null;
+}
+
+/**
+ * Super-admin staff tools stay inside the actor's home organisation.
+ * A missing membership is reported as such. A person in another
+ * organisation is reported as not found so the directory does not leak.
+ */
+async function requireSameOrganisationStaff(
+  actorStaffUserId: string,
+  targetStaffUserId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const organisationId = await actorOrganisationId(actorStaffUserId);
+  if (!organisationId) {
+    return { ok: false, error: "You are not in an organisation." };
   }
+  const target = await prisma.organisationMember.findUnique({
+    where: { staffUserId: targetStaffUserId },
+    select: { organisationId: true },
+  });
+  if (!target || target.organisationId !== organisationId) {
+    return { ok: false, error: "Staff user not found." };
+  }
+  return { ok: true };
 }
 
 const inviteSchema = z.object({
@@ -68,72 +86,18 @@ export async function inviteStaffUser(
   try {
     const admin = await requireSuperAdminForAction();
     const data = inviteSchema.parse(raw);
-    const email = normalizeEmail(data.email);
-    assertInviteeDomainAllowed(email);
-
-    const existing = await prisma.staffUser.findUnique({ where: { email } });
-    if (existing) {
-      return { ok: false, error: "A staff user with this email already exists." };
+    const organisationId = await actorOrganisationId(admin.id);
+    if (!organisationId) {
+      return { ok: false, error: "You are not in an organisation." };
     }
-
-    const redirect = inviteRedirectUrl();
-
-    const draft = await prisma.staffUser.create({
-      data: {
-        entraObjectId: randomUUID(),
-        email,
-        displayName: null,
-        role: data.role,
-        isActive: data.isActive,
-        guestInvitationState: "PENDING",
-        invitedAt: new Date(),
-        invitedById: admin.id,
-      },
-    });
-
-    try {
-      await prisma.organisationMember.create({
-        data: {
-          organisationId: OPENSDOORS_ORGANISATION_ID,
-          staffUserId: draft.id,
-          role: membershipRoleForStaff({ isSuperAdmin: false, role: data.role }),
-        },
-      });
-    } catch (memberErr) {
-      await prisma.staffUser.delete({ where: { id: draft.id } });
-      return {
-        ok: false,
-        error: describeInvitationFailure(memberErr, "Could not attach the invitation to OpensDoors."),
-      };
-    }
-
-    try {
-      const graph = await createGuestInvitation(email, redirect);
-      await prisma.staffUser.update({
-        where: { id: draft.id },
-        data: {
-          graphInvitationId: graph.invitationId,
-          graphInvitedUserObjectId: graph.invitedUserObjectId,
-          invitationLastSentAt: new Date(),
-        },
-      });
-    } catch (graphErr) {
-      await prisma.staffUser.delete({ where: { id: draft.id } });
-      return {
-        ok: false,
-        error: describeInvitationFailure(graphErr, "Invitation failed"),
-      };
-    }
-
-    await logStaffAccessAudit({
+    return await inviteStaffIntoOrganisation({
       actorStaffUserId: admin.id,
-      action: "CREATE",
-      targetStaffUserId: draft.id,
-      metadata: { op: "invite_sent", inviteeEmail: email, role: data.role },
+      organisationId,
+      email: data.email,
+      staffRole: data.role,
+      membershipRole: membershipRoleForStaff({ isSuperAdmin: false, role: data.role }),
+      isActive: data.isActive,
     });
-
-    revalidatePath("/settings/staff-access");
-    return { ok: true, message: "Invitation sent. The user must accept the Microsoft email before signing in." };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invitation failed";
     return { ok: false, error: msg };
@@ -143,6 +107,8 @@ export async function inviteStaffUser(
 export async function resendStaffInvitation(staffUserId: string): Promise<StaffActionResult> {
   try {
     const admin = await requireSuperAdminForAction();
+    const sameOrg = await requireSameOrganisationStaff(admin.id, staffUserId);
+    if (!sameOrg.ok) return sameOrg;
     const staff = await prisma.staffUser.findUnique({ where: { id: staffUserId } });
     if (!staff) {
       return { ok: false, error: "Staff user not found." };
@@ -184,6 +150,8 @@ export async function syncStaffInvitationStatus(
 ): Promise<StaffActionResult> {
   try {
     const admin = await requireSuperAdminForAction();
+    const sameOrg = await requireSameOrganisationStaff(admin.id, staffUserId);
+    if (!sameOrg.ok) return sameOrg;
     const staff = await prisma.staffUser.findUnique({ where: { id: staffUserId } });
     if (!staff?.graphInvitedUserObjectId) {
       return {
@@ -241,6 +209,8 @@ export async function updateStaffRole(
   try {
     const admin = await requireSuperAdminForAction();
     const data = updateRoleSchema.parse(raw);
+    const sameOrg = await requireSameOrganisationStaff(admin.id, data.staffUserId);
+    if (!sameOrg.ok) return sameOrg;
     const before = await prisma.staffUser.findUnique({
       where: { id: data.staffUserId },
       select: { role: true },
@@ -286,6 +256,8 @@ export async function setStaffActive(
   try {
     const admin = await requireSuperAdminForAction();
     const data = setActiveSchema.parse(raw);
+    const sameOrg = await requireSameOrganisationStaff(admin.id, data.staffUserId);
+    if (!sameOrg.ok) return sameOrg;
     await assertLastActiveAdminProtected({
       actorStaffUserId: admin.id,
       targetStaffUserId: data.staffUserId,

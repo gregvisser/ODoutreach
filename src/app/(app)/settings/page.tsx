@@ -9,7 +9,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { isOrganisationAdminRole } from "@/lib/tenant/platform";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { loadStaffHomeOrganisation } from "@/server/tenant/organisation-scope";
 import { hasGoogleServiceAccountConfig } from "@/server/integrations/google-sheets/auth";
 import { getConsoleTestUsersUrl } from "@/server/integrations/google-oauth-test-users/test-users-api";
 import { GoogleOauthTestUsersPanel } from "@/components/settings/google-oauth-test-users-panel";
@@ -18,6 +20,8 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const staff = await requireOpensDoorsStaff();
+  const home = await loadStaffHomeOrganisation(staff.id);
+  const canManageOrganisation = isOrganisationAdminRole(home?.role);
   const googleWorkspaceSuppressionConfigured = hasGoogleServiceAccountConfig();
   const rocketReachConfigured = Boolean(process.env.ROCKETREACH_API_KEY?.trim());
   const staffDomainAllowlist = process.env.STAFF_EMAIL_DOMAINS?.trim();
@@ -115,7 +119,31 @@ export default async function SettingsPage() {
               </Link>
             </CardContent>
           </Card>
-        ) : (
+        ) : null}
+
+        {canManageOrganisation && home ? (
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Your organisation</CardTitle>
+              <CardDescription>
+                Invite people into {home.name} and see who already has access.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Invitations stay inside {home.name}. They do not grant access to any other organisation.
+              </p>
+              <Link prefetch={false}
+                href="/settings/organisation"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Open organisation settings →
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {!staff.isSuperAdmin && !canManageOrganisation ? (
           <Card className="border-border/80 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg">Staff access</CardTitle>
@@ -125,7 +153,7 @@ export default async function SettingsPage() {
               </CardDescription>
             </CardHeader>
           </Card>
-        )}
+        ) : null}
 
         <Card className="border-border/80 shadow-sm">
           <CardHeader>

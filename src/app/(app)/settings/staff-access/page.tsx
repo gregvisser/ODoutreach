@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 import { StaffAccessPanel, type StaffRow } from "./staff-access-panel";
 import { StaffAccessRecentActivity } from "./staff-access-recent-activity";
@@ -31,7 +32,24 @@ export default async function StaffAccessPage() {
     );
   }
 
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <h1 className="text-2xl font-semibold">Staff access</h1>
+        <p className="text-muted-foreground">You are not in an organisation.</p>
+        <Link prefetch={false}
+          href="/settings"
+          className={cn(buttonVariants({ variant: "outline" }), "inline-flex")}
+        >
+          Back to settings
+        </Link>
+      </div>
+    );
+  }
+
   const rows = await prisma.staffUser.findMany({
+    where: { organisationMembership: { organisationId } },
     orderBy: { email: "asc" },
     include: {
       invitedBy: { select: { email: true } },

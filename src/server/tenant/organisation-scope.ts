@@ -12,12 +12,40 @@ type Db = Prisma.TransactionClient | typeof prisma;
  */
 /** Home organisation of a staff member. Null when they have no membership. */
 export async function organisationIdForStaff(staffId: string): Promise<string | null> {
+  const home = await loadStaffHomeOrganisation(staffId);
+  return home?.organisationId ?? null;
+}
+
+export type StaffHomeOrganisation = {
+  organisationId: string;
+  role: "OWNER" | "ADMIN" | "USER";
+  status: "ACTIVE" | "SUSPENDED";
+  name: string;
+};
+
+/**
+ * Home organisation plus the role and status the shell and settings need.
+ * Null when the staff member has no membership. Does not fall back to OpensDoors.
+ */
+export async function loadStaffHomeOrganisation(
+  staffId: string,
+): Promise<StaffHomeOrganisation | null> {
   if (!staffId) return null;
   const row = await prisma.organisationMember.findUnique({
     where: { staffUserId: staffId },
-    select: { organisationId: true },
+    select: {
+      organisationId: true,
+      role: true,
+      organisation: { select: { status: true, name: true } },
+    },
   });
-  return row?.organisationId ?? null;
+  if (!row) return null;
+  return {
+    organisationId: row.organisationId,
+    role: row.role,
+    status: row.organisation.status,
+    name: row.organisation.name,
+  };
 }
 
 export async function organisationIdForClient(

@@ -9,6 +9,7 @@ type StaffRow = {
   displayName: string | null;
   role: "ADMIN" | "MANAGER" | "OPERATOR" | "VIEWER";
   isSuperAdmin: boolean;
+  isPlatformAdmin: boolean;
   isActive: boolean;
   guestInvitationState: "NONE" | "PENDING" | "ACCEPTED";
   invitedAt: Date | null;
@@ -95,6 +96,7 @@ function staffRow(overrides: Partial<StaffRow> = {}): StaffRow {
     displayName: null,
     role: "OPERATOR",
     isSuperAdmin: false,
+    isPlatformAdmin: false,
     isActive: true,
     guestInvitationState: "NONE",
     invitedAt: null,
@@ -217,6 +219,55 @@ describe("staff access gate", () => {
     signInSession({ id: "saved-oid", email: "different-upn@example.net" });
 
     await expect(gateStaffAccess()).resolves.toMatchObject({ status: "ok" });
+  });
+
+  it("does not bind a pending platform admin by email", async () => {
+    rows.push(
+      staffRow({
+        entraObjectId: "placeholder-oid",
+        email: "greg@bidlow.co.uk",
+        isPlatformAdmin: true,
+        guestInvitationState: "PENDING",
+      }),
+    );
+    signInSession({ id: "attacker-oid", email: "greg@bidlow.co.uk" });
+
+    await expect(gateStaffAccess()).resolves.toMatchObject({ status: "not_registered" });
+    expect(rows[0]?.entraObjectId).toBe("placeholder-oid");
+  });
+
+  it("does not let a different Microsoft identity claim a platform admin by guest object id", async () => {
+    rows.push(
+      staffRow({
+        entraObjectId: "placeholder-oid",
+        email: "greg@bidlow.co.uk",
+        isPlatformAdmin: true,
+        isSuperAdmin: false,
+        guestInvitationState: "PENDING",
+        graphInvitedUserObjectId: "guest-oid",
+      }),
+    );
+    signInSession({ id: "guest-oid", email: "other@example.com" });
+
+    await expect(gateStaffAccess()).resolves.toMatchObject({ status: "not_registered" });
+    expect(rows[0]?.entraObjectId).toBe("placeholder-oid");
+    expect(rows[0]?.guestInvitationState).toBe("PENDING");
+  });
+
+  it("still lets a super-admin sign in through the recorded guest identity", async () => {
+    rows.push(
+      staffRow({
+        entraObjectId: "owner-oid",
+        email: "greg@bidlow.co.uk",
+        isSuperAdmin: true,
+        isPlatformAdmin: true,
+        graphInvitedUserObjectId: "guest-oid",
+      }),
+    );
+    signInSession({ id: "guest-oid", email: "greg@bidlow.co.uk" });
+
+    await expect(gateStaffAccess()).resolves.toMatchObject({ status: "ok" });
+    expect(rows[0]?.entraObjectId).toBe("owner-oid");
   });
 
   it("does not grant a pending invitation when both object id and normalized email mismatch", async () => {
