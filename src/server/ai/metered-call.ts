@@ -49,8 +49,15 @@ export interface AiInvokeResult<T> {
 }
 
 export interface MeteredAiCallArgs<T> {
-  /** Who to bill. Required — there is no house account. */
-  readonly client: { readonly id: string; readonly slug: string };
+  /**
+   * Client to bill. Null for the training assistant, which is billed to the
+   * staff member's organisation and must not be charged to a client slug.
+   */
+  readonly client: { readonly id: string; readonly slug: string } | null;
+  /** Set when `client` is null. Also recorded when the caller already knows it. */
+  readonly organisationId?: string | null;
+  /** Slug written on the ledger when there is no client. The organisation slug. */
+  readonly organisationSlug?: string | null;
   readonly feature: AiFeature;
   readonly model: string;
   /**
@@ -84,6 +91,7 @@ export async function runMeteredAiCall<T>(
   args: MeteredAiCallArgs<T>,
 ): Promise<MeteredAiCallOutcome<T>> {
   const { client, feature, model, apiKey, subject, invoke } = args;
+  const billingSlug = client?.slug ?? args.organisationSlug ?? "organisation";
 
   const rate = getModelRate(model);
 
@@ -107,8 +115,9 @@ export async function runMeteredAiCall<T>(
     try {
       await prisma.aiUsageEvent.create({
         data: {
-          clientId: client.id,
-          clientSlugAtCall: client.slug,
+          clientId: client?.id ?? null,
+          clientSlugAtCall: billingSlug,
+          ...(args.organisationId ? { organisationId: args.organisationId } : {}),
           feature,
           status: row.status,
           model,
@@ -128,7 +137,7 @@ export async function runMeteredAiCall<T>(
       reportError(err, {
         scope: "ai.usage-ledger",
         detail: "AI usage row could not be written — spend may be unbilled",
-        clientSlug: client.slug,
+        clientSlug: billingSlug,
         feature,
         model,
         costMicroUsd: row.costMicroUsd,
@@ -154,12 +163,34 @@ export async function runMeteredAiCall<T>(
   // Order matters only in that each check must happen before any money is
   // spent. All four fail closed: nothing is called, nothing is charged.
   if (!areAiFeaturesEnabled(feature)) return refuse("ai_features_switched_off");
+  if (
+    client &&
+    (feature === "SEQUENCE_DRAFTING" ||
+      feature === "CAMPAIGN_REVIEW" ||
+      feature === "SEND_TIME_ADVICE" ||
+      feature === "REP_PERFORMANCE" ||
+      feature === "TITLE_MESSAGE_FIT")
+  ) {
+    const { clientFeatureEnabled } = await import("@/server/tenant/feature-gate");
+    if (!(await clientFeatureEnabled(client.id, "aiDraftingReview", true))) {
+      return refuse("organisation_feature_off");
+    }
+  }
   if (!apiKey) return refuse("no_api_key");
   if (!rate) return refuse("no_rate_for_model");
   // CR-10: a feature declared to carry a prospect's own personal data may not
   // reach a vendor with no recorded processor allowance for it — regardless of
   // whether an API key happens to be configured. See `ai-feature-data-policy.ts`.
   if (isPersonalDataUncovered(feature)) return refuse("no_processor_allowance");
+  const { organisationAiCapBlocks } = await import("@/server/tenant/feature-gate");
+  if (
+    await organisationAiCapBlocks({
+      clientId: client?.id ?? null,
+      organisationId: args.organisationId ?? null,
+    })
+  ) {
+    return refuse("organisation_ai_cap");
+  }
 
   const startedAt = Date.now();
   let invoked: AiInvokeResult<T>;
@@ -179,7 +210,7 @@ export async function runMeteredAiCall<T>(
         scope: "ai.call",
         feature,
         model,
-        clientSlug: client.slug,
+        clientSlug: billingSlug,
         failureClass: classifyAiProviderFailure(code),
         providerError: code,
       },

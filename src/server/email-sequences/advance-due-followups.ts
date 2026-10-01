@@ -19,6 +19,7 @@ import {
   isAiCampaignsEnabled,
 } from "@/lib/ai-campaigns/policy";
 import { autonomousClientWhereFilter } from "@/lib/safety/autonomous-client-filter";
+import { organisationFeaturePermits } from "@/lib/tenant/feature-gate";
 import { resolveAutonomousRelayState } from "@/server/safety/autonomous-mode";
 
 import { sendSequenceStepBatch, SequenceStepSendError } from "./send-introduction";
@@ -197,13 +198,26 @@ export async function advanceDueSequenceFollowUps(opts?: {
         ...(aiClientIds.length > 0 ? [{ id: { in: aiClientIds } }] : []),
       ],
     },
-    select: { id: true, autonomousSendEnabled: true },
+    select: {
+      id: true,
+      autonomousSendEnabled: true,
+      organisation: { select: { status: true, featureFlags: true } },
+    },
   });
 
   for (const client of clients) {
+    const followUpsOn =
+      client.organisation == null
+        ? true
+        : organisationFeaturePermits(client.organisation, "followUps", true);
+    if (!followUpsOn) continue;
+    const machineCeiling =
+      client.organisation == null
+        ? true
+        : organisationFeaturePermits(client.organisation, "machineSending", true);
     result.clientsProcessed += 1;
     const sequenceIds = followUpSequenceIds({
-      machineSend: client.autonomousSendEnabled === true,
+      machineSend: client.autonomousSendEnabled === true && machineCeiling,
       requestedSequenceIds: opts?.sequenceIds ?? null,
       aiRunningSequenceIds: aiSequenceIdsByClient.get(client.id) ?? [],
     });

@@ -495,8 +495,15 @@ model Organisation {
   appProductName String?
   appLogoAltText String?
   /// Switches the platform admin can turn per organisation. Missing keys
-  /// resolve to on, which is OpensDoors today. Not consulted yet.
+  /// resolve to on, which is OpensDoors today. The environment remains the
+  /// emergency brake: off there is off for every organisation.
   featureFlags   Json               @default("{}")
+  /// Paid RocketReach lookups this organisation may consume. Null is no
+  /// extra cap. The platform reserve still applies to the shared account.
+  rocketReachCreditAllowance Int?
+  rocketReachCreditsUsed     Int     @default(0)
+  /// Optional AI spend cap in micro-USD. Null is no cap.
+  aiSpendCapMicroUsd         Int?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 

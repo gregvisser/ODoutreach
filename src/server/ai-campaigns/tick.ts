@@ -941,6 +941,10 @@ const SELECT = {
 /** One step for every AI campaign on this client. Called from the five-minute tick. */
 export async function tickAiCampaignsForClient(clientId: string): Promise<{ processed: number; errors: string[] }> {
   if (!isAiCampaignsEnabled()) return { processed: 0, errors: [] };
+  const { clientFeatureEnabled } = await import("@/server/tenant/feature-gate");
+  if (!(await clientFeatureEnabled(clientId, "aiCampaigns", true))) {
+    return { processed: 0, errors: [] };
+  }
   const now = new Date();
   const rows = await prisma.aiOutreachCampaign.findMany({
     where: {

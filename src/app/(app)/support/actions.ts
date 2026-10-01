@@ -8,6 +8,7 @@ import { isResolutionNoteReady, MIN_RESOLUTION_NOTE_LENGTH } from "@/lib/support
 import { resolveSupportTicketWithNotification } from "@/server/support/resolve-support-ticket";
 import { retryFailedSupportTicketNotification } from "@/server/support/support-ticket-notifications";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { organisationFeatureEnabledById } from "@/server/tenant/feature-gate";
 import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 import { clientOrganisationAllowed } from "@/server/tenant/access";
 
@@ -79,6 +80,9 @@ export async function createSupportTicket(
   const organisationId = await organisationIdForStaff(staff.id);
   if (!organisationId) {
     return { ok: false, error: "You are not in an organisation." };
+  }
+  if (!(await organisationFeatureEnabledById(organisationId, "supportDesk", true))) {
+    return { ok: false, error: "The support desk is switched off for your organisation." };
   }
 
   const ticket = await prisma.supportTicket.create({

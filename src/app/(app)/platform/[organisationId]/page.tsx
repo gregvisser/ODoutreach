@@ -17,6 +17,7 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   InviteOrganisationOwnerForm,
   OrganisationFlagsForm,
+  OrganisationLimitsForm,
   OrganisationStatusForm,
 } from "../platform-forms";
 
@@ -48,6 +49,11 @@ export default async function PlatformOrganisationPage({
   if (!organisation) notFound();
 
   const flags = resolveOrganisationFeatureFlags(organisation.featureFlags);
+  const aiSpend = await prisma.aiUsageEvent.aggregate({
+    where: { organisationId: organisation.id, status: "OK" },
+    _sum: { costMicroUsd: true },
+  });
+  const aiSpentMicroUsd = aiSpend._sum.costMicroUsd ?? 0;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -84,11 +90,35 @@ export default async function PlatformOrganisationPage({
         <CardHeader>
           <CardTitle className="text-lg">Capabilities</CardTitle>
           <CardDescription>
-            Each switch is stored on this organisation. A platform-wide emergency brake can still turn a capability off for everyone. Machine sending stays a per-client choice underneath the organisation ceiling.
+            Each switch is this organisation&apos;s ceiling. An environment emergency brake still turns a capability off for everyone. Machine sending stays a per-client choice underneath the organisation ceiling.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <OrganisationFlagsForm organisationId={organisation.id} flags={flags} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Usage and limits</CardTitle>
+          <CardDescription>
+            RocketReach lookups used: {organisation.rocketReachCreditsUsed}
+            {organisation.rocketReachCreditAllowance === null
+              ? " (no organisation cap)."
+              : ` of ${organisation.rocketReachCreditAllowance}.`}{" "}
+            AI spend: {aiSpentMicroUsd} micro-USD
+            {organisation.aiSpendCapMicroUsd === null
+              ? " (no cap)."
+              : ` of ${organisation.aiSpendCapMicroUsd}.`}{" "}
+            Empty fields mean no extra cap. The platform reserve is ROCKETREACH_PLATFORM_RESERVE_CREDITS.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OrganisationLimitsForm
+            organisationId={organisation.id}
+            rocketReachCreditAllowance={organisation.rocketReachCreditAllowance}
+            aiSpendCapMicroUsd={organisation.aiSpendCapMicroUsd}
+          />
         </CardContent>
       </Card>
 
