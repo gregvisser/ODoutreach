@@ -69,6 +69,10 @@ vi.mock("@/lib/db", () => ({
           deleteMany: domainDeleteMany,
           createMany: domainCreateMany,
         },
+        auditLog: { findMany: async () => [], create: async () => ({}) },
+        unsubscribeToken: { findMany: async () => [] },
+        inboundReply: { findMany: async () => [] },
+        outboundEmail: { findMany: async () => [] },
       }),
   },
 }));
@@ -182,12 +186,8 @@ describe("a dry run reports without writing", () => {
       dryRun: true,
     });
 
-    expect(r.ok).toBe(false);
-    expect(r.blockedShrink).toMatchObject({
-      previousCount: 373,
-      wouldWrite: 0,
-      removed: 373,
-    });
+    expect(r).toMatchObject({ ok: false, held: true, dryRun: true, previousCount: 373, removed: 0 });
+    expect(r.error).toContain("373");
     nothingWasWritten();
   });
 

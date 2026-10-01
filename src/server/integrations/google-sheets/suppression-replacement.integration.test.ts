@@ -23,7 +23,7 @@ beforeEach(async () => {
 afterEach(() => { expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
 afterAll(async () => { await prisma.$disconnect(); await closeIntegrationPool(); });
 
-describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL", (kind) => {
+describe.each(["EMAIL", "DOMAIN"] as const)("%s sheet mirror against PostgreSQL", (kind) => {
   const value = (name: string) => kind === "EMAIL" ? `${name}@example.test` : `${name}.example.test`;
   const originals = Array.from({ length: 10 }, (_, i) => value(`old-${i}`));
 
@@ -33,6 +33,7 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
     rows.push({ clientId: "other", sourceId: "", entry: value("other") }, { clientId: "client", sourceId: "", entry: value("manual") });
     if (kind === "EMAIL") await prisma.suppressedEmail.createMany({ data: rows.map(({ entry, sourceId, ...row }) => ({ ...row, sourceId: sourceId || null, email: entry })) });
     else await prisma.suppressedDomain.createMany({ data: rows.map(({ entry, sourceId, ...row }) => ({ ...row, sourceId: sourceId || null, domain: entry })) });
+    await prisma.companyDncEntry.create({ data: { clientId: "client", originalName: "Kept Company", canonicalName: "kept company" } });
   }
 
   async function stored() {
@@ -40,88 +41,108 @@ describe.each(["EMAIL", "DOMAIN"] as const)("%s replacement against PostgreSQL",
     return (await prisma.suppressedDomain.findMany({ where: { sourceId: "source", clientId: "client" } })).map((row) => row.domain).sort();
   }
 
-  it.each([10, 15])("preserves all existing blocks when %i new entries conceal their removal", async (newCount) => {
+  async function removalAudit() {
+    return prisma.auditLog.findMany({ where: { clientId: "client", action: "DELETE", entityType: kind === "EMAIL" ? "SuppressedEmail" : "SuppressedDomain" } });
+  }
+
+  it("mirrors a shorter sheet, audits the removal, and leaves every other block", async () => {
     await seed();
-    const additions = Array.from({ length: newCount }, (_, i) => value(`new-${i}`));
-    valuesGet.mockResolvedValue({ data: { values: additions.map((entry) => [entry]) } });
+    const kept = originals.slice(0, 8);
+    valuesGet.mockResolvedValue({ data: { values: [...kept, value("added")].map((entry) => [entry]) } });
     const result = await syncSuppressionSourceFromGoogle({ sourceId: "source" });
-    expect(result.ok).toBe(false);
-    expect(result.blockedShrink).toMatchObject({ previousCount: 10, wouldWrite: newCount, removed: 10 });
-    expect(await stored()).toEqual([...originals, ...additions].sort());
-    expect(result.addedWithoutRemoving).toBe(newCount);
-    expect(result.error).toContain(`Added ${newCount} new blocked`);
-    expect(refreshFlags).toHaveBeenCalledWith("client");
-
-    // A scheduled retry must neither duplicate nor remove these protections.
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false, addedWithoutRemoving: 0 });
-    expect(await stored()).toEqual([...originals, ...additions].sort());
-  });
-
-  it("allows additions, retains manual and other-client blocks, and normalises duplicates", async () => {
-    await seed();
-    valuesGet.mockResolvedValue({ data: { values: [...originals, originals[0].toUpperCase(), value("added")].map((entry) => [entry]) } });
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: true, rowsWritten: 11 });
-    expect(await stored()).toEqual([...originals, value("added")].sort());
-    const manual = kind === "EMAIL" ? await prisma.suppressedEmail.findMany({ where: { sourceId: null } }) : await prisma.suppressedDomain.findMany({ where: { sourceId: null } });
+    expect(result).toMatchObject({ ok: true, rowsWritten: 9, removed: 2 });
+    expect(await stored()).toEqual([...kept, value("added")].sort());
+    const manual = kind === "EMAIL"
+      ? await prisma.suppressedEmail.findMany({ where: { sourceId: null } })
+      : await prisma.suppressedDomain.findMany({ where: { sourceId: null } });
     expect(manual.map((row) => row.clientId).sort()).toEqual(["client", "other"]);
+    expect(await prisma.companyDncEntry.count({ where: { clientId: "client" } })).toBe(1);
+    const audits = await removalAudit();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ clientId: "client", entityId: "source" });
+    expect(audits[0]?.metadata).toMatchObject({
+      kind: "sheet_sourced_suppression_removed",
+      sourceId: "source",
+      spreadsheetId: "synthetic-sheet",
+      sheetRange: "'Blocks'!A:A",
+      removed: 2,
+    });
   });
 
-  it("reports actual removals in a dry run without changing the source or blocklist", async () => {
+  it("does not apply an empty sheet or a header with no usable rows", async () => {
     await seed();
-    const sourceBefore = await prisma.suppressionSource.findUniqueOrThrow({ where: { id: "source" } });
-    valuesGet.mockResolvedValue({ data: { values: Array.from({ length: 15 }, (_, i) => [value(`new-${i}`)]) } });
+    for (const cells of [[], [["Email"]], [["Domain"]]]) {
+      valuesGet.mockResolvedValue({ data: { values: cells } });
+      const result = await syncSuppressionSourceFromGoogle({ sourceId: "source", confirmShrink: true });
+      expect(result).toMatchObject({ ok: false, held: true, removed: 0 });
+      expect(await stored()).toEqual([...originals].sort());
+      expect(await removalAudit()).toHaveLength(0);
+    }
+  });
+
+  it("does not write or audit during a dry run of a mirror", async () => {
+    await seed();
+    valuesGet.mockResolvedValue({ data: { values: [[value("replacement")]] } });
     const result = await syncSuppressionSourceFromGoogle({ sourceId: "source", dryRun: true });
-    expect(result).toMatchObject({ ok: false, dryRun: true, blockedShrink: { removed: 10, wouldWrite: 15 } });
-    expect(result.addedWithoutRemoving).toBeUndefined();
+    expect(result).toMatchObject({ ok: true, dryRun: true, wouldWrite: 1, removed: 10 });
     expect(await stored()).toEqual([...originals].sort());
-    expect(await prisma.suppressionSource.findUniqueOrThrow({ where: { id: "source" } })).toEqual(sourceBefore);
+    expect(await removalAudit()).toHaveLength(0);
     expect(refreshFlags).not.toHaveBeenCalled();
   });
 
-  it("retains a single missing block while importing a new addition", async () => {
+  it("keeps a sheet row that is also an unsubscribe, a reply opt-out, or a bounce", async () => {
+    if (kind !== "EMAIL") return;
     await seed();
-    valuesGet.mockResolvedValue({ data: { values: [...originals.slice(1), value("added")].map((entry) => [entry]) } });
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false, blockedShrink: { removed: 1 }, addedWithoutRemoving: 1 });
-    expect(await stored()).toEqual([...originals, value("added")].sort());
+    const optedOut = originals[9]!;
+    const replied = originals[8]!;
+    const bounced = originals[7]!;
+    await prisma.unsubscribeToken.create({ data: { tokenHash: "hash-opt-out", clientId: "client", email: optedOut, usedAt: new Date() } });
+    await prisma.inboundReply.create({ data: { clientId: "client", fromEmail: replied, receivedAt: new Date(), classification: "UNSUBSCRIBE" } });
+    await prisma.outboundEmail.create({ data: { clientId: "client", toEmail: bounced, status: "BOUNCED" } });
+    await prisma.auditLog.create({ data: {
+      clientId: "client", action: "CREATE", entityType: "SuppressedDomain",
+      metadata: { kind: "manual_do_not_contact_add", value: value("manual") },
+    } });
+    valuesGet.mockResolvedValue({ data: { values: originals.slice(0, 7).map((entry) => [entry]) } });
+    const result = await syncSuppressionSourceFromGoogle({ sourceId: "source" });
+    expect(result).toMatchObject({ ok: true, removed: 0 });
+    expect(await stored()).toEqual([...originals].sort());
+    expect(await removalAudit()).toHaveLength(0);
   });
 
-  it("honours an explicitly confirmed replacement", async () => {
+  it("still removes a sheet row that has no other block when neighbours are protected", async () => {
+    if (kind !== "EMAIL") return;
     await seed();
-    valuesGet.mockResolvedValue({ data: { values: [[value("replacement")]] } });
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source", confirmShrink: true })).toMatchObject({ ok: true, rowsWritten: 1 });
-    expect(await stored()).toEqual([value("replacement")]);
+    await prisma.unsubscribeToken.create({ data: { tokenHash: "hash-kept", clientId: "client", email: originals[9]!, usedAt: new Date() } });
+    valuesGet.mockResolvedValue({ data: { values: originals.slice(0, 8).map((entry) => [entry]) } });
+    const result = await syncSuppressionSourceFromGoogle({ sourceId: "source" });
+    expect(result).toMatchObject({ ok: true, removed: 1 });
+    expect(await stored()).toEqual([...originals.slice(0, 8), originals[9]].sort());
+    expect((await removalAudit())[0]?.metadata).toMatchObject({ removed: 1, keptProtected: 1 });
   });
 
-  it("preserves original blocks during concurrent replacement attempts", async () => {
+  it("keeps a manual domain that was also recorded in the audit log", async () => {
+    if (kind !== "DOMAIN") return;
     await seed();
-    // Neither routine sync may remove any original, regardless of ordering.
-    const first = [...originals.slice(0, 5), ...Array.from({ length: 5 }, (_, i) => value(`first-${i}`))];
-    const second = [...originals.slice(5), ...Array.from({ length: 5 }, (_, i) => value(`second-${i}`))];
-    valuesGet.mockResolvedValueOnce({ data: { values: first.map((entry) => [entry]) } });
-    valuesGet.mockResolvedValueOnce({ data: { values: second.map((entry) => [entry]) } });
-    const results = await Promise.all([
-      syncSuppressionSourceFromGoogle({ sourceId: "source" }),
-      syncSuppressionSourceFromGoogle({ sourceId: "source" }),
-    ]);
-    expect(results.every((result) => !result.ok)).toBe(true);
-    const retained = await stored();
-    expect(originals.every((entry) => retained.includes(entry))).toBe(true);
-    // One transaction may roll back on a serialization conflict. A retry
-    // must converge without losing any original or either set of additions.
-    valuesGet.mockResolvedValue({ data: { values: [...first, ...second].map((entry) => [entry]) } });
-    await syncSuppressionSourceFromGoogle({ sourceId: "source" });
-    expect(await stored()).toEqual([...new Set([...originals, ...first, ...second])].sort());
+    const manualOnSheet = originals[9]!;
+    await prisma.suppressedDomain.update({ where: { clientId_domain: { clientId: "client", domain: manualOnSheet } }, data: { sourceId: "source" } });
+    await prisma.auditLog.create({ data: {
+      clientId: "client", action: "CREATE", entityType: "SuppressedDomain",
+      metadata: { kind: "manual_do_not_contact_add", value: manualOnSheet },
+    } });
+    valuesGet.mockResolvedValue({ data: { values: originals.slice(0, 9).map((entry) => [entry]) } });
+    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: true, removed: 0 });
+    expect(await stored()).toContain(manualOnSheet);
   });
 
-  it("retries flag refresh after an additive commit without losing new or old blocks", async () => {
+  it("reports a read error and does not change the list", async () => {
     await seed();
-    const additions = Array.from({ length: 10 }, (_, i) => value(`new-${i}`));
-    valuesGet.mockResolvedValue({ data: { values: additions.map((entry) => [entry]) } });
-    refreshFlags.mockRejectedValueOnce(new Error("synthetic refresh failure"));
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false });
-    expect(await stored()).toEqual([...originals, ...additions].sort());
-    expect(await syncSuppressionSourceFromGoogle({ sourceId: "source" })).toMatchObject({ ok: false, addedWithoutRemoving: 0 });
-    expect(refreshFlags).toHaveBeenCalledTimes(2);
-    expect(await stored()).toEqual([...originals, ...additions].sort());
+    valuesGet.mockRejectedValue(new Error("Unable to parse range: MissingTab!A:A"));
+    const result = await syncSuppressionSourceFromGoogle({ sourceId: "source" });
+    expect(result.ok).toBe(false);
+    expect(result.held).toBe(true);
+    expect(result.error).toContain("missing or renamed");
+    expect(await stored()).toEqual([...originals].sort());
+    expect(await removalAudit()).toHaveLength(0);
   });
 });

@@ -84,13 +84,15 @@ describe("sync-all reports every sheet by name", () => {
     expect(r).toMatchObject({
       sources: 2,
       succeeded: 1,
-      failed: 1,
+      failed: 0,
+      held: 1,
       rowsWritten: 42,
     });
-    expect(r.errors[0]).toContain("Train Hugger");
+    expect(r.notices[0]).toContain("Train Hugger");
+    expect(r.errors).toEqual([]);
   });
 
-  it("carries a failing sheet's reason on its own outcome, not just in errors", async () => {
+  it("carries a held sheet's reason on its own outcome", async () => {
     syncSuppressionSourceFromGoogle
       .mockResolvedValueOnce({ ok: true, rowsWritten: 42 })
       .mockResolvedValueOnce({ ok: false, error: "Check the Sheet tab name" });
@@ -104,21 +106,27 @@ describe("sync-all reports every sheet by name", () => {
     });
   });
 
-  it("marks a refused shrink as refused, so it reads differently from a broken sheet", async () => {
+  it("reports an unapplied sheet without counting it as a batch failure", async () => {
     syncSuppressionSourceFromGoogle
-      .mockResolvedValueOnce({ ok: true, rowsWritten: 42 })
+      .mockResolvedValueOnce({ ok: true, rowsWritten: 42, removed: 0 })
       .mockResolvedValueOnce({
         ok: false,
-        error: "would remove 373",
-        blockedShrink: { previousCount: 373, wouldWrite: 0, removed: 373 },
+        held: true,
+        error: "the sheet came back empty",
+        previousCount: 373,
       });
 
     const r = await syncAllConfiguredSuppressionSources();
 
-    // A sheet the guard PROTECTED and a sheet that could not be read are
-    // different events with different actions, and both currently answer
-    // `ok: false`. Only one of them means someone must open the Sheet.
-    expect(r.outcomes[1]).toMatchObject({ refusedShrink: true });
+    expect(r.failed).toBe(0);
+    expect(r.held).toBe(1);
+    expect(r.outcomes[1]).toMatchObject({
+      client: "Train Hugger",
+      ok: false,
+      held: true,
+      removed: 0,
+    });
+    expect(r.notices[0]).toContain("Train Hugger");
   });
 
   it("gives a thrown source an outcome too, so no sheet is missing from the report", async () => {
@@ -129,7 +137,9 @@ describe("sync-all reports every sheet by name", () => {
     const r = await syncAllConfiguredSuppressionSources();
 
     expect(r.outcomes).toHaveLength(2);
-    expect(r.outcomes[1]).toMatchObject({ client: "Train Hugger", ok: false });
+    expect(r.outcomes[1]).toMatchObject({ client: "Train Hugger", ok: false, held: true });
+    expect(r.failed).toBe(0);
+    expect(r.held).toBe(1);
   });
 });
 

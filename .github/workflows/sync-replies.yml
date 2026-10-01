@@ -52,10 +52,10 @@ jobs:
       # stopped updating — and the run went GREEN, so no alert was ever sent.
       # 207 is a 2xx. The body is the only place the truth was.
       #
-      # Still non-fatal HERE — one broken sheet must not stop the reply sync —
-      # but it is recorded, and the PARTIAL step below turns it into an email.
-      # A blocklist that quietly stopped updating is how someone who asked
-      # never to be contacted gets contacted.
+      # One sheet that cannot be applied is reported and the stored list is
+      # kept. That report is a warning, not a failed run: reply sync must not
+      # go red because a sheet was empty or a tab was renamed. An unverified
+      # sync (no trustworthy answer) is still written to run-problems.txt.
       - name: Sync do-not-contact sheets
         if: always()
         env:

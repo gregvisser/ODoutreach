@@ -73,7 +73,8 @@ jobs:
                (.previousCount // "?" | tostring),
                (.wouldWrite // "-" | tostring),
                (.resolvedRange // "-"),
-               (if .refusedShrink then "REFUSED — would remove too many"
+               (if .held then "HELD — list kept"
+                elif ((.removed // 0) > 0) then "would remove \(.removed)"
                 elif .ok then ""
                 else (.error // "failed") end)
              ] | @tsv)

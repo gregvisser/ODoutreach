@@ -57,11 +57,12 @@ export type SuppressionSourceOutcome = {
   /** Rows a dry run would have stored. */
   wouldWrite?: number;
   /**
-   * The guard refused a shrink. Distinguished from a broken sheet because the
-   * two need different actions: this one PROTECTED the list and needs a human
-   * to agree, the other needs someone to open the Sheet.
+   * The sheet was not applied. The stored list was kept. Set for an empty
+   * read, a missing tab or header, and any read error.
    */
-  refusedShrink?: boolean;
+  held?: boolean;
+  /** Sheet-sourced rows removed by a mirror. Absent when nothing was removed. */
+  removed?: number;
   error?: string;
 };
 
@@ -69,8 +70,12 @@ export type SuppressionSyncAllResult = {
   sources: number;
   succeeded: number;
   failed: number;
+  /** Sheets that were read or refused and left the stored list unchanged. */
+  held: number;
   rowsWritten: number;
   errors: string[];
+  /** Per-sheet notes. These do not fail the job. */
+  notices: string[];
   /** One entry per configured sheet, in the order they were processed. */
   outcomes: SuppressionSourceOutcome[];
   /** Present only when nothing was written. */
@@ -113,8 +118,10 @@ export async function syncAllConfiguredSuppressionSources(
     sources: 0,
     succeeded: 0,
     failed: 1,
+    held: 0,
     rowsWritten: 0,
     errors: [reason],
+    notices: [],
     outcomes: [],
     ...(dryRun ? { dryRun: true } : {}),
   });
@@ -155,8 +162,10 @@ export async function syncAllConfiguredSuppressionSources(
     sources: sources.length,
     succeeded: 0,
     failed: 0,
+    held: 0,
     rowsWritten: 0,
     errors: [],
+    notices: [],
     outcomes: [],
     ...(dryRun ? { dryRun: true } : {}),
   };
@@ -173,40 +182,37 @@ export async function syncAllConfiguredSuppressionSources(
       if (r.ok) {
         result.succeeded += 1;
         result.rowsWritten += r.rowsWritten ?? 0;
+        if (r.warning) result.notices.push(`${who}: ${r.warning}`.slice(0, 300));
         result.outcomes.push({
           ...base,
           ok: true,
           resolvedRange: r.resolvedRange,
           previousCount: r.previousCount,
+          removed: r.removed,
           ...(dryRun
             ? { wouldWrite: r.wouldWrite }
             : { rowsWritten: r.rowsWritten }),
         });
       } else {
-        result.failed += 1;
+        // The list was kept. Report the sheet; do not fail the batch.
+        result.held += 1;
         const error = r.error ?? "sync failed with no reason given";
-        // A failure with no message still gets a line. Counting a failure and
-        // then saying nothing about it is how two dead blocklists stayed
-        // invisible for weeks.
-        result.errors.push(`${who}: ${error}`.slice(0, 300));
+        result.notices.push(`${who}: ${error}`.slice(0, 300));
         result.outcomes.push({
           ...base,
           ok: false,
+          held: true,
           error,
           resolvedRange: r.resolvedRange,
           previousCount: r.previousCount,
-          ...(r.blockedShrink ? { refusedShrink: true } : {}),
+          removed: 0,
         });
       }
     } catch (e) {
-      result.failed += 1;
+      result.held += 1;
       const error = e instanceof Error ? e.message : String(e);
-      result.errors.push(`${who}: ${error}`.slice(0, 300));
-      // An outcome even here, so the report has one row per configured sheet.
-      // A sheet missing from the list reads as "not configured", which is a
-      // different and much more comfortable problem than "it threw".
-      result.outcomes.push({ ...base, ok: false, error });
-      // continue — one broken sheet must not stop the others
+      result.notices.push(`${who}: ${error}`.slice(0, 300));
+      result.outcomes.push({ ...base, ok: false, held: true, error });
     }
   }
 

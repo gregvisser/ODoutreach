@@ -7,7 +7,12 @@ const requests: { method: string; path: string; body: Record<string, unknown> }[
 const inventory = { sources: 3, entries: [
   { sourceId: "one", spreadsheetLinked: true }, { sourceId: "two", spreadsheetLinked: true }, { sourceId: "unlinked", spreadsheetLinked: false },
 ] };
-function result(sourceId: string, ok = true) { return { sources: 1, succeeded: ok ? 1 : 0, failed: ok ? 0 : 1, ok, outcomes: [{ sourceId, ok, ...(ok ? {} : { refusedShrink: true }) }] }; }
+function result(sourceId: string, applied = true) {
+  return {
+    sources: 1, succeeded: applied ? 1 : 0, failed: 0, held: applied ? 0 : 1, ok: true,
+    outcomes: [{ sourceId, client: "Example", kind: "Email addresses", ok: applied, held: !applied, removed: 0 }],
+  };
+}
 async function endpoint(handler: (body: Record<string, unknown>) => { status?: number; body: object } | null, plan: object = inventory) {
   requests.length = 0;
   server = createServer(async (req, res) => {
@@ -24,31 +29,30 @@ async function endpoint(handler: (body: Record<string, unknown>) => { status?: n
 afterEach(async () => { server?.closeAllConnections(); if (server) await new Promise<void>(resolve => server!.close(() => resolve())); server = undefined; });
 it("reads inventory, syncs each linked sheet exactly once, and never posts an all-sheets request", async () => {
   const url = await endpoint(body => ({ body: result(String(body.sourceId)) }));
-  expect(await runSuppressionSheets({ url, secret: "synthetic" })).toEqual({ ok: true, planned: 2, attempted: 2, succeeded: 2, failed: 0, unverified: 0, refusedShrink: 0 });
+  expect(await runSuppressionSheets({ url, secret: "synthetic" })).toEqual({ ok: true, planned: 2, attempted: 2, succeeded: 2, failed: 0, unverified: 0, held: 0, removed: 0 });
   expect(requests).toEqual([
     { method: "GET", path: "/api/internal/suppression/sources", body: {} },
     ...["one", "two"].map(sourceId => ({ method: "POST", path: "/api/internal/suppression/sync-all", body: { sourceId } })),
   ]);
 });
-it("continues after a verified shrink refusal and does not fail the run", async () => {
-  const url = await endpoint(body => ({ status: body.sourceId === "one" ? 207 : 200, body: result(String(body.sourceId), body.sourceId !== "one") }));
+it("reports a sheet that was not applied and does not fail the run", async () => {
+  const url = await endpoint(body => ({ body: result(String(body.sourceId), body.sourceId !== "one") }));
   const summary = await runSuppressionSheets({ url, secret: "synthetic" });
-  expect(summary).toMatchObject({ ok: true, succeeded: 1, failed: 0, refusedShrink: 1 });
+  expect(summary).toMatchObject({ ok: true, succeeded: 1, failed: 0, held: 1 });
   expect(suppressionRunReport(summary)).toEqual({
-    warning: "1 do-not-contact sheets refused a shrink; existing blocks were kept",
+    warning: "1 do-not-contact sheets were not applied; the existing list was kept",
     problem: null,
   });
 });
-it("still fails when a sheet breaks for a reason other than a shrink refusal", async () => {
+it("fails the run when a sheet answer is not a verified hold or mirror", async () => {
   const url = await endpoint(body => ({
-    status: body.sourceId === "one" ? 207 : 200,
     body: body.sourceId === "one"
       ? { sources: 1, succeeded: 0, failed: 1, ok: false, outcomes: [{ sourceId: "one", ok: false }] }
       : result("two"),
   }));
   const summary = await runSuppressionSheets({ url, secret: "synthetic" });
-  expect(summary).toMatchObject({ ok: false, succeeded: 1, failed: 1, refusedShrink: 0 });
-  expect(suppressionRunReport(summary).problem).toMatch(/1 failed/);
+  expect(summary).toMatchObject({ ok: false, succeeded: 1, unverified: 1, held: 0 });
+  expect(suppressionRunReport(summary).problem).toMatch(/1 unverified/);
 });
 it("does not retry a timed-out write and still checks the next sheet", async () => {
   const url = await endpoint(body => body.sourceId === "one" ? null : { body: result("two") });

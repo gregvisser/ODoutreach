@@ -68,6 +68,10 @@ vi.mock("@/lib/db", () => ({
           deleteMany: domainDeleteMany,
           createMany: domainCreateMany,
         },
+        auditLog: { findMany: async () => [], create: async () => ({}) },
+        unsubscribeToken: { findMany: async () => [] },
+        inboundReply: { findMany: async () => [] },
+        outboundEmail: { findMany: async () => [] },
       }),
   },
 }));

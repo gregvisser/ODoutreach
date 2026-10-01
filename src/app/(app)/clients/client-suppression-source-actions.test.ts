@@ -203,18 +203,18 @@ describe("syncClientEmailSuppressionSourceAction (all staff with client access)"
     });
   });
 
-  it("reports a refused shrink so the caller can offer the confirmation", async () => {
+  it("reports a held sheet as an error without a confirmation control", async () => {
     syncSuppressionSourceFromGoogle.mockResolvedValueOnce({
       ok: false,
-      error: "Sync refused: …",
-      blockedShrink: { previousCount: 373, wouldWrite: 0, removed: 373 },
+      held: true,
+      error: "Sending continues. Those stay blocked to be safe.",
     });
 
     const r = await syncClientDomainSuppressionSourceAction("c1");
 
-    expect(r).toMatchObject({
+    expect(r).toEqual({
       ok: false,
-      blockedShrink: { previousCount: 373, wouldWrite: 0, removed: 373 },
+      error: "Sending continues. Those stay blocked to be safe.",
     });
   });
 
