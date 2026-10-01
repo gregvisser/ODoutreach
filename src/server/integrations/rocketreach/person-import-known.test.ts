@@ -9,6 +9,7 @@ vi.mock("@/lib/db", () => ({
     rocketReachEnrichment: { findMany: vi.fn(async () => db.enrichments), create: vi.fn(async () => ({ id: "enr" })) },
     contactUniverseSource: { findMany: vi.fn(async () => db.sources) },
     contactUniverse: { findMany: vi.fn(async () => []) },
+    client: { findUnique: vi.fn(async () => ({ organisationId: "org_opensdoors" })) },
     contact: {
       findMany: vi.fn(async () => []),
       findUnique: vi.fn(async () => null),

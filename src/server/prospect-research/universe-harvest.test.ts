@@ -31,6 +31,7 @@ vi.mock("@/lib/db", () => ({
     clientEmailSequenceEnrollment: { findMany: async () => [] },
     outboundEmail: { findMany: async () => db.sends },
     contactUniverseSource: { create: async () => ({ id: "source" }) },
+    client: { findUnique: async () => ({ organisationId: "org_opensdoors" }) },
   },
 }));
 vi.mock("@/server/outreach/suppression-guard", () => ({

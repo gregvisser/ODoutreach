@@ -4,6 +4,7 @@ vi.mock("@/lib/db", () => ({
     rocketReachEnrichment: { findMany: vi.fn(async () => []) },
     contactUniverseSource: { findMany: vi.fn(async () => []) },
     contactUniverse: { findMany: vi.fn(async () => []) },
+    client: { findUnique: vi.fn(async () => ({ organisationId: "org_opensdoors" })) },
     contact: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
   },
 }));

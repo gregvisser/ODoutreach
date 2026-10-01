@@ -4,7 +4,7 @@ import type { ClientMailboxIdentity, StaffUser } from "@/generated/prisma/client
 
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
-    client: { findFirst: vi.fn() },
+    client: { findFirst: vi.fn(), findUnique: vi.fn() },
     clientMailboxIdentity: { findFirst: vi.fn(), findFirstOrThrow: vi.fn() },
     clientSendingCalendar: { findMany: vi.fn() },
     outboundEmail: { create: vi.fn(), findFirstOrThrow: vi.fn(), findMany: vi.fn() },
@@ -144,6 +144,7 @@ describe("queueSelectedMailboxInternalProofSend", () => {
     prismaMock.clientSendingCalendar.findMany.mockResolvedValue([]);
     vi.mocked(triggerOutboundQueueDrain).mockReset();
     vi.mocked(triggerOutboundQueueDrain).mockResolvedValue(undefined);
+    prismaMock.client.findUnique.mockResolvedValue({ organisationId: "org_opensdoors" });
     delete process.env.AUTH_URL;
     delete process.env.INTERNAL_APP_URL;
     delete process.env.NEXT_PUBLIC_APP_URL;
@@ -176,6 +177,7 @@ describe("queueSelectedMailboxInternalProofSend", () => {
     const query = prismaMock.outboundEmail.findMany.mock.calls[0][0];
     expect(query.where.toEmail).toEqual({ equals: "greg@bidlow.co.uk", mode: "insensitive" });
     expect(query.where).not.toHaveProperty("clientId");
+    expect(query.where.client).toEqual({ organisationId: "org_opensdoors" });
     expect(query.where).not.toHaveProperty("id");
   });
 

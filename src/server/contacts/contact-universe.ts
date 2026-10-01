@@ -50,7 +50,8 @@ export type UpsertUniverseInput = {
 };
 
 /**
- * Dedupe: email (unique) → LinkedIn → mobile → weak key.
+ * Dedupe inside the client's organisation: email → LinkedIn → mobile → weak key.
+ * The same person in another organisation is a different row.
  * Records a new attribution row for every successful import touch.
  */
 export async function upsertContactUniverseAndRecordSource(
@@ -77,30 +78,41 @@ export async function upsertContactUniverseAndRecordSource(
     }
   }
 
+  const client = await db.client.findUnique({
+    where: { id: input.firstSeenClientId },
+    select: { organisationId: true },
+  });
+  if (!client) {
+    throw new Error(
+      `Cannot file a universe contact: client ${input.firstSeenClientId} was not found.`,
+    );
+  }
+  const organisationId = client.organisationId;
+
   let existing =
     emailNormalized != null
-      ? await db.contactUniverse.findUnique({
-          where: { emailNormalized },
+      ? await db.contactUniverse.findFirst({
+          where: { organisationId, emailNormalized },
         })
       : null;
 
   if (!existing && linkedinUrlNormalized) {
     existing = await db.contactUniverse.findFirst({
-      where: { linkedinUrlNormalized },
+      where: { organisationId, linkedinUrlNormalized },
       orderBy: { firstSeenAt: "asc" },
     });
   }
 
   if (!existing && mobilePhoneNormalized) {
     existing = await db.contactUniverse.findFirst({
-      where: { mobilePhoneNormalized },
+      where: { organisationId, mobilePhoneNormalized },
       orderBy: { firstSeenAt: "asc" },
     });
   }
 
   if (!existing && weakMatchKey) {
-    existing = await db.contactUniverse.findUnique({
-      where: { weakMatchKey },
+    existing = await db.contactUniverse.findFirst({
+      where: { organisationId, weakMatchKey },
     });
   }
 
@@ -116,6 +128,7 @@ export async function upsertContactUniverseAndRecordSource(
   if (!existing) {
     const created = await db.contactUniverse.create({
       data: {
+        organisationId,
         emailNormalized,
         linkedinUrlNormalized,
         mobilePhoneNormalized,

@@ -7,6 +7,7 @@ import {
   isInternalSeedAllowlistEnabled,
   listAllInternalSeedAddresses,
 } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 import {
   addInternalSeedAddressAction,
@@ -43,7 +44,8 @@ export default async function InternalSeedPage() {
   }
 
   const enabled = isInternalSeedAllowlistEnabled();
-  const rows = await listAllInternalSeedAddresses();
+  const organisationId = await organisationIdForStaff(staff.id);
+  const rows = organisationId ? await listAllInternalSeedAddresses(organisationId) : [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">

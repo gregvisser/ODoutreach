@@ -30,6 +30,13 @@ export async function createClientContactListFromUniverseContacts(args: {
   addedByStaffUserId: string;
 }): Promise<CreateListFromUniverseResult> {
   const { clientId, listName, universeContactIds, addedByStaffUserId } = args;
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { organisationId: true },
+  });
+  if (!client) {
+    throw new Error(`Cannot copy Universe contacts: client ${clientId} was not found.`);
+  }
   const uniqueUniverseIds = Array.from(new Set(universeContactIds.filter(Boolean)));
   const list = await findOrCreateClientContactListByName({
     clientId,
@@ -46,7 +53,7 @@ export async function createClientContactListFromUniverseContacts(args: {
     const u = await prisma.contactUniverse.findUnique({
       where: { id: uid },
     });
-    if (!u) continue;
+    if (!u || u.organisationId !== client.organisationId) continue;
     const email = u.emailNormalized?.trim().toLowerCase();
     if (!email) {
       skippedNoEmail++;

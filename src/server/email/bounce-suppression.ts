@@ -3,7 +3,8 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
-import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
+import { isInternalSeedAddress, isInternalSeedAllowlistEnabled } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForClient } from "@/server/tenant/organisation-scope";
 
 /**
  * Append-only suppression for a HARD-bounced recipient.
@@ -93,14 +94,20 @@ export async function suppressRecipientForHardBounce(
   // seed/allowlist address. Flag-gated: when INTERNAL_SEED_ALLOWLIST_ENABLED is
   // off, `isInternalSeedAddress` returns false without a query, so this is a
   // no-op and the bounce/complaint path behaves exactly as before.
-  if (await (transaction ? isInternalSeedAddress(email, transaction) : isInternalSeedAddress(email))) {
-    return {
-      suppressed: false,
-      newlyCreated: false,
-      normalizedEmail: email,
-      contactsFlagged: 0,
-      skippedInternalSeed: true,
-    };
+  if (isInternalSeedAllowlistEnabled()) {
+    const organisationId = await organisationIdForClient(input.clientId);
+    if (
+      organisationId &&
+      (await isInternalSeedAddress(email, organisationId, transaction ?? prisma))
+    ) {
+      return {
+        suppressed: false,
+        newlyCreated: false,
+        normalizedEmail: email,
+        contactsFlagged: 0,
+        skippedInternalSeed: true,
+      };
+    }
   }
 
   const apply = async (tx: Prisma.TransactionClient): Promise<HardBounceSuppressionResult> => {

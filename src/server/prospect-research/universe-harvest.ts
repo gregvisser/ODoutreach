@@ -8,6 +8,7 @@ import {
   type UniverseHarvestSkip,
 } from "@/lib/clients/universe-harvest-provenance";
 import { isEmailInCooldown, OUTREACH_COOLDOWN_DAYS } from "@/lib/email-sequences/recent-send-cooldown";
+import { outreachCooldownClientWhere } from "@/server/email/outbound/organisation-cooldown";
 import { researchCriteriaSchema } from "@/lib/prospect-research/qualification";
 import { universeMatchesResearchPlan } from "@/lib/prospect-research/universe-plan-match";
 import { attachContactsToClientList } from "@/server/contacts/contact-lists";
@@ -59,8 +60,15 @@ export async function collectUniverseHarvest(args: {
   const skipped = emptySkipped();
   if (maxToAdd === 0) return { ok: true, matches: [], skipped };
 
+  const client = await prisma.client.findUnique({
+    where: { id: args.clientId },
+    select: { organisationId: true },
+  });
+  if (!client) return { ok: false, error: "This client is not in an organisation." };
+
   const rows = await prisma.contactUniverse.findMany({
     where: {
+      organisationId: client.organisationId,
       emailNormalized: { not: null },
       OR: [{ firstSeenClientId: args.clientId }, { sources: { some: { clientId: args.clientId } } }],
     },
@@ -110,6 +118,7 @@ export async function collectUniverseHarvest(args: {
           where: {
             toEmail: { in: emails, mode: "insensitive" },
             sentAt: { gte: new Date(args.now.getTime() - OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000), not: null },
+            ...outreachCooldownClientWhere(client.organisationId, args.clientId),
           },
           select: { toEmail: true, sentAt: true },
           orderBy: { sentAt: "desc" },

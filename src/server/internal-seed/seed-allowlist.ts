@@ -35,10 +35,13 @@ export function isInternalSeedAllowlistEnabled(): boolean {
  * caller (suppression gate, analytics exclusion) behaves exactly as before when
  * the feature is disabled, without hitting the database.
  */
-export async function listActiveInternalSeedEmails(): Promise<string[]> {
+export async function listActiveInternalSeedEmails(
+  organisationId: string | null,
+): Promise<string[]> {
   if (!isInternalSeedAllowlistEnabled()) return [];
+  if (!organisationId) return [];
   const rows = await prisma.internalSeedAddress.findMany({
-    where: { isActive: true },
+    where: { organisationId, isActive: true },
     select: { email: true },
   });
   return rows.map((r) => r.email);
@@ -51,13 +54,15 @@ export async function listActiveInternalSeedEmails(): Promise<string[]> {
  */
 export async function isInternalSeedAddress(
   email: string,
+  organisationId: string | null,
   db: Prisma.TransactionClient = prisma,
 ): Promise<boolean> {
   if (!isInternalSeedAllowlistEnabled()) return false;
+  if (!organisationId) return false;
   const normalized = normalizeSeedEmail(email);
   if (!normalized) return false;
   const hit = await db.internalSeedAddress.findFirst({
-    where: { email: normalized, isActive: true },
+    where: { organisationId, email: normalized, isActive: true },
     select: { id: true },
   });
   return hit !== null;
@@ -79,10 +84,11 @@ export type InternalSeedAddressRow = {
   updatedAt: Date;
 };
 
-export async function listAllInternalSeedAddresses(): Promise<
-  InternalSeedAddressRow[]
-> {
+export async function listAllInternalSeedAddresses(
+  organisationId: string,
+): Promise<InternalSeedAddressRow[]> {
   return prisma.internalSeedAddress.findMany({
+    where: { organisationId },
     orderBy: [{ isActive: "desc" }, { email: "asc" }],
     select: {
       id: true,
@@ -101,26 +107,31 @@ export async function listAllInternalSeedAddresses(): Promise<
  * existing row is re-activated and its label/note refreshed rather than
  * duplicated. Returns `null` when the email is blank/invalid, or when it is
  * not on the allowed internal domain (`isSeedEmailDomainAllowed` —
- * `INTERNAL_SEED_ALLOWED_DOMAIN`). The allowlist this writes to is consumed
- * globally across every client's outreach once
- * `INTERNAL_SEED_ALLOWLIST_ENABLED` is on, so this scope check is the only
- * thing standing between "OpensDoors test inbox" and "any address on any
- * domain, exempt from suppression for every client."
+ * `INTERNAL_SEED_ALLOWED_DOMAIN`). The row is exempt only inside
+ * `organisationId` once `INTERNAL_SEED_ALLOWLIST_ENABLED` is on.
  */
 export async function upsertInternalSeedAddress(input: {
   email: string;
+  organisationId: string;
   label?: string | null;
   note?: string | null;
   staffUserId?: string | null;
 }): Promise<InternalSeedAddressRow | null> {
   const email = normalizeSeedEmail(input.email);
+  if (!input.organisationId) return null;
   if (!email || !email.includes("@")) return null;
   if (!isSeedEmailDomainAllowed(email)) return null;
   const label = input.label?.trim() || null;
   const note = input.note?.trim() || null;
   return prisma.internalSeedAddress.upsert({
-    where: { email },
+    where: {
+      organisationId_email: {
+        organisationId: input.organisationId,
+        email,
+      },
+    },
     create: {
+      organisationId: input.organisationId,
       email,
       label,
       note,
@@ -148,9 +159,11 @@ export async function upsertInternalSeedAddress(input: {
 export async function setInternalSeedAddressActive(
   id: string,
   isActive: boolean,
+  organisationId: string,
 ): Promise<void> {
-  await prisma.internalSeedAddress.update({
-    where: { id },
+  if (!id || !organisationId) return;
+  await prisma.internalSeedAddress.updateMany({
+    where: { id, organisationId },
     data: { isActive },
   });
 }

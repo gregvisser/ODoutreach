@@ -7,7 +7,9 @@ import {
   formatCooldownReason,
   isEmailInCooldown,
 } from "@/lib/email-sequences/recent-send-cooldown";
+import { outreachCooldownClientWhere } from "@/server/email/outbound/organisation-cooldown";
 import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForClient } from "@/server/tenant/organisation-scope";
 import { hasCurrentCooldownReengagement } from "@/lib/email-sequences/cooldown-reengagement";
 
 /**
@@ -86,11 +88,11 @@ export function decideDispatchRecheck(input: {
 }
 
 /**
- * Load the most-recent in-window send to `toEmail` across the WHOLE workspace
- * (the cooldown is workspace-wide, across all clients), excluding this
- * outbound's own sequence so a follow-up step is never blocked by its own
- * introduction. Mirrors the planner query in `step-sends.ts`. Returns null when
- * there is no qualifying recent send.
+ * Load the most-recent in-window send to `toEmail` across this organisation
+ * (OpensDoors clients still share the window), excluding this outbound's own
+ * sequence so a follow-up step is never blocked by its own introduction.
+ * Mirrors the planner query in `step-sends.ts`. Returns null when there is no
+ * qualifying recent send. Another organisation is not scanned.
  *
  * Runs only when the dispatch-recheck flag is on, and OpensDoors send volume is
  * low (per-mailbox daily caps), so the per-send cost is negligible.
@@ -105,29 +107,39 @@ export async function loadDispatchRecentSend(input: {
   const normalized = input.toEmail.trim().toLowerCase();
   if (normalized.length === 0) return null;
 
-  // Feature A — internal seed/allowlist addresses are always deliverable: no
-  // cooldown and no recent-bounce block. Flag-gated (returns false when off).
-  if (await isInternalSeedAddress(normalized)) return null;
-
   const cooldownStart = new Date(
     input.now.getTime() - OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
   );
 
   // This row's own sequence(s) — excluded so step-2 isn't blocked by step-1.
-  // PK lookup on OutboundEmail, then its step-send FK; cheap.
+  // PK lookup on OutboundEmail, then its step-send FK; cheap. The client's
+  // organisation comes along so the cooldown scan stays inside that organisation.
   const self = input.outboundEmailId ? await prisma.outboundEmail.findUnique({
     where: { id: input.outboundEmailId },
-    select: { sequenceStepSends: { select: { sequenceId: true } } },
+    select: {
+      clientId: true,
+      client: { select: { organisationId: true } },
+      sequenceStepSends: { select: { sequenceId: true } },
+    },
   }) : null;
   const ownSequenceIds = new Set(
     (self?.sequenceStepSends ?? []).map((s) => s.sequenceId),
   );
+  const clientId = input.clientId ?? self?.clientId ?? null;
+  const organisationId = self?.client?.organisationId
+    ?? (clientId ? await organisationIdForClient(clientId) : null);
+
+  // Feature A — internal seed/allowlist addresses are always deliverable inside
+  // their own organisation: no cooldown and no recent-bounce block. Flag-gated
+  // (returns false when off). A seed from another organisation is not exempt.
+  if (await isInternalSeedAddress(normalized, organisationId)) return null;
 
   const rows = await prisma.outboundEmail.findMany({
     where: {
       toEmail: { equals: normalized, mode: "insensitive" },
       sentAt: { gte: cooldownStart, not: null },
       ...(input.outboundEmailId ? { id: { not: input.outboundEmailId } } : {}),
+      ...outreachCooldownClientWhere(organisationId, clientId),
     },
     select: {
       clientId: true,
@@ -147,7 +159,8 @@ export async function loadDispatchRecentSend(input: {
       row.sequenceStepSends.some((s) => ownSequenceIds.has(s.sequenceId));
     if (belongsToOwnSequence) continue;
     const isBounce = row.status === "BOUNCED";
-    // Cross-client contact is reviewed separately; bounces still block globally.
+    // Cross-client contact inside this organisation is reviewed separately;
+    // bounces still block every client of the organisation.
     if (input.clientId && row.clientId !== input.clientId && !isBounce) continue;
     if (!recent) {
       // Rows are ordered newest-first, so the first qualifying row is the most

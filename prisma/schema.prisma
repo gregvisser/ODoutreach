@@ -378,6 +378,9 @@ enum SupportTicketNotificationStatus {
 
 model SupportTicket {
   id                    String                @id @default(cuid())
+  /// The organisation this ticket belongs to. OpensDoors rows stay on
+  /// OpensDoors; a later organisation never reads them.
+  organisationId        String                @default("org_opensdoors")
   /// Short one-line summary.
   title                 String
   /// Full detail of the issue the user is experiencing.
@@ -402,6 +405,7 @@ model SupportTicket {
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
+  organisation  Organisation              @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   createdBy   StaffUser?                @relation("SupportTicketCreatedBy", fields: [createdByStaffUserId], references: [id], onDelete: SetNull)
   approvedBy  StaffUser?                @relation("SupportTicketApprovedBy", fields: [approvedByStaffUserId], references: [id], onDelete: SetNull)
   attachments SupportTicketAttachment[]
@@ -410,6 +414,7 @@ model SupportTicket {
 
   @@index([status, createdAt])
   @@index([createdByStaffUserId])
+  @@index([organisationId, createdAt])
 }
 
 model SupportTicketNotification {
@@ -497,6 +502,11 @@ model Organisation {
 
   clients Client[]
   members OrganisationMember[]
+  contactUniverses ContactUniverse[]
+  internalSeedAddresses InternalSeedAddress[]
+  supportTickets SupportTicket[]
+  auditLogs AuditLog[]
+  aiUsageEvents AiUsageEvent[]
 
   @@index([status])
 }
@@ -1081,8 +1091,12 @@ model Contact {
 /// OpensDoors global contact warehouse — deduplicated across imports and clients.
 model ContactUniverse {
   id                    String             @id @default(cuid())
-  /// Lowercase trimmed email; unique when present (Postgres allows many NULLs).
-  emailNormalized       String?            @unique
+  /// One warehouse per organisation. OpensDoors clients still share one
+  /// warehouse; another organisation never matches these rows.
+  organisationId        String             @default("org_opensdoors")
+  /// Lowercase trimmed email. Unique inside one organisation when present
+  /// (Postgres allows many NULLs). The same address may exist in another organisation.
+  emailNormalized       String?
   linkedinUrlNormalized String?
   mobilePhoneNormalized String?
   officePhoneNormalized String?
@@ -1102,14 +1116,19 @@ model ContactUniverse {
   firstSeenAt           DateTime           @default(now())
   lastSeenAt            DateTime           @default(now())
   /// Optional weak dedupe key (company + name + title hash) when no strong identifiers.
-  weakMatchKey          String?            @unique
+  /// Unique inside one organisation. Null keys are not unique.
+  weakMatchKey          String?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
+  organisation    Organisation            @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   firstSeenClient Client?                 @relation("UniverseFirstSeenClient", fields: [firstSeenClientId], references: [id], onDelete: SetNull)
   sources         ContactUniverseSource[]
   clientContacts  Contact[]
 
+  @@unique([organisationId, emailNormalized])
+  @@unique([organisationId, weakMatchKey])
+  @@index([organisationId])
   @@index([linkedinUrlNormalized])
   @@index([mobilePhoneNormalized])
   @@index([lastSeenAt])
@@ -1415,13 +1434,14 @@ model SuppressedDomain {
   @@index([clientId])
 }
 
-/// Feature A (prod hardening) — global internal seed / allowlist.
+/// Feature A (prod hardening) — internal seed / allowlist, one list per organisation.
 ///
-/// An admin-managed list of OpensDoors-internal test addresses that are ALWAYS
-/// deliverable: they are exempt from the send-time suppression gate
-/// (`evaluateSuppression`) and NO automated process (import, suppression
-/// refresh, hard-bounce, or spam-complaint) may ever add them to suppression.
-/// Global (not tenant-scoped) — a seed address is exempt for every client.
+/// An admin-managed list of that organisation's internal test addresses that are
+/// ALWAYS deliverable inside that organisation: they are exempt from the
+/// send-time suppression gate (`evaluateSuppression`) and NO automated process
+/// (import, suppression refresh, hard-bounce, or spam-complaint) may ever add
+/// them to suppression. The exemption does not cross into another organisation.
+/// OpensDoors clients still share one list.
 ///
 /// Entirely INERT unless the `INTERNAL_SEED_ALLOWLIST_ENABLED` feature flag is
 /// on: with the flag off, no read path consults this table and the live send
@@ -1429,8 +1449,12 @@ model SuppressedDomain {
 /// these addresses so internal test sends never skew real campaign metrics.
 model InternalSeedAddress {
   id                   String   @id @default(cuid())
+  /// Exemption is per organisation. An OpensDoors test inbox is not exempt
+  /// inside another organisation.
+  organisationId       String   @default("org_opensdoors")
   /// Lowercase, trimmed email (same normalization as the suppression keys).
-  email                String   @unique
+  /// Unique inside one organisation.
+  email                String
   /// Human label shown in the admin UI, e.g. "Adam (internal test)".
   label                String?
   /// Free-text note (why this address is on the allowlist).
@@ -1442,7 +1466,10 @@ model InternalSeedAddress {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  @@index([isActive])
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+
+  @@unique([organisationId, email])
+  @@index([organisationId, isActive])
 }
 
 /// PR M — One-click unsubscribe token.
@@ -2069,6 +2096,9 @@ model CompanyDncDecision {
 
 model AuditLog {
   id          String      @id @default(cuid())
+  /// Filled on insert from the client, or else from the staff member's
+  /// organisation. Null only when neither is known.
+  organisationId String?
   staffUserId String?
   clientId    String?
   action      AuditAction
@@ -2077,11 +2107,13 @@ model AuditLog {
   metadata    Json?
   createdAt   DateTime    @default(now())
 
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
   staffUser StaffUser? @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
   client    Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([clientId, createdAt])
   @@index([staffUserId, createdAt])
+  @@index([organisationId, createdAt])
 }
 
 // ——— AI (phase 2) ———
@@ -2164,6 +2196,9 @@ enum AiCallStatus {
 /// items when a client leaves is worse than useless.
 model AiUsageEvent {
   id                        String       @id @default(cuid())
+  /// Copied from the client on insert. Null when the call has no client
+  /// (the training assistant). Those rows stay on the platform view only.
+  organisationId            String?
   clientId                  String?
   /// Denormalised so the ledger survives client deletion. Never rewritten.
   clientSlugAtCall          String
@@ -2189,9 +2224,11 @@ model AiUsageEvent {
   outcomeCode               String?
   createdAt                 DateTime     @default(now())
 
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
   client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([clientId, createdAt])
+  @@index([organisationId, createdAt])
   @@index([feature, createdAt])
   @@index([createdAt])
 }

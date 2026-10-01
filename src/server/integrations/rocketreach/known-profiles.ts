@@ -62,6 +62,12 @@ export async function loadKnownRocketReachIndexes(
 ): Promise<KnownProfileIndexes> {
   const indexes = emptyKnownProfileIndexes();
   if (profiles.length === 0) return indexes;
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { organisationId: true },
+  });
+  if (!client) return indexes;
+  const organisationId = client.organisationId;
   const profileIds = profiles.map((profile) => String(profile.id));
   const emails = [...new Set(profiles.flatMap((profile) => profile.emails))];
   const linkedins = [
@@ -78,18 +84,21 @@ export async function loadKnownRocketReachIndexes(
       select: { externalId: true, contactId: true },
     }),
     prisma.contactUniverseSource.findMany({
-      where: { rocketReachPersonId: { in: profileIds } },
+      where: {
+        rocketReachPersonId: { in: profileIds },
+        universe: { organisationId },
+      },
       select: { rocketReachPersonId: true, universe: { select: universeSelect } },
     }),
     emails.length
       ? prisma.contactUniverse.findMany({
-          where: { emailNormalized: { in: emails } },
+          where: { organisationId, emailNormalized: { in: emails } },
           select: universeSelect,
         })
       : Promise.resolve([]),
     linkedins.length
       ? prisma.contactUniverse.findMany({
-          where: { linkedinUrlNormalized: { in: linkedins } },
+          where: { organisationId, linkedinUrlNormalized: { in: linkedins } },
           select: universeSelect,
         })
       : Promise.resolve([]),

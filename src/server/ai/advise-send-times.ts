@@ -77,9 +77,10 @@ export type AdviseSendTimesResult =
  */
 async function loadSendOutcomes(args: {
   clientId: string;
+  organisationId: string | null;
   since: Date;
 }): Promise<SendOutcome[]> {
-  const seedEmails = await listActiveInternalSeedEmails();
+  const seedEmails = await listActiveInternalSeedEmails(args.organisationId);
   const rows = await prisma.outboundEmail.findMany({
     where: buildProvenSendHistoryWhere({
       clientId: args.clientId,
@@ -107,14 +108,18 @@ export async function adviseSendTimes(args: {
 }): Promise<AdviseSendTimesResult> {
   const client = await prisma.client.findFirst({
     where: { id: args.clientId, deletedAt: null },
-    select: { id: true, slug: true, name: true, industry: true },
+    select: { id: true, slug: true, name: true, industry: true, organisationId: true },
   });
   if (!client) return { ok: false, reason: "client_not_found" };
 
   const now = args.now ?? new Date();
   const since = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
-  const outcomes = await loadSendOutcomes({ clientId: client.id, since });
+  const outcomes = await loadSendOutcomes({
+    clientId: client.id,
+    organisationId: client.organisationId,
+    since,
+  });
   const verdict = assessSendTimeEvidence(outcomes);
 
   // The gate. Fails closed BEFORE any money is spent: no call, no ledger row for

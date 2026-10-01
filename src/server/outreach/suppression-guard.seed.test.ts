@@ -15,6 +15,9 @@ vi.mock("@/lib/db", () => ({
     internalSeedAddress: {
       findFirst: (...a: unknown[]) => seedFindFirst(...a),
     },
+    client: {
+      findUnique: async () => ({ organisationId: "org_opensdoors" }),
+    },
     suppressedEmail: {
       findUnique: (...a: unknown[]) => suppEmailFindUnique(...a),
     },
