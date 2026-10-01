@@ -176,6 +176,14 @@ export async function loadRocketReachCeiling(clientId: string): Promise<RocketRe
   };
 }
 
+/** True when this import must consult the shared balance or stop locally. */
+export function rocketReachCeilingConstrains(ceiling: RocketReachCeiling): boolean {
+  if (!ceiling.enforced) return false;
+  if (!ceiling.buyingEnabled) return true;
+  if (ceiling.allowance !== null) return true;
+  return parsePlatformCreditReserve(process.env.ROCKETREACH_PLATFORM_RESERVE_CREDITS) > 0;
+}
+
 export function decideRocketReachSpend(input: {
   ceiling: RocketReachCeiling;
   balance: number | "unlimited" | "unknown";

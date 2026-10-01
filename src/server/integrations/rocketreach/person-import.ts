@@ -398,13 +398,20 @@ export async function importRocketReachPeopleForClient(
       error: "ROCKETREACH_API_KEY is not set — add it to the server environment to enable API import.",
     };
   }
-  const { decideRocketReachSpend, loadRocketReachCeiling, recordRocketReachCreditUse } = await import(
-    "@/server/tenant/feature-gate"
-  );
+  const {
+    decideRocketReachSpend,
+    loadRocketReachCeiling,
+    recordRocketReachCreditUse,
+    rocketReachCeilingConstrains,
+  } = await import("@/server/tenant/feature-gate");
   const { loadRocketReachCreditSnapshot } = await import("./account");
   const ceiling = await loadRocketReachCeiling(input.clientId);
+  const ceilingConstrains = rocketReachCeilingConstrains(ceiling);
   let balance: number | "unlimited" | "unknown" = "unknown";
-  if (ceiling.enforced) {
+  if (ceilingConstrains) {
+    if (!ceiling.buyingEnabled) {
+      return { ok: false, error: "RocketReach buying is switched off for this organisation." };
+    }
     const snapshot = await loadRocketReachCreditSnapshot();
     balance = snapshot.state === "ready" ? snapshot.remaining : "unknown";
     const decision = decideRocketReachSpend({ ceiling, balance, requested: 1 });
@@ -466,7 +473,7 @@ export async function importRocketReachPeopleForClient(
     let reserved = false;
     let outcome: "charged" | "released" | "kept" = "kept";
     try {
-      if (ceiling.enforced) {
+      if (ceilingConstrains) {
         const remainingBalance =
           typeof balance === "number" ? Math.max(0, balance - spentThisRun) : balance;
         const next = decideRocketReachSpend({
