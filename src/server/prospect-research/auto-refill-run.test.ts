@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   createdRuns: [] as Record<string, unknown>[],
   ruleUpdates: [] as unknown[],
   reservations: 0,
+  failClientId: null as string | null,
   sequence: null as {
     id: string;
     contactListId: string;
@@ -57,7 +58,14 @@ vi.mock("@/lib/db", () => {
         },
         findUnique: async () => null,
       },
-      contactListMember: { findMany: async () => state.members },
+      contactListMember: {
+        findMany: async ({ where }: { where?: { clientId?: string } }) => {
+          if (state.failClientId && where?.clientId === state.failClientId) {
+            throw new Error("northwind sheet is unreadable");
+          }
+          return state.members;
+        },
+      },
       clientEmailSequenceEnrollment: { count: async () => state.enrolled },
       rocketReachCreditReservation: reservation,
       rocketReachPlanRun: {
@@ -131,6 +139,7 @@ beforeEach(() => {
   state.createdRuns = [];
   state.ruleUpdates = [];
   state.reservations = 0;
+  state.failClientId = null;
   state.sequence = {
     id: "seq-1",
     contactListId: "list-1",
@@ -260,6 +269,55 @@ it("previews matches and estimated credits without a paid lookup", async () => {
     location: ["United Kingdom"],
   });
   expect(body.query).not.toHaveProperty("management_levels");
+});
+
+it("keeps topping up the next organisation when the first organisation throws", async () => {
+  state.failClientId = "northwind-client";
+  state.rules = [
+    {
+      ...rule,
+      id: "rule-north",
+      clientId: "northwind-client",
+      client: {
+        ...rule.client,
+        organisation: { id: "org_northwind", slug: "northwind", status: "ACTIVE" },
+      },
+    },
+    {
+      ...rule,
+      id: "rule-od",
+      clientId: "opensdoors-client",
+      sequence: { ...rule.sequence, clientId: "opensdoors-client" },
+      plan: { ...rule.plan, clientId: "opensdoors-client" },
+      client: {
+        ...rule.client,
+        organisation: { id: "org_opensdoors", slug: "opensdoors", status: "ACTIVE" },
+      },
+    },
+  ];
+  const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(result.failed).toBe(1);
+  expect(result.refilled).toBe(1);
+  expect(result.everyActiveFailed).toBe(false);
+  expect(result.organisations.map((item) => item.slug)).toEqual(["northwind", "opensdoors"]);
+  expect(result.organisations[0]).toMatchObject({ ok: false, disposition: "ran" });
+  expect(result.organisations[1]).toMatchObject({ ok: true, disposition: "ran" });
+  expect(execute).toHaveBeenCalledOnce();
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ clientId: "opensdoors-client" }));
+});
+
+it("does not spend credits for a suspended organisation", async () => {
+  state.rules = [{
+    ...rule,
+    client: {
+      ...rule.client,
+      organisation: { id: "org_northwind", slug: "northwind", status: "SUSPENDED" },
+    },
+  }];
+  const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(execute).not.toHaveBeenCalled();
+  expect(result).toMatchObject({ skipped: 1, refilled: 0, failed: 0 });
+  expect(result.organisations[0]).toMatchObject({ slug: "northwind", disposition: "skipped", ok: true });
 });
 
 it("reports an empty RocketReach page as no matches and does not look anyone up", async () => {

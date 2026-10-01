@@ -12,7 +12,12 @@ export { isLegacyScheduledWindow } from "@/lib/mailboxes/scheduled-outreach-poli
 export async function loadScheduledOutreachPlan(at = new Date()) {
   if (!Number.isFinite(+at)) throw Error("Invalid scheduled instant");
   const clients = await prisma.client.findMany({
-    where: { deletedAt: null, status: { notIn: ["PAUSED", "ARCHIVED"] } },
+    where: {
+      deletedAt: null,
+      status: { notIn: ["PAUSED", "ARCHIVED"] },
+      // A suspended organisation does not send. Reply sync still receives its mail.
+      organisation: { status: "ACTIVE" },
+    },
     select: { id: true, sendingCalendars: { orderBy: { effectiveAt: "asc" } } },
     orderBy: { id: "asc" }, take: 1001,
   });

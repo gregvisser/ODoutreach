@@ -1,7 +1,13 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { suppressionKindLabel } from "@/lib/suppression/staff-labels";
+import { bucketByOrganisation } from "@/lib/tenant/organisation-jobs";
+import {
+  OPENSDOORS_ORGANISATION_ID,
+  OPENSDOORS_ORGANISATION_SLUG,
+} from "@/lib/tenant/organisation";
 
 import { syncSuppressionSourceFromGoogle } from "./suppression-sync";
 
@@ -80,6 +86,16 @@ export type SuppressionSyncAllResult = {
   outcomes: SuppressionSourceOutcome[];
   /** Present only when nothing was written. */
   dryRun?: boolean;
+  /** One entry per organisation that owned a sheet in this run. */
+  organisations: {
+    organisationId: string;
+    slug: string;
+    disposition: "ran" | "failed";
+    ok: boolean;
+    error?: string;
+  }[];
+  /** True when every organisation's sweep threw before its sheets could be isolated. */
+  everyActiveFailed: boolean;
 };
 
 export type SuppressionSyncAllOptions = {
@@ -123,6 +139,8 @@ export async function syncAllConfiguredSuppressionSources(
     errors: [reason],
     notices: [],
     outcomes: [],
+    organisations: [],
+    everyActiveFailed: false,
     ...(dryRun ? { dryRun: true } : {}),
   });
 
@@ -141,7 +159,17 @@ export async function syncAllConfiguredSuppressionSources(
     // the sync. A reason that reads `cmpnsa18a00m0gapb5fh8nox6: Check the Sheet
     // tab name and range` sends Greg hunting through 34 sources to find out
     // whose blocklist stopped; "Train Hugger — Whole domains — …" is a job.
-    select: { id: true, kind: true, client: { select: { name: true } } },
+    select: {
+      id: true,
+      kind: true,
+      client: {
+        select: {
+          name: true,
+          organisationId: true,
+          organisation: { select: { slug: true, status: true } },
+        },
+      },
+    },
     orderBy: { updatedAt: "asc" },
   });
 
@@ -167,10 +195,68 @@ export async function syncAllConfiguredSuppressionSources(
     errors: [],
     notices: [],
     outcomes: [],
+    organisations: [],
+    everyActiveFailed: false,
     ...(dryRun ? { dryRun: true } : {}),
   };
 
-  for (const source of sources) {
+  // Sheets stay in updatedAt order inside each organisation. A missing
+  // organisation on a fixture is OpensDoors, which is where every current
+  // sheet lives. A suspended organisation still syncs: the blocklist has to
+  // stay current even when that organisation cannot send.
+  const groups = bucketByOrganisation(sources, (source) => {
+    const organisation = source.client.organisation;
+    return {
+      organisationId: source.client.organisationId || OPENSDOORS_ORGANISATION_ID,
+      slug: organisation?.slug || OPENSDOORS_ORGANISATION_SLUG,
+      status: organisation?.status === "SUSPENDED" ? "SUSPENDED" : "ACTIVE",
+    };
+  });
+  let activeGroups = 0;
+  let failedGroups = 0;
+
+  for (const group of groups) {
+    activeGroups += 1;
+    try {
+      for (const source of group.items) {
+        await syncOneSuppressionSource(source, dryRun, result);
+      }
+      result.organisations.push({
+        organisationId: group.organisationId,
+        slug: group.slug,
+        disposition: "ran",
+        ok: true,
+      });
+    } catch (error) {
+      failedGroups += 1;
+      const message = sanitizeJobErrorText(
+        error instanceof Error ? error.message : "Do-not-contact sync failed",
+      );
+      result.failed += 1;
+      result.errors.push(`${group.slug}: ${message}`);
+      result.organisations.push({
+        organisationId: group.organisationId,
+        slug: group.slug,
+        disposition: "failed",
+        ok: false,
+        error: message,
+      });
+    }
+  }
+  result.everyActiveFailed = activeGroups > 0 && failedGroups === activeGroups;
+
+  return result;
+}
+
+async function syncOneSuppressionSource(
+  source: {
+    id: string;
+    kind: Parameters<typeof suppressionKindLabel>[0];
+    client: { name: string };
+  },
+  dryRun: boolean,
+  result: SuppressionSyncAllResult,
+): Promise<void> {
     const kind = suppressionKindLabel(source.kind);
     const who = `${source.client.name} — ${kind}`;
     const base = { client: source.client.name, kind, sourceId: source.id };
@@ -214,7 +300,4 @@ export async function syncAllConfiguredSuppressionSources(
       result.notices.push(`${who}: ${error}`.slice(0, 300));
       result.outcomes.push({ ...base, ok: false, held: true, error });
     }
-  }
-
-  return result;
 }

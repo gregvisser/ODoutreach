@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
+import { organisationJobsStatus } from "@/lib/tenant/organisation-jobs";
 
 import { syncAllConfiguredSuppressionSources } from "@/server/integrations/google-sheets/suppression-sync-all";
 
@@ -62,8 +63,9 @@ export async function POST(req: NextRequest) {
     // `{ ok: true, ...result }` — a literal written before anyone looked at
     // `result` — which is how a run went green while 8 of 35 mailboxes were
     // failing. A partial batch now answers 207 and `ok: false`.
+    const outcome = jobOutcome(result);
     return NextResponse.json(jobResponseBody(result), {
-      status: jobOutcome(result).status,
+      status: organisationJobsStatus(result.everyActiveFailed === true, outcome.status),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Suppression sync failed";

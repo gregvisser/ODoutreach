@@ -5,7 +5,12 @@ const { syncActiveClientMailboxInboxesMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/server/mailbox/mailbox-inbox-sync", () => ({
-  listReplySyncMailboxIds: async () => ["mailbox-one", "mailbox-two"],
+  listReplySyncPlan: async () => ({
+    mailboxIds: ["mailbox-one", "mailbox-two"],
+    organisations: [
+      { organisationId: "org_opensdoors", slug: "opensdoors", mailboxIds: ["mailbox-one", "mailbox-two"] },
+    ],
+  }),
   syncActiveClientMailboxInboxes: syncActiveClientMailboxInboxesMock,
 }));
 
@@ -72,7 +77,13 @@ describe("POST /api/internal/replies/sync", () => {
   it("plans the eligible mailboxes without syncing them", async () => {
     vi.stubEnv("PROCESS_QUEUE_SECRET", "correct");
     const res = await POST(req("correct", { batchProtocol: 1, planOnly: true }) as never);
-    expect(await res.json()).toEqual({ batchProtocol: 1, mailboxIds: ["mailbox-one", "mailbox-two"] });
+    expect(await res.json()).toEqual({
+      batchProtocol: 1,
+      mailboxIds: ["mailbox-one", "mailbox-two"],
+      organisations: [
+        { organisationId: "org_opensdoors", slug: "opensdoors", mailboxIds: ["mailbox-one", "mailbox-two"] },
+      ],
+    });
     expect(syncActiveClientMailboxInboxesMock).not.toHaveBeenCalled();
   });
 

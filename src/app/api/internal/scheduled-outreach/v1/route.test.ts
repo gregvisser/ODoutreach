@@ -1,14 +1,26 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ plan: vi.fn(), sync: vi.fn(), advance: vi.fn(), queue: vi.fn(), resume: vi.fn(), tick: vi.fn() }));
+const m = vi.hoisted(() => ({ plan: vi.fn(), sync: vi.fn(), advance: vi.fn(), queue: vi.fn(), resume: vi.fn(), tick: vi.fn(), targets: vi.fn() }));
 vi.mock("@/server/mailbox/scheduled-outreach", () => ({ loadScheduledOutreachPlan: m.plan }));
 vi.mock("@/server/mailbox/mailbox-inbox-sync", () => ({ syncActiveClientMailboxInboxes: m.sync }));
 vi.mock("@/server/email-sequences/advance-due-followups", () => ({ advanceDueSequenceFollowUps: m.advance }));
 vi.mock("@/server/email-sequences/resume-pacing-holds", () => ({ resumePacingHeldSends: m.resume }));
 vi.mock("@/server/email/outbound/queue-processor", () => ({ processOutboundSendQueue: m.queue }));
 vi.mock("@/server/ai-campaigns/tick", () => ({ tickAiCampaignsForClient: m.tick }));
+vi.mock("@/server/tenant/organisation-jobs", () => ({ targetsForClientIds: m.targets }));
 import { POST } from "./route";
 const request = (body: object, secret = "synthetic") => new Request("https://example.test/api/internal/scheduled-outreach/v1", { method: "POST", headers: { authorization: `Bearer ${secret}` }, body: JSON.stringify(body) });
-beforeEach(() => { vi.resetAllMocks(); vi.stubEnv("PROCESS_QUEUE_SECRET", "synthetic"); m.plan.mockResolvedValue({ clientIds: ["client"], mailboxIds: ["mailbox"] }); m.queue.mockResolvedValue({ claimed: 0, completed: 0, errors: [] }); m.resume.mockResolvedValue({ stepsProcessed: 0, resumedQueued: 0, skippedSteps: [], errors: [] }); m.advance.mockResolvedValue({ clientsProcessed: 0, sequencesProcessed: 0, stepsProcessed: 0, followUpsQueued: 0, skippedSteps: [], errors: [] }); m.tick.mockResolvedValue({ processed: 0, errors: [] }); });
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.stubEnv("PROCESS_QUEUE_SECRET", "synthetic");
+  m.plan.mockResolvedValue({ clientIds: ["client"], mailboxIds: ["mailbox"] });
+  m.targets.mockImplementation(async (ids: string[]) => (
+    ids.length === 0 ? [] : [{ organisationId: "org_opensdoors", slug: "opensdoors", status: "ACTIVE", clientIds: ids }]
+  ));
+  m.queue.mockResolvedValue({ claimed: 0, completed: 0, errors: [] });
+  m.resume.mockResolvedValue({ stepsProcessed: 0, resumedQueued: 0, skippedSteps: [], errors: [] });
+  m.advance.mockResolvedValue({ clientsProcessed: 0, sequencesProcessed: 0, stepsProcessed: 0, followUpsQueued: 0, skippedSteps: [], errors: [] });
+  m.tick.mockResolvedValue({ processed: 0, errors: [] });
+});
 afterEach(() => vi.unstubAllEnvs());
 it("rejects unauthenticated and unversioned requests before any work", async () => {
   expect((await POST(request({ schedulerProtocol: 1, phase: "queue" }, "wrong") as never)).status).toBe(401);
@@ -66,4 +78,38 @@ it("preserves partial failure instead of declaring a clean scheduled run", async
   m.queue.mockResolvedValue({ claimed: 1, completed: 0, errors: ["synthetic failure"] });
   const response = await POST(request({ schedulerProtocol: 1, phase: "queue" }) as never);
   expect(response.status).toBe(207); expect(await response.json()).toMatchObject({ schedulerProtocol: 1, ok: false, failedCount: 1 });
+});
+it("drains the next organisation when the first organisation's queue throws", async () => {
+  m.plan.mockResolvedValue({ clientIds: ["od", "nw"], mailboxIds: [] });
+  m.targets.mockResolvedValue([
+    { organisationId: "org_opensdoors", slug: "opensdoors", status: "ACTIVE", clientIds: ["od"] },
+    { organisationId: "org_northwind", slug: "northwind", status: "ACTIVE", clientIds: ["nw"] },
+  ]);
+  m.queue.mockRejectedValueOnce(new Error("opensdoors mailbox dead")).mockResolvedValueOnce({ claimed: 1, completed: 1, errors: [] });
+  const response = await POST(request({ schedulerProtocol: 1, phase: "queue" }) as never);
+  expect(m.queue).toHaveBeenNthCalledWith(1, { limit: 25, clientIds: ["od"] });
+  expect(m.queue).toHaveBeenNthCalledWith(2, { limit: 25, clientIds: ["nw"] });
+  expect(response.status).toBe(207);
+  const body = await response.json() as { ok: boolean; claimed: number; organisations: { slug: string; disposition: string }[] };
+  expect(body.ok).toBe(false);
+  expect(body.claimed).toBe(1);
+  expect(body.organisations.map((org) => org.disposition)).toEqual(["failed", "ran"]);
+});
+it("does not send for a suspended organisation", async () => {
+  m.targets.mockResolvedValue([
+    { organisationId: "org_northwind", slug: "northwind", status: "SUSPENDED", clientIds: ["nw"] },
+  ]);
+  const response = await POST(request({ schedulerProtocol: 1, phase: "queue" }) as never);
+  expect(m.queue).not.toHaveBeenCalled();
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ ok: true, claimed: 0 });
+});
+it("keeps an AI campaign tick throw on that client", async () => {
+  m.tick.mockRejectedValue(new Error("postgres://opensdoors:secret@db/prod"));
+  const response = await POST(request({ schedulerProtocol: 1, phase: "advance", clientId: "client" }) as never);
+  expect(response.status).toBe(207);
+  const body = await response.json() as { errors?: string[] };
+  expect(body.errors?.[0]).toMatch(/redacted|failed/i);
+  expect(body.errors?.join(" ")).not.toMatch(/secret|postgres:\/\//);
+  expect(m.resume).toHaveBeenCalled();
 });
