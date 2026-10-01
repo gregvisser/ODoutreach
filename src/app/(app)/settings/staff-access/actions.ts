@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { normalizeEmail } from "@/lib/normalize";
+import { membershipRoleForStaff, OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
 import { isStaffEmailAllowed, requireSuperAdminForAction } from "@/server/auth/staff";
 import { logStaffAccessAudit } from "@/server/staff-access/audit";
 import { assertLastActiveAdminProtected } from "@/server/staff-access/last-admin";
@@ -89,6 +90,22 @@ export async function inviteStaffUser(
         invitedById: admin.id,
       },
     });
+
+    try {
+      await prisma.organisationMember.create({
+        data: {
+          organisationId: OPENSDOORS_ORGANISATION_ID,
+          staffUserId: draft.id,
+          role: membershipRoleForStaff({ isSuperAdmin: false, role: data.role }),
+        },
+      });
+    } catch (memberErr) {
+      await prisma.staffUser.delete({ where: { id: draft.id } });
+      return {
+        ok: false,
+        error: describeInvitationFailure(memberErr, "Could not attach the invitation to OpensDoors."),
+      };
+    }
 
     try {
       const graph = await createGuestInvitation(email, redirect);

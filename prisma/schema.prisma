@@ -26,6 +26,21 @@ enum StaffGuestInvitationState {
   ACCEPTED
 }
 
+/// A paying organisation on the shared instance. OpensDoors is one of these.
+/// Status is recorded here; enforcement of SUSPENDED lands with the platform admin.
+enum OrganisationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// Who may administer an organisation. Every member can still open every live
+/// client of that organisation — the role does not hide workspaces.
+enum OrganisationMemberRole {
+  OWNER
+  ADMIN
+  USER
+}
+
 enum ClientLifecycleStatus {
   ONBOARDING
   ACTIVE
@@ -278,6 +293,10 @@ model StaffUser {
   /// F2 — super-admin capability (delete/purge a workspace). Gated per
   /// account, NOT by email string. Assigned to greg@bidlow.co.uk.
   isSuperAdmin             Boolean                   @default(false)
+  /// Bidlow platform control plane. The flag alone is not access: the gate
+  /// also requires a verified @bidlow.co.uk email. Defaults false so existing
+  /// staff stay ordinary members until the backfill sets it deliberately.
+  isPlatformAdmin          Boolean                   @default(false)
   guestInvitationState     StaffGuestInvitationState @default(NONE)
   invitedAt                DateTime?
   invitationLastSentAt     DateTime?
@@ -293,6 +312,7 @@ model StaffUser {
   updatedAt DateTime @updatedAt
 
   memberships                     ClientMembership[]
+  organisationMembership          OrganisationMember?
   auditLogs                       AuditLog[]
   outboundSends                   OutboundEmail[]                  @relation("OutboundInitiator")
   mailboxIdentitiesCreated        ClientMailboxIdentity[]          @relation("MailboxIdentityCreatedBy")
@@ -453,12 +473,60 @@ model SupportTicketComment {
 
 // ——— Tenant / workspace ———
 
+/// One organisation on the shared instance. OpensDoors is the row created
+/// by the organisation migration (`org_opensdoors`); every existing client
+/// and staff member is attached to it. Brand columns mirror GlobalBrandSetting
+/// so a later stage can read them per organisation. `featureFlags` is not
+/// enforced yet — an empty object means "today's behaviour".
+model Organisation {
+  id             String             @id @default(cuid())
+  name           String
+  slug           String             @unique
+  status         OrganisationStatus @default(ACTIVE)
+  appLogoUrl     String?
+  appMarkUrl     String?
+  appFaviconUrl  String?
+  appBrandName   String?
+  appProductName String?
+  appLogoAltText String?
+  /// Switches the platform admin can turn per organisation. Missing keys
+  /// resolve to on, which is OpensDoors today. Not consulted yet.
+  featureFlags   Json               @default("{}")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  clients Client[]
+  members OrganisationMember[]
+
+  @@index([status])
+}
+
+/// A staff user belongs to exactly one organisation. Platform admins may
+/// still see every organisation; this row is their home, not their ceiling.
+model OrganisationMember {
+  id             String                 @id @default(cuid())
+  organisationId String
+  staffUserId    String                 @unique
+  role           OrganisationMemberRole @default(USER)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  staffUser    StaffUser    @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId])
+}
+
 model Client {
   prospectResearchPlans ProspectResearchPlan[]
   rocketReachPlanRuns RocketReachPlanRun[]
   sequenceListRefillRules SequenceListRefillRule[]
   rocketReachCreditReservations RocketReachCreditReservation[]
   id                               String                    @id @default(cuid())
+  /// Required. The database default is the OpensDoors organisation so every
+  /// existing create path — including raw SQL in tests — stays on OpensDoors
+  /// until a caller names another organisation.
+  organisationId                   String                    @default("org_opensdoors")
   name                             String
   slug                             String                    @unique
   status                           ClientLifecycleStatus     @default(ONBOARDING)
@@ -572,6 +640,7 @@ model Client {
   deletedAt                        DateTime?
   deletedByStaffUserId             String?
 
+  organisation                    Organisation                     @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   memberships                     ClientMembership[]
   onboarding                      ClientOnboarding?
   contacts                        Contact[]
@@ -631,6 +700,7 @@ model Client {
 
   @@index([deletedAt])
   @@index([status])
+  @@index([organisationId])
   @@index([launchApprovedByStaffUserId])
   @@index([briefAssignedAccountManagerId])
   @@index([accountGradeSetByStaffUserId])

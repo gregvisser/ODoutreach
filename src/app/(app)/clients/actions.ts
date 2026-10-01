@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
 import { validateNewClientShellInput } from "@/lib/clients/new-client-shell";
+import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 /**
@@ -61,6 +62,7 @@ export async function createClientFromOnboarding(input: {
         website: normalized.website,
         notes: normalized.notes,
         status: "ONBOARDING",
+        organisationId: OPENSDOORS_ORGANISATION_ID,
       },
       select: { id: true, slug: true },
     });
