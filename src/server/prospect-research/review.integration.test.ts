@@ -7,6 +7,7 @@ const criteria = { titles: ["Director"], industries: ["Manufacturing"], seniorit
 const evidence = { titles: "Director", industries: "Manufacturing", seniorities: "Director", regions: "UK" };
 beforeEach(async () => {
   await resetIntegrationDatabase(); vi.stubEnv("INTERNAL_SEED_ALLOWLIST_ENABLED", "false"); vi.stubGlobal("fetch", vi.fn());
+  await prisma.staffUser.create({ data: { id: staff.id, entraObjectId: staff.id, email: "review@example.test", role: "OPERATOR" } });
   await prisma.client.createMany({ data: [{ id: "review-client", name: "Synthetic", slug: "review-client" }, { id: "other", name: "Other", slug: "other" }] });
   await prisma.prospectResearchPlan.create({ data: { id: "plan", clientId: "review-client", name: "Synthetic", criteria, maxLookups: 30, createdByStaffId: staff.id, run: { create: { id: "run", maxLookups: 30, approvedByStaffId: staff.id } } } });
   for (let i = 0; i < 21; i++) await prisma.prospectResearchRequest.create({ data: { id: `request-${i}`, runId: "run", requestKey: `lookup:${i + 1}`, kind: "LOOKUP", candidate: { create: { id: `candidate-${String(i).padStart(2, "0")}`, providerProfileId: String(i + 1), email: `person${i}@example.test`, company: "Synthetic", evidence, evaluatedAt: new Date("2026-01-01"), decision: { status: "MATCH", reasons: ["Original match"], rulesVersion: "explicit-fit-v1" } } } } });

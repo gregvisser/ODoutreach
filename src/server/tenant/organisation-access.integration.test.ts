@@ -71,13 +71,11 @@ beforeEach(async () => {
       isPlatformAdmin: true,
     },
   });
-  await prisma.organisationMember.createMany({
-    data: [
-      { organisationId: OPENSDOORS_ORGANISATION_ID, staffUserId: "opensdoors-user", role: "USER" },
-      { organisationId: OPENSDOORS_ORGANISATION_ID, staffUserId: "opensdoors-owner", role: "OWNER" },
-      { organisationId: OTHER_ORG, staffUserId: "other-user", role: "USER" },
-      { organisationId: OPENSDOORS_ORGANISATION_ID, staffUserId: "platform", role: "OWNER" },
-    ],
+  // The integration database attaches new staff to OpensDoors. Move the
+  // fixture agency user across; the others stay where the trigger put them.
+  await prisma.organisationMember.update({
+    where: { staffUserId: "other-user" },
+    data: { organisationId: OTHER_ORG, role: "USER" },
   });
 });
 
