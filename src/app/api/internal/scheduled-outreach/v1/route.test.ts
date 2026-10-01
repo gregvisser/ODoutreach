@@ -40,6 +40,15 @@ it("resumes pacing holds for the planned client before machine follow-ups", asyn
   expect(m.advance).toHaveBeenCalledWith({ clientId: "client" });
   expect(m.resume.mock.invocationCallOrder[0]).toBeLessThan(m.advance.mock.invocationCallOrder[0]);
 });
+it("does not fail the tick when the only problem is an empty recipient list", async () => {
+  m.tick.mockResolvedValue({
+    processed: 1,
+    errors: ["No recipients are ready for this step. Open Review recipients, then launch again."],
+  });
+  const response = await POST(request({ schedulerProtocol: 1, phase: "advance", clientId: "client" }) as never);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ ok: true, failedCount: 0 });
+});
 it("fails the tick when an AI campaign reports a problem and does not hide it behind a clean advance", async () => {
   m.tick.mockResolvedValue({ processed: 1, errors: ["No people were found within the credit budget."] });
   const response = await POST(request({ schedulerProtocol: 1, phase: "advance", clientId: "client" }) as never);

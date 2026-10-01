@@ -190,6 +190,7 @@ function runTransactionForReal() {
   prismaMock.$transaction.mockImplementation(
     async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
+        $queryRaw: vi.fn().mockResolvedValue([{ id: "ss-1" }]),
         mailboxSendReservation: { count: vi.fn().mockResolvedValue(0) },
         clientEmailSequenceStepSend: { update: stepSendUpdate },
       }),

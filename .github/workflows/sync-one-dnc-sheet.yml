@@ -113,7 +113,8 @@ jobs:
                (.previousCount // "?" | tostring),
                (.rowsWritten // "-" | tostring),
                (.resolvedRange // "-"),
-               (if .refusedShrink then "REFUSED — would remove too many; nothing was deleted"
+               (if .held then "HELD — list kept; nothing was deleted"
+                elif ((.removed // 0) > 0) then "removed \(.removed) sheet rows"
                 elif .ok then ""
                 else (.error // "failed") end)
              ] | @tsv)

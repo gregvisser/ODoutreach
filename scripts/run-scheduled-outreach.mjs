@@ -12,6 +12,18 @@ function scrubJobText(value) {
     .slice(0, 300);
 }
 
+export function isBenignEmptyRecipientNote(value) {
+  const text = String(value).toLowerCase();
+  return text.includes("no recipients are ready") || text.includes("already complete or no ready recipients");
+}
+
+/** An empty follow-up step must not paint the whole clock red. */
+export function scheduledBatchFailed(result) {
+  if (result?.ok !== false) return false;
+  const notes = publicJobNotes(result);
+  return !(notes.length > 0 && notes.every(isBenignEmptyRecipientNote));
+}
+
 export function publicJobNotes(result) {
   const lines = [];
   if (Array.isArray(result?.errors)) {
@@ -66,10 +78,12 @@ export async function runScheduledOutreach({ url, secret, timeoutMs = 180_000, b
     summary.attempted++;
     try {
       const result = await request(body);
-      if (!result.ok) summary.failed++;
-      if (result.skipped === true) summary.skipped++;
+      const failed = scheduledBatchFailed(result);
+      if (failed) summary.failed++;
+      const benignEmpty = result.ok === false && !failed;
+      if (result.skipped === true || benignEmpty) summary.skipped++;
       const notes = publicJobNotes(result);
-      onBatch({ phase: body.phase, ok: result.ok, skipped: result.skipped === true, ...(notes.length ? { errors: notes } : {}) });
+      onBatch({ phase: body.phase, ok: !failed, skipped: result.skipped === true || benignEmpty, ...(notes.length ? { errors: notes } : {}) });
     } catch (error) {
       // A timeout may follow committed work. Record it without blind retries.
       summary.unverified++;

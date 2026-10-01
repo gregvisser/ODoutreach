@@ -3,22 +3,15 @@ import type { SuppressionListKind } from "@/generated/prisma/enums";
 import { suppressionReplaceRefusalMessage } from "@/lib/suppression/staff-sync-copy";
 
 /**
- * Whether a do-not-contact sheet sync is allowed to replace what is stored.
+ * Whether a do-not-contact sheet sync may replace what this sheet stored.
  *
- * The sync is delete-then-insert. That makes every read failure a DELETION:
- * point it at the wrong tab, or read a sheet somebody has just cleared, and
- * every blocked address silently becomes sendable again on a live cold-email
- * system. `suppressionShrinkWarning` reports that after the fact, which is a
- * receipt, not a guard.
+ * OpensDoors staff shorten these sheets on purpose. A shorter non-empty sheet
+ * is mirrored: rows they took off are taken off this sheet's blocks.
  *
- * So the replace refuses. Blocking someone who need not be blocked is a
- * nuisance; contacting someone who asked never to be contacted is the failure
- * the product exists to prevent, and it cannot be undone. Fail toward keeping
- * people blocked, every time.
- *
- * Compare the actual previous entries with the replacement. New additions
- * must not conceal removals by keeping the total unchanged or making it grow.
- * Callers read the previous entries inside the replacement transaction.
+ * An empty read is not. A sheet that cannot be read, a renamed tab, or a tab
+ * that comes back with no usable rows when rows were stored would otherwise
+ * delete the whole list. That case is refused and the stored rows stay.
+ * Callers still apply the refusal before any delete, inside the transaction.
  */
 
 export type SuppressionReplaceRefusal = {
@@ -46,8 +39,10 @@ export function decideSuppressionReplace(
   const removed = previousEntries.filter((entry) => !nextEntries.has(entry)).length;
   if (removed <= 0) return { allowed: true };
 
-  // Even one missing row may be an opt-out. Only the caller's explicit
-  // confirmShrink path may remove it; routine sync still adds new blocks.
+  // A header with no usable rows, or a cleared sheet, is not a list. Keep
+  // every stored block. A shorter sheet that still has rows is applied.
+  if (wouldWrite > 0) return { allowed: true };
+
   return {
     allowed: false,
     refusal: {

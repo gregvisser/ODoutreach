@@ -603,7 +603,9 @@ describe("sendSequenceStepBatch — governance gate", () => {
     const outboundCreate = vi.fn();
     prismaMock.$transaction.mockImplementation(async (fn: (value: unknown) => Promise<unknown>) =>
       fn({
-        $queryRaw: vi.fn().mockResolvedValue([]),
+        $queryRaw: vi.fn()
+          .mockResolvedValueOnce([{ id: "ss-mailbox-missing" }])
+          .mockResolvedValue([]),
         clientMailboxIdentity: { findFirst: vi.fn().mockResolvedValue(null) },
         clientSendingCalendar: { findMany: async () => [] },
         mailboxSendReservation: {

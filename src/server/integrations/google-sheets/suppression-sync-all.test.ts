@@ -42,7 +42,7 @@ describe("suppression sync-all wiring", () => {
 
   it("isolates per-source failures so one broken sheet cannot stop the rest", () => {
     expect(syncAll).toContain("try {");
-    expect(syncAll).toContain("result.errors.push");
+    expect(syncAll).toContain("result.notices.push");
   });
 
   it("the internal route is gated behind the PROCESS_QUEUE_SECRET bearer", () => {
@@ -94,8 +94,8 @@ describe("a failing do-not-contact sheet reaches Greg", () => {
       repliesWorkflow.indexOf("Sync do-not-contact sheets"),
     );
     expect(step).toContain("node scripts/run-suppression-sheets.mjs");
-    expect(dncRunner).toContain("result.ok !== outcome.ok");
-    expect(dncRunner).toContain("result.failed !==");
+    expect(dncRunner).toContain("result.ok !== true");
+    expect(dncRunner).toContain("result.failed !== 0");
   });
 
   it("records the failure where the PARTIAL alert reads it", () => {
@@ -109,14 +109,15 @@ describe("a failing do-not-contact sheet reaches Greg", () => {
     expect(dncRunner).toContain("/tmp/run-problems.txt");
   });
 
-  it("reports shrink refusals separately without publishing private sheet errors", () => {
+  it("reports a held sheet without publishing private sheet errors", () => {
     const step = repliesWorkflow.slice(
       repliesWorkflow.indexOf("Sync do-not-contact sheets"),
       repliesWorkflow.indexOf("Fail run — PARTIAL"),
     );
     expect(step).toContain("node scripts/run-suppression-sheets.mjs");
-    expect(dncRunner).toContain("outcome.refusedShrink === true");
-    expect(dncRunner).toContain("onBatch({ batch:");
+    expect(dncRunner).toContain("outcome?.held === true");
+    expect(dncRunner).toContain("onBatch({");
+    expect(dncRunner).not.toContain("outcome.error");
   });
 
   it("the dry-run workflow cannot write, by construction", () => {

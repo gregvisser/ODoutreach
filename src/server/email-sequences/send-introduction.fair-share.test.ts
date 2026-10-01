@@ -171,6 +171,7 @@ describe("mailbox fair share inside the dispatcher", () => {
     const stepSendUpdate = vi.fn().mockResolvedValue({});
     prismaMock.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
+        $queryRaw: vi.fn().mockResolvedValue([{ id: "ss-jack" }]),
         mailboxSendReservation: { count: vi.fn().mockResolvedValue(0) },
         clientEmailSequenceStepSend: { update: stepSendUpdate },
       }),

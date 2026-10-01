@@ -34,8 +34,8 @@ export function suppressionReplaceRefusalMessage(
     return (
       `Sending continues. Your Do Not Contact sheet did not contain any usable ${sheetNoun}, ` +
       `but we still hold ${String(previousCount)} blocked ${blockNoun} from before, so those stay blocked to be safe. ` +
-      `Check the sheet tab and range, restore the list if it was cleared by mistake, then sync again. ` +
-      `If those ${blockNoun} really should be unblocked, check with the project lead (Greg Visser) first before using the confirmation control on this screen.`
+      `Check the sheet tab, header, and range. If the list was cleared by mistake, restore it and sync again. ` +
+      `An empty sheet is never applied.`
     );
   }
 
@@ -182,6 +182,23 @@ export function suppressionStaffFacingSyncLastError(
     parsed.previousCount,
     parsed.wouldWrite,
     parsed.removed,
+  );
+}
+
+/**
+ * After a sheet was mirrored and some of its own rows were removed.
+ * `removed` is the number actually deleted, not a count that includes
+ * unsubscribes or other blocks that were kept.
+ */
+export function sheetMirrorRemovalWarning(
+  kind: SuppressionListKind,
+  removed: number,
+): string | undefined {
+  if (removed <= 0) return undefined;
+  const blockNoun = noun(kind, removed);
+  return (
+    `Removed ${String(removed)} ${blockNoun} that are no longer on this do-not-contact sheet. ` +
+    `Unsubscribes, reply opt-outs, bounces, manual blocks, and other lists were kept.`
   );
 }
 

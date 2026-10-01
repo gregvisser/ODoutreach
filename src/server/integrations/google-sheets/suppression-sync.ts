@@ -3,6 +3,7 @@ import "server-only";
 import { google } from "googleapis";
 
 import type { SuppressionListKind } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { BULK_TRANSACTION_OPTIONS, chunk } from "@/lib/db-bulk";
 import {
@@ -13,10 +14,10 @@ import {
 } from "@/lib/normalize";
 import { refreshContactSuppressionFlagsForClient } from "@/server/outreach/suppression-guard";
 import {
-  decideSuppressionReplace,
   type SuppressionReplaceRefusal,
 } from "@/lib/suppression/replace-guard";
-import { suppressionShrinkWarning } from "@/lib/suppression/shrink-warning";
+import { planSheetMirror } from "@/lib/suppression/sheet-mirror";
+import { sheetMirrorRemovalWarning } from "@/lib/suppression/staff-sync-copy";
 
 import { loadServiceAccountCredentials } from "./auth";
 import { getGoogleServiceAccountDisplayInfo } from "./service-account-display";
@@ -33,9 +34,9 @@ export type SuppressionSyncInput = {
   /** Must match the row in DB — caller verifies tenant access. */
   sourceId: string;
   /**
-   * An operator has seen the refused shrink and meant it. Never set by the
-   * scheduled re-sync — an unattended job must not be the thing that decides
-   * hundreds of people may be contacted again.
+   * Kept so an older screen can still send it. An empty sheet is never
+   * applied, with or without this flag. A shorter non-empty sheet is mirrored
+   * either way.
    */
   confirmShrink?: boolean;
   /**
@@ -74,13 +75,13 @@ export type SuppressionSyncResult = {
   /** Non-fatal hint when sync succeeded but nothing usable was found in cells. */
   warning?: string;
   /**
-   * Set when removals were refused. New blocks may still have been added.
-   * Present so a caller can offer the confirmation; its absence on a failure
-   * means the sync failed for some other reason and confirming would not help.
+   * The sheet was not applied and the stored list was left as it was.
+   * A read error, a missing tab, and an empty sheet are all holds.
+   * An empty sheet cannot be confirmed away.
    */
-  blockedShrink?: SuppressionReplaceRefusal;
-  /** New blocks retained even though removals were refused. Never set by a dry run. */
-  addedWithoutRemoving?: number;
+  held?: boolean;
+  /** Sheet-sourced rows actually deleted. Protected blocks are not included. */
+  removed?: number;
 };
 
 function flattenSheetValues(values: string[][] | null | undefined): string[] {
@@ -157,7 +158,7 @@ export async function syncSuppressionSourceFromGoogle(
   });
 
   if (!source) {
-    return { ok: false, error: "Suppression source not found" };
+    return { ok: false, held: true, error: "Suppression source not found" };
   }
 
   const dryRun = input.dryRun === true;
@@ -180,14 +181,14 @@ export async function syncSuppressionSourceFromGoogle(
   if (!spreadsheetId) {
     const err = SUPPRESSION_SYNC_MESSAGES.spreadsheetMissing;
     await recordStatus({ syncStatus: "ERROR", lastError: err });
-    return { ok: false, error: err };
+    return { ok: false, held: true, error: err };
   }
 
   const saDisplay = getGoogleServiceAccountDisplayInfo();
   if (!saDisplay.configured) {
     const err = SUPPRESSION_SYNC_MESSAGES.adminCredentialsRequired;
     await recordStatus({ syncStatus: "ERROR", lastError: err });
-    return { ok: false, error: err };
+    return { ok: false, held: true, error: err };
   }
 
   await recordStatus({ syncStatus: "SYNCING", lastError: null });
@@ -232,6 +233,7 @@ export async function syncSuppressionSourceFromGoogle(
       await recordStatus({ syncStatus: "ERROR", lastError: err });
       return {
         ok: false,
+        held: true,
         error: err,
         ...(dryRun ? { dryRun: true as const } : {}),
       };
@@ -266,66 +268,48 @@ export async function syncSuppressionSourceFromGoogle(
     const outcome = await applySheetToSuppressionTables({
       clientId,
       sourceId: source.id,
+      spreadsheetId,
+      sheetRange: range,
       kind,
       cells: flat,
-      confirmShrink: input.confirmShrink === true,
       dryRun,
     });
 
-    // Refused, not failed: the stored rows are untouched and everyone who was
-    // blocked still is. Recorded as ERROR and WITHOUT stamping lastSyncedAt,
-    // because a list that silently stopped updating is how this started.
+    // An empty sheet is not applied. The stored rows stay. Recorded as ERROR
+    // without lastSyncedAt so a list that stopped updating is visible, and
+    // the range is remembered because Google did serve this tab.
     if (outcome.refused) {
-      const noun = kind === "EMAIL" ? "addresses" : "domains";
-      const message = outcome.refusal.reason + (outcome.added > 0
-        ? ` Added ${outcome.added} new blocked ${noun} without removing any existing blocks.`
-        : "");
-      // Refresh from the retained union, including on retries where the new
-      // rows already exist. A prior post-commit refresh may have failed.
-      if (!dryRun) await refreshContactSuppressionFlagsForClient(clientId);
+      const message = outcome.refusal.reason;
       await recordStatus({
         syncStatus: "ERROR",
         lastError: message.slice(0, 2000),
-        // Remembered even though the sync was refused: the refusal is about
-        // how MANY rows the sheet holds, not about which tab they are on, and
-        // Google has already served this range. A source parked in a refused
-        // shrink — Train Hugger's domain list has been since 2026-08-14 —
-        // would otherwise re-resolve its tab every fifteen minutes for ever.
         ...rememberRange,
       });
       return {
         ok: false,
+        held: true,
         error: message,
-        blockedShrink: outcome.refusal,
         previousCount: outcome.refusal.previousCount,
+        removed: 0,
         resolvedRange: range,
         ...(dryRun ? { dryRun: true as const } : {}),
-        ...(!dryRun ? { addedWithoutRemoving: outcome.added } : {}),
       };
     }
 
-    const { written, previousCount } = outcome;
+    const { written, previousCount, removed } = outcome;
 
-    // Asked, not done. Returned before the success stamp and the flag refresh
-    // so a dry run cannot mark a list as synced that it never touched.
     if (dryRun) {
       return {
         ok: true,
         dryRun: true,
         wouldWrite: written,
         previousCount,
+        removed,
         resolvedRange: range,
       };
     }
 
-    // A shrink (previously-blocked entries removed) is the costliest silent
-    // failure for opt-out data, so it takes precedence over the "nothing
-    // usable found" note.
-    let warning: string | undefined = suppressionShrinkWarning(
-      kind,
-      written,
-      previousCount,
-    );
+    let warning = sheetMirrorRemovalWarning(kind, removed);
     if (!warning && written === 0) {
       if (flat.length === 0) {
         warning = SUPPRESSION_SYNC_MESSAGES.noDataInRange;
@@ -344,12 +328,18 @@ export async function syncSuppressionSourceFromGoogle(
       ...rememberRange,
     });
 
-    await refreshContactSuppressionFlagsForClient(clientId);
+    try {
+      await refreshContactSuppressionFlagsForClient(clientId);
+    } catch (refreshError) {
+      const detail = refreshError instanceof Error ? refreshError.message : String(refreshError);
+      warning = `The sheet was applied, but contact flags could not be refreshed: ${detail}`.slice(0, 500);
+    }
 
     return {
       ok: true,
       rowsWritten: written,
       previousCount,
+      removed,
       resolvedRange: range,
       warning,
     };
@@ -362,6 +352,7 @@ export async function syncSuppressionSourceFromGoogle(
     // the original instruction stands unchanged.
     if (isRangeInvalidMessage(friendly)) {
       const lookup = await readSheetTabTitles(spreadsheetId);
+      friendly = `The sheet tab or header range is missing or renamed, so nothing was changed. ${friendly}`;
       // A failed lookup contributes nothing here rather than refusing: this
       // path is decorating an error that has already happened, and
       // `withSheetTabNames` returns the message unchanged for an empty list.
@@ -370,6 +361,8 @@ export async function syncSuppressionSourceFromGoogle(
         range,
         lookup.ok ? lookup.titles : [],
       );
+    } else if (!friendly.includes("nothing was changed") && !friendly.includes("Nothing was changed")) {
+      friendly = `${friendly} Nothing was changed.`.slice(0, 2000);
     }
     await recordStatus({
       syncStatus: "ERROR",
@@ -377,6 +370,7 @@ export async function syncSuppressionSourceFromGoogle(
     });
     return {
       ok: false,
+      held: true,
       error: friendly,
       resolvedRange: range,
       ...(dryRun ? { dryRun: true as const } : {}),
@@ -385,32 +379,155 @@ export async function syncSuppressionSourceFromGoogle(
 }
 
 type ApplyOutcome =
-  | { refused: false; written: number; previousCount: number }
-  | { refused: true; refusal: SuppressionReplaceRefusal; added: number };
+  | { refused: false; written: number; previousCount: number; removed: number }
+  | { refused: true; refusal: SuppressionReplaceRefusal };
+
+const PROTECTED_AUDIT_KINDS = [
+  "hard_bounce_suppressed",
+  "complaint_suppressed",
+  "recipient_unsubscribed",
+  "manual_do_not_contact_add",
+] as const;
+
+function auditEntryValue(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const record = metadata as Record<string, unknown>;
+  if (typeof record.email === "string" && record.email.length > 0) return record.email;
+  if (typeof record.value === "string" && record.value.length > 0) return record.value;
+  return null;
+}
+
+/**
+ * Blocks that must survive a sheet removal even when the row's sourceId is
+ * this sheet. A later unsubscribe, bounce, reply opt-out, or manual add does
+ * not always clear sourceId, because the address is already unique per client.
+ */
+async function loadProtectedSheetEntries(
+  tx: Prisma.TransactionClient,
+  clientId: string,
+  kind: SuppressionListKind,
+  candidates: readonly string[],
+): Promise<Set<string>> {
+  const kept = new Set<string>();
+  if (candidates.length === 0) return kept;
+  const wanted = new Set(candidates);
+
+  const audits = await tx.auditLog.findMany({
+    where: {
+      clientId,
+      OR: PROTECTED_AUDIT_KINDS.map((kindName) => ({
+        metadata: { path: ["kind"], equals: kindName },
+      })),
+    },
+    select: { metadata: true },
+  });
+  for (const row of audits) {
+    const value = auditEntryValue(row.metadata);
+    if (value && wanted.has(value)) kept.add(value);
+  }
+
+  if (kind !== "EMAIL") return kept;
+
+  for (const batch of chunk(candidates, 500)) {
+    const [tokens, replies, bounced] = await Promise.all([
+      tx.unsubscribeToken.findMany({
+        where: { clientId, usedAt: { not: null }, email: { in: batch } },
+        select: { email: true },
+      }),
+      tx.inboundReply.findMany({
+        where: { clientId, classification: "UNSUBSCRIBE", fromEmail: { in: batch } },
+        select: { fromEmail: true },
+      }),
+      tx.outboundEmail.findMany({
+        where: { clientId, status: "BOUNCED", toEmail: { in: batch } },
+        select: { toEmail: true },
+      }),
+    ]);
+    for (const row of tokens) kept.add(row.email);
+    for (const row of replies) kept.add(row.fromEmail);
+    for (const row of bounced) kept.add(row.toEmail);
+  }
+  return kept;
+}
+
+async function mirrorSheetRows(
+  tx: Prisma.TransactionClient,
+  args: {
+    clientId: string;
+    sourceId: string;
+    spreadsheetId: string;
+    sheetRange: string;
+    kind: SuppressionListKind;
+    previous: readonly string[];
+    next: ReadonlySet<string>;
+    dryRun: boolean;
+    deleteRows: (values: string[]) => Promise<void>;
+    insertRows: (values: string[]) => Promise<void>;
+  },
+): Promise<ApplyOutcome> {
+  if (args.next.size === 0 && args.previous.length > 0) {
+    const held = planSheetMirror(args.kind, args.next, args.previous);
+    if (!held.apply) return { refused: true, refusal: held.refusal };
+  }
+  const absent = args.previous.filter((entry) => !args.next.has(entry));
+  const protectedEntries = absent.length === 0
+    ? new Set<string>()
+    : await loadProtectedSheetEntries(tx, args.clientId, args.kind, absent);
+  const plan = planSheetMirror(args.kind, args.next, args.previous, protectedEntries);
+  if (!plan.apply) return { refused: true, refusal: plan.refusal };
+  if (args.dryRun) {
+    return {
+      refused: false,
+      written: args.next.size,
+      previousCount: plan.previousCount,
+      removed: plan.remove.length,
+    };
+  }
+
+  // Only this sheet's rows. sourceId null (manual, bounce, unsubscribe) and
+  // every other source, including company-name do-not-contact, are untouched.
+  for (const batch of chunk(plan.remove)) {
+    await args.deleteRows(batch);
+  }
+  if (plan.remove.length > 0) {
+    await tx.auditLog.create({
+      data: {
+        staffUserId: null,
+        clientId: args.clientId,
+        action: "DELETE",
+        entityType: args.kind === "EMAIL" ? "SuppressedEmail" : "SuppressedDomain",
+        entityId: args.sourceId,
+        metadata: {
+          kind: "sheet_sourced_suppression_removed",
+          sourceId: args.sourceId,
+          spreadsheetId: args.spreadsheetId,
+          sheetRange: args.sheetRange,
+          removed: plan.remove.length,
+          keptProtected: plan.keptProtected.length,
+        },
+      },
+    });
+  }
+  await args.insertRows([...args.next]);
+  return {
+    refused: false,
+    written: args.next.size,
+    previousCount: plan.previousCount,
+    removed: plan.remove.length,
+  };
+}
 
 async function applySheetToSuppressionTables(args: {
   clientId: string;
   sourceId: string;
+  spreadsheetId: string;
+  sheetRange: string;
   kind: SuppressionListKind;
   cells: string[];
-  confirmShrink: boolean;
   /** Compute the same numbers, then stop before the delete. */
   dryRun: boolean;
 }): Promise<ApplyOutcome> {
-  const { clientId, sourceId, kind, cells, confirmShrink, dryRun } = args;
-
-  /**
-   * Compare entries inside the transaction, before deleting anything.
-   * Serializable isolation prevents concurrent syncs from using a stale diff.
-   */
-  const refusalFor = (
-    nextEntries: ReadonlySet<string>,
-    previousEntries: readonly string[],
-  ): SuppressionReplaceRefusal | null => {
-    if (confirmShrink) return null;
-    const decision = decideSuppressionReplace(kind, nextEntries, previousEntries);
-    return decision.allowed ? null : decision.refusal;
-  };
+  const { clientId, sourceId, spreadsheetId, sheetRange, kind, cells, dryRun } = args;
 
   if (kind === "EMAIL") {
     const emails = new Set<string>();
@@ -418,41 +535,31 @@ async function applySheetToSuppressionTables(args: {
       const v = normalizeEmail(cell);
       if (v && isValidEmailFormat(v)) emails.add(v);
     }
-    const list = [...emails];
-
     return await prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
       const previous = await tx.suppressedEmail.findMany({
         where: { clientId, sourceId },
         select: { email: true },
       });
-      const previousCount = previous.length;
-      const refusal = refusalFor(emails, previous.map((row) => row.email));
-
-      // Placed AFTER the guard so a dry run reports the same verdict the real
-      // sync would reach, and BEFORE the delete so it reaches it for free.
-      if (dryRun) return refusal
-        ? { refused: true, refusal, added: 0 }
-        : { refused: false, written: list.length, previousCount };
-
-      if (!refusal) await tx.suppressedEmail.deleteMany({
-        where: { clientId, sourceId },
+      return mirrorSheetRows(tx, {
+        clientId,
+        sourceId,
+        spreadsheetId,
+        sheetRange,
+        kind,
+        previous: previous.map((row) => row.email),
+        next: emails,
+        dryRun,
+        deleteRows: async (values) => {
+          await tx.suppressedEmail.deleteMany({
+            where: { clientId, sourceId, email: { in: values } },
+          });
+        },
+        insertRows: async (values) => {
+          for (const batch of chunk(values.map((email) => ({ clientId, sourceId, email })))) {
+            await tx.suppressedEmail.createMany({ data: batch, skipDuplicates: true });
+          }
+        },
       });
-
-      // Chunked inserts keep each statement bounded; the bulk transaction
-      // timeout (vs Prisma's 5s default) lets a large DNC list commit
-      // atomically instead of failing with an expired-transaction error.
-      let added = 0;
-      for (const batch of chunk(
-        list.map((email) => ({ clientId, sourceId, email })),
-      )) {
-        const result = await tx.suppressedEmail.createMany({
-          data: batch,
-          skipDuplicates: true,
-        });
-        added += result.count;
-      }
-      if (refusal) return { refused: true, refusal, added };
-      return { refused: false, written: list.length, previousCount };
     }, { ...BULK_TRANSACTION_OPTIONS, isolationLevel: "Serializable" });
   }
 
@@ -478,38 +585,31 @@ async function applySheetToSuppressionTables(args: {
     if (isValidDomainFormat(d) && isStorableSuppressionDomain(d)) domains.add(d);
   }
 
-  const list = [...domains];
-
   return await prisma.$transaction(async (tx): Promise<ApplyOutcome> => {
     const previous = await tx.suppressedDomain.findMany({
       where: { clientId, sourceId },
       select: { domain: true },
     });
-    const previousCount = previous.length;
-    const refusal = refusalFor(domains, previous.map((row) => row.domain));
-
-    if (dryRun) return refusal
-      ? { refused: true, refusal, added: 0 }
-      : { refused: false, written: list.length, previousCount };
-
-    if (!refusal) await tx.suppressedDomain.deleteMany({
-      where: { clientId, sourceId },
+    return mirrorSheetRows(tx, {
+      clientId,
+      sourceId,
+      spreadsheetId,
+      sheetRange,
+      kind,
+      previous: previous.map((row) => row.domain),
+      next: domains,
+      dryRun,
+      deleteRows: async (values) => {
+        await tx.suppressedDomain.deleteMany({
+          where: { clientId, sourceId, domain: { in: values } },
+        });
+      },
+      insertRows: async (values) => {
+        for (const batch of chunk(values.map((domain) => ({ clientId, sourceId, domain })))) {
+          await tx.suppressedDomain.createMany({ data: batch, skipDuplicates: true });
+        }
+      },
     });
-
-    // Refusing a removal must not discard new do-not-contact instructions.
-    // Unique keys preserve manual/source ownership when an entry exists already.
-    let added = 0;
-    for (const batch of chunk(
-      list.map((domain) => ({ clientId, sourceId, domain })),
-    )) {
-      const result = await tx.suppressedDomain.createMany({
-        data: batch,
-        skipDuplicates: true,
-      });
-      added += result.count;
-    }
-    if (refusal) return { refused: true, refusal, added };
-    return { refused: false, written: list.length, previousCount };
     // Serialization conflicts fail safely; the next scheduled run retries.
   }, { ...BULK_TRANSACTION_OPTIONS, isolationLevel: "Serializable" });
 }

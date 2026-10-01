@@ -31,20 +31,14 @@ describe("decideSuppressionReplace", () => {
     expect(d.refusal.reason).toContain("stay blocked");
   });
 
-  it("refuses a large proportional shrink", () => {
-    const d = decideSuppressionReplace("DOMAIN", next(200), entries(373));
-    expect(d.allowed).toBe(false);
-    if (d.allowed) throw new Error("expected a refusal");
-    expect(d.refusal.removed).toBe(173);
+  it("mirrors a shorter non-empty sheet", () => {
+    expect(decideSuppressionReplace("DOMAIN", next(200), entries(373)).allowed).toBe(true);
+    expect(decideSuppressionReplace("DOMAIN", next(372), entries(373)).allowed).toBe(true);
+    expect(decideSuppressionReplace("EMAIL", next(5), entries(6)).allowed).toBe(true);
+    expect(decideSuppressionReplace("EMAIL", next(1), entries(6)).allowed).toBe(true);
   });
 
-  it("refuses even one missing domain from a large list", () => {
-    expect(decideSuppressionReplace("DOMAIN", next(372), entries(373))).toMatchObject({ allowed: false, refusal: { removed: 1 } });
-  });
-
-  it("protects every missing email even in a small list", () => {
-    expect(decideSuppressionReplace("EMAIL", next(5), entries(6))).toMatchObject({ allowed: false, refusal: { removed: 1 } });
-    expect(decideSuppressionReplace("EMAIL", next(1), entries(6)).allowed).toBe(false);
+  it("still refuses an empty sheet when rows are already stored", () => {
     expect(decideSuppressionReplace("EMAIL", next(0), entries(6)).allowed).toBe(false);
   });
 
@@ -56,18 +50,14 @@ describe("decideSuppressionReplace", () => {
     expect(domain.refusal.reason).toContain("domains");
   });
 
-  it.each([100, 150])("counts missing original entries even with %i replacement entries", (size) => {
+  it.each([100, 150])("allows a full replacement of %i new rows", (size) => {
     const replacement = new Set(Array.from({ length: size }, (_, i) => `new-${i}.example`));
-    const result = decideSuppressionReplace("DOMAIN", replacement, entries(100));
-    expect(result).toMatchObject({ allowed: false, refusal: { removed: 100, previousCount: 100, wouldWrite: size } });
-    if (result.allowed) throw new Error("expected refusal");
-    expect(result.refusal.reason).toContain("Sending continues");
-    expect(result.refusal.reason).toContain("100");
+    expect(decideSuppressionReplace("DOMAIN", replacement, entries(100)).allowed).toBe(true);
   });
 
-  it("does not let additions conceal a single removed entry", () => {
+  it("allows a sheet that both adds and removes", () => {
     const previous = entries(100);
     const replacement = new Set([...previous.slice(1), "new.example", "another.example"]);
-    expect(decideSuppressionReplace("DOMAIN", replacement, previous)).toMatchObject({ allowed: false, refusal: { removed: 1, wouldWrite: 101 } });
+    expect(decideSuppressionReplace("DOMAIN", replacement, previous).allowed).toBe(true);
   });
 });

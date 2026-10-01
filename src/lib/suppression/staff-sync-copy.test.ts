@@ -4,6 +4,7 @@ import {
   isSuppressionHeldShrinkLastError,
   suppressionConfirmRemovalButtonLabel,
   suppressionHeldShrinkCombinedStaffMessage,
+  sheetMirrorRemovalWarning,
   suppressionListShortenedWarning,
   suppressionReplaceRefusalMessage,
   suppressionStaffFacingSyncLastError,
@@ -36,6 +37,12 @@ describe("suppression staff sync copy", () => {
     expect(msg).toContain("separate confirmation");
     expect(msg).not.toMatch(/Remove them anyway/i);
     expect(msg).not.toContain("Sync stopped");
+  });
+
+  it("names a mirrored removal without treating other blocks as removed", () => {
+    expect(sheetMirrorRemovalWarning("EMAIL", 0)).toBeUndefined();
+    expect(sheetMirrorRemovalWarning("DOMAIN", 2)).toContain("Removed 2 domains");
+    expect(sheetMirrorRemovalWarning("EMAIL", 1)).toContain("Unsubscribes");
   });
 
   it("warns after a confirmed shortened list", () => {

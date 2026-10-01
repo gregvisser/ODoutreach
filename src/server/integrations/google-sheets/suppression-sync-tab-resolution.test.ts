@@ -66,6 +66,10 @@ vi.mock("@/lib/db", () => ({
           deleteMany: domainDeleteMany,
           createMany: domainCreateMany,
         },
+        auditLog: { findMany: async () => [], create: async () => ({}) },
+        unsubscribeToken: { findMany: async () => [] },
+        inboundReply: { findMany: async () => [] },
+        outboundEmail: { findMany: async () => [] },
       }),
   },
 }));
@@ -187,15 +191,17 @@ describe("suppression sync — the replace refuses rather than warns", () => {
     expect(r.error).toContain("373");
   });
 
-  it("ABORTS a sync that would remove most of a list", async () => {
+  it("mirrors a shorter non-empty sheet and deletes only the rows that left it", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
     domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [["still-blocked.example"]] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
 
-    expect(r.ok).toBe(false);
-    expect(domainDeleteMany).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: true, removed: 373, rowsWritten: 1 });
+    const deleted = domainDeleteMany.mock.calls.map((call) => call[0].where);
+    expect(deleted.every((where: { sourceId: string }) => where.sourceId === "src-1")).toBe(true);
+    expect(JSON.stringify(deleted)).not.toContain("still-blocked.example");
   });
 
   // Pareto FM's actual state: nothing stored, so nothing can be lost.
@@ -210,7 +216,7 @@ describe("suppression sync — the replace refuses rather than warns", () => {
     expect(r.rowsWritten).toBe(1);
   });
 
-  it("retains even a couple of missing rows until an operator confirms", async () => {
+  it("removes sheet rows that are no longer listed", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
     domainFindMany.mockResolvedValue(["a", "b", "c", "d", "e", "f"].map((s) => ({ domain: `${s}.example` })));
     valuesGet.mockResolvedValue({
@@ -219,11 +225,11 @@ describe("suppression sync — the replace refuses rather than warns", () => {
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
 
-    expect(r).toMatchObject({ ok: false, blockedShrink: { removed: 2 } });
-    expect(domainDeleteMany).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: true, removed: 2, rowsWritten: 4 });
+    expect(domainDeleteMany).toHaveBeenCalled();
   });
 
-  it("lets an operator who confirms the shrink through", async () => {
+  it("does not apply an empty sheet even when an operator confirms", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
     domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
@@ -233,21 +239,19 @@ describe("suppression sync — the replace refuses rather than warns", () => {
       confirmShrink: true,
     });
 
-    expect(r.ok).toBe(true);
-    expect(domainDeleteMany).toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: false, held: true });
+    expect(domainDeleteMany).not.toHaveBeenCalled();
   });
 
-  it("reports the blocked shrink so the caller can offer that confirmation", async () => {
+  it("reports an empty sheet as held and does not offer a wipe", async () => {
     sourceFindUnique.mockResolvedValue(sourceRow(null));
     domainFindMany.mockResolvedValue(Array.from({ length: 373 }, (_, i) => ({ domain: `old-${i}.example` })));
     valuesGet.mockResolvedValue({ data: { values: [] } });
 
     const r = await syncSuppressionSourceFromGoogle({ sourceId: "src-1" });
 
-    expect(r.blockedShrink).toMatchObject({
-      previousCount: 373,
-      wouldWrite: 0,
-      removed: 373,
-    });
+    expect(r).toMatchObject({ ok: false, held: true, previousCount: 373, removed: 0 });
+    expect(r.error).toContain("373");
+    expect(r).not.toHaveProperty("blockedShrink");
   });
 });

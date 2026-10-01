@@ -854,6 +854,17 @@ async function tickOne(campaign: CampaignRow, now: Date): Promise<string | null>
     if (decision.type === "needs_staff") return message;
     return null;
   } catch (error) {
+    if (error instanceof SequenceStepSendError && error.code === "NO_READY_ROWS") {
+      await prisma.aiOutreachCampaign.update({
+        where: { id: campaign.id },
+        data: { tickLockUntil: null, nextActionAt: new Date(now.getTime() + 5 * 60 * 1000) },
+      });
+      logger.info(
+        { event: "ai_campaign_tick_skip", campaignId: campaign.id },
+        "No recipients are ready — skipped",
+      );
+      return null;
+    }
     const raw = sanitizeJobErrorText(error instanceof Error ? error.message : "The AI campaign tick failed.");
     const failed = noteStageFailure(aiCampaignSnapshot({
       status: campaign.status,

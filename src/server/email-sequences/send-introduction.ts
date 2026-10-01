@@ -1033,6 +1033,19 @@ export async function sendSequenceStepBatch(input: {
             continue;
           }
 
+          // Two clocks can reach the same READY row. Lock it before any
+          // mailbox is booked so the second clock cannot queue another email.
+          const claimedStep = await tx.$queryRaw<{ id: string }[]>`
+            SELECT "id"
+            FROM "ClientEmailSequenceStepSend"
+            WHERE "id" = ${pr.stepSend.id}
+              AND "status" = 'READY'::"ClientEmailSequenceStepSendStatus"
+              AND "outboundEmailId" IS NULL
+            FOR UPDATE
+          `;
+          if (claimedStep.length !== 1) continue;
+
+          let alreadyBooked = false;
           const sorted = sortMailboxesForPoolPick(
             pool,
             localRemaining,
@@ -1079,7 +1092,12 @@ export async function sendSequenceStepBatch(input: {
             });
 
             if (!reserve.ok) continue;
-            if (reserve.duplicate) continue;
+            if (reserve.duplicate) {
+              // This step-send key is already booked. The next mailbox would
+              // be a second email to the same recipient.
+              alreadyBooked = true;
+              break;
+            }
 
             // PR M — mint a per-recipient unsubscribe token at
             // dispatch time so the outbound body + List-Unsubscribe
@@ -1312,7 +1330,7 @@ export async function sendSequenceStepBatch(input: {
             break;
           }
 
-          if (!placed) {
+          if (!placed && !alreadyBooked) {
             // The staff launch result uses this count to show the recorded
             // reason. A plan-ready row can still be held by dispatch pacing.
             counts.blockedPlanClassifier += 1;

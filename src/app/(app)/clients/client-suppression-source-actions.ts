@@ -94,9 +94,8 @@ export type SyncClientSuppressionSourceResult =
       ok: false;
       error: string;
       /**
-       * Set when the sync was REFUSED for removing too much, never when it
-       * failed for another reason. Its presence is what earns the operator a
-       * "remove them anyway" control; without it, confirming would not help.
+       * No longer set. Sheet sync mirrors a shorter list and refuses an empty
+       * one outright, so there is no confirmation control to offer.
        */
       blockedShrink?: { previousCount: number; wouldWrite: number; removed: number };
     };
@@ -137,15 +136,6 @@ async function syncClientSuppressionSourceByKind(
     return {
       ok: false,
       error: result.error ?? "Sync failed.",
-      ...(result.blockedShrink
-        ? {
-            blockedShrink: {
-              previousCount: result.blockedShrink.previousCount,
-              wouldWrite: result.blockedShrink.wouldWrite,
-              removed: result.blockedShrink.removed,
-            },
-          }
-        : {}),
     };
   }
   return {

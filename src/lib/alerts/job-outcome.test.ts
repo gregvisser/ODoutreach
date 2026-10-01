@@ -102,6 +102,31 @@ describe("a run with ANY failed item is not a success", () => {
     expect(jobOutcome({ claimed: 10, errors: ["a", "b"] }).failedCount).toBe(2);
   });
 
+  it("does not fail a run whose only error is an empty recipient list", () => {
+    const outcome = jobOutcome({
+      errors: [
+        "No recipients are ready for this step. Open Review recipients, then launch again.",
+        "client/seq/FOLLOW_UP_1: already complete or no ready recipients — skipped",
+      ],
+    });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.failedCount).toBe(0);
+    expect(outcome.status).toBe(200);
+    expect(outcome.reasons).toEqual([]);
+  });
+
+  it("still fails when an empty recipient list sits next to a real error", () => {
+    const outcome = jobOutcome({
+      errors: [
+        "No recipients are ready for this step. Open Review recipients, then launch again.",
+        "The emails scored 72 after 3 checks. They were not sent.",
+      ],
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failedCount).toBe(1);
+    expect(outcome.reasons).toEqual(["The emails scored 72 after 3 checks. They were not sent."]);
+  });
+
   it("still fails a run whose only signal is a reason list", () => {
     // `failed: 0` with reasons present would be a contradiction; trust the
     // count, but never report the run as clean while reasons exist.

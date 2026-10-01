@@ -125,6 +125,10 @@ vi.mock("@/lib/db", () => ({
           deleteMany: async () => ({ count: 0 }),
           createMany: async () => ({ count: 1 }),
         },
+        auditLog: { findMany: async () => [], create: async () => ({}) },
+        unsubscribeToken: { findMany: async () => [] },
+        inboundReply: { findMany: async () => [] },
+        outboundEmail: { findMany: async () => [] },
       }),
   },
 }));
@@ -229,12 +233,17 @@ describe("do-not-contact sync — a resolved tab is remembered, not re-derived",
             deleteMany: async () => ({ count: 0 }),
             createMany: async () => ({ count: 0 }),
           },
+          auditLog: { findMany: async () => [], create: async () => ({}) },
+          unsubscribeToken: { findMany: async () => [] },
+          inboundReply: { findMany: async () => [] },
+          outboundEmail: { findMany: async () => [] },
         })) as never,
     );
 
     const r = await syncAllConfiguredSuppressionSources();
 
-    expect(r.failed).toBe(1);
+    expect(r.failed).toBe(0);
+    expect(r.held).toBe(1);
     expect(store.get("src-0")?.sheetRange).toBe("'Domains'!A1:Z50000");
     vi.restoreAllMocks();
   });
@@ -299,7 +308,8 @@ describe("do-not-contact sync — an unreadable tab list refuses, it does not gu
 
     // The limiter retries a quota refusal twice, so three rejections exhaust
     // exactly one source; the other two resolve normally.
-    expect(r.failed).toBe(1);
+    expect(r.failed).toBe(0);
+    expect(r.held).toBe(1);
     expect(r.succeeded).toBe(2);
   });
 });

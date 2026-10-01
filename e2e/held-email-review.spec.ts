@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { Pool } from "pg";
 import { E2E_DATABASE_URL } from "./env";
 import { E2E_MEMBER_A, E2E_STORAGE_STATE } from "./fixtures";
@@ -23,6 +23,16 @@ test.beforeEach(async () => {
 });
 test.afterAll(async () => { await pool?.query('DELETE FROM "Client" WHERE id=ANY($1)', [[clientId, `${clientId}-other`]]); await pool?.end(); });
 
+async function openEmailApprovals(page: Page) {
+  const link = page
+    .getByRole("navigation", { name: "Client workspace" })
+    .getByRole("link", { name: "Email approvals", exact: true });
+  await expect(async () => {
+    if (!page.url().endsWith("/email-review")) await link.click();
+    await expect(page).toHaveURL(new RegExp(`${url}$`), { timeout: 3_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 async function seedRecentContact(id: string) {
   await pool.query('INSERT INTO "Client" (id,name,slug,"inboundIngestToken","updatedAt") VALUES ($1,$2,$1,$1,NOW()) ON CONFLICT (id) DO NOTHING', [`${clientId}-other`, "Other client review fixture"]);
   await pool.query(`INSERT INTO "OutboundEmail" (id,"correlationId","clientId","toEmail",status,"sentAt","updatedAt") VALUES ($1,$1,$2,'cross-review@example.test','SENT',NOW(),NOW())`, [id, `${clientId}-other`]);
@@ -32,7 +42,7 @@ async function seedRecentContact(id: string) {
 test("staff see another client's recent contact and approve only the reviewed email", async ({ page }) => {
   await seedRecentContact(`${clientId}-recent`);
   await page.goto(`/clients/${clientId}/mailboxes`);
-  await page.getByRole("link", { name: "Email approvals", exact: true }).click();
+  await openEmailApprovals(page);
   const panel = page.getByRole("article", { name: "Review email to cross-review@example.test", exact: true });
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Recent contact from another client", { exact: true })).toBeVisible();
@@ -60,8 +70,7 @@ test("a contact arriving after the review page opened requires fresh review", as
 });
 test("ordinary staff review a saved email on mobile and queue it once without enabling automation", async ({ page }, testInfo) => {
   await page.goto(`/clients/${clientId}/mailboxes`);
-  await page.getByRole("link", { name: "Email approvals", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${url}$`));
+  await openEmailApprovals(page);
   const panel = page.getByRole("article", { name: "Review email to recipient@example.test" });
   await expect(panel.getByText("Saved message for human review", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Approve and queue this email" })).toBeDisabled();
