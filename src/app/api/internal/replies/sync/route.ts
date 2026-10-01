@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
 
-import { listReplySyncMailboxIds, syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
+import { listReplySyncPlan, syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Use reply-sync batch protocol 1" }, { status: 409 });
   }
   if (body.planOnly === true) {
-    return NextResponse.json({ batchProtocol: 1, mailboxIds: await listReplySyncMailboxIds() });
+    const plan = await listReplySyncPlan();
+    return NextResponse.json({ batchProtocol: 1, mailboxIds: plan.mailboxIds, organisations: plan.organisations });
   }
   const perMailboxTop =
     typeof body.perMailboxTop === "number" && Number.isFinite(body.perMailboxTop) && body.perMailboxTop >= 1

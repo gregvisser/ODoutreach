@@ -32,6 +32,38 @@ import { matchKnownSearchProfile } from "@/lib/clients/rocketreach-known-match";
 import { executeSavedResearchPlan } from "@/server/prospect-research/execute-plan";
 import { applyUniverseHarvest, collectUniverseHarvest, UNIVERSE_HARVEST_BATCH } from "@/server/prospect-research/universe-harvest";
 import { requireClientAccess, type StaffIdentity } from "@/server/tenant/access";
+import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
+import { bucketByOrganisation, type OrganisationJobRecord } from "@/lib/tenant/organisation-jobs";
+import {
+  OPENSDOORS_ORGANISATION_ID,
+  OPENSDOORS_ORGANISATION_SLUG,
+} from "@/lib/tenant/organisation";
+
+const RULES_PER_ORGANISATION = 20;
+
+type RefillOrganisation = {
+  id?: string;
+  slug?: string;
+  status?: string;
+};
+
+function organisationOfRefillClient(client: {
+  organisation?: RefillOrganisation | null;
+}): { organisationId: string; slug: string; status: "ACTIVE" | "SUSPENDED" } {
+  const organisation = client.organisation;
+  if (!organisation?.id) {
+    return {
+      organisationId: OPENSDOORS_ORGANISATION_ID,
+      slug: OPENSDOORS_ORGANISATION_SLUG,
+      status: "ACTIVE",
+    };
+  }
+  return {
+    organisationId: organisation.id,
+    slug: organisation.slug || OPENSDOORS_ORGANISATION_SLUG,
+    status: organisation.status === "SUSPENDED" ? "SUSPENDED" : "ACTIVE",
+  };
+}
 
 const ACTIVE_RESERVATION = ["RESERVED", "CHARGED"] as const;
 
@@ -156,17 +188,37 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
   skipped: number;
   refilled: number;
   killSwitch: "off" | "on";
+  organisations: Pick<OrganisationJobRecord<undefined>, "organisationId" | "slug" | "disposition" | "ok" | "error">[];
+  everyActiveFailed: boolean;
 }> {
   if (!isRocketReachAutoRefillEnabled(process.env.ROCKETREACH_AUTO_REFILL)) {
-    return { failed: 0, errors: [], processed: 0, skipped: 0, refilled: 0, killSwitch: "off" };
+    return {
+      failed: 0,
+      errors: [],
+      processed: 0,
+      skipped: 0,
+      refilled: 0,
+      killSwitch: "off",
+      organisations: [],
+      everyActiveFailed: false,
+    };
   }
   const floorEnv = parseOptionalCreditFloor(process.env.ROCKETREACH_MIN_CREDIT_FLOOR);
   const rules = await prisma.sequenceListRefillRule.findMany({
     where: { enabled: true },
     orderBy: { updatedAt: "asc" },
-    take: 20,
+    // Enough for several organisations. Each organisation still stops at
+    // RULES_PER_ORGANISATION, which is the cap a single OpensDoors run had.
+    take: 1000,
     include: {
-      client: { select: { status: true, deletedAt: true, autonomousSendEnabled: true } },
+      client: {
+        select: {
+          status: true,
+          deletedAt: true,
+          autonomousSendEnabled: true,
+          organisation: { select: { id: true, slug: true, status: true } },
+        },
+      },
       sequence: { select: { id: true, clientId: true, contactListId: true, archivedAt: true, contactList: { select: { archivedAt: true } } } },
       plan: { select: { id: true, name: true, clientId: true, criteria: true } },
     },
@@ -179,7 +231,39 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
   let skipped = 0;
   let refilled = 0;
   const errors: string[] = [];
-  for (const rule of rules) {
+  const buckets = bucketByOrganisation(rules, (rule) => organisationOfRefillClient(rule.client));
+  const organisations: {
+    organisationId: string;
+    slug: string;
+    disposition: "ran" | "skipped" | "failed";
+    ok: boolean;
+    error?: string;
+  }[] = [];
+  const runnable: typeof rules = [];
+  for (const bucket of buckets) {
+    const slice = bucket.items.slice(0, RULES_PER_ORGANISATION);
+    if (bucket.status !== "ACTIVE") {
+      skipped += slice.length;
+      organisations.push({
+        organisationId: bucket.organisationId,
+        slug: bucket.slug,
+        disposition: "skipped",
+        ok: true,
+      });
+      continue;
+    }
+    runnable.push(...slice);
+    organisations.push({
+      organisationId: bucket.organisationId,
+      slug: bucket.slug,
+      disposition: "ran",
+      ok: true,
+    });
+  }
+  for (const rule of runnable) {
+    const failuresBefore = failed;
+    const errorsBefore = errors.length;
+    try {
     const readyBefore = await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId);
     const need = listNeedsPeople({
       killSwitchOn: true,
@@ -345,8 +429,27 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       const message = error instanceof Error ? error.message : "List top-up failed.";
       errors.push(message);
     }
+    } catch (error) {
+      failed++;
+      errors.push(sanitizeJobErrorText(error instanceof Error ? error.message : "List top-up failed."));
+    }
+    if (failed !== failuresBefore || errors.length !== errorsBefore) {
+      const label = organisationOfRefillClient(rule.client);
+      const record = organisations.find((item) => item.organisationId === label.organisationId);
+      if (record) record.ok = false;
+    }
   }
-  return { failed, errors, processed: rules.length, skipped, refilled, killSwitch: "on" };
+  const activeOrganisations = organisations.filter((item) => item.disposition !== "skipped");
+  return {
+    failed,
+    errors,
+    processed: runnable.length + organisations.filter((item) => item.disposition === "skipped").length,
+    skipped,
+    refilled,
+    killSwitch: "on",
+    organisations,
+    everyActiveFailed: activeOrganisations.length > 0 && activeOrganisations.every((item) => item.disposition === "failed"),
+  };
 }
 
 export async function saveSequenceListRefillRule(

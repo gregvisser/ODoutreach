@@ -7,6 +7,12 @@ import { resumePacingHeldSends } from "@/server/email-sequences/resume-pacing-ho
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
+import {
+  combineProcessQueueResults,
+  organisationJobsStatus,
+  runOrganisationJobs,
+} from "@/lib/tenant/organisation-jobs";
+import { targetsForClientIds } from "@/server/tenant/organisation-jobs";
 
 export const runtime = "nodejs";
 
@@ -15,13 +21,28 @@ export const runtime = "nodejs";
  * Follow-up advancement stays limited to clients that enabled Machine sending,
  * plus sequences owned by a running AI campaign.
  * The AI campaign tick is one step per campaign. It does not replace the
- * human send path. Errors from any part fail the tick; a disconnected mailbox
- * is a skip inside pacing resume and does not by itself fail the run.
+ * human send path. A pacing or follow-up error fails that client's tick.
+ * An AI campaign throw is reported on that client and does not skip the
+ * next client. A disconnected mailbox is a skip inside pacing resume and
+ * does not by itself fail the run. The queue phase drains each organisation
+ * on its own.
  */
 async function runScheduledAdvance(clientId: string) {
   const pacing = await resumePacingHeldSends({ clientId });
   const advance = await advanceDueSequenceFollowUps({ clientId });
-  const aiCampaigns = await tickAiCampaignsForClient(clientId);
+  // One client's tick throw stays on this request. The caller walks the
+  // other clients, including clients in another organisation.
+  let aiCampaigns: { processed: number; errors: string[] };
+  try {
+    aiCampaigns = await tickAiCampaignsForClient(clientId);
+  } catch (error) {
+    const detail = sanitizeJobErrorText(
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : "AI campaign tick failed",
+    );
+    aiCampaigns = { processed: 0, errors: [detail || "AI campaign tick failed"] };
+  }
   return {
     ...advance,
     pacing,
@@ -46,15 +67,36 @@ export async function POST(req: NextRequest) {
   }
   try {
     const plan = await loadScheduledOutreachPlan();
-    if (body.phase === "plan") return NextResponse.json({ schedulerProtocol: 1, ok: true, ...plan });
+    if (body.phase === "plan") {
+      const organisations = await targetsForClientIds(plan.clientIds);
+      return NextResponse.json({ schedulerProtocol: 1, ok: true, ...plan, organisations });
+    }
     if (body.phase === "sync" && !plan.mailboxIds.includes(body.mailboxId) || body.phase === "advance" && !plan.clientIds.includes(body.clientId)) {
       return NextResponse.json({ schedulerProtocol: 1, ok: true, skipped: true });
     }
+    if (body.phase === "queue") {
+      // The plan lists every open client. Drain each organisation on its own
+      // so one organisation's claim failure cannot skip another's sends.
+      // A single OpensDoors plan is still one drain of those client ids.
+      const targets = await targetsForClientIds(plan.clientIds);
+      const run = await runOrganisationJobs(
+        targets,
+        (target) => processOutboundSendQueue({ limit: 25, clientIds: target.clientIds }),
+        { succeeded: (batch) => batch.errors.length === 0 },
+      );
+      const result = {
+        ...combineProcessQueueResults(run.organisations),
+        organisations: run.organisations,
+      };
+      const outcome = jobOutcome(result);
+      return NextResponse.json(
+        { schedulerProtocol: 1, ...jobResponseBody(result) },
+        { status: organisationJobsStatus(run.everyActiveFailed, outcome.status) },
+      );
+    }
     const result = body.phase === "sync"
       ? await syncActiveClientMailboxInboxes({ mailboxId: body.mailboxId, clientIds: plan.clientIds, maxMailboxes: 1, perMailboxTop: 10 })
-      : body.phase === "advance"
-        ? await runScheduledAdvance(body.clientId)
-        : await processOutboundSendQueue({ limit: 25, clientIds: plan.clientIds });
+      : await runScheduledAdvance(body.clientId);
     return NextResponse.json({ schedulerProtocol: 1, ...jobResponseBody(result) }, { status: jobOutcome(result).status });
   } catch (error) {
     const detail = sanitizeJobErrorText(

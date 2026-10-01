@@ -646,6 +646,8 @@ export type ReplySyncBatchResult = {
    * later. The count is never trimmed; only this list is.
    */
   errors: string[];
+  /** Mailboxes in this batch, grouped by organisation. Empty when the row has no organisation. */
+  organisations: ReplySyncOrganisation[];
 };
 
 /** Enough to act on, not enough to flood an alert email. */
@@ -664,6 +666,61 @@ export async function listReplySyncMailboxIds(clientIds?: string[]): Promise<str
   });
   if (rows.length > 1000) throw new Error("Reply sync plan exceeds the supported mailbox limit");
   return rows.map((row) => row.id);
+}
+
+export type ReplySyncOrganisation = {
+  organisationId: string;
+  slug: string;
+  mailboxIds: string[];
+};
+
+/**
+ * The same mailbox snapshot as `listReplySyncMailboxIds`, plus which
+ * organisation each mailbox belongs to. Receiving is not limited to active
+ * organisations: a suspended organisation still gets its replies.
+ */
+export async function listReplySyncPlan(): Promise<{
+  mailboxIds: string[];
+  organisations: ReplySyncOrganisation[];
+}> {
+  const rows = await prisma.clientMailboxIdentity.findMany({
+    where: RECEIVING_MAILBOXES,
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      client: { select: { organisationId: true, organisation: { select: { slug: true } } } },
+    },
+    take: 1001,
+  });
+  if (rows.length > 1000) throw new Error("Reply sync plan exceeds the supported mailbox limit");
+  return {
+    mailboxIds: rows.map((row) => row.id),
+    organisations: groupReplySyncOrganisations(rows),
+  };
+}
+
+function groupReplySyncOrganisations(
+  rows: readonly {
+    id: string;
+    client?: { organisationId?: string; organisation?: { slug?: string } | null } | null;
+  }[],
+): ReplySyncOrganisation[] {
+  const groups = new Map<string, ReplySyncOrganisation>();
+  for (const row of rows) {
+    const organisationId = row.client?.organisationId;
+    if (!organisationId) continue;
+    const existing = groups.get(organisationId);
+    if (existing) {
+      existing.mailboxIds.push(row.id);
+      continue;
+    }
+    groups.set(organisationId, {
+      organisationId,
+      slug: row.client?.organisation?.slug || organisationId,
+      mailboxIds: [row.id],
+    });
+  }
+  return [...groups.values()];
 }
 
 export async function syncActiveMailboxRepliesBatch(input: {
@@ -686,7 +743,12 @@ export async function syncActiveMailboxRepliesBatch(input: {
     take: maxMailboxes,
     // `email` is selected so a failure can name the mailbox. Without it the
     // alert can only report a number.
-    select: { id: true, clientId: true, email: true },
+    select: {
+      id: true,
+      clientId: true,
+      email: true,
+      client: { select: { organisationId: true, organisation: { select: { slug: true } } } },
+    },
   });
 
   let succeeded = 0;
@@ -731,6 +793,7 @@ export async function syncActiveMailboxRepliesBatch(input: {
     repliesLinked,
     skipped: Math.max(0, maxMailboxes - mailboxes.length),
     errors,
+    organisations: groupReplySyncOrganisations(mailboxes),
   };
 }
 

@@ -74,6 +74,41 @@ describe("sync-all reports every sheet by name", () => {
     ]);
   });
 
+  it("syncs the next organisation when the first organisation's sheet throws", async () => {
+    findMany.mockResolvedValue([
+      {
+        id: "s1",
+        kind: "DOMAIN",
+        client: {
+          name: "Northwind",
+          organisationId: "org_northwind",
+          organisation: { slug: "northwind", status: "ACTIVE" },
+        },
+      },
+      {
+        id: "s2",
+        kind: "DOMAIN",
+        client: {
+          name: "OpensDoors",
+          organisationId: "org_opensdoors",
+          organisation: { slug: "opensdoors", status: "ACTIVE" },
+        },
+      },
+    ]);
+    syncSuppressionSourceFromGoogle
+      .mockRejectedValueOnce(new Error("Northwind sheet is unreadable"))
+      .mockResolvedValueOnce({ ok: true, rowsWritten: 9, previousCount: 9 });
+
+    const result = await syncAllConfiguredSuppressionSources();
+
+    expect(syncSuppressionSourceFromGoogle).toHaveBeenCalledTimes(2);
+    expect(result.outcomes.map((outcome) => outcome.client)).toEqual(["Northwind", "OpensDoors"]);
+    expect(result.organisations.map((organisation) => organisation.slug)).toEqual(["northwind", "opensdoors"]);
+    expect(result.everyActiveFailed).toBe(false);
+    expect(result.succeeded).toBe(1);
+    expect(result.held).toBe(1);
+  });
+
   it("still reports the totals the cron reads", async () => {
     syncSuppressionSourceFromGoogle
       .mockResolvedValueOnce({ ok: true, rowsWritten: 42 })

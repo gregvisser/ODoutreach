@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
+import { organisationJobsStatus } from "@/lib/tenant/organisation-jobs";
 import { runDueRocketReachListRefills } from "@/server/prospect-research/auto-refill";
 
 export const runtime = "nodejs";
@@ -13,7 +14,10 @@ export async function POST(req: NextRequest) {
   }
   try {
     const result = await runDueRocketReachListRefills();
-    return NextResponse.json(jobResponseBody(result), { status: jobOutcome(result).status });
+    const outcome = jobOutcome(result);
+    return NextResponse.json(jobResponseBody(result), {
+      status: organisationJobsStatus(result.everyActiveFailed === true, outcome.status),
+    });
   } catch {
     return NextResponse.json({ ok: false, error: "RocketReach list top-up could not complete" }, { status: 500 });
   }
