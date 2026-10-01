@@ -77,8 +77,11 @@ export function mailboxOAuthFailureReasonOf(
 export function mailboxOAuthRedirectToClient(
   clientId: string,
   query: Record<string, string>,
+  origin?: string | null,
 ): Response {
-  const base = getAppBaseUrl();
+  // Omitted origin is AUTH_URL, which is the OpensDoors return used today.
+  // A saved organisation host returns the operator to that host.
+  const base = (origin?.trim() || getAppBaseUrl()).replace(/\/+$/, "");
   const path = clientId ? `/clients/${clientId}/mailboxes` : "/clients";
   const u = new URL(path, base);
   for (const [k, v] of Object.entries(query)) {

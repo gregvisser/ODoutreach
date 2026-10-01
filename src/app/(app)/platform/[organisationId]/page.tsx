@@ -17,6 +17,7 @@ import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import {
   InviteOrganisationOwnerForm,
   OrganisationFlagsForm,
+  OrganisationHostnameForm,
   OrganisationLimitsForm,
   OrganisationStatusForm,
 } from "../platform-forms";
@@ -83,6 +84,21 @@ export default async function PlatformOrganisationPage({
         </CardHeader>
         <CardContent>
           <OrganisationStatusForm organisationId={organisation.id} status={organisation.status} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Hostname</CardTitle>
+          <CardDescription>
+            The public address for this organisation. opensdoors.bidlow.co.uk always stays OpensDoors, including when this field is empty or cleared. Leave it blank until the address already reaches this app: the App Service custom domain, DNS, the certificate, the Entra sign-in redirect, and the mailbox OAuth redirects are set outside this screen. A logo that has not been uploaded still uses the shipped artwork. The name in the shell uses this organisation&apos;s name until a brand name is saved.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OrganisationHostnameForm
+            organisationId={organisation.id}
+            hostname={organisation.hostname}
+          />
         </CardContent>
       </Card>
 

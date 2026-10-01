@@ -78,10 +78,10 @@ export function googleMailboxOAuthScopes(): string {
   ].join(" ");
 }
 
-export function mailboxMicrosoftRedirectUri(): string {
-  return mailboxOAuthCallbackUrl("microsoft");
+export function mailboxMicrosoftRedirectUri(origin?: string | null): string {
+  return mailboxOAuthCallbackUrl("microsoft", origin);
 }
 
-export function mailboxGoogleRedirectUri(): string {
-  return mailboxOAuthCallbackUrl("google");
+export function mailboxGoogleRedirectUri(origin?: string | null): string {
+  return mailboxOAuthCallbackUrl("google", origin);
 }

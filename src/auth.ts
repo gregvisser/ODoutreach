@@ -71,6 +71,9 @@ const config = {
   pages: {
     signIn: "/sign-in",
   },
+  // Already on, so sign-in can finish on the host that started it.
+  // Each hostname still needs its own Entra redirect URI. AUTH_URL stays
+  // the OpensDoors origin and is not rewritten per organisation.
   trustHost: true,
 } satisfies NextAuthConfig;
 

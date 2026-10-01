@@ -13,12 +13,15 @@ export function buildMailboxOAuthAuthorizeUrlForPreparedState(input: {
   provider: MailboxProvider;
   oauthState: string;
   mailboxEmailNormalized: string;
+  /** When set, the provider redirect uses this origin instead of AUTH_URL. */
+  redirectOrigin?: string | null;
 }): string {
   if (input.provider === "MICROSOFT") {
     return buildMicrosoftMailboxAuthorizeUrl(input.oauthState, {
       loginHint: input.mailboxEmailNormalized,
       prompt: "select_account",
+      redirectOrigin: input.redirectOrigin,
     });
   }
-  return buildGoogleMailboxAuthorizeUrl(input.oauthState);
+  return buildGoogleMailboxAuthorizeUrl(input.oauthState, input.redirectOrigin);
 }

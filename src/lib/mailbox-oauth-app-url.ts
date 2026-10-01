@@ -16,6 +16,8 @@ export function getAppBaseUrl(): string {
 
 export function mailboxOAuthCallbackUrl(
   provider: "microsoft" | "google",
+  origin?: string | null,
 ): string {
-  return `${getAppBaseUrl()}/api/mailbox-oauth/${provider}/callback`;
+  const base = (origin?.trim() || getAppBaseUrl()).replace(/\/+$/, "");
+  return `${base}/api/mailbox-oauth/${provider}/callback`;
 }

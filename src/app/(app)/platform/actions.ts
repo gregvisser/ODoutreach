@@ -7,10 +7,12 @@ import { ORGANISATION_FEATURE_KEYS } from "@/lib/tenant/organisation";
 import { FIRST_ORGANISATION_ADMIN } from "@/lib/tenant/platform";
 import { inviteStaffIntoOrganisation } from "@/server/tenant/invite-organisation-staff";
 import { requirePlatformAdminForAction } from "@/server/tenant/platform-admin";
+import { parseOrganisationHostname } from "@/lib/tenant/hostname";
 import {
   createOrganisationRecord,
   setOrganisationStatus,
   updateOrganisationFlags,
+  updateOrganisationHostname,
 } from "@/server/tenant/platform-orgs";
 
 export type PlatformFormState = {
@@ -142,6 +144,25 @@ export async function updateOrganisationLimitsAction(
     });
     revalidatePath(`/platform/${parsed.data.organisationId}`);
     return { error: null, message: "Limits saved." };
+  } catch (error) {
+    return denied(error);
+  }
+}
+
+export async function updateOrganisationHostnameAction(
+  _previous: PlatformFormState,
+  formData: FormData,
+): Promise<PlatformFormState> {
+  try {
+    await requirePlatformAdminForAction();
+    const organisationId = String(formData.get("organisationId") ?? "");
+    const parsed = parseOrganisationHostname(String(formData.get("hostname") ?? ""), organisationId);
+    if (!parsed.ok) return { error: parsed.error, message: null };
+    const result = await updateOrganisationHostname(organisationId, parsed.hostname);
+    if (!result.ok) return { error: result.error, message: null };
+    revalidatePath(`/platform/${organisationId}`);
+    revalidatePath("/", "layout");
+    return { error: null, message: parsed.hostname ? "Hostname saved." : "Hostname cleared." };
   } catch (error) {
     return denied(error);
   }

@@ -11,12 +11,12 @@ import {
   mailboxGoogleRedirectUri,
 } from "@/server/mailbox/oauth-env";
 
-export function buildGoogleMailboxAuthorizeUrl(oauthState: string): string {
+export function buildGoogleMailboxAuthorizeUrl(oauthState: string, redirectOrigin?: string | null): string {
   const clientId = process.env.MAILBOX_GOOGLE_OAUTH_CLIENT_ID?.trim();
   if (!clientId) {
     throw new Error("MAILBOX_GOOGLE_OAUTH_CLIENT_ID is not set");
   }
-  const redirectUri = mailboxGoogleRedirectUri();
+  const redirectUri = mailboxGoogleRedirectUri(redirectOrigin);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -32,6 +32,7 @@ export function buildGoogleMailboxAuthorizeUrl(oauthState: string): string {
 
 export async function exchangeGoogleMailboxAuthCode(
   code: string,
+  redirectOrigin?: string | null,
 ): Promise<{
   access_token: string;
   refresh_token?: string;
@@ -46,7 +47,7 @@ export async function exchangeGoogleMailboxAuthCode(
       "Google mailbox OAuth client is not configured",
     );
   }
-  const redirectUri = mailboxGoogleRedirectUri();
+  const redirectUri = mailboxGoogleRedirectUri(redirectOrigin);
   const body = new URLSearchParams({
     code,
     client_id: clientId,

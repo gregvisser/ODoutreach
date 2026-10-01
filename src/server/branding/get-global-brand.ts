@@ -9,6 +9,7 @@ import {
 } from "@/lib/branding/global-brand";
 import { prisma } from "@/lib/db";
 import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
+import { organisationIdForRequest } from "@/server/tenant/hostname";
 
 const brandSelect = {
   appLogoUrl: true,
@@ -35,18 +36,35 @@ function mergeStoredBrand(
 }
 
 /**
- * Load the OpensDoors organisation brand, then the legacy global singleton
- * (id = "global") for any field the organisation has not set, and merge
- * that with the shipped OpensDoors defaults. Memoised per-request via
- * React `cache` so the root layout, app shell, sign-in page, and Settings
- * editor share one read. Host-specific brands are a later stage; this
- * shell stays OpensDoors.
+ * Brand for the host that asked. opensdoors.bidlow.co.uk, localhost, and
+ * any host that is not saved on an organisation stay on the OpensDoors
+ * brand (organisation fields, then the legacy global singleton, then the
+ * shipped defaults). A saved hostname uses that organisation's fields,
+ * and its name when a brand name has not been set, so the shell does not
+ * say OpensDoors.
  *
- * Safe against a missing row and against DB errors — if anything goes
- * wrong we fall back to the shipped defaults so the portal is never
- * left without branding.
+ * Memoised per request. A database error falls back to the shipped
+ * OpensDoors defaults so the portal is never left without branding.
  */
 export const getGlobalBrand = cache(async (): Promise<EffectiveBrand> => {
+  try {
+    const organisationId = await organisationIdForRequest();
+    if (organisationId !== OPENSDOORS_ORGANISATION_ID) {
+      const organisation = await prisma.organisation.findUnique({
+        where: { id: organisationId },
+        select: { name: true, ...brandSelect },
+      });
+      if (organisation) {
+        const { name, ...stored } = organisation;
+        return resolveEffectiveBrand({
+          ...stored,
+          appBrandName: stored.appBrandName?.trim() || name,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn("[global-brand] failed to resolve the request host, using OpensDoors", error);
+  }
   const stored = await loadStoredBrand();
   return resolveEffectiveBrand(stored);
 });

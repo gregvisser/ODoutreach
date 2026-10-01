@@ -13,6 +13,7 @@ import {
   inviteOrganisationOwnerAction,
   setOrganisationStatusAction,
   updateOrganisationFlagsAction,
+  updateOrganisationHostnameAction,
   updateOrganisationLimitsAction,
   type PlatformFormState,
 } from "./actions";
@@ -160,6 +161,37 @@ export function OrganisationLimitsForm({
       </div>
       <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
         <FormSubmitButton pendingLabel="Saving…">Save limits</FormSubmitButton>
+        <FormNotice state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function OrganisationHostnameForm({
+  organisationId,
+  hostname,
+}: {
+  organisationId: string;
+  hostname: string | null;
+}) {
+  const [state, action] = useActionState(updateOrganisationHostnameAction, initialState);
+  return (
+    <form action={action} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+      <input type="hidden" name="organisationId" value={organisationId} />
+      <div className="grid gap-2">
+        <Label htmlFor="org-hostname">Hostname</Label>
+        <Input
+          id="org-hostname"
+          name="hostname"
+          defaultValue={hostname ?? ""}
+          placeholder="northwind.bidlow.co.uk"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={253}
+        />
+      </div>
+      <FormSubmitButton pendingLabel="Saving…">Save hostname</FormSubmitButton>
+      <div className="sm:col-span-2">
         <FormNotice state={state} />
       </div>
     </form>
