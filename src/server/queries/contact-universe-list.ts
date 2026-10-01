@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { UniverseSourceType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import type { ClientAccessScope } from "@/server/tenant/access";
 
 export type UniverseTableQuery = {
   q?: string;
@@ -40,8 +41,17 @@ export type UniverseTableRow = {
   clientContactCount: number;
 };
 
-function buildWhere(input: UniverseTableQuery): Prisma.ContactUniverseWhereInput {
-  const where: Prisma.ContactUniverseWhereInput = {};
+function organisationWhere(scope: ClientAccessScope): Prisma.ContactUniverseWhereInput {
+  if (scope.kind === "all-live") return {};
+  if (scope.kind === "organisation") return { organisationId: scope.organisationId };
+  return { id: { in: [] } };
+}
+
+function buildWhere(
+  input: UniverseTableQuery,
+  scope: ClientAccessScope,
+): Prisma.ContactUniverseWhereInput {
+  const where: Prisma.ContactUniverseWhereInput = organisationWhere(scope);
 
   if (input.hasEmail === "yes") {
     where.emailNormalized = { not: null };
@@ -96,16 +106,20 @@ function buildWhere(input: UniverseTableQuery): Prisma.ContactUniverseWhereInput
   return where;
 }
 
-export async function countContactUniverses(input: UniverseTableQuery): Promise<number> {
-  return prisma.contactUniverse.count({ where: buildWhere(input) });
+export async function countContactUniverses(
+  input: UniverseTableQuery,
+  scope: ClientAccessScope,
+): Promise<number> {
+  return prisma.contactUniverse.count({ where: buildWhere(input, scope) });
 }
 
 export async function listContactUniversesForTable(
   input: UniverseTableQuery,
+  scope: ClientAccessScope,
 ): Promise<{ rows: UniverseTableRow[]; total: number }> {
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(10, input.pageSize ?? 25));
-  const where = buildWhere(input);
+  const where = buildWhere(input, scope);
 
   const sortKey = input.sort ?? "lastSeen";
   const orderBy: Prisma.ContactUniverseOrderByWithRelationInput =

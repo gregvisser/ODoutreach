@@ -52,7 +52,7 @@ export async function getAiSpendReport(
     by: ["clientId", "clientSlugAtCall", "feature", "status", "model", "rateVersion"],
     where: {
       createdAt: { gte: month.start, lt: month.endExclusive },
-      ...(organisationId ? { client: { organisationId } } : {}),
+      ...(organisationId ? { organisationId } : {}),
     },
     _count: { _all: true },
     _sum: { inputTokens: true, outputTokens: true, costMicroUsd: true },

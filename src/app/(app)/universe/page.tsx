@@ -11,7 +11,7 @@ import {
   listContactUniversesForTable,
   type UniverseTableQuery,
 } from "@/server/queries/contact-universe-list";
-import { getAccessibleClientIds } from "@/server/tenant/access";
+import { getAccessibleClientIds, loadClientAccessScope } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,10 @@ type Props = {
 
 export default async function UniversePage({ searchParams }: Props) {
   const staff = await requireOpensDoorsStaff();
-  const accessible = await getAccessibleClientIds(staff);
+  const [accessible, scope] = await Promise.all([
+    getAccessibleClientIds(staff),
+    loadClientAccessScope(staff.id),
+  ]);
   const sp = searchParams ? await searchParams : {};
 
   const one = (v: string | string[] | undefined) =>
@@ -59,7 +62,7 @@ export default async function UniversePage({ searchParams }: Props) {
 
   const [clients, { rows, total }] = await Promise.all([
     listClientsForStaff(accessible),
-    listContactUniversesForTable(filterPayload),
+    listContactUniversesForTable(filterPayload, scope),
   ]);
 
   return (

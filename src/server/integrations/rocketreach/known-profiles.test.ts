@@ -32,6 +32,7 @@ vi.mock("@/lib/db", () => ({
       }],
     },
     contactUniverse: { findMany: async () => [] },
+    client: { findUnique: async () => ({ organisationId: "org_opensdoors" }) },
     contact: {
       findMany: async ({ where }: { where: unknown }) => {
         queries.contactWhere = where;

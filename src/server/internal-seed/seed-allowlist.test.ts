@@ -24,6 +24,8 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
+
 import { upsertInternalSeedAddress } from "./seed-allowlist";
 
 describe("upsertInternalSeedAddress — domain scoping", () => {
@@ -43,6 +45,7 @@ describe("upsertInternalSeedAddress — domain scoping", () => {
   it("rejects an out-of-scope domain and never touches the database", async () => {
     const result = await upsertInternalSeedAddress({
       email: "prospect@acme.com",
+      organisationId: OPENSDOORS_ORGANISATION_ID,
     });
     expect(result).toBeNull();
     expect(upsert).not.toHaveBeenCalled();
@@ -51,6 +54,7 @@ describe("upsertInternalSeedAddress — domain scoping", () => {
   it("rejects a look-alike domain that merely contains the allowed one", async () => {
     const result = await upsertInternalSeedAddress({
       email: "attacker@opensdoors.co.uk.evil.com",
+      organisationId: OPENSDOORS_ORGANISATION_ID,
     });
     expect(result).toBeNull();
     expect(upsert).not.toHaveBeenCalled();
@@ -59,17 +63,26 @@ describe("upsertInternalSeedAddress — domain scoping", () => {
   it("accepts an in-scope opensdoors.co.uk address and writes it", async () => {
     const result = await upsertInternalSeedAddress({
       email: "Adam@OpensDoors.co.uk",
+      organisationId: OPENSDOORS_ORGANISATION_ID,
       label: "Adam (internal test)",
     });
     expect(result).not.toBeNull();
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(upsert.mock.calls[0]?.[0]).toMatchObject({
-      where: { email: "adam@opensdoors.co.uk" },
+      where: {
+        organisationId_email: {
+          organisationId: OPENSDOORS_ORGANISATION_ID,
+          email: "adam@opensdoors.co.uk",
+        },
+      },
     });
   });
 
   it("still rejects a blank/invalid string as before", async () => {
-    const result = await upsertInternalSeedAddress({ email: "not-an-email" });
+    const result = await upsertInternalSeedAddress({
+      email: "not-an-email",
+      organisationId: OPENSDOORS_ORGANISATION_ID,
+    });
     expect(result).toBeNull();
     expect(upsert).not.toHaveBeenCalled();
   });

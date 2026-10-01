@@ -1,3 +1,5 @@
+import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
+
 import { getPrisma } from "../_db";
 
 /**
@@ -32,7 +34,12 @@ async function main() {
   console.log(`Mode: ${apply ? "APPLY" : "DRY RUN"}`);
   for (const target of TARGET_ADDRESSES) {
     const before = await prisma.internalSeedAddress.findUnique({
-      where: { email: target.email },
+      where: {
+        organisationId_email: {
+          organisationId: OPENSDOORS_ORGANISATION_ID,
+          email: target.email,
+        },
+      },
     });
     console.log(
       `- ${target.email}: before=${before ? JSON.stringify(before) : "absent"}`,
@@ -44,8 +51,14 @@ async function main() {
       continue;
     }
     const after = await prisma.internalSeedAddress.upsert({
-      where: { email: target.email },
+      where: {
+        organisationId_email: {
+          organisationId: OPENSDOORS_ORGANISATION_ID,
+          email: target.email,
+        },
+      },
       create: {
+        organisationId: OPENSDOORS_ORGANISATION_ID,
         email: target.email,
         label: target.label,
         note: "Internal test address — added per support ticket cmr3h6xbp4dkyfzqw8drpwtdd",

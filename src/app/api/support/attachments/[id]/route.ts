@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { tryGetOpensDoorsStaff } from "@/server/auth/staff";
+import { clientOrganisationAllowed } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,14 @@ export async function GET(
   const { id } = await context.params;
   const att = await prisma.supportTicketAttachment.findUnique({
     where: { id },
-    select: { data: true, mimeType: true, fileName: true },
+    select: {
+      data: true,
+      mimeType: true,
+      fileName: true,
+      ticket: { select: { organisationId: true } },
+    },
   });
-  if (!att) {
+  if (!att || !(await clientOrganisationAllowed(staff, att.ticket.organisationId))) {
     return new Response("Not found", { status: 404 });
   }
   const bytes = att.data as unknown as Buffer;

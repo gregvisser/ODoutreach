@@ -5,7 +5,9 @@ import { z } from "zod";
 
 import { validateGlobalBrandInput } from "@/lib/branding/global-brand";
 import { prisma } from "@/lib/db";
+import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 const inputSchema = z.object({
   appLogoUrl: z.string().default(""),
@@ -51,21 +53,33 @@ export async function updateGlobalBrandAction(
     return { ok: false, error: validation.message };
   }
 
-  const data = {
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) {
+    return { ok: false, error: "You are not in an organisation." };
+  }
+
+  const brand = {
     appLogoUrl: validation.normalized.appLogoUrl,
     appMarkUrl: validation.normalized.appMarkUrl,
     appFaviconUrl: validation.normalized.appFaviconUrl,
     appBrandName: validation.normalized.appBrandName,
     appProductName: validation.normalized.appProductName,
     appLogoAltText: validation.normalized.appLogoAltText,
-    updatedById: staff.id,
   };
 
-  await prisma.globalBrandSetting.upsert({
-    where: { id: "global" },
-    create: { id: "global", ...data },
-    update: data,
+  await prisma.organisation.update({
+    where: { id: organisationId },
+    data: brand,
   });
+
+  if (organisationId === OPENSDOORS_ORGANISATION_ID) {
+    const data = { ...brand, updatedById: staff.id };
+    await prisma.globalBrandSetting.upsert({
+      where: { id: "global" },
+      create: { id: "global", ...data },
+      update: data,
+    });
+  }
 
   await prisma.auditLog.create({
     data: {
@@ -112,22 +126,36 @@ export async function resetGlobalBrandAction(): Promise<
     };
   }
 
-  await prisma.globalBrandSetting.upsert({
-    where: { id: "global" },
-    create: {
-      id: "global",
-      updatedById: staff.id,
-    },
-    update: {
-      appLogoUrl: null,
-      appMarkUrl: null,
-      appFaviconUrl: null,
-      appBrandName: null,
-      appProductName: null,
-      appLogoAltText: null,
-      updatedById: staff.id,
-    },
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) {
+    return { ok: false, error: "You are not in an organisation." };
+  }
+
+  const cleared = {
+    appLogoUrl: null,
+    appMarkUrl: null,
+    appFaviconUrl: null,
+    appBrandName: null,
+    appProductName: null,
+    appLogoAltText: null,
+  };
+  await prisma.organisation.update({
+    where: { id: organisationId },
+    data: cleared,
   });
+  if (organisationId === OPENSDOORS_ORGANISATION_ID) {
+    await prisma.globalBrandSetting.upsert({
+      where: { id: "global" },
+      create: {
+        id: "global",
+        updatedById: staff.id,
+      },
+      update: {
+        ...cleared,
+        updatedById: staff.id,
+      },
+    });
+  }
 
   await prisma.auditLog.create({
     data: {

@@ -7,7 +7,8 @@ import {
   normalizeEmail,
   suppressionDomainCandidates,
 } from "@/lib/normalize";
-import { isInternalSeedAddress } from "@/server/internal-seed/seed-allowlist";
+import { isInternalSeedAddress, isInternalSeedAllowlistEnabled } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForClient } from "@/server/tenant/organisation-scope";
 import { evaluateRecipientCompany } from "@/server/suppression/company-names";
 import type { CompanyNameDecision } from "@/lib/suppression/company-name";
 
@@ -53,14 +54,17 @@ export async function evaluateSuppression(
   // exempt even if it somehow appears on a list. Flag-gated: when
   // INTERNAL_SEED_ALLOWLIST_ENABLED is off, `isInternalSeedAddress` returns
   // false without any query, so this is a no-op and behaviour is unchanged.
-  if (await isInternalSeedAddress(normalizedEmail)) {
-    return {
-      suppressed: false,
-      reason: "none",
-      normalizedEmail,
-      normalizedDomain,
-      internalSeedExempt: true,
-    };
+  if (isInternalSeedAllowlistEnabled()) {
+    const organisationId = await organisationIdForClient(clientId);
+    if (organisationId && (await isInternalSeedAddress(normalizedEmail, organisationId))) {
+      return {
+        suppressed: false,
+        reason: "none",
+        normalizedEmail,
+        normalizedDomain,
+        internalSeedExempt: true,
+      };
+    }
   }
 
   const [emailHit, domainHits, familyHits] = await Promise.all([

@@ -8,6 +8,8 @@ import { isResolutionNoteReady, MIN_RESOLUTION_NOTE_LENGTH } from "@/lib/support
 import { resolveSupportTicketWithNotification } from "@/server/support/resolve-support-ticket";
 import { retryFailedSupportTicketNotification } from "@/server/support/support-ticket-notifications";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
+import { clientOrganisationAllowed } from "@/server/tenant/access";
 
 export type SupportActionResult =
   | { ok: true; ticketId?: string }
@@ -74,8 +76,14 @@ export async function createSupportTicket(
     });
   }
 
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) {
+    return { ok: false, error: "You are not in an organisation." };
+  }
+
   const ticket = await prisma.supportTicket.create({
     data: {
+      organisationId,
       title,
       description,
       priority,
@@ -113,9 +121,11 @@ export async function resolveSupportTicket(input: {
   }
   const existing = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, organisationId: true },
   });
-  if (!existing) return { ok: false, error: "Ticket not found." };
+  if (!existing || !(await clientOrganisationAllowed(staff, existing.organisationId))) {
+    return { ok: false, error: "Ticket not found." };
+  }
   if (existing.status === "RESOLVED") return { ok: false, error: "This ticket is already resolved." };
   const resolutionNote = input.resolutionNote.trim();
   if (!isResolutionNoteReady(resolutionNote)) {
@@ -146,9 +156,16 @@ export async function retrySupportTicketNotification(input: {
   if (!staff.isSuperAdmin) return { ok: false, error: "Only the owner account can retry reporter notifications." };
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
-    select: { id: true, status: true, notifications: { orderBy: { resolutionVersion: "desc" }, take: 1, select: { id: true, status: true } } },
+    select: {
+      id: true,
+      status: true,
+      organisationId: true,
+      notifications: { orderBy: { resolutionVersion: "desc" }, take: 1, select: { id: true, status: true } },
+    },
   });
-  if (!ticket) return { ok: false, error: "Ticket not found." };
+  if (!ticket || !(await clientOrganisationAllowed(staff, ticket.organisationId))) {
+    return { ok: false, error: "Ticket not found." };
+  }
   if (ticket.status !== "RESOLVED" || ticket.notifications[0]?.status !== "FAILED") {
     return { ok: false, error: "Only a definite failed reporter notification can be retried. Unknown provider outcomes require inspection first." };
   }
@@ -179,9 +196,11 @@ export async function addSupportTicketComment(input: {
 
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
-    select: { id: true },
+    select: { id: true, organisationId: true },
   });
-  if (!ticket) return { ok: false, error: "Ticket not found." };
+  if (!ticket || !(await clientOrganisationAllowed(staff, ticket.organisationId))) {
+    return { ok: false, error: "Ticket not found." };
+  }
 
   await prisma.supportTicketComment.create({
     data: {
@@ -209,9 +228,11 @@ export async function reopenSupportTicket(input: {
   }
   const existing = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
-    select: { id: true, status: true, resolutionVersion: true },
+    select: { id: true, status: true, resolutionVersion: true, organisationId: true },
   });
-  if (!existing) return { ok: false, error: "Ticket not found." };
+  if (!existing || !(await clientOrganisationAllowed(staff, existing.organisationId))) {
+    return { ok: false, error: "Ticket not found." };
+  }
   if (existing.status !== "RESOLVED") {
     return { ok: false, error: "Only a resolved ticket can be reopened." };
   }

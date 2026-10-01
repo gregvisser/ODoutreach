@@ -19,6 +19,7 @@ import {
 } from "@/lib/support/support-labels";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { clientOrganisationAllowed } from "@/server/tenant/access";
 import { formatSupportResolutionDate } from "@/server/support/support-ticket-notifications";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ export default async function SupportTicketDetailPage({ params }: Props) {
       },
     },
   });
-  if (!ticket) notFound();
+  if (!ticket || !(await clientOrganisationAllowed(staff, ticket.organisationId))) notFound();
 
   const isOwner = staff.isSuperAdmin;
 

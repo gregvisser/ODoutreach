@@ -7,6 +7,7 @@ import {
   setInternalSeedAddressActive,
   upsertInternalSeedAddress,
 } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 const SETTINGS_PATH = "/settings/internal-seed";
 
@@ -19,11 +20,14 @@ export async function addInternalSeedAddressAction(
   formData: FormData,
 ): Promise<void> {
   const staff = await requireSuperAdminForAction();
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) return;
   const email = String(formData.get("email") ?? "");
   const label = String(formData.get("label") ?? "");
   const note = String(formData.get("note") ?? "");
   await upsertInternalSeedAddress({
     email,
+    organisationId,
     label,
     note,
     staffUserId: staff.id,
@@ -35,11 +39,12 @@ export async function addInternalSeedAddressAction(
 export async function setInternalSeedAddressActiveAction(
   formData: FormData,
 ): Promise<void> {
-  await requireSuperAdminForAction();
+  const staff = await requireSuperAdminForAction();
+  const organisationId = await organisationIdForStaff(staff.id);
   const id = String(formData.get("id") ?? "");
   const isActive = String(formData.get("isActive") ?? "") === "true";
-  if (id) {
-    await setInternalSeedAddressActive(id, isActive);
+  if (id && organisationId) {
+    await setInternalSeedAddressActive(id, isActive, organisationId);
   }
   revalidatePath(SETTINGS_PATH);
 }

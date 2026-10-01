@@ -96,9 +96,10 @@ function mailboxLabel(row: {
  */
 async function loadRepOutcomes(args: {
   clientId: string;
+  organisationId: string | null;
   since: Date;
 }): Promise<RepSendOutcome[]> {
-  const seedEmails = await listActiveInternalSeedEmails();
+  const seedEmails = await listActiveInternalSeedEmails(args.organisationId);
   const rows = await prisma.outboundEmail.findMany({
     where: {
       ...buildProvenSendHistoryWhere({
@@ -154,7 +155,7 @@ export async function explainRepPerformance(args: {
 }): Promise<ExplainRepPerformanceResult> {
   const client = await prisma.client.findFirst({
     where: { id: args.clientId, deletedAt: null },
-    select: { id: true, slug: true, name: true, industry: true },
+    select: { id: true, slug: true, name: true, industry: true, organisationId: true },
   });
   if (!client) return { ok: false, reason: "client_not_found" };
 
@@ -162,7 +163,11 @@ export async function explainRepPerformance(args: {
   const since = new Date(now.getTime() - REP_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
   const [outcomes, identities] = await Promise.all([
-    loadRepOutcomes({ clientId: client.id, since }),
+    loadRepOutcomes({
+      clientId: client.id,
+      organisationId: client.organisationId,
+      since,
+    }),
     loadRepIdentities(client.id),
   ]);
   const verdict = assessRepEvidence(outcomes, identities);

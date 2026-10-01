@@ -17,6 +17,8 @@ import {
 import { formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import { prisma } from "@/lib/db";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { supportTicketWhere } from "@/server/support/ticket-scope";
+import { loadClientAccessScope } from "@/server/tenant/access";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +31,11 @@ const STATUS_ORDER: Record<string, number> = {
 };
 
 export default async function SupportPage() {
-  await requireOpensDoorsStaff();
+  const staff = await requireOpensDoorsStaff();
+  const scope = await loadClientAccessScope(staff.id);
 
   const tickets = await prisma.supportTicket.findMany({
+    where: supportTicketWhere(scope),
     orderBy: { createdAt: "desc" },
     take: 300,
     select: {

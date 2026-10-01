@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { createLimiter, type TaskGate } from "@/lib/concurrency";
 import { prisma } from "@/lib/db";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
+import { partitionClientIdsByOrganisation } from "@/server/tenant/organisation-scope";
 import { buildProvenSentWhere, PROVEN_SEND_STATUSES } from "@/server/queries/proven-send";
 import {
   deriveOutreachMetrics,
@@ -213,7 +214,19 @@ async function gatherRawCountsByClient(
   window?: MetricsWindow,
 ): Promise<Map<string, RawMetricsCounts>> {
   if (clientIds.length === 0) return new Map();
-  const clientScope = { in: clientIds };
+  const groups = await partitionClientIdsByOrganisation(clientIds);
+  if (groups.length > 1) {
+    const maps = await Promise.all(
+      groups.map((group) => gatherRawCountsByClient(group.clientIds, run, window)),
+    );
+    const merged = new Map<string, RawMetricsCounts>();
+    for (const map of maps) {
+      for (const [id, counts] of map) merged.set(id, counts);
+    }
+    return merged;
+  }
+  const organisationId = groups[0]?.organisationId ?? null;
+  const clientScope = { in: groups[0]?.clientIds ?? clientIds };
   // Inclusive-from / exclusive-to bound applied to the relevant event
   // timestamp of each windowed metric. Undefined → all-time (unchanged
   // behaviour).
@@ -226,7 +239,7 @@ async function gatherRawCountsByClient(
   //
   // Read ONCE for the whole scope. It used to be read per client, which with
   // the flag on cost one extra query per client on the landing page.
-  const seedEmails = await listActiveInternalSeedEmails();
+  const seedEmails = await listActiveInternalSeedEmails(organisationId);
   const seedExclusion =
     seedEmails.length > 0 ? { toEmail: { notIn: seedEmails } } : {};
   // The definition of "an email we can prove we sent". Declared ONCE — in

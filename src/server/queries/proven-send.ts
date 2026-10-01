@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForClient } from "@/server/tenant/organisation-scope";
 
 /**
  * "An email we can prove this client sent" — declared once, for every screen.
@@ -153,7 +154,9 @@ export function provenSendInstant(row: { sentAt: Date | null; createdAt: Date })
 export async function getLatestProvenSendAt(
   clientId: string,
 ): Promise<Date | null> {
-  const seedEmails = await listActiveInternalSeedEmails();
+  const seedEmails = await listActiveInternalSeedEmails(
+    await organisationIdForClient(clientId),
+  );
   const row = await prisma.outboundEmail.findFirst({
     where: buildProvenSentWhere({ clientId, seedEmails }),
     orderBy: { sentAt: "desc" },

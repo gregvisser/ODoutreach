@@ -24,7 +24,9 @@ import {
   type ClientSenderProfile,
 } from "@/lib/opensdoors-brief";
 import { prisma } from "@/lib/db";
+import { findCooldownOutboundRows } from "@/server/email/outbound/organisation-cooldown";
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
+import { organisationIdForClient } from "@/server/tenant/organisation-scope";
 import { isDispatchRecheckEnabled } from "@/server/email/outbound/dispatch-recheck";
 
 /**
@@ -340,17 +342,18 @@ export async function planSequenceStepSends(params: {
   let counts: SequenceStepSendClassificationCounts = zeroStepSendCounts();
   const previews: SequenceStepSendPreview[] = [];
 
-  // Workspace-wide outreach cooldown: no email address receives more
-  // than one outreach email across the entire OpensDoors workspace
-  // within OUTREACH_COOLDOWN_DAYS days. We batch-fetch the most recent
-  // OutboundEmail for every candidate's email address (case insensitive)
-  // ACROSS ALL CLIENTS in this workspace, then exclude sends that belong
-  // to THIS sequence (so a step-2 follow-up is not mistaken for a
-  // duplicate of step-1 from the same sequence).
+  // Organisation-wide outreach cooldown: no email address receives more
+  // than one outreach email across the clients of this organisation
+  // within OUTREACH_COOLDOWN_DAYS days. OpensDoors clients still share
+  // that window. Another organisation's send is not in the scan. We
+  // batch-fetch the most recent OutboundEmail for every candidate's email
+  // address (case insensitive), then exclude sends that belong to THIS
+  // sequence (so a step-2 follow-up is not mistaken for a duplicate of
+  // step-1 from the same sequence).
   //
   // Matching by email (not contactId) is intentional — the same person
   // can exist as a separate Contact row under each client, so contactId
-  // is per-client but the dedup must be cross-client.
+  // is per-client but the dedup must be cross-client inside the organisation.
   const now = new Date();
   const cooldownStart = new Date(
     now.getTime() - OUTREACH_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
@@ -372,28 +375,19 @@ export async function planSequenceStepSends(params: {
   // (mirrors their exemption from the suppression gate). Flag-gated — returns
   // an empty set when INTERNAL_SEED_ALLOWLIST_ENABLED is off, so behaviour is
   // unchanged for everyone else.
+  const organisationId = await organisationIdForClient(params.clientId);
   const seedEmailSet = new Set(
-    (await listActiveInternalSeedEmails()).map((e) => e.toLowerCase()),
+    (await listActiveInternalSeedEmails(organisationId)).map((e) => e.toLowerCase()),
   );
   const recentSendsByEmail = new Map<
     string,
     { lastSentAt: Date; eligibleAt: Date; bounced: boolean; lastSentId: string }
   >();
   if (candidateEmails.length > 0) {
-    const recentSendRows = await prisma.outboundEmail.findMany({
-      where: {
-        toEmail: { in: candidateEmails, mode: "insensitive" },
-        sentAt: { gte: cooldownStart, not: null },
-      },
-      select: {
-        toEmail: true,
-        id: true,
-        clientId: true,
-        sentAt: true,
-        status: true,
-        sequenceStepSends: { select: { sequenceId: true } },
-      },
-      orderBy: { sentAt: "desc" },
+    const recentSendRows = await findCooldownOutboundRows({
+      clientId: params.clientId,
+      emails: candidateEmails,
+      sentSince: cooldownStart,
     });
     for (const row of recentSendRows) {
       if (!row.toEmail || !row.sentAt) continue;
