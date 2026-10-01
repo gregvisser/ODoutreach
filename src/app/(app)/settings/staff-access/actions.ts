@@ -8,6 +8,7 @@ import { membershipRoleForStaff } from "@/lib/tenant/organisation";
 import { requireSuperAdminForAction } from "@/server/auth/staff";
 import { logStaffAccessAudit } from "@/server/staff-access/audit";
 import { assertLastActiveAdminProtected } from "@/server/staff-access/last-admin";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 import {
   createGuestInvitation,
   getGuestUserExternalState,
@@ -39,32 +40,30 @@ function inviteRedirectUrl(): string {
   return staffInviteRedirectUrl();
 }
 
-async function actorOrganisationId(staffUserId: string): Promise<string | null> {
-  const row = await prisma.organisationMember.findUnique({
-    where: { staffUserId },
-    select: { organisationId: true },
-  });
-  return row?.organisationId ?? null;
-}
-
 /**
- * Super-admin staff tools stay inside the actor's home organisation.
- * A missing membership is reported as such. A person in another
- * organisation is reported as not found so the directory does not leak.
+ * Super-admin staff tools stay inside the organisation the actor is
+ * working in. A missing organisation is reported as such. A person who
+ * is not a member of that organisation is reported as not found so the
+ * directory does not leak the other one.
  */
 async function requireSameOrganisationStaff(
   actorStaffUserId: string,
   targetStaffUserId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const organisationId = await actorOrganisationId(actorStaffUserId);
+  const organisationId = await organisationIdForStaff(actorStaffUserId);
   if (!organisationId) {
     return { ok: false, error: "You are not in an organisation." };
   }
   const target = await prisma.organisationMember.findUnique({
-    where: { staffUserId: targetStaffUserId },
-    select: { organisationId: true },
+    where: {
+      organisationId_staffUserId: {
+        organisationId,
+        staffUserId: targetStaffUserId,
+      },
+    },
+    select: { id: true },
   });
-  if (!target || target.organisationId !== organisationId) {
+  if (!target) {
     return { ok: false, error: "Staff user not found." };
   }
   return { ok: true };
@@ -86,7 +85,7 @@ export async function inviteStaffUser(
   try {
     const admin = await requireSuperAdminForAction();
     const data = inviteSchema.parse(raw);
-    const organisationId = await actorOrganisationId(admin.id);
+    const organisationId = await organisationIdForStaff(admin.id);
     if (!organisationId) {
       return { ok: false, error: "You are not in an organisation." };
     }

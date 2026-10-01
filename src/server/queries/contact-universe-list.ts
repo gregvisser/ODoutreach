@@ -42,7 +42,6 @@ export type UniverseTableRow = {
 };
 
 function organisationWhere(scope: ClientAccessScope): Prisma.ContactUniverseWhereInput {
-  if (scope.kind === "all-live") return {};
   if (scope.kind === "organisation") return { organisationId: scope.organisationId };
   return { id: { in: [] } };
 }

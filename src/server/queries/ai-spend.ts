@@ -17,9 +17,10 @@ import { prisma } from "@/lib/db";
  * fetches and joins. The split is the reason the invoice rules are testable
  * without a database.
  *
- * Organisation-scoped. An OpensDoors owner sees every OpensDoors client on one
- * invoice. A platform admin passes no organisation id and sees every
- * organisation. `null` reads nothing. The page still requires super-admin.
+ * Organisation-scoped. An owner sees that organisation's clients on one
+ * invoice. A missing organisation id reads nothing, so a caller cannot
+ * accidentally invoice every organisation together. The page still
+ * requires super-admin.
  */
 
 export interface AiSpendReport {
@@ -31,14 +32,12 @@ export async function getAiSpendReport(
   monthKey: string | undefined,
   now: Date = new Date(),
   /**
-   * `undefined` is the platform-admin view (every organisation).
-   * A string is one organisation. `null` is no organisation: return an empty
-   * month and do not read another organisation's ledger.
+   * One organisation. `null` or `undefined` reads nothing.
    */
   organisationId?: string | null,
 ): Promise<AiSpendReport> {
   const month = resolveBillingMonth(monthKey, now);
-  if (organisationId === null) {
+  if (!organisationId) {
     return { month, summary: summariseAiSpend([]) };
   }
 
@@ -52,7 +51,7 @@ export async function getAiSpendReport(
     by: ["clientId", "clientSlugAtCall", "feature", "status", "model", "rateVersion"],
     where: {
       createdAt: { gte: month.start, lt: month.endExclusive },
-      ...(organisationId ? { organisationId } : {}),
+      organisationId,
     },
     _count: { _all: true },
     _sum: { inputTokens: true, outputTokens: true, costMicroUsd: true },

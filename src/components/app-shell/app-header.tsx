@@ -32,11 +32,17 @@ export function AppHeader({
   googleReconnectsAttentionCount = 0,
   isSuperAdmin = false,
   showPlatformNav = false,
+  organisations = [],
+  actingOrganisationId = null,
+  actingOrganisationName = null,
 }: {
   brand: BrandProp;
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
   showPlatformNav?: boolean;
+  organisations?: { id: string; name: string }[];
+  actingOrganisationId?: string | null;
+  actingOrganisationName?: string | null;
 }) {
   const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -65,6 +71,9 @@ export function AppHeader({
               isSuperAdmin={isSuperAdmin}
               showPlatformNav={showPlatformNav}
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
+              organisations={organisations}
+              actingOrganisationId={actingOrganisationId}
+              actingOrganisationName={actingOrganisationName}
             />
             <div className="px-3 pb-4">
               <p className="mb-2 truncate text-xs text-sidebar-foreground/65">

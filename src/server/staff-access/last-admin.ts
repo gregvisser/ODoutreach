@@ -35,19 +35,26 @@ export async function assertLastActiveAdminProtected(input: {
 
   if (!isLastActiveAdminRemovalAttempt(target, nextRole, nextActive)) return;
 
-  const membership = await prisma.organisationMember.findUnique({
+  const memberships = await prisma.organisationMember.findMany({
     where: { staffUserId: targetStaffUserId },
     select: { organisationId: true },
   });
-  const activeAdminCount = await prisma.staffUser.count({
-    where: membership
-      ? {
-          role: "ADMIN",
-          isActive: true,
-          organisationMembership: { organisationId: membership.organisationId },
-        }
-      : { role: "ADMIN", isActive: true },
-  });
+  if (memberships.length === 0) {
+    const activeAdminCount = await prisma.staffUser.count({
+      where: { role: "ADMIN", isActive: true },
+    });
+    assertAtLeastOneOtherActiveAdmin(activeAdminCount);
+    return;
+  }
 
-  assertAtLeastOneOtherActiveAdmin(activeAdminCount);
+  for (const membership of memberships) {
+    const activeAdminCount = await prisma.staffUser.count({
+      where: {
+        role: "ADMIN",
+        isActive: true,
+        organisationMemberships: { some: { organisationId: membership.organisationId } },
+      },
+    });
+    assertAtLeastOneOtherActiveAdmin(activeAdminCount);
+  }
 }

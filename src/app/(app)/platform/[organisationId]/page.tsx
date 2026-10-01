@@ -15,6 +15,7 @@ import { hasPlatformAdminAccess, resolveOrganisationFeatureFlags } from "@/lib/t
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
 import {
+  EnterOrganisationForm,
   InviteOrganisationOwnerForm,
   OrganisationFlagsForm,
   OrganisationHostnameForm,
@@ -66,13 +67,16 @@ export default async function PlatformOrganisationPage({
             {organisation._count.clients} {organisation._count.clients === 1 ? "client" : "clients"}
           </p>
         </div>
-        <Link
-          prefetch={false}
-          href="/platform"
-          className={cn(buttonVariants({ variant: "ghost" }), "text-sm shrink-0")}
-        >
-          ← All organisations
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <EnterOrganisationForm organisationId={organisation.id} />
+          <Link
+            prefetch={false}
+            href="/platform"
+            className={cn(buttonVariants({ variant: "ghost" }), "text-sm shrink-0")}
+          >
+            ← All organisations
+          </Link>
+        </div>
       </div>
 
       <Card className="border-border/80 shadow-sm">
@@ -142,7 +146,7 @@ export default async function PlatformOrganisationPage({
         <CardHeader>
           <CardTitle className="text-lg">Invite an owner</CardTitle>
           <CardDescription>
-            The invitation joins this organisation only. It does not grant platform access or the ability to delete workspaces. Their email domain must be listed in STAFF_EMAIL_DOMAINS or they will not be able to sign in.
+            The invitation joins this organisation only. Someone who already has an account is added to it as well, and no second Microsoft invitation is sent. It does not grant platform access or the ability to delete workspaces. Their email domain must be listed in STAFF_EMAIL_DOMAINS or a new person will not be able to sign in.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

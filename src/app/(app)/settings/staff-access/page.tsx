@@ -49,7 +49,7 @@ export default async function StaffAccessPage() {
   }
 
   const rows = await prisma.staffUser.findMany({
-    where: { organisationMembership: { organisationId } },
+    where: { organisationMemberships: { some: { organisationId } } },
     orderBy: { email: "asc" },
     include: {
       invitedBy: { select: { email: true } },

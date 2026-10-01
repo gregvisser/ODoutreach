@@ -13,12 +13,13 @@ const CLIENTS: ClientRow[] = [
   { id: "deleted", organisationId: "org_opensdoors", deletedAt: new Date("2026-01-01T00:00:00.000Z") },
 ];
 
-const STAFF: Record<string, { email: string; isPlatformAdmin: boolean; organisationId: string | null }> = {
-  s1: { email: "ada@opensdoors.co.uk", isPlatformAdmin: false, organisationId: "org_opensdoors" },
-  other: { email: "sam@northwind.example", isPlatformAdmin: false, organisationId: "org_other" },
-  platform: { email: "greg@bidlow.co.uk", isPlatformAdmin: true, organisationId: "org_opensdoors" },
-  flagged: { email: "ada@opensdoors.co.uk", isPlatformAdmin: true, organisationId: "org_opensdoors" },
-  orphan: { email: "new@opensdoors.co.uk", isPlatformAdmin: false, organisationId: null },
+const ACTING: Record<string, string | null> = {
+  s1: "org_opensdoors",
+  other: "org_other",
+  platform: "org_opensdoors",
+  platformOther: "org_other",
+  flagged: "org_opensdoors",
+  orphan: null,
 };
 
 type Where = {
@@ -43,15 +44,16 @@ const findFirst = vi.fn(async ({ where }: { where: Where }) => {
   const row = CLIENTS.find((candidate) => matches(candidate, where));
   return row ? { id: row.id } : null;
 });
-const findUnique = vi.fn(async ({ where }: { where: { id: string } }) => {
-  const staff = STAFF[where.id];
-  if (!staff) return null;
+const resolveStaffActingOrganisation = vi.fn(async (staffId: string) => {
+  const organisationId = ACTING[staffId];
+  if (!organisationId) return null;
   return {
-    email: staff.email,
-    isPlatformAdmin: staff.isPlatformAdmin,
-    organisationMembership: staff.organisationId
-      ? { organisationId: staff.organisationId }
-      : null,
+    organisationId,
+    role: "USER" as const,
+    status: "ACTIVE" as const,
+    name: "Organisation",
+    slug: "organisation",
+    via: "membership" as const,
   };
 });
 
@@ -61,10 +63,11 @@ vi.mock("@/lib/db", () => ({
       findMany: (...args: unknown[]) => findMany(...(args as [{ where: Where }])),
       findFirst: (...args: unknown[]) => findFirst(...(args as [{ where: Where }])),
     },
-    staffUser: {
-      findUnique: (...args: unknown[]) => findUnique(...(args as [{ where: { id: string } }])),
-    },
   },
+}));
+
+vi.mock("./acting-organisation", () => ({
+  resolveStaffActingOrganisation: (staffId: string) => resolveStaffActingOrganisation(staffId),
 }));
 
 import {
@@ -104,7 +107,7 @@ describe("organisation access wall", () => {
   beforeEach(() => {
     findMany.mockClear();
     findFirst.mockClear();
-    findUnique.mockClear();
+    resolveStaffActingOrganisation.mockClear();
   });
 
   it("an OpensDoors user sees every live OpensDoors client and no other organisation", async () => {
@@ -121,9 +124,20 @@ describe("organisation access wall", () => {
     expect(await canAccessClient(opensDoors, "other")).toBe(false);
   });
 
-  it("a platform admin sees every live client, and a flagged OpensDoors email does not", async () => {
-    expect(await getAccessibleClientIds({ id: "platform", role: "ADMIN" })).toEqual(["c1", "c2", "other"]);
+  it("a platform admin working in OpensDoors does not see the other organisation", async () => {
+    expect(await getAccessibleClientIds({ id: "platform", role: "ADMIN" })).toEqual(["c1", "c2"]);
+    expect(await canAccessClient({ id: "platform", role: "ADMIN" }, "other")).toBe(false);
+  });
+
+  it("a platform admin who has entered the other organisation sees only that organisation", async () => {
+    expect(await getAccessibleClientIds({ id: "platformOther", role: "ADMIN" })).toEqual(["other"]);
+    expect(await canAccessClient({ id: "platformOther", role: "ADMIN" }, "c1")).toBe(false);
+    expect(await canAccessClient({ id: "platformOther", role: "ADMIN" }, "c2")).toBe(false);
+  });
+
+  it("a flagged OpensDoors email stays inside OpensDoors", async () => {
     expect(await getAccessibleClientIds({ id: "flagged", role: "ADMIN" })).toEqual(["c1", "c2"]);
+    expect(await canAccessClient({ id: "flagged", role: "ADMIN" }, "other")).toBe(false);
   });
 
   it("a staff user with no organisation sees nothing", async () => {
@@ -155,6 +169,6 @@ describe("organisation access wall", () => {
   it("rejects an empty client id without going to the database", async () => {
     expect(await canAccessClient(opensDoors, "")).toBe(false);
     expect(findFirst).not.toHaveBeenCalled();
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(resolveStaffActingOrganisation).not.toHaveBeenCalled();
   });
 });

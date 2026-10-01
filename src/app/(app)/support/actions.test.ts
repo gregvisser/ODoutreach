@@ -46,7 +46,14 @@ describe("resolveSupportTicket (owner-only + status guard)", () => {
     staffFindUnique.mockResolvedValue({
       email: "ada@opensdoors.co.uk",
       isPlatformAdmin: false,
-      organisationMembership: { organisationId: "org_opensdoors" },
+      organisationMemberships: [
+        {
+          organisationId: "org_opensdoors",
+          role: "USER",
+          createdAt: new Date("2020-01-01T00:00:00.000Z"),
+          organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+        },
+      ],
     });
   });
 
@@ -129,7 +136,14 @@ describe("reopenSupportTicket (owner-only + status guard)", () => {
     staffFindUnique.mockResolvedValue({
       email: "ada@opensdoors.co.uk",
       isPlatformAdmin: false,
-      organisationMembership: { organisationId: "org_opensdoors" },
+      organisationMemberships: [
+        {
+          organisationId: "org_opensdoors",
+          role: "USER",
+          createdAt: new Date("2020-01-01T00:00:00.000Z"),
+          organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+        },
+      ],
     });
   });
 
@@ -172,7 +186,14 @@ describe("addSupportTicketComment (row 159 — reply thread)", () => {
     staffFindUnique.mockResolvedValue({
       email: "ada@opensdoors.co.uk",
       isPlatformAdmin: false,
-      organisationMembership: { organisationId: "org_opensdoors" },
+      organisationMemberships: [
+        {
+          organisationId: "org_opensdoors",
+          role: "USER",
+          createdAt: new Date("2020-01-01T00:00:00.000Z"),
+          organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+        },
+      ],
     });
   });
 

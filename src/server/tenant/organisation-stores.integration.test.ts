@@ -161,9 +161,9 @@ it("keeps support tickets and stamps audit and AI usage on the writer's organisa
   const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   const opensDoors = await getAiSpendReport(month, now, OPENSDOORS_ORGANISATION_ID);
   const other = await getAiSpendReport(month, now, OTHER_ORG);
-  const platform = await getAiSpendReport(month, now, undefined);
+  const unscoped = await getAiSpendReport(month, now, undefined);
   expect(opensDoors.summary.clients.map((row) => row.clientId)).toEqual(["morson"]);
   expect(other.summary.clients).toEqual([]);
-  expect(platform.summary.totals.totalCalls).toBe(2);
+  expect(unscoped.summary.totals.totalCalls).toBe(0);
   expect(opensDoors.summary.totals.totalCalls).toBe(1);
 });

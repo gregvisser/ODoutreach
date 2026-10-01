@@ -127,10 +127,8 @@ export async function updateOrganisationHostname(
 /**
  * Create a pending staff row and attach it to the named organisation.
  * Never sets platform or super-admin. Does not call Microsoft Graph.
- *
- * The integration database has a test-only trigger that inserts an
- * OpensDoors membership for every new staff row. Upsert makes the named
- * organisation win. Production has no such trigger, so this is a create.
+ * Refuses an email that already has an account — the caller adds a
+ * membership instead of a second person.
  */
 export async function provisionPendingOrganisationMember(input: {
   organisationId: string;
@@ -153,7 +151,10 @@ export async function provisionPendingOrganisationMember(input: {
 
   const existing = await prisma.staffUser.findUnique({ where: { email }, select: { id: true } });
   if (existing) {
-    return { ok: false, error: "A staff user with this email already exists." };
+    return {
+      ok: false,
+      error: "A staff user with this email already exists. Add them to the organisation instead of creating a second account.",
+    };
   }
 
   const draft = await prisma.staffUser.create({
@@ -173,15 +174,28 @@ export async function provisionPendingOrganisationMember(input: {
   });
 
   try {
+    // The integration database inserts an OpensDoors membership for every
+    // new staff row. A new account belongs only to the organisation they
+    // were invited into, so drop that extra row. Production has no trigger.
+    await prisma.organisationMember.deleteMany({
+      where: {
+        staffUserId: draft.id,
+        organisationId: { not: input.organisationId },
+      },
+    });
     await prisma.organisationMember.upsert({
-      where: { staffUserId: draft.id },
+      where: {
+        organisationId_staffUserId: {
+          organisationId: input.organisationId,
+          staffUserId: draft.id,
+        },
+      },
       create: {
         organisationId: input.organisationId,
         staffUserId: draft.id,
         role: input.membershipRole,
       },
       update: {
-        organisationId: input.organisationId,
         role: input.membershipRole,
       },
     });
@@ -194,4 +208,54 @@ export async function provisionPendingOrganisationMember(input: {
   }
 
   return { ok: true, staffUserId: draft.id };
+}
+
+export const ALREADY_IN_ORGANISATION = "This person is already in this organisation.";
+
+/**
+ * Attach an existing account to another organisation. Does not create a
+ * second staff row, does not call Microsoft, and does not change platform
+ * admin, super-admin, or the account's staff role.
+ */
+export async function addExistingStaffToOrganisation(input: {
+  organisationId: string;
+  staffUserId: string;
+  membershipRole: OrganisationMemberRole;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const organisation = await prisma.organisation.findUnique({
+    where: { id: input.organisationId },
+    select: { id: true },
+  });
+  if (!organisation) return { ok: false, error: "Organisation not found." };
+
+  const staff = await prisma.staffUser.findUnique({
+    where: { id: input.staffUserId },
+    select: { id: true },
+  });
+  if (!staff) return { ok: false, error: "Staff user not found." };
+
+  const existing = await prisma.organisationMember.findUnique({
+    where: {
+      organisationId_staffUserId: {
+        organisationId: input.organisationId,
+        staffUserId: input.staffUserId,
+      },
+    },
+    select: { id: true },
+  });
+  if (existing) return { ok: false, error: ALREADY_IN_ORGANISATION };
+
+  try {
+    await prisma.organisationMember.create({
+      data: {
+        organisationId: input.organisationId,
+        staffUserId: input.staffUserId,
+        role: input.membershipRole,
+      },
+    });
+  } catch (error) {
+    if (uniqueConflict(error)) return { ok: false, error: ALREADY_IN_ORGANISATION };
+    throw error;
+  }
+  return { ok: true };
 }

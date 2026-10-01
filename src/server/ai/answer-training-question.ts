@@ -13,6 +13,7 @@ import { getTrainingAssistantChunk } from "@/lib/training/assistant-content";
 import { groundedTrainingAnswer, searchTrainingContent } from "@/lib/training/assistant-search";
 import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
+import { resolveStaffActingOrganisation } from "@/server/tenant/acting-organisation";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
 import { callAiToolMessages } from "./anthropic-messages";
@@ -32,8 +33,8 @@ import { runMeteredAiCall } from "./metered-call";
  * client's own data.
  *
  * WHO IS BILLED. Not whichever client a staff member happens to be looking
- * at, and not the bidlowai workspace. The call is billed to the staff
- * member's organisation with no client id.
+ * at, and not the bidlowai workspace. The call is billed to the
+ * organisation they are working in, with no client id.
  *
  * THE ORDER OF OPERATIONS IS THE SAFETY PROPERTY, same as `adviseSendTimes`.
  * The lexical search runs BEFORE any model is called: a question with no
@@ -151,14 +152,10 @@ export async function answerTrainingQuestion(args: {
 
   const staff = await prisma.staffUser.findUnique({
     where: { email: args.askedByEmail.trim().toLowerCase() },
-    select: {
-      organisationMembership: {
-        select: { organisation: { select: { id: true, slug: true } } },
-      },
-    },
+    select: { id: true },
   });
-  const billedOrganisation = staff?.organisationMembership?.organisation ?? null;
-  if (!billedOrganisation) {
+  const acting = staff ? await resolveStaffActingOrganisation(staff.id) : null;
+  if (!acting) {
     logger.error(
       { scope: "training-assistant" },
       "training assistant caller is not in an organisation — cannot answer via the model",
@@ -176,8 +173,8 @@ export async function answerTrainingQuestion(args: {
 
   const outcome = await runMeteredAiCall({
     client: null,
-    organisationId: billedOrganisation.id,
-    organisationSlug: billedOrganisation.slug,
+    organisationId: acting.organisationId,
+    organisationSlug: acting.slug,
     feature: "TRAINING_ASSISTANT",
     model,
     apiKey,

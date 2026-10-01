@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/db";
 import { validateNewClientShellInput } from "@/lib/clients/new-client-shell";
-import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 /**
  * PR I — Create a minimal client workspace shell.
@@ -32,7 +32,11 @@ export async function createClientFromOnboarding(input: {
   | { ok: false; error: string; reason?: string }
 > {
   const staff = await requireOpensDoorsStaff();
-  // Client setup is an everyday operation for every authenticated OpenDoors staff member.
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) {
+    return { ok: false, error: "You are not in an organisation." };
+  }
+  // Client setup is an everyday operation for every authenticated staff member of that organisation.
 
   const validation = validateNewClientShellInput(input);
   if (!validation.ok) {
@@ -62,7 +66,7 @@ export async function createClientFromOnboarding(input: {
         website: normalized.website,
         notes: normalized.notes,
         status: "ONBOARDING",
-        organisationId: OPENSDOORS_ORGANISATION_ID,
+        organisationId,
       },
       select: { id: true, slug: true },
     });
@@ -77,12 +81,13 @@ export async function createClientFromOnboarding(input: {
 
     await tx.auditLog.create({
       data: {
+        organisationId,
         staffUserId: staff.id,
         clientId: client.id,
         action: "CREATE",
         entityType: "Client",
         entityId: client.id,
-        metadata: { name: normalized.name, slug: normalized.slug },
+        metadata: { name: normalized.name, slug: normalized.slug, organisationId },
       },
     });
 

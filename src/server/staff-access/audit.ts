@@ -9,10 +9,12 @@ export async function logStaffAccessAudit(input: {
   actorStaffUserId: string;
   action: AuditAction;
   targetStaffUserId: string | null;
+  organisationId?: string;
   metadata: Prisma.InputJsonValue;
 }): Promise<void> {
   await prisma.auditLog.create({
     data: {
+      organisationId: input.organisationId,
       staffUserId: input.actorStaffUserId,
       clientId: null,
       action: input.action,

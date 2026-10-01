@@ -66,8 +66,7 @@ export default async function AiSpendPage({ searchParams }: Props) {
 
   const params = await searchParams;
   const scope = await loadClientAccessScope(staff.id);
-  const organisationId =
-    scope.kind === "all-live" ? undefined : scope.kind === "organisation" ? scope.organisationId : null;
+  const organisationId = scope.kind === "organisation" ? scope.organisationId : null;
   const { month, summary } = await getAiSpendReport(params?.month, new Date(), organisationId);
   const { totals } = summary;
 

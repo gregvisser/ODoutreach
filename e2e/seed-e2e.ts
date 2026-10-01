@@ -714,7 +714,12 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
     });
     for (const person of staffRows) {
       await prisma.organisationMember.upsert({
-        where: { staffUserId: person.id },
+        where: {
+          organisationId_staffUserId: {
+            organisationId: OPENSDOORS_ORGANISATION_ID,
+            staffUserId: person.id,
+          },
+        },
         create: {
           organisationId: OPENSDOORS_ORGANISATION_ID,
           staffUserId: person.id,

@@ -11,6 +11,7 @@ import { staffBlockedBySuspendedOrganisation } from "@/lib/tenant/platform";
 import { gateStaffAccess } from "@/server/auth/staff";
 import { getGlobalBrand } from "@/server/branding/get-global-brand";
 import { getGoogleReconnectNeedsAttentionCount } from "@/server/queries/google-reconnects";
+import { listOrganisationsStaffMayEnter } from "@/server/tenant/acting-organisation";
 import { loadStaffHomeOrganisation } from "@/server/tenant/organisation-scope";
 
 export default async function AppLayout({
@@ -30,6 +31,7 @@ export default async function AppLayout({
   }
 
   const home = await loadStaffHomeOrganisation(gate.staff.id);
+  const enterable = await listOrganisationsStaffMayEnter(gate.staff);
   if (
     staffBlockedBySuspendedOrganisation({
       isPlatformAdmin: gate.staff.isPlatformAdmin,
@@ -37,7 +39,14 @@ export default async function AppLayout({
       organisationStatus: home?.status ?? null,
     })
   ) {
-    return <StaffOrganisationSuspended organisationName={home?.name ?? "This organisation"} />;
+    return (
+      <StaffOrganisationSuspended
+        organisationName={home?.name ?? "This organisation"}
+        alternatives={enterable.filter(
+          (organisation) => organisation.status === "ACTIVE" && organisation.id !== home?.organisationId,
+        )}
+      />
+    );
   }
 
   const showPlatformNav = hasPlatformAdminAccess(gate.staff);
@@ -64,6 +73,9 @@ export default async function AppLayout({
         isSuperAdmin={gate.staff.isSuperAdmin}
         showPlatformNav={showPlatformNav}
         googleReconnectsAttentionCount={googleReconnectsAttentionCount}
+        organisations={enterable}
+        actingOrganisationId={home?.organisationId ?? null}
+        actingOrganisationName={home?.name ?? null}
       />
       <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-x-clip overflow-y-auto">
         <AppHeader
@@ -71,6 +83,9 @@ export default async function AppLayout({
           isSuperAdmin={gate.staff.isSuperAdmin}
           showPlatformNav={showPlatformNav}
           googleReconnectsAttentionCount={googleReconnectsAttentionCount}
+          organisations={enterable}
+          actingOrganisationId={home?.organisationId ?? null}
+          actingOrganisationName={home?.name ?? null}
         />
         <main className="min-w-0 flex-1 bg-background px-4 py-6 md:px-8 md:py-8">
           {children}

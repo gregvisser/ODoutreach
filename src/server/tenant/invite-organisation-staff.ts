@@ -14,7 +14,13 @@ import {
 } from "@/server/microsoft-graph/guest-invitations";
 import { logStaffAccessAudit } from "@/server/staff-access/audit";
 
-import { provisionPendingOrganisationMember } from "./platform-orgs";
+import {
+  addExistingStaffToOrganisation,
+  provisionPendingOrganisationMember,
+} from "./platform-orgs";
+
+export const ADDED_EXISTING_ACCOUNT =
+  "Added to this organisation. They already have an account, so no new Microsoft invitation was sent.";
 
 export type StaffInviteResult =
   | { ok: true; message?: string }
@@ -41,10 +47,16 @@ function describeInvitationFailure(error: unknown, fallback: string): string {
 }
 
 /**
- * Provision a pending member of one organisation, then ask Microsoft Graph
- * to send the guest invitation. Graph failure deletes the staff row so a
- * failed invite cannot sit in the directory. Callers must already have
- * authorised the actor. This function never sets platform or super-admin.
+ * Add someone to one organisation.
+ *
+ * An email that already has an account gets a membership only. Their
+ * platform access, super-admin flag, and staff role stay as they are, and
+ * Microsoft is not asked to invite them again.
+ *
+ * A new email is provisioned, then Microsoft Graph sends the guest
+ * invitation. Graph failure deletes that new row. Callers must already
+ * have authorised the actor. This function never sets platform or
+ * super-admin.
  */
 export async function inviteStaffIntoOrganisation(input: {
   actorStaffUserId: string;
@@ -65,6 +77,39 @@ export async function inviteStaffIntoOrganisation(input: {
       error:
         "That email is not allowed by STAFF_EMAIL_DOMAINS. Add the domain to STAFF_EMAIL_DOMAINS before this person can sign in.",
     };
+  }
+
+  const existing = await prisma.staffUser.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+  if (existing) {
+    const added = await addExistingStaffToOrganisation({
+      organisationId: input.organisationId,
+      staffUserId: existing.id,
+      membershipRole: input.membershipRole,
+    });
+    if (!added.ok) return added;
+
+    await logStaffAccessAudit({
+      actorStaffUserId: input.actorStaffUserId,
+      action: "CREATE",
+      targetStaffUserId: existing.id,
+      organisationId: input.organisationId,
+      metadata: {
+        op: "organisation_member_added",
+        inviteeEmail: email,
+        role: input.staffRole,
+        organisationId: input.organisationId,
+        membershipRole: input.membershipRole,
+        existingAccount: true,
+      },
+    });
+    revalidatePath("/settings/staff-access");
+    revalidatePath("/settings/organisation");
+    revalidatePath("/platform");
+    revalidatePath(`/platform/${input.organisationId}`);
+    return { ok: true, message: ADDED_EXISTING_ACCOUNT };
   }
 
   let redirect: string;
@@ -109,6 +154,7 @@ export async function inviteStaffIntoOrganisation(input: {
     actorStaffUserId: input.actorStaffUserId,
     action: "CREATE",
     targetStaffUserId: provisioned.staffUserId,
+    organisationId: input.organisationId,
     metadata: {
       op: "invite_sent",
       inviteeEmail: email,
