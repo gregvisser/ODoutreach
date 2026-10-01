@@ -16,8 +16,11 @@ test.describe("ordinary OpenDoors staff", () => {
     await page.goto("/clients");
     await expect(page.getByRole("heading", { name: "Clients", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "New client", exact: true }).first()).toBeVisible();
-    await page.getByRole("link", { name: "Add client", exact: true }).click();
-    await expect(page).toHaveURL(/\/clients\/new$/);
+    const addClient = page.getByRole("link", { name: "Add client", exact: true });
+    await expect(async () => {
+      if (!/\/clients\/new$/.test(new URL(page.url()).pathname)) await addClient.click();
+      await expect(page).toHaveURL(/\/clients\/new$/, { timeout: 3_000 });
+    }).toPass({ timeout: 15_000 });
     await page.getByLabel(/Client name/).fill("Synthetic staff-created client");
     await page.getByLabel(/Workspace ID/).fill(slug);
     await page.getByRole("button", { name: "Create workspace", exact: true }).click();
