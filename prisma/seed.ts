@@ -72,7 +72,12 @@ async function main() {
   });
 
   await prisma.organisationMember.upsert({
-    where: { staffUserId: staff.id },
+    where: {
+      organisationId_staffUserId: {
+        organisationId: OPENSDOORS_ORGANISATION_ID,
+        staffUserId: staff.id,
+      },
+    },
     create: {
       organisationId: OPENSDOORS_ORGANISATION_ID,
       staffUserId: staff.id,

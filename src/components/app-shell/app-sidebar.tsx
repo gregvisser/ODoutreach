@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
+import { OrganisationSwitcher } from "./organisation-switcher";
 import { buildMainNav } from "./nav-config";
 
 type BrandProp = {
@@ -21,6 +22,9 @@ export function AppSidebar({
   googleReconnectsAttentionCount = 0,
   showPlatformNav = false,
   onNavigate,
+  organisations = [],
+  actingOrganisationId = null,
+  actingOrganisationName = null,
 }: {
   className?: string;
   brand: BrandProp;
@@ -30,6 +34,9 @@ export function AppSidebar({
   /** Bidlow platform console. Omitted from the shared nav list on purpose. */
   showPlatformNav?: boolean;
   onNavigate?: () => void;
+  organisations?: { id: string; name: string }[];
+  actingOrganisationId?: string | null;
+  actingOrganisationName?: string | null;
 }) {
   const pathname = usePathname();
   const items = buildMainNav(googleReconnectsAttentionCount);
@@ -66,6 +73,21 @@ export function AppSidebar({
           <p className="text-xs text-sidebar-foreground/65">{brand.productName}</p>
         </div>
       </Link>
+      {actingOrganisationName || organisations.length > 1 ? (
+        <div className="border-b border-sidebar-border px-3 py-3">
+          {organisations.length > 1 ? (
+            <OrganisationSwitcher
+              organisations={organisations}
+              actingOrganisationId={actingOrganisationId}
+            />
+          ) : (
+            <>
+              <p className="mb-1 text-xs font-medium text-sidebar-foreground/65">Organisation</p>
+              <p className="truncate text-sm font-medium">{actingOrganisationName}</p>
+            </>
+          )}
+        </div>
+      ) : null}
       {/*
         `prefetch={false}` on every link here is deliberate and load-bearing.
 

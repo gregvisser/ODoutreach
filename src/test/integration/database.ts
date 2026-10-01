@@ -97,7 +97,7 @@ export async function resetIntegrationDatabase(): Promise<void> {
           CURRENT_TIMESTAMP,
           CURRENT_TIMESTAMP
         )
-        ON CONFLICT ("staffUserId") DO NOTHING;
+        ON CONFLICT ("organisationId", "staffUserId") DO NOTHING;
         RETURN NEW;
       END;
       $fn$;

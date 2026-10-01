@@ -12,6 +12,8 @@ const {
   staffUserUpdate,
   organisationMemberUpsert,
   organisationMemberFindUnique,
+  organisationMemberDeleteMany,
+  organisationMemberCreate,
   organisationFindUnique,
 } = vi.hoisted(() => ({
   createGuestInvitation: vi.fn(),
@@ -25,6 +27,8 @@ const {
   staffUserUpdate: vi.fn(),
   organisationMemberUpsert: vi.fn(),
   organisationMemberFindUnique: vi.fn(),
+  organisationMemberDeleteMany: vi.fn(),
+  organisationMemberCreate: vi.fn(),
   organisationFindUnique: vi.fn(),
 }));
 
@@ -61,6 +65,8 @@ vi.mock("@/lib/db", () => ({
     organisationMember: {
       upsert: organisationMemberUpsert,
       findUnique: organisationMemberFindUnique,
+      deleteMany: organisationMemberDeleteMany,
+      create: organisationMemberCreate,
     },
   },
 }));
@@ -73,11 +79,30 @@ describe("inviteStaffUser", () => {
     process.env.AUTH_URL = "https://app.example.test";
     requireSuperAdminForAction.mockResolvedValue({ id: "admin-1" });
     isStaffEmailAllowed.mockReturnValue(true);
-    staffUserFindUnique.mockResolvedValue(null);
+    staffUserFindUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
+      if (where.id === "admin-1") {
+        return {
+          id: "admin-1",
+          email: "owner@opensdoors.co.uk",
+          isPlatformAdmin: false,
+          organisationMemberships: [
+            {
+              organisationId: "org_opensdoors",
+              role: "OWNER",
+              createdAt: new Date("2020-01-01T00:00:00.000Z"),
+              organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+            },
+          ],
+        };
+      }
+      return null;
+    });
     staffUserCreate.mockResolvedValue({ id: "staff-1" });
     staffUserUpdate.mockResolvedValue({ id: "staff-1" });
     organisationFindUnique.mockResolvedValue({ id: "org_opensdoors" });
-    organisationMemberFindUnique.mockResolvedValue({ organisationId: "org_opensdoors" });
+    organisationMemberFindUnique.mockResolvedValue(null);
+    organisationMemberDeleteMany.mockResolvedValue({ count: 0 });
+    organisationMemberCreate.mockResolvedValue({ id: "member-1" });
     organisationMemberUpsert.mockResolvedValue({ id: "member-1" });
     createGuestInvitation.mockResolvedValue({
       invitationId: "invitation-1",
@@ -98,21 +123,61 @@ describe("inviteStaffUser", () => {
       }),
     );
     expect(organisationMemberUpsert).toHaveBeenCalledWith({
-      where: { staffUserId: "staff-1" },
+      where: {
+        organisationId_staffUserId: {
+          organisationId: "org_opensdoors",
+          staffUserId: "staff-1",
+        },
+      },
       create: expect.objectContaining({
         organisationId: "org_opensdoors",
         staffUserId: "staff-1",
         role: "USER",
       }),
-      update: expect.objectContaining({
+      update: { role: "USER" },
+    });
+  });
+
+  it("adds an existing account to this organisation without a second invitation", async () => {
+    staffUserFindUnique.mockImplementation(async ({ where }: { where: { id?: string; email?: string } }) => {
+      if (where.id === "admin-1") {
+        return {
+          id: "admin-1",
+          email: "owner@opensdoors.co.uk",
+          isPlatformAdmin: false,
+          organisationMemberships: [
+            {
+              organisationId: "org_opensdoors",
+              role: "OWNER",
+              createdAt: new Date("2020-01-01T00:00:00.000Z"),
+              organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+            },
+          ],
+        };
+      }
+      if (where.id === "greg" || where.email === "greg@bidlow.co.uk") {
+        return { id: "greg", email: "greg@bidlow.co.uk" };
+      }
+      return null;
+    });
+
+    await expect(inviteStaffUser({ email: "greg@bidlow.co.uk" })).resolves.toMatchObject({
+      ok: true,
+      message: expect.stringContaining("already have an account"),
+    });
+    expect(staffUserCreate).not.toHaveBeenCalled();
+    expect(createGuestInvitation).not.toHaveBeenCalled();
+    expect(organisationMemberCreate).toHaveBeenCalledWith({
+      data: {
         organisationId: "org_opensdoors",
+        staffUserId: "greg",
         role: "USER",
-      }),
+      },
     });
   });
 
   it("refuses to invite when the owner is not in an organisation", async () => {
-    organisationMemberFindUnique.mockResolvedValue(null);
+    staffUserFindUnique.mockResolvedValue(null);
     await expect(inviteStaffUser({ email: "staff@example.com" })).resolves.toEqual({
       ok: false,
       error: "You are not in an organisation.",
@@ -168,12 +233,7 @@ describe("inviteStaffUser", () => {
   });
 
   it("does not resend an invitation for someone in another organisation", async () => {
-    organisationMemberFindUnique.mockImplementation(
-      async ({ where }: { where: { staffUserId: string } }) => {
-        if (where.staffUserId === "admin-1") return { organisationId: "org_opensdoors" };
-        return { organisationId: "org_other" };
-      },
-    );
+    organisationMemberFindUnique.mockResolvedValue(null);
     await expect(resendStaffInvitation("staff-other")).resolves.toEqual({
       ok: false,
       error: "Staff user not found.",

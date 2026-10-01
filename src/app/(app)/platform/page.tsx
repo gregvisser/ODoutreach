@@ -12,13 +12,20 @@ import { prisma } from "@/lib/db";
 import { hasPlatformAdminAccess } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 
-import { CreateOrganisationForm } from "./platform-forms";
+import { CreateOrganisationForm, EnterOrganisationForm } from "./platform-forms";
 
 export const dynamic = "force-dynamic";
 
-export default async function PlatformPage() {
+export default async function PlatformPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>;
+}) {
   const staff = await requireOpensDoorsStaff();
   if (!hasPlatformAdminAccess(staff)) notFound();
+  const params = await searchParams;
+  const rawError = Array.isArray(params.error) ? params.error[0] : params.error;
+  const error = rawError?.trim() ? rawError.trim().slice(0, 200) : null;
 
   const organisations = await prisma.organisation.findMany({
     orderBy: { name: "asc" },
@@ -30,8 +37,13 @@ export default async function PlatformPage() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Platform</h1>
         <p className="mt-1 text-muted-foreground">
-          Organisations on this platform. OpensDoors is one of them. Each organisation only sees its own clients, people, and sending.
+          Organisations on this platform. OpensDoors is one of them. Enter a workspace to work inside that organisation. Each organisation only sees its own clients, people, and sending.
         </p>
+        {error ? (
+          <p className="mt-3 text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       <Card className="border-border/80 shadow-sm">
@@ -61,13 +73,16 @@ export default async function PlatformPage() {
                       {organisation._count.clients} {organisation._count.clients === 1 ? "client" : "clients"}
                     </p>
                   </div>
-                  <Link
-                    prefetch={false}
-                    href={`/platform/${organisation.id}`}
-                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                  >
-                    Open →
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <EnterOrganisationForm organisationId={organisation.id} size="sm" />
+                    <Link
+                      prefetch={false}
+                      href={`/platform/${organisation.id}`}
+                      className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Manage
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
             </li>

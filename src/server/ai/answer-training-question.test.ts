@@ -28,7 +28,17 @@ import { searchTrainingContent } from "@/lib/training/assistant-search";
 import { answerTrainingQuestion } from "./answer-training-question";
 
 const HOME_ORGANISATION = {
-  organisationMembership: { organisation: { id: "org_opensdoors", slug: "opensdoors" } },
+  id: "staff-1",
+  email: "staff@opensdoors.co.uk",
+  isPlatformAdmin: false,
+  organisationMemberships: [
+    {
+      organisationId: "org_opensdoors",
+      role: "USER" as const,
+      createdAt: new Date("2020-01-01T00:00:00.000Z"),
+      organisation: { id: "org_opensdoors", status: "ACTIVE" as const, name: "OpensDoors", slug: "opensdoors" },
+    },
+  ],
 };
 
 /** A question this codebase's own training content genuinely answers. */

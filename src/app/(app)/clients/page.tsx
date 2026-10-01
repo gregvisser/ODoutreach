@@ -24,11 +24,13 @@ import { resolveClientsPageEmptyCopy } from "@/lib/clients/clients-page-empty-st
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { listClientsForStaff } from "@/server/queries/clients";
 import { getAccessibleClientIds } from "@/server/tenant/access";
+import { loadStaffHomeOrganisation } from "@/server/tenant/organisation-scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientsPage() {
   const staff = await requireOpensDoorsStaff();
+  const acting = await loadStaffHomeOrganisation(staff.id);
   const accessible = await getAccessibleClientIds(staff);
   const clients = await listClientsForStaff(accessible);
   // The empty state is about THIS organisation. Counting every client in the
@@ -44,6 +46,7 @@ export default async function ClientsPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Clients</h1>
           <p className="mt-1 text-muted-foreground">
+            {acting ? `${acting.name}. ` : null}
             The client workspaces you can access. Each client keeps its own
             contacts, mailboxes, and outreach.
           </p>

@@ -70,7 +70,7 @@ describe("listClientsForStaff — the counts shown on /clients", () => {
 
 describe("listSoftDeletedClients — the same lie on the recovery screen", () => {
   it("counts email sequences, not Campaign", async () => {
-    await listSoftDeletedClients({ kind: "all-live" });
+    await listSoftDeletedClients({ kind: "organisation", organisationId: "org_opensdoors" });
     const select = lastCountSelect();
     expect(select.emailSequences).toBe(true);
     expect(select).not.toHaveProperty("campaigns");

@@ -72,14 +72,28 @@ vi.mock("@/lib/db", () => ({
           return {
             email: "greg@bidlow.co.uk",
             isPlatformAdmin: true,
-            organisationMembership: { organisationId: "org_opensdoors" },
+            organisationMemberships: [
+              {
+                organisationId: "org_opensdoors",
+                role: "OWNER",
+                createdAt: new Date("2020-01-01T00:00:00.000Z"),
+                organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+              },
+            ],
           };
         }
         if (where.id === "opensdoors-owner") {
           return {
             email: "owner@opensdoors.co.uk",
             isPlatformAdmin: false,
-            organisationMembership: { organisationId: "org_opensdoors" },
+            organisationMemberships: [
+              {
+                organisationId: "org_opensdoors",
+                role: "OWNER",
+                createdAt: new Date("2020-01-01T00:00:00.000Z"),
+                organisation: { status: "ACTIVE", name: "OpensDoors", slug: "opensdoors" },
+              },
+            ],
           };
         }
         return null;

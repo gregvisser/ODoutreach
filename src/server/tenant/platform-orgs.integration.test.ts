@@ -74,15 +74,16 @@ it("creates an organisation, stores flags, suspends it, and provisions an owner 
 
   const member = await prisma.staffUser.findUniqueOrThrow({
     where: { id: provisioned.staffUserId },
-    include: { organisationMembership: true },
+    include: { organisationMemberships: true },
   });
   expect(member.email).toBe("ada@northwind.example");
   expect(member.role).toBe("ADMIN");
   expect(member.isPlatformAdmin).toBe(false);
   expect(member.isSuperAdmin).toBe(false);
   expect(member.graphInvitationId).toBeNull();
-  expect(member.organisationMembership?.organisationId).toBe(organisation.id);
-  expect(member.organisationMembership?.role).toBe("OWNER");
+  expect(member.organisationMemberships).toHaveLength(1);
+  expect(member.organisationMemberships[0]?.organisationId).toBe(organisation.id);
+  expect(member.organisationMemberships[0]?.role).toBe("OWNER");
 
   const duplicate = await createOrganisationRecord({ name: "Other", slug: "northwind" });
   expect(duplicate).toEqual({ ok: false, error: "An organisation with that slug already exists." });

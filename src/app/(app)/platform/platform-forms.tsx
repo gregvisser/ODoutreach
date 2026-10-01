@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import type { OrganisationFeatureKey } from "@/lib/tenant/organisation";
 import { ORGANISATION_FEATURE_LABELS } from "@/lib/tenant/platform";
 
+import { enterOrganisationAction } from "@/app/(app)/organisation/actions";
+
 import {
   createOrganisationAction,
   inviteOrganisationOwnerAction,
@@ -194,6 +196,23 @@ export function OrganisationHostnameForm({
       <div className="sm:col-span-2">
         <FormNotice state={state} />
       </div>
+    </form>
+  );
+}
+
+export function EnterOrganisationForm({
+  organisationId,
+  size = "default",
+}: {
+  organisationId: string;
+  size?: "default" | "sm";
+}) {
+  return (
+    <form action={enterOrganisationAction}>
+      <input type="hidden" name="organisationId" value={organisationId} />
+      <FormSubmitButton pendingLabel="Opening…" size={size}>
+        Enter workspace
+      </FormSubmitButton>
     </form>
   );
 }

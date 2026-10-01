@@ -74,7 +74,12 @@ beforeEach(async () => {
   // The integration database attaches new staff to OpensDoors. Move the
   // fixture agency user across; the others stay where the trigger put them.
   await prisma.organisationMember.update({
-    where: { staffUserId: "other-user" },
+    where: {
+      organisationId_staffUserId: {
+        organisationId: OPENSDOORS_ORGANISATION_ID,
+        staffUserId: "other-user",
+      },
+    },
     data: { organisationId: OTHER_ORG, role: "USER" },
   });
 });
@@ -103,8 +108,9 @@ it("the other organisation sees none of OpensDoors, and OpensDoors sees none of 
   expect(await canAccessClient(opensDoors, "contoso")).toBe(false);
 });
 
-it("a platform admin sees both organisations and an OpensDoors flag does not", async () => {
-  expect((await getAccessibleClientIds(platform)).sort()).toEqual(["bidlowai", "contoso", "morson", "octavian"]);
+it("a platform admin stays in their own organisation until they enter another, and an OpensDoors flag does not cross it", async () => {
+  expect((await getAccessibleClientIds(platform)).sort()).toEqual(["bidlowai", "morson", "octavian"]);
+  expect(await canAccessClient(platform, "contoso")).toBe(false);
   await prisma.staffUser.update({
     where: { id: "opensdoors-owner" },
     data: { isPlatformAdmin: true },

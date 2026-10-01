@@ -312,7 +312,7 @@ model StaffUser {
   updatedAt DateTime @updatedAt
 
   memberships                     ClientMembership[]
-  organisationMembership          OrganisationMember?
+  organisationMemberships         OrganisationMember[]
   auditLogs                       AuditLog[]
   outboundSends                   OutboundEmail[]                  @relation("OutboundInitiator")
   mailboxIdentitiesCreated        ClientMailboxIdentity[]          @relation("MailboxIdentityCreatedBy")
@@ -522,12 +522,13 @@ model Organisation {
   @@index([status])
 }
 
-/// A staff user belongs to exactly one organisation. Platform admins may
-/// still see every organisation; this row is their home, not their ceiling.
+/// One person may belong to many organisations. The pair is unique.
+/// Which organisation they are working in is chosen per session, not by
+/// this row being the only one.
 model OrganisationMember {
   id             String                 @id @default(cuid())
   organisationId String
-  staffUserId    String                 @unique
+  staffUserId    String
   role           OrganisationMemberRole @default(USER)
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
@@ -535,6 +536,8 @@ model OrganisationMember {
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   staffUser    StaffUser    @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
 
+  @@unique([organisationId, staffUserId])
+  @@index([staffUserId])
   @@index([organisationId])
 }
 

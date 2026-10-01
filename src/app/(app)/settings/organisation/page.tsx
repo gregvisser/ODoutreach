@@ -56,7 +56,7 @@ export default async function OrganisationSettingsPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">{home.name}</h1>
           <p className="mt-1 text-muted-foreground">
-            People in your organisation. Invitations cannot add someone to a different organisation.
+            People in {home.name}. An invitation adds someone to this organisation only. If they already belong to another organisation, they keep that membership too.
           </p>
         </div>
         <Link

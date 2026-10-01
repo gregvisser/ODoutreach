@@ -3,6 +3,8 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 
+import { resolveStaffActingOrganisation } from "./acting-organisation";
+
 type Db = Prisma.TransactionClient | typeof prisma;
 
 /**
@@ -10,7 +12,7 @@ type Db = Prisma.TransactionClient | typeof prisma;
  * Callers that cannot resolve an organisation must not read another
  * organisation's rows in its place.
  */
-/** Home organisation of a staff member. Null when they have no membership. */
+/** Organisation this session is working in. Null when they are in none. */
 export async function organisationIdForStaff(staffId: string): Promise<string | null> {
   const home = await loadStaffHomeOrganisation(staffId);
   return home?.organisationId ?? null;
@@ -24,27 +26,21 @@ export type StaffHomeOrganisation = {
 };
 
 /**
- * Home organisation plus the role and status the shell and settings need.
- * Null when the staff member has no membership. Does not fall back to OpensDoors.
+ * Organisation this session is working in, plus the role and status the
+ * shell and settings need. A platform admin who has entered another
+ * organisation gets that one. Otherwise it is their oldest membership.
+ * Null when they are in none. Does not fall back to OpensDoors.
  */
 export async function loadStaffHomeOrganisation(
   staffId: string,
 ): Promise<StaffHomeOrganisation | null> {
-  if (!staffId) return null;
-  const row = await prisma.organisationMember.findUnique({
-    where: { staffUserId: staffId },
-    select: {
-      organisationId: true,
-      role: true,
-      organisation: { select: { status: true, name: true } },
-    },
-  });
-  if (!row) return null;
+  const acting = await resolveStaffActingOrganisation(staffId);
+  if (!acting) return null;
   return {
-    organisationId: row.organisationId,
-    role: row.role,
-    status: row.organisation.status,
-    name: row.organisation.name,
+    organisationId: acting.organisationId,
+    role: acting.role,
+    status: acting.status,
+    name: acting.name,
   };
 }
 

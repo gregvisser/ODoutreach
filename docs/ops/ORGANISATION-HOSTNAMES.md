@@ -1,6 +1,6 @@
 # Organisation hostnames
 
-Each organisation can have one public hostname, saved by a platform administrator on `/platform/<organisation id>`. The app resolves that host to the organisation for branding and for mailbox OAuth return URLs. Data access stays the staff member's organisation membership. A hostname does not grant access to another organisation's clients.
+Each organisation can have one public hostname, saved by a platform administrator on `/platform/<organisation id>`. The app resolves that host to the organisation for branding and for mailbox OAuth return URLs. Data access follows the organisation the signed-in person is working in: a membership, or a platform administrator who has entered that organisation. A hostname does not grant access to another organisation's clients.
 
 `opensdoors.bidlow.co.uk` is OpensDoors in code. Saving that host on another organisation is refused. A row that claims it is ignored. Clearing a hostname, an unknown host, `localhost`, and the Azure default `*.azurewebsites.net` host all resolve to OpensDoors. That fallback is what keeps the existing site working when a hostname has not been saved or DNS is not ready. Do not remove the OpensDoors custom domain, its DNS records, or its Entra and mailbox redirect URIs.
 
