@@ -21,7 +21,7 @@ test("staff save and reload a research draft without importing or sending", asyn
   await panel.getByLabel("Regions", { exact: true }).fill("United Kingdom\nUK");
   await panel.getByLabel("Proposed total lookups", { exact: true }).fill("5");
   await panel.getByRole("button", { name: "Save research draft", exact: true }).click();
-  await expect(panel.getByRole("status")).toHaveText("Research draft saved. No credits spent and no contacts imported.");
+  await expect(panel.locator("form").first().getByRole("status")).toHaveText("Research draft saved. No credits spent and no contacts imported.");
   await page.reload();
   await expect(panel.getByText("Synthetic manufacturing directors · Draft", { exact: true })).toBeVisible();
   await expect(panel.getByText("Regions: United Kingdom; UK", { exact: true })).toBeVisible();
