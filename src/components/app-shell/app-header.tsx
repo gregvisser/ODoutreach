@@ -31,10 +31,12 @@ export function AppHeader({
   brand,
   googleReconnectsAttentionCount = 0,
   isSuperAdmin = false,
+  showPlatformNav = false,
 }: {
   brand: BrandProp;
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
+  showPlatformNav?: boolean;
 }) {
   const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -61,6 +63,7 @@ export function AppHeader({
               className="border-0"
               brand={brand}
               isSuperAdmin={isSuperAdmin}
+              showPlatformNav={showPlatformNav}
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
             />
             <div className="px-3 pb-4">

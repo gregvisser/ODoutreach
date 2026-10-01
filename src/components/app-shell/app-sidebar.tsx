@@ -1,5 +1,6 @@
 "use client";
 
+import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,6 +19,7 @@ export function AppSidebar({
   className,
   brand,
   googleReconnectsAttentionCount = 0,
+  showPlatformNav = false,
   onNavigate,
 }: {
   className?: string;
@@ -25,10 +27,13 @@ export function AppSidebar({
   /** Row 155: badges "Google logins" whenever a mailbox needs reconnecting. */
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
+  /** Bidlow platform console. Omitted from the shared nav list on purpose. */
+  showPlatformNav?: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const items = buildMainNav(googleReconnectsAttentionCount);
+  const platformActive = pathname === "/platform" || pathname.startsWith("/platform/");
 
   return (
     <aside
@@ -111,6 +116,22 @@ export function AppSidebar({
             </Link>
           );
         })}
+        {showPlatformNav ? (
+          <Link
+            href="/platform"
+            onNavigate={onNavigate}
+            prefetch={false}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors max-md:min-h-11",
+              platformActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
+            )}
+          >
+            <Building2 className={cn("h-4 w-4 shrink-0", platformActive ? "opacity-100" : "opacity-70")} />
+            Platform
+          </Link>
+        ) : null}
       </nav>
       <div className="border-t border-sidebar-border p-4 text-xs text-sidebar-foreground/55">
         Internal workspace — staff access only
