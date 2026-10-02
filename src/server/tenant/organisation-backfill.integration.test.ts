@@ -79,4 +79,19 @@ it("backfills staff onto OpensDoors and can be applied twice", async () => {
     (await prisma.staffUser.findUniqueOrThrow({ where: { id: operator.id } })).isPlatformAdmin,
   ).toBe(false);
   expect(await prisma.client.count()).toBe(0);
+
+  // Replaying the first organisation migration recreates the one-membership
+  // unique index that a later migration removed. Leave the shared database
+  // the way migrate deploy left it, or the e2e seed cannot put one person
+  // in two organisations.
+  const cleanup = new Pool({ connectionString: integrationDatabaseUrl(), max: 1 });
+  try {
+    await cleanup.query('DROP INDEX IF EXISTS "OrganisationMember_staffUserId_key"');
+    const stillThere = await cleanup.query(
+      `SELECT 1 FROM pg_indexes WHERE indexname = 'OrganisationMember_staffUserId_key'`,
+    );
+    expect(stillThere.rowCount).toBe(0);
+  } finally {
+    await cleanup.end();
+  }
 });
