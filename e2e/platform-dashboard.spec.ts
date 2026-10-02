@@ -14,7 +14,7 @@ test.describe("platform dashboard", () => {
     await expect(page.getByRole("heading", { name: "Platform", level: 1 })).toBeVisible();
     await expect(page.locator("aside").getByRole("navigation", { name: "Platform" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);
-    await expect(content.getByText("OpensDoors")).toBeVisible();
+    await expect(content.getByText("OpensDoors", { exact: true })).toBeVisible();
     await expect(content.getByText("Active", { exact: true })).toBeVisible();
     await expect(content.getByText("Members", { exact: true })).toBeVisible();
     await expect(content.getByText("Mailboxes", { exact: true })).toBeVisible();
