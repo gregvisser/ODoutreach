@@ -80,15 +80,15 @@ function MailboxGroupRow({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className={cn(
-          "flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/40",
+          "flex w-full min-w-0 items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40",
           expanded && "border-b border-border/50",
         )}
       >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{label}</span>
-          <span className="text-xs text-muted-foreground">{group.mailboxEmail}</span>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <span className="min-w-0 break-words text-sm font-medium">{label}</span>
+          <span className="min-w-0 break-all text-xs text-muted-foreground">{group.mailboxEmail}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Badge
             variant={group.replyCount > 0 ? "default" : "secondary"}
             className="font-normal tabular-nums"

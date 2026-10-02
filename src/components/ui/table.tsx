@@ -37,6 +37,28 @@ function Table({
     return () => observer.disconnect();
   }, [scroll]);
 
+  // A 4rem offset is the app header. It is only correct when the page column
+  // is the scrollport. An overflow-x-auto ancestor is a nearer scrollport, and
+  // the same offset pulls the header down over the first rows.
+  React.useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || scroll !== "page") return;
+    let el: HTMLElement | null = container.parentElement;
+    let nestedHorizontalScroll = false;
+    while (el) {
+      const overflowX = getComputedStyle(el).overflowX;
+      if (overflowX === "auto" || overflowX === "scroll") {
+        nestedHorizontalScroll = true;
+        break;
+      }
+      el = el.parentElement;
+    }
+    container.style.setProperty(
+      "--table-sticky-top",
+      nestedHorizontalScroll ? "0px" : "4rem",
+    );
+  }, [scroll]);
+
   return (
     <div
       ref={containerRef}
@@ -44,7 +66,7 @@ function Table({
       data-scroll={scroll}
       data-wide={widerThanContainer ? "true" : "false"}
       className={cn(
-        "group/table relative w-full",
+        "group/table relative w-full min-w-0 max-w-full",
         scroll === "viewport"
           ? "max-h-[max(16rem,calc(100dvh-11rem))] overflow-auto"
           : scroll === "contained"
@@ -128,7 +150,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-3 text-left align-middle text-xs font-medium tracking-wide whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 min-w-0 px-3 text-left align-middle text-xs font-medium tracking-wide break-words whitespace-normal text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -141,7 +163,11 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "px-3 py-2.5 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        // Nowrap used to let a long note paint over the next cell whenever
+        // this cell also had a max width. Text wraps inside the cell.
+        // A timestamp or count that must stay on one line passes
+        // `whitespace-nowrap` itself. `min-w-0` lets the column shrink.
+        "min-w-0 px-3 py-2.5 align-middle break-words whitespace-normal [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

@@ -236,7 +236,7 @@ function StaffRowActions({
 
   return (
     <TableRow>
-      <TableCell className="text-sm">{row.email}</TableCell>
+      <TableCell className="break-all text-sm" title={row.email}>{row.email}</TableCell>
       <TableCell>
         <span
           className={cn(
@@ -251,7 +251,7 @@ function StaffRowActions({
       </TableCell>
       <TableCell className="max-w-[200px] text-xs text-muted-foreground">
         <div>{inviteLabel}</div>
-        {meta ? <div className="mt-1 text-[11px] leading-snug">{meta}</div> : null}
+        {meta ? <div className="mt-1 break-words text-[11px] leading-snug" title={meta}>{meta}</div> : null}
       </TableCell>
       <TableCell>
         <div className="flex flex-col gap-1.5">

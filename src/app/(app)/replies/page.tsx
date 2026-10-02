@@ -175,7 +175,15 @@ export default async function RepliesNeedingAPersonPage({
             </p>
           ) : (
             <>
-              <Table>
+              <Table className="table-fixed min-w-[44rem]">
+                <colgroup>
+                  <col className="w-[20%]" />
+                  <col className="w-[14%]" />
+                  <col />
+                  <col className="w-[8.5rem]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[8.75rem]" />
+                </colgroup>
                 <TableHeader>
                   <TableRow>
                     <TableHead>From</TableHead>
@@ -191,45 +199,49 @@ export default async function RepliesNeedingAPersonPage({
                     <TableRow
                       key={entry.replyId}
                       data-testid="replies-waiting-row"
+                      className="align-top"
                     >
-                      <TableCell className="font-medium">
-                        <div className="flex flex-col gap-0.5">
-                          <span data-testid="replies-waiting-from">
+                      <TableCell className="font-medium align-top">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className="break-all" data-testid="replies-waiting-from">
                             {entry.fromEmail}
                           </span>
                           {entry.subject ? (
-                            <span className="text-muted-foreground max-w-xs truncate text-xs">
+                            <span
+                              className="text-muted-foreground block max-w-full truncate text-xs"
+                              title={entry.subject}
+                            >
                               {entry.subject}
                             </span>
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <Link
                           prefetch={false}
-                          className="underline"
+                          className="underline break-words"
                           href={`/clients/${entry.clientId}`}
                         >
                           {entry.clientName}
                         </Link>
                       </TableCell>
-                      <TableCell className="max-w-sm">
-                        <div className="flex flex-col gap-1">
+                      <TableCell className="align-top">
+                        <div className="flex min-w-0 flex-col gap-1">
                           <ClassificationBadge entry={entry} />
                           {entry.classificationRationale ? (
-                            <span className="text-muted-foreground text-xs">
+                            <span className="text-muted-foreground break-words text-xs">
                               {entry.classificationRationale}
                             </span>
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top whitespace-nowrap">
                         <WaitingCell entry={entry} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <OwnerCell entry={entry} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right align-top whitespace-nowrap">
                         <Link
                           prefetch={false}
                           className={cn(

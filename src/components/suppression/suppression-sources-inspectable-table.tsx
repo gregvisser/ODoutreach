@@ -259,8 +259,13 @@ export function SuppressionSourcesInspectableTable({
                   "—"
                 )}
               </TableCell>
-              <TableCell className="max-w-[140px] truncate font-mono text-xs">
-                {s.sheetRange ?? "Sheet1!A1:Z50000"}
+              <TableCell className="max-w-[140px]">
+                <div
+                  className="truncate font-mono text-xs"
+                  title={s.sheetRange ?? "Sheet1!A1:Z50000"}
+                >
+                  {s.sheetRange ?? "Sheet1!A1:Z50000"}
+                </div>
               </TableCell>
               <TableCell>
                 {(() => {

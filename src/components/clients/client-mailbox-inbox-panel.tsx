@@ -181,14 +181,14 @@ export function ClientMailboxInboxPanel({
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                     {formatStaffDateTime(m.receivedAt)}
                   </TableCell>
-                  <TableCell className="max-w-[8rem] truncate text-xs" title={m.mailbox.email}>
-                    {m.mailbox.email}
+                  <TableCell className="max-w-[8rem] text-xs">
+                    <div className="truncate" title={m.mailbox.email}>{m.mailbox.email}</div>
                   </TableCell>
-                  <TableCell className="max-w-[8rem] truncate text-xs" title={m.fromEmail}>
-                    {m.fromEmail}
+                  <TableCell className="max-w-[8rem] text-xs">
+                    <div className="truncate" title={m.fromEmail}>{m.fromEmail}</div>
                   </TableCell>
-                  <TableCell className="max-w-[10rem] truncate text-xs" title={m.subject ?? "—"}>
-                    {m.subject || "—"}
+                  <TableCell className="max-w-[10rem] text-xs">
+                    <div className="truncate" title={m.subject || "—"}>{m.subject || "—"}</div>
                   </TableCell>
                   <TableCell
                     className="max-w-[min(20rem,40vw)] whitespace-normal break-words text-xs text-muted-foreground"

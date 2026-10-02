@@ -252,8 +252,10 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                   </TableCell>
                   <TableCell>{ev.client?.name ?? "—"}</TableCell>
                   <TableCell className="font-mono text-xs">{ev.eventType}</TableCell>
-                  <TableCell className="font-mono text-[11px] text-muted-foreground max-w-[140px] truncate" title={ev.providerMessageId ?? undefined}>
-                    {ev.providerMessageId ?? "—"}
+                  <TableCell className="max-w-[140px] font-mono text-[11px] text-muted-foreground">
+                    <div className="truncate" title={ev.providerMessageId ?? undefined}>
+                      {ev.providerMessageId ?? "—"}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {ev.outbound ? (
@@ -268,7 +270,7 @@ export default async function OutboundOperationsPage({ searchParams }: Props) {
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-xs max-w-[220px]">
+                  <TableCell className="max-w-[220px] align-top text-xs">
                     <div className="flex flex-wrap gap-1">
                       {ev.replayDuplicate ? <Badge variant="secondary">replay</Badge> : null}
                       {ev.stateMutated ? <Badge variant="outline">mutated</Badge> : null}
@@ -337,15 +339,15 @@ function OpsTable({
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="font-medium">
-                  <div>{row.toEmail}</div>
+                <TableCell className="break-all font-medium">
+                  <div className="break-all">{row.toEmail}</div>
                   {row.mailbox?.email ? (
                     <div className="mt-1 text-xs text-muted-foreground">
                       Sending mailbox: {row.mailbox.email}
                     </div>
                   ) : null}
                   {row.lastErrorMessage || row.failureReason ? (
-                    <div className="mt-1 max-w-sm text-xs leading-snug text-destructive">
+                    <div className="mt-1 max-w-full break-words text-xs leading-snug text-destructive">
                       {row.lastErrorMessage ?? row.failureReason}
                     </div>
                   ) : null}

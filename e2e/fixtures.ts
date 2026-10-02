@@ -332,8 +332,13 @@ export const E2E_REPLIES_WAITING = {
   wantToTalkCount: 2,
   /** Only the six-hour-old booking is past its four-hour threshold. */
   overdueCount: 1,
-  /** The rationale rendered under the first row's badge. */
-  topRationale: "Asked for a call this week.",
+  /**
+   * The rationale rendered under the first row's badge.
+   * Long on purpose: this is the sentence that used to paint over the
+   * Waiting cell on /replies.
+   */
+  topRationale:
+    "Removal request needs review. No campaign link has been assumed; check whether it covers the person or company.",
 } as const;
 
 /**

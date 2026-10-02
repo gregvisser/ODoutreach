@@ -112,18 +112,21 @@ export default async function ActivityPage({ searchParams }: Props) {
               <TableBody>
                 {outbound.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="max-w-[160px]">
+                    <TableCell>
                       <Link prefetch={false}
                         href={`/activity/outbound/${row.id}`}
-                        className="block truncate font-medium underline-offset-2 hover:underline"
+                        className="block break-all font-medium underline-offset-2 hover:underline"
+                        title={row.toEmail}
                       >
                         {row.toEmail}
                       </Link>
                     </TableCell>
-                    <TableCell className="max-w-[140px] truncate text-muted-foreground">
-                      {row.subject ?? "—"}
+                    <TableCell className="text-muted-foreground">
+                      <span className="line-clamp-2 break-words" title={row.subject ?? undefined}>
+                        {row.subject ?? "—"}
+                      </span>
                     </TableCell>
-                    <TableCell>{row.client.name}</TableCell>
+                    <TableCell className="break-words">{row.client.name}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">
                         {row.status.replace(/_/g, " ")}
@@ -159,9 +162,11 @@ export default async function ActivityPage({ searchParams }: Props) {
                 {inbound.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell>
-                      <div className="font-medium">{row.fromEmail}</div>
+                      <div className="break-all font-medium">{row.fromEmail}</div>
                       {row.subject ? (
-                        <div className="truncate text-xs text-muted-foreground">{row.subject}</div>
+                        <div className="line-clamp-2 break-words text-xs text-muted-foreground" title={row.subject}>
+                          {row.subject}
+                        </div>
                       ) : null}
                       {row.snippet ? (
                         <div className="line-clamp-2 text-xs text-muted-foreground">
@@ -169,16 +174,16 @@ export default async function ActivityPage({ searchParams }: Props) {
                         </div>
                       ) : null}
                     </TableCell>
-                    <TableCell>{row.client.name}</TableCell>
+                    <TableCell className="break-words">{row.client.name}</TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
+                      <div className="flex min-w-0 flex-col gap-1">
                         <Badge variant="secondary" className="w-fit text-[10px] capitalize">
                           {row.matchMethod.replace(/_/g, " ")}
                         </Badge>
                         {row.linkedOutbound ? (
                           <Link prefetch={false}
                             href={`/activity/outbound/${row.linkedOutbound.id}`}
-                            className="text-xs underline-offset-2 hover:underline"
+                            className="break-words text-xs underline-offset-2 hover:underline"
                           >
                             Outbound: {row.linkedOutbound.subject ?? row.linkedOutbound.id.slice(0, 8)}
                           </Link>

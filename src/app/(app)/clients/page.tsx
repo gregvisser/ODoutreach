@@ -76,7 +76,7 @@ export default async function ClientsPage() {
               {clients.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">
-                    <span className="flex items-center gap-3">
+                    <span className="flex min-w-0 items-center gap-3">
                       <ClientLogo
                         clientId={c.id}
                         clientName={c.name}
@@ -84,7 +84,7 @@ export default async function ClientsPage() {
                         logoAltText={c.logoAltText}
                         size={32}
                       />
-                      <span className="min-w-0 truncate">{c.name}</span>
+                      <span className="min-w-0 break-words" title={c.name}>{c.name}</span>
                     </span>
                   </TableCell>
                   <TableCell>

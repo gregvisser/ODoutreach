@@ -48,7 +48,7 @@ export function AppHeader({
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-border bg-background px-4 md:px-8">
+    <header className="sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-border bg-background px-4 md:px-8">
       <div className="flex items-center gap-3">
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetTrigger
@@ -93,9 +93,12 @@ export function AppHeader({
           heightClassName="h-8 md:h-9"
         />
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center justify-end gap-3">
         <TrainingAssistantSearch />
-        <span className="hidden max-w-[200px] truncate text-sm text-muted-foreground sm:inline">
+        <span
+          className="hidden min-w-0 max-w-[12rem] truncate text-sm text-muted-foreground sm:inline-block"
+          title={session?.user?.email ?? session?.user?.name ?? undefined}
+        >
           {session?.user?.email ?? session?.user?.name ?? ""}
         </span>
         <SwitchAccountButton className="hidden md:block" />

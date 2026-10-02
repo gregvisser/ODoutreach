@@ -336,7 +336,11 @@ export function ListDetailContactTable({ contacts }: Props) {
                     ) : null}
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{c.sequenceName ?? "—"}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground truncate max-w-[140px]">{c.mailboxLabel ?? "—"}</td>
+                  <td className="max-w-[140px] px-3 py-2 text-xs text-muted-foreground">
+                    <div className="truncate" title={c.mailboxLabel ?? undefined}>
+                      {c.mailboxLabel ?? "—"}
+                    </div>
+                  </td>
                   <td className="px-3 py-2 text-xs tabular-nums">{formatDate(c.sentAt)}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{c.opensLabel}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{c.latestEventLabel ?? "—"}</td>
