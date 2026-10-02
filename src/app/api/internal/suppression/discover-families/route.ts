@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
 import { prisma } from "@/lib/db";
+import { runAsSystem, runInOrganisation } from "@/lib/tenant/organisation-context";
 import {
   persistProposalPlans,
   planClientFamilyProposals,
@@ -43,13 +44,13 @@ export async function POST(req: NextRequest) {
 
   try {
     // The invariant this design rests on, measured rather than asserted.
-    const familyRowsBefore = await prisma.suppressedDomainFamily.count();
+    const familyRowsBefore = await runAsSystem(() => prisma.suppressedDomainFamily.count());
 
-    const clients = await prisma.client.findMany({
+    const clients = await runAsSystem(() => prisma.client.findMany({
       where: { deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, organisationId: true },
       orderBy: { name: "asc" },
-    });
+    }));
 
     const errors: string[] = [];
     let processed = 0;
@@ -63,13 +64,14 @@ export async function POST(req: NextRequest) {
     let tenantBudgetExhausted = false;
 
     for (const client of clients) {
+      await runInOrganisation(client.organisationId, async () => {
       try {
         const plan = await planClientFamilyProposals({ clientId: client.id });
         if (
           plan.contactDomainsChecked === 0 ||
           plan.suppressedDomainCount === 0
         ) {
-          continue;
+          return;
         }
         processed += 1;
         contactDomainsChecked += plan.contactDomainsChecked;
@@ -99,6 +101,7 @@ export async function POST(req: NextRequest) {
         const msg = e instanceof Error ? e.message : "unknown error";
         errors.push(`${client.name}: ${msg}`);
       }
+      });
     }
 
     // Discovery may now block, but only in one way and only within a budget it
@@ -109,7 +112,7 @@ export async function POST(req: NextRequest) {
     // the seed that anchors its family if that seed was not already listed.
     // With the flag off `autoBlocked` is 0 and this is the original invariant,
     // unchanged: the table must not move at all.
-    const familyRowsAfter = await prisma.suppressedDomainFamily.count();
+    const familyRowsAfter = await runAsSystem(() => prisma.suppressedDomainFamily.count());
     const growth = familyRowsAfter - familyRowsBefore;
     if (growth < 0 || growth > autoBlocked * 2) {
       errors.push(

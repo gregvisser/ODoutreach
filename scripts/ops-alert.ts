@@ -266,7 +266,7 @@ async function readGoogleReconnects(now: Date): Promise<GoogleReconnectAlert> {
         provider: true,
         connectionStatus: true,
         connectedAt: true,
-        client: { select: { name: true, slug: true } },
+        client: { select: { name: true, slug: true, organisation: { select: { name: true } } } },
       },
     });
 
@@ -274,7 +274,7 @@ async function readGoogleReconnects(now: Date): Promise<GoogleReconnectAlert> {
       rows.map((row) => ({
         mailboxId: row.id,
         clientId: row.clientId,
-        clientName: row.client.name,
+        clientName: `${row.client.organisation.name} · ${row.client.name}`,
         clientSlug: row.client.slug,
         provider: row.provider,
         connectionStatus: row.connectionStatus,
@@ -354,7 +354,7 @@ async function readStrandedMailboxes(now: Date): Promise<StrandedMailboxAlert> {
         workspaceRemovedAt: true,
         updatedAt: true,
         lastSyncAt: true,
-        client: { select: { name: true, slug: true } },
+        client: { select: { name: true, slug: true, organisation: { select: { name: true } } } },
         // Presence only. The credential itself is never read here.
         secret: { select: { id: true } },
       },
@@ -364,7 +364,7 @@ async function readStrandedMailboxes(now: Date): Promise<StrandedMailboxAlert> {
       rows.map((row) => ({
         mailboxId: row.id,
         clientId: row.clientId,
-        clientName: row.client.name,
+        clientName: `${row.client.organisation.name} · ${row.client.name}`,
         clientSlug: row.client.slug,
         email: row.email,
         provider: row.provider,

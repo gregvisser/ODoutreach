@@ -28,8 +28,9 @@ export type StaffHomeOrganisation = {
 /**
  * Organisation this session is working in, plus the role and status the
  * shell and settings need. A platform admin who has entered another
- * organisation gets that one. Otherwise it is their oldest membership.
- * Null when they are in none. Does not fall back to OpensDoors.
+ * organisation gets that one. One membership is used as-is. Several
+ * memberships and no valid choice return null so the person picks at
+ * sign-in. Does not fall back to OpensDoors.
  */
 export async function loadStaffHomeOrganisation(
   staffId: string,

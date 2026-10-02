@@ -7,7 +7,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { PLATFORM_DASHBOARD_PATH } from "@/lib/tenant/platform";
 import { cn } from "@/lib/utils";
 
-import { OrganisationSwitcher } from "./organisation-switcher";
 import { buildMainNav } from "./nav-config";
 
 type BrandProp = {
@@ -23,8 +22,6 @@ export function AppSidebar({
   googleReconnectsAttentionCount = 0,
   platformAdmin = false,
   onNavigate,
-  organisations = [],
-  actingOrganisationId = null,
   actingOrganisationName = null,
 }: {
   className?: string;
@@ -35,8 +32,6 @@ export function AppSidebar({
   /** Signed-in Bidlow platform administrator, inside an organisation workspace. */
   platformAdmin?: boolean;
   onNavigate?: () => void;
-  organisations?: { id: string; name: string }[];
-  actingOrganisationId?: string | null;
   actingOrganisationName?: string | null;
 }) {
   const pathname = usePathname();
@@ -88,19 +83,10 @@ export function AppSidebar({
           </Link>
         </div>
       ) : null}
-      {actingOrganisationName || organisations.length > 1 ? (
+      {actingOrganisationName ? (
         <div className="border-b border-sidebar-border px-3 py-3">
-          {organisations.length > 1 ? (
-            <OrganisationSwitcher
-              organisations={organisations}
-              actingOrganisationId={actingOrganisationId}
-            />
-          ) : (
-            <>
-              <p className="mb-1 text-xs font-medium text-sidebar-foreground/65">Organisation</p>
-              <p className="truncate text-sm font-medium">{actingOrganisationName}</p>
-            </>
-          )}
+          <p className="mb-1 text-xs font-medium text-sidebar-foreground/65">Organisation</p>
+          <p className="truncate text-sm font-medium">{actingOrganisationName}</p>
         </div>
       ) : null}
       {/*

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { jobOutcome, jobResponseBody } from "@/lib/alerts/job-outcome";
 
+import { prisma } from "@/lib/db";
+import { runAsSystem, runInOrganisation } from "@/lib/tenant/organisation-context";
 import { listReplySyncPlan, syncActiveClientMailboxInboxes } from "@/server/mailbox/mailbox-inbox-sync";
 
 export const runtime = "nodejs";
@@ -40,7 +42,18 @@ export async function POST(req: NextRequest) {
 
   // One mailbox per request keeps a whole estate plus backlog out of Azure's
   // four-minute gateway window. Callers walk the snapshot, even after a failure.
-  const result = await syncActiveClientMailboxInboxes({ perMailboxTop, maxMailboxes: 1, mailboxId: body.mailboxId });
+  const mailboxId = body.mailboxId.trim();
+  const mailbox = await runAsSystem(() =>
+    prisma.clientMailboxIdentity.findUnique({
+      where: { id: mailboxId },
+      select: { client: { select: { organisationId: true } } },
+    }),
+  );
+  const sync = () =>
+    syncActiveClientMailboxInboxes({ perMailboxTop, maxMailboxes: 1, mailboxId });
+  const result = mailbox?.client.organisationId
+    ? await runInOrganisation(mailbox.client.organisationId, sync)
+    : await sync();
 
   // `ok` is DERIVED from the result, not asserted. This line used to read
   // `{ ok: true, ...result }` — a literal written before anyone looked at

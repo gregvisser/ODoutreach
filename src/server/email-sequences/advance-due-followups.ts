@@ -5,6 +5,7 @@ import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-
 import type { ClientEmailTemplateCategory } from "@/generated/prisma/enums";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { prisma } from "@/lib/db";
+import { runInOrganisation } from "@/lib/tenant/organisation-context";
 import { isEmptyAdvanceStep } from "@/lib/email-sequences/advance-step-skip";
 import { logger } from "@/lib/logger";
 import {
@@ -200,17 +201,19 @@ export async function advanceDueSequenceFollowUps(opts?: {
     },
     select: {
       id: true,
+      organisationId: true,
       autonomousSendEnabled: true,
       organisation: { select: { status: true, featureFlags: true } },
     },
   });
 
   for (const client of clients) {
+    await runInOrganisation(client.organisationId, async () => {
     const followUpsOn =
       client.organisation == null
         ? true
         : organisationFeaturePermits(client.organisation, "followUps", true);
-    if (!followUpsOn) continue;
+    if (!followUpsOn) return;
     const machineCeiling =
       client.organisation == null
         ? true
@@ -224,7 +227,7 @@ export async function advanceDueSequenceFollowUps(opts?: {
     const visibleSequenceIds = sequenceIds
       ? sequenceIds.filter((id) => !heldSequenceIds.has(id))
       : null;
-    if (visibleSequenceIds && visibleSequenceIds.length === 0) continue;
+    if (visibleSequenceIds && visibleSequenceIds.length === 0) return;
 
     const sequences = await prisma.clientEmailSequence.findMany({
       where: {
@@ -327,6 +330,7 @@ export async function advanceDueSequenceFollowUps(opts?: {
         }
       }
     }
+    });
   }
 
   return result;

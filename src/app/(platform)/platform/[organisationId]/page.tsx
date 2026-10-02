@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
+import { runAsSystem } from "@/lib/tenant/organisation-context";
 import { cn } from "@/lib/utils";
 import { resolveOrganisationFeatureFlags } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
@@ -35,7 +36,7 @@ export default async function PlatformOrganisationPage({
   assertPlatformDashboardAccess(staff);
 
   const { organisationId } = await params;
-  const organisation = await prisma.organisation.findUnique({
+  const organisation = await runAsSystem(() => prisma.organisation.findUnique({
     where: { id: organisationId },
     include: {
       members: {
@@ -48,14 +49,14 @@ export default async function PlatformOrganisationPage({
       },
       _count: { select: { clients: true } },
     },
-  });
+  }));
   if (!organisation) notFound();
 
   const flags = resolveOrganisationFeatureFlags(organisation.featureFlags);
-  const aiSpend = await prisma.aiUsageEvent.aggregate({
+  const aiSpend = await runAsSystem(() => prisma.aiUsageEvent.aggregate({
     where: { organisationId: organisation.id, status: "OK" },
     _sum: { costMicroUsd: true },
-  });
+  }));
   const aiSpentMicroUsd = aiSpend._sum.costMicroUsd ?? 0;
 
   return (

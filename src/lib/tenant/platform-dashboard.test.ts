@@ -124,8 +124,8 @@ describe("platform dashboard is not a workspace nav item", () => {
     expect(sidebar).not.toMatch(/>\s*Platform\s*</);
     expect(sidebar).toContain("Back to platform dashboard");
     expect(sidebar).toContain("platformAdmin");
-    expect(sidebar).toContain("<OrganisationSwitcher");
-    expect(sidebar).toContain("organisations.length > 1");
+    expect(sidebar).not.toContain("OrganisationSwitcher");
+    expect(workspaceLayout).toContain("OrganisationChooser");
     expect(workspaceLayout).toContain("Back to platform dashboard");
     expect(workspaceLayout).not.toContain("showPlatformNav");
     expect(workspaceLayout).toContain("<AppSidebar");

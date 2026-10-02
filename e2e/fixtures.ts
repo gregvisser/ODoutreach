@@ -353,12 +353,47 @@ export const E2E_UNIVERSE_CONTACT = {
   fullName: "E2E Universe Cta Fixture",
 } as const;
 
+/** A second organisation. Its workspace must show none of OpensDoors' rows. */
+export const E2E_PAPAYA = {
+  organisationId: "org_e2e_papaya",
+  name: "E2E Papaya",
+  slug: "e2e-papaya",
+  clientId: "e2e-papaya-client",
+  clientName: "E2E Papaya Workspace",
+  clientSlug: "e2e-papaya-workspace",
+} as const;
+
+/** Belongs only to Papaya. Used to prove OpensDoors rows stay hidden. */
+export const E2E_PAPAYA_STAFF = {
+  entraObjectId: "e2e-oid-papaya-only-0000000007",
+  email: "e2e-papaya@papaya.example",
+  displayName: "E2E Papaya Staff",
+} as const;
+
+/** Belongs to OpensDoors and Papaya, and is not a platform admin. */
+export const E2E_MULTI_STAFF = {
+  entraObjectId: "e2e-oid-multi-org-000000000008",
+  email: "e2e-multi@opensdoors.example",
+  displayName: "E2E Multi Org",
+} as const;
+
+/** An OpensDoors Google mailbox that still needs a sign-in. Papaya must not count it. */
+export const E2E_GOOGLE_BADGE = {
+  clientId: "e2e-google-badge-client",
+  clientName: "E2E Google Badge Workspace",
+  clientSlug: "e2e-google-badge",
+  mailboxId: "e2e-google-badge-mailbox",
+  email: "google-badge@opensdoors.example",
+} as const;
+
 export const E2E_STORAGE_STATE = {
   superAdmin: "e2e/.auth/super-admin.json",
   staff: "e2e/.auth/staff.json",
   memberA: "e2e/.auth/member-a.json",
   memberB: "e2e/.auth/member-b.json",
   platformAdmin: "e2e/.auth/platform-admin.json",
+  papaya: "e2e/.auth/papaya.json",
+  multiOrg: "e2e/.auth/multi-org.json",
 } as const;
 
 /**

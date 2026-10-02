@@ -24,6 +24,8 @@ import { E2E_AUTH_SECRET, E2E_BASE_URL, E2E_DATABASE_URL } from "./env";
 import {
   E2E_MEMBER_A,
   E2E_MEMBER_B,
+  E2E_MULTI_STAFF,
+  E2E_PAPAYA_STAFF,
   E2E_PLATFORM_ADMIN,
   E2E_STAFF,
   E2E_STORAGE_STATE,
@@ -125,6 +127,14 @@ async function globalSetup(): Promise<void> {
   await writeStorageState({
     ...E2E_MEMBER_B,
     filePath: E2E_STORAGE_STATE.memberB,
+  });
+  await writeStorageState({
+    ...E2E_PAPAYA_STAFF,
+    filePath: E2E_STORAGE_STATE.papaya,
+  });
+  await writeStorageState({
+    ...E2E_MULTI_STAFF,
+    filePath: E2E_STORAGE_STATE.multiOrg,
   });
 }
 

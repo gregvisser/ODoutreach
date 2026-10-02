@@ -37,7 +37,7 @@ describe("parseActingOrganisationCookie", () => {
 });
 
 describe("chooseActingOrganisation", () => {
-  it("keeps the oldest membership when nobody has chosen", () => {
+  it("asks a person in several organisations to choose instead of guessing", () => {
     expect(
       chooseActingOrganisation({
         memberships: [opensDoors, papaya],
@@ -45,7 +45,29 @@ describe("chooseActingOrganisation", () => {
         requestedOrganisation: null,
         platformAdmin: false,
       }),
+    ).toBeNull();
+  });
+
+  it("lands a person who belongs to one organisation in that organisation", () => {
+    expect(
+      chooseActingOrganisation({
+        memberships: [opensDoors],
+        requestedOrganisationId: null,
+        requestedOrganisation: null,
+        platformAdmin: false,
+      }),
     ).toMatchObject({ organisationId: "org_opensdoors", role: "USER", via: "membership" });
+  });
+
+  it("keeps a platform admin on their oldest membership until they enter another", () => {
+    expect(
+      chooseActingOrganisation({
+        memberships: [opensDoors, papaya],
+        requestedOrganisationId: null,
+        requestedOrganisation: null,
+        platformAdmin: true,
+      }),
+    ).toMatchObject({ organisationId: "org_opensdoors", role: "OWNER", via: "membership" });
   });
 
   it("switches a member to an organisation they belong to", () => {

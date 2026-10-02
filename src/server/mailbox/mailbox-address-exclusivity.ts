@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { runAsSystem } from "@/lib/tenant/organisation-context";
 import {
   resolveRawStoreOwner,
   type LiveMailboxRow,
@@ -67,21 +68,36 @@ export async function findMailboxAddressConflicts(input: {
   db?: MailboxDb;
 }): Promise<MailboxAddressConflict[]> {
   const db = input.db ?? prisma;
-  const rows = await db.clientMailboxIdentity.findMany({
-    where: {
-      emailNormalized: input.emailNormalized,
-      clientId: { not: input.clientId },
-      workspaceRemovedAt: null,
-      client: { deletedAt: null },
-      ...(input.excludeMailboxId ? { id: { not: input.excludeMailboxId } } : {}),
-    },
-    select: { id: true, clientId: true, client: { select: { name: true } } },
+  // The address must stay unique across organisations, or two workspaces
+  // copy the same inbox. The other organisation's client name is not shown.
+  return runAsSystem(async () => {
+    const viewer = await db.client.findUnique({
+      where: { id: input.clientId },
+      select: { organisationId: true },
+    });
+    const rows = await db.clientMailboxIdentity.findMany({
+      where: {
+        emailNormalized: input.emailNormalized,
+        clientId: { not: input.clientId },
+        workspaceRemovedAt: null,
+        client: { deletedAt: null },
+        ...(input.excludeMailboxId ? { id: { not: input.excludeMailboxId } } : {}),
+      },
+      select: {
+        id: true,
+        clientId: true,
+        client: { select: { name: true, organisationId: true } },
+      },
+    });
+    return rows.map((r) => ({
+      mailboxId: r.id,
+      clientId: r.clientId,
+      clientName:
+        viewer?.organisationId && r.client.organisationId === viewer.organisationId
+          ? r.client.name
+          : "another organisation",
+    }));
   });
-  return rows.map((r) => ({
-    mailboxId: r.id,
-    clientId: r.clientId,
-    clientName: r.client.name,
-  }));
 }
 
 export type RawInboundStoreDecision =
@@ -106,7 +122,7 @@ export async function mayPersistRawInboundMail(input: {
   db?: MailboxDb;
 }): Promise<RawInboundStoreDecision> {
   const db = input.db ?? prisma;
-  const rows = await db.clientMailboxIdentity.findMany({
+  const rows = await runAsSystem(() => db.clientMailboxIdentity.findMany({
     where: {
       emailNormalized: input.emailNormalized,
       workspaceRemovedAt: null,
@@ -119,7 +135,7 @@ export async function mayPersistRawInboundMail(input: {
       connectedAt: true,
       createdAt: true,
     },
-  });
+  }));
 
   const live: LiveMailboxRow[] = rows.map((r) => ({
     id: r.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { runAsSystem, runInOrganisation } from "@/lib/tenant/organisation-context";
 import {
   ingestInboundForClient,
   type InboundWebhookPayload,
@@ -32,10 +33,12 @@ export async function POST(
   // ingest token, so a stray webhook can't drop a reply into the F2 recovery
   // window. findFirst (not findUnique) because we now filter on more than the
   // unique token. Collapses to the same generic 404 (no tenant enumeration).
-  const client = await prisma.client.findFirst({
-    where: { inboundIngestToken: token, deletedAt: null },
-    select: { id: true },
-  });
+  const client = await runAsSystem(() =>
+    prisma.client.findFirst({
+      where: { inboundIngestToken: token, deletedAt: null },
+      select: { id: true, organisationId: true },
+    }),
+  );
 
   if (!client) {
     return NextResponse.json({ error: "Unknown token" }, { status: 404 });
@@ -49,15 +52,16 @@ export async function POST(
   }
 
   const p = body as Partial<InboundWebhookPayload>;
-  if (!p.fromEmail || typeof p.fromEmail !== "string") {
+  const fromEmail = p.fromEmail;
+  if (!fromEmail || typeof fromEmail !== "string") {
     return NextResponse.json({ error: "fromEmail required" }, { status: 400 });
   }
 
   try {
-    const result = await ingestInboundForClient({
+    const result = await runInOrganisation(client.organisationId, () => ingestInboundForClient({
       clientId: client.id,
       payload: {
-        fromEmail: p.fromEmail,
+        fromEmail,
         toEmail: p.toEmail,
         subject: p.subject,
         snippet: p.snippet,
@@ -67,7 +71,7 @@ export async function POST(
         receivedAt: p.receivedAt,
       },
       ingestionSource: "webhook",
-    });
+    }));
 
     return NextResponse.json({
       ok: true,

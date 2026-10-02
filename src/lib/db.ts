@@ -2,6 +2,8 @@ import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
+import { enforceTenantOperation } from "@/lib/db-tenant-guard";
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
   pgPool: Pool | undefined;
@@ -31,7 +33,51 @@ function createPrismaClient(): PrismaClient {
     globalForPrisma.pgPool = pool;
   }
   const adapter = new PrismaPg(pool);
-  return new PrismaClient({ adapter });
+  const base = new PrismaClient({ adapter });
+  // Every tenant model is filtered by the active organisation. A staff
+  // session with no organisation matches nothing. Cron and webhooks have
+  // no session until they call runInOrganisation or runAsSystem.
+  const guarded = base.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }) {
+          return enforceTenantOperation({
+            base,
+            model,
+            operation,
+            args,
+            query,
+            resolveScope: async () => {
+              // Integration tests turn implicit scope off. Skip the NextAuth
+              // import entirely so the suite can seed without a Next server.
+              if (process.env.ORGANISATION_SCOPE_IMPLICIT === "off") {
+                return { kind: "anonymous" };
+              }
+              try {
+                const { resolveImplicitTenantScope } = await import(
+                  "@/server/tenant/implicit-tenant-scope"
+                );
+                return await resolveImplicitTenantScope();
+              } catch (error) {
+                // tsx scripts and one-off jobs are not Next server components.
+                // They have no staff session. Leaving them anonymous keeps the
+                // previous behaviour: they see rows until they call
+                // runInOrganisation. A real failure inside Next is rethrown.
+                if (
+                  error instanceof Error &&
+                  error.message.includes("Server Component")
+                ) {
+                  return { kind: "anonymous" };
+                }
+                throw error;
+              }
+            },
+          });
+        },
+      },
+    },
+  });
+  return guarded as unknown as PrismaClient;
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();

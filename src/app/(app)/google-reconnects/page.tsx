@@ -76,7 +76,7 @@ export default async function GoogleReconnectsPage() {
         <SummaryCard
           title="Google mailboxes"
           value={roster.totalGoogleMailboxes}
-          hint="Across every client workspace"
+          hint="In this organisation"
           tone="ok"
         />
       </div>
@@ -92,8 +92,8 @@ export default async function GoogleReconnectsPage() {
         <CardContent>
           {roster.entries.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No Google mailboxes are connected in any workspace, so there is nothing to
-              reconnect. Microsoft mailboxes are unaffected by this weekly expiry.
+              No Google mailboxes are connected in this organisation, so there is nothing
+              to reconnect. Microsoft mailboxes are unaffected by this weekly expiry.
             </p>
           ) : (
             <Table className="table-fixed min-w-[40rem]">

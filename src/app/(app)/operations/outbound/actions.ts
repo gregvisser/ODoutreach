@@ -10,6 +10,7 @@ import { processOutboundSendQueue } from "@/server/email/outbound/queue-processo
 import { requireOpensDoorsStaff, requireSuperAdmin } from "@/server/auth/staff";
 import { prisma } from "@/lib/db";
 import { getAccessibleClientIds, requireClientAccess } from "@/server/tenant/access";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 export type QueueStatusResult = {
   queued: number;
@@ -19,17 +20,23 @@ export type QueueStatusResult = {
 };
 
 export async function getQueueStatusAction(): Promise<QueueStatusResult> {
-  await requireSuperAdmin();
+  const staff = await requireSuperAdmin();
+  const organisationId = await organisationIdForStaff(staff.id);
+  if (!organisationId) {
+    return { queued: 0, processing: 0, failedTotal: 0, staleQueued: 0 };
+  }
+  const inOrganisation = { client: { organisationId } };
 
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
 
   const [queued, processing, failedTotal, staleQueued] = await Promise.all([
-    prisma.outboundEmail.count({ where: { status: "QUEUED" } }),
-    prisma.outboundEmail.count({ where: { status: "PROCESSING" } }),
-    prisma.outboundEmail.count({ where: { status: "FAILED" } }),
+    prisma.outboundEmail.count({ where: { status: "QUEUED", ...inOrganisation } }),
+    prisma.outboundEmail.count({ where: { status: "PROCESSING", ...inOrganisation } }),
+    prisma.outboundEmail.count({ where: { status: "FAILED", ...inOrganisation } }),
     prisma.outboundEmail.count({
       where: {
         status: "QUEUED",
+        ...inOrganisation,
         OR: [
           { queuedAt: { lt: thirtyMinAgo } },
           { queuedAt: null, createdAt: { lt: thirtyMinAgo } },
@@ -51,10 +58,11 @@ export type ProcessQueueActionResult = {
 export async function processQueueAction(input: {
   limit: number;
 }): Promise<ProcessQueueActionResult> {
-  await requireSuperAdmin();
+  const staff = await requireSuperAdmin();
 
   const limit = Math.min(Math.max(input.limit, 1), 50);
-  const result = await processOutboundSendQueue({ limit });
+  const clientIds = await getAccessibleClientIds(staff);
+  const result = await processOutboundSendQueue({ limit, clientIds });
 
   revalidatePath("/operations/outbound");
   revalidatePath("/reporting");

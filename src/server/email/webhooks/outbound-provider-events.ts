@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { getOrganisationContext, runAsSystem } from "@/lib/tenant/organisation-context";
 
 import {
   classifyBounceHardness,
@@ -44,6 +45,9 @@ export async function applyNormalizedEmailEvent(
   outboundEmailId?: string;
   replayDuplicate?: boolean;
 }> {
+  if (getOrganisationContext()?.kind !== "system") {
+    return runAsSystem(() => applyNormalizedEmailEvent(event));
+  }
   const dedupeHash = computeWebhookDedupeHash({
     providerName: event.providerName,
     webhookMessageId: event.webhookMessageId,

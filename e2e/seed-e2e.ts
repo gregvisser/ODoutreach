@@ -45,8 +45,12 @@ import {
   E2E_MAILBOX_SIGNATURE_HTML,
   E2E_MAILBOXES,
   E2E_MEMBER_A,
+  E2E_GOOGLE_BADGE,
   E2E_MEMBER_B,
+  E2E_MULTI_STAFF,
   E2E_OUTBOUND_EMAIL,
+  E2E_PAPAYA,
+  E2E_PAPAYA_STAFF,
   E2E_PLATFORM_ADMIN,
   E2E_REPLY_RECOVERY,
   E2E_REPLY_QUEUE,
@@ -749,6 +753,109 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
             role: person.role,
           }),
         },
+        update: {},
+      });
+    }
+
+    await prisma.organisation.upsert({
+      where: { id: E2E_PAPAYA.organisationId },
+      create: {
+        id: E2E_PAPAYA.organisationId,
+        name: E2E_PAPAYA.name,
+        slug: E2E_PAPAYA.slug,
+        status: "ACTIVE",
+      },
+      update: { name: E2E_PAPAYA.name, status: "ACTIVE" },
+    });
+    await prisma.client.upsert({
+      where: { id: E2E_PAPAYA.clientId },
+      create: {
+        id: E2E_PAPAYA.clientId,
+        organisationId: E2E_PAPAYA.organisationId,
+        name: E2E_PAPAYA.clientName,
+        slug: E2E_PAPAYA.clientSlug,
+        status: "ACTIVE",
+      },
+      update: {
+        organisationId: E2E_PAPAYA.organisationId,
+        name: E2E_PAPAYA.clientName,
+        deletedAt: null,
+      },
+    });
+    await prisma.client.upsert({
+      where: { id: E2E_GOOGLE_BADGE.clientId },
+      create: {
+        id: E2E_GOOGLE_BADGE.clientId,
+        organisationId: OPENSDOORS_ORGANISATION_ID,
+        name: E2E_GOOGLE_BADGE.clientName,
+        slug: E2E_GOOGLE_BADGE.clientSlug,
+        status: "ACTIVE",
+      },
+      update: { name: E2E_GOOGLE_BADGE.clientName, deletedAt: null },
+    });
+    const googleBadgeMailbox = {
+      clientId: E2E_GOOGLE_BADGE.clientId,
+      provider: "GOOGLE" as const,
+      email: E2E_GOOGLE_BADGE.email,
+      emailNormalized: E2E_GOOGLE_BADGE.email,
+      isActive: true,
+      connectionStatus: "PENDING_CONNECTION" as const,
+      workspaceRemovedAt: null,
+    };
+    await prisma.clientMailboxIdentity.upsert({
+      where: { id: E2E_GOOGLE_BADGE.mailboxId },
+      create: { id: E2E_GOOGLE_BADGE.mailboxId, ...googleBadgeMailbox },
+      update: googleBadgeMailbox,
+    });
+
+    const papayaStaff = await prisma.staffUser.upsert({
+      where: { entraObjectId: E2E_PAPAYA_STAFF.entraObjectId },
+      create: {
+        entraObjectId: E2E_PAPAYA_STAFF.entraObjectId,
+        email: E2E_PAPAYA_STAFF.email,
+        displayName: E2E_PAPAYA_STAFF.displayName,
+        role: "OPERATOR",
+        isActive: true,
+        isSuperAdmin: false,
+        isPlatformAdmin: false,
+      },
+      update: { isActive: true, isSuperAdmin: false, isPlatformAdmin: false },
+    });
+    await prisma.organisationMember.deleteMany({
+      where: { staffUserId: papayaStaff.id, organisationId: OPENSDOORS_ORGANISATION_ID },
+    });
+    await prisma.organisationMember.upsert({
+      where: {
+        organisationId_staffUserId: {
+          organisationId: E2E_PAPAYA.organisationId,
+          staffUserId: papayaStaff.id,
+        },
+      },
+      create: {
+        organisationId: E2E_PAPAYA.organisationId,
+        staffUserId: papayaStaff.id,
+        role: "USER",
+      },
+      update: {},
+    });
+
+    const multiStaff = await prisma.staffUser.upsert({
+      where: { entraObjectId: E2E_MULTI_STAFF.entraObjectId },
+      create: {
+        entraObjectId: E2E_MULTI_STAFF.entraObjectId,
+        email: E2E_MULTI_STAFF.email,
+        displayName: E2E_MULTI_STAFF.displayName,
+        role: "OPERATOR",
+        isActive: true,
+        isSuperAdmin: false,
+        isPlatformAdmin: false,
+      },
+      update: { isActive: true, isSuperAdmin: false, isPlatformAdmin: false },
+    });
+    for (const organisationId of [OPENSDOORS_ORGANISATION_ID, E2E_PAPAYA.organisationId]) {
+      await prisma.organisationMember.upsert({
+        where: { organisationId_staffUserId: { organisationId, staffUserId: multiStaff.id } },
+        create: { organisationId, staffUserId: multiStaff.id, role: "USER" },
         update: {},
       });
     }

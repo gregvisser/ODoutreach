@@ -73,9 +73,12 @@ export function staffAuditActionLabel(action: string): string {
 /**
  * Recent AuditLog rows for Staff Access (entityType StaffUser). Admin-only callers should gate before use.
  */
-export async function listRecentStaffAccessAuditLogs(): Promise<StaffAccessAuditListItem[]> {
+export async function listRecentStaffAccessAuditLogs(
+  organisationId: string,
+): Promise<StaffAccessAuditListItem[]> {
+  if (!organisationId) return [];
   const logs = await prisma.auditLog.findMany({
-    where: { entityType: "StaffUser" },
+    where: { entityType: "StaffUser", organisationId },
     orderBy: { createdAt: "desc" },
     take: RECENT_LIMIT,
     include: {

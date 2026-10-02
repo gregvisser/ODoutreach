@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { runAsSystem } from "@/lib/tenant/organisation-context";
 import { resolveClientSendingWindow } from "@/lib/mailboxes/sending-calendar-history";
 import { resolveSendingCalendarDay } from "@/lib/mailboxes/sending-calendar";
 import { listReplySyncMailboxIds } from "./mailbox-inbox-sync";
@@ -11,6 +12,10 @@ export { isLegacyScheduledWindow } from "@/lib/mailboxes/scheduled-outreach-poli
 /** Recomputed for every batch, so a snapshot cannot authorize a later closed day. */
 export async function loadScheduledOutreachPlan(at = new Date()) {
   if (!Number.isFinite(+at)) throw Error("Invalid scheduled instant");
+  return runAsSystem(() => loadScheduledOutreachPlanUnscoped(at));
+}
+
+async function loadScheduledOutreachPlanUnscoped(at: Date) {
   const clients = await prisma.client.findMany({
     where: {
       deletedAt: null,
