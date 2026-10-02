@@ -96,7 +96,13 @@ export default async function GoogleReconnectsPage() {
               reconnect. Microsoft mailboxes are unaffected by this weekly expiry.
             </p>
           ) : (
-            <Table>
+            <Table className="table-fixed min-w-[40rem]">
+              <colgroup>
+                <col className="w-[28%]" />
+                <col className="w-[22%]" />
+                <col />
+                <col className="w-[10rem]" />
+              </colgroup>
               <TableHeader>
                 <TableRow>
                   <TableHead>Mailbox</TableHead>
@@ -107,24 +113,24 @@ export default async function GoogleReconnectsPage() {
               </TableHeader>
               <TableBody>
                 {roster.entries.map((entry) => (
-                  <TableRow key={entry.mailboxId}>
-                    <TableCell className="font-medium">{entry.email}</TableCell>
-                    <TableCell>
+                  <TableRow key={entry.mailboxId} className="align-top">
+                    <TableCell className="align-top font-medium break-all">{entry.email}</TableCell>
+                    <TableCell className="align-top">
                       <Link
                         prefetch={false}
-                        className="underline"
+                        className="underline break-words"
                         href={`/clients/${entry.clientId}`}
                       >
                         {entry.clientName}
                       </Link>
                     </TableCell>
-                    <TableCell className="max-w-md">
-                      <div className="flex flex-col gap-1">
+                    <TableCell className="align-top">
+                      <div className="flex min-w-0 flex-col gap-1">
                         <StatusBadge entry={entry} />
-                        <span className="text-muted-foreground text-xs">{entry.label}</span>
+                        <span className="text-muted-foreground break-words text-xs">{entry.label}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right align-top whitespace-nowrap">
                       <Link
                         prefetch={false}
                         className={cn(buttonVariants({ variant: "outline", size: "sm" }))}

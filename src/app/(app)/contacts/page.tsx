@@ -373,7 +373,7 @@ export default async function ContactsPage({ searchParams }: Props) {
                 );
                 return (
                   <TableRow key={row.id}>
-                    <TableCell className="font-medium">
+                    <TableCell className="break-all font-medium">
                       {row.email ?? (
                         <span
                           className="text-xs text-muted-foreground"

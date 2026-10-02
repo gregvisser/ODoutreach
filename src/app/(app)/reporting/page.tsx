@@ -293,9 +293,9 @@ export default async function ReportingPage({ searchParams }: Props) {
               <TableBody>
                 {metricsData.byClient.map((row) => (
                   <TableRow key={row.clientId}>
-                    <TableCell className="font-medium">
+                    <TableCell className="break-words font-medium">
                       <Link prefetch={false}
-                        className="underline-offset-2 hover:underline"
+                        className="break-words underline-offset-2 hover:underline"
                         href={`/reporting?client=${row.clientId}${rangeQuery}`}
                       >
                         {row.clientName}
@@ -444,7 +444,7 @@ function MetricItem({
 /** F5 — a right-aligned per-client table cell whose number drills into detail. */
 function DrillCell({ href, value }: { href: string; value: string }) {
   return (
-    <TableCell className="text-right tabular-nums">
+    <TableCell className="text-right tabular-nums whitespace-nowrap">
       <Link prefetch={false} href={href} className="underline-offset-2 hover:underline">
         {value}
       </Link>

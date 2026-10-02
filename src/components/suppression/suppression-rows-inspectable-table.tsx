@@ -153,7 +153,7 @@ export function SuppressionRowsInspectableTable({
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.id}>
-                <TableCell className="font-mono text-sm">{r.value}</TableCell>
+                <TableCell className="break-all font-mono text-sm" title={r.value}>{r.value}</TableCell>
                 <TableCell>{r.clientName}</TableCell>
               </TableRow>
             ))}

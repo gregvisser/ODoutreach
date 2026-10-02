@@ -123,7 +123,7 @@ export default async function SupportPage() {
                     <td className="px-4 py-3">
                       <Link prefetch={false}
                         href={`/support/${t.id}`}
-                        className="font-medium text-foreground underline-offset-2 hover:underline"
+                        className="break-words font-medium text-foreground underline-offset-2 hover:underline"
                       >
                         {t.title}
                       </Link>

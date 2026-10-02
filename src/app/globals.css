@@ -149,4 +149,18 @@
   h1 {
     @apply font-heading;
   }
+  /*
+   * Raw <table> markup (pages that do not use the Table component) wraps
+   * inside the cell. A utility such as whitespace-nowrap still wins, so a
+   * timestamp can stay on one line. Long notes must not paint over the
+   * next cell.
+   */
+  :where(th, td) {
+    min-width: 0;
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+  :where(th, td) :where(.inline-flex, .rounded-full) {
+    max-width: 100%;
+  }
 }

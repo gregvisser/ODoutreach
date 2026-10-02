@@ -375,27 +375,39 @@ export function UniversePageClient({
                   />
                 </TableCell>
                 {showCol("name") ? (
-                  <TableCell className="max-w-[120px] truncate text-sm font-medium">
-                    {rowDisplayName(r)}
+                  <TableCell className="max-w-[120px] text-sm font-medium">
+                    <div className="truncate" title={rowDisplayName(r)}>{rowDisplayName(r)}</div>
                   </TableCell>
                 ) : null}
                 {showCol("employer") ? (
-                  <TableCell className="max-w-[120px] truncate text-xs">{r.companyName ?? "—"}</TableCell>
+                  <TableCell className="max-w-[120px] text-xs">
+                    <div className="truncate" title={r.companyName ?? undefined}>{r.companyName ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("industry") ? (
-                  <TableCell className="max-w-[100px] truncate text-xs">{r.industry ?? "—"}</TableCell>
+                  <TableCell className="max-w-[100px] text-xs">
+                    <div className="truncate" title={r.industry ?? undefined}>{r.industry ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("firstName") ? (
-                  <TableCell className="max-w-[90px] truncate text-xs">{r.firstName ?? "—"}</TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={r.firstName ?? undefined}>{r.firstName ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("lastName") ? (
-                  <TableCell className="max-w-[90px] truncate text-xs">{r.lastName ?? "—"}</TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={r.lastName ?? undefined}>{r.lastName ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("city") ? (
-                  <TableCell className="max-w-[90px] truncate text-xs">{r.city ?? "—"}</TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={r.city ?? undefined}>{r.city ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("country") ? (
-                  <TableCell className="max-w-[90px] truncate text-xs">{r.country ?? "—"}</TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={r.country ?? undefined}>{r.country ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("linkedin") ? (
                   <TableCell className="max-w-[100px] truncate text-xs">
@@ -418,34 +430,52 @@ export function UniversePageClient({
                   </TableCell>
                 ) : null}
                 {showCol("job1Title") ? (
-                  <TableCell className="max-w-[120px] truncate text-xs">{r.jobTitle ?? "—"}</TableCell>
+                  <TableCell className="max-w-[120px] text-xs">
+                    <div className="truncate" title={r.jobTitle ?? undefined}>{r.jobTitle ?? "—"}</div>
+                  </TableCell>
                 ) : null}
                 {showCol("emails") ? (
-                  <TableCell className="max-w-[140px] truncate font-mono text-xs">
-                    {r.emailNormalized ?? "—"}
+                  <TableCell className="max-w-[140px] font-mono text-xs">
+                    <div className="truncate" title={r.emailNormalized ?? undefined}>{r.emailNormalized ?? "—"}</div>
                   </TableCell>
                 ) : null}
                 {showCol("mobile") ? (
-                  <TableCell className="max-w-[100px] truncate text-xs">
-                    {r.mobilePhoneNormalized ?? "—"}
+                  <TableCell className="max-w-[100px] text-xs">
+                    <div className="truncate" title={r.mobilePhoneNormalized ?? undefined}>{r.mobilePhoneNormalized ?? "—"}</div>
                   </TableCell>
                 ) : null}
                 {showCol("office") ? (
-                  <TableCell className="max-w-[100px] truncate text-xs">
-                    {r.officePhoneNormalized ?? "—"}
+                  <TableCell className="max-w-[100px] text-xs">
+                    <div className="truncate" title={r.officePhoneNormalized ?? undefined}>{r.officePhoneNormalized ?? "—"}</div>
                   </TableCell>
                 ) : null}
-                <TableCell className="max-w-[120px] truncate text-xs">
-                  {r.sourceSummary ??
-                    (r.firstSeenSourceType === "CSV_IMPORT"
-                      ? "CSV"
-                      : r.firstSeenSourceType === "ROCKETREACH"
-                        ? "RocketReach"
-                        : r.firstSeenSourceType === "MANUAL"
-                          ? "Manual"
-                          : r.firstSeenSourceType === "OTHER"
-                            ? "Other"
-                            : r.firstSeenSourceType)}
+                <TableCell className="max-w-[120px] text-xs">
+                  <div
+                    className="truncate"
+                    title={
+                      r.sourceSummary ??
+                      (r.firstSeenSourceType === "CSV_IMPORT"
+                        ? "CSV"
+                        : r.firstSeenSourceType === "ROCKETREACH"
+                          ? "RocketReach"
+                          : r.firstSeenSourceType === "MANUAL"
+                            ? "Manual"
+                            : r.firstSeenSourceType === "OTHER"
+                              ? "Other"
+                              : r.firstSeenSourceType)
+                    }
+                  >
+                    {r.sourceSummary ??
+                      (r.firstSeenSourceType === "CSV_IMPORT"
+                        ? "CSV"
+                        : r.firstSeenSourceType === "ROCKETREACH"
+                          ? "RocketReach"
+                          : r.firstSeenSourceType === "MANUAL"
+                            ? "Manual"
+                            : r.firstSeenSourceType === "OTHER"
+                              ? "Other"
+                              : r.firstSeenSourceType)}
+                  </div>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                   {r.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")}

@@ -454,15 +454,27 @@ function PreviewPanel({
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {row.rowNumber}
                   </TableCell>
-                  <TableCell className="max-w-[120px] truncate text-sm font-medium">
-                    {row.displayName || "—"}
+                  <TableCell className="max-w-[120px] text-sm font-medium">
+                    <div className="truncate" title={row.displayName || undefined}>{row.displayName || "—"}</div>
                   </TableCell>
-                  <TableCell className="max-w-[120px] truncate text-xs">{row.employer || "—"}</TableCell>
-                  <TableCell className="max-w-[100px] truncate text-xs">{row.industry || "—"}</TableCell>
-                  <TableCell className="max-w-[90px] truncate text-xs">{row.firstName || "—"}</TableCell>
-                  <TableCell className="max-w-[90px] truncate text-xs">{row.lastName || "—"}</TableCell>
-                  <TableCell className="max-w-[90px] truncate text-xs">{row.city || "—"}</TableCell>
-                  <TableCell className="max-w-[90px] truncate text-xs">{row.country || "—"}</TableCell>
+                  <TableCell className="max-w-[120px] text-xs">
+                    <div className="truncate" title={row.employer || undefined}>{row.employer || "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[100px] text-xs">
+                    <div className="truncate" title={row.industry || undefined}>{row.industry || "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={row.firstName || undefined}>{row.firstName || "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={row.lastName || undefined}>{row.lastName || "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={row.city || undefined}>{row.city || "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[90px] text-xs">
+                    <div className="truncate" title={row.country || undefined}>{row.country || "—"}</div>
+                  </TableCell>
                   <TableCell className="max-w-[100px] truncate text-xs">
                     {row.linkedIn ? (
                       <span title={row.linkedIn}>Yes</span>
@@ -470,19 +482,27 @@ function PreviewPanel({
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="max-w-[120px] truncate text-xs">{row.jobTitle || "—"}</TableCell>
-                  <TableCell className="max-w-[140px] truncate font-mono text-xs">
-                    {row.email ?? "—"}
+                  <TableCell className="max-w-[120px] text-xs">
+                    <div className="truncate" title={row.jobTitle || undefined}>{row.jobTitle || "—"}</div>
                   </TableCell>
-                  <TableCell className="max-w-[100px] truncate text-xs">{row.mobilePhone || "—"}</TableCell>
-                  <TableCell className="max-w-[100px] truncate text-xs">{row.officePhone || "—"}</TableCell>
+                  <TableCell className="max-w-[140px] font-mono text-xs">
+                    <div className="truncate" title={row.email ?? undefined}>{row.email ?? "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[100px] text-xs">
+                    <div className="truncate" title={row.mobilePhone || undefined}>{row.mobilePhone || "—"}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[100px] text-xs">
+                    <div className="truncate" title={row.officePhone || undefined}>{row.officePhone || "—"}</div>
+                  </TableCell>
                   <TableCell>
                     <PreviewStatusBadge status={row.status} />
                   </TableCell>
                   <TableCell>
                     <PreviewReadinessBadge readiness={row.readiness} />
                   </TableCell>
-                  <TableCell className="max-w-xs text-xs text-muted-foreground">{row.reason}</TableCell>
+                  <TableCell className="max-w-xs break-words text-xs text-muted-foreground" title={row.reason}>
+                    {row.reason}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -77,9 +77,9 @@ export default async function PlatformPage({
                 <Card className="border-border/80 shadow-sm">
                   <CardContent className="space-y-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{organisation.name}</p>
-                        <p className="text-sm text-muted-foreground">{organisation.slug}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words font-medium">{organisation.name}</p>
+                        <p className="break-all text-sm text-muted-foreground">{organisation.slug}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
                         <EnterOrganisationForm organisationId={organisation.id} size="sm" />

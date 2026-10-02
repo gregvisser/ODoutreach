@@ -88,15 +88,15 @@ export function RecentGovernedSendsPanel({
             ) : (
               rows.map((r) => (
                 <TableRow key={r.outboundId}>
-                  <TableCell className="max-w-[200px] align-top text-sm">
+                  <TableCell className="max-w-[200px] align-top break-all text-sm" title={r.toEmail}>
                     {r.toEmail}
                   </TableCell>
-                  <TableCell className="max-w-[220px] align-top text-sm">
+                  <TableCell className="max-w-[220px] align-top break-words text-sm" title={r.subject ?? undefined}>
                     {r.subject ?? "—"}
                   </TableCell>
-                  <TableCell className="align-top text-sm">
+                  <TableCell className="align-top break-all text-sm">
                     {r.mailboxEmail ? (
-                      <div className="font-medium">{r.mailboxEmail}</div>
+                      <div className="break-all font-medium">{r.mailboxEmail}</div>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
