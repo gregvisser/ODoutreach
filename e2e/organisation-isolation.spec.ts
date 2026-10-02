@@ -10,14 +10,14 @@ test.describe("a Papaya member cannot see OpensDoors", () => {
     await expect(page.getByRole("heading", { name: "Choose an organisation" })).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: "Organisation" })).toHaveCount(0);
     await expect(page.getByText(E2E_PAPAYA.name, { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(E2E_PAPAYA.clientName)).toBeVisible();
+    await expect(page.getByRole("table").getByText(E2E_PAPAYA.clientName).first()).toBeVisible();
     await expect(page.getByText(E2E_CLIENT.name)).toHaveCount(0);
     await expect(page.getByText(E2E_GOOGLE_BADGE.clientName)).toHaveCount(0);
     await expect(page.getByLabel(/need attention/)).toHaveCount(0);
 
     await page.goto("/google-reconnects");
     await expect(page.getByText(E2E_GOOGLE_BADGE.email)).toHaveCount(0);
-    await expect(page.getByText("In this organisation", { exact: true })).toBeVisible();
+    await expect(page.getByRole("main").getByText("In this organisation", { exact: true }).first()).toBeVisible();
 
     // The app shell streams a 200 before notFound() runs, so the proof is
     // that OpensDoors' workspace is not rendered.
@@ -28,7 +28,7 @@ test.describe("a Papaya member cannot see OpensDoors", () => {
     const logo = await page.request.get(`/api/clients/${E2E_CLIENT.id}/logo`);
     expect(logo.status()).toBe(403);
     await page.goto(`/clients/${E2E_PAPAYA.clientId}`);
-    await expect(page.getByRole("heading", { name: E2E_PAPAYA.clientName })).toBeVisible();
+    await expect(page.getByRole("heading", { name: E2E_PAPAYA.clientName }).first()).toBeVisible();
   });
 });
 
