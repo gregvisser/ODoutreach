@@ -14,23 +14,29 @@ test.describe("platform dashboard", () => {
     await expect(page.getByRole("heading", { name: "Platform", level: 1 })).toBeVisible();
     await expect(page.locator("aside").getByRole("navigation", { name: "Platform" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);
-    await expect(content.getByText("OpensDoors", { exact: true })).toBeVisible();
-    await expect(content.getByText("Active", { exact: true })).toBeVisible();
-    await expect(content.getByText("Members", { exact: true })).toBeVisible();
-    await expect(content.getByText("Mailboxes", { exact: true })).toBeVisible();
-    await expect(content.getByText("Sends today", { exact: true })).toBeVisible();
-    await expect(content.getByText("RocketReach", { exact: true })).toBeVisible();
-    await expect(content.getByText("AI spend", { exact: true })).toBeVisible();
-    await expect(content.getByText("Health", { exact: true })).toBeVisible();
-    await expect(content.getByRole("button", { name: "Enter workspace" })).toBeVisible();
-    await expect(content.getByRole("link", { name: "Manage", exact: true })).toBeVisible();
+    const opensDoors = content.getByRole("listitem").filter({ hasText: "OpensDoors" });
+    await expect(opensDoors.getByText("OpensDoors", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("Active", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("Members", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("Mailboxes", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("Sends today", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("RocketReach", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("AI spend", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("Health", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByRole("button", { name: "Enter workspace" })).toBeVisible();
+    await expect(opensDoors.getByRole("link", { name: "Manage", exact: true })).toBeVisible();
   });
 
   test("enter workspace opens the organisation, and back returns to the dashboard", async ({
     page,
   }) => {
     await page.goto("/platform");
-    await page.getByRole("main").getByRole("button", { name: "Enter workspace" }).click();
+    await page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({ hasText: "OpensDoors" })
+      .getByRole("button", { name: "Enter workspace" })
+      .click();
     await expect(page).toHaveURL(/\/clients$/);
     const back = page.getByRole("link", { name: "Back to platform dashboard" });
     await expect(back.first()).toBeVisible();
@@ -42,7 +48,12 @@ test.describe("platform dashboard", () => {
 
   test("manage organisation stays on the platform shell", async ({ page }) => {
     await page.goto("/platform");
-    await page.getByRole("main").getByRole("link", { name: "Manage", exact: true }).click();
+    await page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({ hasText: "OpensDoors" })
+      .getByRole("link", { name: "Manage", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/platform\/org_opensdoors$/);
     await expect(page.getByRole("heading", { name: "OpensDoors", level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);

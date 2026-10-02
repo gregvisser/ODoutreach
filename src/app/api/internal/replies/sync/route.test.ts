@@ -4,6 +4,14 @@ const { syncActiveClientMailboxInboxesMock } = vi.hoisted(() => ({
   syncActiveClientMailboxInboxesMock: vi.fn(),
 }));
 
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    clientMailboxIdentity: {
+      findUnique: async () => ({ client: { organisationId: "org_opensdoors" } }),
+    },
+  },
+}));
+
 vi.mock("@/server/mailbox/mailbox-inbox-sync", () => ({
   listReplySyncPlan: async () => ({
     mailboxIds: ["mailbox-one", "mailbox-two"],

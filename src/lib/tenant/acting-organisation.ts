@@ -50,9 +50,11 @@ function withPlatformRole(
 /**
  * Pick the organisation for this session.
  *
- * `memberships` must be oldest first. That oldest row is the default when
- * nobody has chosen, so an existing OpensDoors member keeps OpensDoors
- * until they switch.
+ * `memberships` must be oldest first. One membership is used even when
+ * nobody has chosen. Several memberships and no valid choice return null
+ * so the person picks at sign-in. A platform admin still defaults to the
+ * oldest membership; they move between organisations from the platform
+ * dashboard, not from a chooser.
  *
  * A requested id is honoured only when they belong to that organisation,
  * or they are a platform admin and the organisation exists. Any other
@@ -80,6 +82,7 @@ export function chooseActingOrganisation(input: {
     }
   }
 
+  if (!input.platformAdmin && input.memberships.length !== 1) return null;
   const home = input.memberships[0];
   if (!home) return null;
   return withPlatformRole(home, input.platformAdmin, "membership");

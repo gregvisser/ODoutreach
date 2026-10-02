@@ -1,6 +1,7 @@
 import "server-only";
 import { processOutboundSendQueue } from "@/server/email/outbound/queue-processor";
 import { prisma } from "@/lib/db";
+import { runAsSystem, runInOrganisation } from "@/lib/tenant/organisation-context";
 import { parseCampaignSchedulerSelection } from "@/lib/email-sequences/campaign-scheduler-selection";
 import { loadScheduledOutreachPlan } from "@/server/mailbox/scheduled-outreach";
 import { listReplySyncMailboxIds, syncMailboxInboxForMailbox } from "@/server/mailbox/mailbox-inbox-sync";
@@ -12,8 +13,20 @@ export async function runSelectedCampaignFollowUps(rawSelection: string | undefi
   const selection = parseCampaignSchedulerSelection(rawSelection);
   if (!selection) return { ok: true, skipped: true, reason: "not-configured" };
   const deadline = Date.now() + 90_000;
-  const client = await prisma.client.findFirst({ where: { id: selection.clientId, status: "ACTIVE", deletedAt: null, autonomousSendEnabled: true }, select: { id: true } });
+  const client = await runAsSystem(() =>
+    prisma.client.findFirst({
+      where: { id: selection.clientId, status: "ACTIVE", deletedAt: null, autonomousSendEnabled: true },
+      select: { id: true, organisationId: true },
+    }),
+  );
   if (!client) return { ok: true, skipped: true, reason: "client-consent-unavailable" };
+  return runInOrganisation(client.organisationId, () => runSelectedCampaignBody(selection, deadline));
+}
+
+async function runSelectedCampaignBody(
+  selection: NonNullable<ReturnType<typeof parseCampaignSchedulerSelection>>,
+  deadline: number,
+) {
   const plan = await loadScheduledOutreachPlan();
   if (!plan.clientIds.includes(selection.clientId)) return { ok: true, skipped: true, reason: "outside-sending-window" };
   const mailboxIds = await listReplySyncMailboxIds([selection.clientId]);

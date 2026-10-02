@@ -33,6 +33,7 @@ import { executeSavedResearchPlan } from "@/server/prospect-research/execute-pla
 import { applyUniverseHarvest, collectUniverseHarvest, UNIVERSE_HARVEST_BATCH } from "@/server/prospect-research/universe-harvest";
 import { requireClientAccess, type StaffIdentity } from "@/server/tenant/access";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
+import { runAsSystem, runInOrganisation } from "@/lib/tenant/organisation-context";
 import { bucketByOrganisation, type OrganisationJobRecord } from "@/lib/tenant/organisation-jobs";
 import {
   OPENSDOORS_ORGANISATION_ID,
@@ -204,7 +205,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
     };
   }
   const floorEnv = parseOptionalCreditFloor(process.env.ROCKETREACH_MIN_CREDIT_FLOOR);
-  const rules = await prisma.sequenceListRefillRule.findMany({
+  const rules = await runAsSystem(() => prisma.sequenceListRefillRule.findMany({
     where: { enabled: true },
     orderBy: { updatedAt: "asc" },
     // Enough for several organisations. Each organisation still stops at
@@ -222,7 +223,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       sequence: { select: { id: true, clientId: true, contactListId: true, archivedAt: true, contactList: { select: { archivedAt: true } } } },
       plan: { select: { id: true, name: true, clientId: true, criteria: true } },
     },
-  });
+  }));
   const balance = await loadRocketReachCreditSnapshot({ force: true, now: now.getTime() });
   const remaining: { value: number | "unlimited" } = {
     value: balance.state === "ready" ? balance.remaining : 0,
@@ -261,6 +262,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
     });
   }
   for (const rule of runnable) {
+    await runInOrganisation(organisationOfRefillClient(rule.client).organisationId, async () => {
     const failuresBefore = failed;
     const errorsBefore = errors.length;
     try {
@@ -283,7 +285,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
         sequenceId: rule.sequenceId,
         reason: need.reason,
       });
-      continue;
+      return;
     }
     let universeAdded = 0;
     let universeDetail = "";
@@ -300,7 +302,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       if (!harvested.ok) {
         failed++;
         errors.push(harvested.error);
-        continue;
+        return;
       }
       universeAdded = harvested.added;
       universeDetail = harvested.added
@@ -309,7 +311,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
     } catch (error) {
       failed++;
       errors.push(error instanceof Error ? error.message : "Universe re-harvest failed.");
-      continue;
+      return;
     }
     const readyAfter = await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId);
     const decision = decideListRefill({
@@ -361,7 +363,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
           reason: decision.reason,
         });
       }
-      continue;
+      return;
     }
     const origin = automaticSourceOrigin(rule.plan.name, now);
     const floor = effectiveBalanceFloor(rule.balanceFloor, floorEnv === "invalid" ? null : floorEnv);
@@ -438,6 +440,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       const record = organisations.find((item) => item.organisationId === label.organisationId);
       if (record) record.ok = false;
     }
+    });
   }
   const activeOrganisations = organisations.filter((item) => item.disposition !== "skipped");
   return {

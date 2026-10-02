@@ -92,7 +92,7 @@ export default async function StaffAccessPage() {
 
       <StaffAccessPanel initialRows={initialRows} />
 
-      <StaffAccessRecentActivity />
+      <StaffAccessRecentActivity organisationId={organisationId} />
     </div>
   );
 }

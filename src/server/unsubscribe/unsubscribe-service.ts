@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { getOrganisationContext, runAsSystem } from "@/lib/tenant/organisation-context";
 import {
   deriveEmailDomain,
   hashUnsubscribeToken,
@@ -117,6 +118,9 @@ export type ResolvedUnsubscribeToken = {
 export async function resolveUnsubscribeToken(
   rawToken: string,
 ): Promise<ResolvedUnsubscribeToken | null> {
+  if (getOrganisationContext()?.kind !== "system") {
+    return runAsSystem(() => resolveUnsubscribeToken(rawToken));
+  }
   if (typeof rawToken !== "string" || !UNSUBSCRIBE_TOKEN_SHAPE.test(rawToken)) {
     return null;
   }
@@ -181,6 +185,9 @@ export type PerformUnsubscribeResult =
 export async function performUnsubscribe(
   rawToken: string,
 ): Promise<PerformUnsubscribeResult> {
+  if (getOrganisationContext()?.kind !== "system") {
+    return runAsSystem(() => performUnsubscribe(rawToken));
+  }
   const resolved = await resolveUnsubscribeToken(rawToken);
   if (!resolved) return { status: "invalid" };
 

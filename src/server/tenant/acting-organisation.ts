@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 
 import { prisma } from "@/lib/db";
+import { runInOrganisation } from "@/lib/tenant/organisation-context";
 import {
   ACTING_ORGANISATION_COOKIE,
   chooseActingOrganisation,
@@ -169,7 +170,7 @@ export async function enterOrganisation(input: {
   await setActingOrganisationCookie(organisation.id);
 
   if (platformAdmin) {
-    await prisma.auditLog.create({
+    await runInOrganisation(organisation.id, () => prisma.auditLog.create({
       data: {
         organisationId: organisation.id,
         staffUserId: input.staffUserId,
@@ -183,7 +184,7 @@ export async function enterOrganisation(input: {
           organisationSlug: organisation.slug,
         },
       },
-    });
+    }));
   }
 
   return { ok: true };

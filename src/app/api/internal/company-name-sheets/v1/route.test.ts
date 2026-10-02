@@ -1,10 +1,12 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ sources: vi.fn(), sync: vi.fn() }));
-vi.mock("@/lib/db", () => ({ prisma: { companyDncSheetSource: { findMany: m.sources } } }));
+const m = vi.hoisted(() => ({ sources: vi.fn(), source: vi.fn(), sync: vi.fn() }));
+vi.mock("@/lib/db", () => ({
+  prisma: { companyDncSheetSource: { findMany: m.sources, findUnique: m.source } },
+}));
 vi.mock("@/server/integrations/google-sheets/company-name-sheet-sync", () => ({ syncCompanyNameSheet: m.sync }));
 import { POST } from "./route";
 const request = (body: object, secret = "synthetic") => new Request("https://example.test/api/internal/company-name-sheets/v1", { method: "POST", headers: { authorization: `Bearer ${secret}` }, body: JSON.stringify(body) });
-beforeEach(() => { vi.resetAllMocks(); vi.stubEnv("PROCESS_QUEUE_SECRET", "synthetic"); m.sources.mockResolvedValue([{ id: "source" }]); m.sync.mockResolvedValue({ ok: true, added: 1 }); });
+beforeEach(() => { vi.resetAllMocks(); vi.stubEnv("PROCESS_QUEUE_SECRET", "synthetic"); m.sources.mockResolvedValue([{ id: "source" }]); m.source.mockResolvedValue({ client: { organisationId: "org_opensdoors" } }); m.sync.mockResolvedValue({ ok: true, added: 1 }); });
 afterEach(() => vi.unstubAllEnvs());
 it("rejects wrong credentials and unversioned work", async () => {
   expect((await POST(request({ protocol: 1 }, "wrong") as never)).status).toBe(401);

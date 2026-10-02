@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const queue = vi.hoisted(() => vi.fn());
+const client = vi.hoisted(() => vi.fn());
 vi.mock("@/server/email/outbound/queue-processor", () => ({ processOutboundSendQueue: queue }));
+vi.mock("@/lib/db", () => ({ prisma: { client: { findUnique: client } } }));
 import { POST } from "./route";
 const request = (body: object, secret = "synthetic") => new Request("https://example.test/api/internal/outbound/dispatch/v1", { method: "POST", headers: { authorization: `Bearer ${secret}` }, body: JSON.stringify(body) });
-beforeEach(() => { queue.mockReset(); vi.stubEnv("PROCESS_QUEUE_SECRET", "synthetic"); queue.mockResolvedValue({ claimed: 0, completed: 0, errors: [] }); });
+beforeEach(() => { queue.mockReset(); client.mockReset(); client.mockResolvedValue({ organisationId: "org_opensdoors" }); vi.stubEnv("PROCESS_QUEUE_SECRET", "synthetic"); queue.mockResolvedValue({ claimed: 0, completed: 0, errors: [] }); });
 afterEach(() => vi.unstubAllEnvs());
 it("rejects unauthenticated, unversioned, missing, and empty scope before queue work", async () => {
   expect((await POST(request({}, "wrong") as never)).status).toBe(401);

@@ -36,6 +36,10 @@ export default defineConfig({
       // server module is imported.
       DATABASE_URL: E2E_DATABASE_URL,
       E2E_DATABASE_URL,
+      // Staff-session scoping stays on in production and Playwright. This suite
+      // mocks auth and seeds across organisations, so the implicit session
+      // scope is off. Tests that need the wall call runInOrganisation.
+      ORGANISATION_SCOPE_IMPLICIT: "off",
 
       // --- send kill-switches -------------------------------------------------
       // Integration tests exercise the dispatcher. `mock` selects the inert

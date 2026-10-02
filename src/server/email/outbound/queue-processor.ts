@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { getOrganisationContext } from "@/lib/tenant/organisation-context";
 import { INBOUND_REPLY_METADATA_KIND } from "@/lib/inbox/inbound-reply-metadata";
 import { isOutboundDispatchScope, type OutboundDispatchScope } from "@/lib/outbound-dispatch-scope";
 
@@ -28,6 +29,8 @@ export async function processOutboundSendQueue(opts: {
   if (opts.dispatchScope !== undefined && !isOutboundDispatchScope(opts.dispatchScope)) throw new Error("Invalid outbound dispatch scope");
   if (opts.clientIds?.length === 0) return { claimed: 0, completed: 0, errors: [] };
   const limit = Math.min(Math.max(opts.limit, 1), 50);
+  const scope = getOrganisationContext();
+  const organisationId = scope?.kind === "organisation" ? scope.organisationId : null;
   const now = new Date();
   const claimExpires = new Date(now.getTime() + CLAIM_MS);
 
@@ -68,6 +71,7 @@ export async function processOutboundSendQueue(opts: {
           WHERE c."id" = "OutboundEmail"."clientId"
             AND c."deletedAt" IS NULL
             AND (${opts.clientIds !== undefined} = false OR c."id" = ANY(${opts.clientIds ?? []}::text[]))
+            AND (${organisationId}::text IS NULL OR c."organisationId" = ${organisationId})
             AND c."status" NOT IN (
               'PAUSED'::"ClientLifecycleStatus",
               'ARCHIVED'::"ClientLifecycleStatus"

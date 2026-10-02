@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.pending.mockResolvedValue([]);
   mocks.queue.mockResolvedValue({ errors: [] });
-  mocks.client.mockResolvedValue({ id: "client-a" });
+  mocks.client.mockResolvedValue({ id: "client-a", organisationId: "org_opensdoors" });
   mocks.plan.mockResolvedValue({ clientIds: ["client-a"] });
   mocks.mailboxes.mockResolvedValue(["mailbox-a"]);
   mocks.sync.mockResolvedValue({ ok: true, backlogPending: false });

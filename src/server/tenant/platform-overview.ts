@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { runAsSystem } from "@/lib/tenant/organisation-context";
 import { startOfUtcDay } from "@/lib/sending-window";
 import {
   assemblePlatformOrganisationOverviews,
@@ -18,6 +19,12 @@ function countOf(value: { _all: number } | number | undefined): number {
  */
 export async function loadPlatformOrganisationOverviews(
   now = new Date(),
+): Promise<PlatformOrganisationOverview[]> {
+  return runAsSystem(() => loadPlatformOrganisationOverviewsUnscoped(now));
+}
+
+async function loadPlatformOrganisationOverviewsUnscoped(
+  now: Date,
 ): Promise<PlatformOrganisationOverview[]> {
   const dayStart = startOfUtcDay(now);
   const [organisations, clients, aiGroups] = await Promise.all([

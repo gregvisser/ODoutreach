@@ -2,6 +2,7 @@ import "server-only";
 import { InboxCursorExpiredError, readReplyFolders } from "./inbox-pagination";
 
 import { prisma } from "@/lib/db";
+import { runAsSystem } from "@/lib/tenant/organisation-context";
 import type { Prisma } from "@/generated/prisma/client";
 import { persistSyncedInboundMessage } from "@/server/inbox/persist-inbound-message";
 import { GraphMessageIdentityConflictError, graphMessageIdentity, sanitizeGraphIdentityConflictReason, type GraphMessageIdentityConflictReason } from "./graph-message-identity";
@@ -680,6 +681,13 @@ export type ReplySyncOrganisation = {
  * organisations: a suspended organisation still gets its replies.
  */
 export async function listReplySyncPlan(): Promise<{
+  mailboxIds: string[];
+  organisations: ReplySyncOrganisation[];
+}> {
+  return runAsSystem(() => listReplySyncPlanUnscoped());
+}
+
+async function listReplySyncPlanUnscoped(): Promise<{
   mailboxIds: string[];
   organisations: ReplySyncOrganisation[];
 }> {

@@ -1,4 +1,5 @@
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
+import { runInOrganisation } from "@/lib/tenant/organisation-context";
 
 /**
  * One organisation's slice of a background job.
@@ -64,7 +65,7 @@ export async function runOrganisationJobs<T>(
     }
     active += 1;
     try {
-      const result = await work(target);
+      const result = await runInOrganisation(target.organisationId, () => work(target));
       const ok = options?.succeeded ? options.succeeded(result) : true;
       organisations.push({
         organisationId: target.organisationId,

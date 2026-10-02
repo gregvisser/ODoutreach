@@ -7,9 +7,11 @@ import {
   type GlobalBrandStored,
   resolveEffectiveBrand,
 } from "@/lib/branding/global-brand";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { OPENSDOORS_ORGANISATION_ID } from "@/lib/tenant/organisation";
 import { organisationIdForRequest } from "@/server/tenant/hostname";
+import { organisationIdForStaff } from "@/server/tenant/organisation-scope";
 
 const brandSelect = {
   appLogoUrl: true,
@@ -46,9 +48,26 @@ function mergeStoredBrand(
  * Memoised per request. A database error falls back to the shipped
  * OpensDoors defaults so the portal is never left without branding.
  */
+async function staffActingOrganisationId(): Promise<string | null> {
+  try {
+    const session = await auth();
+    const entraObjectId = session?.user?.id?.trim();
+    if (!entraObjectId) return null;
+    const staff = await prisma.staffUser.findUnique({
+      where: { entraObjectId },
+      select: { id: true, isActive: true },
+    });
+    if (!staff?.isActive) return null;
+    return organisationIdForStaff(staff.id);
+  } catch {
+    return null;
+  }
+}
+
 export const getGlobalBrand = cache(async (): Promise<EffectiveBrand> => {
   try {
-    const organisationId = await organisationIdForRequest();
+    const actingId = await staffActingOrganisationId();
+    const organisationId = actingId ?? (await organisationIdForRequest());
     if (organisationId !== OPENSDOORS_ORGANISATION_ID) {
       const organisation = await prisma.organisation.findUnique({
         where: { id: organisationId },

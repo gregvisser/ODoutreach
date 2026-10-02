@@ -64,19 +64,22 @@ export async function getGoogleReconnectRoster(
 /**
  * The count for the sidebar's "Google logins" badge (row 155).
  *
- * Unscoped by accessible-client-ids on purpose: roles were removed (see
- * `src/server/tenant/access.ts`), so every active staff member sees every
- * live client's mailboxes already, and this runs on every page load — it
- * reads the same shape `readGoogleReconnects` in `scripts/ops-alert.ts` reads
- * so the badge and the digest cannot disagree about who is due.
+ * Scoped to the organisation this session is working in. An empty
+ * organisation is 0, never the count from another organisation. The digest
+ * in `scripts/ops-alert.ts` still reads every organisation and names which
+ * one each mailbox belongs to.
  */
-export async function getGoogleReconnectNeedsAttentionCount(now: Date = new Date()): Promise<number> {
+export async function getGoogleReconnectNeedsAttentionCount(
+  organisationId: string | null,
+  now: Date = new Date(),
+): Promise<number> {
+  if (!organisationId) return 0;
   const rows = await prisma.clientMailboxIdentity.findMany({
     where: {
       provider: "GOOGLE",
       isActive: true,
       workspaceRemovedAt: null,
-      client: { deletedAt: null },
+      client: { deletedAt: null, organisationId },
     },
     select: {
       id: true,

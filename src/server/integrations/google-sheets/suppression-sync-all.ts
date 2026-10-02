@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
 import { suppressionKindLabel } from "@/lib/suppression/staff-labels";
+import { runInOrganisation } from "@/lib/tenant/organisation-context";
 import { bucketByOrganisation } from "@/lib/tenant/organisation-jobs";
 import {
   OPENSDOORS_ORGANISATION_ID,
@@ -218,9 +219,11 @@ export async function syncAllConfiguredSuppressionSources(
   for (const group of groups) {
     activeGroups += 1;
     try {
-      for (const source of group.items) {
-        await syncOneSuppressionSource(source, dryRun, result);
-      }
+      await runInOrganisation(group.organisationId, async () => {
+        for (const source of group.items) {
+          await syncOneSuppressionSource(source, dryRun, result);
+        }
+      });
       result.organisations.push({
         organisationId: group.organisationId,
         slug: group.slug,

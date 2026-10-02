@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { OrganisationChooser } from "@/components/app-shell/organisation-chooser";
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
 import { NewReplyNotifier } from "@/components/notifications/new-reply-notifier";
 import { StaffEmailBlocked } from "@/components/staff/staff-email-blocked";
@@ -52,6 +53,10 @@ export default async function AppLayout({
   }
 
   const platformAdmin = hasPlatformAdminAccess(gate.staff);
+  if (!platformAdmin && !home && enterable.length > 1) {
+    return <OrganisationChooser organisations={enterable} />;
+  }
+
   const effective = await getGlobalBrand();
   const brand = {
     logoUrl: effective.logoUrl,
@@ -63,9 +68,9 @@ export default async function AppLayout({
   // Row 155: an ambient count on every page, not just the once-a-day digest
   // Greg alone receives. Never throws the layout down if the count fails —
   // a missing badge is a cosmetic loss, not a reason to break every page.
-  const googleReconnectsAttentionCount = await getGoogleReconnectNeedsAttentionCount().catch(
-    () => 0,
-  );
+  const googleReconnectsAttentionCount = await getGoogleReconnectNeedsAttentionCount(
+    home?.organisationId ?? null,
+  ).catch(() => 0);
 
   return (
     <div className="flex min-h-screen">
@@ -75,8 +80,6 @@ export default async function AppLayout({
         isSuperAdmin={gate.staff.isSuperAdmin}
         platformAdmin={platformAdmin}
         googleReconnectsAttentionCount={googleReconnectsAttentionCount}
-        organisations={enterable}
-        actingOrganisationId={home?.organisationId ?? null}
         actingOrganisationName={home?.name ?? null}
       />
       <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-x-clip overflow-y-auto">
@@ -85,8 +88,6 @@ export default async function AppLayout({
           isSuperAdmin={gate.staff.isSuperAdmin}
           platformAdmin={platformAdmin}
           googleReconnectsAttentionCount={googleReconnectsAttentionCount}
-          organisations={enterable}
-          actingOrganisationId={home?.organisationId ?? null}
           actingOrganisationName={home?.name ?? null}
         />
         {platformAdmin ? (

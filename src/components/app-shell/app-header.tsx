@@ -32,16 +32,12 @@ export function AppHeader({
   googleReconnectsAttentionCount = 0,
   isSuperAdmin = false,
   platformAdmin = false,
-  organisations = [],
-  actingOrganisationId = null,
   actingOrganisationName = null,
 }: {
   brand: BrandProp;
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
   platformAdmin?: boolean;
-  organisations?: { id: string; name: string }[];
-  actingOrganisationId?: string | null;
   actingOrganisationName?: string | null;
 }) {
   const { data: session } = useSession();
@@ -71,8 +67,6 @@ export function AppHeader({
               isSuperAdmin={isSuperAdmin}
               platformAdmin={platformAdmin}
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
-              organisations={organisations}
-              actingOrganisationId={actingOrganisationId}
               actingOrganisationName={actingOrganisationName}
             />
             <div className="px-3 pb-4">

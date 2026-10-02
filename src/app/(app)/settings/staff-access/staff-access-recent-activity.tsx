@@ -17,8 +17,12 @@ function formatWhen(iso: string): string {
   return formatStaffDateTime(iso);
 }
 
-export async function StaffAccessRecentActivity() {
-  const rows = await listRecentStaffAccessAuditLogs();
+export async function StaffAccessRecentActivity({
+  organisationId,
+}: {
+  organisationId: string;
+}) {
+  const rows = await listRecentStaffAccessAuditLogs(organisationId);
 
   return (
     <div className="space-y-3 rounded-lg border border-border/80 bg-card/30 p-4">

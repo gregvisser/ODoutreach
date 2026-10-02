@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
+import { runAsSystem } from "@/lib/tenant/organisation-context";
 import type { OrganisationJobTarget } from "@/lib/tenant/organisation-jobs";
 
 /**
@@ -8,6 +9,10 @@ import type { OrganisationJobTarget } from "@/lib/tenant/organisation-jobs";
  * The runner decides whether a suspended organisation is skipped.
  */
 export async function listOrganisationJobTargets(): Promise<OrganisationJobTarget[]> {
+  return runAsSystem(() => listOrganisationJobTargetsUnscoped());
+}
+
+async function listOrganisationJobTargetsUnscoped(): Promise<OrganisationJobTarget[]> {
   const rows = await prisma.organisation.findMany({
     orderBy: { slug: "asc" },
     select: {
@@ -37,6 +42,12 @@ export async function targetsForClientIds(
   clientIds: readonly string[],
 ): Promise<OrganisationJobTarget[]> {
   if (clientIds.length === 0) return [];
+  return runAsSystem(() => targetsForClientIdsUnscoped(clientIds));
+}
+
+async function targetsForClientIdsUnscoped(
+  clientIds: readonly string[],
+): Promise<OrganisationJobTarget[]> {
   const rows = await prisma.client.findMany({
     where: { id: { in: [...clientIds] } },
     select: {

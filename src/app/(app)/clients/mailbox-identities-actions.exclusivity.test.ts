@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { prismaMock, requireStaffMock, requireMutatorMock, reconcilePrimaryMock } = vi.hoisted(
   () => ({
     prismaMock: {
+      client: { findUnique: vi.fn() },
       clientMailboxIdentity: { findFirst: vi.fn(), findMany: vi.fn() },
       auditLog: { create: vi.fn() },
       $transaction: vi.fn(),
@@ -53,7 +54,7 @@ const SHARED = "lucy@acme-industrial.example";
 const CONFLICT = {
   id: "mb-northwind",
   clientId: "client-northwind",
-  client: { name: "Northwind Fabrication" },
+  client: { name: "Northwind Fabrication", organisationId: "org_opensdoors" },
 };
 
 const createInput = {
@@ -80,6 +81,7 @@ describe("adding a mailbox that already belongs to another workspace", () => {
 
     requireStaffMock.mockResolvedValue({ id: "staff-1", isSuperAdmin: false });
     requireMutatorMock.mockResolvedValue(undefined);
+    prismaMock.client.findUnique.mockResolvedValue({ organisationId: "org_opensdoors" });
     // No clash within this workspace — the only check that existed before.
     prismaMock.clientMailboxIdentity.findFirst.mockResolvedValue(null);
   });
@@ -151,12 +153,16 @@ describe("restoring a removed mailbox whose address was taken meanwhile", () => 
 
     requireStaffMock.mockResolvedValue({ id: "staff-1", isSuperAdmin: false });
     requireMutatorMock.mockResolvedValue(undefined);
+    prismaMock.client.findUnique.mockResolvedValue({ organisationId: "org_opensdoors" });
   });
 
   /** Runs the action's transaction callback against a tx double. */
   function arrangeTransaction(conflicts: Array<typeof CONFLICT>) {
     const update = vi.fn().mockResolvedValue({});
     const tx = {
+      client: {
+        findUnique: vi.fn().mockResolvedValue({ organisationId: "org_opensdoors" }),
+      },
       clientMailboxIdentity: {
         findFirst: vi.fn().mockResolvedValue({
           id: "mb-restoring",
