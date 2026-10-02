@@ -8,7 +8,11 @@ import {
   ORGANISATION_FEATURE_KEYS,
   isOrganisationAdminRole,
   parseOrganisationSlug,
+  platformDashboardDecision,
+  postSignInPath,
+  signInCallbackUrl,
   staffBlockedBySuspendedOrganisation,
+  staffLandingPath,
 } from "./platform";
 
 describe("organisation slug", () => {
@@ -94,6 +98,51 @@ describe("suspended organisation", () => {
         organisationStatus: null,
       }),
     ).toBe(false);
+  });
+});
+
+describe("platform dashboard landing", () => {
+  const greg = { isPlatformAdmin: true, email: "greg@bidlow.co.uk" };
+  const ada = { isPlatformAdmin: false, email: "ada@opensdoors.co.uk" };
+  const flaggedOpensDoors = { isPlatformAdmin: true, email: "owner@opensdoors.co.uk" };
+
+  it("lands a Bidlow platform administrator on the platform dashboard", () => {
+    expect(platformDashboardDecision(greg)).toBe("allow");
+    expect(staffLandingPath(greg)).toBe("/platform");
+  });
+
+  it("lands everyone else on Reports and refuses the dashboard", () => {
+    expect(platformDashboardDecision(ada)).toBe("deny");
+    expect(platformDashboardDecision(flaggedOpensDoors)).toBe("deny");
+    expect(staffLandingPath(ada)).toBe("/reporting");
+    expect(staffLandingPath(flaggedOpensDoors)).toBe("/reporting");
+    expect(staffLandingPath({ isPlatformAdmin: false, email: "greg@bidlow.co.uk" })).toBe("/reporting");
+  });
+
+  it("sends a generic sign-in home to the dashboard only for a platform administrator", () => {
+    expect(postSignInPath(greg, null)).toBe("/platform");
+    expect(postSignInPath(greg, "/")).toBe("/platform");
+    expect(postSignInPath(greg, "/reporting")).toBe("/platform");
+    expect(postSignInPath(greg, "/dashboard")).toBe("/platform");
+    expect(postSignInPath(ada, "/reporting")).toBe("/reporting");
+    expect(postSignInPath(ada, "/platform")).toBe("/reporting");
+    expect(postSignInPath(ada, "/platform/org_north")).toBe("/reporting");
+  });
+
+  it("keeps a workspace deep link and still blocks the platform dashboard", () => {
+    expect(postSignInPath(greg, "/clients/acme?tab=brief")).toBe("/clients/acme?tab=brief");
+    expect(postSignInPath(ada, "/clients/acme")).toBe("/clients/acme");
+    expect(postSignInPath(greg, "/platform/org_north")).toBe("/platform/org_north");
+    expect(postSignInPath(greg, "//evil.example")).toBe("/platform");
+    expect(postSignInPath(ada, "https://evil.example/platform")).toBe("/reporting");
+  });
+
+  it("stores a home callback until sign-in can choose the dashboard", () => {
+    expect(signInCallbackUrl(null)).toBe("/");
+    expect(signInCallbackUrl("/reporting")).toBe("/");
+    expect(signInCallbackUrl("/platform")).toBe("/");
+    expect(signInCallbackUrl("/clients/acme")).toBe("/clients/acme");
+    expect(signInCallbackUrl("//evil.example")).toBe("/");
   });
 });
 

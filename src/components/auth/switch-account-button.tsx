@@ -19,7 +19,7 @@ export function SwitchAccountButton({ className }: { className?: string }) {
       // the existing server-side sign-in checks, never by the chosen email text.
       const result = await signIn(
         "microsoft-entra-id",
-        { redirect: false, redirectTo: "/reporting" },
+        { redirect: false, redirectTo: "/" },
         { prompt: "select_account" },
       );
       if (!result?.ok || result.error || !result.url)

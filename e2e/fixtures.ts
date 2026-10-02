@@ -22,6 +22,16 @@ export const E2E_STAFF = {
   displayName: "E2E Staff",
 } as const;
 
+/**
+ * Bidlow platform administrator. The address has to be @bidlow.co.uk and
+ * the flag has to be set; either one alone must not open the dashboard.
+ */
+export const E2E_PLATFORM_ADMIN = {
+  entraObjectId: "e2e-oid-platform-admin-000000005",
+  email: "e2e-platform@bidlow.co.uk",
+  displayName: "E2E Platform Admin",
+} as const;
+
 export const E2E_CLIENT = {
   id: "e2e-client-000000000000000001",
   name: "E2E Test Workspace",
@@ -343,6 +353,7 @@ export const E2E_STORAGE_STATE = {
   staff: "e2e/.auth/staff.json",
   memberA: "e2e/.auth/member-a.json",
   memberB: "e2e/.auth/member-b.json",
+  platformAdmin: "e2e/.auth/platform-admin.json",
 } as const;
 
 /**

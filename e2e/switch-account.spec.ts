@@ -5,7 +5,7 @@ test.use({ storageState: E2E_STORAGE_STATE.staff });
 
 // The local app and Auth.js client are real. Intercept only the OAuth handoff;
 // these checks do not authenticate to Microsoft or mint a different identity.
-test("desktop switch requests Microsoft's account chooser and returns to Reports", async ({
+test("desktop switch requests Microsoft's account chooser and returns home", async ({
   page,
 }) => {
   let requestDetails:
@@ -50,7 +50,7 @@ test("desktop switch requests Microsoft's account chooser and returns to Reports
   expect(requestDetails).toEqual({
     method: "POST",
     prompt: "select_account",
-    callback: "/reporting",
+    callback: "/",
     csrf: true,
   });
 });

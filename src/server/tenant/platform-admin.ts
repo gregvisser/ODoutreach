@@ -1,8 +1,25 @@
 import "server-only";
 
+import { notFound } from "next/navigation";
+
 import type { StaffUser } from "@/generated/prisma/client";
+import { platformDashboardDecision } from "@/lib/tenant/platform";
 import { hasPlatformAdminAccess } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+
+/**
+ * Stop a request that is not a Bidlow platform administrator.
+ * Pages and the platform layout both call this. notFound hides the
+ * dashboard; it does not redirect into an organisation workspace.
+ */
+export function assertPlatformDashboardAccess(staff: {
+  isPlatformAdmin: boolean;
+  email: string;
+}): void {
+  if (platformDashboardDecision(staff) === "deny") {
+    notFound();
+  }
+}
 
 /**
  * Bidlow platform console. Verified @bidlow.co.uk and the explicit flag.

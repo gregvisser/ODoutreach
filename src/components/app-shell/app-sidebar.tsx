@@ -1,9 +1,10 @@
 "use client";
 
-import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { buttonVariants } from "@/components/ui/button";
+import { PLATFORM_DASHBOARD_PATH } from "@/lib/tenant/platform";
 import { cn } from "@/lib/utils";
 
 import { OrganisationSwitcher } from "./organisation-switcher";
@@ -20,7 +21,7 @@ export function AppSidebar({
   className,
   brand,
   googleReconnectsAttentionCount = 0,
-  showPlatformNav = false,
+  platformAdmin = false,
   onNavigate,
   organisations = [],
   actingOrganisationId = null,
@@ -31,8 +32,8 @@ export function AppSidebar({
   /** Row 155: badges "Google logins" whenever a mailbox needs reconnecting. */
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
-  /** Bidlow platform console. Omitted from the shared nav list on purpose. */
-  showPlatformNav?: boolean;
+  /** Signed-in Bidlow platform administrator, inside an organisation workspace. */
+  platformAdmin?: boolean;
   onNavigate?: () => void;
   organisations?: { id: string; name: string }[];
   actingOrganisationId?: string | null;
@@ -40,7 +41,6 @@ export function AppSidebar({
 }) {
   const pathname = usePathname();
   const items = buildMainNav(googleReconnectsAttentionCount);
-  const platformActive = pathname === "/platform" || pathname.startsWith("/platform/");
 
   return (
     <aside
@@ -73,6 +73,21 @@ export function AppSidebar({
           <p className="text-xs text-sidebar-foreground/65">{brand.productName}</p>
         </div>
       </Link>
+      {platformAdmin ? (
+        <div className="border-b border-sidebar-border px-3 py-3">
+          <Link
+            href={PLATFORM_DASHBOARD_PATH}
+            onNavigate={onNavigate}
+            prefetch={false}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "h-auto w-full justify-start whitespace-normal py-2 text-left text-foreground",
+            )}
+          >
+            Back to platform dashboard
+          </Link>
+        </div>
+      ) : null}
       {actingOrganisationName || organisations.length > 1 ? (
         <div className="border-b border-sidebar-border px-3 py-3">
           {organisations.length > 1 ? (
@@ -138,22 +153,6 @@ export function AppSidebar({
             </Link>
           );
         })}
-        {showPlatformNav ? (
-          <Link
-            href="/platform"
-            onNavigate={onNavigate}
-            prefetch={false}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors max-md:min-h-11",
-              platformActive
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
-            )}
-          >
-            <Building2 className={cn("h-4 w-4 shrink-0", platformActive ? "opacity-100" : "opacity-70")} />
-            Platform
-          </Link>
-        ) : null}
       </nav>
       <div className="border-t border-sidebar-border p-4 text-xs text-sidebar-foreground/55">
         Internal workspace — staff access only

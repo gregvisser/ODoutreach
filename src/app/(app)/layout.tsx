@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AppHeader } from "@/components/app-shell/app-header";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
@@ -7,7 +9,7 @@ import { StaffInactive } from "@/components/staff/staff-inactive";
 import { StaffNotRegistered } from "@/components/staff/staff-not-registered";
 import { StaffOrganisationSuspended } from "@/components/staff/staff-organisation-suspended";
 import { hasPlatformAdminAccess } from "@/lib/tenant/organisation";
-import { staffBlockedBySuspendedOrganisation } from "@/lib/tenant/platform";
+import { PLATFORM_DASHBOARD_PATH, staffBlockedBySuspendedOrganisation } from "@/lib/tenant/platform";
 import { gateStaffAccess } from "@/server/auth/staff";
 import { getGlobalBrand } from "@/server/branding/get-global-brand";
 import { getGoogleReconnectNeedsAttentionCount } from "@/server/queries/google-reconnects";
@@ -49,7 +51,7 @@ export default async function AppLayout({
     );
   }
 
-  const showPlatformNav = hasPlatformAdminAccess(gate.staff);
+  const platformAdmin = hasPlatformAdminAccess(gate.staff);
   const effective = await getGlobalBrand();
   const brand = {
     logoUrl: effective.logoUrl,
@@ -71,7 +73,7 @@ export default async function AppLayout({
         className="hidden md:sticky md:top-0 md:flex md:h-screen md:max-h-screen md:shrink-0 md:self-start md:overflow-y-auto"
         brand={brand}
         isSuperAdmin={gate.staff.isSuperAdmin}
-        showPlatformNav={showPlatformNav}
+        platformAdmin={platformAdmin}
         googleReconnectsAttentionCount={googleReconnectsAttentionCount}
         organisations={enterable}
         actingOrganisationId={home?.organisationId ?? null}
@@ -81,12 +83,23 @@ export default async function AppLayout({
         <AppHeader
           brand={brand}
           isSuperAdmin={gate.staff.isSuperAdmin}
-          showPlatformNav={showPlatformNav}
+          platformAdmin={platformAdmin}
           googleReconnectsAttentionCount={googleReconnectsAttentionCount}
           organisations={enterable}
           actingOrganisationId={home?.organisationId ?? null}
           actingOrganisationName={home?.name ?? null}
         />
+        {platformAdmin ? (
+          <div className="border-b border-border bg-muted/40 px-4 py-2 md:hidden">
+            <Link
+              href={PLATFORM_DASHBOARD_PATH}
+              prefetch={false}
+              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Back to platform dashboard
+            </Link>
+          </div>
+        ) : null}
         <main className="min-w-0 flex-1 bg-background px-4 py-6 md:px-8 md:py-8">
           {children}
         </main>
