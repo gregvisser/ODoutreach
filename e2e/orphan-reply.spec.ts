@@ -39,8 +39,8 @@ test("staff can read and handle a historical reply without an outbound link", as
     await expect(main.getByRole("button", { name: /Send reply|Stop follow-ups|Pause follow-ups/i })).toHaveCount(0);
     expect((await pool.query('SELECT id FROM "ReplyClaim" WHERE "subjectId"=$1', [id])).rows).toHaveLength(0);
     await main.getByRole("button", { name: "Mark handled", exact: true }).click();
-    await expect(main.getByTestId("reply-ownership-card").getByRole("status")).toHaveText("Reply marked handled.");
-    await expect(main.getByTestId("reply-ownership-card")).toContainText("Handled by you");
+    await expect(main.getByTestId("reply-ownership-card").first().getByRole("status")).toHaveText("Reply marked handled.");
+    await expect(main.getByTestId("reply-ownership-card").first()).toContainText("Handled by you");
     await expect(main.getByRole("button", { name: "Mark handled", exact: true })).toHaveCount(0);
     await page.reload();
     await expect(main.getByRole("heading", { name: "Historical conversation", exact: true })).toBeVisible();
@@ -56,7 +56,7 @@ test("staff can read and handle a historical reply without an outbound link", as
     // Always capture the durable outcome before deleting this isolated fixture.
     try {
       const saved = await pool.query('SELECT "handledAt", "handledByStaffUserId" FROM "InboundReply" WHERE id=$1', [id]);
-      const buttons = await page.getByTestId("reply-ownership-card").getByRole("button").evaluateAll(elements =>
+      const buttons = await page.getByTestId("reply-ownership-card").first().getByRole("button").evaluateAll(elements =>
         elements.map(element => ({ text: element.textContent, disabled: element.hasAttribute("disabled") })),
       );
       await testInfo.attach("handled-save-outcome", {
@@ -84,7 +84,7 @@ test("a lost handled acknowledgement keeps repeats locked and the saved status c
   });
   try {
     await page.goto(`/clients/${E2E_CLIENT.id}/activity/replies/${id}`);
-    const card = page.getByTestId("reply-ownership-card");
+    const card = page.getByTestId("reply-ownership-card").first();
     await card.getByRole("button", { name: "Mark handled", exact: true }).click();
     await expect(card.getByRole("alert")).toContainText("We could not confirm the update");
     await expect(card.getByRole("button", { name: "Mark handled", exact: true })).toBeDisabled();
