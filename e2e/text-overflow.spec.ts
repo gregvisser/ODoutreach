@@ -68,6 +68,11 @@ async function cellOverlaps(page: Page): Promise<Overlap[]> {
       (cell): cell is HTMLElement => cell instanceof HTMLElement && cell.checkVisibility(),
     );
 
+    function clipsAxis(value: string): boolean {
+      return value === "hidden" || value === "clip" || value === "auto" || value === "scroll";
+    }
+
+    /** The part that is actually painted. Scrolled-away rows are not. */
     function clip(rect: DOMRect, start: HTMLElement | null) {
       let left = rect.left;
       let right = rect.right;
@@ -76,8 +81,8 @@ async function cellOverlaps(page: Page): Promise<Overlap[]> {
       let el = start;
       while (el) {
         const style = getComputedStyle(el);
-        const clipsX = style.overflowX === "hidden" || style.overflowX === "clip";
-        const clipsY = style.overflowY === "hidden" || style.overflowY === "clip";
+        const clipsX = clipsAxis(style.overflowX);
+        const clipsY = clipsAxis(style.overflowY);
         if (clipsX || clipsY) {
           const box = el.getBoundingClientRect();
           if (clipsX) {
@@ -109,9 +114,12 @@ async function cellOverlaps(page: Page): Promise<Overlap[]> {
         for (const rect of range.getClientRects()) {
           const visible = clip(rect, parent);
           if (!visible) continue;
+          const table = cell.closest("table");
           for (const other of cells) {
             if (other === cell || cell.contains(other) || other.contains(cell)) continue;
-            const box = other.getBoundingClientRect();
+            if (other.closest("table") !== table) continue;
+            const box = clip(other.getBoundingClientRect(), other);
+            if (!box) continue;
             const width = Math.min(visible.right, box.right) - Math.max(visible.left, box.left);
             const height = Math.min(visible.bottom, box.bottom) - Math.max(visible.top, box.top);
             if (width > 4 && height > 4) {
