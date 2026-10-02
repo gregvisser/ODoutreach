@@ -11,8 +11,9 @@ import {
 } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { hasPlatformAdminAccess, resolveOrganisationFeatureFlags } from "@/lib/tenant/organisation";
+import { resolveOrganisationFeatureFlags } from "@/lib/tenant/organisation";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
+import { assertPlatformDashboardAccess } from "@/server/tenant/platform-admin";
 
 import {
   EnterOrganisationForm,
@@ -31,7 +32,7 @@ export default async function PlatformOrganisationPage({
   params: Promise<{ organisationId: string }>;
 }) {
   const staff = await requireOpensDoorsStaff();
-  if (!hasPlatformAdminAccess(staff)) notFound();
+  assertPlatformDashboardAccess(staff);
 
   const { organisationId } = await params;
   const organisation = await prisma.organisation.findUnique({

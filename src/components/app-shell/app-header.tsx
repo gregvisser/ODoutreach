@@ -31,7 +31,7 @@ export function AppHeader({
   brand,
   googleReconnectsAttentionCount = 0,
   isSuperAdmin = false,
-  showPlatformNav = false,
+  platformAdmin = false,
   organisations = [],
   actingOrganisationId = null,
   actingOrganisationName = null,
@@ -39,7 +39,7 @@ export function AppHeader({
   brand: BrandProp;
   googleReconnectsAttentionCount?: number;
   isSuperAdmin?: boolean;
-  showPlatformNav?: boolean;
+  platformAdmin?: boolean;
   organisations?: { id: string; name: string }[];
   actingOrganisationId?: string | null;
   actingOrganisationName?: string | null;
@@ -69,7 +69,7 @@ export function AppHeader({
               className="border-0"
               brand={brand}
               isSuperAdmin={isSuperAdmin}
-              showPlatformNav={showPlatformNav}
+              platformAdmin={platformAdmin}
               googleReconnectsAttentionCount={googleReconnectsAttentionCount}
               organisations={organisations}
               actingOrganisationId={actingOrganisationId}

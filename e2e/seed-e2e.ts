@@ -47,6 +47,7 @@ import {
   E2E_MEMBER_A,
   E2E_MEMBER_B,
   E2E_OUTBOUND_EMAIL,
+  E2E_PLATFORM_ADMIN,
   E2E_REPLY_RECOVERY,
   E2E_REPLY_QUEUE,
   E2E_REPLIES_WAITING,
@@ -106,6 +107,26 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
         isSuperAdmin: false,
       },
       update: { isActive: true, isSuperAdmin: false, role: "OPERATOR" },
+    });
+
+    await prisma.staffUser.upsert({
+      where: { entraObjectId: E2E_PLATFORM_ADMIN.entraObjectId },
+      create: {
+        entraObjectId: E2E_PLATFORM_ADMIN.entraObjectId,
+        email: E2E_PLATFORM_ADMIN.email,
+        displayName: E2E_PLATFORM_ADMIN.displayName,
+        role: "ADMIN",
+        isActive: true,
+        isSuperAdmin: false,
+        isPlatformAdmin: true,
+      },
+      update: {
+        email: E2E_PLATFORM_ADMIN.email,
+        isActive: true,
+        isSuperAdmin: false,
+        isPlatformAdmin: true,
+        role: "ADMIN",
+      },
     });
 
     await prisma.client.upsert({

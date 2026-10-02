@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { MicrosoftSignInButton } from "@/components/auth/microsoft-sign-in-button";
 import { LegalFooterLinks } from "@/components/legal/legal-footer-links";
+import { postSignInPath, signInCallbackUrl, STAFF_WORKSPACE_HOME_PATH } from "@/lib/tenant/platform";
+import { gateStaffAccess } from "@/server/auth/staff";
 import { getGlobalBrand } from "@/server/branding/get-global-brand";
 
 export default async function SignInPage({
@@ -10,13 +12,18 @@ export default async function SignInPage({
 }: {
   searchParams?: Promise<{ callbackUrl?: string }>;
 }) {
+  const sp = (await searchParams) ?? {};
+  const requested = typeof sp.callbackUrl === "string" ? sp.callbackUrl : null;
   const session = await auth();
   if (session?.user) {
-    redirect("/reporting");
+    const gate = await gateStaffAccess();
+    if (gate.status === "ok") {
+      redirect(postSignInPath(gate.staff, requested));
+    }
+    redirect(STAFF_WORKSPACE_HOME_PATH);
   }
 
-  const sp = (await searchParams) ?? {};
-  const callbackUrl = sp.callbackUrl?.startsWith("/") ? sp.callbackUrl : "/reporting";
+  const callbackUrl = signInCallbackUrl(requested);
   const brand = await getGlobalBrand();
 
   return (

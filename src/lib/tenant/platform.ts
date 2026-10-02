@@ -63,4 +63,98 @@ export function staffBlockedBySuspendedOrganisation(staff: {
   return !hasPlatformAdminAccess(staff);
 }
 
+/** Where a platform administrator works across organisations. */
+export const PLATFORM_DASHBOARD_PATH = "/platform";
+
+/** Where organisation staff land. Reports is the workspace home. */
+export const STAFF_WORKSPACE_HOME_PATH = "/reporting";
+
+/**
+ * Paths that mean "open the app", not "return to a page I was on".
+ * A platform administrator who signs in from one of these lands on the
+ * platform dashboard. A deep link is left alone.
+ */
+const GENERIC_POST_SIGN_IN_PATHS = new Set([
+  "/",
+  "/reporting",
+  "/dashboard",
+  "/sign-in",
+  PLATFORM_DASHBOARD_PATH,
+]);
+
+export type PlatformDashboardDecision = "allow" | "deny";
+
+/**
+ * Server pages call this before rendering the platform dashboard.
+ * Deny is notFound — the route must not exist for anyone else.
+ */
+export function platformDashboardDecision(staff: {
+  isPlatformAdmin: boolean;
+  email: string;
+}): PlatformDashboardDecision {
+  return hasPlatformAdminAccess(staff) ? "allow" : "deny";
+}
+
+/** First screen after a person is signed in and no deep link is waiting. */
+export function staffLandingPath(staff: {
+  isPlatformAdmin: boolean;
+  email: string;
+}): string {
+  return platformDashboardDecision(staff) === "allow"
+    ? PLATFORM_DASHBOARD_PATH
+    : STAFF_WORKSPACE_HOME_PATH;
+}
+
+function safeInternalPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const value = raw.trim();
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
+  return value;
+}
+
+function pathWithoutQuery(value: string): string {
+  const query = value.indexOf("?");
+  const hash = value.indexOf("#");
+  const end = [query, hash].filter((index) => index >= 0).sort((a, b) => a - b)[0];
+  return end === undefined ? value : value.slice(0, end);
+}
+
+function isPlatformRoute(path: string): boolean {
+  return path === PLATFORM_DASHBOARD_PATH || path.startsWith(`${PLATFORM_DASHBOARD_PATH}/`);
+}
+
+/**
+ * Where to send someone who is already signed in, or who just finished
+ * Microsoft sign-in. Generic homes follow {@link staffLandingPath}.
+ * A workspace deep link is kept. The platform dashboard is never the
+ * destination for someone who cannot open it.
+ */
+export function postSignInPath(
+  staff: { isPlatformAdmin: boolean; email: string },
+  callbackPath: string | null | undefined,
+): string {
+  const landing = staffLandingPath(staff);
+  const callback = safeInternalPath(callbackPath);
+  if (!callback) return landing;
+  const path = pathWithoutQuery(callback);
+  if (GENERIC_POST_SIGN_IN_PATHS.has(path)) return landing;
+  if (isPlatformRoute(path)) {
+    return platformDashboardDecision(staff) === "allow" ? callback : landing;
+  }
+  return callback;
+}
+
+/**
+ * Callback stored on the Microsoft button before we know who is signing in.
+ * Generic homes go to `/`, which then chooses the dashboard or Reports.
+ * A deep link is preserved so a session that expired on a workspace returns there.
+ */
+export function signInCallbackUrl(requested: string | null | undefined): string {
+  const callback = safeInternalPath(requested);
+  if (!callback) return "/";
+  const path = pathWithoutQuery(callback);
+  if (GENERIC_POST_SIGN_IN_PATHS.has(path)) return "/";
+  return callback;
+}
+
 export { ORGANISATION_FEATURE_KEYS };

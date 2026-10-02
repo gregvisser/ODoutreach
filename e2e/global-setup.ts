@@ -24,6 +24,7 @@ import { E2E_AUTH_SECRET, E2E_BASE_URL, E2E_DATABASE_URL } from "./env";
 import {
   E2E_MEMBER_A,
   E2E_MEMBER_B,
+  E2E_PLATFORM_ADMIN,
   E2E_STAFF,
   E2E_STORAGE_STATE,
   E2E_SUPER_ADMIN,
@@ -111,6 +112,10 @@ async function globalSetup(): Promise<void> {
   await writeStorageState({
     ...E2E_STAFF,
     filePath: E2E_STORAGE_STATE.staff,
+  });
+  await writeStorageState({
+    ...E2E_PLATFORM_ADMIN,
+    filePath: E2E_STORAGE_STATE.platformAdmin,
   });
   // Membership-scoped personas - the only ones that can prove BC-01.
   await writeStorageState({
