@@ -17,7 +17,7 @@ test.describe("a Papaya member cannot see OpensDoors", () => {
 
     await page.goto("/google-reconnects");
     await expect(page.getByText(E2E_GOOGLE_BADGE.email)).toHaveCount(0);
-    await expect(page.getByText("In this organisation")).toBeVisible();
+    await expect(page.getByText("In this organisation", { exact: true })).toBeVisible();
 
     // The app shell streams a 200 before notFound() runs, so the proof is
     // that OpensDoors' workspace is not rendered.
