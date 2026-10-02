@@ -9,7 +9,7 @@ test.describe("a Papaya member cannot see OpensDoors", () => {
     await page.goto("/clients");
     await expect(page.getByRole("heading", { name: "Choose an organisation" })).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: "Organisation" })).toHaveCount(0);
-    await expect(page.getByText(E2E_PAPAYA.name, { exact: true })).toBeVisible();
+    await expect(page.getByText(E2E_PAPAYA.name, { exact: true }).first()).toBeVisible();
     await expect(page.getByText(E2E_PAPAYA.clientName)).toBeVisible();
     await expect(page.getByText(E2E_CLIENT.name)).toHaveCount(0);
     await expect(page.getByText(E2E_GOOGLE_BADGE.clientName)).toHaveCount(0);
