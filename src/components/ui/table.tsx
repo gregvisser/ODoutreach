@@ -37,6 +37,28 @@ function Table({
     return () => observer.disconnect();
   }, [scroll]);
 
+  // A 4rem offset is the app header. It is only correct when the page column
+  // is the scrollport. An overflow-x-auto ancestor is a nearer scrollport, and
+  // the same offset pulls the header down over the first rows.
+  React.useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || scroll !== "page") return;
+    let el: HTMLElement | null = container.parentElement;
+    let nestedHorizontalScroll = false;
+    while (el) {
+      const overflowX = getComputedStyle(el).overflowX;
+      if (overflowX === "auto" || overflowX === "scroll") {
+        nestedHorizontalScroll = true;
+        break;
+      }
+      el = el.parentElement;
+    }
+    container.style.setProperty(
+      "--table-sticky-top",
+      nestedHorizontalScroll ? "0px" : "4rem",
+    );
+  }, [scroll]);
+
   return (
     <div
       ref={containerRef}
