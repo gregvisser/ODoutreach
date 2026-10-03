@@ -40,6 +40,11 @@ export async function executeSavedResearchPlan(args: {
   aiOutreachCampaignId?: string | null;
   start?: number;
   pageSize?: number;
+  /**
+   * Automatic list top-up batch (10-30). When set it is the page size and the
+   * plan's manual lookup limit does not apply; the import cap rises to 30.
+   */
+  autoTopUpBatch?: number;
   originNote?: string | null;
   sourceLabel?: string | null;
   governorForRun?: (runId: string) => RocketReachLookupGovernor;
@@ -49,8 +54,11 @@ export async function executeSavedResearchPlan(args: {
   });
   if (!plan) return { ok: false, error: "That research plan is not on this client.", runId: "" };
 
-  const cap = Math.min(plan.maxLookups, args.pageSize ?? plan.maxLookups);
-  const mapped = researchPlanToSearchBody(plan.criteria, cap, args.start ?? 1);
+  const autoBatch = args.autoTopUpBatch;
+  const cap = autoBatch !== undefined
+    ? autoBatch
+    : Math.min(plan.maxLookups, args.pageSize ?? plan.maxLookups);
+  const mapped = researchPlanToSearchBody(plan.criteria, cap, args.start ?? 1, autoBatch);
   const run = await prisma.rocketReachPlanRun.create({
     data: {
       clientId: args.clientId,
@@ -83,6 +91,7 @@ export async function executeSavedResearchPlan(args: {
       originNote: args.originNote,
       sourceLabel: args.sourceLabel,
       governor: args.governorForRun?.(run.id),
+      maxBatch: autoBatch,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "RocketReach import failed.";

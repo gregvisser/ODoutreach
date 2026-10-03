@@ -10,9 +10,8 @@ export type SequenceListTopUpView = {
     planId: string;
     enabled: boolean;
     lowWaterMark: number;
-    maxCreditsPerRun: number;
+    /** Daily safety budget. There is no monthly cap. */
     maxCreditsPerDay: number;
-    maxCreditsPerMonth: number;
     balanceFloor: number;
     enabledByName: string | null;
     enabledAt: string | null;
@@ -26,7 +25,7 @@ export type SequenceListTopUpView = {
     detail: string | null;
   };
   creditsUsedToday: number;
-  creditsUsedThisMonth: number;
   budgetLeftToday: number | null;
-  budgetLeftThisMonth: number | null;
+  /** Size of the next automatic top-up (10-30), sized to safe mailbox capacity. */
+  nextTopUp: { batch: number; sendCapacity: number | null; note: string | null };
 };

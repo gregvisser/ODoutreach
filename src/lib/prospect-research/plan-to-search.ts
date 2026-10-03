@@ -1,5 +1,5 @@
 import { isRocketReachIndustry } from "@/lib/clients/rocketreach-industries";
-import { ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
+import { rocketReachImportPageCeiling } from "@/lib/clients/rocketreach-import-cap";
 import {
   buildRocketReachCardQuery,
   type RocketReachCardQuery,
@@ -17,11 +17,15 @@ export type PlanSearchBody = {
   order_by: "relevance";
 };
 
-/** Same People Search filters the manual card sends, capped at the manual import limit. */
+/**
+ * Same People Search filters the manual card sends, capped at the manual import
+ * limit. Automatic list top-up passes `maxBatch` to allow up to 30.
+ */
 export function researchPlanToSearchBody(
   criteriaInput: unknown,
   maxLookups: number,
   start: number,
+  maxBatch?: number,
 ): { ok: true; body: PlanSearchBody } | { ok: false; error: string } {
   const criteria = researchCriteriaSchema.safeParse(criteriaInput);
   if (!criteria.success) return { ok: false, error: "This research plan's targeting is incomplete." };
@@ -51,7 +55,7 @@ export function researchPlanToSearchBody(
     ok: true,
     body: {
       query,
-      page_size: Math.min(ROCKETREACH_MAX_IMPORT, maxLookups),
+      page_size: Math.min(rocketReachImportPageCeiling(maxBatch), maxLookups),
       start: pageStart,
       order_by: "relevance",
     },
@@ -77,6 +81,7 @@ export function researchPlanToPreviewSearch(
   criteriaInput: unknown,
   maxLookups: number,
   start: number,
+  maxBatch?: number,
 ): PreviewSearchPlan {
   const criteria = researchCriteriaSchema.safeParse(criteriaInput);
   if (!criteria.success) return { ok: false, error: "This research plan's targeting is incomplete." };
@@ -94,6 +99,7 @@ export function researchPlanToPreviewSearch(
     { ...criteria.data, industries: valid },
     maxLookups,
     start,
+    maxBatch,
   );
   if (!mapped.ok) return mapped;
   const note = skippedIndustries.length

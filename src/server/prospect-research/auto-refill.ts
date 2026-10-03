@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { automaticSourceOrigin } from "@/lib/clients/rocketreach-origin";
 import {
+  autoTopUpBatchSize,
   clientAllowsListRefill,
   decideListRefill,
   effectiveBalanceFloor,
@@ -30,6 +31,12 @@ import {
 import { loadKnownRocketReachIndexes } from "@/server/integrations/rocketreach/known-profiles";
 import { matchKnownSearchProfile } from "@/lib/clients/rocketreach-known-match";
 import { executeSavedResearchPlan } from "@/server/prospect-research/execute-plan";
+import { loadSequenceMailboxDailyCaps } from "@/server/prospect-research/top-up-capacity";
+import {
+  ROCKETREACH_AUTO_TOP_UP_HORIZON_DAYS,
+  ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+  ROCKETREACH_AUTO_TOP_UP_MIN_BATCH,
+} from "@/lib/clients/rocketreach-import-cap";
 import { applyUniverseHarvest, collectUniverseHarvest, UNIVERSE_HARVEST_BATCH } from "@/server/prospect-research/universe-harvest";
 import { requireClientAccess, type StaffIdentity } from "@/server/tenant/access";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
@@ -72,10 +79,6 @@ function startOfUtcDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-function startOfUtcMonth(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
 async function reservedSince(ruleId: string, since: Date): Promise<number> {
   return prisma.rocketReachCreditReservation.count({
     where: { ruleId, state: { in: [...ACTIVE_RESERVATION] }, reservedAt: { gte: since } },
@@ -108,7 +111,6 @@ function creditGovernor(args: {
   clientId: string;
   maxPerRun: number;
   maxPerDay: number;
-  maxPerMonth: number;
   floor: number;
   remaining: { value: number | "unlimited" };
   now: Date;
@@ -128,15 +130,11 @@ function creditGovernor(args: {
         const runUsed = await tx.rocketReachCreditReservation.count({
           where: { runId: args.runId, state: { in: [...ACTIVE_RESERVATION] } },
         });
-        if (runUsed >= args.maxPerRun) return { proceed: false, reason: "This run's credit budget is used." };
+        if (runUsed >= args.maxPerRun) return { proceed: false, reason: "This top-up's batch is complete." };
         const dayUsed = await tx.rocketReachCreditReservation.count({
           where: { ruleId: args.ruleId, state: { in: [...ACTIVE_RESERVATION] }, reservedAt: { gte: startOfUtcDay(args.now) } },
         });
         if (dayUsed >= args.maxPerDay) return { proceed: false, reason: "Today's credit budget is used." };
-        const monthUsed = await tx.rocketReachCreditReservation.count({
-          where: { ruleId: args.ruleId, state: { in: [...ACTIVE_RESERVATION] }, reservedAt: { gte: startOfUtcMonth(args.now) } },
-        });
-        if (monthUsed >= args.maxPerMonth) return { proceed: false, reason: "This month's credit budget is used." };
         await tx.rocketReachCreditReservation.create({
           data: {
             clientId: args.clientId,
@@ -287,16 +285,35 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       });
       return;
     }
+    // Size this top-up to what the client's connected mailboxes can safely
+    // send over the next few days (10-30). A batch, not a lifetime cap.
+    const sizing = autoTopUpBatchSize({
+      mailboxDailyCaps: await loadSequenceMailboxDailyCaps(rule.clientId, now),
+      readyNotEnrolled: readyBefore,
+    });
+    if (sizing.action === "skip") {
+      skipped++;
+      await recordSkip({
+        clientId: rule.clientId,
+        planId: rule.planId,
+        sequenceId: rule.sequenceId,
+        reason: sizing.reason,
+      });
+      return;
+    }
+    const batch = sizing.batch;
+    const batchNote = `Top-up batch ${String(batch)} (about ${String(ROCKETREACH_AUTO_TOP_UP_HORIZON_DAYS)} days of safe sending: ${String(sizing.capacity)}). `;
     let universeAdded = 0;
     let universeDetail = "";
     try {
+      // Universe first: people already researched cost no credits.
       const harvested = await applyUniverseHarvest({
         clientId: rule.clientId,
         sequenceId: rule.sequenceId,
         contactListId: rule.sequence.contactListId,
         criteria: rule.plan.criteria,
         now,
-        maxToAdd: need.gap,
+        maxToAdd: batch,
         staffId: null,
       });
       if (!harvested.ok) {
@@ -313,26 +330,15 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
       errors.push(error instanceof Error ? error.message : "Universe re-harvest failed.");
       return;
     }
-    const readyAfter = await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId);
     const decision = decideListRefill({
-      killSwitchOn: true,
-      client: rule.client,
-      sequenceArchived: rule.sequence.archivedAt !== null,
-      listArchived: rule.sequence.contactList.archivedAt !== null,
-      planBelongsToClient: true,
-      readyNotEnrolled: readyAfter,
-      lowWaterMark: rule.lowWaterMark,
+      remainingBatch: batch - universeAdded,
       balance:
         balance.state === "ready"
           ? { ok: true, remaining: remaining.value }
           : { ok: false, reason: "RocketReach credit balance is unavailable, so no lookup was made." },
       balanceFloor: effectiveBalanceFloor(rule.balanceFloor, floorEnv === "invalid" ? null : floorEnv),
       creditsReservedToday: await reservedSince(rule.id, startOfUtcDay(now)),
-      creditsReservedThisMonth: await reservedSince(rule.id, startOfUtcMonth(now)),
-      maxCreditsPerRun: rule.maxCreditsPerRun,
       maxCreditsPerDay: rule.maxCreditsPerDay,
-      maxCreditsPerMonth: rule.maxCreditsPerMonth,
-      floorEnvInvalid: floorEnv === "invalid",
     });
     if (decision.action === "skip") {
       if (universeAdded > 0) {
@@ -348,8 +354,8 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
             creditsUsed: 0,
             creditsReserved: 0,
             contactsAdded: universeAdded,
-            skipped: { universeAdded },
-            detail: `${universeDetail}No RocketReach lookup. ${decision.reason}`,
+            skipped: { universeAdded, batch },
+            detail: `${batchNote}${universeDetail}No RocketReach lookup. ${decision.reason}`,
             dryRun: false,
           },
         });
@@ -360,7 +366,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
           clientId: rule.clientId,
           planId: rule.planId,
           sequenceId: rule.sequenceId,
-          reason: decision.reason,
+          reason: `${batchNote}${decision.reason}`,
         });
       }
       return;
@@ -376,7 +382,7 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
         trigger: "AUTO_REFILL",
         sequenceId: rule.sequenceId,
         start: rule.searchStart,
-        pageSize: decision.lookupBudget,
+        autoTopUpBatch: decision.lookupBudget,
         originNote: origin,
         sourceLabel: origin,
         governorForRun: (runId) =>
@@ -384,9 +390,8 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
             runId,
             ruleId: rule.id,
             clientId: rule.clientId,
-            maxPerRun: rule.maxCreditsPerRun,
+            maxPerRun: decision.lookupBudget,
             maxPerDay: rule.maxCreditsPerDay,
-            maxPerMonth: rule.maxCreditsPerMonth,
             floor,
             remaining,
             now,
@@ -407,12 +412,12 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
           await prisma.sequenceListRefillRule.update({ where: { id: rule.id }, data: { searchStart: 1 } });
         }
       } else if (result.ok) {
-        if (universeDetail && result.runId) {
+        if (result.runId) {
           await prisma.rocketReachPlanRun.update({
             where: { id: result.runId },
             data: {
               contactsAdded: result.imported + universeAdded,
-              detail: `${universeDetail}RocketReach added ${String(result.imported)}.`,
+              detail: `${batchNote}${universeDetail}RocketReach added ${String(result.imported)}.`,
             },
           });
         }
@@ -482,9 +487,11 @@ export async function saveSequenceListRefillRule(
       planId: plan.id,
       enabled: value.enabled,
       lowWaterMark: value.lowWaterMark,
-      maxCreditsPerRun: value.maxCreditsPerRun,
+      // Legacy columns. The batch is now sized per top-up (10-30) and there is
+      // no monthly cap; these are kept only so old rows stay readable.
+      maxCreditsPerRun: ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
       maxCreditsPerDay: value.maxCreditsPerDay,
-      maxCreditsPerMonth: value.maxCreditsPerMonth,
+      maxCreditsPerMonth: 0,
       balanceFloor: value.balanceFloor,
       enabledByStaffId: value.enabled ? staff.id : existing?.enabledByStaffId ?? staff.id,
       enabledAt: value.enabled ? now : existing?.enabledAt ?? null,
@@ -505,9 +512,10 @@ export async function saveSequenceListRefillRule(
           planId: plan.id,
           enabled: value.enabled,
           lowWaterMark: value.lowWaterMark,
-          maxCreditsPerRun: value.maxCreditsPerRun,
+          topUpBatchMin: ROCKETREACH_AUTO_TOP_UP_MIN_BATCH,
+          topUpBatchMax: ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+          monthlyCreditCap: null,
           maxCreditsPerDay: value.maxCreditsPerDay,
-          maxCreditsPerMonth: value.maxCreditsPerMonth,
           balanceFloor: value.balanceFloor,
           enrolsContacts: false,
           sendsEmail: false,
@@ -544,7 +552,12 @@ export async function previewSequenceListTopUp(
   if (!plan) return { ok: false, error: "Choose a research plan saved on this client." };
   const rule = await prisma.sequenceListRefillRule.findUnique({ where: { sequenceId } });
   const ready = await countReadyNotEnrolled(clientId, sequenceId, sequence.contactListId);
-  const universeCap = rule ? Math.max(0, rule.lowWaterMark - ready) : UNIVERSE_HARVEST_BATCH;
+  const sizing = autoTopUpBatchSize({
+    mailboxDailyCaps: await loadSequenceMailboxDailyCaps(clientId, new Date()),
+    readyNotEnrolled: ready,
+  });
+  const batch = sizing.action === "fill" ? sizing.batch : 0;
+  const universeCap = rule ? batch : UNIVERSE_HARVEST_BATCH;
   const universe = await collectUniverseHarvest({
     clientId,
     sequenceId,
@@ -554,7 +567,9 @@ export async function previewSequenceListTopUp(
     maxToAdd: universeCap,
   });
   if (!universe.ok) return universe;
-  const mapped = researchPlanToPreviewSearch(plan.criteria, rule?.maxCreditsPerRun ?? Math.min(plan.maxLookups, 10), rule?.searchStart ?? 1);
+  const mapped = rule
+    ? researchPlanToPreviewSearch(plan.criteria, Math.max(1, batch), rule.searchStart, Math.max(1, batch))
+    : researchPlanToPreviewSearch(plan.criteria, Math.min(plan.maxLookups, 10), 1);
   if (!mapped.ok) return mapped;
   const searchCostsCredits = rocketReachPersonSearchCostsCredits();
   let searchNote = "";
@@ -584,7 +599,7 @@ export async function previewSequenceListTopUp(
   });
   const alreadyKnown = rocketReachMatches.filter((match) => !match.wouldLookup).length;
   const unknown = rocketReachMatches.length - alreadyKnown;
-  const gap = rule ? Math.max(0, rule.lowWaterMark - ready) : Math.max(0, unknown - ready);
+  const gap = rule ? batch : Math.max(0, unknown - ready);
   const shortfall = Math.max(0, gap - universe.matches.length);
   const estimatedCredits = shortfall === 0 ? 0 : Math.min(unknown, pageSize, shortfall);
   const matches = [
@@ -659,7 +674,10 @@ export async function loadSequenceListTopUp(
   ]);
   const now = new Date();
   const creditsUsedToday = rule ? await reservedSince(rule.id, startOfUtcDay(now)) : 0;
-  const creditsUsedThisMonth = rule ? await reservedSince(rule.id, startOfUtcMonth(now)) : 0;
+  const sizing = autoTopUpBatchSize({
+    mailboxDailyCaps: await loadSequenceMailboxDailyCaps(clientId, now),
+    readyNotEnrolled,
+  });
   const clientGate = clientAllowsListRefill(sequence.client);
   return {
     sequenceId,
@@ -674,9 +692,7 @@ export async function loadSequenceListTopUp(
           planId: rule.planId,
           enabled: rule.enabled,
           lowWaterMark: rule.lowWaterMark,
-          maxCreditsPerRun: rule.maxCreditsPerRun,
           maxCreditsPerDay: rule.maxCreditsPerDay,
-          maxCreditsPerMonth: rule.maxCreditsPerMonth,
           balanceFloor: rule.balanceFloor,
           enabledByName: rule.enabledBy?.displayName?.trim() || rule.enabledBy?.email || null,
           enabledAt: rule.enabledAt?.toISOString() ?? null,
@@ -693,8 +709,10 @@ export async function loadSequenceListTopUp(
         }
       : null,
     creditsUsedToday,
-    creditsUsedThisMonth,
     budgetLeftToday: rule ? Math.max(0, rule.maxCreditsPerDay - creditsUsedToday) : null,
-    budgetLeftThisMonth: rule ? Math.max(0, rule.maxCreditsPerMonth - creditsUsedThisMonth) : null,
+    nextTopUp:
+      sizing.action === "fill"
+        ? { batch: sizing.batch, sendCapacity: sizing.capacity, note: null }
+        : { batch: 0, sendCapacity: null, note: sizing.reason },
   };
 }

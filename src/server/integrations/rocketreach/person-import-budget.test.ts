@@ -39,3 +39,18 @@ it.each([{ requested: 2, expected: 2 }, { requested: 100, expected: 10 }, { requ
   expect(new Set(lookedUp).size).toBe(expected);
   expect(lookedUp[0]).toContain("?id=1");
 });
+it.each([{ maxBatch: 30, requested: 30, expected: 30 }, { maxBatch: 30, requested: 100, expected: 30 }, { maxBatch: 500, requested: 100, expected: 30 }])("lets automatic top-up reach $expected but never above 30 (maxBatch $maxBatch)", async ({ maxBatch, requested, expected }) => {
+  vi.stubEnv("ROCKETREACH_API_KEY", "synthetic-not-sent");
+  const lookedUp: string[] = [];
+  const transport = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === ROCKETREACH_API_V2_SEARCH) {
+      expect(JSON.parse(String(options?.body)).page_size).toBe(expected);
+      return Response.json({ profiles: Array.from({ length: 40 }, (_, i) => ({ id: i + 1 })) });
+    }
+    lookedUp.push(url);
+    return Response.json({ name: "Synthetic" });
+  });
+  vi.stubGlobal("fetch", transport);
+  await importRocketReachPeopleForClient({ ...base, searchBody: { query: {}, page_size: requested }, maxBatch });
+  expect(lookedUp).toHaveLength(expected);
+});

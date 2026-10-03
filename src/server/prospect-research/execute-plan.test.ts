@@ -124,3 +124,31 @@ it("marks the run failed when the import throws, instead of leaving it running",
   expect(result).toMatchObject({ ok: false, runId: "run-1" });
   expect(db.updates.at(-1)).toMatchObject({ data: { status: "FAILED", detail: "lookup store unavailable" } });
 });
+
+it("uses the automatic top-up batch as the page size, above the plan's manual limit", async () => {
+  await executeSavedResearchPlan({
+    clientId: "client-1",
+    planId: "plan-1",
+    staffId: null,
+    existingListId: "list-1",
+    trigger: "AUTO_REFILL",
+    autoTopUpBatch: 25,
+  });
+  expect(importer).toHaveBeenCalledWith(expect.objectContaining({
+    maxBatch: 25,
+    searchBody: expect.objectContaining({ page_size: 25 }),
+  }));
+});
+
+it("keeps a manual plan run at the plan limit and the manual cap", async () => {
+  await executeSavedResearchPlan({
+    clientId: "client-1",
+    planId: "plan-1",
+    staffId: "staff-1",
+    existingListId: "list-1",
+    trigger: "MANUAL",
+  });
+  const args = importer.mock.calls[0]?.[0] as { maxBatch?: number; searchBody: { page_size: number } };
+  expect(args.maxBatch).toBeUndefined();
+  expect(args.searchBody.page_size).toBe(10);
+});
