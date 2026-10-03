@@ -82,6 +82,22 @@ export function rocketReachCreditsAllowed(input: {
   return { allowed: Math.trunc(allowed), stopReason: null };
 }
 
+/** Greg, 2026-10-03: $50 USD of xAI spend per organisation per calendar month. */
+export const DEFAULT_MONTHLY_AI_SPEND_CAP_MICRO_USD = 50_000_000;
+
+/**
+ * Start of the UTC calendar month containing `now`. The AI cap resets here.
+ * UTC matches the provider's billing month and the ledger's timestamps.
+ */
+export function startOfUtcMonth(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/** Start of the next UTC calendar month: when a paused organisation resumes. */
+export function startOfNextUtcMonth(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
 export function aiSpendWithinCap(capMicroUsd: number | null, spentMicroUsd: number): boolean {
   if (capMicroUsd === null) return true;
   return spentMicroUsd < capMicroUsd;

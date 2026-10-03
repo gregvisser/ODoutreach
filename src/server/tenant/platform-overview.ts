@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { runAsSystem } from "@/lib/tenant/organisation-context";
 import { startOfUtcDay } from "@/lib/sending-window";
+import { startOfUtcMonth } from "@/lib/tenant/feature-gate";
 import {
   assemblePlatformOrganisationOverviews,
   type PlatformOrganisationOverview,
@@ -27,6 +28,7 @@ async function loadPlatformOrganisationOverviewsUnscoped(
   now: Date,
 ): Promise<PlatformOrganisationOverview[]> {
   const dayStart = startOfUtcDay(now);
+  const monthStart = startOfUtcMonth(now);
   const [organisations, clients, aiGroups] = await Promise.all([
     prisma.organisation.findMany({
       orderBy: { name: "asc" },
@@ -47,7 +49,8 @@ async function loadPlatformOrganisationOverviewsUnscoped(
     }),
     prisma.aiUsageEvent.groupBy({
       by: ["organisationId"],
-      where: { status: "OK" },
+      // Month to date (UTC): the same window the monthly AI cap enforces.
+      where: { status: "OK", createdAt: { gte: monthStart } },
       _sum: { costMicroUsd: true },
     }),
   ]);

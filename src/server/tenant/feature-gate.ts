@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import {
   aiSpendWithinCap,
+  startOfUtcMonth,
   organisationFeaturePermits,
   parsePlatformCreditReserve,
   rocketReachCreditsAllowed,
@@ -87,16 +88,23 @@ export async function organisationFeatureEnabledById(
   );
 }
 
+/**
+ * True when this organisation's OK AI spend in the current UTC calendar month
+ * has reached its monthly cap. Only that organisation is affected: the sum is
+ * filtered by its own id. Checked before every metered call, so concurrent
+ * calls can overshoot by at most the calls already in flight.
+ */
 export async function organisationAiCapBlocks(input: {
   clientId: string | null;
   organisationId: string | null;
+  now?: Date;
 }): Promise<boolean> {
   const findOrganisation = organisationDelegate()?.findUnique;
   const aggregate = (
     prisma as unknown as {
       aiUsageEvent?: {
         aggregate?: (args: {
-          where: { organisationId: string; status: "OK" };
+          where: { organisationId: string; status: "OK"; createdAt: { gte: Date } };
           _sum: { costMicroUsd: boolean };
         }) => Promise<{ _sum: { costMicroUsd: number | null } }>;
       };
@@ -123,7 +131,7 @@ export async function organisationAiCapBlocks(input: {
   const cap = organisation?.aiSpendCapMicroUsd;
   if (typeof cap !== "number") return false;
   const spent = await aggregate({
-    where: { organisationId, status: "OK" },
+    where: { organisationId, status: "OK", createdAt: { gte: startOfUtcMonth(input.now ?? new Date()) } },
     _sum: { costMicroUsd: true },
   });
   return !aiSpendWithinCap(cap, spent._sum.costMicroUsd ?? 0);

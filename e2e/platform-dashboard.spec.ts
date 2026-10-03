@@ -21,7 +21,7 @@ test.describe("platform dashboard", () => {
     await expect(opensDoors.getByText("Mailboxes", { exact: true })).toBeVisible();
     await expect(opensDoors.getByText("Sends today", { exact: true })).toBeVisible();
     await expect(opensDoors.getByText("RocketReach", { exact: true })).toBeVisible();
-    await expect(opensDoors.getByText("AI spend", { exact: true })).toBeVisible();
+    await expect(opensDoors.getByText("AI spend this month", { exact: true })).toBeVisible();
     await expect(opensDoors.getByText("Health", { exact: true })).toBeVisible();
     await expect(opensDoors.getByRole("button", { name: "Enter workspace" })).toBeVisible();
     await expect(opensDoors.getByRole("link", { name: "Manage", exact: true })).toBeVisible();

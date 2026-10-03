@@ -292,6 +292,19 @@ describe("prepare before launch", () => {
   });
 });
 
+describe("organisation AI cap", () => {
+  it("stops at once for staff with the cap sentence instead of retrying every tick", () => {
+    const out = noteStageFailure(aiCampaignSnapshot({ status: "WRITING" }), "organisation_ai_cap");
+    expect(out.retryable).toBe(false);
+    expect(out.snapshot.status).toBe("NEEDS_STAFF");
+    expect(out.decision.type).toBe("needs_staff");
+    if (out.decision.type === "needs_staff") {
+      expect(out.decision.reason).toMatch(/AI spending limit for this month/);
+      expect(out.decision.reason).toMatch(/nothing was charged/);
+    }
+  });
+});
+
 describe("repeated failures", () => {
   it("asks for a person after the failure limit and not before", () => {
     let snapshot = aiCampaignSnapshot();
