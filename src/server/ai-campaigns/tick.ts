@@ -3,11 +3,11 @@ import "server-only";
 import type { StaffUser } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { sanitizeJobErrorText } from "@/lib/alerts/job-error-text";
-import { ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
+import { ROCKETREACH_AUTO_TOP_UP_MAX_BATCH, ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
 import { parseOptionalCreditFloor } from "@/lib/clients/rocketreach-refill-policy";
 import type { CreditBalance } from "@/lib/ai-campaigns/policy";
 import {
-  AI_CAMPAIGN_LOW_WATER,
+  aiCampaignTopUp,
   AI_CAMPAIGN_SYSTEM_APPROVAL,
   AI_CAMPAIGN_TRANSIENT_BACKOFF_MS,
   creditsAllowedForAiCampaign,
@@ -49,6 +49,7 @@ import { markReservationReleasedForOutboundInTransaction } from "@/server/mailbo
 import { applyUniverseHarvest } from "@/server/prospect-research/universe-harvest";
 import { executeSavedResearchPlan } from "@/server/prospect-research/execute-plan";
 import { countReadyNotEnrolled } from "@/server/prospect-research/auto-refill";
+import { loadSequenceMailboxDailyCaps } from "@/server/prospect-research/top-up-capacity";
 
 const ACTIVE_CREDIT = ["RESERVED", "CHARGED"] as const;
 const LOCK_MS = 4 * 60 * 1000;
@@ -310,6 +311,34 @@ type SourceResult = AiCampaignOutcome & {
   researchPlanId: string;
 };
 
+/** People sourced for this campaign who have not had their first email yet. */
+async function countAwaitingFirstEmail(campaign: {
+  clientId: string;
+  sequenceId: string | null;
+  contactListId: string | null;
+}): Promise<number> {
+  if (!campaign.sequenceId || !campaign.contactListId) return 0;
+  const [ready, enrolledWaiting] = await Promise.all([
+    countReadyNotEnrolled(campaign.clientId, campaign.sequenceId, campaign.contactListId),
+    prisma.clientEmailSequenceEnrollment.count({
+      where: { sequenceId: campaign.sequenceId, status: "PENDING", currentStepPosition: 0 },
+    }),
+  ]);
+  return ready + enrolledWaiting;
+}
+
+/** Automatic top-up sizing for this campaign (always on for AI campaigns). */
+async function topUpFor(
+  campaign: { clientId: string; sequenceId: string | null; contactListId: string | null },
+  now: Date,
+): Promise<ReturnType<typeof aiCampaignTopUp> & { awaitingFirstEmail: number }> {
+  const [caps, awaitingFirstEmail] = await Promise.all([
+    loadSequenceMailboxDailyCaps(campaign.clientId, now),
+    countAwaitingFirstEmail(campaign),
+  ]);
+  return { ...aiCampaignTopUp({ mailboxDailyCaps: caps, awaitingFirstEmail }), awaitingFirstEmail };
+}
+
 async function sourcePeople(
   campaign: CampaignRow,
   allowance: number,
@@ -322,14 +351,35 @@ async function sourcePeople(
     seniorities: campaign.seniorities,
     regions: campaign.countries,
   };
-  const shortfall = Math.max(0, campaign.targetContactCount - campaign.contactsSourced);
+  // Before launch: the first batch, sized to mailbox capacity (10-30).
+  // While running: an automatic top-up of 10-30 whenever fewer than a day of
+  // sending is waiting, until the target is reached. Universe first.
+  const topUp = await topUpFor({ ...campaign, ...structure }, now);
+  const running = campaign.status === "RUNNING";
+  const goal = running
+    ? campaign.targetContactCount
+    : Math.min(campaign.targetContactCount, topUp.firstBatch);
+  const toTarget = Math.max(0, goal - campaign.contactsSourced);
+  const batch = running ? topUp.batch : topUp.firstBatch;
+  const shortfall = Math.min(toTarget, batch);
+  if (running && shortfall === 0) {
+    const contactsSourced = await countSourced(campaign.clientId, structure.contactListId);
+    return {
+      contactsSourced,
+      listExhausted: campaign.listExhausted,
+      searchStart: campaign.searchStart,
+      creditsUsed: await committedCredits(campaign.id),
+      detail: `No top-up needed: ${String(topUp.awaitingFirstEmail)} people are still waiting for their first email.`,
+      ...structure,
+    };
+  }
   const harvested = await applyUniverseHarvest({
     clientId: campaign.clientId,
     sequenceId: structure.sequenceId,
     contactListId: structure.contactListId,
     criteria,
     now,
-    maxToAdd: Math.min(shortfall, 50),
+    maxToAdd: shortfall,
     staffId: campaign.createdByStaffUserId,
   });
   if (!harvested.ok) throw new Error(harvested.error);
@@ -339,7 +389,7 @@ async function sourcePeople(
   let rocketReachAdded = 0;
   const stillNeed = Math.max(0, shortfall - harvested.added);
   if (stillNeed > 0 && allowance > 0) {
-    const pageSize = Math.min(stillNeed, allowance, ROCKETREACH_MAX_IMPORT);
+    const pageSize = Math.min(stillNeed, allowance, ROCKETREACH_AUTO_TOP_UP_MAX_BATCH);
     const bought = await executeSavedResearchPlan({
       clientId: campaign.clientId,
       planId: structure.researchPlanId,
@@ -350,6 +400,9 @@ async function sourcePeople(
       aiOutreachCampaignId: campaign.id,
       start: searchStart,
       pageSize,
+      // Automatic top-up batch: lifts the manual 10-per-run import cap to the
+      // capacity-sized batch (at most 30).
+      autoTopUpBatch: pageSize,
       originNote: `Sourced for an AI campaign on ${now.toISOString().slice(0, 10)}`,
       governorForRun: (runId) => campaignGovernor(campaign.id, campaign.clientId, runId),
     });
@@ -636,6 +689,7 @@ async function buildSnapshot(campaign: CampaignRow, now: Date): Promise<AiCampai
   let introStarted = false;
   let pendingWork = 0;
   let unenrolledReady = 0;
+  const topUp = await topUpFor(campaign, now);
   if (campaign.sequenceId) {
     // sequence.status APPROVED only means templates were approved — not that
     // enroll + planSequenceStepSends has run. Treating APPROVED as "prepared"
@@ -666,7 +720,9 @@ async function buildSnapshot(campaign: CampaignRow, now: Date): Promise<AiCampai
     sequencePrepared = planned > 0 || started > 0;
     introStarted = started > 0;
     pendingWork = pending;
-    unenrolledReady = ready;
+    // Waiting for a first email, enrolled or not, so a top-up is not bought
+    // every tick just because everyone ready was enrolled straight away.
+    unenrolledReady = Math.max(ready, topUp.awaitingFirstEmail);
   }
   return aiCampaignSnapshot({
     status: campaign.status,
@@ -686,7 +742,8 @@ async function buildSnapshot(campaign: CampaignRow, now: Date): Promise<AiCampai
     introStarted,
     pendingWork,
     unenrolledReady,
-    lowWater: AI_CAMPAIGN_LOW_WATER,
+    lowWater: topUp.lowWater,
+    firstBatch: topUp.firstBatch,
     consecutiveFailures: campaign.consecutiveFailures,
   });
 }

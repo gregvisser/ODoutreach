@@ -55,8 +55,17 @@ export type AiCampaignSnapshot = {
   sequencePrepared: boolean;
   introStarted: boolean;
   pendingWork: number;
+  /**
+   * People sourced but not yet sent their first email (not enrolled, or
+   * enrolled and still waiting for the introduction).
+   */
   unenrolledReady: number;
   lowWater: number;
+  /**
+   * People to source before writing and launching. 10-30, sized to mailbox
+   * capacity. The rest of the target is topped up while the campaign runs.
+   */
+  firstBatch: number;
   consecutiveFailures: number;
   failureLimit: number;
 };
@@ -117,6 +126,7 @@ export function aiCampaignSnapshot(overrides: Partial<AiCampaignSnapshot> = {}):
     pendingWork: 0,
     unenrolledReady: 0,
     lowWater: AI_CAMPAIGN_LOW_WATER,
+    firstBatch: 30,
     consecutiveFailures: 0,
     failureLimit: AI_CAMPAIGN_FAILURE_LIMIT,
     ...overrides,
@@ -124,7 +134,10 @@ export function aiCampaignSnapshot(overrides: Partial<AiCampaignSnapshot> = {}):
 }
 
 function sourcingBlock(snapshot: AiCampaignSnapshot): "write" | "needs_staff" | null {
-  if (snapshot.contactsSourced >= snapshot.targetContactCount && snapshot.contactsSourced > 0) return "write";
+  // Launch after the first capacity-sized batch. Running top-ups take the
+  // campaign the rest of the way to its target.
+  const firstGoal = Math.min(snapshot.targetContactCount, Math.max(1, snapshot.firstBatch));
+  if (snapshot.contactsSourced >= firstGoal && snapshot.contactsSourced > 0) return "write";
   // A zero credit balance only stops paid lookups. This client's own people
   // are free, so sourcing continues until that pass finds nobody left.
   if (snapshot.listExhausted) {

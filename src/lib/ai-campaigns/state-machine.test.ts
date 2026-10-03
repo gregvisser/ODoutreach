@@ -432,3 +432,24 @@ describe("repeated failures", () => {
 });
 
 
+
+describe("AI campaign automatic top-up", () => {
+  it("launches after the first capacity-sized batch and tops up to the target while running", () => {
+    expect(decideAiCampaignTick(aiCampaignSnapshot({ targetContactCount: 200, contactsSourced: 12, firstBatch: 30 })))
+      .toEqual({ type: "source" });
+    expect(decideAiCampaignTick(aiCampaignSnapshot({ targetContactCount: 200, contactsSourced: 30, firstBatch: 30 })))
+      .toEqual({ type: "write" });
+    const running = aiCampaignSnapshot({
+      status: "RUNNING",
+      introStarted: true,
+      targetContactCount: 200,
+      contactsSourced: 30,
+      pendingWork: 25,
+      unenrolledReady: 8,
+      lowWater: 20,
+    });
+    expect(decideAiCampaignTick(running)).toEqual({ type: "source" });
+    expect(decideAiCampaignTick({ ...running, unenrolledReady: 25 })).toEqual({ type: "run" });
+    expect(decideAiCampaignTick({ ...running, contactsSourced: 200 })).toEqual({ type: "run" });
+  });
+});

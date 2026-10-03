@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   ruleUpdates: [] as unknown[],
   reservations: 0,
   failClientId: null as string | null,
+  aiCampaignSequenceId: null as string | null,
   sequence: null as {
     id: string;
     contactListId: string;
@@ -68,6 +69,10 @@ vi.mock("@/lib/db", () => {
         },
       },
       clientEmailSequenceEnrollment: { count: async () => state.enrolled },
+      aiOutreachCampaign: {
+        findFirst: async ({ where }: { where: { sequenceId?: string } }) =>
+          state.aiCampaignSequenceId && where.sequenceId === state.aiCampaignSequenceId ? { id: "camp-1" } : null,
+      },
       rocketReachCreditReservation: reservation,
       rocketReachPlanRun: {
         create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -142,6 +147,7 @@ beforeEach(() => {
   state.ruleUpdates = [];
   state.reservations = 0;
   state.failClientId = null;
+  state.aiCampaignSequenceId = null;
   state.sequence = {
     id: "seq-1",
     contactListId: "list-1",
@@ -212,6 +218,15 @@ it("does not top up when the client has no connected sending mailbox", async () 
   expect(harvest).not.toHaveBeenCalled();
   expect(execute).not.toHaveBeenCalled();
   expect(String(state.createdRuns.at(-1)?.detail)).toMatch(/No connected sending mailbox/);
+});
+
+it("leaves an AI campaign's sequence to the campaign, so nothing is bought twice", async () => {
+  state.aiCampaignSequenceId = "seq-1";
+  const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(result).toMatchObject({ skipped: 1, refilled: 0 });
+  expect(harvest).not.toHaveBeenCalled();
+  expect(execute).not.toHaveBeenCalled();
+  expect(String(state.createdRuns.at(-1)?.detail)).toMatch(/belongs to an AI campaign/);
 });
 
 it("tops up again on a later run once the list runs low, rather than stopping after one batch", async () => {

@@ -65,6 +65,29 @@ export function AutomaticListTopUpPanel({
         ? `On for this sequence, but it will not run. ${topUp.clientBlockReason ?? ""}`
         : "On. When the list falls below the threshold, the scheduled job adds a batch of 10 to 30 people, Universe first.";
 
+  if (topUp.aiCampaign) {
+    const done = ["STOPPED", "COMPLETED", "FAILED"].includes(topUp.aiCampaign.status);
+    return (
+      <section aria-label="Automatic list top-up" className="space-y-2 rounded-lg border border-border/80 bg-muted/10 p-4">
+        <h4 className="text-sm font-semibold">Automatic list top-up</h4>
+        <p className="text-sm">
+          <span className="font-medium">Status:</span>{" "}
+          {done
+            ? `Finished with the AI campaign "${topUp.aiCampaign.name}".`
+            : `On automatically for the AI campaign "${topUp.aiCampaign.name}".`}
+        </p>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          AI campaigns top up their own list with no setup: Universe first, then RocketReach, 10 to{" "}
+          {String(ROCKETREACH_AUTO_TOP_UP_MAX_BATCH)} people at a time sized to what the mailboxes can safely send, within
+          the campaign&apos;s credit budget, until it reaches its target. There is no switch to turn on here.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          List: {topUp.listName}. Ready and not enrolled: {String(topUp.readyNotEnrolled)}.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section aria-label="Automatic list top-up" className="space-y-3 rounded-lg border border-border/80 bg-muted/10 p-4">
       <div>
