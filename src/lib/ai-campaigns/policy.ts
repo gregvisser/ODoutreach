@@ -7,6 +7,11 @@
  */
 
 import type { StaffRole } from "@/generated/prisma/enums";
+import {
+  ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+  ROCKETREACH_AUTO_TOP_UP_MIN_BATCH,
+} from "@/lib/clients/rocketreach-import-cap";
+import { autoTopUpBatchSize } from "@/lib/clients/rocketreach-refill-policy";
 
 export const AI_CAMPAIGN_CONFIRMATION_PHRASE = "START AI CAMPAIGN";
 export const AI_CAMPAIGN_PAUSE_PHRASE = "PAUSE AI CAMPAIGN";
@@ -41,8 +46,49 @@ export const AI_CAMPAIGN_FAILURE_LIMIT = 3;
  * Matches the five-minute outreach pass. The same tick does not call xAI again.
  */
 export const AI_CAMPAIGN_TRANSIENT_BACKOFF_MS = 5 * 60 * 1000;
-/** Top up the list when fewer than this many people are waiting to be emailed. */
+/**
+ * Floor of the top-up trigger. The real trigger is one day of the client's
+ * safe mailbox capacity (see {@link aiCampaignTopUp}); this applies when that
+ * is smaller or unknown.
+ */
 export const AI_CAMPAIGN_LOW_WATER = 5;
+
+/**
+ * Automatic RocketReach top-up for an AI campaign. Always on: an AI campaign
+ * has no per-sequence toggle (manual sequences keep theirs).
+ *
+ * - `firstBatch`: how many people the campaign sources before it writes and
+ *   launches. 10-30, sized to three days of safe mailbox sending.
+ * - `lowWater`: top up when fewer people than one day of safe sending are
+ *   still waiting for their first email.
+ * - `batch`: the size of the next top-up (10-30), 0 when the waiting people
+ *   already cover the horizon.
+ *
+ * Universe is always tried first; RocketReach credits only fill the gap, and
+ * stay inside the campaign's own credit budget and the balance floor.
+ */
+export function aiCampaignTopUp(input: {
+  mailboxDailyCaps: readonly number[];
+  awaitingFirstEmail: number;
+}): { firstBatch: number; lowWater: number; batch: number; dailyCapacity: number } {
+  const dailyCapacity = input.mailboxDailyCaps
+    .filter((cap) => Number.isFinite(cap) && cap > 0)
+    .reduce((sum, cap) => sum + Math.floor(cap), 0);
+  const first = autoTopUpBatchSize({ mailboxDailyCaps: input.mailboxDailyCaps, readyNotEnrolled: 0 });
+  const next = autoTopUpBatchSize({
+    mailboxDailyCaps: input.mailboxDailyCaps,
+    readyNotEnrolled: input.awaitingFirstEmail,
+  });
+  // No sending mailbox yet: source a minimum batch so the campaign can still
+  // write and prepare. Nothing sends until a mailbox is connected.
+  const fallback = dailyCapacity === 0 ? ROCKETREACH_AUTO_TOP_UP_MIN_BATCH : 0;
+  return {
+    firstBatch: first.action === "fill" ? first.batch : ROCKETREACH_AUTO_TOP_UP_MIN_BATCH,
+    lowWater: Math.max(AI_CAMPAIGN_LOW_WATER, Math.min(dailyCapacity, ROCKETREACH_AUTO_TOP_UP_MAX_BATCH)),
+    batch: next.action === "fill" ? next.batch : fallback,
+    dailyCapacity,
+  };
+}
 /** Recorded on the template when the campaign approves its own copy. */
 export const AI_CAMPAIGN_SYSTEM_APPROVAL = "AI";
 

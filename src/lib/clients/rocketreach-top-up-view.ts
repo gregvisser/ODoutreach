@@ -1,5 +1,11 @@
 export type SequenceListTopUpView = {
   sequenceId: string;
+  /**
+   * Set when an AI campaign owns this sequence. AI campaigns top up their own
+   * list automatically (Universe first, 10-30 sized to mailbox capacity), so
+   * the per-sequence toggle does not apply.
+   */
+  aiCampaign: null | { id: string; name: string; status: string };
   listName: string;
   killSwitchOn: boolean;
   clientAllows: boolean;

@@ -15,6 +15,7 @@ import {
   type SequenceRefillRuleInput,
 } from "@/lib/clients/rocketreach-refill-policy";
 import type { SequenceListTopUpView } from "@/lib/clients/rocketreach-top-up-view";
+import { OPEN_AI_CAMPAIGN_STATUSES } from "@/lib/ai-campaigns/policy";
 import {
   previewMaySearchRocketReach,
   rocketReachPersonSearchCostsCredits,
@@ -264,6 +265,21 @@ export async function runDueRocketReachListRefills(now = new Date()): Promise<{
     const failuresBefore = failed;
     const errorsBefore = errors.length;
     try {
+    // An AI campaign tops up its own list inside its tick. Never buy twice.
+    const ownedByAiCampaign = await prisma.aiOutreachCampaign.findFirst({
+      where: { sequenceId: rule.sequenceId, status: { in: [...OPEN_AI_CAMPAIGN_STATUSES] } },
+      select: { id: true },
+    });
+    if (ownedByAiCampaign) {
+      skipped++;
+      await recordSkip({
+        clientId: rule.clientId,
+        planId: rule.planId,
+        sequenceId: rule.sequenceId,
+        reason: "This sequence belongs to an AI campaign, which tops up its own list automatically.",
+      });
+      return;
+    }
     const readyBefore = await countReadyNotEnrolled(rule.clientId, rule.sequenceId, rule.sequence.contactListId);
     const need = listNeedsPeople({
       killSwitchOn: true,
@@ -655,7 +671,7 @@ export async function loadSequenceListTopUp(
     },
   });
   if (!sequence) return null;
-  const [plans, rule, lastRun, readyNotEnrolled] = await Promise.all([
+  const [plans, rule, lastRun, readyNotEnrolled, aiCampaign] = await Promise.all([
     prisma.prospectResearchPlan.findMany({
       where: { clientId },
       orderBy: { createdAt: "desc" },
@@ -671,6 +687,11 @@ export async function loadSequenceListTopUp(
       orderBy: { startedAt: "desc" },
     }),
     countReadyNotEnrolled(clientId, sequenceId, sequence.contactListId),
+    prisma.aiOutreachCampaign.findFirst({
+      where: { sequenceId, clientId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, status: true },
+    }),
   ]);
   const now = new Date();
   const creditsUsedToday = rule ? await reservedSince(rule.id, startOfUtcDay(now)) : 0;
@@ -681,6 +702,7 @@ export async function loadSequenceListTopUp(
   const clientGate = clientAllowsListRefill(sequence.client);
   return {
     sequenceId,
+    aiCampaign: aiCampaign ? { id: aiCampaign.id, name: aiCampaign.name, status: aiCampaign.status } : null,
     listName: sequence.contactList.name,
     killSwitchOn: isRocketReachAutoRefillEnabled(process.env.ROCKETREACH_AUTO_REFILL),
     clientAllows: clientGate.ok,
