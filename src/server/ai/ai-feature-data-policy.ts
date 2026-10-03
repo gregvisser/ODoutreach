@@ -12,7 +12,7 @@ import type { AiFeature } from "@/generated/prisma/client";
  *
  * CR-10 (raised cycle 122, `.bidlow/GRADES.json`): CR-05's Art.28 DPA work
  * covered Sentry, Resend and RocketReach. Product AI runs on xAI (Grok) in
- * production; neither xAI nor Anthropic (rollback path) has a recorded processor
+ * production; xAI has no recorded processor
  * allowance for prospect personal data in `COVERED_PROCESSORS` below.
  *
  * `carriesPersonalData: true` means the call sends a real prospect's own
@@ -22,7 +22,7 @@ import type { AiFeature } from "@/generated/prisma/client";
  * mailbox identity are NOT a prospect's personal data and are declared false.
  */
 
-export type AiVendor = "XAI" | "ANTHROPIC";
+export type AiVendor = "XAI";
 
 export interface AiFeatureDataPolicyEntry {
   readonly vendor: AiVendor;

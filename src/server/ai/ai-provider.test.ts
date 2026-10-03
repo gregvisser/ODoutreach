@@ -7,7 +7,6 @@ import {
   isProductAiConfigured,
   resolveProductAiApiKey,
   resolveProductAiModel,
-  resolveProductAiProvider,
 } from "./ai-provider";
 
 function clearAiEnv(): void {
@@ -21,68 +20,43 @@ afterEach(() => {
   clearAiEnv();
 });
 
-describe("resolveProductAiProvider", () => {
-  it("defaults to anthropic when no xAI key is configured", () => {
-    expect(resolveProductAiProvider()).toBe("anthropic");
-  });
-
-  it("selects xai when AI_MODEL_PROVIDER=xai", () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
-    expect(resolveProductAiProvider()).toBe("xai");
-  });
-
-  it("selects xai when XAI_API_KEY is set and provider is not forced anthropic", () => {
-    process.env.XAI_API_KEY = "secret";
-    expect(resolveProductAiProvider()).toBe("xai");
-  });
-
-  it("keeps anthropic when explicitly forced even if XAI_API_KEY is set", () => {
-    process.env.AI_MODEL_PROVIDER = "anthropic";
-    process.env.XAI_API_KEY = "secret";
-    expect(resolveProductAiProvider()).toBe("anthropic");
-  });
-});
-
 describe("resolveProductAiApiKey", () => {
-  it("reads XAI_API_KEY for xai provider without Anthropic", () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
+  it("reads XAI_API_KEY", () => {
     process.env.XAI_API_KEY = "xai-key";
     expect(resolveProductAiApiKey()).toBe("xai-key");
-    expect(resolveProductAiApiKey()).not.toBe(undefined);
   });
 
-  it("reads ANTHROPIC_API_KEY for anthropic provider", () => {
-    process.env.AI_MODEL_PROVIDER = "anthropic";
+  it("never falls back to another vendor's key", () => {
     process.env.ANTHROPIC_API_KEY = "ant-key";
-    expect(resolveProductAiApiKey()).toBe("ant-key");
+    process.env.AI_MODEL_PROVIDER = "anthropic";
+    expect(resolveProductAiApiKey()).toBeUndefined();
+  });
+
+  it("ignores a provider override and still uses xAI", () => {
+    process.env.AI_MODEL_PROVIDER = "anthropic";
+    process.env.XAI_API_KEY = "xai-key";
+    expect(resolveProductAiApiKey()).toBe("xai-key");
   });
 });
 
 describe("isProductAiConfigured", () => {
-  it("is true when the active provider has a key", () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
+  it("is true when XAI_API_KEY is set", () => {
     process.env.XAI_API_KEY = "xai-key";
     expect(isProductAiConfigured()).toBe(true);
   });
 
-  it("is false when the active provider has no key", () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
+  it("is false when XAI_API_KEY is unset, even if an Anthropic key exists", () => {
+    process.env.ANTHROPIC_API_KEY = "ant-key";
     expect(isProductAiConfigured()).toBe(false);
   });
 });
 
 describe("resolveProductAiModel", () => {
-  it("uses XAI_MODEL or default for xai", () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
-    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe(DEFAULT_XAI_MODEL);
+  it("uses XAI_MODEL or the default", () => {
+    expect(resolveProductAiModel()).toBe(DEFAULT_XAI_MODEL);
     process.env.XAI_MODEL = "grok-4-6";
-    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe(XAI_CHAT_MODELS.GROK_4_6);
+    expect(resolveProductAiModel()).toBe(XAI_CHAT_MODELS.GROK_4_6);
     process.env.XAI_MODEL = XAI_CHAT_MODELS.GROK_4_7;
-    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe("grok-4.7");
-  });
-
-  it("passes through catalog model id for anthropic", () => {
-    process.env.AI_MODEL_PROVIDER = "anthropic";
-    expect(resolveProductAiModel("claude-haiku-4-5-20251001")).toBe("claude-haiku-4-5-20251001");
+    expect(resolveProductAiModel()).toBe("grok-4.7");
   });
 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildTitleMessageInput,
@@ -14,7 +14,7 @@ import {
   type TitleMessageOutcome,
 } from "@/lib/ai/title-message-evidence";
 
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL job-title grouping, the REAL evidence builder, the REAL
@@ -23,7 +23,7 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * WHY THIS EXISTS, given the feature is already covered four times over.
  *
- * `advise-title-messages.test.ts` mocks `callAnthropicMessages`;
+ * `advise-title-messages.test.ts` mocks `callAiToolMessages`;
  * `title-message.test.ts` hands the parser a hand-written block;
  * `title-message-evidence.test.ts` and `title-family.test.ts` never go near the
  * model. All four are useful and all four share one blind spot: nothing asserts
@@ -35,13 +35,9 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * This cannot call the real API (there is no key, and a test that spent money
  * would be a bad test). What it can do is prove every layer we own agrees, so
- * the only untested link left is Anthropic's own.
+ * the only untested link left is xAI's own.
  */
 
-beforeEach(() => {
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-});
 
 const MESSAGES: MessageIdentity[] = [
   { sequenceId: "seq-a", label: "Cost-saving campaign" },
@@ -66,28 +62,39 @@ function cell(spec: {
   return rows;
 }
 
-/** A response shaped exactly as the Messages API returns a forced tool call. */
-function anthropicResponse(input: unknown) {
+/** A response shaped exactly as xAI chat completions returns a forced tool call. */
+function xaiResponse(input: unknown) {
   return {
     ok: true,
     json: async () => ({
-      id: "msg_01",
-      type: "message",
-      role: "assistant",
-      model: "claude-haiku-4-5-20251001",
-      stop_reason: "tool_use",
-      content: [
-        { type: "tool_use", id: "toolu_01", name: TITLE_MESSAGE_TOOL.name, input },
+      id: "chatcmpl_01",
+      object: "chat.completion",
+      model: "grok-4.7",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_01",
+                type: "function",
+                function: { name: TITLE_MESSAGE_TOOL.name, arguments: JSON.stringify(input) },
+              },
+            ],
+          },
+        },
       ],
-      usage: { input_tokens: 1_512, output_tokens: 331 },
+      usage: { prompt_tokens: 1_512, completion_tokens: 331 },
     }),
   } as unknown as Response;
 }
 
 async function send(userText: string, fetchImpl: ReturnType<typeof vi.fn>) {
   return callAiToolMessages({
-    apiKey: "sk-ant-test",
-    model: "claude-haiku-4-5-20251001",
+    apiKey: "xai-test",
+    model: "grok-4.7",
     system: TITLE_MESSAGE_SYSTEM_PROMPT,
     userText,
     maxTokens: 2_000,
@@ -134,7 +141,7 @@ describe("message-fit-by-job-title round-trip", () => {
     expect(verdict.families[0].enrollments).toBe(1_600);
 
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         summary:
           "The cost-saving campaign got far more replies from operations people, but the two campaigns were aimed at lists built separately.",
         findings: [
@@ -176,21 +183,20 @@ describe("message-fit-by-job-title round-trip", () => {
     const body = JSON.parse(
       (fetchImpl.mock.calls[0][1] as { body: string }).body,
     ) as {
-      tools: Array<{ name: string }>;
-      tool_choice: { type: string; name: string };
-      system: string;
-      messages: Array<{ content: string }>;
+      tools: Array<{ type: string; function: { name: string } }>;
+      tool_choice: { type: string; function: { name: string } };
+      messages: Array<{ role: string; content: string }>;
     };
 
     // The request actually carried our tool, and forced its use.
-    expect(body.tools[0].name).toBe(TITLE_MESSAGE_TOOL.name);
+    expect(body.tools[0].function.name).toBe(TITLE_MESSAGE_TOOL.name);
     expect(body.tool_choice).toEqual({
-      type: "tool",
-      name: TITLE_MESSAGE_TOOL.name,
+      type: "function",
+      function: { name: TITLE_MESSAGE_TOOL.name },
     });
 
     // The counts the model is asked to read are OUR counts, over OUR audience...
-    const prompt = body.messages[0].content;
+    const prompt = body.messages[1].content;
     expect(prompt).toContain("Operations — 1600 people");
     expect(prompt).toContain("Cost-saving campaign | 800 people | 160 replied (20%)");
 
@@ -207,8 +213,8 @@ describe("message-fit-by-job-title round-trip", () => {
     expect(prompt).toContain("comparisons were made");
 
     // The facts that stop it inventing a reason travelled in the system turn.
-    expect(body.system).toContain("NOBODY WAS RANDOMISED");
-    expect(body.system).toContain("have not seen the emails");
+    expect(body.messages[0].content).toContain("NOBODY WAS RANDOMISED");
+    expect(body.messages[0].content).toContain("have not seen the emails");
 
     // The tokens that become the bill survived the trip.
     expect(response.inputTokens).toBe(1_512);
@@ -251,7 +257,7 @@ describe("message-fit-by-job-title round-trip", () => {
     expect(verdict.anyDistinguishable).toBe(false);
 
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         summary:
           "Neither campaign is doing better than the other with any audience. There is nothing to act on.",
         findings: [],
@@ -279,9 +285,9 @@ describe("message-fit-by-job-title round-trip", () => {
       (fetchImpl.mock.calls[0][1] as { body: string }).body,
     ) as { messages: Array<{ content: string }> };
 
-    expect(body.messages[0].content).toContain(
+    expect(body.messages[1].content).toContain(
       "NO campaign beat another with ANY audience by more than chance",
     );
-    expect(body.messages[0].content).toContain("within normal variation");
+    expect(body.messages[1].content).toContain("within normal variation");
   });
 });

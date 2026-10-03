@@ -54,7 +54,7 @@ test.describe("AI spend — owner view", () => {
   test("shows refused and failed calls, so a switched-off feature is not mistaken for a quiet one", async ({
     page,
   }) => {
-    // Production today has no ANTHROPIC_API_KEY, so every real call refuses. A
+    // Production refuses some calls (e.g. reply classification, CR-10 gate). A
     // screen that only counted charged calls would show "0" and read as "the
     // feature is idle" rather than "the feature is being refused 400 times".
     await page.goto("/settings/ai-spend");

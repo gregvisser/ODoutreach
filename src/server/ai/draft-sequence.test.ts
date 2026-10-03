@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock } = vi.hoisted(() => ({
   prismaMock: {
     client: { findFirst: vi.fn() },
     clientEmailTemplate: { create: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
@@ -15,11 +15,11 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./anthropic-messages")>();
+vi.mock("./ai-tool-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ai-tool-messages")>();
   return {
     ...actual,
-    callAiToolMessages: callAnthropicMock,
+    callAiToolMessages: callAiToolMock,
   };
 });
 
@@ -30,7 +30,7 @@ import {
 } from "@/lib/ai/sequence-drafting";
 import { canApproveTemplate } from "@/lib/email-templates/template-policy";
 
-import { AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
+import { AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./ai-tool-messages";
 import { draftSequenceForClient } from "./draft-sequence";
 
 const CLIENT = {
@@ -55,7 +55,7 @@ function goodSteps() {
 }
 
 function modelAnswers(steps: unknown, usage = { inputTokens: 900, outputTokens: 600 }) {
-  callAnthropicMock.mockResolvedValue({
+  callAiToolMock.mockResolvedValue({
     content: [{ type: "tool_use", name: SEQUENCE_DRAFTING_TOOL.name, input: { steps } }],
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
@@ -84,11 +84,9 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (ops: unknown[]) => ops);
   prismaMock.aiUsageEvent.create.mockReset().mockResolvedValue({ id: "usage-1" });
-  callAnthropicMock.mockReset();
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
+  callAiToolMock.mockReset();
   delete process.env.XAI_MODEL;
-  process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+  process.env.XAI_API_KEY = "xai-test";
   delete process.env.AI_FEATURES;
 });
 
@@ -182,7 +180,7 @@ describe("drafting a sequence", () => {
     modelAnswers(goodSteps());
     await draftSequenceForClient({ clientId: "client-1", staffUserId: "staff-1" });
 
-    const sent = callAnthropicMock.mock.calls[0][0].userText as string;
+    const sent = callAiToolMock.mock.calls[0][0].userText as string;
     expect(sent).toContain("Acme Roofing");
     expect(sent).toContain("Flat roof repair");
     expect(sent).toContain("Facilities Manager");
@@ -227,7 +225,7 @@ describe("when it cannot draft", () => {
     });
 
     expect(result).toEqual({ ok: false, reason: "client_not_found" });
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
     expect(prismaMock.clientEmailTemplate.create).not.toHaveBeenCalled();
   });
@@ -240,7 +238,7 @@ describe("when it cannot draft", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.clientEmailTemplate.create).not.toHaveBeenCalled();
     const row = prismaMock.aiUsageEvent.create.mock.calls[0][0].data;
     expect(row.status).toBe("REFUSED");
@@ -248,14 +246,14 @@ describe("when it cannot draft", () => {
   });
 
   it("refuses and writes nothing when there is no API key", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.XAI_API_KEY;
     const result = await draftSequenceForClient({
       clientId: "client-1",
       staffUserId: "staff-1",
     });
 
     expect(result).toEqual({ ok: false, reason: "no_api_key" });
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.clientEmailTemplate.create).not.toHaveBeenCalled();
   });
 
@@ -263,31 +261,28 @@ describe("when it cannot draft", () => {
     modelAnswers(goodSteps());
     await draftSequenceForClient({ clientId: "client-1", staffUserId: "staff-1" });
 
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(
       AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
     );
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+    // Default grok model on the long budget: low effort, same as drafting.
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBe("low");
   });
 
   it("asks grok-4.7 for low reasoning effort on the long drafting timeout", async () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
-    delete process.env.ANTHROPIC_API_KEY;
     process.env.XAI_API_KEY = "xai-test-key";
     process.env.XAI_MODEL = "grok-4.7";
     modelAnswers(goodSteps());
 
     await draftSequenceForClient({ clientId: "client-1", staffUserId: "staff-1" });
 
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(
       AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
     );
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBe("low");
-    expect(callAnthropicMock.mock.calls[0][0].model).toBe("grok-4.7");
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBe("low");
+    expect(callAiToolMock.mock.calls[0][0].model).toBe("grok-4.7");
   });
 
-  it("does not require ANTHROPIC_API_KEY when provider is xai", async () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
-    delete process.env.ANTHROPIC_API_KEY;
+  it("uses XAI_API_KEY as the only product AI credential", async () => {
     process.env.XAI_API_KEY = "xai-test-key";
     process.env.AI_OUTREACH_FEATURES = "on";
     modelAnswers(goodSteps());
@@ -298,12 +293,12 @@ describe("when it cannot draft", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(callAnthropicMock).toHaveBeenCalledTimes(1);
-    expect(callAnthropicMock.mock.calls[0][0].apiKey).toBe("xai-test-key");
+    expect(callAiToolMock).toHaveBeenCalledTimes(1);
+    expect(callAiToolMock.mock.calls[0][0].apiKey).toBe("xai-test-key");
   });
 
   it("writes nothing when the call itself fails", async () => {
-    callAnthropicMock.mockRejectedValue(new Error("anthropic_http_529: overloaded"));
+    callAiToolMock.mockRejectedValue(new Error("anthropic_http_529: overloaded"));
     const result = await draftSequenceForClient({
       clientId: "client-1",
       staffUserId: "staff-1",

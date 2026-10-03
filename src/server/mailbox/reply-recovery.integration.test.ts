@@ -109,7 +109,7 @@ beforeEach(async () => {
   vi.stubEnv("MAILBOX_COMPLAINT_DETECTION_ENABLED", "true");
   vi.stubEnv("INTERNAL_SEED_ALLOWLIST_ENABLED", "false");
   vi.stubEnv("AUTONOMOUS_RELAY_ACTIVE", "false");
-  vi.stubEnv("ANTHROPIC_API_KEY", "");
+  vi.stubEnv("XAI_API_KEY", "");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External HTTP forbidden in reply recovery tests"); }));
   await removeFaults();
   await resetIntegrationDatabase();

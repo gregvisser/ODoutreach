@@ -43,7 +43,6 @@ Then, in Azure App Service config for `app-opensdoors-outreach-prod`:
 | `AI_CAMPAIGNS_ENABLED` | `true`, and only after this checklist |
 | `AI_FEATURES` | Not an off-value (`off` / `false` / `0` / `no` / `disabled`). Unset means the master switch is on. |
 | `AI_OUTREACH_FEATURES` | `on` (also `true` / `1` / `yes` / `enabled`) so writing and the writing check can run |
-| `AI_MODEL_PROVIDER` | `xai` |
 | `XAI_API_KEY` | Live key. Product AI is xAI Grok only. |
 | `XAI_MODEL` | A live catalog id (`grok-4.6`, `grok-4.7`, or `grok-4-fast-non-reasoning`) |
 | `ROCKETREACH_API_KEY` | Present if the client's own people are not enough |

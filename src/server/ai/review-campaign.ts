@@ -13,14 +13,13 @@ import {
   type CampaignReviewInput,
   type CampaignReviewStepInput,
 } from "@/lib/ai/campaign-review";
-import { AI_MODELS } from "@/lib/ai/model-catalog";
 import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import { prisma } from "@/lib/db";
 import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy";
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 import {
   campaignReviewFailureMessage,
   campaignReviewSuccessMessage,
@@ -162,7 +161,7 @@ export async function reviewCampaign(args: {
   if (loaded === null) return { ok: false, reason: "sequence_not_found" };
   if (loaded === "no_steps") return { ok: false, reason: "no_steps" };
 
-  const model = resolveProductAiModel(AI_MODELS.CAMPAIGN_REVIEW);
+  const model = resolveProductAiModel();
   const apiKey = resolveProductAiApiKey();
   const budget = onDemandToolCallBudget(model);
 
@@ -175,7 +174,6 @@ export async function reviewCampaign(args: {
     invoke: async () => {
       const response = await callAiToolMessages({
         apiKey: apiKey as string,
-        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: CAMPAIGN_REVIEW_SYSTEM_PROMPT,
         userText: buildCampaignReviewInput(loaded.campaign),
