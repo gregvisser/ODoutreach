@@ -23,13 +23,14 @@ describe("support-agent runner contract", () => {
     expect(WORKFLOW).not.toContain("SUPPORT_AGENT_NOTIFY");
   });
 
-  it("keeps weekday cron behind an explicit default-off variable", () => {
+  it("runs weekday cron live, with an explicit 'false' hold switch", () => {
     expect(WORKFLOW).toContain('cron: "0 8-18 * * 1-5"');
-    expect(WORKFLOW).toContain("if: github.event_name == 'schedule' && vars.SUPPORT_AGENT_SCHEDULE_ENABLED != 'true'");
+    expect(WORKFLOW).toContain("if: github.event_name == 'schedule' && vars.SUPPORT_AGENT_SCHEDULE_ENABLED == 'false'");
     expect(WORKFLOW).toContain("scheduled-hold");
     expect(WORKFLOW).toContain(
-      "if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || vars.SUPPORT_AGENT_SCHEDULE_ENABLED == 'true')",
+      "if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || vars.SUPPORT_AGENT_SCHEDULE_ENABLED != 'false')",
     );
+    expect(WORKFLOW).not.toContain("SUPPORT_AGENT_SCHEDULE_ENABLED == 'true'");
     expect(WORKFLOW).toContain("default: authentication-check");
     expect(WORKFLOW).toContain("process-tickets");
   });

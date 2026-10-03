@@ -5,12 +5,13 @@
 # are not configured. Do not add a second model vendor, mailbox send credentials,
 # or reporter-notification credentials to this workflow.
 #
-# Activation is two explicit gates, both default-off for scheduled ticket processing:
-# 1. GitHub Actions workflow enablement (this file can be disabled_manually in the UI).
-# 2. Repository variable SUPPORT_AGENT_SCHEDULE_ENABLED == 'true' before weekday
-#    cron processes tickets. Manual authentication-check / process-tickets dispatch
-#    does not require that variable, so go-live validation can run first.
-# Merging this workflow does not enable either gate and does not process live tickets.
+# Scheduled ticket processing is LIVE (owner go-live approved 2026-10-03, after the
+# controlled manual process-tickets observation of 2026-09-23 completed cleanly).
+# Two kill switches remain:
+# 1. Disable this workflow in the Actions UI to stop every run.
+# 2. Set repository variable SUPPORT_AGENT_SCHEDULE_ENABLED to exactly 'false' to
+#    hold weekday cron on the scheduled-hold job. Any other value, including unset,
+#    lets cron process OPEN tickets. Manual dispatch never depends on the variable.
 name: Support agent
 
 on:
@@ -38,22 +39,22 @@ permissions:
 
 jobs:
   scheduled-hold:
-    if: github.event_name == 'schedule' && vars.SUPPORT_AGENT_SCHEDULE_ENABLED != 'true'
+    if: github.event_name == 'schedule' && vars.SUPPORT_AGENT_SCHEDULE_ENABLED == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
     steps:
-      - name: Scheduled ticket processing is gated off
+      - name: Scheduled ticket processing is held
         run: |
           set -euo pipefail
-          echo "Scheduled support-agent ticket processing is held (default-safe)."
-          echo "Manual authentication-check and process-tickets dispatch remain available once this workflow is enabled in the Actions UI."
-          echo "To allow weekday cron to process OPEN tickets, set repository variable SUPPORT_AGENT_SCHEDULE_ENABLED=true after docs/ops/SUPPORT-AGENT-GO-LIVE.md."
+          echo "Scheduled support-agent ticket processing is held: repository variable SUPPORT_AGENT_SCHEDULE_ENABLED is 'false'."
+          echo "Manual authentication-check and process-tickets dispatch remain available."
+          echo "To resume weekday cron, delete that variable or set it to anything other than 'false' (see docs/ops/SUPPORT-AGENT-GO-LIVE.md)."
           echo "This hold does not call the model and does not read tickets."
 
   resolve-tickets:
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || vars.SUPPORT_AGENT_SCHEDULE_ENABLED == 'true')
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || vars.SUPPORT_AGENT_SCHEDULE_ENABLED != 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
