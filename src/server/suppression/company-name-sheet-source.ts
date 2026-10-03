@@ -65,5 +65,7 @@ export async function applyCompanySheetRead(input: { sourceId: string; revision:
     const saved = await tx.companyDncSheetSource.update({ where: { id: source.id }, data: { knownNames, currentNames, retainedCount, lastSuccessAt: new Date(), lastError: null } });
     await tx.auditLog.create({ data: { clientId: source.clientId, staffUserId: input.staffUserId, action: "UPDATE", entityType: "CompanyDncSheetSource", entityId: source.id, metadata: { kind: "company_sheet_sync", revision: saved.revision, added: added.added, currentCount: currentNames.length, retainedCount } } });
     return { ok: true as const, added: added.added, duplicates: added.duplicates, currentCount: currentNames.length, retainedCount };
-  });
+    // Large client lists (900+ names) insert in one transaction. The 5s
+    // default left no headroom, so a slow moment rolled the whole sync back.
+  }, { timeout: 30_000, maxWait: 10_000 });
 }
