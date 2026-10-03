@@ -659,7 +659,7 @@ async function seedE2eFixtures(databaseUrl: string | undefined): Promise<void> {
           bodyPreview: "Seeded reply for the waiting-for-a-person queue.",
           receivedAt: new Date(seededAt - row.hoursAgo * 3_600_000),
           // Index 3 is the UNCLASSIFIED row — the state production is entirely
-          // in today, because ANTHROPIC_API_KEY is unset in Azure. It must
+          // in today, because reply classification is refused (CR-10 gate). It must
           // still appear on the screen.
           classification:
             i === 0 || i === 1

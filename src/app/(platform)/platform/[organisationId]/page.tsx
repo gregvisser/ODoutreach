@@ -13,6 +13,8 @@ import { prisma } from "@/lib/db";
 import { runAsSystem } from "@/lib/tenant/organisation-context";
 import { cn } from "@/lib/utils";
 import { resolveOrganisationFeatureFlags } from "@/lib/tenant/organisation";
+import { startOfUtcMonth } from "@/lib/tenant/feature-gate";
+import { aiCapReached, formatAiSpend } from "@/lib/tenant/platform-dashboard";
 import { requireOpensDoorsStaff } from "@/server/auth/staff";
 import { assertPlatformDashboardAccess } from "@/server/tenant/platform-admin";
 
@@ -54,7 +56,7 @@ export default async function PlatformOrganisationPage({
 
   const flags = resolveOrganisationFeatureFlags(organisation.featureFlags);
   const aiSpend = await runAsSystem(() => prisma.aiUsageEvent.aggregate({
-    where: { organisationId: organisation.id, status: "OK" },
+    where: { organisationId: organisation.id, status: "OK", createdAt: { gte: startOfUtcMonth(new Date()) } },
     _sum: { costMicroUsd: true },
   }));
   const aiSpentMicroUsd = aiSpend._sum.costMicroUsd ?? 0;
@@ -128,11 +130,11 @@ export default async function PlatformOrganisationPage({
             {organisation.rocketReachCreditAllowance === null
               ? " (no organisation cap)."
               : ` of ${organisation.rocketReachCreditAllowance}.`}{" "}
-            AI spend: {aiSpentMicroUsd} micro-USD
-            {organisation.aiSpendCapMicroUsd === null
-              ? " (no cap)."
-              : ` of ${organisation.aiSpendCapMicroUsd}.`}{" "}
-            Empty fields mean no extra cap. The platform reserve is ROCKETREACH_PLATFORM_RESERVE_CREDITS.
+            AI spend (UTC calendar month to date): {formatAiSpend(aiSpentMicroUsd, organisation.aiSpendCapMicroUsd)}.{" "}
+            {aiCapReached(aiSpentMicroUsd, organisation.aiSpendCapMicroUsd)
+              ? "AI features are paused for this organisation until the 1st of next month or until the cap is raised. Other organisations are not affected. "
+              : ""}
+            The AI cap is monthly, in micro-USD (50000000 = $50, the default). Empty fields mean no extra cap. The platform reserve is ROCKETREACH_PLATFORM_RESERVE_CREDITS.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  aiCapReached,
   assemblePlatformOrganisationOverviews,
   formatAiSpend,
   formatRocketReachCredits,
@@ -107,8 +108,28 @@ describe("platform overview", () => {
   it("formats credit and AI spend with an empty cap called out", () => {
     expect(formatRocketReachCredits(12, 100)).toBe("12 of 100");
     expect(formatRocketReachCredits(3, null)).toBe("3 used, no cap");
-    expect(formatAiSpend(1_500_000, 2_000_000)).toBe("$1.50 of $2.00");
-    expect(formatAiSpend(0, null)).toBe("$0.00, no cap");
+    expect(formatAiSpend(1_500_000, 2_000_000)).toBe("$1.50 of $2.00 this month");
+    expect(formatAiSpend(0, null)).toBe("$0.00 this month, no cap");
+    expect(formatAiSpend(50_000_000, 50_000_000)).toBe("$50.00 of $50.00 this month (paused)");
+  });
+
+  it("shows Greg an organisation whose AI is paused at its monthly cap, and only that one", () => {
+    expect(aiCapReached(49_999_999, 50_000_000)).toBe(false);
+    expect(aiCapReached(50_000_000, 50_000_000)).toBe(true);
+    expect(aiCapReached(90_000_000, null)).toBe(false);
+    const rows = assemblePlatformOrganisationOverviews({
+      organisations: [
+        { id: "a", name: "A", slug: "a", status: "ACTIVE", memberCount: 1, rocketReachCreditsUsed: 0, rocketReachCreditAllowance: null, aiSpendCapMicroUsd: 50_000_000 },
+        { id: "b", name: "B", slug: "b", status: "ACTIVE", memberCount: 1, rocketReachCreditsUsed: 0, rocketReachCreditAllowance: null, aiSpendCapMicroUsd: 50_000_000 },
+      ],
+      clients: [],
+      mailboxes: [],
+      sendsToday: [],
+      failedSendsToday: [],
+      aiSpendMicroUsd: [{ organisationId: "a", costMicroUsd: 50_000_000 }, { organisationId: "b", costMicroUsd: 1_000_000 }],
+    });
+    expect(rows[0]).toMatchObject({ health: "attention", healthLabel: "AI paused: monthly AI spend cap reached" });
+    expect(rows[1]).toMatchObject({ health: "healthy" });
   });
 });
 

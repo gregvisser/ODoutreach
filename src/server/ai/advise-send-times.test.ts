@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock } = vi.hoisted(() => ({
   prismaMock: {
     client: { findFirst: vi.fn() },
     outboundEmail: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
@@ -8,7 +8,7 @@ const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
     aiSendTimeAdvice: { create: vi.fn(), findFirst: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
@@ -16,8 +16,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAiToolMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -64,7 +64,7 @@ function healthyHistory(): { sentAt: Date; _count: { inboundReplies: number } }[
 }
 
 function anthropicReturns(input: unknown): void {
-  callAnthropicMock.mockResolvedValue({
+  callAiToolMock.mockResolvedValue({
     content: [{ type: "tool_use", name: SEND_TIME_ADVICE_TOOL.name, input }],
     inputTokens: 900,
     outputTokens: 210,
@@ -80,9 +80,8 @@ beforeEach(() => {
   prismaMock.aiSendTimeAdvice.create.mockResolvedValue({ id: "advice-1" });
   prismaMock.aiUsageEvent.create.mockResolvedValue({ id: "usage-1" });
   anthropicReturns(GOOD_ADVICE);
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "test-key";
+  delete process.env.XAI_MODEL;
+  process.env.XAI_API_KEY = "test-key";
   process.env.AI_FEATURES_ENABLED = "true";
 });
 
@@ -99,8 +98,9 @@ describe("adviseSendTimes", () => {
     expect(result.summary).toContain("Monday");
     expect(result.windows).toHaveLength(1);
     expect(result.evidence.length).toBeGreaterThan(0);
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(180_000);
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(180_000);
+    // Default grok model on the long budget: low effort, same as drafting.
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBe("low");
   });
 
   it("SPENDS NOTHING when the history is too thin", async () => {
@@ -116,7 +116,7 @@ describe("adviseSendTimes", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     // Not even a REFUSED ledger row: no call was contemplated, so there is no
     // call to record. A row here would make the spend screen show attempts that
     // never happened.
@@ -176,7 +176,7 @@ describe("adviseSendTimes", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.reason).toBe("client_not_found");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     const where = prismaMock.client.findFirst.mock.calls[0]?.[0]?.where as {
       deletedAt?: null;
     };
@@ -184,7 +184,7 @@ describe("adviseSendTimes", () => {
   });
 
   it("bills the tokens even when the answer is unusable", async () => {
-    callAnthropicMock.mockResolvedValue({
+    callAiToolMock.mockResolvedValue({
       content: [{ type: "text", text: "I would rather not." }],
       inputTokens: 900,
       outputTokens: 12,
@@ -211,7 +211,7 @@ describe("adviseSendTimes", () => {
   });
 
   it("records a REFUSED ledger row when there is no API key", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.XAI_API_KEY;
     const result = await adviseSendTimes({
       clientId: "client-1",
       staffUserId: "staff-1",
@@ -224,7 +224,7 @@ describe("adviseSendTimes", () => {
     };
     expect(usage.status).toBe("REFUSED");
     expect(usage.outcomeCode).toBe("no_api_key");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
   });
 
   it("stores the evidence with the advice, so thin advice stays auditable", async () => {
@@ -246,14 +246,14 @@ describe("adviseSendTimes", () => {
   });
 
   it("does not retry a failed call, because a retry can be a second charge", async () => {
-    callAnthropicMock.mockRejectedValue(new Error("timeout"));
+    callAiToolMock.mockRejectedValue(new Error("timeout"));
     const result = await adviseSendTimes({
       clientId: "client-1",
       staffUserId: "staff-1",
       now: NOW,
     });
     expect(result.ok).toBe(false);
-    expect(callAnthropicMock).toHaveBeenCalledTimes(1);
+    expect(callAiToolMock).toHaveBeenCalledTimes(1);
   });
 
   it("stores an empty window list rather than treating it as a failure", async () => {

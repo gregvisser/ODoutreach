@@ -65,82 +65,15 @@ export function resolveXaiChatModelId(model: string): XaiChatModelId | null {
   return null;
 }
 
-/** Models this application is allowed to call. */
-export const AI_MODELS = {
-  /**
-   * Reply classification. Deliberately the cheapest capable model: this runs on
-   * every inbound reply, on a 15-minute cron, for every client. The job is a
-   * five-way label on a short piece of text — it does not need a frontier
-   * model, and picking one would multiply the client's bill for no accuracy.
-   */
-  REPLY_CLASSIFICATION: "claude-haiku-4-5-20251001",
-  /**
-   * Sequence drafting. Deliberately the SAME model as classification, and the
-   * reason is billing rather than capability: this table is an invoice input,
-   * and the one rate it holds is already flagged unverified. Adding a second
-   * model would mean entering a second price nobody has checked, doubling the
-   * unverified surface of a bill Greg has to defend. Writing five short cold
-   * emails from a brief is well within this model; if a future cycle finds the
-   * copy wants a larger model, that is a deliberate change made at the same
-   * time as a verified price for it.
-   */
-  SEQUENCE_DRAFTING: "claude-haiku-4-5-20251001",
-  /**
-   * Campaign review. The SAME model again, for the same billing reason: the one
-   * rate in this table is still flagged unverified, and a second model would
-   * mean a second unchecked price on the same invoice. Judging five short
-   * emails against a stated rubric is well within this model.
-   */
-  CAMPAIGN_REVIEW: "claude-haiku-4-5-20251001",
-  /**
-   * Send-time advice. The SAME model again, and for the fourth time the reason
-   * is billing rather than capability: the one rate in this table is still
-   * flagged unverified, and a second model would put a second unchecked price
-   * on the same invoice. The work is reading a table of a dozen counts that
-   * this application computed — the arithmetic is already done before the model
-   * sees it — which is comfortably within this model.
-   */
-  SEND_TIME_ADVICE: "claude-haiku-4-5-20251001",
-  /**
-   * Explaining the differences between a client's sending mailboxes. The SAME
-   * model a fifth time, and the billing reason has not changed: the one rate in
-   * this table is still flagged unverified, and a second model would put a
-   * second unchecked price on the same invoice. The work is reading a table of
-   * a handful of rows whose arithmetic — including the significance test that
-   * decides which gaps are real — is complete before the model sees it.
-   */
-  REP_PERFORMANCE: "claude-haiku-4-5-20251001",
-  /**
-   * Explaining which campaign suits which job title. The SAME model a sixth
-   * time, and the billing reason has not changed: the one rate in this table is
-   * still flagged unverified, and a second model would put a second unchecked
-   * price on the same invoice. The work is reading a table of a few dozen counts
-   * whose arithmetic — the job-title grouping, the reply rates, and the
-   * multiplicity-adjusted significance test that decides which gaps are real —
-   * is complete before the model sees it.
-   */
-  TITLE_MESSAGE_FIT: "claude-haiku-4-5-20251001",
-  /**
-   * The app-shell "how do I..." search bar. The SAME model a seventh time, and
-   * the billing reason has not changed: the one rate in this table is still
-   * flagged unverified, and a second model would put a second unchecked price
-   * on the same invoice. The work is answering from a handful of short
-   * training-content passages a lexical search already retrieved — well within
-   * this model, and cheap is right for a call that can fire from any screen.
-   */
-  TRAINING_ASSISTANT: "claude-haiku-4-5-20251001",
-} as const;
-
-export type AiModelId = (typeof AI_MODELS)[keyof typeof AI_MODELS];
 
 /**
  * The rate table.
  *
  * !! UNVERIFIED AGAINST THE PUBLISHED PRICE LIST !!
  *
- * These figures were entered on 2026-08-29 by a relay cycle that had no network
- * access to docs.claude.com (WebFetch was denied in that session), so they are
- * from model knowledge and NOT from the live price list. That is exactly the
+ * The first figures were entered on 2026-08-29 by a relay cycle that had no
+ * network access to the vendor price list (WebFetch was denied in that
+ * session), so they were from model knowledge and NOT from the live price list. That is exactly the
  * "from memory" failure the engineering standard forbids for anything that
  * gates a real-world action — and issuing an invoice is one.
  *
@@ -175,12 +108,11 @@ export const RATES_VERIFIED = false;
  * the old invoices had been checked too.
  *
  * EMPTY ON PURPOSE. Cycle 85 could not reach the published prices (WebFetch
- * denied), and cycle 86 could not either — WebFetch and the `claude-api` skill
- * were both denied again. Nothing has been verified, so nothing is listed, and
+ * denied), and cycle 86 could not either. Nothing has been verified, so nothing is listed, and
  * `/settings/ai-spend` says so on its face.
  *
  * TO CLOSE THIS: check the current per-MTok prices at
- * https://docs.claude.com/en/docs/about-claude/pricing, correct `RATES` above
+ * https://docs.x.ai/docs/models, correct `RATES` above
  * if they differ (adding a NEW `RATE_VERSION` if they do), then add the
  * verified version string here and set `RATES_VERIFIED` true.
  */
@@ -202,14 +134,6 @@ export interface ModelRate {
   readonly inputPerMTokMicroUsd: number;
   readonly outputPerMTokMicroUsd: number;
 }
-
-const ANTHROPIC_RATES: Readonly<Record<AiModelId, ModelRate>> = {
-  // $1.00 / MTok in, $5.00 / MTok out — UNVERIFIED (see header comment).
-  "claude-haiku-4-5-20251001": {
-    inputPerMTokMicroUsd: 1_000_000,
-    outputPerMTokMicroUsd: 5_000_000,
-  },
-};
 
 /**
  * xAI rates — micro-USD per MTok. grok-4.6 / grok-4.7 / grok-4.20-* figures from
@@ -236,7 +160,6 @@ const XAI_RATES: Readonly<Record<XaiChatModelId, ModelRate>> = {
 };
 
 const RATES: Readonly<Record<string, ModelRate>> = {
-  ...ANTHROPIC_RATES,
   ...XAI_RATES,
 };
 

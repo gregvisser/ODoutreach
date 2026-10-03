@@ -1,6 +1,5 @@
 import "server-only";
 
-import { AI_MODELS } from "@/lib/ai/model-catalog";
 import {
   buildTrainingAssistantInput,
   parseTrainingAssistantToolUse,
@@ -16,7 +15,7 @@ import { logger, reportError } from "@/lib/logger";
 import { resolveStaffActingOrganisation } from "@/server/tenant/acting-organisation";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -109,6 +108,8 @@ const REFUSAL_CODES = new Set([
   "no_api_key",
   "no_rate_for_model",
   "no_processor_allowance",
+  "organisation_feature_off",
+  "organisation_ai_cap",
 ]);
 
 const MAX_OUTPUT_TOKENS = 700;
@@ -168,7 +169,7 @@ export async function answerTrainingQuestion(args: {
     return { ok: true, canAnswer: false, unansweredQuestionId };
   }
 
-  const model = resolveProductAiModel(AI_MODELS.TRAINING_ASSISTANT);
+  const model = resolveProductAiModel();
   const apiKey = resolveProductAiApiKey();
 
   const outcome = await runMeteredAiCall({
@@ -182,7 +183,6 @@ export async function answerTrainingQuestion(args: {
     invoke: async () => {
       const response = await callAiToolMessages({
         apiKey: apiKey as string,
-        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: TRAINING_ASSISTANT_SYSTEM_PROMPT,
         userText: buildTrainingAssistantInput(question, matches),

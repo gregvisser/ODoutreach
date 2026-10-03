@@ -70,10 +70,11 @@ it("schedules a singleton five-minute tick offset from queue recovery", () => {
   expect(recovery.schedule).not.toBe(settings.schedule);
 });
 
-it("keeps GitHub as a manual and backup sender that can be stood down", () => {
+it("retires the GitHub schedule as a sender, keeping manual dispatch and an explicit github fallback", () => {
   const workflow = readFileSync(path.join(root, ".github/workflows/process-outbound-queue.yml"), "utf8");
   expect(workflow).toContain('cron: "*/5 * * * *"');
-  expect(workflow).toContain("github.event_name == 'workflow_dispatch' || vars.SCHEDULED_OUTREACH_RUNNER != 'azure'");
+  expect(workflow).toContain("github.event_name == 'workflow_dispatch' || vars.SCHEDULED_OUTREACH_RUNNER == 'github'");
+  expect(workflow).not.toContain("SCHEDULED_OUTREACH_RUNNER != 'azure'");
   expect(workflow).toContain("run-scheduled-outreach.mjs");
 });
 

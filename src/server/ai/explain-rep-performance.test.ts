@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock } = vi.hoisted(() => ({
   prismaMock: {
     client: { findFirst: vi.fn() },
     outboundEmail: { findMany: vi.fn() },
@@ -8,7 +8,7 @@ const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
     aiRepPerformanceReview: { create: vi.fn(), findFirst: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
@@ -16,8 +16,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAiToolMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -125,7 +125,7 @@ const GOOD_ANSWER = {
 };
 
 function anthropicReturns(input: unknown): void {
-  callAnthropicMock.mockResolvedValue({
+  callAiToolMock.mockResolvedValue({
     content: [{ type: "tool_use", name: REP_PERFORMANCE_TOOL.name, input }],
     inputTokens: 1_200,
     outputTokens: 320,
@@ -142,9 +142,8 @@ beforeEach(() => {
   prismaMock.aiRepPerformanceReview.create.mockResolvedValue({ id: "review-1" });
   prismaMock.aiUsageEvent.create.mockResolvedValue({ id: "usage-1" });
   anthropicReturns(GOOD_ANSWER);
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "test-key";
+  delete process.env.XAI_MODEL;
+  process.env.XAI_API_KEY = "test-key";
   process.env.AI_FEATURES_ENABLED = "true";
 });
 
@@ -160,8 +159,9 @@ describe("explainRepPerformance", () => {
     if (!result.ok) throw new Error("unreachable");
     expect(result.findings).toHaveLength(1);
     expect(result.anyDistinguishable).toBe(true);
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(180_000);
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(180_000);
+    // Default grok model on the long budget: low effort, same as drafting.
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBe("low");
 
     const written = prismaMock.aiRepPerformanceReview.create.mock.calls[0][0]
       .data as {
@@ -277,13 +277,13 @@ describe("explainRepPerformance", () => {
     expect(result.ok).toBe(false);
     // No call, no ledger row for a call that did not happen, and nothing
     // written about anybody.
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
     expect(prismaMock.aiRepPerformanceReview.create).not.toHaveBeenCalled();
   });
 
   it("refuses, and records the refusal, when there is no API key", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.XAI_API_KEY;
 
     const result = await explainRepPerformance({
       clientId: "client-1",
@@ -294,7 +294,7 @@ describe("explainRepPerformance", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.reason).toBe("no_api_key");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     // "Off on purpose" must be visibly different from "silently stopped
     // working" — the ledger is where that distinction lives.
     const usage = prismaMock.aiUsageEvent.create.mock.calls[0][0].data as {
@@ -307,7 +307,7 @@ describe("explainRepPerformance", () => {
   });
 
   it("writes nothing when the model returns an unusable answer", async () => {
-    callAnthropicMock.mockResolvedValue({
+    callAiToolMock.mockResolvedValue({
       content: [{ type: "text", text: "I can't help with that." }],
       inputTokens: 800,
       outputTokens: 10,
@@ -344,7 +344,7 @@ describe("explainRepPerformance", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.reason).toBe("client_not_found");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
   });
 
   it("changes nothing about any mailbox", async () => {

@@ -95,7 +95,7 @@ export type NeedsAPersonQueue = {
  * line in this file. `InboundReply.classification` is null whenever the
  * feature is off, the call failed, or the model returned something we would
  * not store — and it is null for every reply in production today, because
- * ANTHROPIC_API_KEY is unset in Azure. Dropping null would leave this screen
+ * reply classification is refused by the CR-10 processor gate. Dropping null would leave this screen
  * confidently empty while the entire inbox went unrouted. The schema says the
  * same thing at the column: "Null must always route the reply to a person; it
  * never means 'nothing interesting here'."

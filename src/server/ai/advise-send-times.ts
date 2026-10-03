@@ -1,6 +1,5 @@
 import "server-only";
 
-import { AI_MODELS } from "@/lib/ai/model-catalog";
 import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildSendTimeAdviceInput,
@@ -25,7 +24,7 @@ import {
 import { listActiveInternalSeedEmails } from "@/server/internal-seed/seed-allowlist";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -128,7 +127,7 @@ export async function adviseSendTimes(args: {
     return { ok: false, reason: verdict.reason };
   }
 
-  const model = resolveProductAiModel(AI_MODELS.SEND_TIME_ADVICE);
+  const model = resolveProductAiModel();
   const apiKey = resolveProductAiApiKey();
   const budget = onDemandToolCallBudget(model);
 
@@ -141,7 +140,6 @@ export async function adviseSendTimes(args: {
     invoke: async () => {
       const response = await callAiToolMessages({
         apiKey: apiKey as string,
-        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
         userText: buildSendTimeAdviceInput({

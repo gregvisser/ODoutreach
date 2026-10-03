@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock } = vi.hoisted(() => ({
   prismaMock: {
     clientEmailSequence: { findFirst: vi.fn(), update: vi.fn() },
     clientEmailTemplate: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     aiCampaignReview: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
     aiUsageEvent: { create: vi.fn(), findFirst: vi.fn() },
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
@@ -15,8 +15,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAiToolMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -82,7 +82,7 @@ const GOOD_REVIEW = {
 };
 
 function modelAnswers(input: unknown, usage = { inputTokens: 1_200, outputTokens: 300 }) {
-  callAnthropicMock.mockResolvedValue({
+  callAiToolMock.mockResolvedValue({
     content: [{ type: "tool_use", name: CAMPAIGN_REVIEW_TOOL.name, input }],
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
@@ -110,10 +110,9 @@ beforeEach(() => {
   prismaMock.aiCampaignReview.findFirst.mockReset().mockResolvedValue(null);
   prismaMock.aiUsageEvent.create.mockReset().mockResolvedValue({ id: "usage-1" });
   prismaMock.aiUsageEvent.findFirst.mockReset().mockResolvedValue(null);
-  callAnthropicMock.mockReset();
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+  callAiToolMock.mockReset();
+  process.env.XAI_API_KEY = "xai-test";
+  delete process.env.XAI_MODEL;
   delete process.env.AI_FEATURES;
 });
 
@@ -140,7 +139,7 @@ describe("reviewing a campaign", () => {
     await run();
     const row = prismaMock.aiCampaignReview.create.mock.calls[0][0].data;
     expect(row.promptVersion).toBe(CAMPAIGN_REVIEW_PROMPT_VERSION);
-    expect(row.model).toContain("claude");
+    expect(row.model).toContain("grok");
   });
 
   /**
@@ -198,13 +197,13 @@ describe("reviewing a campaign", () => {
   });
 
   it("refuses without an API key, and records the refusal rather than failing silently", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.XAI_API_KEY;
     const result = await run();
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("no_api_key");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
 
     const usage = prismaMock.aiUsageEvent.create.mock.calls[0][0].data;
     expect(usage.status).toBe("REFUSED");
@@ -217,7 +216,7 @@ describe("reviewing a campaign", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("ai_features_switched_off");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
   });
 
   it("spends nothing on a sequence with no emails in it", async () => {
@@ -230,7 +229,7 @@ describe("reviewing a campaign", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("no_steps");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
   });
 
@@ -243,15 +242,15 @@ describe("reviewing a campaign", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("sequence_not_found");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
   });
 
   it("does not retry a failed call, because a retry double-charges", async () => {
-    callAnthropicMock.mockRejectedValue(new Error("anthropic_http_529: overloaded"));
+    callAiToolMock.mockRejectedValue(new Error("anthropic_http_529: overloaded"));
     const result = await run();
 
     expect(result.ok).toBe(false);
-    expect(callAnthropicMock).toHaveBeenCalledTimes(1);
+    expect(callAiToolMock).toHaveBeenCalledTimes(1);
     const usage = prismaMock.aiUsageEvent.create.mock.calls[0][0].data;
     expect(usage.status).toBe("ERROR");
   });
@@ -259,7 +258,7 @@ describe("reviewing a campaign", () => {
   it("sends the campaign's real copy to the model, fenced", async () => {
     modelAnswers(GOOD_REVIEW);
     await run();
-    const sent = callAnthropicMock.mock.calls[0][0].userText as string;
+    const sent = callAiToolMock.mock.calls[0][0].userText as string;
     expect(sent).toContain("<campaign>");
     expect(sent).toContain("Quick question");
     expect(sent).toContain("Just checking.");
@@ -345,31 +344,30 @@ describe("loadLatestCampaignReviews", () => {
 
 describe("the grok budget that sequence drafting already uses", () => {
   it("gives grok-4.7 three minutes and low reasoning effort", async () => {
-    process.env.AI_MODEL_PROVIDER = "xai";
-    delete process.env.ANTHROPIC_API_KEY;
     process.env.XAI_API_KEY = "xai-test-key";
     process.env.XAI_MODEL = "grok-4.7";
     modelAnswers(GOOD_REVIEW);
 
     await run();
 
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(
       AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
     );
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBe("low");
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBe("low");
   });
 
   it("keeps the long timeout for a non-reasoning model and does not set effort", async () => {
+    process.env.XAI_MODEL = "grok-4-fast-non-reasoning";
     modelAnswers(GOOD_REVIEW);
     await run();
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(
       AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS,
     );
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
   });
 
   it("logs a provider failure without the API key", async () => {
-    callAnthropicMock.mockRejectedValue(
+    callAiToolMock.mockRejectedValue(
       new Error("xai_timeout: exceeded 180000ms Bearer xai-supersecretvalue"),
     );
     const result = await run();
@@ -446,7 +444,7 @@ describe("scheduleCampaignReview", () => {
       },
     );
     expect(queued).toHaveLength(1);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
 
     prismaMock.clientEmailSequence.findFirst.mockRejectedValue(
       new Error("db Bearer xai-supersecretvalue"),

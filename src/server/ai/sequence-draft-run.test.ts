@@ -23,7 +23,7 @@ vi.mock("./draft-sequence", () => ({ draftSequenceForClient: draftMock }));
 
 import { logger } from "@/lib/logger";
 
-import { AI_CALL_TIMEOUT_MS, AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
+import { AI_CALL_TIMEOUT_MS, AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./ai-tool-messages";
 import { SEQUENCE_DRAFT_INTERRUPTED_MESSAGE } from "./sequence-draft-messages";
 import {
   beginSequenceDraftRun,

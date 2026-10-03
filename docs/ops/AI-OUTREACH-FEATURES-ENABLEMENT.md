@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-21  
 **This document does not enable production flags.** Merging it does not set
-Azure App Settings, does not add `ANTHROPIC_API_KEY`, and does not touch send
+Azure App Settings and does not touch send
 governance, DNC, tracking-off defaults, mailbox OAuth, or reply-match order.
 Draft and review functions must not themselves send mail (already true in code).
 An AI campaign is a separate staff-started run: see `docs/ops/AI-CAMPAIGNS.md`.
@@ -10,11 +10,11 @@ That run sends only through the existing sequence dispatcher, after its own scor
 
 Authoritative switch: `src/lib/ai/ai-switch.ts` (`areAiFeaturesEnabled`).
 Every model call goes through `src/server/ai/metered-call.ts` (ledger + refusals).
-Product AI HTTP choke point: `src/server/ai/anthropic-messages.ts` (`callAiToolMessages`)
-→ xAI (`src/server/ai/xai-chat-completions.ts`) when `AI_MODEL_PROVIDER=xai` or
-`XAI_API_KEY` is set; Anthropic (`postAnthropicMessages`) when
-`AI_MODEL_PROVIDER=anthropic`. UI `aiConfigured` uses `isProductAiConfigured()` in
-`src/server/ai/ai-provider.ts` (not `ANTHROPIC_API_KEY` alone).
+Product AI HTTP choke point: `src/server/ai/ai-tool-messages.ts` (`callAiToolMessages`)
+→ xAI (`src/server/ai/xai-chat-completions.ts`). Product AI is xAI only since
+2026-10-03: the Anthropic path, `AI_MODEL_PROVIDER`, `ANTHROPIC_API_KEY` and
+`ANTHROPIC_WORKSPACE_ID` were removed from code. UI `aiConfigured` uses
+`isProductAiConfigured()` in `src/server/ai/ai-provider.ts` (`XAI_API_KEY` set).
 
 **xAI credential env name:** `XAI_API_KEY` only (no alternate aliases in code).
 
@@ -37,11 +37,8 @@ not drafting AI. Do not treat this enablement as Machine send activation.
 |----------|--------|----------------------|------------------------|----------------------------------|
 | `AI_FEATURES` | Azure App Setting (not a GitHub secret) | **Unset**, empty, or any value that is **not** an off-value | `off` / `false` / `0` / `no` / `disabled` (trimmed, case-insensitive) | Unset/empty → **master ON**. Empty string is not an off-value. |
 | `AI_OUTREACH_FEATURES` | Azure App Setting | `on` / `true` / `1` / `yes` / `enabled` (trimmed, case-insensitive) | Unset, empty, `"off"`, typos (`typo` is **off**) | `.env.example` `"off"` → five outreach features **off** |
-| `AI_MODEL_PROVIDER` | Azure App Setting | `xai` (production default) | `anthropic` → rollback path only | Unset → xAI when `XAI_API_KEY` set, else anthropic |
-| `XAI_API_KEY` | Azure App Setting **secret** | Non-empty xAI key | Unset/empty (with provider xai) → `no_api_key` | Empty in example |
+| `XAI_API_KEY` | Azure App Setting **secret** | Non-empty xAI key | Unset/empty → `no_api_key` | Empty in example |
 | `XAI_MODEL` | Azure App Setting | **Live** api.x.ai chat model id that has a rate in `model-catalog.ts` (e.g. `grok-4.6`, `grok-4.7`, `grok-4-fast-non-reasoning`) | Wrong/unknown id → `no_rate_for_model` or API 404 | Unset → `grok-4.6` |
-| `ANTHROPIC_API_KEY` | Azure App Setting **secret** | Only when `AI_MODEL_PROVIDER=anthropic` | Not required for xAI outreach | May remain in prod but unused when provider=xai |
-| `ANTHROPIC_WORKSPACE_ID` | Azure App Setting (not a secret) | Anthropic rollback only — identity-linked key header | Unset → header omitted for workspace-scoped keys | Empty in example |
 
 Master kill: if `AI_FEATURES` is an off-value, **all** AI (outreach, reply classification, training) refuses with `ai_features_switched_off`.
 
@@ -133,7 +130,7 @@ App: `app-opensdoors-outreach-prod`, RG `rg-opensdoors-outreach-prod`.
 
 **Do (names only; never paste key material into tickets/PRs):**
 
-1. Confirm `AI_MODEL_PROVIDER` = `xai`, `XAI_API_KEY` is present (name check only), and `XAI_MODEL` is a **live** xAI model id listed in `XAI_CHAT_MODELS` / `src/lib/ai/model-catalog.ts` (recommended: `grok-4.6`). Typos like `grok-4-6` are remapped in code, but Azure should use the dotted id from [docs.x.ai/models](https://docs.x.ai/docs/models).
+1. Confirm `XAI_API_KEY` is present (name check only), and `XAI_MODEL` is a **live** xAI model id listed in `XAI_CHAT_MODELS` / `src/lib/ai/model-catalog.ts` (recommended: `grok-4.6`). Typos like `grok-4-6` are remapped in code, but Azure should use the dotted id from [docs.x.ai/models](https://docs.x.ai/docs/models).
 2. Confirm `AI_FEATURES` is **not** an off-value (prefer **omit** the setting, or leave blank).
 3. Set `AI_OUTREACH_FEATURES` = `on` (or `true` / `1` / `yes` / `enabled`).
 4. Saving App Settings restarts the app. Wait for healthy `GET /api/health`.
@@ -161,7 +158,7 @@ Expect spend: a successful call writes `AiUsageEvent` status `OK`. Refusals writ
 | 7 | REPLY_CLASSIFICATION | `/replies` | Still **Not checked yet** / unclassified for new replies while CR-10 holds. | No prospect body reaching the vendor (`no_processor_allowance` on ledger if a call was attempted). |
 | 8 | Ledger | `/settings/ai-spend` (owner) | Outreach features show `OK` (or evidence path never called the model). No unexpected `ERROR` storm. | Dollar column remains an estimate until rates are verified. |
 
-If the UI still says “This optional AI tool is switched off”, the App Setting is not an on-value (or `AI_FEATURES` is off) — fix config; do not patch the switch. If it says the API key is missing, set `XAI_API_KEY` (production) or `ANTHROPIC_API_KEY` when `AI_MODEL_PROVIDER=anthropic`. If ledger shows `no_rate_for_model`, set `XAI_MODEL` to a model id listed in `XAI_CHAT_MODELS` / `model-catalog.ts`.
+If the UI still says “This optional AI tool is switched off”, the App Setting is not an on-value (or `AI_FEATURES` is off) — fix config; do not patch the switch. If it says the API key is missing, set `XAI_API_KEY`. If ledger shows `no_rate_for_model`, set `XAI_MODEL` to a model id listed in `XAI_CHAT_MODELS` / `model-catalog.ts`.
 
 ---
 
