@@ -37,6 +37,7 @@ export const TENANT_EXEMPT_MODELS = {
   GlobalBrandSetting: "Legacy OpensDoors brand singleton. Other organisations use Organisation.",
   BriefTaxonomyTerm: "Shared brief vocabulary. Client links are scoped separately.",
   TrainingAssistantUnansweredQuestion: "Product questions, not prospect or client data.",
+  SchedulerHeartbeat: "Platform scheduler liveness. No client or prospect data.",
 } as const;
 
 export type TenantExemptModel = keyof typeof TENANT_EXEMPT_MODELS;

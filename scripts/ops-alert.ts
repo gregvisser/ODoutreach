@@ -29,8 +29,21 @@ import {
 import { readPartialAnnotations, type PartialDetail } from "@/lib/alerts/partial-annotations";
 import { buildGoogleReconnectRoster } from "@/lib/mailboxes/google-reconnect-roster";
 import { buildStrandedMailboxRoster } from "@/lib/mailboxes/stranded-mailbox-roster";
+import {
+  assessSendingHeartbeat,
+  SENDING_HEARTBEAT_NAME,
+  sendingWatchShouldAlert,
+  type SendingHeartbeatVerdict,
+} from "@/lib/alerts/sending-heartbeat";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+/**
+ * Hourly mode: check only the Azure sending heartbeat and email only when
+ * sending has stopped. Quiet when healthy; the daily digest stays the dead
+ * man's switch.
+ */
+const SENDING_WATCH = process.argv.includes("--sending-watch");
+
 
 /**
  * The scheduled jobs that matter, and whether each is expected on a weekday.
@@ -45,7 +58,11 @@ const DRY_RUN = process.argv.includes("--dry-run");
  * their absence on a given day says nothing.
  */
 const WATCHED: { file: string; label: string; expectedPerDay: number }[] = [
-  { file: "process-outbound-queue.yml", label: "sending", expectedPerDay: 1 },
+  // Real sending moved to the Azure WebJob odoutreach-scheduled-outreach on
+  // 3 Oct 2026; it is judged by its heartbeat (readSendingHeartbeat), not
+  // here. This GitHub workflow still runs on schedule with its send step off,
+  // so it is watched only for outright failure.
+  { file: "process-outbound-queue.yml", label: "GitHub sending backup (send step off)", expectedPerDay: 0 },
   // This workflow does two jobs: it ingests replies AND re-syncs every
   // do-not-contact sheet. The label reads out in the alert subject, and
   // "reply sync partly failed" sent someone to the mailbox screen when what
@@ -404,6 +421,52 @@ async function readStrandedMailboxes(now: Date): Promise<StrandedMailboxAlert> {
   }
 }
 
+/**
+ * Real sending, judged from the heartbeat the Azure WebJob
+ * odoutreach-scheduled-outreach records on every 5-minute run.
+ *
+ * NEVER THROWS. An unreadable heartbeat is a FAILED: the alert cannot prove
+ * sending is alive, and silence must never pass for health.
+ */
+async function readSendingHeartbeat(now: Date): Promise<{
+  job: JobRunSummary;
+  verdict: SendingHeartbeatVerdict;
+  emailsSent: number;
+}> {
+  const name = "Sending (Azure WebJob odoutreach-scheduled-outreach)";
+  const blind = (reason: string) => ({
+    job: { name, label: "sending", conclusion: "failure" as const, runs: 0, expectedRuns: 0, runsText: "heartbeat unreadable", reasons: [reason] },
+    verdict: { conclusion: "failure" as const, stale: true, minutesSinceRun: null, reasons: [reason] },
+    emailsSent: 0,
+  });
+  if (!process.env.DATABASE_URL?.trim()) {
+    return blind("DATABASE_URL is not set for the alert job, so sending could not be checked.");
+  }
+  try {
+    const { prisma } = await import("@/lib/db");
+    const [heartbeat, emailsSent] = await Promise.all([
+      prisma.schedulerHeartbeat.findUnique({ where: { name: SENDING_HEARTBEAT_NAME } }),
+      prisma.outboundEmail.count({ where: { sentAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
+    ]);
+    const verdict = assessSendingHeartbeat(heartbeat, now);
+    return {
+      job: {
+        name,
+        label: "sending",
+        conclusion: verdict.conclusion,
+        runs: verdict.stale ? 0 : 1,
+        expectedRuns: 0,
+        runsText: verdict.minutesSinceRun === null ? "no heartbeat" : `last run ${String(verdict.minutesSinceRun)} min ago`,
+        reasons: verdict.reasons,
+      },
+      verdict,
+      emailsSent,
+    };
+  } catch (error) {
+    return blind(`the sending heartbeat could not be read (${error instanceof Error ? error.message : String(error)})`);
+  }
+}
+
 async function appIsReachable(baseUrl: string): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/health`, {
@@ -417,7 +480,53 @@ async function appIsReachable(baseUrl: string): Promise<boolean> {
   }
 }
 
+async function sendEmail(subject: string, body: string): Promise<void> {
+  const apiKey = required("RESEND_API_KEY");
+  const to = required("ALERT_TO_EMAIL");
+  const from = required("ALERT_FROM_EMAIL");
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from, to: [to], subject, text: body }),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  const detail = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
+  if (!res.ok) {
+    console.error(`Resend refused the alert: ${res.status} ${detail.message ?? ""}`);
+    process.exit(1);
+  }
+  console.log(`Sent. Resend id ${detail.id ?? "(none)"}.`);
+}
+
+async function sendingWatch(): Promise<void> {
+  const appUrl = process.env.ALERT_APP_URL?.trim() || DEFAULT_ALERT_APP_BASE_URL;
+  const sending = await readSendingHeartbeat(new Date());
+  console.log(`sending: ${sending.verdict.conclusion} — ${sending.verdict.reasons.join(" ")}`);
+  if (!sendingWatchShouldAlert(sending.verdict)) {
+    console.log(
+      sending.verdict.conclusion === "failure"
+        ? "Outage older than the repeat window; the daily digest carries it."
+        : "Sending is alive. Nothing to send.",
+    );
+    return;
+  }
+  const email = buildAlertEmail({ jobs: [sending.job], emailsSent: sending.emailsSent, appBaseUrl: appUrl });
+  console.log(`subject: ${email.subject}`);
+  console.log(email.body);
+  if (DRY_RUN) {
+    console.log("\nDRY RUN — nothing sent.");
+    return;
+  }
+  await sendEmail(email.subject, email.body);
+}
+
 async function main(): Promise<void> {
+  if (SENDING_WATCH) return sendingWatch();
   const repo = process.env.GITHUB_REPOSITORY?.trim() || "gregvisser/ODoutreach";
   const token = required("GITHUB_TOKEN");
   const appUrl = process.env.ALERT_APP_URL?.trim() || DEFAULT_ALERT_APP_BASE_URL;
@@ -465,12 +574,15 @@ async function main(): Promise<void> {
   }
 
   const now = new Date();
+  // Real sending: the Azure WebJob heartbeat, first in the list.
+  const sending = await readSendingHeartbeat(now);
+  jobs.unshift(sending.job);
   const googleReconnects = await readGoogleReconnects(now);
   const strandedMailboxes = await readStrandedMailboxes(now);
 
   const email = buildAlertEmail({
     jobs,
-    emailsSent: 0,
+    emailsSent: sending.emailsSent,
     googleReconnects,
     strandedMailboxes,
     appBaseUrl: appUrl,
@@ -484,26 +596,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const apiKey = required("RESEND_API_KEY");
-  const to = required("ALERT_TO_EMAIL");
-  const from = required("ALERT_FROM_EMAIL");
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from, to: [to], subject: email.subject, text: email.body }),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  const detail = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
-  if (!res.ok) {
-    console.error(`Resend refused the alert: ${res.status} ${detail.message ?? ""}`);
-    process.exit(1);
-  }
-  console.log(`Sent. Resend id ${detail.id ?? "(none)"}.`);
+  await sendEmail(email.subject, email.body);
 }
 
 main().catch((error: unknown) => {

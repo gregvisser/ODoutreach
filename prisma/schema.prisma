@@ -2799,3 +2799,20 @@ model AiOutreachCampaignEvent {
 
   @@index([campaignId, at])
 }
+
+/// Liveness of the Azure WebJob `odoutreach-scheduled-outreach`, the only
+/// production sender. One row per scheduler (`name`). The plan phase stamps
+/// `lastRunAt` on every 5-minute run (day and night); the queue phase stamps
+/// the send drain. The ops alert reads this instead of GitHub run history.
+/// Platform-wide, holds no client data, so tenant-exempt.
+model SchedulerHeartbeat {
+  name                     String    @id
+  lastRunAt                DateTime
+  lastQueueAt              DateTime?
+  lastQueueOkAt            DateTime?
+  lastQueueError           String?
+  consecutiveQueueFailures Int       @default(0)
+  lastQueueClaimed         Int       @default(0)
+  lastQueueCompleted       Int       @default(0)
+  updatedAt                DateTime  @updatedAt
+}
