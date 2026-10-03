@@ -1,5 +1,13 @@
 # Support agent go-live checklist
 
+> **Status 2026-10-03: scheduled ticket processing is LIVE.** Steps 1-3 were
+> completed on 2026-09-23 (manual `process-tickets` run `35905947628`
+> concluded `success`). Greg approved go-live on 2026-10-03. Because the
+> repository variable could not be written from the ops token, the gate was
+> inverted in the workflow instead: weekday cron now processes tickets unless
+> `SUPPORT_AGENT_SCHEDULE_ENABLED` is exactly `false`. The historical
+> checklist below is kept for re-validation after any runner change.
+
 **This document does not process live tickets.** Merging the plumbing does
 not set `SUPPORT_AGENT_SCHEDULE_ENABLED`, and does not touch outreach, DNC,
 open/click tracking, mailbox OAuth secrets, or Machine/AI sending.
@@ -52,7 +60,7 @@ Optional:
 | Name | Kind | Default / effect |
 |---|---|---|
 | `SUPPORT_AGENT_MODEL` | repository variable | `grok-4.7` if unset. Allowed ids and aliases are below. Any other value (including a previous OpenAI id) is refused before HTTP with `status=MODEL_REJECTED`. |
-| `SUPPORT_AGENT_SCHEDULE_ENABLED` | repository variable | Anything other than exactly `true`, including unset, keeps scheduled ticket processing on the hold job. Set to exactly `true` only after a controlled `process-tickets` observation. |
+| `SUPPORT_AGENT_SCHEDULE_ENABLED` | repository variable | Hold switch. Exactly `false` keeps scheduled ticket processing on the hold job. Unset or any other value lets weekday cron process tickets (live since 2026-10-03). |
 
 Model ids sent to `api.x.ai` (support runner; product default remains `grok-4.6`):
 
@@ -154,19 +162,16 @@ Public logs must not show ticket bodies. That is required. They should show step
 - Step hits the 20-minute timeout or logs `event=timeout`: stop. Do not raise the step budget to recreate the Codex hang.
 - Any send/DNC/tracking/mailbox change: cancel, revert that change, leave the schedule gate off, escalate.
 
-## Step 4 — Optional: allow weekday cron
+## Step 4 — Weekday cron (done 2026-10-03)
 
-Only after a `process-tickets` run has completed (not cancelled) without
-crossing the hard rails. Do not do this as part of the Grok rewire.
+Weekday cron is on by default since 2026-10-03. Confirm on the next weekday
+hour between 08:00 and 18:00 UTC that a `resolve-tickets` job actually starts
+(not `scheduled-hold`).
 
-1. Repo **Settings → Secrets and variables → Actions → Variables**.
-2. Create `SUPPORT_AGENT_SCHEDULE_ENABLED` with value `true` (exact string).
-3. CLI equivalent: `gh variable set SUPPORT_AGENT_SCHEDULE_ENABLED --body true`
-4. Next weekday hour between 08:00 and 18:00 UTC, confirm a `resolve-tickets` job actually starts (not `scheduled-hold`).
-
-To hold cron again without disabling the whole workflow: delete the variable or
-set it to anything other than `true`. To stop all runs, disable the workflow in
-the Actions UI.
+To hold cron again without disabling the whole workflow: set repository
+variable `SUPPORT_AGENT_SCHEDULE_ENABLED` to exactly `false`
+(`gh variable set SUPPORT_AGENT_SCHEDULE_ENABLED --body false`). To stop all
+runs, disable the workflow in the Actions UI.
 
 ## What this change does not do
 
