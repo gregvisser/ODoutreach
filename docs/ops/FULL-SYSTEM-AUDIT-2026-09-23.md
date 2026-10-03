@@ -111,6 +111,8 @@ None found in the code paths read. No path turns tracking on by default, deletes
 
 A leftover Anthropic key with no xAI key silently becomes the live backend. Tests lock this (`ai-provider.test.ts`, "defaults to anthropic when no xAI key is configured"). Live Azure values for `AI_MODEL_PROVIDER`, `XAI_API_KEY`, and `ANTHROPIC_API_KEY` are **UNKNOWN**. Not changed here: flipping the default without reading production could turn off a backend that is actually serving, or the reverse.
 
+> **Resolved 2026-10-03:** the Anthropic path was removed from code. Product AI reads `XAI_API_KEY` only; `AI_MODEL_PROVIDER` and `ANTHROPIC_*` are no longer read, and `ANTHROPIC_API_KEY` was removed from the App Service.
+
 ### P2 — Machine is available in the UI, and unset campaign selection does not limit the main cron
 
 `MACHINE_ACTIVATION_AVAILABLE = true`. Any staff member can set a client to Machine. After that, `process-outbound-queue.yml` (every 5 minutes) calls `advanceDueSequenceFollowUps` for every ACTIVE client in the sending window whose switch is `true`, unless `CAMPAIGN_SCHEDULER_SELECTION` is set. The selected-campaign worker is a separate, default-off ceiling. It is not what the GitHub send cron uses.

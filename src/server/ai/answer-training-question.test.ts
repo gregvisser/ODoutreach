@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock, reportErrorMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock, reportErrorMock } = vi.hoisted(() => ({
   prismaMock: {
     client: { findFirst: vi.fn() },
     staffUser: { findUnique: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
     trainingAssistantUnansweredQuestion: { create: vi.fn() },
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
   reportErrorMock: vi.fn(),
 }));
 
@@ -16,8 +16,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: reportErrorMock,
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAiToolMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -52,7 +52,7 @@ if (!REAL_MATCH) {
 }
 
 function modelAnswers(input: unknown, usage = { inputTokens: 500, outputTokens: 60 }) {
-  callAnthropicMock.mockResolvedValue({
+  callAiToolMock.mockResolvedValue({
     content: [{ type: "tool_use", name: TRAINING_ASSISTANT_TOOL.name, input }],
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
@@ -66,11 +66,9 @@ beforeEach(() => {
   prismaMock.trainingAssistantUnansweredQuestion.create
     .mockReset()
     .mockResolvedValue({ id: "unanswered-1" });
-  callAnthropicMock.mockReset();
+  callAiToolMock.mockReset();
   reportErrorMock.mockReset();
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+  process.env.XAI_API_KEY = "xai-test";
   delete process.env.AI_FEATURES;
 });
 
@@ -82,7 +80,7 @@ describe("out-of-scope questions never reach the model", () => {
     });
 
     expect(out).toEqual({ ok: true, canAnswer: false, unansweredQuestionId: "unanswered-1" });
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     // Never even resolves the billing client — nothing was going to be charged.
     expect(prismaMock.client.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
@@ -176,7 +174,7 @@ describe("the model saying it does not know is a designed, honest outcome", () =
 });
 
 describe("the personal-data processor gate (CR-10)", () => {
-  it("refuses to answer — and never calls Anthropic — if TRAINING_ASSISTANT were ever declared to carry personal data", async () => {
+  it("refuses to answer — and never calls the model — if TRAINING_ASSISTANT were ever declared to carry personal data", async () => {
     vi.resetModules();
     vi.doMock("./ai-feature-data-policy", async (importOriginal) => {
       const actual =
@@ -200,7 +198,7 @@ describe("the personal-data processor gate (CR-10)", () => {
     });
 
     expect(out).toEqual({ ok: true, canAnswer: false, unansweredQuestionId: "unanswered-1" });
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "REFUSED", outcomeCode: "no_processor_allowance" }),

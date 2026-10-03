@@ -165,7 +165,7 @@ export const E2E_SUPPRESSION_NEEDLE = e2eSuppressedEmail(
  * (largest bill first).
  *
  * The mix is deliberate too: OK, REFUSED and ERROR rows together, because
- * production today refuses every call (no `ANTHROPIC_API_KEY` in Azure) and the
+ * production refuses some calls (reply classification, CR-10 gate) and the
  * screen has to make "refused" visible rather than showing nothing.
  */
 export const E2E_AI_SPEND = {

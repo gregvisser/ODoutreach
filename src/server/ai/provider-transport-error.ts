@@ -68,7 +68,7 @@ function networkCauseCode(err: unknown): string {
 
 /** Stable code for a fetch that never returned an HTTP response. */
 export function providerTransportError(args: {
-  vendor: "xai" | "anthropic";
+  vendor: "xai";
   timeoutMs: number;
   err: unknown;
 }): Error {

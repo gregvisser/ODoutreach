@@ -11,7 +11,7 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { AI_MODELS, RATE_VERSION } from "@/lib/ai/model-catalog";
+import { RATE_VERSION, XAI_CHAT_MODELS } from "@/lib/ai/model-catalog";
 import { logger } from "@/lib/logger";
 
 import { runMeteredAiCall } from "./metered-call";
@@ -27,7 +27,7 @@ const CLIENT = { id: "client-1", slug: "train-hugger" };
 const baseArgs = {
   client: CLIENT,
   feature: "TRAINING_ASSISTANT" as const,
-  model: AI_MODELS.TRAINING_ASSISTANT,
+  model: XAI_CHAT_MODELS.GROK_4_7,
   apiKey: "sk-ant-test",
   subject: { type: "InboundReply", id: "reply-1" },
 };
@@ -71,12 +71,12 @@ describe("a successful call", () => {
     });
 
     const row = writtenRow();
-    expect(row.model).toBe(AI_MODELS.TRAINING_ASSISTANT);
+    expect(row.model).toBe(XAI_CHAT_MODELS.GROK_4_7);
     expect(row.inputTokens).toBe(700);
     expect(row.outputTokens).toBe(40);
     expect(row.clientId).toBe("client-1");
-    // 700 in at $1/MTok + 40 out at $5/MTok = 900 micro-USD.
-    expect(row.costMicroUsd).toBe(900);
+    // grok-4.7: 700 in at $2/MTok + 40 out at $6/MTok = 1,640 micro-USD.
+    expect(row.costMicroUsd).toBe(1640);
     expect(row.status).toBe("OK");
     expect(row.feature).toBe("TRAINING_ASSISTANT");
   });
@@ -224,7 +224,7 @@ describe("the personal-data processor gate (CR-10)", () => {
     const out = await runMeteredAiCall({
       ...baseArgs,
       feature: "REPLY_CLASSIFICATION",
-      model: AI_MODELS.REPLY_CLASSIFICATION,
+      model: XAI_CHAT_MODELS.GROK_4_7,
       apiKey: "sk-ant-test",
       invoke,
     });
@@ -261,7 +261,7 @@ describe("optional outreach AI stays off until AI_OUTREACH_FEATURES opt-in", () 
     "REP_PERFORMANCE", "TITLE_MESSAGE_FIT",
   ] as const)("refuses %s with zero spend", async (feature) => {
     const invoke = vi.fn();
-    const out = await runMeteredAiCall({ ...baseArgs, feature, model: AI_MODELS[feature], invoke });
+    const out = await runMeteredAiCall({ ...baseArgs, feature, model: XAI_CHAT_MODELS.GROK_4_7, invoke });
     expect(out).toEqual({ ok: false, reason: "ai_features_switched_off" });
     expect(invoke).not.toHaveBeenCalled();
     expect(writtenRow()).toMatchObject({ status: "REFUSED", costMicroUsd: 0, feature });
@@ -276,7 +276,7 @@ describe("optional outreach AI stays off until AI_OUTREACH_FEATURES opt-in", () 
       result: "ok",
       usage: { inputTokens: 10, outputTokens: 5 },
     });
-    const out = await runMeteredAiCall({ ...baseArgs, feature, model: AI_MODELS[feature], invoke });
+    const out = await runMeteredAiCall({ ...baseArgs, feature, model: XAI_CHAT_MODELS.GROK_4_7, invoke });
     expect(out.ok).toBe(true);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(writtenRow()).toMatchObject({ status: "OK", feature });

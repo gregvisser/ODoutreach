@@ -52,7 +52,8 @@ describe("triageBandFor", () => {
    *
    * `InboundReply.classification` is null when the feature is off, the call
    * failed, or the model gave an answer we would not store — which is the
-   * state of PRODUCTION today, because ANTHROPIC_API_KEY is unset. If null
+   * state of PRODUCTION today, because the CR-10 processor gate refuses
+   * reply classification. If null
    * fell out of this queue, the screen would be empty and would look calm
    * while every reply in the system went unrouted.
    */

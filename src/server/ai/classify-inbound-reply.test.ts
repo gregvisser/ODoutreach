@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock } = vi.hoisted(() => ({
   prismaMock: {
     inboundReply: { findFirst: vi.fn(), update: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
@@ -13,8 +13,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAiToolMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -33,7 +33,7 @@ const REPLY = {
 };
 
 function modelAnswers(input: unknown, usage = { inputTokens: 700, outputTokens: 40 }) {
-  callAnthropicMock.mockResolvedValue({
+  callAiToolMock.mockResolvedValue({
     content: [{ type: "tool_use", name: CLASSIFICATION_TOOL.name, input }],
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
@@ -44,27 +44,25 @@ beforeEach(() => {
   prismaMock.inboundReply.findFirst.mockReset().mockResolvedValue(REPLY);
   prismaMock.inboundReply.update.mockReset().mockResolvedValue({});
   prismaMock.aiUsageEvent.create.mockReset().mockResolvedValue({ id: "usage-1" });
-  callAnthropicMock.mockReset();
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+  callAiToolMock.mockReset();
+  process.env.XAI_API_KEY = "xai-test";
   delete process.env.AI_FEATURES;
 });
 
 describe("the personal-data processor gate (CR-10)", () => {
   // Reply classification is the one feature this codebase has declared to
-  // carry a prospect's own words (subject + body, verbatim) to Anthropic, and
-  // Anthropic carries no recorded processor allowance for that. So — with a
+  // carry a prospect's own words (subject + body, verbatim) to xAI, and
+  // xAI carries no recorded processor allowance for that. So — with a
   // real API key configured (see `beforeEach`) — this must refuse before the
   // model is ever called, not merely when the key happens to be absent.
-  it("refuses to classify — and never calls Anthropic — even though a valid API key is configured", async () => {
+  it("refuses to classify — and never calls the model — even though a valid API key is configured", async () => {
     modelAnswers({ label: "POSITIVE", confidence: 95, rationale: "Offered a time." });
 
     const out = await classifyInboundReply({ replyId: "reply-1" });
 
     expect(out.classified).toBe(false);
     expect(out.reason).toBe("no_processor_allowance");
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.inboundReply.update).not.toHaveBeenCalled();
   });
 
@@ -94,7 +92,7 @@ describe("when it cannot classify, the reply is left for a person", () => {
   // `invoke` ever runs, for any input, regardless of what the model would have
   // said. That is a deliberate, temporary loss of integration coverage on this
   // one file, not an oversight — restoring it is exactly the work of whatever
-  // future row grants Anthropic a recorded processor allowance.
+  // future row grants xAI a recorded processor allowance.
 
   it("does not call the model at all when the AI switch is off", async () => {
     process.env.AI_FEATURES = "off";
@@ -102,17 +100,17 @@ describe("when it cannot classify, the reply is left for a person", () => {
     const out = await classifyInboundReply({ replyId: "reply-1" });
 
     expect(out.classified).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.inboundReply.update).not.toHaveBeenCalled();
   });
 
   it("does not call the model when no API key is set, and does not invent a label", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.XAI_API_KEY;
 
     const out = await classifyInboundReply({ replyId: "reply-1" });
 
     expect(out.classified).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.inboundReply.update).not.toHaveBeenCalled();
   });
 });
@@ -124,7 +122,7 @@ describe("guards", () => {
     const out = await classifyInboundReply({ replyId: "missing" });
 
     expect(out.classified).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     // No client to bill, so nothing may be charged.
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
   });
@@ -138,7 +136,7 @@ describe("guards", () => {
     const out = await classifyInboundReply({ replyId: "reply-1" });
 
     expect(out.classified).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
   });
 });

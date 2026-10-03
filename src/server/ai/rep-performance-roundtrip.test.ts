@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildRepPerformanceInput,
@@ -12,7 +12,7 @@ import {
   type RepSendOutcome,
 } from "@/lib/ai/rep-performance-evidence";
 
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL evidence builder, the REAL significance test, the REAL
@@ -21,7 +21,7 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * WHY THIS EXISTS, given the feature is already covered three times over.
  *
- * `explain-rep-performance.test.ts` mocks `callAnthropicMessages`;
+ * `explain-rep-performance.test.ts` mocks `callAiToolMessages`;
  * `rep-performance.test.ts` hands the parser a hand-written block; and
  * `rep-performance-evidence.test.ts` never goes near the model. All three are
  * useful and all three share one blind spot: nothing asserts that the tool
@@ -33,13 +33,9 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * This cannot call the real API (there is no key, and a test that spent money
  * would be a bad test). What it can do is prove every layer we own agrees, so
- * the only untested link left is Anthropic's own.
+ * the only untested link left is xAI's own.
  */
 
-beforeEach(() => {
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-});
 
 const IDENTITIES: RepIdentity[] = [
   { mailboxIdentityId: "mbx-a", label: "Alex Poole — alex@acme.co.uk" },
@@ -63,28 +59,39 @@ function history(
   return rows;
 }
 
-/** A response shaped exactly as the Messages API returns a forced tool call. */
-function anthropicResponse(input: unknown) {
+/** A response shaped exactly as xAI chat completions returns a forced tool call. */
+function xaiResponse(input: unknown) {
   return {
     ok: true,
     json: async () => ({
-      id: "msg_01",
-      type: "message",
-      role: "assistant",
-      model: "claude-haiku-4-5-20251001",
-      stop_reason: "tool_use",
-      content: [
-        { type: "tool_use", id: "toolu_01", name: REP_PERFORMANCE_TOOL.name, input },
+      id: "chatcmpl_01",
+      object: "chat.completion",
+      model: "grok-4.7",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_01",
+                type: "function",
+                function: { name: REP_PERFORMANCE_TOOL.name, arguments: JSON.stringify(input) },
+              },
+            ],
+          },
+        },
       ],
-      usage: { input_tokens: 1_310, output_tokens: 284 },
+      usage: { prompt_tokens: 1_310, completion_tokens: 284 },
     }),
   } as unknown as Response;
 }
 
 async function send(userText: string, fetchImpl: ReturnType<typeof vi.fn>) {
   return callAiToolMessages({
-    apiKey: "sk-ant-test",
-    model: "claude-haiku-4-5-20251001",
+    apiKey: "xai-test",
+    model: "grok-4.7",
     system: REP_PERFORMANCE_SYSTEM_PROMPT,
     userText,
     maxTokens: 2_000,
@@ -107,7 +114,7 @@ describe("sender comparison round-trip", () => {
     expect(verdict.anyDistinguishable).toBe(true);
 
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         summary: "One mailbox is clearly behind and is bouncing heavily.",
         findings: [
           {
@@ -141,34 +148,33 @@ describe("sender comparison round-trip", () => {
     const body = JSON.parse(
       (fetchImpl.mock.calls[0][1] as { body: string }).body,
     ) as {
-      tools: Array<{ name: string }>;
-      tool_choice: { type: string; name: string };
-      system: string;
-      messages: Array<{ content: string }>;
+      tools: Array<{ type: string; function: { name: string } }>;
+      tool_choice: { type: string; function: { name: string } };
+      messages: Array<{ role: string; content: string }>;
     };
 
     // The request actually carried our tool, and forced its use.
-    expect(body.tools[0].name).toBe(REP_PERFORMANCE_TOOL.name);
+    expect(body.tools[0].function.name).toBe(REP_PERFORMANCE_TOOL.name);
     expect(body.tool_choice).toEqual({
-      type: "tool",
-      name: REP_PERFORMANCE_TOOL.name,
+      type: "function",
+      function: { name: REP_PERFORMANCE_TOOL.name },
     });
 
     // The counts the model is asked to read are OUR counts...
-    expect(body.messages[0].content).toContain(
+    expect(body.messages[1].content).toContain(
       "Alex Poole — alex@acme.co.uk | sent 500 | replies 60 (12%)",
     );
     // ...and so is the significance verdict, which is the thing that stops it
     // explaining noise. If this line ever stopped being built into the prompt,
     // every other test in this feature would stay green.
-    expect(body.messages[0].content).toContain(
+    expect(body.messages[1].content).toContain(
       "FEWER than the others by more than chance",
     );
-    expect(body.messages[0].content).toContain("bounces: HIGHER");
+    expect(body.messages[1].content).toContain("bounces: HIGHER");
 
     // The four facts that stop it blaming the writing travelled too.
-    expect(body.system).toContain("THE SAME WORDS");
-    expect(body.system).toContain("not appraising staff");
+    expect(body.messages[0].content).toContain("THE SAME WORDS");
+    expect(body.messages[0].content).toContain("not appraising staff");
 
     // The tokens that become the bill survived the trip.
     expect(response.inputTokens).toBe(1_310);
@@ -198,7 +204,7 @@ describe("sender comparison round-trip", () => {
     expect(verdict.anyDistinguishable).toBe(false);
 
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         summary:
           "These two mailboxes are performing the same. There is nothing to act on.",
         findings: [],
@@ -224,13 +230,13 @@ describe("sender comparison round-trip", () => {
       (fetchImpl.mock.calls[0][1] as { body: string }).body,
     ) as { messages: Array<{ content: string }> };
 
-    expect(body.messages[0].content).toContain(
+    expect(body.messages[1].content).toContain(
       "NO sender differs from the others by more than chance",
     );
     // Both rows carry the verdict too, so the instruction cannot be lost in a
     // long table.
     expect(
-      body.messages[0].content.match(/replies: within normal variation/g),
+      body.messages[1].content.match(/replies: within normal variation/g),
     ).toHaveLength(2);
   });
 
@@ -249,15 +255,16 @@ describe("sender comparison round-trip", () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        content: [{ type: "text", text: "I can't help with that." }],
-        usage: { input_tokens: 950, output_tokens: 14 },
+        choices: [
+          { index: 0, finish_reason: "stop", message: { role: "assistant", content: "I can\'t help with that." } },
+        ],
+        usage: { prompt_tokens: 950, completion_tokens: 14 },
       }),
     } as unknown as Response);
 
-    const response = await send("irrelevant", fetchImpl);
-
-    expect(parseRepPerformanceToolUse(response.content)).toBeNull();
-    // Still billable: the tokens were spent whatever the model decided.
-    expect(response.inputTokens).toBe(950);
+    // xAI returns no tool call, so the adapter throws instead of handing the
+    // parser an empty answer. The metered caller records that as an ERROR row,
+    // and nothing is stored as if the model had answered.
+    await expect(send("irrelevant", fetchImpl)).rejects.toThrow("xai_missing_tool_calls");
   });
 });

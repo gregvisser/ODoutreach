@@ -2,7 +2,7 @@ import "server-only";
 
 import type { XaiReasoningEffort } from "@/lib/ai/sequence-draft-timing";
 
-import { AI_CALL_TIMEOUT_MS } from "./anthropic-messages";
+import { AI_CALL_TIMEOUT_MS } from "./ai-tool-messages";
 import { providerTransportError, sanitizeProviderErrorDetail } from "./provider-transport-error";
 
 const XAI_CHAT_COMPLETIONS_URL = "https://api.x.ai/v1/chat/completions";
