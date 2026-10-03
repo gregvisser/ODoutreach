@@ -13,6 +13,7 @@ import {
   runOrganisationJobs,
 } from "@/lib/tenant/organisation-jobs";
 import { targetsForClientIds } from "@/server/tenant/organisation-jobs";
+import { recordSchedulerRun, recordSendQueueRun } from "@/server/ops/scheduler-heartbeat";
 
 export const runtime = "nodejs";
 
@@ -68,6 +69,9 @@ export async function POST(req: NextRequest) {
   try {
     const plan = await loadScheduledOutreachPlan();
     if (body.phase === "plan") {
+      // Every WebJob run starts here, day and night: the ops alert's proof
+      // that the sender is alive.
+      await recordSchedulerRun();
       const organisations = await targetsForClientIds(plan.clientIds);
       return NextResponse.json({ schedulerProtocol: 1, ok: true, ...plan, organisations });
     }
@@ -89,6 +93,12 @@ export async function POST(req: NextRequest) {
         organisations: run.organisations,
       };
       const outcome = jobOutcome(result);
+      await recordSendQueueRun({
+        ok: result.errors.length === 0,
+        error: result.errors.length ? sanitizeJobErrorText(result.errors.slice(0, 3).join("; ")) : null,
+        claimed: result.claimed,
+        completed: result.completed,
+      });
       return NextResponse.json(
         { schedulerProtocol: 1, ...jobResponseBody(result) },
         { status: organisationJobsStatus(run.everyActiveFailed, outcome.status) },
@@ -104,6 +114,9 @@ export async function POST(req: NextRequest) {
         ? error.message
         : "Scheduled outreach could not complete",
     );
+    if (body.phase === "queue") {
+      await recordSendQueueRun({ ok: false, error: detail || "Sending failed", claimed: 0, completed: 0 });
+    }
     return NextResponse.json(
       { schedulerProtocol: 1, ok: false, errors: [detail] },
       { status: 500 },

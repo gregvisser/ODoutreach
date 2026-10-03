@@ -168,19 +168,33 @@ function assertOrganisationField(data: unknown, organisationId: string): void {
   }
 }
 
+/**
+ * Check every client or parent row a create links to. `checked` is shared
+ * across the rows of one createMany, so a bulk insert of hundreds of rows for
+ * the same client runs one lookup per distinct link, not one per row. A slow
+ * per-row check used to push large bulk inserts past the transaction timeout.
+ */
 async function assertCreateLinks(
   base: object,
   model: string,
   data: unknown,
   organisationId: string,
+  checked: Set<string> = new Set(),
 ): Promise<void> {
   assertOrganisationField(data, organisationId);
   const clientId = readScalarId(data, "clientId") ?? readConnectId(data, "client");
-  if (clientId) await assertRowInScope(base, "Client", { id: clientId }, organisationId);
+  if (clientId && !checked.has(`Client:${clientId}`)) {
+    await assertRowInScope(base, "Client", { id: clientId }, organisationId);
+    checked.add(`Client:${clientId}`);
+  }
   const parent = PARENT_LINK[model];
   if (!parent) return;
   const parentId = readScalarId(data, parent.field) ?? readConnectId(data, parent.field);
-  if (parentId) await assertRowInScope(base, parent.parent, { id: parentId }, organisationId);
+  const key = `${parent.parent}:${String(parentId)}`;
+  if (parentId && !checked.has(key)) {
+    await assertRowInScope(base, parent.parent, { id: parentId }, organisationId);
+    checked.add(key);
+  }
 }
 
 function stampCreateArgs(
@@ -254,8 +268,9 @@ export async function enforceTenantOperation(input: {
     const stamped = stampCreateArgs(model, args, organisationId);
     const data = stamped.data;
     const rows = Array.isArray(data) ? data : [data];
+    const checked = new Set<string>();
     for (const row of rows) {
-      await assertCreateLinks(input.base, model, row, organisationId);
+      await assertCreateLinks(input.base, model, row, organisationId, checked);
     }
     return input.query(stamped);
   }

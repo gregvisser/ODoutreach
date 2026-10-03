@@ -41,6 +41,11 @@ export type JobRunSummary = {
   failedCount?: number;
   totalCount?: number;
   reasons?: string[];
+  /**
+   * Replaces "(N runs)" for a job that is not judged by GitHub run counts,
+   * such as the Azure sending WebJob, which is judged by its heartbeat.
+   */
+  runsText?: string;
 };
 
 /**
@@ -324,7 +329,7 @@ export function buildAlertEmail(input: {
             : "ok";
     // Just the count. A ratio against the nominal schedule would read as a
     // failure every morning, because GitHub cron drifts 57-85% here.
-    lines.push(`  ${j.name}: ${state} (${j.runs} run${j.runs === 1 ? "" : "s"})`);
+    lines.push(`  ${j.name}: ${state} (${j.runsText ?? `${j.runs} run${j.runs === 1 ? "" : "s"}`})`);
     for (const reason of (j.reasons ?? []).slice(0, 10)) {
       lines.push(`      ${reason}`);
     }

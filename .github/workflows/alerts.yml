@@ -22,6 +22,10 @@ on:
         description: "Compose and print without sending"
         type: boolean
         default: true
+      sending_watch:
+        description: "Run only the hourly sending (Azure WebJob heartbeat) watch"
+        type: boolean
+        default: false
   schedule:
     # 07:00 UTC, EVERY day. Greg's decision, 2026-08-25: sending is a weekday
     # activity, but reply sync runs daily, so a weekend failure would otherwise
@@ -29,6 +33,11 @@ on:
     # dead man's switch keeps working at weekends, which it would not if the
     # weekend digest were sent only when something was wrong.
     - cron: "0 7 * * *"
+    # Hourly sending watch (added 3 Oct 2026). Real sending is the Azure WebJob
+    # odoutreach-scheduled-outreach; this reads its heartbeat from the database
+    # and emails ONLY when sending has stopped or keeps failing. Quiet when
+    # healthy, so the 07:00 digest stays the one daily email.
+    - cron: "17 * * * *"
   # Immediate alert the moment a watched job finishes badly. The digest would
   # catch it tomorrow; this catches it now.
   workflow_run:
@@ -76,8 +85,12 @@ jobs:
           # quietly, because a skipped check looks exactly like a quiet week.
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
+          MODE=""
+          if [ "${{ github.event.schedule }}" = "17 * * * *" ] || [ "${{ github.event.inputs.sending_watch }}" = "true" ]; then
+            MODE="--sending-watch"
+          fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            npm run ops:alert -- --dry-run
+            npm run ops:alert -- --dry-run $MODE
           else
-            npm run ops:alert
+            npm run ops:alert -- $MODE
           fi

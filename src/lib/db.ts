@@ -63,9 +63,14 @@ function createPrismaClient(): PrismaClient {
                 // They have no staff session. Leaving them anonymous keeps the
                 // previous behaviour: they see rows until they call
                 // runInOrganisation. A real failure inside Next is rethrown.
+                // Outside Next (no NEXT_RUNTIME) there is never a staff
+                // session. A tsx script run with --conditions=react-server
+                // fails this import with a React error instead (for example
+                // "createContext is not a function"), so treat any failure
+                // there as anonymous too. Inside Next the import succeeds.
                 if (
-                  error instanceof Error &&
-                  error.message.includes("Server Component")
+                  !process.env.NEXT_RUNTIME ||
+                  (error instanceof Error && error.message.includes("Server Component"))
                 ) {
                   return { kind: "anonymous" };
                 }
