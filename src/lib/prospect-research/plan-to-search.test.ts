@@ -10,6 +10,12 @@ const criteria = {
 };
 
 describe("researchPlanToSearchBody", () => {
+  it("keeps manual runs at 10 and lets automatic top-up ask for up to 30", () => {
+    expect(researchPlanToSearchBody(criteria, 100, 1)).toMatchObject({ ok: true, body: { page_size: 10 } });
+    expect(researchPlanToSearchBody(criteria, 24, 1, 24)).toMatchObject({ ok: true, body: { page_size: 24 } });
+    expect(researchPlanToSearchBody(criteria, 100, 1, 100)).toMatchObject({ ok: true, body: { page_size: 30 } });
+  });
+
   it("maps plan filters with the same query builder as the Sources card", () => {
     const mapped = researchPlanToSearchBody(criteria, 100, 3);
     const card = buildRocketReachCardQuery({

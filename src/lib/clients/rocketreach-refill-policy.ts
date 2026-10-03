@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
+import {
+  ROCKETREACH_AUTO_TOP_UP_HORIZON_DAYS,
+  ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+  ROCKETREACH_AUTO_TOP_UP_MIN_BATCH,
+} from "@/lib/clients/rocketreach-import-cap";
 import {
   isRocketReachTopUpConfirmationValid,
 } from "@/lib/clients/rocketreach-import-safety";
@@ -50,13 +54,6 @@ export type RefillDecisionInput = {
   planBelongsToClient: boolean;
   readyNotEnrolled: number;
   lowWaterMark: number;
-  balance: { ok: true; remaining: number | "unlimited" } | { ok: false; reason: string };
-  balanceFloor: number;
-  creditsReservedToday: number;
-  creditsReservedThisMonth: number;
-  maxCreditsPerRun: number;
-  maxCreditsPerDay: number;
-  maxCreditsPerMonth: number;
   floorEnvInvalid: boolean;
 };
 
@@ -68,20 +65,11 @@ export type ListPeopleNeed =
   | { action: "skip"; reason: string }
   | { action: "fill"; gap: number };
 
-/** Whether the list is short of ready people. This does not look at RocketReach credits. */
-export function listNeedsPeople(
-  input: Pick<
-    RefillDecisionInput,
-    | "killSwitchOn"
-    | "floorEnvInvalid"
-    | "client"
-    | "sequenceArchived"
-    | "listArchived"
-    | "planBelongsToClient"
-    | "readyNotEnrolled"
-    | "lowWaterMark"
-  >,
-): ListPeopleNeed {
+/**
+ * Whether the list has run low. This is the trigger for a top-up; the size of
+ * the top-up comes from {@link autoTopUpBatchSize}. It does not look at credits.
+ */
+export function listNeedsPeople(input: RefillDecisionInput): ListPeopleNeed {
   if (!input.killSwitchOn) {
     return { action: "skip", reason: "ROCKETREACH_AUTO_REFILL is off." };
   }
@@ -104,9 +92,59 @@ export function listNeedsPeople(
   return { action: "fill", gap: input.lowWaterMark - input.readyNotEnrolled };
 }
 
-export function decideListRefill(input: RefillDecisionInput): RefillDecision {
-  const need = listNeedsPeople(input);
-  if (need.action === "skip") return need;
+export type TopUpBatch =
+  | { action: "skip"; reason: string }
+  | { action: "fill"; batch: number; capacity: number };
+
+/**
+ * Size of one automatic top-up: what the sequence's connected mailboxes can
+ * safely send over the horizon (warm-up aware daily caps), less the ready
+ * contacts already waiting, clamped to 10-30. A per-top-up batch, never a
+ * lifetime or monthly cap: the next top-up happens when the list runs low again.
+ */
+export function autoTopUpBatchSize(input: {
+  mailboxDailyCaps: readonly number[];
+  readyNotEnrolled: number;
+  horizonDays?: number;
+}): TopUpBatch {
+  const caps = input.mailboxDailyCaps.filter((cap) => Number.isFinite(cap) && cap > 0);
+  if (caps.length === 0) {
+    return {
+      action: "skip",
+      reason: "No connected sending mailbox can send for this client, so the list was not topped up.",
+    };
+  }
+  const horizon = input.horizonDays ?? ROCKETREACH_AUTO_TOP_UP_HORIZON_DAYS;
+  const capacity = caps.reduce((sum, cap) => sum + Math.floor(cap), 0) * horizon;
+  const ready = Math.max(0, Math.floor(input.readyNotEnrolled));
+  if (ready >= capacity) {
+    return {
+      action: "skip",
+      reason: `The list already holds ${String(ready)} ready contacts, enough for the next ${String(horizon)} days of sending (${String(capacity)}).`,
+    };
+  }
+  const batch = Math.min(
+    ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+    Math.max(ROCKETREACH_AUTO_TOP_UP_MIN_BATCH, capacity - ready),
+  );
+  return { action: "fill", batch, capacity };
+}
+
+/**
+ * How many RocketReach lookups this top-up may make after Universe has added
+ * what it can. There is no monthly cap. The daily safety budget and the
+ * balance floor still apply.
+ */
+export function decideListRefill(input: {
+  remainingBatch: number;
+  balance: { ok: true; remaining: number | "unlimited" } | { ok: false; reason: string };
+  balanceFloor: number;
+  creditsReservedToday: number;
+  maxCreditsPerDay: number;
+}): RefillDecision {
+  if (input.remainingBatch < 1) {
+    return { action: "skip", reason: "Universe filled this top-up, so no RocketReach lookup was needed." };
+  }
   if (!input.balance.ok) return { action: "skip", reason: input.balance.reason };
   if (input.balance.remaining !== "unlimited" && input.balance.remaining <= input.balanceFloor) {
     return {
@@ -115,18 +153,14 @@ export function decideListRefill(input: RefillDecisionInput): RefillDecision {
     };
   }
   const dayLeft = input.maxCreditsPerDay - input.creditsReservedToday;
-  const monthLeft = input.maxCreditsPerMonth - input.creditsReservedThisMonth;
-  const gap = need.gap;
   const lookupBudget = Math.min(
-    ROCKETREACH_MAX_IMPORT,
-    input.maxCreditsPerRun,
+    ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+    input.remainingBatch,
     dayLeft,
-    monthLeft,
-    gap,
-    input.balance.remaining === "unlimited" ? ROCKETREACH_MAX_IMPORT : input.balance.remaining - input.balanceFloor,
+    input.balance.remaining === "unlimited" ? ROCKETREACH_AUTO_TOP_UP_MAX_BATCH : input.balance.remaining - input.balanceFloor,
   );
   if (!Number.isSafeInteger(lookupBudget) || lookupBudget < 1) {
-    return { action: "skip", reason: "The credit budget for this run is already used." };
+    return { action: "skip", reason: "Today's RocketReach safety budget for this sequence is already used." };
   }
   return { action: "refill", lookupBudget };
 }
@@ -137,28 +171,13 @@ export const sequenceRefillRuleInputSchema = z
     planId: z.string().trim().min(1).max(200),
     enabled: z.boolean(),
     lowWaterMark: z.number().int().min(1).max(500),
-    maxCreditsPerRun: z.number().int().min(1).max(ROCKETREACH_MAX_IMPORT),
-    maxCreditsPerDay: z.number().int().min(1).max(200),
-    maxCreditsPerMonth: z.number().int().min(1).max(2000),
+    /** Daily safety budget. At least one full top-up, so a batch is never cut short by it. */
+    maxCreditsPerDay: z.number().int().min(ROCKETREACH_AUTO_TOP_UP_MAX_BATCH).max(200),
     balanceFloor: z.number().int().min(0).max(1_000_000),
     confirmationPhrase: z.string(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.maxCreditsPerDay < value.maxCreditsPerRun) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["maxCreditsPerDay"],
-        message: "The daily credit budget must be at least the per-run budget.",
-      });
-    }
-    if (value.maxCreditsPerMonth < value.maxCreditsPerDay) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["maxCreditsPerMonth"],
-        message: "The monthly credit budget must be at least the daily budget.",
-      });
-    }
     if (!isRocketReachTopUpConfirmationValid(value.enabled, value.confirmationPhrase)) {
       ctx.addIssue({
         code: "custom",
@@ -169,5 +188,8 @@ export const sequenceRefillRuleInputSchema = z
       });
     }
   });
+
+/** Default daily safety budget: two full top-ups. */
+export const DEFAULT_TOP_UP_DAILY_SAFETY_BUDGET = ROCKETREACH_AUTO_TOP_UP_MAX_BATCH * 2;
 
 export type SequenceRefillRuleInput = z.infer<typeof sequenceRefillRuleInputSchema>;

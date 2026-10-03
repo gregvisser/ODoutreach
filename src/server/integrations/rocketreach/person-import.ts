@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ContactSource } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
-import { ROCKETREACH_MAX_IMPORT } from "@/lib/clients/rocketreach-import-cap";
+import { ROCKETREACH_MAX_IMPORT, rocketReachImportPageCeiling } from "@/lib/clients/rocketreach-import-cap";
 import {
   matchKnownSearchProfile,
   type RocketReachSearchIdentity,
@@ -46,6 +46,8 @@ export type RocketReachImportInput = {
   originNote?: string | null;
   sourceLabel?: string | null;
   governor?: RocketReachLookupGovernor;
+  /** Automatic list top-up only: allow a page above the manual cap of 10, up to 30. */
+  maxBatch?: number;
 };
 
 export type RocketReachImportResult =
@@ -337,6 +339,7 @@ function profileFromUniverse(fields: {
 
 export async function searchRocketReachIdentities(
   searchBody: Record<string, unknown>,
+  maxBatch?: number,
 ): Promise<{ ok: true; identities: RocketReachSearchHit[] } | { ok: false; error: string }> {
   const apiKey = process.env.ROCKETREACH_API_KEY?.trim();
   if (!apiKey) {
@@ -349,7 +352,7 @@ export async function searchRocketReachIdentities(
   if (typeof requestedSize !== "number" || !Number.isSafeInteger(requestedSize) || requestedSize < 1) {
     return { ok: false, error: "Search batch size must be a positive whole number." };
   }
-  const lookupLimit = Math.min(requestedSize, MAX_IMPORT);
+  const lookupLimit = Math.min(requestedSize, rocketReachImportPageCeiling(maxBatch));
   let searchRes: Response;
   try {
     searchRes = await fetch(ROCKETREACH_API_V2_SEARCH, {
@@ -419,7 +422,7 @@ export async function importRocketReachPeopleForClient(
       return { ok: false, error: decision.stopReason ?? "RocketReach buying is not available for this organisation." };
     }
   }
-  const searched = await searchRocketReachIdentities(input.searchBody);
+  const searched = await searchRocketReachIdentities(input.searchBody, input.maxBatch);
   if (!searched.ok) return searched;
   const identities = searched.identities;
 

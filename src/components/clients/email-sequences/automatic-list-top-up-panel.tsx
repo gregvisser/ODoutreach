@@ -16,6 +16,11 @@ import {
   ROCKETREACH_TOP_UP_ENABLE_PHRASE,
 } from "@/lib/clients/rocketreach-import-safety";
 import { AUTOMATIC_LIST_TOP_UP_TRAINING } from "@/lib/clients/rocketreach-top-up-copy";
+import {
+  ROCKETREACH_AUTO_TOP_UP_HORIZON_DAYS,
+  ROCKETREACH_AUTO_TOP_UP_MAX_BATCH,
+} from "@/lib/clients/rocketreach-import-cap";
+import { DEFAULT_TOP_UP_DAILY_SAFETY_BUDGET } from "@/lib/clients/rocketreach-refill-policy";
 import { formatStaffDate, formatStaffDateTime } from "@/lib/datetime/staff-datetime";
 import type { SequenceListTopUpView } from "@/lib/clients/rocketreach-top-up-view";
 
@@ -58,7 +63,7 @@ export function AutomaticListTopUpPanel({
       ? "On for this sequence, but the server switch ROCKETREACH_AUTO_REFILL is off, so nothing will be searched."
       : !topUp.clientAllows
         ? `On for this sequence, but it will not run. ${topUp.clientBlockReason ?? ""}`
-        : "On. The scheduled job may add people to the list when it falls below the threshold.";
+        : "On. When the list falls below the threshold, the scheduled job adds a batch of 10 to 30 people, Universe first.";
 
   return (
     <section aria-label="Automatic list top-up" className="space-y-3 rounded-lg border border-border/80 bg-muted/10 p-4">
@@ -77,11 +82,15 @@ export function AutomaticListTopUpPanel({
         Last run: {topUp.lastRun ? `${topUp.lastRun.status} · ${formatStaffDateTime(topUp.lastRun.finishedAt)} · credits ${String(topUp.lastRun.creditsUsed)} · added ${String(topUp.lastRun.contactsAdded)}. ${topUp.lastRun.detail ?? ""}` : "None yet."}
       </p>
       <p className="text-xs text-muted-foreground">
+        {topUp.nextTopUp.batch > 0
+          ? `Next top-up: ${String(topUp.nextTopUp.batch)} people, sized to about ${String(topUp.nextTopUp.sendCapacity ?? 0)} emails the connected mailboxes can safely send over the next ${String(ROCKETREACH_AUTO_TOP_UP_HORIZON_DAYS)} days.`
+          : `Next top-up: none right now. ${topUp.nextTopUp.note ?? ""}`}
+        {" "}Each top-up is 10 to 30 people and repeats whenever the list runs low. There is no monthly credit cap; the client pays its own RocketReach bill.
+      </p>
+      <p className="text-xs text-muted-foreground">
         Credits reserved today: {String(topUp.creditsUsedToday)}
-        {topUp.budgetLeftToday !== null ? ` · left today ${String(topUp.budgetLeftToday)}` : ""}.
-        This month: {String(topUp.creditsUsedThisMonth)}
-        {topUp.budgetLeftThisMonth !== null ? ` · left this month ${String(topUp.budgetLeftThisMonth)}` : ""}.
-        Day and month use UTC.
+        {topUp.budgetLeftToday !== null ? ` · daily safety budget left ${String(topUp.budgetLeftToday)}` : ""}.
+        The day uses UTC.
       </p>
       {canMutate ? (
         <form
@@ -96,9 +105,7 @@ export function AutomaticListTopUpPanel({
                 planId: String(data.get("planId") ?? ""),
                 enabled,
                 lowWaterMark: Number(data.get("lowWaterMark")),
-                maxCreditsPerRun: Number(data.get("maxCreditsPerRun")),
                 maxCreditsPerDay: Number(data.get("maxCreditsPerDay")),
-                maxCreditsPerMonth: Number(data.get("maxCreditsPerMonth")),
                 balanceFloor: Number(data.get("balanceFloor")),
                 confirmationPhrase: String(data.get("confirmationPhrase") ?? ""),
               });
@@ -119,9 +126,13 @@ export function AutomaticListTopUpPanel({
             </select>
           </label>
           <Field name="lowWaterMark" label="Keep at least this many ready, not enrolled" defaultValue={rule?.lowWaterMark ?? 25} min={1} max={500} />
-          <Field name="maxCreditsPerRun" label="Max credits per run" defaultValue={rule?.maxCreditsPerRun ?? 5} min={1} max={10} />
-          <Field name="maxCreditsPerDay" label="Max credits per day" defaultValue={rule?.maxCreditsPerDay ?? 20} min={1} max={200} />
-          <Field name="maxCreditsPerMonth" label="Max credits per month" defaultValue={rule?.maxCreditsPerMonth ?? 100} min={1} max={2000} />
+          <Field
+            name="maxCreditsPerDay"
+            label="Daily safety budget (credits)"
+            defaultValue={Math.max(rule?.maxCreditsPerDay ?? DEFAULT_TOP_UP_DAILY_SAFETY_BUDGET, ROCKETREACH_AUTO_TOP_UP_MAX_BATCH)}
+            min={ROCKETREACH_AUTO_TOP_UP_MAX_BATCH}
+            max={200}
+          />
           <Field name="balanceFloor" label="Stop when the account balance is at or below" defaultValue={rule?.balanceFloor ?? 50} min={0} max={1000000} />
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <input type="checkbox" name="enabled" defaultChecked={rule?.enabled ?? false} />

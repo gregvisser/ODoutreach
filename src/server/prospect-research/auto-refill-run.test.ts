@@ -32,6 +32,7 @@ const execute = vi.hoisted(() => vi.fn());
 const search = vi.hoisted(() => vi.fn());
 const known = vi.hoisted(() => vi.fn());
 const harvest = vi.hoisted(() => vi.fn());
+const mailboxCaps = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => {
   const reservation = {
@@ -95,6 +96,7 @@ vi.mock("@/server/prospect-research/universe-harvest", () => ({
   UNIVERSE_HARVEST_BATCH: 50,
 }));
 vi.mock("@/server/tenant/access", () => ({ requireClientAccess: vi.fn(async () => undefined) }));
+vi.mock("@/server/prospect-research/top-up-capacity", () => ({ loadSequenceMailboxDailyCaps: mailboxCaps }));
 
 import { emptyKnownProfileIndexes } from "@/lib/clients/rocketreach-known-match";
 import type { RocketReachLookupGovernor } from "@/server/integrations/rocketreach/person-import";
@@ -163,21 +165,61 @@ beforeEach(() => {
   harvest.mockReset();
   harvest.mockResolvedValue({ ok: true, added: 0, created: 0, attached: 0, matches: [], skipped: {} });
   search.mockReset();
+  mailboxCaps.mockReset();
+  // One warm-up mailbox at 5 a day: 15 over three days, so a batch of 15.
+  mailboxCaps.mockResolvedValue([5]);
   known.mockReset();
   known.mockResolvedValue(emptyKnownProfileIndexes());
   vi.stubEnv("ROCKETREACH_AUTO_REFILL", "true");
   vi.stubEnv("ROCKETREACH_MIN_CREDIT_FLOOR", "");
 });
 
-it("fills the list from Universe and does not call RocketReach when that closes the gap", async () => {
-  harvest.mockImplementation(async () => {
-    state.members = [{ contactId: "a" }, { contactId: "b" }, { contactId: "c" }, { contactId: "d" }, { contactId: "e" }];
-    return { ok: true, added: 5, created: 2, attached: 3, matches: [], skipped: {} };
-  });
+it("fills the batch from Universe and does not call RocketReach when that covers it", async () => {
+  harvest.mockImplementation(async (args: { maxToAdd: number }) => ({
+    ok: true, added: args.maxToAdd, created: 2, attached: args.maxToAdd - 2, matches: [], skipped: {},
+  }));
   const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
   expect(result).toMatchObject({ refilled: 1, failed: 0 });
+  expect(harvest).toHaveBeenCalledWith(expect.objectContaining({ maxToAdd: 15 }));
   expect(execute).not.toHaveBeenCalled();
-  expect(state.createdRuns.at(-1)).toMatchObject({ creditsUsed: 0, contactsAdded: 5, status: "COMPLETED" });
+  expect(state.createdRuns.at(-1)).toMatchObject({ creditsUsed: 0, contactsAdded: 15, status: "COMPLETED" });
+});
+
+it("uses Universe first and asks RocketReach only for the rest of the batch", async () => {
+  balance.mockResolvedValue({ state: "ready", remaining: 400, label: "400 credits", fetchedAt: "2026-09-29T00:00:00.000Z" });
+  state.rules = [{ ...rule, maxCreditsPerDay: 60 }];
+  harvest.mockResolvedValue({ ok: true, added: 4, created: 4, attached: 0, matches: [], skipped: {} });
+  await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ autoTopUpBatch: 11 }));
+});
+
+it("pulls up to 30 when the mailboxes can safely send that many, with no monthly cap", async () => {
+  balance.mockResolvedValue({ state: "ready", remaining: 400, label: "400 credits", fetchedAt: "2026-09-29T00:00:00.000Z" });
+  mailboxCaps.mockResolvedValue([10, 10]);
+  // A month of earlier reservations no longer blocks anything. Only today counts.
+  state.rules = [{ ...rule, maxCreditsPerDay: 60, maxCreditsPerMonth: 1 }];
+  const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(result).toMatchObject({ refilled: 1, failed: 0 });
+  expect(harvest).toHaveBeenCalledWith(expect.objectContaining({ maxToAdd: 30 }));
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ autoTopUpBatch: 30 }));
+  expect(execute.mock.calls[0]?.[0]).not.toHaveProperty("pageSize");
+});
+
+it("does not top up when the client has no connected sending mailbox", async () => {
+  mailboxCaps.mockResolvedValue([]);
+  const result = await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  expect(result).toMatchObject({ skipped: 1, refilled: 0 });
+  expect(harvest).not.toHaveBeenCalled();
+  expect(execute).not.toHaveBeenCalled();
+  expect(String(state.createdRuns.at(-1)?.detail)).toMatch(/No connected sending mailbox/);
+});
+
+it("tops up again on a later run once the list runs low, rather than stopping after one batch", async () => {
+  balance.mockResolvedValue({ state: "ready", remaining: 400, label: "400 credits", fetchedAt: "2026-09-29T00:00:00.000Z" });
+  state.rules = [{ ...rule, maxCreditsPerDay: 60 }];
+  await runDueRocketReachListRefills(new Date("2026-09-29T12:00:00.000Z"));
+  await runDueRocketReachListRefills(new Date("2026-09-30T12:00:00.000Z"));
+  expect(execute).toHaveBeenCalledTimes(2);
 });
 
 it("refills only the list and advances the search cursor when the list is below the threshold", async () => {
@@ -187,7 +229,7 @@ it("refills only the list and advances the search cursor when the list is below 
     staffId: null,
     existingListId: "list-1",
     trigger: "AUTO_REFILL",
-    pageSize: 2,
+    autoTopUpBatch: 2,
     originNote: expect.stringMatching(/^Sourced automatically from plan Directors on /),
   }));
   expect(state.ruleUpdates.at(-1)).toMatchObject({ data: { searchStart: 3 } });

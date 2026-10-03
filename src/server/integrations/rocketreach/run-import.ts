@@ -40,6 +40,8 @@ export async function runRocketReachListImport(args: {
   originNote?: string | null;
   sourceLabel?: string | null;
   governor?: RocketReachLookupGovernor;
+  /** Automatic list top-up only. Manual imports stay at the manual cap. */
+  maxBatch?: number;
 }): Promise<RocketReachListImportResult> {
   const target = resolveImportListTarget({
     existingListId: args.existingListId,
@@ -68,6 +70,7 @@ export async function runRocketReachListImport(args: {
       originNote: args.originNote,
       sourceLabel: args.sourceLabel,
       governor: args.governor,
+      maxBatch: args.maxBatch,
     });
     if (!result.ok) return result;
     return { ...result, contactListId: list.id, contactListName: list.name };
@@ -87,6 +90,7 @@ export async function runRocketReachListImport(args: {
       originNote: args.originNote,
       sourceLabel: args.sourceLabel,
       governor: args.governor,
+      maxBatch: args.maxBatch,
     });
     if (!result.ok) return result;
     return { ...result, contactListId: existing.id, contactListName: existing.name };
@@ -103,6 +107,7 @@ export async function runRocketReachListImport(args: {
       originNote: args.originNote,
       sourceLabel: args.sourceLabel,
       governor: args.governor,
+      maxBatch: args.maxBatch,
       ensureContactList: async () => {
         const list = await findOrCreateClientContactListByName({
           clientId: args.clientId,
