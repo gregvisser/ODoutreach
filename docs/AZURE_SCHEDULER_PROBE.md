@@ -17,3 +17,26 @@ GitHub `process-outbound-queue.yml` was retired as a sender on 2026-10-03 (Greg 
 The probe does not fix sending delays by itself.
 
 References: [WebJob execution](https://learn.microsoft.com/en-us/azure/app-service/webjobs-execution), [Linux prerequisites](https://learn.microsoft.com/en-us/azure/app-service/tutorial-webjobs), [GitHub scheduling limitations](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
+## Sending heartbeat and alerts (3 Oct 2026)
+
+The Azure WebJob `odoutreach-scheduled-outreach` is the only production sender.
+Each run records a heartbeat in the `SchedulerHeartbeat` table (row
+`odoutreach-scheduled-outreach`):
+
+- `lastRunAt`: stamped by the `plan` phase, the first call of every 5-minute
+  run, day and night.
+- `lastQueueAt`, `lastQueueOkAt`, `lastQueueError`, `consecutiveQueueFailures`,
+  `lastQueueClaimed`, `lastQueueCompleted`: stamped by the `queue` (send) phase.
+
+The ops alert (`scripts/ops-alert.ts`, workflow `alerts.yml`) judges sending
+from this row, not from GitHub run history:
+
+- FAILED when there is no heartbeat, the last run is more than 20 minutes old,
+  or the send phase failed 3 runs in a row.
+- PARTIAL after 1–2 failed send runs.
+- The 07:00 UTC digest always reports it, with the last-24h sent count.
+- An hourly watch (`--sending-watch`, cron `17 * * * *`) emails only on a
+  FAILED, and for a stopped job only during the first 3 hours of the outage.
+
+Check it by hand: `SELECT * FROM "SchedulerHeartbeat";`
