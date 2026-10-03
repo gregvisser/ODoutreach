@@ -27,7 +27,13 @@ export async function POST(req: NextRequest) {
       ? await runInOrganisation(source.client.organisationId, () => syncCompanyNameSheet(body.sourceId))
       : await syncCompanyNameSheet(body.sourceId);
     return NextResponse.json({ protocol: 1, ...result }, { status: result.ok ? 200 : 207 });
-  } catch {
+  } catch (error) {
+    // Log the reason (no sheet contents) so a failed sync is diagnosable.
+    console.error(JSON.stringify({
+      event: "company_name_sheet_sync_failed",
+      sourceId: typeof body.sourceId === "string" ? body.sourceId.slice(0, 200) : null,
+      error: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+    }));
     return NextResponse.json({ protocol: 1, ok: false, error: "Company sheet sync could not be confirmed" }, { status: 500 });
   }
 }
