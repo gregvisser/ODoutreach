@@ -135,6 +135,36 @@ describe("enforceTenantOperation", () => {
     ).rejects.toBeInstanceOf(OrganisationScopeError);
   });
 
+  it("checks each linked client once for a large createMany", async () => {
+    const base = baseWith([
+      { id: "client-a", organisationId: "org_a" },
+      { id: "client-b", organisationId: "org_b" },
+    ]);
+    const query = vi.fn(async (args) => args);
+    const rows = Array.from({ length: 500 }, (_, index) => ({ clientId: "client-a", toEmail: `p${String(index)}@a.test` }));
+    await enforceTenantOperation({
+      base,
+      model: "OutboundEmail",
+      operation: "createMany",
+      args: { data: rows },
+      query,
+      resolveScope: async () => ({ kind: "organisation", organisationId: "org_a" }),
+    });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(base.client.findFirst.mock.calls.length).toBeLessThanOrEqual(2);
+
+    await expect(
+      enforceTenantOperation({
+        base,
+        model: "OutboundEmail",
+        operation: "createMany",
+        args: { data: [...rows, { clientId: "client-b", toEmail: "x@b.test" }] },
+        query,
+        resolveScope: async () => ({ kind: "organisation", organisationId: "org_a" }),
+      }),
+    ).rejects.toBeInstanceOf(OrganisationScopeError);
+  });
+
   it("preflights a compound unique key as scalar fields", async () => {
     const findFirst = vi.fn(async () => ({ clientId: "client-a" }));
     const query = vi.fn(async (args) => args);
