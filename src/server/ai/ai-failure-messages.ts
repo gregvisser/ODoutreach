@@ -1,5 +1,7 @@
 import "server-only";
 
+import { describeOrganisationAiRefusal } from "@/lib/ai/organisation-ai-refusal";
+
 /**
  * Turn a raw `runMeteredAiCall` failure reason into a sentence an operator can
  * act on, for the failures its callers don't already name.
@@ -15,6 +17,8 @@ import "server-only";
  * doesn't recognise, so a caller can fall back to its own message.
  */
 export function describeUnhandledAiFailure(reason: string): string | null {
+  const organisationRefusal = describeOrganisationAiRefusal(reason);
+  if (organisationRefusal) return organisationRefusal;
   if (
     /anthropic_http_40[13]\b/.test(reason) ||
     /xai_http_40[13]\b/.test(reason) ||

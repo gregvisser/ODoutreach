@@ -34,11 +34,15 @@ export function organisationHealth(input: {
   status: "ACTIVE" | "SUSPENDED";
   mailboxesNeedingAttention: number;
   failedSendsToday: number;
+  aiCapReached?: boolean;
 }): { health: OrganisationHealth; label: string } {
   if (input.status === "SUSPENDED") {
     return { health: "suspended", label: "Suspended" };
   }
   const parts: string[] = [];
+  if (input.aiCapReached) {
+    parts.push("AI paused: monthly AI spend cap reached");
+  }
   if (input.mailboxesNeedingAttention > 0) {
     parts.push(
       input.mailboxesNeedingAttention === 1
@@ -62,10 +66,17 @@ export function formatRocketReachCredits(used: number, allowance: number | null)
   return `${used} of ${allowance}`;
 }
 
+/** Month-to-date AI spend against the monthly cap. */
 export function formatAiSpend(spentMicroUsd: number, capMicroUsd: number | null): string {
   const spent = formatMicroUsd(spentMicroUsd);
-  if (capMicroUsd === null) return `${spent}, no cap`;
-  return `${spent} of ${formatMicroUsd(capMicroUsd)}`;
+  if (capMicroUsd === null) return `${spent} this month, no cap`;
+  const suffix = aiCapReached(spentMicroUsd, capMicroUsd) ? " (paused)" : "";
+  return `${spent} of ${formatMicroUsd(capMicroUsd)} this month${suffix}`;
+}
+
+/** Same rule as the server gate: spend at or over the cap pauses AI. */
+export function aiCapReached(spentMicroUsd: number, capMicroUsd: number | null): boolean {
+  return capMicroUsd !== null && spentMicroUsd >= capMicroUsd;
 }
 
 function addCount(target: Map<string, number>, key: string, count: number): void {
@@ -117,10 +128,12 @@ export function assemblePlatformOrganisationOverviews(input: {
   return input.organisations.map((organisation) => {
     const mailboxesNeedingAttention = attention.get(organisation.id) ?? 0;
     const failedSendsToday = failed.get(organisation.id) ?? 0;
+    const aiSpendMicroUsd = ai.get(organisation.id) ?? 0;
     const health = organisationHealth({
       status: organisation.status,
       mailboxesNeedingAttention,
       failedSendsToday,
+      aiCapReached: aiCapReached(aiSpendMicroUsd, organisation.aiSpendCapMicroUsd),
     });
     return {
       ...organisation,
@@ -128,7 +141,7 @@ export function assemblePlatformOrganisationOverviews(input: {
       mailboxesNeedingAttention,
       sendsToday: sends.get(organisation.id) ?? 0,
       failedSendsToday,
-      aiSpendMicroUsd: ai.get(organisation.id) ?? 0,
+      aiSpendMicroUsd,
       health: health.health,
       healthLabel: health.label,
     };

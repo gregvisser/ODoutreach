@@ -506,8 +506,9 @@ model Organisation {
   /// extra cap. The platform reserve still applies to the shared account.
   rocketReachCreditAllowance Int?
   rocketReachCreditsUsed     Int     @default(0)
-  /// Optional AI spend cap in micro-USD. Null is no cap.
-  aiSpendCapMicroUsd         Int?
+  /// AI (xAI) spend cap per UTC calendar month, in micro-USD. Defaults to
+  /// $50 (Greg, 2026-10-03). Null is no cap (a deliberate platform choice).
+  aiSpendCapMicroUsd         Int?    @default(50000000)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 

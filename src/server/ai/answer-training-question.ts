@@ -109,6 +109,8 @@ const REFUSAL_CODES = new Set([
   "no_api_key",
   "no_rate_for_model",
   "no_processor_allowance",
+  "organisation_feature_off",
+  "organisation_ai_cap",
 ]);
 
 const MAX_OUTPUT_TOKENS = 700;

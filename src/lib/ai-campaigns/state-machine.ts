@@ -9,6 +9,8 @@ import {
   aiCampaignTransientRetryMessage,
   isTransientAiCampaignProviderFailure,
 } from "./provider-failure";
+import { describeOrganisationAiRefusal } from "@/lib/ai/organisation-ai-refusal";
+
 import {
   AI_CAMPAIGN_FAILURE_LIMIT,
   AI_CAMPAIGN_LOW_WATER,
@@ -299,6 +301,17 @@ export function noteStageFailure(
   snapshot: AiCampaignSnapshot,
   message: string,
 ): { snapshot: AiCampaignSnapshot; decision: AiCampaignDecision; retryable: boolean } {
+  // The organisation's monthly AI cap, or the platform switching AI off for
+  // it, is not a fault to retry. Stop at once with the staff sentence, so the
+  // campaign does not burn refusals every tick until the month turns.
+  const organisationRefusal = describeOrganisationAiRefusal(message);
+  if (organisationRefusal) {
+    return {
+      snapshot: { ...snapshot, status: "NEEDS_STAFF" },
+      decision: { type: "needs_staff", reason: organisationRefusal },
+      retryable: false,
+    };
+  }
   if (isTransientAiCampaignProviderFailure(message)) {
     return {
       snapshot,

@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { describeUnhandledAiFailure } from "./ai-failure-messages";
 
 describe("describeUnhandledAiFailure", () => {
+  it("tells staff plainly that their organisation's monthly AI cap paused AI", () => {
+    expect(describeUnhandledAiFailure("organisation_ai_cap")).toMatch(
+      /reached its AI spending limit for this month, so AI features are paused/,
+    );
+    expect(describeUnhandledAiFailure("organisation_feature_off")).toMatch(/switched off for your organisation/);
+  });
+
   it("names a misconfigured-credentials failure for the workspace-id 400", () => {
     const reason =
       'anthropic_http_400: {"type":"error","error":{"type":"invalid_request_error","message":"anthropic-workspace-id is required when authenticating with an identity-linked API key..."}}';

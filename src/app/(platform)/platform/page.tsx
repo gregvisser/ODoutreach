@@ -111,7 +111,7 @@ export default async function PlatformPage({
                         )}
                       />
                       <Metric
-                        label="AI spend"
+                        label="AI spend this month"
                         value={formatAiSpend(
                           organisation.aiSpendMicroUsd,
                           organisation.aiSpendCapMicroUsd,

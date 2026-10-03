@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   aiSpendWithinCap,
+  DEFAULT_MONTHLY_AI_SPEND_CAP_MICRO_USD,
+  startOfNextUtcMonth,
+  startOfUtcMonth,
   organisationFeaturePermits,
   parsePlatformCreditReserve,
   rocketReachCreditsAllowed,
@@ -102,6 +105,18 @@ describe("RocketReach organisation ledger", () => {
         requested: 3,
       }).allowed,
     ).toBe(3);
+  });
+});
+
+describe("monthly AI spend window", () => {
+  it("defaults to $50 per organisation per month", () => {
+    expect(DEFAULT_MONTHLY_AI_SPEND_CAP_MICRO_USD).toBe(50_000_000);
+  });
+
+  it("resets on the 1st of each UTC calendar month", () => {
+    expect(startOfUtcMonth(new Date("2026-10-31T23:59:59Z")).toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(startOfUtcMonth(new Date("2026-11-01T00:00:00Z")).toISOString()).toBe("2026-11-01T00:00:00.000Z");
+    expect(startOfNextUtcMonth(new Date("2026-12-15T12:00:00Z")).toISOString()).toBe("2027-01-01T00:00:00.000Z");
   });
 });
 
