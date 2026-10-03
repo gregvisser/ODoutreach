@@ -4,12 +4,13 @@ name: Process outbound queue
 on:
   workflow_dispatch:
   schedule:
-    # Backup clock. The Azure WebJob odoutreach-scheduled-outreach is the
-    # primary five-minute sender once SCHEDULED_OUTREACH_TIMER=on and three
-    # in-window runs have been seen. Set the repository variable
-    # SCHEDULED_OUTREACH_RUNNER=azure to skip this schedule. workflow_dispatch
-    # still sends. Both paths call the same endpoint; the queue claim and the
-    # step-send row lock stop two triggers sending the same email.
+    # Retired as a sender on 2026-10-03. The Azure WebJob
+    # odoutreach-scheduled-outreach is the five-minute sender. This tick still
+    # fires (ops-alert reads its run history) but skips the send step unless
+    # the repository variable SCHEDULED_OUTREACH_RUNNER is exactly 'github'
+    # (emergency fallback). workflow_dispatch still sends. Both paths call the
+    # same endpoint; the queue claim and the step-send row lock stop two
+    # triggers sending the same email.
     - cron: "*/5 * * * *"
 
 permissions:
@@ -30,7 +31,7 @@ jobs:
       # Old deployments return 404. Never fall back to unscoped endpoints.
       # The runner syncs replies before follow-up advance and queue drain.
       - name: Process open client calendars
-        if: ${{ github.event_name == 'workflow_dispatch' || vars.SCHEDULED_OUTREACH_RUNNER != 'azure' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || vars.SCHEDULED_OUTREACH_RUNNER == 'github' }}
         env:
           SCHEDULED_OUTREACH_URL: https://opensdoors.bidlow.co.uk/api/internal/scheduled-outreach/v1
           PROCESS_QUEUE_SECRET: ${{ secrets.PROCESS_QUEUE_SECRET }}

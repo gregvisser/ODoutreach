@@ -12,7 +12,7 @@ The probe stays read-only. Sending moved to the triggered WebJob `odoutreach-sch
 
 `OUTBOUND_QUEUE_RECOVERY_TIMER` must stay unset or any value other than `on`. That older job also drains the queue, and the full clock refuses to start while both are on. `CAMPAIGN_SCHEDULER_TIMER` is a separate follow-up path; leave it off so there is one sender.
 
-GitHub `process-outbound-queue.yml` stays as the backup, including `workflow_dispatch`. After three automatic in-window WebJob runs, set the GitHub repository variable `SCHEDULED_OUTREACH_RUNNER` to `azure` so the GitHub schedule stops. A manual dispatch still sends. The queue claim is `FOR UPDATE SKIP LOCKED` from `QUEUED` to `PROCESSING`, and the dispatcher locks the READY step-send row before booking a mailbox, so two triggers do not send the same email.
+GitHub `process-outbound-queue.yml` was retired as a sender on 2026-10-03 (Greg approval; the WebJob had been running every five minutes cleanly). The repository variable could not be written from the ops token, so the default was changed at the source: the scheduled tick still fires, but its send step is skipped unless the repository variable `SCHEDULED_OUTREACH_RUNNER` is exactly `github` (emergency fallback). A manual dispatch still sends. The queue claim is `FOR UPDATE SKIP LOCKED` from `QUEUED` to `PROCESSING`, and the dispatcher locks the READY step-send row before booking a mailbox, so two triggers do not send the same email.
 
 The probe does not fix sending delays by itself.
 
