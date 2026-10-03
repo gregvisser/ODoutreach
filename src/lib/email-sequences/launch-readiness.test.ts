@@ -392,8 +392,8 @@ describe("evaluateSequenceLaunchReadiness — step-send aware", () => {
  * direction — and both directions are real failures, not hypotheticals:
  *
  *   * As a BLOCKER it would stop every launch in the product whenever the AI
- *     is unavailable. That is not an edge case: `ANTHROPIC_API_KEY` is unset in
- *     production today, so every AI call currently REFUSES. Wiring the score in
+ *     is unavailable. That is not an edge case: a missing `XAI_API_KEY`, the
+ *     AI_FEATURES switch, or a provider outage makes every AI call REFUSE or fail. Wiring the score in
  *     as a blocker would have taken the live client's send button out.
  *   * As a PASS it would print a machine's opinion, in the language of the
  *     safety checks, next to the one button that mails strangers from a real

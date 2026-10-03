@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildCampaignReviewInput,
@@ -8,7 +8,7 @@ import {
   type CampaignReviewInput,
 } from "@/lib/ai/campaign-review";
 
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL request builder, through the REAL HTTP layer, into the
@@ -16,7 +16,7 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * WHY THIS EXISTS, given the feature is already covered twice over.
  *
- * `review-campaign.test.ts` mocks `callAnthropicMessages`, and
+ * `review-campaign.test.ts` mocks `callAiToolMessages`, and
  * `campaign-review.test.ts` hands the parser a hand-written block. Both are
  * useful and both share one blind spot: nothing asserts that the tool schema we
  * SEND and the shape we PARSE are the same agreement. A rename on one side
@@ -26,13 +26,9 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * This cannot call the real API (there is no key, and a test that spent money
  * would be a bad test). What it can do is prove every layer we own is
- * consistent, so the only untested link left is Anthropic's own.
+ * consistent, so the only untested link left is xAI's own.
  */
 
-beforeEach(() => {
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-});
 
 const CAMPAIGN: CampaignReviewInput = {
   clientName: "Acme Safety",
@@ -57,20 +53,31 @@ const CAMPAIGN: CampaignReviewInput = {
   ],
 };
 
-/** A response shaped exactly as the Messages API returns a forced tool call. */
-function anthropicResponse(input: unknown) {
+/** A response shaped exactly as xAI chat completions returns a forced tool call. */
+function xaiResponse(input: unknown) {
   return {
     ok: true,
     json: async () => ({
-      id: "msg_01",
-      type: "message",
-      role: "assistant",
-      model: "claude-haiku-4-5-20251001",
-      stop_reason: "tool_use",
-      content: [
-        { type: "tool_use", id: "toolu_01", name: CAMPAIGN_REVIEW_TOOL.name, input },
+      id: "chatcmpl_01",
+      object: "chat.completion",
+      model: "grok-4.7",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_01",
+                type: "function",
+                function: { name: CAMPAIGN_REVIEW_TOOL.name, arguments: JSON.stringify(input) },
+              },
+            ],
+          },
+        },
       ],
-      usage: { input_tokens: 1_431, output_tokens: 288 },
+      usage: { prompt_tokens: 1_431, completion_tokens: 288 },
     }),
   } as unknown as Response;
 }
@@ -78,7 +85,7 @@ function anthropicResponse(input: unknown) {
 describe("campaign review round-trip", () => {
   it("sends the forced tool and parses the answer it gets back", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         score: 68,
         summary: "Specific and short, but the follow-up adds nothing new.",
         findings: [
@@ -93,8 +100,8 @@ describe("campaign review round-trip", () => {
     );
 
     const response = await callAiToolMessages({
-      apiKey: "sk-ant-test",
-      model: "claude-haiku-4-5-20251001",
+      apiKey: "xai-test",
+      model: "grok-4.7",
       system: CAMPAIGN_REVIEW_SYSTEM_PROMPT,
       userText: buildCampaignReviewInput(CAMPAIGN),
       maxTokens: 2_000,
@@ -106,19 +113,18 @@ describe("campaign review round-trip", () => {
     const body = JSON.parse(
       (fetchImpl.mock.calls[0][1] as { body: string }).body,
     ) as {
-      tools: Array<{ name: string }>;
-      tool_choice: { type: string; name: string };
-      system: string;
-      messages: Array<{ content: string }>;
+      tools: Array<{ type: string; function: { name: string } }>;
+      tool_choice: { type: string; function: { name: string } };
+      messages: Array<{ role: string; content: string }>;
     };
-    expect(body.tools[0].name).toBe(CAMPAIGN_REVIEW_TOOL.name);
+    expect(body.tools[0].function.name).toBe(CAMPAIGN_REVIEW_TOOL.name);
     expect(body.tool_choice).toEqual({
-      type: "tool",
-      name: CAMPAIGN_REVIEW_TOOL.name,
+      type: "function",
+      function: { name: CAMPAIGN_REVIEW_TOOL.name },
     });
-    expect(body.system.toLowerCase()).toContain("untrusted");
-    expect(body.messages[0].content).toContain("<campaign>");
-    expect(body.messages[0].content).toContain("Quick question about");
+    expect(body.messages[0].content.toLowerCase()).toContain("untrusted");
+    expect(body.messages[1].content).toContain("<campaign>");
+    expect(body.messages[1].content).toContain("Quick question about");
 
     // The tokens that become the bill survived the trip.
     expect(response.inputTokens).toBe(1_431);
@@ -150,23 +156,24 @@ describe("campaign review round-trip", () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        content: [{ type: "text", text: "I can't help with that." }],
-        usage: { input_tokens: 900, output_tokens: 12 },
+        choices: [
+          { index: 0, finish_reason: "stop", message: { role: "assistant", content: "I can\'t help with that." } },
+        ],
+        usage: { prompt_tokens: 900, completion_tokens: 12 },
       }),
     } as unknown as Response);
 
-    const response = await callAiToolMessages({
-      apiKey: "sk-ant-test",
-      model: "claude-haiku-4-5-20251001",
+    // xAI returns no tool call, so the adapter throws instead of handing the
+    // parser an empty answer. The metered caller records that as an ERROR row,
+    // and nothing is stored as if the model had answered.
+    await expect(callAiToolMessages({
+      apiKey: "xai-test",
+      model: "grok-4.7",
       system: CAMPAIGN_REVIEW_SYSTEM_PROMPT,
       userText: buildCampaignReviewInput(CAMPAIGN),
       maxTokens: 2_000,
       tool: CAMPAIGN_REVIEW_TOOL,
       fetchImpl,
-    });
-
-    expect(parseCampaignReviewToolUse(response.content)).toBeNull();
-    // Still billable: the tokens were spent whatever the model decided.
-    expect(response.inputTokens).toBe(900);
+    })).rejects.toThrow("xai_missing_tool_calls");
   });
 });

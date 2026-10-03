@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
+const { prismaMock, callAiToolMock } = vi.hoisted(() => ({
   prismaMock: {
     client: { findFirst: vi.fn() },
     clientEmailSequenceEnrollment: { findMany: vi.fn() },
@@ -11,7 +11,7 @@ const { prismaMock, callAnthropicMock } = vi.hoisted(() => ({
     aiTitleMessageReview: { create: vi.fn(), findFirst: vi.fn() },
     aiUsageEvent: { create: vi.fn() },
   },
-  callAnthropicMock: vi.fn(),
+  callAiToolMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
@@ -19,8 +19,8 @@ vi.mock("@/lib/logger", () => ({
   reportError: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./anthropic-messages", () => ({
-  callAiToolMessages: callAnthropicMock,
+vi.mock("./ai-tool-messages", () => ({
+  callAiToolMessages: callAiToolMock,
   AI_CALL_TIMEOUT_MS: 20_000,
 }));
 
@@ -160,9 +160,8 @@ beforeEach(() => {
   // Exercise optional behaviour after deliberate activation.
   process.env.AI_OUTREACH_FEATURES = "on";
   vi.clearAllMocks();
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "sk-test-key";
+  delete process.env.XAI_MODEL;
+  process.env.XAI_API_KEY = "sk-test-key";
   prismaMock.client.findFirst.mockResolvedValue(CLIENT);
   prismaMock.clientEmailSequence.findMany.mockResolvedValue(SEQUENCE_ROWS);
   prismaMock.aiTitleMessageReview.create.mockResolvedValue({ id: "review-1" });
@@ -180,7 +179,7 @@ describe("adviseTitleMessages — the gate, which runs before any money is spent
     });
 
     expect(result).toEqual({ ok: false, reason: "client_not_found" });
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
   });
 
@@ -206,7 +205,7 @@ describe("adviseTitleMessages — the gate, which runs before any money is spent
     });
 
     expect(result.ok).toBe(false);
-    expect(callAnthropicMock).not.toHaveBeenCalled();
+    expect(callAiToolMock).not.toHaveBeenCalled();
     expect(prismaMock.aiUsageEvent.create).not.toHaveBeenCalled();
     expect(prismaMock.aiTitleMessageReview.create).not.toHaveBeenCalled();
   });
@@ -215,7 +214,7 @@ describe("adviseTitleMessages — the gate, which runs before any money is spent
     prismaMock.clientEmailSequenceEnrollment.findMany.mockResolvedValue(
       historyWithARealGap(),
     );
-    callAnthropicMock.mockResolvedValue(toolResponse(GOOD_ANSWER));
+    callAiToolMock.mockResolvedValue(toolResponse(GOOD_ANSWER));
 
     await adviseTitleMessages({
       clientId: CLIENT.id,
@@ -252,7 +251,7 @@ describe("adviseTitleMessages — the gate, which runs before any money is spent
         neverSent: true,
       }),
     ]);
-    callAnthropicMock.mockResolvedValue(
+    callAiToolMock.mockResolvedValue(
       toolResponse({ ...GOOD_ANSWER, findings: [] }),
     );
 
@@ -280,7 +279,7 @@ describe("adviseTitleMessages — the answer", () => {
     prismaMock.clientEmailSequenceEnrollment.findMany.mockResolvedValue(
       historyWithARealGap(),
     );
-    callAnthropicMock.mockResolvedValue(toolResponse(GOOD_ANSWER));
+    callAiToolMock.mockResolvedValue(toolResponse(GOOD_ANSWER));
 
     const result = await adviseTitleMessages({
       clientId: CLIENT.id,
@@ -291,8 +290,9 @@ describe("adviseTitleMessages — the answer", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.reviewId).toBe("review-1");
-    expect(callAnthropicMock.mock.calls[0][0].timeoutMs).toBe(180_000);
-    expect(callAnthropicMock.mock.calls[0][0].reasoningEffort).toBeUndefined();
+    expect(callAiToolMock.mock.calls[0][0].timeoutMs).toBe(180_000);
+    // Default grok model on the long budget: low effort, same as drafting.
+    expect(callAiToolMock.mock.calls[0][0].reasoningEffort).toBe("low");
     expect(result.anyDistinguishable).toBe(true);
     expect(result.findings).toHaveLength(1);
     expect(result.costMicroUsd).toBeGreaterThan(0);
@@ -319,7 +319,7 @@ describe("adviseTitleMessages — the answer", () => {
     prismaMock.clientEmailSequenceEnrollment.findMany.mockResolvedValue(
       historyWithARealGap(),
     );
-    callAnthropicMock.mockResolvedValue({
+    callAiToolMock.mockResolvedValue({
       content: [{ type: "text", text: "sorry" }],
       inputTokens: 1_400,
       outputTokens: 20,
@@ -347,7 +347,7 @@ describe("adviseTitleMessages — the answer", () => {
     prismaMock.clientEmailSequenceEnrollment.findMany.mockResolvedValue(
       historyWithNoRealGap(),
     );
-    callAnthropicMock.mockResolvedValue(
+    callAiToolMock.mockResolvedValue(
       toolResponse({
         summary: "No campaign is clearly ahead.",
         findings: [
@@ -384,7 +384,7 @@ describe("adviseTitleMessages — the answer", () => {
     prismaMock.clientEmailSequenceEnrollment.findMany.mockResolvedValue(
       historyWithARealGap(),
     );
-    callAnthropicMock.mockResolvedValue(
+    callAiToolMock.mockResolvedValue(
       toolResponse({
         ...GOOD_ANSWER,
         findings: [
@@ -422,7 +422,7 @@ describe("adviseTitleMessages — the answer", () => {
     prismaMock.clientEmailSequenceEnrollment.findMany.mockResolvedValue(
       historyWithARealGap(),
     );
-    callAnthropicMock.mockResolvedValue(toolResponse(GOOD_ANSWER));
+    callAiToolMock.mockResolvedValue(toolResponse(GOOD_ANSWER));
 
     await adviseTitleMessages({
       clientId: CLIENT.id,

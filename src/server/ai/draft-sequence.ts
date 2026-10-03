@@ -1,6 +1,5 @@
 import "server-only";
 
-import { AI_MODELS } from "@/lib/ai/model-catalog";
 import { onDemandToolCallBudget } from "@/lib/ai/sequence-draft-timing";
 import {
   buildSequenceDraftingInput,
@@ -16,7 +15,7 @@ import { TEMPLATE_CATEGORY_LABELS } from "@/lib/email-templates/template-policy"
 import { logger } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -125,7 +124,7 @@ export async function draftSequenceForClient(args: {
   const loaded = await loadBrief(args.clientId);
   if (!loaded) return { ok: false, reason: "client_not_found" };
 
-  const model = resolveProductAiModel(AI_MODELS.SEQUENCE_DRAFTING);
+  const model = resolveProductAiModel();
   const apiKey = resolveProductAiApiKey();
   const budget = onDemandToolCallBudget(model);
 
@@ -138,7 +137,6 @@ export async function draftSequenceForClient(args: {
     invoke: async () => {
       const response = await callAiToolMessages({
         apiKey: apiKey as string,
-        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: SEQUENCE_DRAFTING_SYSTEM_PROMPT,
         userText: [

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AI_CALL_TIMEOUT_MS, AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./anthropic-messages";
+import { AI_CALL_TIMEOUT_MS, AI_SEQUENCE_DRAFTING_CALL_TIMEOUT_MS } from "./ai-tool-messages";
 import { callXaiChatCompletions } from "./xai-chat-completions";
 
 const TOOL = {

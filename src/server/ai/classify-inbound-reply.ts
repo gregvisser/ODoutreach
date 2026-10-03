@@ -1,6 +1,5 @@
 import "server-only";
 
-import { AI_MODELS } from "@/lib/ai/model-catalog";
 import {
   buildClassificationInput,
   CLASSIFICATION_SYSTEM_PROMPT,
@@ -11,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { logger, reportError } from "@/lib/logger";
 
 import { resolveProductAiApiKey, resolveProductAiModel } from "./ai-provider";
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 import { runMeteredAiCall } from "./metered-call";
 
 /**
@@ -64,7 +63,7 @@ export async function classifyInboundReply(args: {
   // same reply, which is the cheapest possible way to inflate a client's bill.
   if (reply.classification) return { classified: false, reason: "already_classified" };
 
-  const model = resolveProductAiModel(AI_MODELS.REPLY_CLASSIFICATION);
+  const model = resolveProductAiModel();
   const apiKey = resolveProductAiApiKey();
   const userText = buildClassificationInput({
     subject: reply.subject,
@@ -81,7 +80,6 @@ export async function classifyInboundReply(args: {
     invoke: async () => {
       const response = await callAiToolMessages({
         apiKey: apiKey as string,
-        workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
         model,
         system: CLASSIFICATION_SYSTEM_PROMPT,
         userText,

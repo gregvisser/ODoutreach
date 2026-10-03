@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildSendTimeAdviceInput,
@@ -12,7 +12,7 @@ import {
   type SendOutcome,
 } from "@/lib/ai/send-time-evidence";
 
-import { callAiToolMessages } from "./anthropic-messages";
+import { callAiToolMessages } from "./ai-tool-messages";
 
 /**
  * Round-trip: the REAL evidence builder, the REAL request builder, the REAL
@@ -21,7 +21,7 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * WHY THIS EXISTS, given the feature is already covered three times over.
  *
- * `advise-send-times.test.ts` mocks `callAnthropicMessages`;
+ * `advise-send-times.test.ts` mocks `callAiToolMessages`;
  * `send-time-advice.test.ts` hands the parser a hand-written block; and
  * `send-time-evidence.test.ts` never goes near the model. All three are useful
  * and all three share one blind spot: nothing asserts that the tool schema we
@@ -33,13 +33,9 @@ import { callAiToolMessages } from "./anthropic-messages";
  *
  * This cannot call the real API (there is no key, and a test that spent money
  * would be a bad test). What it can do is prove every layer we own agrees, so
- * the only untested link left is Anthropic's own.
+ * the only untested link left is xAI's own.
  */
 
-beforeEach(() => {
-  process.env.AI_MODEL_PROVIDER = "anthropic";
-  delete process.env.XAI_API_KEY;
-});
 
 /** A history that passes the evidence gate, built the way production builds it. */
 function history(): SendOutcome[] {
@@ -58,20 +54,31 @@ function history(): SendOutcome[] {
   return rows;
 }
 
-/** A response shaped exactly as the Messages API returns a forced tool call. */
-function anthropicResponse(input: unknown) {
+/** A response shaped exactly as xAI chat completions returns a forced tool call. */
+function xaiResponse(input: unknown) {
   return {
     ok: true,
     json: async () => ({
-      id: "msg_01",
-      type: "message",
-      role: "assistant",
-      model: "claude-haiku-4-5-20251001",
-      stop_reason: "tool_use",
-      content: [
-        { type: "tool_use", id: "toolu_01", name: SEND_TIME_ADVICE_TOOL.name, input },
+      id: "chatcmpl_01",
+      object: "chat.completion",
+      model: "grok-4.7",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_01",
+                type: "function",
+                function: { name: SEND_TIME_ADVICE_TOOL.name, arguments: JSON.stringify(input) },
+              },
+            ],
+          },
+        },
       ],
-      usage: { input_tokens: 1_104, output_tokens: 196 },
+      usage: { prompt_tokens: 1_104, completion_tokens: 196 },
     }),
   } as unknown as Response;
 }
@@ -83,7 +90,7 @@ describe("send-time advice round-trip", () => {
     if (!verdict.sufficient) throw new Error("unreachable");
 
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         summary: "Monday mornings lead clearly; the rest is inside the noise.",
         windows: [
           {
@@ -98,8 +105,8 @@ describe("send-time advice round-trip", () => {
     );
 
     const response = await callAiToolMessages({
-      apiKey: "sk-ant-test",
-      model: "claude-haiku-4-5-20251001",
+      apiKey: "xai-test",
+      model: "grok-4.7",
       system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
       userText: buildSendTimeAdviceInput({
         clientName: "Acme Safety",
@@ -117,24 +124,23 @@ describe("send-time advice round-trip", () => {
     const body = JSON.parse(
       (fetchImpl.mock.calls[0][1] as { body: string }).body,
     ) as {
-      tools: Array<{ name: string }>;
-      tool_choice: { type: string; name: string };
-      system: string;
-      messages: Array<{ content: string }>;
+      tools: Array<{ type: string; function: { name: string } }>;
+      tool_choice: { type: string; function: { name: string } };
+      messages: Array<{ role: string; content: string }>;
     };
 
     // The request actually carried our tool, and forced its use.
-    expect(body.tools[0].name).toBe(SEND_TIME_ADVICE_TOOL.name);
+    expect(body.tools[0].function.name).toBe(SEND_TIME_ADVICE_TOOL.name);
     expect(body.tool_choice).toEqual({
-      type: "tool",
-      name: SEND_TIME_ADVICE_TOOL.name,
+      type: "function",
+      function: { name: SEND_TIME_ADVICE_TOOL.name },
     });
 
     // The counts the model is asked to read are OUR counts, in UK local hours —
     // BST included, which is the bug this whole feature is one hour away from.
-    expect(body.messages[0].content).toContain("Monday 09:00 | sent 100 | replies 14");
-    expect(body.messages[0].content).toContain("UK local time");
-    expect(body.messages[0].content).toContain("400 emails sent, 33 replies");
+    expect(body.messages[1].content).toContain("Monday 09:00 | sent 100 | replies 14");
+    expect(body.messages[1].content).toContain("UK local time");
+    expect(body.messages[1].content).toContain("400 emails sent, 33 replies");
 
     // The tokens that become the bill survived the trip.
     expect(response.inputTokens).toBe(1_104);
@@ -168,17 +174,22 @@ describe("send-time advice round-trip", () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        content: [{ type: "text", text: "I can't help with that." }],
-        usage: { input_tokens: 900, output_tokens: 12 },
+        choices: [
+          { index: 0, finish_reason: "stop", message: { role: "assistant", content: "I can\'t help with that." } },
+        ],
+        usage: { prompt_tokens: 900, completion_tokens: 12 },
       }),
     } as unknown as Response);
 
     const verdict = assessSendTimeEvidence(history());
     if (!verdict.sufficient) throw new Error("unreachable");
 
-    const response = await callAiToolMessages({
-      apiKey: "sk-ant-test",
-      model: "claude-haiku-4-5-20251001",
+    // xAI returns no tool call, so the adapter throws instead of handing the
+    // parser an empty answer. The metered caller records that as an ERROR row,
+    // and nothing is stored as if the model had answered.
+    await expect(callAiToolMessages({
+      apiKey: "xai-test",
+      model: "grok-4.7",
       system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
       userText: buildSendTimeAdviceInput({
         clientName: "Acme Safety",
@@ -191,11 +202,7 @@ describe("send-time advice round-trip", () => {
       maxTokens: 1_500,
       tool: SEND_TIME_ADVICE_TOOL,
       fetchImpl,
-    });
-
-    expect(parseSendTimeAdviceToolUse(response.content)).toBeNull();
-    // Still billable: the tokens were spent whatever the model decided.
-    expect(response.inputTokens).toBe(900);
+    })).rejects.toThrow("xai_missing_tool_calls");
   });
 
   it("flags a recommendation the automatic sender cannot actually reach", async () => {
@@ -203,7 +210,7 @@ describe("send-time advice round-trip", () => {
     // perfectly sensible-sounding 07:00 start, and in summer the sender's first
     // firing is 08:00 UK. Advice nobody can act on must SAY so.
     const fetchImpl = vi.fn().mockResolvedValue(
-      anthropicResponse({
+      xaiResponse({
         summary: "Early is better here.",
         windows: [
           { weekday: 2, startHour: 7, endHour: 8, reason: "Before the inbox fills." },
@@ -214,8 +221,8 @@ describe("send-time advice round-trip", () => {
     );
 
     const response = await callAiToolMessages({
-      apiKey: "sk-ant-test",
-      model: "claude-haiku-4-5-20251001",
+      apiKey: "xai-test",
+      model: "grok-4.7",
       system: SEND_TIME_ADVICE_SYSTEM_PROMPT,
       userText: "irrelevant",
       maxTokens: 1_500,

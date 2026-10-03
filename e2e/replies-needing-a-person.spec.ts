@@ -97,7 +97,7 @@ test.describe("Replies waiting for a person", () => {
     /**
      * The assertion that matters most in production TODAY.
      *
-     * ANTHROPIC_API_KEY is unset in Azure, so every real reply arrives with a
+     * Reply classification is refused (CR-10 gate), so every real reply arrives with a
      * null classification. If null fell out of this queue the screen would be
      * confidently empty while the entire inbox went unrouted — which is
      * precisely the "built, wired, reported success, never fired" defect this

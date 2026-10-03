@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AI_MODELS,
   computeCostMicroUsd,
   formatMicroUsd,
   getModelRate,
@@ -15,9 +14,6 @@ describe("model catalog", () => {
     // A model with no rate cannot be billed, so the two lists must not drift
     // apart. This is the check that fails when someone adds a model and
     // forgets the price.
-    for (const model of Object.values(AI_MODELS)) {
-      expect(getModelRate(model), `no rate for ${model}`).not.toBeNull();
-    }
     for (const model of Object.values(XAI_CHAT_MODELS)) {
       expect(getModelRate(model), `no rate for ${model}`).not.toBeNull();
     }
@@ -25,6 +21,7 @@ describe("model catalog", () => {
 
   it("refuses a model it holds no price for", () => {
     expect(getModelRate("claude-some-unpriced-model")).toBeNull();
+    expect(getModelRate("claude-haiku-4-5-20251001")).toBeNull();
   });
 
   it("defaults xAI catalog to grok-4.6", () => {
